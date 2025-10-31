@@ -32,6 +32,7 @@ class BrokerType(Enum):
     """Supported broker types."""
     MOCK = "mock"
     IBKR = "ibkr"  # Interactive Brokers
+    ALPACA = "alpaca"  # Alpaca Markets
     TRADE_REPUBLIC = "trade_republic"
     DEGIRO = "degiro"
     COMDIRECT = "comdirect"
@@ -72,6 +73,7 @@ class DatabaseConfig(BaseModel):
 
 class MarketDataProviderConfig(BaseModel):
     """Market data provider configuration and toggles."""
+    alpaca_enabled: bool = False
     alpha_vantage_enabled: bool = False
     finnhub_enabled: bool = False
     yahoo_enabled: bool = True
@@ -84,7 +86,11 @@ class AIConfig(BaseModel):
     model: str = "gpt-4-turbo-preview"
     temperature: float = 0.2  # Lower = more deterministic
     max_tokens: int = 4000
-    timeout: int = 30  # seconds
+    timeout: int = 30  # seconds (deprecated, use timeouts dict)
+    timeouts: dict[str, int] = {
+        "read_ms": 30000,      # 30 seconds for read timeout
+        "connect_ms": 10000    # 10 seconds for connect timeout
+    }
     retry_attempts: int = 3
     retry_delay: int = 1  # seconds
     cost_limit_monthly: float = 100.0  # EUR
@@ -248,13 +254,15 @@ class AppSettings(BaseSettings):
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        extra='allow'  # Allow additional fields like watchlist
     )
 
     app_env: str = Field(default="dev", alias="TRADING_ENV")
     app_log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     profile: str = Field(default="paper", alias="TRADING_PROFILE")
     config_dir: str = Field(default="./config", alias="CONFIG_DIR")
+    watchlist: list[str] = Field(default_factory=list)
 
 
 class ConfigManager:
@@ -390,6 +398,40 @@ class ConfigManager:
             json.dump(config_dict, f, indent=2, default=str)
 
         logger.info(f"Configuration exported to {path}")
+
+    def save_watchlist(self) -> None:
+        """Save watchlist to persistent storage."""
+        watchlist_path = self.config_dir / "watchlist.json"
+
+        try:
+            with open(watchlist_path, "w", encoding="utf-8") as f:
+                json.dump({"watchlist": self.settings.watchlist}, f, indent=2)
+            logger.debug(f"Watchlist saved to {watchlist_path}")
+        except Exception as e:
+            logger.error(f"Failed to save watchlist: {e}")
+            raise
+
+    def load_watchlist(self) -> list[str]:
+        """Load watchlist from persistent storage.
+
+        Returns:
+            List of symbols in watchlist
+        """
+        watchlist_path = self.config_dir / "watchlist.json"
+
+        if not watchlist_path.exists():
+            return []
+
+        try:
+            with open(watchlist_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                watchlist = data.get("watchlist", [])
+                self.settings.watchlist = watchlist
+                logger.debug(f"Loaded {len(watchlist)} symbols from watchlist")
+                return watchlist
+        except Exception as e:
+            logger.error(f"Failed to load watchlist: {e}")
+            return []
 
     @property
     def profile(self) -> ProfileConfig:

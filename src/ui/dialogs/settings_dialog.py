@@ -184,6 +184,33 @@ class SettingsDialog(QDialog):
 
         self.market_tabs.addTab(yahoo_tab, "Yahoo Finance")
 
+        # Alpaca provider settings
+        alpaca_tab = QWidget()
+        alpaca_layout = QFormLayout(alpaca_tab)
+
+        self.alpaca_enabled = QCheckBox("Enable Alpaca provider")
+        alpaca_layout.addRow(self.alpaca_enabled)
+
+        self.alpaca_api_key = QLineEdit()
+        self.alpaca_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.alpaca_api_key.setPlaceholderText("Enter Alpaca API key")
+        alpaca_layout.addRow("API Key:", self.alpaca_api_key)
+
+        self.alpaca_api_secret = QLineEdit()
+        self.alpaca_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
+        self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
+        alpaca_layout.addRow("API Secret:", self.alpaca_api_secret)
+
+        alpaca_info = QLabel(
+            "Alpaca provides real-time and historical market data for US stocks. "
+            "Free tier includes IEX real-time data with 200 requests/minute. "
+            "Paper trading API keys can be used for testing."
+        )
+        alpaca_info.setWordWrap(True)
+        alpaca_layout.addRow(alpaca_info)
+
+        self.market_tabs.addTab(alpaca_tab, "Alpaca")
+
         # Preferred data source behavior
         self.prefer_live_broker = QCheckBox(
             "Prefer live broker market data when connected"
@@ -347,6 +374,23 @@ class SettingsDialog(QDialog):
             self.finnhub_api_key.setPlaceholderText("Enter Finnhub API key")
 
         self.yahoo_enabled.setChecked(market_config.yahoo_enabled)
+
+        self.alpaca_enabled.setChecked(market_config.alpaca_enabled)
+        alpaca_key_exists = bool(config_manager.get_credential("alpaca_api_key"))
+        alpaca_secret_exists = bool(config_manager.get_credential("alpaca_api_secret"))
+        if alpaca_key_exists:
+            self.alpaca_api_key.setPlaceholderText(
+                "API key stored securely. Enter a new value to replace it."
+            )
+        else:
+            self.alpaca_api_key.setPlaceholderText("Enter Alpaca API key")
+        if alpaca_secret_exists:
+            self.alpaca_api_secret.setPlaceholderText(
+                "API secret stored securely. Enter a new value to replace it."
+            )
+        else:
+            self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
+
         self.prefer_live_broker.setChecked(market_config.prefer_live_broker)
 
         # Notifications
@@ -412,6 +456,7 @@ class SettingsDialog(QDialog):
             # Market Data provider toggles
             profile = config_manager.load_profile()
             market_config = profile.market_data
+            market_config.alpaca_enabled = self.alpaca_enabled.isChecked()
             market_config.alpha_vantage_enabled = self.alpha_enabled.isChecked()
             market_config.finnhub_enabled = self.finnhub_enabled.isChecked()
             market_config.yahoo_enabled = self.yahoo_enabled.isChecked()
@@ -440,6 +485,27 @@ class SettingsDialog(QDialog):
                         f"Could not store Finnhub API key securely:\n{str(e)}\n\n"
                         "You may need to re-enter it next session."
                     )
+
+            alpaca_key = self.alpaca_api_key.text().strip()
+            alpaca_secret = self.alpaca_api_secret.text().strip()
+            if alpaca_key and alpaca_secret:
+                try:
+                    config_manager.set_credential("alpaca_api_key", alpaca_key)
+                    config_manager.set_credential("alpaca_api_secret", alpaca_secret)
+                    self.alpaca_api_key.clear()
+                    self.alpaca_api_secret.clear()
+                except Exception as e:
+                    QMessageBox.warning(
+                        self, "API Key Storage",
+                        f"Could not store Alpaca API credentials securely:\n{str(e)}\n\n"
+                        "You may need to re-enter them next session."
+                    )
+            elif alpaca_key or alpaca_secret:
+                QMessageBox.warning(
+                    self, "Incomplete Credentials",
+                    "Both API key and secret are required for Alpaca.\n\n"
+                    "Please provide both or leave both empty."
+                )
 
             # Persist profile changes
             config_manager.save_profile(profile)

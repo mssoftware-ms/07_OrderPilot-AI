@@ -95,7 +95,7 @@ class ChartWidget(QWidget):
         """Initialize the chart UI."""
         layout = QVBoxLayout(self)
 
-        # Control panel
+        # Control panel (hidden - use main toolbar instead)
         control_layout = QHBoxLayout()
 
         # Symbol selector
@@ -126,7 +126,10 @@ class ChartWidget(QWidget):
         self.status_label.setStyleSheet("color: #888;")
         control_layout.addWidget(self.status_label)
 
-        layout.addLayout(control_layout)
+        # Create control widget but don't add to layout (controlled from main toolbar)
+        self.control_widget = QWidget()
+        self.control_widget.setLayout(control_layout)
+        # NOTE: control_widget not added to layout to avoid duplicate toolbars
 
         # Chart view
         self.plot_widget = pg.PlotWidget()

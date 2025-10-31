@@ -25,7 +25,12 @@
       "Bash(tee:*)",
       "Bash(timeout 10 python3:*)",
       "Bash(timeout 15 python3:*)",
-      "Bash(timeout 20 python3:*)"
+      "Bash(timeout 20 python3:*)",
+      "WebFetch(domain:mcp.alphavantage.co)",
+      "WebFetch(domain:www.alphavantage.co)",
+      "WebFetch(domain:docs.alpaca.markets)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

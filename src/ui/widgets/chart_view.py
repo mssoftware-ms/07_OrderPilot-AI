@@ -97,11 +97,12 @@ class ChartView(QWidget):
     indicator_added = pyqtSignal(str)
     drawing_completed = pyqtSignal(dict)
 
-    def __init__(self, config: ChartConfig | None = None):
+    def __init__(self, config: ChartConfig | None = None, history_manager=None):
         """Initialize chart view.
 
         Args:
             config: Chart configuration
+            history_manager: HistoryManager instance for loading data
         """
         super().__init__()
 
@@ -110,11 +111,14 @@ class ChartView(QWidget):
 
         self.config = config or ChartConfig(symbol="AAPL")
         self.indicator_engine = IndicatorEngine()
+        self.history_manager = history_manager
 
         # Data storage
         self.data: pd.DataFrame | None = None
         self.indicators: dict[str, Any] = {}
         self.drawings: list[Any] = []
+        self.current_symbol: str | None = None
+        self.current_data_provider: str | None = None
 
         # Setup UI
         self._setup_ui()
@@ -133,9 +137,9 @@ class ChartView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create toolbar
+        # Create toolbar (but don't add it to layout - controlled from main toolbar)
         toolbar = self._create_toolbar()
-        layout.addWidget(toolbar)
+        # NOTE: toolbar not added to layout to avoid duplicate toolbars
 
         if PYQTGRAPH_AVAILABLE:
             # Create main chart
@@ -183,6 +187,7 @@ class ChartView(QWidget):
     def _create_toolbar(self) -> QToolBar:
         """Create chart toolbar."""
         toolbar = QToolBar()
+        toolbar.setVisible(False)  # Hide by default - use main toolbar
 
         # Symbol selector
         toolbar.addWidget(QLabel("Symbol:"))
@@ -476,6 +481,10 @@ class ChartView(QWidget):
         self.symbol_changed.emit(symbol)
         logger.info(f"Symbol changed to: {symbol}")
 
+        # Load the new symbol with current data provider
+        import asyncio
+        asyncio.create_task(self.load_symbol(symbol, self.current_data_provider))
+
     def _on_timeframe_change(self, timeframe: str):
         """Handle timeframe change.
 
@@ -485,6 +494,11 @@ class ChartView(QWidget):
         self.config.timeframe = timeframe
         self.timeframe_changed.emit(timeframe)
         logger.info(f"Timeframe changed to: {timeframe}")
+
+        # Reload data with new timeframe
+        if self.current_symbol:
+            import asyncio
+            asyncio.create_task(self.load_symbol(self.current_symbol, self.current_data_provider))
 
     def _on_market_bar(self, event: Event):
         """Handle market bar event.
@@ -505,6 +519,109 @@ class ChartView(QWidget):
         """
         # Update current bar with tick data
         pass
+
+    async def load_symbol(self, symbol: str, data_provider: str | None = None):
+        """Load symbol data and display chart.
+
+        Args:
+            symbol: Trading symbol to load
+            data_provider: Optional data provider source (e.g., 'alpaca', 'yahoo')
+        """
+        try:
+            if not self.history_manager:
+                logger.warning("No history manager available. Cannot load symbol data.")
+                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+                    self.chart_widget.setTitle(f"{symbol} - No data source available")
+                return
+
+            # Update UI
+            self.symbol_combo.setCurrentText(symbol)
+            self.current_symbol = symbol
+            self.current_data_provider = data_provider
+
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+                self.chart_widget.setTitle(f"Loading {symbol}...")
+
+            logger.info(f"Loading {symbol} from provider: {data_provider or 'auto'}")
+
+            # Import required classes
+            from datetime import datetime, timedelta
+            from src.core.market_data.history_provider import DataRequest, DataSource, Timeframe
+
+            # Map timeframe string to enum
+            timeframe_map = {
+                "1T": Timeframe.MINUTE_1,
+                "5T": Timeframe.MINUTE_5,
+                "15T": Timeframe.MINUTE_15,
+                "30T": Timeframe.MINUTE_30,
+                "1H": Timeframe.HOUR_1,
+                "4H": Timeframe.HOUR_4,
+                "1D": Timeframe.DAY_1,
+            }
+            timeframe = timeframe_map.get(self.config.timeframe, Timeframe.MINUTE_1)
+
+            # Map provider string to DataSource enum
+            provider_source = None
+            if data_provider:
+                provider_map = {
+                    "database": DataSource.DATABASE,
+                    "ibkr": DataSource.IBKR,
+                    "alpaca": DataSource.ALPACA,
+                    "alpha_vantage": DataSource.ALPHA_VANTAGE,
+                    "finnhub": DataSource.FINNHUB,
+                    "yahoo": DataSource.YAHOO,
+                }
+                provider_source = provider_map.get(data_provider)
+
+            # Create data request
+            request = DataRequest(
+                symbol=symbol,
+                start_date=datetime.now() - timedelta(days=30),  # Last 30 days
+                end_date=datetime.now(),
+                timeframe=timeframe,
+                source=provider_source
+            )
+
+            # Fetch data
+            bars, source_used = await self.history_manager.fetch_data(request)
+
+            if not bars:
+                logger.warning(f"No data available for {symbol}")
+                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+                    self.chart_widget.setTitle(f"{symbol} - No data available")
+                return
+
+            # Convert to DataFrame
+            data_dict = {
+                'timestamp': [bar.timestamp for bar in bars],
+                'open': [float(bar.open) for bar in bars],
+                'high': [float(bar.high) for bar in bars],
+                'low': [float(bar.low) for bar in bars],
+                'close': [float(bar.close) for bar in bars],
+                'volume': [bar.volume for bar in bars]
+            }
+
+            df = pd.DataFrame(data_dict)
+            df.set_index('timestamp', inplace=True)
+
+            # Load data into chart
+            self.load_data(df)
+
+            # Update title with source info
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+                self.chart_widget.setTitle(f"{symbol} ({source_used.upper()}) - {len(bars)} bars")
+
+            logger.info(f"Loaded {len(bars)} bars for {symbol} from {source_used}")
+
+        except Exception as e:
+            logger.error(f"Error loading symbol {symbol}: {e}", exc_info=True)
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+                self.chart_widget.setTitle(f"{symbol} - Error: {str(e)}")
+
+    async def refresh_data(self):
+        """Refresh current symbol data."""
+        if self.current_symbol:
+            await self.load_symbol(self.current_symbol, self.current_data_provider)
 
     def save_screenshot(self, filepath: str):
         """Save chart screenshot.

@@ -322,10 +322,10 @@ class OpenAIService:
 
         # Initialize components
         self.cost_tracker = CostTracker(
-            monthly_budget=config.budget["monthly_eur"],
-            warn_threshold=config.budget["warn_eur"]
+            monthly_budget=config.cost_limit_monthly,
+            warn_threshold=config.cost_limit_monthly * 0.8  # Warn at 80%
         )
-        self.cache_manager = CacheManager(ttl_seconds=config.cache_ttl_seconds)
+        self.cache_manager = CacheManager(ttl_seconds=config.cache_ttl if hasattr(config, 'cache_ttl') else 3600)
 
         # API settings
         self.base_url = "https://api.openai.com/v1"

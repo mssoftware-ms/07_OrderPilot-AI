@@ -43,6 +43,7 @@ from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter, MockBroker
 from src.core.broker.ibkr_adapter import IBKRAdapter
 from src.core.broker.trade_republic_adapter import TradeRepublicAdapter
+from src.core.market_data.history_provider import HistoryManager
 from src.database import initialize_database
 
 from .dialogs.backtest_dialog import BacktestDialog
@@ -50,6 +51,7 @@ from .dialogs.order_dialog import OrderDialog
 from .dialogs.settings_dialog import SettingsDialog
 
 # UI component imports
+from .icons import get_icon, set_icon_theme
 from .themes import ThemeManager
 from .widgets.alerts import AlertsWidget
 from .widgets.chart import ChartWidget
@@ -59,6 +61,7 @@ from .widgets.orders import OrdersWidget
 from .widgets.performance_dashboard import PerformanceDashboard
 from .widgets.positions import PositionsWidget
 from .widgets.strategy_configurator import StrategyConfigurator
+from .widgets.watchlist import WatchlistWidget
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,7 @@ class TradingApplication(QMainWindow):
         self.ai_service = None
         self.theme_manager = ThemeManager()
         self.settings = QSettings("OrderPilot", "TradingApp")
+        self.history_manager = HistoryManager()
 
         # Async update lock to prevent concurrent updates
         self._updating = False
@@ -89,6 +93,9 @@ class TradingApplication(QMainWindow):
         self.init_ui()
         self.setup_event_handlers()
         self.load_settings()
+
+        # Populate market data providers
+        self.update_data_provider_list()
 
         # Start timers
         self.setup_timers()
@@ -197,29 +204,92 @@ class TradingApplication(QMainWindow):
         toolbar.setIconSize(QSize(24, 24))
         self.addToolBar(toolbar)
 
+        # Connect/Disconnect actions
+        connect_action = QAction(get_icon("connect"), "Connect", self)
+        connect_action.setToolTip("Connect to broker")
+        connect_action.triggered.connect(self.connect_broker)
+        toolbar.addAction(connect_action)
+
+        disconnect_action = QAction(get_icon("disconnect"), "Disconnect", self)
+        disconnect_action.setToolTip("Disconnect from broker")
+        disconnect_action.triggered.connect(self.disconnect_broker)
+        toolbar.addAction(disconnect_action)
+
+        toolbar.addSeparator()
+
         # Add broker selector
         broker_label = QLabel("Broker: ")
+        broker_label.setToolTip("Select your broker for trading")
         toolbar.addWidget(broker_label)
 
         self.broker_combo = QComboBox()
         self.broker_combo.addItems(["Mock Broker", "IBKR", "Trade Republic"])
+        self.broker_combo.setToolTip(
+            "Choose broker:\n"
+            "• Mock Broker - Testing with simulated trading\n"
+            "• IBKR - Interactive Brokers (TWS/Gateway required)\n"
+            "• Trade Republic - Mobile trading platform"
+        )
         toolbar.addWidget(self.broker_combo)
 
         toolbar.addSeparator()
 
+        # Add Market Data Provider selector
+        data_provider_label = QLabel("Market Data: ")
+        data_provider_label.setToolTip("Select market data provider")
+        toolbar.addWidget(data_provider_label)
+
+        self.data_provider_combo = QComboBox()
+        self.data_provider_combo.setToolTip(
+            "Select market data source:\n"
+            "• Auto - Use priority order from settings\n"
+            "• Database - Cached historical data\n"
+            "• IBKR - Real-time from Interactive Brokers\n"
+            "• Alpaca - US stocks (free tier: IEX data)\n"
+            "• Alpha Vantage - Global markets (rate limited)\n"
+            "• Finnhub - Real-time and historical\n"
+            "• Yahoo Finance - Free historical data"
+        )
+        self.data_provider_combo.currentTextChanged.connect(self.on_data_provider_changed)
+        toolbar.addWidget(self.data_provider_combo)
+
+        # Refresh market data action
+        refresh_action = QAction(get_icon("refresh"), "Refresh", self)
+        refresh_action.setToolTip("Refresh market data")
+        refresh_action.triggered.connect(self.refresh_market_data)
+        toolbar.addAction(refresh_action)
+
+        toolbar.addSeparator()
+
         # Add quick actions
-        new_order_btn = QPushButton("New Order")
-        new_order_btn.clicked.connect(self.show_order_dialog)
-        toolbar.addWidget(new_order_btn)
+        new_order_action = QAction(get_icon("order"), "New Order", self)
+        new_order_action.setToolTip("Place new order")
+        new_order_action.triggered.connect(self.show_order_dialog)
+        toolbar.addAction(new_order_action)
+
+        backtest_action = QAction(get_icon("backtest"), "Backtest", self)
+        backtest_action.setToolTip("Run backtest")
+        backtest_action.triggered.connect(self.show_backtest_dialog)
+        toolbar.addAction(backtest_action)
+
+        settings_action = QAction(get_icon("settings"), "Settings", self)
+        settings_action.setToolTip("Open settings")
+        settings_action.triggered.connect(self.show_settings_dialog)
+        toolbar.addAction(settings_action)
 
         # Connection status
         toolbar.addSeparator()
         self.connection_status = QLabel("● Disconnected")
         self.connection_status.setStyleSheet("color: red;")
+        self.connection_status.setToolTip("Broker connection status")
         toolbar.addWidget(self.connection_status)
 
         # AI status
         self.ai_status = QLabel("AI: Ready")
+        self.ai_status.setToolTip(
+            "AI service status\n"
+            "Configure OpenAI API key in Settings → AI"
+        )
         toolbar.addWidget(self.ai_status)
 
     def create_central_widget(self):
@@ -241,8 +311,8 @@ class TradingApplication(QMainWindow):
         self.chart_widget = ChartWidget()
         self.tab_widget.addTab(self.chart_widget, "Charts")
 
-        # Advanced Chart View tab
-        self.chart_view = ChartView()
+        # Advanced Chart View tab (with history manager)
+        self.chart_view = ChartView(history_manager=self.history_manager)
         self.tab_widget.addTab(self.chart_view, "Advanced Charts")
 
         # Positions tab
@@ -271,11 +341,13 @@ class TradingApplication(QMainWindow):
         watchlist_dock = QDockWidget("Watchlist", self)
         watchlist_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea |
                                       Qt.DockWidgetArea.RightDockWidgetArea)
-        watchlist_widget = QWidget()
-        watchlist_layout = QVBoxLayout(watchlist_widget)
-        watchlist_layout.addWidget(QLabel("Watchlist"))
-        # Add watchlist implementation here
-        watchlist_dock.setWidget(watchlist_widget)
+        self.watchlist_widget = WatchlistWidget()
+
+        # Connect watchlist signals
+        self.watchlist_widget.symbol_selected.connect(self.show_chart_for_symbol)
+        self.watchlist_widget.symbol_added.connect(self.on_watchlist_symbol_added)
+
+        watchlist_dock.setWidget(self.watchlist_widget)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, watchlist_dock)
 
         # Activity log dock
@@ -359,11 +431,16 @@ class TradingApplication(QMainWindow):
         try:
             if theme_name == "dark":
                 style_sheet = self.theme_manager.get_dark_theme()
+                set_icon_theme("dark")
             else:
                 style_sheet = self.theme_manager.get_light_theme()
+                set_icon_theme("light")
 
             self.setStyleSheet(style_sheet)
             self.settings.setValue("theme", theme_name)
+
+            # NOTE: Don't recreate toolbar on theme change
+            # Icons update automatically via set_icon_theme()
 
         except Exception as e:
             logger.error(f"Failed to apply theme: {e}")
@@ -410,6 +487,9 @@ class TradingApplication(QMainWindow):
                     port=ibkr_port,
                     client_id=ibkr_client_id
                 )
+
+                # Register IBKR as market data provider when credentials allow
+                self.history_manager.set_ibkr_adapter(self.broker)
 
                 logger.info(f"Connecting to IBKR at {ibkr_host}:{ibkr_port} (Client ID: {ibkr_client_id})")
 
@@ -551,14 +631,19 @@ class TradingApplication(QMainWindow):
 
     def show_ai_monitor(self):
         """Show AI usage monitor."""
-        if self.ai_service:
-            cost = self.ai_service.cost_tracker.current_month_cost
-            budget = self.ai_service.cost_tracker.monthly_budget
+        if self.ai_service and hasattr(self.ai_service, 'cost_tracker'):
+            try:
+                cost = self.ai_service.cost_tracker.current_month_cost
+                budget = self.ai_service.cost_tracker.monthly_budget
 
-            QMessageBox.information(self, "AI Usage",
-                                  f"Current Month Usage: €{cost:.2f}\n"
-                                  f"Monthly Budget: €{budget:.2f}\n"
-                                  f"Remaining: €{budget - cost:.2f}")
+                QMessageBox.information(self, "AI Usage",
+                                      f"Current Month Usage: €{cost:.2f}\n"
+                                      f"Monthly Budget: €{budget:.2f}\n"
+                                      f"Remaining: €{budget - cost:.2f}")
+            except Exception as e:
+                logger.error(f"Error showing AI monitor: {e}")
+                QMessageBox.warning(self, "AI Usage",
+                                   f"Error retrieving AI usage data: {e}")
         else:
             QMessageBox.information(self, "AI Usage", "AI service not initialized")
 
@@ -569,6 +654,50 @@ class TradingApplication(QMainWindow):
                         "Version 1.0.0\n\n"
                         "An AI-powered trading platform for retail investors.\n\n"
                         "© 2025 OrderPilot")
+
+    @qasync.asyncSlot()
+    async def show_chart_for_symbol(self, symbol: str):
+        """Show chart for selected symbol.
+
+        Args:
+            symbol: Trading symbol
+        """
+        logger.info(f"Showing chart for {symbol}")
+
+        # Get currently selected data provider
+        current_index = self.data_provider_combo.currentIndex()
+        data_provider = self.data_provider_combo.itemData(current_index)
+
+        # Switch to Advanced Charts tab
+        self.tab_widget.setCurrentWidget(self.chart_view)
+
+        # Load symbol in chart with selected data provider
+        if hasattr(self.chart_view, 'load_symbol'):
+            try:
+                self.status_bar.showMessage(f"Loading {symbol} chart...", 2000)
+                await self.chart_view.load_symbol(symbol, data_provider)
+                self.status_bar.showMessage(f"Loaded {symbol} chart", 3000)
+            except Exception as e:
+                logger.error(f"Failed to load chart for {symbol}: {e}")
+                self.status_bar.showMessage(f"Failed to load chart: {e}", 5000)
+        else:
+            # Update status if not available
+            self.status_bar.showMessage(f"Chart for {symbol} (Implementation pending)", 3000)
+
+    def on_watchlist_symbol_added(self, symbol: str):
+        """Handle symbol added to watchlist.
+
+        Args:
+            symbol: Trading symbol
+        """
+        logger.info(f"Symbol added to watchlist: {symbol}")
+
+        # Subscribe to real-time data if streaming is active
+        if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+            import asyncio
+            asyncio.create_task(self.history_manager.stream_client.subscribe([symbol]))
+
+        self.status_bar.showMessage(f"Added {symbol} to watchlist", 3000)
 
     @pyqtSlot(dict)
     def on_order_placed(self, order_data: dict[str, Any]):
@@ -650,14 +779,210 @@ class TradingApplication(QMainWindow):
             except Exception as e:
                 logger.error(f"Failed to update account info: {e}")
 
+    def update_data_provider_list(self):
+        """Update the list of available market data providers."""
+        try:
+            # Get available providers from history manager
+            available_sources = self.history_manager.get_available_sources()
+
+            # Clear and repopulate combo box
+            self.data_provider_combo.clear()
+
+            # Add "Auto" option (uses priority order)
+            self.data_provider_combo.addItem("Auto (Priority Order)", None)
+
+            # Define all possible providers with display names
+            provider_display_names = {
+                "database": "Database (Cache)",
+                "ibkr": "Interactive Brokers",
+                "alpaca": "Alpaca",
+                "alpha_vantage": "Alpha Vantage",
+                "finnhub": "Finnhub",
+                "yahoo": "Yahoo Finance"
+            }
+
+            # Add available (active) providers
+            for source in available_sources:
+                display_name = provider_display_names.get(source, source.title())
+                self.data_provider_combo.addItem(f"{display_name}", source)
+
+            # Check config for providers that are enabled but not active (no API keys)
+            profile = config_manager.load_profile()
+            market_config = profile.market_data
+
+            # Check each provider and add with warning if enabled but not available
+            if market_config.alpaca_enabled and "alpaca" not in available_sources:
+                self.data_provider_combo.addItem(
+                    "Alpaca (Configure API Keys)",
+                    "alpaca_disabled"
+                )
+
+            if market_config.alpha_vantage_enabled and "alpha_vantage" not in available_sources:
+                self.data_provider_combo.addItem(
+                    "Alpha Vantage (Configure API Key)",
+                    "alpha_vantage_disabled"
+                )
+
+            if market_config.finnhub_enabled and "finnhub" not in available_sources:
+                self.data_provider_combo.addItem(
+                    "Finnhub (Configure API Key)",
+                    "finnhub_disabled"
+                )
+
+            # Yahoo should always be available if enabled (no API key needed)
+            if market_config.yahoo_enabled and "yahoo" not in available_sources:
+                # If Yahoo is enabled but not registered, register it now
+                from src.core.market_data.history_provider import DataSource, YahooFinanceProvider
+                self.history_manager.register_provider(DataSource.YAHOO, YahooFinanceProvider())
+                self.data_provider_combo.addItem("Yahoo Finance", "yahoo")
+                logger.info("Registered Yahoo Finance provider")
+
+            # Load saved preference
+            saved_provider = self.settings.value("market_data_provider", "Auto (Priority Order)")
+            index = self.data_provider_combo.findText(saved_provider)
+            if index >= 0:
+                self.data_provider_combo.setCurrentIndex(index)
+
+            logger.info(f"Available market data providers: {available_sources}")
+            logger.info(f"Total providers in dropdown: {self.data_provider_combo.count()}")
+
+        except Exception as e:
+            logger.error(f"Failed to update data provider list: {e}")
+
+    def on_data_provider_changed(self, provider_name: str):
+        """Handle market data provider change.
+
+        Args:
+            provider_name: Selected provider name
+        """
+        try:
+            # Save preference
+            self.settings.setValue("market_data_provider", provider_name)
+
+            # Get provider source from combo box data
+            current_index = self.data_provider_combo.currentIndex()
+            source = self.data_provider_combo.itemData(current_index)
+
+            # Check if provider is disabled (needs configuration)
+            if source and isinstance(source, str) and source.endswith("_disabled"):
+                QMessageBox.information(
+                    self,
+                    "Configure Provider",
+                    f"This provider requires API credentials.\n\n"
+                    f"Please go to:\n"
+                    f"Settings → Market Data → {provider_name.split('(')[0].strip()}\n\n"
+                    f"and enter your API keys to enable this provider."
+                )
+                # Reset to Auto
+                self.data_provider_combo.setCurrentIndex(0)
+                return
+
+            if source:
+                logger.info(f"Switched market data provider to: {provider_name} ({source})")
+                self.status_bar.showMessage(f"Market data source: {provider_name}", 3000)
+            else:
+                logger.info("Using automatic provider priority order")
+                self.status_bar.showMessage("Market data: Auto (Priority Order)", 3000)
+
+            # Refresh data in chart view if visible
+            if hasattr(self.chart_view, 'refresh_data'):
+                self.chart_view.refresh_data()
+
+        except Exception as e:
+            logger.error(f"Failed to change data provider: {e}")
+
+    @qasync.asyncSlot()
+    async def refresh_market_data(self):
+        """Refresh market data for all visible widgets."""
+        try:
+            self.status_bar.showMessage("Refreshing market data...", 2000)
+
+            # Refresh watchlist
+            if hasattr(self.watchlist_widget, 'refresh'):
+                await self.watchlist_widget.refresh()
+
+            # Refresh chart view with current data provider
+            if hasattr(self.chart_view, 'refresh_data'):
+                # Update data provider in case it changed
+                current_index = self.data_provider_combo.currentIndex()
+                data_provider = self.data_provider_combo.itemData(current_index)
+                if hasattr(self.chart_view, 'current_data_provider'):
+                    self.chart_view.current_data_provider = data_provider
+                await self.chart_view.refresh_data()
+
+            # Refresh dashboard
+            if hasattr(self.dashboard_widget, 'refresh'):
+                await self.dashboard_widget.refresh()
+
+            self.status_bar.showMessage("Market data refreshed", 3000)
+            logger.info("Market data refreshed successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to refresh market data: {e}")
+            self.status_bar.showMessage(f"Refresh failed: {e}", 5000)
+
     def closeEvent(self, event):
         """Handle application close event."""
-        # Save settings
-        self.save_settings()
+        logger.info("Application closing...")
 
-        # Disconnect broker
+        # Save settings
+        try:
+            self.save_settings()
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
+
+        # Stop timers
+        try:
+            if hasattr(self, 'time_timer'):
+                self.time_timer.stop()
+            if hasattr(self, 'dashboard_timer'):
+                self.dashboard_timer.stop()
+        except Exception as e:
+            logger.error(f"Error stopping timers: {e}")
+
+        # Disconnect broker (synchronously)
         if self.broker:
-            asyncio.create_task(self.disconnect_broker())
+            try:
+                # Get the event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Schedule disconnect as a task
+                    asyncio.ensure_future(self.disconnect_broker())
+                else:
+                    # Run synchronously if loop is not running
+                    loop.run_until_complete(self.disconnect_broker())
+            except Exception as e:
+                logger.error(f"Error disconnecting broker: {e}")
+
+        # Close AI service
+        if self.ai_service:
+            try:
+                # AI service may not have a close method, check first
+                if hasattr(self.ai_service, 'close'):
+                    if asyncio.iscoroutinefunction(self.ai_service.close):
+                        # Async close
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.ensure_future(self.ai_service.close())
+                        else:
+                            loop.run_until_complete(self.ai_service.close())
+                    else:
+                        # Sync close
+                        self.ai_service.close()
+                logger.info("AI service closed")
+            except Exception as e:
+                logger.error(f"Error closing AI service: {e}")
+
+        # Stop real-time stream if active
+        try:
+            if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(self.history_manager.stop_realtime_stream())
+        except Exception as e:
+            logger.error(f"Error stopping stream: {e}")
+
+        logger.info("Application closed successfully")
 
         # Accept close
         event.accept()
@@ -687,7 +1012,7 @@ async def main():
 
     # Run event loop
     with loop:
-        await loop.run_forever()
+        loop.run_forever()
 
 
 if __name__ == "__main__":

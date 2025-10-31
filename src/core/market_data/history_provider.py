@@ -8,7 +8,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 
@@ -16,6 +16,7 @@ import aiohttp
 import pandas as pd
 
 from src.common.event_bus import Event, EventType, event_bus
+from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
 from src.database import get_db_manager
 from src.database.models import MarketBar
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 class DataSource(Enum):
     """Available data sources."""
     IBKR = "ibkr"
+    ALPACA = "alpaca"
     ALPHA_VANTAGE = "alpha_vantage"
     FINNHUB = "finnhub"
     YAHOO = "yahoo"
@@ -441,6 +443,336 @@ class AlphaVantageProvider(HistoricalDataProvider):
             bars.append(bar)
         return bars
 
+    async def fetch_technical_indicator(
+        self,
+        symbol: str,
+        indicator: str,
+        interval: str = "daily",
+        time_period: int = 14,
+        series_type: str = "close"
+    ) -> dict:
+        """Fetch technical indicator from Alpha Vantage.
+
+        Args:
+            symbol: Trading symbol
+            indicator: Indicator name (RSI, MACD, EMA, SMA, etc.)
+            interval: Time interval (1min, 5min, 15min, 30min, 60min, daily, weekly, monthly)
+            time_period: Time period for indicator calculation
+            series_type: Price series type (close, open, high, low)
+
+        Returns:
+            Dictionary with indicator data
+        """
+        params = {
+            "function": indicator.upper(),
+            "symbol": symbol,
+            "interval": interval,
+            "time_period": time_period,
+            "series_type": series_type,
+            "apikey": self.api_key
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+
+                        if "Error Message" in data:
+                            logger.error(f"Alpha Vantage error: {data['Error Message']}")
+                            return {}
+
+                        # Find the technical analysis key
+                        ta_key = None
+                        for key in data.keys():
+                            if "Technical Analysis" in key:
+                                ta_key = key
+                                break
+
+                        if not ta_key:
+                            logger.error(f"No technical analysis data found for {symbol}")
+                            return {}
+
+                        logger.info(f"Fetched {indicator} for {symbol} from Alpha Vantage")
+                        return data[ta_key]
+                    else:
+                        logger.error(f"Alpha Vantage API error: {response.status}")
+                        return {}
+
+        except Exception as e:
+            logger.error(f"Error fetching Alpha Vantage indicator: {e}")
+            return {}
+
+    async def fetch_rsi(
+        self,
+        symbol: str,
+        interval: str = "daily",
+        time_period: int = 14,
+        series_type: str = "close"
+    ) -> pd.Series:
+        """Fetch RSI (Relative Strength Index) from Alpha Vantage.
+
+        Args:
+            symbol: Trading symbol
+            interval: Time interval
+            time_period: RSI period (default: 14)
+            series_type: Price series type
+
+        Returns:
+            Pandas Series with RSI values
+        """
+        data = await self.fetch_technical_indicator(
+            symbol, "RSI", interval, time_period, series_type
+        )
+
+        if not data:
+            return pd.Series()
+
+        # Convert to pandas Series
+        rsi_data = {}
+        for timestamp_str, values in data.items():
+            timestamp = datetime.fromisoformat(timestamp_str)
+            rsi_data[timestamp] = float(values["RSI"])
+
+        return pd.Series(rsi_data).sort_index()
+
+    async def fetch_macd(
+        self,
+        symbol: str,
+        interval: str = "daily",
+        fast_period: int = 12,
+        slow_period: int = 26,
+        signal_period: int = 9,
+        series_type: str = "close"
+    ) -> pd.DataFrame:
+        """Fetch MACD (Moving Average Convergence Divergence) from Alpha Vantage.
+
+        Args:
+            symbol: Trading symbol
+            interval: Time interval
+            fast_period: Fast EMA period (default: 12)
+            slow_period: Slow EMA period (default: 26)
+            signal_period: Signal line period (default: 9)
+            series_type: Price series type
+
+        Returns:
+            DataFrame with MACD, signal, and histogram values
+        """
+        params = {
+            "function": "MACD",
+            "symbol": symbol,
+            "interval": interval,
+            "series_type": series_type,
+            "fastperiod": fast_period,
+            "slowperiod": slow_period,
+            "signalperiod": signal_period,
+            "apikey": self.api_key
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+
+                        if "Error Message" in data:
+                            logger.error(f"Alpha Vantage error: {data['Error Message']}")
+                            return pd.DataFrame()
+
+                        if "Technical Analysis: MACD" not in data:
+                            logger.error(f"No MACD data found for {symbol}")
+                            return pd.DataFrame()
+
+                        # Convert to DataFrame
+                        macd_data = []
+                        for timestamp_str, values in data["Technical Analysis: MACD"].items():
+                            timestamp = datetime.fromisoformat(timestamp_str)
+                            macd_data.append({
+                                "timestamp": timestamp,
+                                "macd": float(values["MACD"]),
+                                "signal": float(values["MACD_Signal"]),
+                                "histogram": float(values["MACD_Hist"])
+                            })
+
+                        df = pd.DataFrame(macd_data)
+                        df.set_index("timestamp", inplace=True)
+                        df.sort_index(inplace=True)
+
+                        logger.info(f"Fetched MACD for {symbol} from Alpha Vantage")
+                        return df
+                    else:
+                        logger.error(f"Alpha Vantage API error: {response.status}")
+                        return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(f"Error fetching MACD: {e}")
+            return pd.DataFrame()
+
+
+class YahooFinanceProvider(HistoricalDataProvider):
+    """Yahoo Finance historical data provider."""
+
+    def __init__(self):
+        super().__init__("YahooFinance")
+        self.base_url = "https://query1.finance.yahoo.com/v8/finance/chart"
+        self.rate_limit_delay = 0.5  # Avoid hammering public endpoint
+
+    async def fetch_bars(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: Timeframe
+    ) -> list[HistoricalBar]:
+        """Fetch historical bars from Yahoo Finance."""
+        cache_key = self._cache_key(symbol, start_date, end_date, timeframe)
+        if cache_key in self.cache:
+            return self._df_to_bars(self.cache[cache_key])
+
+        interval = self._timeframe_to_yahoo(timeframe)
+
+        params = {
+            "period1": self._to_unix(start_date),
+            "period2": self._to_unix(end_date),
+            "interval": interval,
+            "includePrePost": "false",
+            "events": "div,splits"
+        }
+
+        endpoint = f"{self.base_url}/{symbol}"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(endpoint, params=params) as response:
+                    if response.status != 200:
+                        logger.error(f"Yahoo Finance API error ({response.status}) for {symbol}")
+                        return []
+
+                    data = await response.json()
+
+            chart_data = data.get("chart", {})
+            results = chart_data.get("result", [])
+            if not results:
+                logger.error(f"Yahoo Finance returned no data for {symbol}")
+                return []
+
+            result = results[0]
+            timestamps = result.get("timestamp", [])
+            indicators = result.get("indicators", {})
+            quote_data = indicators.get("quote", [])
+
+            if not timestamps or not quote_data:
+                logger.error(f"Incomplete Yahoo Finance data for {symbol}")
+                return []
+
+            quote = quote_data[0]
+            opens = quote.get("open", [])
+            highs = quote.get("high", [])
+            lows = quote.get("low", [])
+            closes = quote.get("close", [])
+            volumes = quote.get("volume", [])
+
+            bars: list[HistoricalBar] = []
+
+            for idx, ts in enumerate(timestamps):
+                # Yahoo can return None for non-trading periods
+                try:
+                    bar_open = opens[idx]
+                    bar_high = highs[idx]
+                    bar_low = lows[idx]
+                    bar_close = closes[idx]
+                except IndexError:
+                    break
+
+                if None in (bar_open, bar_high, bar_low, bar_close):
+                    continue
+
+                bar_volume = 0
+                if idx < len(volumes) and volumes[idx] is not None:
+                    bar_volume = int(volumes[idx])
+
+                timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+
+                if timestamp < start_date or timestamp > end_date:
+                    continue
+
+                bar = HistoricalBar(
+                    timestamp=timestamp,
+                    open=Decimal(str(bar_open)),
+                    high=Decimal(str(bar_high)),
+                    low=Decimal(str(bar_low)),
+                    close=Decimal(str(bar_close)),
+                    volume=bar_volume,
+                    source="yahoo"
+                )
+                bars.append(bar)
+
+            if not bars:
+                logger.warning(f"Yahoo Finance returned empty dataset for {symbol}")
+                return []
+
+            # Cache dataframe for future requests
+            df = pd.DataFrame([{
+                'timestamp': b.timestamp,
+                'open': float(b.open),
+                'high': float(b.high),
+                'low': float(b.low),
+                'close': float(b.close),
+                'volume': b.volume
+            } for b in bars])
+            df.set_index('timestamp', inplace=True)
+            self.cache[cache_key] = df
+
+            logger.info(f"Fetched {len(bars)} bars from Yahoo Finance for {symbol}")
+            return bars
+
+        except Exception as e:
+            logger.error(f"Error fetching Yahoo Finance data: {e}")
+            return []
+
+    async def is_available(self) -> bool:
+        """Yahoo Finance is always available (no API key required)."""
+        return True
+
+    def _timeframe_to_yahoo(self, timeframe: Timeframe) -> str:
+        """Convert timeframe enum to Yahoo Finance interval string."""
+        mapping = {
+            Timeframe.SECOND_1: "1m",
+            Timeframe.SECOND_5: "1m",
+            Timeframe.SECOND_30: "1m",
+            Timeframe.MINUTE_1: "1m",
+            Timeframe.MINUTE_5: "5m",
+            Timeframe.MINUTE_15: "15m",
+            Timeframe.MINUTE_30: "30m",
+            Timeframe.HOUR_1: "60m",
+            Timeframe.HOUR_4: "1h",
+            Timeframe.DAY_1: "1d",
+            Timeframe.WEEK_1: "1wk",
+            Timeframe.MONTH_1: "1mo"
+        }
+        return mapping.get(timeframe, "1d")
+
+    def _df_to_bars(self, df: pd.DataFrame) -> list[HistoricalBar]:
+        bars = []
+        for timestamp, row in df.iterrows():
+            bar = HistoricalBar(
+                timestamp=timestamp,
+                open=Decimal(str(row['open'])),
+                high=Decimal(str(row['high'])),
+                low=Decimal(str(row['low'])),
+                close=Decimal(str(row['close'])),
+                volume=int(row['volume']),
+                source=self.name.lower()
+            )
+            bars.append(bar)
+        return bars
+
+    def _to_unix(self, value: datetime) -> int:
+        """Convert datetime to UTC UNIX timestamp."""
+        if value.tzinfo is None:
+            return int(value.replace(tzinfo=timezone.utc).timestamp())
+        return int(value.astimezone(timezone.utc).timestamp())
+
 
 class FinnhubProvider(HistoricalDataProvider):
     """Finnhub historical data provider."""
@@ -550,6 +882,118 @@ class FinnhubProvider(HistoricalDataProvider):
             Timeframe.MONTH_1: "M"
         }
         return mapping.get(timeframe, "1")
+
+
+class AlpacaProvider(HistoricalDataProvider):
+    """Alpaca historical data provider."""
+
+    def __init__(self, api_key: str, api_secret: str):
+        """Initialize Alpaca provider.
+
+        Args:
+            api_key: Alpaca API key
+            api_secret: Alpaca API secret
+        """
+        super().__init__("Alpaca")
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.rate_limit_delay = 0.3  # 200 calls/min = 3.33 calls/sec
+
+    async def fetch_bars(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: Timeframe
+    ) -> list[HistoricalBar]:
+        """Fetch historical bars from Alpaca.
+
+        Args:
+            symbol: Trading symbol
+            start_date: Start date for data
+            end_date: End date for data
+            timeframe: Bar timeframe
+
+        Returns:
+            List of historical bars
+        """
+        try:
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame as AlpacaTimeFrame
+
+            # Create client
+            client = StockHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.api_secret
+            )
+
+            # Convert timeframe
+            alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
+
+            # Create request
+            request = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=alpaca_timeframe,
+                start=start_date,
+                end=end_date
+            )
+
+            # Fetch data
+            bars_dict = client.get_stock_bars(request)
+
+            if symbol not in bars_dict:
+                logger.warning(f"No data found for {symbol}")
+                return []
+
+            # Convert to HistoricalBar objects
+            bars = []
+            for bar in bars_dict[symbol]:
+                hist_bar = HistoricalBar(
+                    timestamp=bar.timestamp,
+                    open=Decimal(str(bar.open)),
+                    high=Decimal(str(bar.high)),
+                    low=Decimal(str(bar.low)),
+                    close=Decimal(str(bar.close)),
+                    volume=int(bar.volume),
+                    source="alpaca"
+                )
+                bars.append(hist_bar)
+
+            logger.info(f"Fetched {len(bars)} bars from Alpaca for {symbol}")
+            return bars
+
+        except Exception as e:
+            logger.error(f"Error fetching Alpaca data: {e}")
+            return []
+
+    async def is_available(self) -> bool:
+        """Check if Alpaca is available."""
+        return bool(self.api_key and self.api_secret)
+
+    def _timeframe_to_alpaca(self, timeframe: Timeframe):
+        """Convert timeframe to Alpaca format.
+
+        Args:
+            timeframe: Internal timeframe
+
+        Returns:
+            Alpaca TimeFrame object
+        """
+        from alpaca.data.timeframe import TimeFrame as AlpacaTimeFrame, TimeFrameUnit
+
+        mapping = {
+            Timeframe.MINUTE_1: AlpacaTimeFrame(1, TimeFrameUnit.Minute),
+            Timeframe.MINUTE_5: AlpacaTimeFrame(5, TimeFrameUnit.Minute),
+            Timeframe.MINUTE_15: AlpacaTimeFrame(15, TimeFrameUnit.Minute),
+            Timeframe.MINUTE_30: AlpacaTimeFrame(30, TimeFrameUnit.Minute),
+            Timeframe.HOUR_1: AlpacaTimeFrame(1, TimeFrameUnit.Hour),
+            Timeframe.HOUR_4: AlpacaTimeFrame(4, TimeFrameUnit.Hour),
+            Timeframe.DAY_1: AlpacaTimeFrame(1, TimeFrameUnit.Day),
+            Timeframe.WEEK_1: AlpacaTimeFrame(1, TimeFrameUnit.Week),
+            Timeframe.MONTH_1: AlpacaTimeFrame(1, TimeFrameUnit.Month),
+        }
+        return mapping.get(timeframe, AlpacaTimeFrame(1, TimeFrameUnit.Minute))
 
 
 class DatabaseProvider(HistoricalDataProvider):
@@ -672,18 +1116,20 @@ class DatabaseProvider(HistoricalDataProvider):
 class HistoryManager:
     """Manager for historical data with fallback support."""
 
-    def __init__(self):
-        """Initialize history manager."""
+    def __init__(self, ibkr_adapter: BrokerAdapter | None = None):
+        """Initialize history manager.
+
+        Args:
+            ibkr_adapter: Optional broker adapter for live IBKR data
+        """
         self.providers: dict[DataSource, HistoricalDataProvider] = {}
-        self.priority_order = [
-            DataSource.DATABASE,
-            DataSource.IBKR,
-            DataSource.ALPHA_VANTAGE,
-            DataSource.FINNHUB
-        ]
+        self.priority_order = []
+        self.stream_client = None  # Real-time stream client
 
         # Initialize database provider (always available)
         self.providers[DataSource.DATABASE] = DatabaseProvider()
+        self._configure_priority()
+        self._initialize_providers_from_config(ibkr_adapter)
 
         logger.info("History manager initialized")
 
@@ -700,6 +1146,74 @@ class HistoryManager:
         """
         self.providers[source] = provider
         logger.info(f"Registered {source.value} provider")
+
+    def set_ibkr_adapter(self, adapter: BrokerAdapter) -> None:
+        """Register or update the IBKR provider on-demand."""
+        self.register_provider(DataSource.IBKR, IBKRHistoricalProvider(adapter))
+
+    def _configure_priority(self) -> None:
+        """Configure provider priority order from settings."""
+        profile = config_manager.load_profile()
+        market_config = profile.market_data
+
+        live_first = market_config.prefer_live_broker
+
+        if live_first:
+            self.priority_order = [
+                DataSource.DATABASE,
+                DataSource.IBKR,
+                DataSource.ALPACA,
+                DataSource.ALPHA_VANTAGE,
+                DataSource.FINNHUB,
+                DataSource.YAHOO
+            ]
+        else:
+            self.priority_order = [
+                DataSource.DATABASE,
+                DataSource.ALPACA,
+                DataSource.ALPHA_VANTAGE,
+                DataSource.FINNHUB,
+                DataSource.YAHOO,
+                DataSource.IBKR
+            ]
+
+    def _initialize_providers_from_config(self, ibkr_adapter: BrokerAdapter | None) -> None:
+        """Register providers according to configuration and credentials."""
+        profile = config_manager.load_profile()
+        market_config = profile.market_data
+
+        # Register IBKR if adapter supplied
+        if ibkr_adapter:
+            self.register_provider(DataSource.IBKR, IBKRHistoricalProvider(ibkr_adapter))
+
+        # Alpaca
+        if market_config.alpaca_enabled:
+            api_key = config_manager.get_credential("alpaca_api_key")
+            api_secret = config_manager.get_credential("alpaca_api_secret")
+            if api_key and api_secret:
+                self.register_provider(DataSource.ALPACA, AlpacaProvider(api_key, api_secret))
+            else:
+                logger.warning("Alpaca provider enabled but API credentials not found")
+
+        # Alpha Vantage
+        if market_config.alpha_vantage_enabled:
+            api_key = config_manager.get_credential("alpha_vantage_api_key")
+            if api_key:
+                self.register_provider(DataSource.ALPHA_VANTAGE, AlphaVantageProvider(api_key))
+            else:
+                logger.warning("Alpha Vantage provider enabled but API key not found")
+
+        # Finnhub
+        if market_config.finnhub_enabled:
+            api_key = config_manager.get_credential("finnhub_api_key")
+            if api_key:
+                self.register_provider(DataSource.FINNHUB, FinnhubProvider(api_key))
+            else:
+                logger.warning("Finnhub provider enabled but API key not found")
+
+        # Yahoo Finance (no API key required)
+        if market_config.yahoo_enabled:
+            self.register_provider(DataSource.YAHOO, YahooFinanceProvider())
 
     async def fetch_data(
         self,
@@ -847,3 +1361,137 @@ class HistoryManager:
             List of available source names
         """
         return [source.value for source in self.providers.keys()]
+
+    async def start_realtime_stream(
+        self,
+        symbols: list[str],
+        enable_indicators: bool = True
+    ) -> bool:
+        """Start real-time market data streaming.
+
+        Args:
+            symbols: List of symbols to stream
+            enable_indicators: Enable real-time indicator calculations
+
+        Returns:
+            True if stream started successfully
+        """
+        # Check if Alpha Vantage is available
+        if DataSource.ALPHA_VANTAGE not in self.providers:
+            logger.error("Alpha Vantage provider not available for streaming")
+            return False
+
+        # Get API key from provider
+        av_provider = self.providers[DataSource.ALPHA_VANTAGE]
+        if not isinstance(av_provider, AlphaVantageProvider):
+            logger.error("Invalid Alpha Vantage provider")
+            return False
+
+        try:
+            # Import stream client (lazy import to avoid circular deps)
+            from src.core.market_data.alpha_vantage_stream import AlphaVantageStreamClient
+
+            # Create stream client if not exists
+            if not self.stream_client:
+                self.stream_client = AlphaVantageStreamClient(
+                    api_key=av_provider.api_key,
+                    enable_indicators=enable_indicators
+                )
+
+            # Connect and subscribe
+            connected = await self.stream_client.connect()
+            if connected:
+                await self.stream_client.subscribe(symbols)
+                logger.info(f"Started real-time stream for {len(symbols)} symbols")
+                return True
+            else:
+                logger.error("Failed to connect stream client")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error starting real-time stream: {e}")
+            return False
+
+    async def stop_realtime_stream(self):
+        """Stop real-time market data streaming."""
+        if self.stream_client:
+            await self.stream_client.disconnect()
+            logger.info("Stopped real-time stream")
+
+    def get_realtime_tick(self, symbol: str):
+        """Get latest real-time tick for a symbol.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Latest tick data or None
+        """
+        if self.stream_client:
+            return self.stream_client.get_latest_tick(symbol)
+        return None
+
+    def get_stream_metrics(self) -> dict | None:
+        """Get real-time stream metrics.
+
+        Returns:
+            Dictionary with metrics or None if stream not active
+        """
+        if self.stream_client:
+            return self.stream_client.get_metrics()
+        return None
+
+    async def fetch_realtime_indicators(
+        self,
+        symbol: str,
+        interval: str = "1min"
+    ) -> dict:
+        """Fetch real-time technical indicators.
+
+        Args:
+            symbol: Trading symbol
+            interval: Time interval
+
+        Returns:
+            Dictionary with RSI and MACD data
+        """
+        if DataSource.ALPHA_VANTAGE not in self.providers:
+            return {}
+
+        av_provider = self.providers[DataSource.ALPHA_VANTAGE]
+        if not isinstance(av_provider, AlphaVantageProvider):
+            return {}
+
+        try:
+            # Fetch both indicators in parallel
+            rsi_task = av_provider.fetch_rsi(symbol, interval)
+            macd_task = av_provider.fetch_macd(symbol, interval)
+
+            rsi_data, macd_data = await asyncio.gather(rsi_task, macd_task)
+
+            result = {}
+
+            # Add RSI if available
+            if not rsi_data.empty:
+                result["rsi"] = {
+                    "value": float(rsi_data.iloc[-1]),
+                    "timestamp": rsi_data.index[-1].isoformat(),
+                    "series": rsi_data.tail(50).to_dict()  # Last 50 points
+                }
+
+            # Add MACD if available
+            if not macd_data.empty:
+                latest_macd = macd_data.iloc[-1]
+                result["macd"] = {
+                    "macd": float(latest_macd["macd"]),
+                    "signal": float(latest_macd["signal"]),
+                    "histogram": float(latest_macd["histogram"]),
+                    "timestamp": macd_data.index[-1].isoformat(),
+                    "series": macd_data.tail(50).to_dict("index")  # Last 50 points
+                }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error fetching realtime indicators: {e}")
+            return {}

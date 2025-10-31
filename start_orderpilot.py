@@ -70,7 +70,7 @@ def check_dependencies() -> bool:
 def check_database() -> None:
     """Check and initialize database if needed"""
     from src.config.loader import DatabaseConfig
-    from src.database import DatabaseManager
+    from src.database import initialize_database
 
     try:
         config = DatabaseConfig(
@@ -78,8 +78,7 @@ def check_database() -> None:
             path="./data/orderpilot.db"
         )
 
-        db_manager = DatabaseManager(config)
-        db_manager.initialize()
+        initialize_database(config)
         print("✅ Database initialized successfully")
     except Exception as e:
         print(f"⚠️ Database initialization warning: {e}")

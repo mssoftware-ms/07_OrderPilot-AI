@@ -1,116 +1,134 @@
 ai:
-  budget:
-    block_at_eur: 15.0
-    monthly_eur: 15.0
-    warn_eur: 12.0
-  cache_ttl_seconds: 3600
+  cache_responses: true
+  cache_ttl: 3600
+  cost_limit_daily: 20.0
+  cost_limit_monthly: 100.0
   enabled: true
-  features:
-    alert_triage: true
-    assistants: false
-    backtest_review: true
-    order_dialog_explain: true
-    realtime: false
-    strategy_post_signal: true
-  max_output_tokens: 800
-  model_critical: gpt-4o
-  model_default: gpt-4o-mini
-  rate_limits:
-    burst: 4
-    rps: 2
-  structured_outputs: true
+  log_prompts: false
+  max_tokens: 4000
+  model: gpt-4-turbo-preview
+  retry_attempts: 3
+  retry_delay: 1
   temperature: 0.2
-  timeouts:
-    connect_ms: 5000
-    read_ms: 15000
+  timeout: 30
+alerts:
+  alert_on_disconnect: true
+  alert_on_error: true
+  alert_on_order_fill: true
+  alert_on_stop_loss: true
+  alert_on_target_hit: true
+  email_enabled: false
+  email_from: null
+  email_smtp_host: smtp.gmail.com
+  email_smtp_port: 587
+  email_to: []
+  popup_enabled: true
+  push_enabled: false
+  push_service: pushbullet
+  sound_enabled: true
 backtest:
-  calculate_max_drawdown: true
-  calculate_sharpe: true
-  calculate_sortino: true
-  commission: 1.0
+  benchmark: SPY
+  data_frequency: 1m
   end_date: null
-  initial_cash: 10000.0
-  slippage_percent: 0.1
+  include_commissions: true
+  include_slippage: true
+  initial_capital: '10000'
+  optimization_metric: sharpe
+  random_seed: 42
   start_date: null
-brokers:
-- client_id: 1
-  default_order_type: limit
-  default_time_in_force: DAY
-  enabled: true
+  walk_forward_periods: 0
+broker:
+  account_id: null
+  auto_reconnect: true
+  broker_type: mock
+  client_id: 1
   host: localhost
-  max_daily_trades: 100
-  max_order_value: 10000.0
-  max_position_size: 5000.0
-  max_requests_per_second: 50
+  market_data_type: 3
+  order_routing: SMART
   paper_trading: true
   port: 7497
-  reconnect_attempts: 3
-  reconnect_delay_seconds: 5
-  type: ibkr
+  reconnect_interval: 10
+created_at: '2025-10-31T15:03:10.603344'
 database:
   auto_vacuum: true
-  backup_interval_hours: 24
+  database: null
+  echo: false
   engine: sqlite
+  host: null
   max_overflow: 20
+  password: null
   path: ./data/orderpilot.db
   pool_size: 10
   pool_timeout_seconds: 30
+  port: null
+  username: null
+description: Default trading profile
 environment: paper
 execution:
-  kill_switch_enabled: true
+  allow_partial_fills: true
+  cancel_on_disconnect: true
+  emergency_stop_active: true
+  execution_algo: market
+  flatten_on_disconnect: false
+  kill_switch_active: false
   manual_approval_default: true
-  max_drawdown_percent: 10.0
-  max_loss_per_day: 500.0
-  max_pending_orders: 50
+  max_retry_attempts: 3
   order_timeout_seconds: 300
-  retry_attempts: 3
-  retry_delay_seconds: 1
+  retry_failed_orders: true
+  smart_routing: true
+  trail_stop_atr_multiplier: 2.0
+  use_native_stops: true
 features:
   crypto_trading: false
   news_sentiment: false
   options_trading: false
   trade_republic_enabled: false
-logging:
-  backup_count: 10
-  enable_console: true
-  enable_file: true
-  enable_json: true
-  level: INFO
-  log_dir: ./logs
-  max_bytes: 10485760
-  telemetry_ai: true
-  telemetry_orders: true
-  telemetry_performance: true
 market_data:
-  buffer_size: 10000
-  heartbeat_interval_seconds: 10
-  noise_filter:
-    type: median
-    window: 3
-  ohlc_resample_default: 1S
-  persist_to_db: true
-  stream_timeout_seconds: 30
+  alpaca_enabled: false
+  alpha_vantage_enabled: true
+  finnhub_enabled: true
+  prefer_live_broker: false
+  yahoo_enabled: true
+monitoring:
+  alert_on_high_latency: true
+  export_format: json
+  export_metrics: true
+  export_path: ./metrics
+  latency_threshold_ms: 100
+  memory_threshold_mb: 1000
+  metrics_interval: 60
+  track_cpu: false
+  track_latency: true
+  track_memory: true
+  track_metrics: true
 profile_name: paper
-strategy:
-  cooldown_periods: 5
-  default_position_size: 1000.0
-  default_stop_loss_percent: 2.0
-  default_take_profit_percent: 5.0
-  enabled_strategies:
-  - rsi_mean_reversion
-  max_positions: 5
-  min_signal_confidence: 0.6
-  position_sizing: fixed
-  use_atr_stops: true
+trading:
+  allow_short_selling: false
+  commission_model: fixed
+  commission_value: 1.0
+  default_stop_loss_pct: 0.02
+  default_take_profit_pct: 0.05
+  margin_multiplier: 1.0
+  max_daily_loss: '500'
+  max_open_positions: 10
+  max_portfolio_risk: 0.02
+  max_position_size: '10000'
+  slippage_model: fixed
+  slippage_value: 0.001
+  use_margin: false
 ui:
-  chart_update_interval_ms: 1000
-  dark_background: '#0F1115'
-  dark_primary: '#F29F05'
-  dark_text: '#EAECEF'
-  dashboard_refresh_ms: 1000
-  light_background: '#F7F8FA'
-  light_primary: '#E07B00'
-  light_text: '#0F1115'
-  max_candles_displayed: 500
-  position_refresh_ms: 5000
+  auto_save_layout: true
+  chart_style: candlestick
+  confirm_cancel: false
+  confirm_orders: true
+  date_format: '%Y-%m-%d'
+  decimal_places: 2
+  default_timeframe: 5m
+  language: en
+  show_indicators: true
+  show_pnl_percentage: true
+  show_volume: true
   theme: dark
+  time_format: '%H:%M:%S'
+  timezone: Europe/Berlin
+updated_at: '2025-10-31T15:03:10.603344'

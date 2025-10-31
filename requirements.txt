@@ -20,6 +20,9 @@ backtrader>=1.9.78.123
 # See: https://interactivebrokers.github.io/
 ibapi>=9.81.1
 
+# Alpaca API (for Alpaca broker and real-time market data)
+alpaca-py>=0.29.0
+
 # Database
 sqlalchemy>=2.0.0
 

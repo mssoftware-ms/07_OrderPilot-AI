@@ -24,6 +24,9 @@ class EventType(Enum):
     APP_ERROR = "app_error"
     CONFIG_CHANGED = "config_changed"
 
+    # UI Events
+    UI_ACTION = "ui_action"
+
     # Market Data Events
     MARKET_TICK = "market_tick"
     MARKET_BAR = "market_bar"
