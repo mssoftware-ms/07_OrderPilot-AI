@@ -1,0 +1,23 @@
+# prompts/backtest_review.yaml
+version: "1.0"
+task: "Fasse Backtest-Ergebnisse zusammen und nenne konkrete Tuning-Hinweise."
+inputs:
+  strategy_name: str
+  kpis:
+    sharpe: float
+    sortino: float
+    max_drawdown_pct: float
+    win_rate: float
+    expectancy_r: float
+  notes: str
+requirements:
+  - "Antworte strikt im Schema 'BacktestSummary'."
+  - "Nenne 2–4 prägnante Verbesserungen."
+output_schema: "schemas/BacktestSummary.json"
+prompt:
+  system: |
+    Du bist ein erfahrener Quant. Deine Empfehlungen sind risiko- und umsetzungssensibel.
+  user: |
+    Strategie: {{strategy_name}}
+    KPIs: Sharpe={{kpis.sharpe}}, Sortino={{kpis.sortino}}, MaxDD%={{kpis.max_drawdown_pct}}, WinRate={{kpis.win_rate}}, Expectancy(R)={{kpis.expectancy_r}}
+    Notizen: {{notes}}

@@ -1,0 +1,23 @@
+# prompts/alert_triage.yaml
+version: "1.0"
+task: "Bewerte Alarm-Event und vergebe Priorität mit kurzer Begründung."
+inputs:
+  symbol: str
+  event_type: str  # e.g., price_threshold, rsi_cross, macd_cross
+  values: object   # raw values for the event
+  recent_context:
+    last_close: float
+    rsi: float
+    macd_hist: float
+requirements:
+  - "Antworte strikt im Schema 'AlertDecision'."
+  - "Kurz, deterministisch, ohne Ausschweifungen."
+output_schema: "schemas/AlertDecision.json"
+prompt:
+  system: |
+    Du bist ein Alarm-Triage-Assistent für Handelsereignisse. Priorisiere nüchtern.
+  user: |
+    Symbol: {{symbol}}
+    Event: {{event_type}}
+    Werte: {{values}}
+    Kontext: last_close={{recent_context.last_close}}, rsi={{recent_context.rsi}}, macd_hist={{recent_context.macd_hist}}

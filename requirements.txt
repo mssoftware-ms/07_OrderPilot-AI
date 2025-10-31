@@ -1,0 +1,53 @@
+# Core dependencies
+PyQt6>=6.7.0
+PyQt6-WebEngine>=6.7.0
+pyqtgraph>=0.13.0
+qasync>=0.27.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+plotly>=5.24.0
+matplotlib>=3.8.0
+
+# Trading and backtesting
+backtrader>=1.9.78.123
+# TA-Lib needs to be installed separately on Windows
+# Download from: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+
+# Interactive Brokers API (for IBKR broker adapter)
+# Note: Newer versions may need to be installed from Interactive Brokers directly
+# See: https://interactivebrokers.github.io/
+ibapi>=9.81.1
+
+# Database
+sqlalchemy>=2.0.0
+
+# AI and API
+aiohttp>=3.10.0
+openai>=1.0.0
+tenacity>=8.4.0
+python-json-logger>=2.0.7
+
+# Configuration and security
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+python-dotenv>=1.0.0
+keyring>=25.2.0
+cryptography>=41.0.0
+
+# Utilities
+blinker>=1.9.0
+websockets>=12.0
+jsonschema>=4.23.0
+pyyaml>=6.0.2
+jinja2>=3.1.0
+
+# Development dependencies (optional)
+pytest>=8.3.0
+pytest-qt>=4.4.0
+pytest-asyncio>=0.24.0
+ruff>=0.6.0
+mypy>=1.11.0
+types-PyYAML
+types-requests

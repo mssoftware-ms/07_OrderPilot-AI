@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/mschmitz/.claude/**)",
+      "WebSearch",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(python -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(python comprehensive_system_test.py:*)",
+      "Bash(chmod:*)",
+      "Bash(python start_orderpilot.py:*)",
+      "Bash(python fix_imports.py:*)",
+      "Bash(export QT_QPA_PLATFORM=offscreen)",
+      "Bash(ruff check:*)",
+      "Bash(mypy:*)",
+      "Bash(export PYTHONPATH=/mnt/d/03_Git/02_Python/07_OrderPilot-AI/src:$PYTHONPATH:*)",
+      "Bash(vulture:*)",
+      "Bash(timeout 5 python3:*)",
+      "Bash(export REPORT_DIR=\".reports/e2e/20251031_113121\")",
+      "Bash(echo:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip freeze:*)",
+      "Bash(tee:*)",
+      "Bash(timeout 10 python3:*)",
+      "Bash(timeout 15 python3:*)",
+      "Bash(timeout 20 python3:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
