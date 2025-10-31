@@ -30,7 +30,9 @@
       "WebFetch(domain:www.alphavantage.co)",
       "WebFetch(domain:docs.alpaca.markets)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(if [ -d \"venv\" ])",
+      "Bash(then source venv/bin/activate)"
     ],
     "deny": [],
     "ask": []

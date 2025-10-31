@@ -119,6 +119,7 @@ class ChartView(QWidget):
         self.drawings: list[Any] = []
         self.current_symbol: str | None = None
         self.current_data_provider: str | None = None
+        self.drawing_mode: str | None = None  # Current drawing mode (line, hline, rect)
 
         # Setup UI
         self._setup_ui()
@@ -137,9 +138,9 @@ class ChartView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create toolbar (but don't add it to layout - controlled from main toolbar)
-        toolbar = self._create_toolbar()
-        # NOTE: toolbar not added to layout to avoid duplicate toolbars
+        # Create and add toolbar
+        self.toolbar = self._create_toolbar()
+        layout.addWidget(self.toolbar)
 
         if PYQTGRAPH_AVAILABLE:
             # Create main chart
@@ -187,7 +188,7 @@ class ChartView(QWidget):
     def _create_toolbar(self) -> QToolBar:
         """Create chart toolbar."""
         toolbar = QToolBar()
-        toolbar.setVisible(False)  # Hide by default - use main toolbar
+        toolbar.setVisible(True)  # Show toolbar with all tools
 
         # Symbol selector
         toolbar.addWidget(QLabel("Symbol:"))

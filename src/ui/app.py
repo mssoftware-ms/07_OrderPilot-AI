@@ -191,6 +191,13 @@ class TradingApplication(QMainWindow):
         ai_monitor_action.triggered.connect(self.show_ai_monitor)
         tools_menu.addAction(ai_monitor_action)
 
+        tools_menu.addSeparator()
+
+        reset_layout_action = QAction("&Reset Toolbars && Docks", self)
+        reset_layout_action.setToolTip("Reset all toolbars and dock widgets to default positions")
+        reset_layout_action.triggered.connect(self.reset_toolbars_and_docks)
+        tools_menu.addAction(reset_layout_action)
+
         # Help Menu
         help_menu = menubar.addMenu("&Help")
 
@@ -646,6 +653,62 @@ class TradingApplication(QMainWindow):
                                    f"Error retrieving AI usage data: {e}")
         else:
             QMessageBox.information(self, "AI Usage", "AI service not initialized")
+
+    def reset_toolbars_and_docks(self):
+        """Reset all toolbars and dock widgets to their default positions."""
+        try:
+            # Ask for confirmation
+            reply = QMessageBox.question(
+                self,
+                "Reset Layout",
+                "This will reset all toolbars and dock widgets to their default positions.\n\n"
+                "Do you want to continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                # Clear saved window state
+                self.settings.remove("windowState")
+                self.settings.remove("geometry")
+
+                # Reset to default state
+                # Show all toolbars
+                for toolbar in self.findChildren(QToolBar):
+                    toolbar.setVisible(True)
+                    # Reset toolbar to top area
+                    self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+
+                # Reset dock widgets to default positions
+                for dock in self.findChildren(QDockWidget):
+                    dock.setVisible(True)
+
+                    # Reset to default area based on object name or class
+                    dock_name = dock.windowTitle()
+                    if "Watchlist" in dock_name:
+                        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+                    elif "Activity" in dock_name or "Log" in dock_name:
+                        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
+
+                # Restore default geometry
+                self.setGeometry(100, 100, 1400, 900)
+
+                self.status_bar.showMessage("Layout reset to defaults", 3000)
+                logger.info("Toolbars and docks reset to default positions")
+
+                QMessageBox.information(
+                    self,
+                    "Layout Reset",
+                    "Toolbars and dock widgets have been reset to their default positions."
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to reset layout: {e}")
+            QMessageBox.critical(
+                self,
+                "Reset Failed",
+                f"Failed to reset layout:\n\n{str(e)}"
+            )
 
     def show_about(self):
         """Show about dialog."""
