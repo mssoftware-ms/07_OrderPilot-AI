@@ -268,6 +268,19 @@ class TradingApplication(QMainWindow):
 
         toolbar.addSeparator()
 
+        # Live Data Toggle (for paper mode)
+        self.live_data_toggle = QPushButton("Live Data: OFF")
+        self.live_data_toggle.setCheckable(True)
+        self.live_data_toggle.setToolTip(
+            "Toggle live market data in paper mode\n"
+            "• ON: Use real-time market data from providers\n"
+            "• OFF: Use cached/simulated data"
+        )
+        self.live_data_toggle.clicked.connect(self.toggle_live_data)
+        toolbar.addWidget(self.live_data_toggle)
+
+        toolbar.addSeparator()
+
         # Add quick actions
         new_order_action = QAction(get_icon("order"), "New Order", self)
         new_order_action.setToolTip("Place new order")
@@ -436,7 +449,10 @@ class TradingApplication(QMainWindow):
     def apply_theme(self, theme_name: str):
         """Apply a theme to the application."""
         try:
-            if theme_name == "dark":
+            # Normalize theme name to lowercase for comparison
+            theme_name_lower = theme_name.lower()
+
+            if theme_name_lower == "dark":
                 style_sheet = self.theme_manager.get_dark_theme()
                 set_icon_theme("dark")
             else:
@@ -457,6 +473,15 @@ class TradingApplication(QMainWindow):
         # Load theme
         theme = self.settings.value("theme", "dark")
         self.apply_theme(theme)
+
+        # Load live data preference
+        live_data_enabled = self.settings.value("live_data_enabled", False, type=bool)
+        self.live_data_toggle.setChecked(live_data_enabled)
+        if live_data_enabled:
+            self.live_data_toggle.setText("Live Data: ON")
+            self.live_data_toggle.setStyleSheet("background-color: #2ECC71; color: white; font-weight: bold;")
+        else:
+            self.live_data_toggle.setText("Live Data: OFF")
 
         # Load window geometry
         geometry = self.settings.value("geometry")
@@ -613,6 +638,48 @@ class TradingApplication(QMainWindow):
             display_data={}
         )
 
+    def toggle_live_data(self):
+        """Toggle live market data on/off."""
+        try:
+            is_live = self.live_data_toggle.isChecked()
+
+            # Update button text and style
+            if is_live:
+                self.live_data_toggle.setText("Live Data: ON")
+                self.live_data_toggle.setStyleSheet("background-color: #2ECC71; color: white; font-weight: bold;")
+                self.status_bar.showMessage("Live market data enabled", 3000)
+                logger.info("Live market data enabled")
+
+                # Switch to first available live provider if currently on Database
+                current_index = self.data_provider_combo.currentIndex()
+                current_source = self.data_provider_combo.itemData(current_index)
+
+                if current_source == "database" or current_source is None:
+                    # Find first non-database provider
+                    for i in range(self.data_provider_combo.count()):
+                        source = self.data_provider_combo.itemData(i)
+                        if source and source not in ["database", None] and not source.endswith("_disabled"):
+                            self.data_provider_combo.setCurrentIndex(i)
+                            break
+            else:
+                self.live_data_toggle.setText("Live Data: OFF")
+                self.live_data_toggle.setStyleSheet("")
+                self.status_bar.showMessage("Live market data disabled - using cached data", 3000)
+                logger.info("Live market data disabled")
+
+                # Switch to Database/Auto
+                for i in range(self.data_provider_combo.count()):
+                    source = self.data_provider_combo.itemData(i)
+                    if source == "database" or source is None:
+                        self.data_provider_combo.setCurrentIndex(i)
+                        break
+
+            # Save preference
+            self.settings.setValue("live_data_enabled", is_live)
+
+        except Exception as e:
+            logger.error(f"Failed to toggle live data: {e}")
+
     def show_order_dialog(self):
         """Show the order placement dialog."""
         if not self.broker:
@@ -718,7 +785,7 @@ class TradingApplication(QMainWindow):
                         "An AI-powered trading platform for retail investors.\n\n"
                         "© 2025 OrderPilot")
 
-    @qasync.asyncSlot()
+    @qasync.asyncSlot(str)
     async def show_chart_for_symbol(self, symbol: str):
         """Show chart for selected symbol.
 
@@ -912,7 +979,8 @@ class TradingApplication(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to update data provider list: {e}")
 
-    def on_data_provider_changed(self, provider_name: str):
+    @qasync.asyncSlot(str)
+    async def on_data_provider_changed(self, provider_name: str):
         """Handle market data provider change.
 
         Args:
@@ -947,9 +1015,13 @@ class TradingApplication(QMainWindow):
                 logger.info("Using automatic provider priority order")
                 self.status_bar.showMessage("Market data: Auto (Priority Order)", 3000)
 
+            # Ensure the advanced chart view uses the newly selected provider
+            if hasattr(self.chart_view, 'current_data_provider'):
+                self.chart_view.current_data_provider = source
+
             # Refresh data in chart view if visible
             if hasattr(self.chart_view, 'refresh_data'):
-                self.chart_view.refresh_data()
+                await self.chart_view.refresh_data()
 
         except Exception as e:
             logger.error(f"Failed to change data provider: {e}")

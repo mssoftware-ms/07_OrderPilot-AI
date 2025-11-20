@@ -1,9 +1,29 @@
 {
   "watchlist": [
-    "AAPL",
-    "MSFT",
-    "GOOGL",
-    "QQQ",
-    "SPY"
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "wkn": "865985"
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp.",
+      "wkn": "870747"
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet Inc.",
+      "wkn": "A14Y6F"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "NASDAQ 100 ETF",
+      "wkn": "A0AE1X"
+    },
+    {
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "wkn": "A1JULM"
+    }
   ]
 }

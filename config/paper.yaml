@@ -11,6 +11,9 @@ ai:
   retry_delay: 1
   temperature: 0.2
   timeout: 30
+  timeouts:
+    connect_ms: 10000
+    read_ms: 30000
 alerts:
   alert_on_disconnect: true
   alert_on_error: true
@@ -84,10 +87,10 @@ features:
   options_trading: false
   trade_republic_enabled: false
 market_data:
-  alpaca_enabled: false
+  alpaca_enabled: true
   alpha_vantage_enabled: true
   finnhub_enabled: true
-  prefer_live_broker: false
+  prefer_live_broker: true
   yahoo_enabled: true
 monitoring:
   alert_on_high_latency: true

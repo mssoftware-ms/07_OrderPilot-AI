@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 title VENV & Requirements: 07_OrderPilot-AI
-cd /d "D:\03_Git\02_Python\07_OrderPilot-AI"
+cd /d "D:\03_GIT\02_Python\07_OrderPilot-AI"
 echo ================================================
 echo  VENV and Requirements Setup
 echo  Project: 07_OrderPilot-AI

@@ -30,6 +30,7 @@ class EventType(Enum):
     # Market Data Events
     MARKET_TICK = "market_tick"
     MARKET_BAR = "market_bar"
+    MARKET_DATA_FETCHED = "market_data_fetched"
     MARKET_CONNECTED = "market_connected"
     MARKET_DISCONNECTED = "market_disconnected"
 

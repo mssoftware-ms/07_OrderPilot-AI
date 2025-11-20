@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QPushButton,
     QLineEdit,
+    QLabel,
     QHeaderView,
     QMenu,
     QMessageBox
@@ -61,6 +62,14 @@ class WatchlistWidget(QWidget):
         """Initialize user interface."""
         layout = QVBoxLayout(self)
 
+        # Market status indicator
+        self.market_status_label = QLabel("Market: Checking...")
+        self.market_status_label.setStyleSheet(
+            "background-color: #2A2D33; color: #EAECEF; padding: 5px; "
+            "border-radius: 3px; font-weight: bold;"
+        )
+        layout.addWidget(self.market_status_label)
+
         # Add symbol input
         input_layout = QHBoxLayout()
 
@@ -79,9 +88,9 @@ class WatchlistWidget(QWidget):
 
         # Create table
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "Symbol", "Price", "Change", "Change %", "Volume"
+            "Symbol", "Name", "WKN", "Price", "Change", "Change %", "Volume"
         ])
 
         # Configure table
@@ -110,11 +119,13 @@ class WatchlistWidget(QWidget):
 
         # Set column widths
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Symbol
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Name
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # WKN
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Price
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Change
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Change %
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Volume
 
         # Connect signals
         self.table.itemDoubleClicked.connect(self.on_symbol_double_clicked)
@@ -200,6 +211,34 @@ class WatchlistWidget(QWidget):
 
     def update_prices(self):
         """Update prices in the table."""
+        # Check if we have any recent data to determine market status
+        from datetime import datetime, time
+        now = datetime.now()
+
+        # Simple market hours check (NYSE: 9:30 AM - 4:00 PM ET, Mon-Fri)
+        # This is a simplified check - real implementation would need to handle holidays
+        is_weekend = now.weekday() >= 5  # Saturday=5, Sunday=6
+        is_market_hours = time(9, 30) <= now.time() <= time(16, 0)
+
+        if is_weekend:
+            self.market_status_label.setText("⚠ Market Closed (Weekend) - Showing last available data")
+            self.market_status_label.setStyleSheet(
+                "background-color: #4A3000; color: #FFA500; padding: 5px; "
+                "border-radius: 3px; font-weight: bold;"
+            )
+        elif not is_market_hours:
+            self.market_status_label.setText("⚠ After Hours - Data may be delayed")
+            self.market_status_label.setStyleSheet(
+                "background-color: #3A3000; color: #FFD700; padding: 5px; "
+                "border-radius: 3px; font-weight: bold;"
+            )
+        else:
+            self.market_status_label.setText("✓ Market Open - Live Data")
+            self.market_status_label.setStyleSheet(
+                "background-color: #003A00; color: #00FF00; padding: 5px; "
+                "border-radius: 3px; font-weight: bold;"
+            )
+
         for row in range(self.table.rowCount()):
             symbol_item = self.table.item(row, 0)
             if not symbol_item:
@@ -208,15 +247,15 @@ class WatchlistWidget(QWidget):
             symbol = symbol_item.text()
             data = self.symbol_data.get(symbol, {})
 
-            # Update price
+            # Update price (column 3)
             price = data.get('price')
             if price is not None:
                 price_item = QTableWidgetItem(f"${price:.2f}")
                 price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 price_item.setForeground(QColor(255, 255, 255))  # White text
-                self.table.setItem(row, 1, price_item)
+                self.table.setItem(row, 3, price_item)
 
-            # Update change
+            # Update change (column 4)
             change = data.get('change')
             if change is not None:
                 change_item = QTableWidgetItem(f"{change:+.2f}")
@@ -230,9 +269,9 @@ class WatchlistWidget(QWidget):
                 else:
                     change_item.setForeground(QColor(255, 255, 255))  # White
 
-                self.table.setItem(row, 2, change_item)
+                self.table.setItem(row, 4, change_item)
 
-            # Update change %
+            # Update change % (column 5)
             change_pct = data.get('change_pct')
             if change_pct is not None:
                 pct_item = QTableWidgetItem(f"{change_pct:+.2f}%")
@@ -246,16 +285,16 @@ class WatchlistWidget(QWidget):
                 else:
                     pct_item.setForeground(QColor(255, 255, 255))  # White
 
-                self.table.setItem(row, 3, pct_item)
+                self.table.setItem(row, 5, pct_item)
 
-            # Update volume
+            # Update volume (column 6)
             volume = data.get('volume')
             if volume is not None:
                 volume_str = self.format_volume(volume)
                 volume_item = QTableWidgetItem(volume_str)
                 volume_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 volume_item.setForeground(QColor(255, 255, 255))  # White text
-                self.table.setItem(row, 4, volume_item)
+                self.table.setItem(row, 6, volume_item)
 
     def format_volume(self, volume: int) -> str:
         """Format volume for display.
@@ -283,13 +322,21 @@ class WatchlistWidget(QWidget):
         self.add_symbol(symbol)
         self.symbol_input.clear()
 
-    def add_symbol(self, symbol: str):
+    def add_symbol(self, symbol_data: str | dict):
         """Add symbol to watchlist.
 
         Args:
-            symbol: Trading symbol
+            symbol_data: Trading symbol (string) or dict with {symbol, name, wkn}
         """
-        symbol = symbol.upper()
+        # Handle both string and dict input
+        if isinstance(symbol_data, dict):
+            symbol = symbol_data.get("symbol", "").upper()
+            name = symbol_data.get("name", "")
+            wkn = symbol_data.get("wkn", "")
+        else:
+            symbol = symbol_data.upper()
+            name = ""
+            wkn = ""
 
         if symbol in self.symbols:
             logger.info(f"Symbol {symbol} already in watchlist")
@@ -297,7 +344,10 @@ class WatchlistWidget(QWidget):
 
         # Add to list
         self.symbols.append(symbol)
-        self.symbol_data[symbol] = {}
+        self.symbol_data[symbol] = {
+            "name": name,
+            "wkn": wkn
+        }
 
         # Add to table
         row = self.table.rowCount()
@@ -309,14 +359,26 @@ class WatchlistWidget(QWidget):
         symbol_item.setForeground(QColor(255, 255, 255))  # White text
         self.table.setItem(row, 0, symbol_item)
 
-        # Initialize other columns
-        for col in range(1, 5):
+        # Name column
+        name_item = QTableWidgetItem(name)
+        name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        name_item.setForeground(QColor(255, 255, 255))
+        self.table.setItem(row, 1, name_item)
+
+        # WKN column
+        wkn_item = QTableWidgetItem(wkn)
+        wkn_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+        wkn_item.setForeground(QColor(200, 200, 200))
+        self.table.setItem(row, 2, wkn_item)
+
+        # Initialize price columns
+        for col in range(3, 7):
             item = QTableWidgetItem("--")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             item.setForeground(QColor(180, 180, 180))  # Light gray for placeholder
             self.table.setItem(row, col, item)
 
-        logger.info(f"Added {symbol} to watchlist")
+        logger.info(f"Added {symbol} ({name}) to watchlist")
 
         # Emit signal
         self.symbol_added.emit(symbol)
@@ -461,9 +523,15 @@ class WatchlistWidget(QWidget):
             logger.warning(f"Failed to load saved watchlist: {e}")
 
         # Load default symbols if no saved watchlist
-        default_symbols = ["AAPL", "MSFT", "GOOGL", "QQQ", "SPY"]
-        for symbol in default_symbols:
-            self.add_symbol(symbol)
+        default_symbols = [
+            {"symbol": "AAPL", "name": "Apple Inc.", "wkn": "865985"},
+            {"symbol": "MSFT", "name": "Microsoft Corp.", "wkn": "870747"},
+            {"symbol": "GOOGL", "name": "Alphabet Inc.", "wkn": "A14Y6F"},
+            {"symbol": "QQQ", "name": "NASDAQ 100 ETF", "wkn": "A0AE1X"},
+            {"symbol": "SPY", "name": "S&P 500 ETF", "wkn": "A1JULM"}
+        ]
+        for symbol_data in default_symbols:
+            self.add_symbol(symbol_data)
         logger.info("Loaded default watchlist")
 
     def save_watchlist(self):
@@ -471,10 +539,20 @@ class WatchlistWidget(QWidget):
         from src.config.loader import config_manager
 
         try:
+            # Build watchlist with full data
+            watchlist_data = []
+            for symbol in self.symbols:
+                data = self.symbol_data.get(symbol, {})
+                watchlist_data.append({
+                    "symbol": symbol,
+                    "name": data.get("name", ""),
+                    "wkn": data.get("wkn", "")
+                })
+
             # Update settings and save to file
-            config_manager.settings.watchlist = self.symbols.copy()
+            config_manager.settings.watchlist = watchlist_data
             config_manager.save_watchlist()
-            logger.debug(f"Saved watchlist: {self.symbols}")
+            logger.debug(f"Saved watchlist: {watchlist_data}")
 
         except Exception as e:
             logger.error(f"Failed to save watchlist: {e}")

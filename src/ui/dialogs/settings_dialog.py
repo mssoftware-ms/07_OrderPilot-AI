@@ -216,6 +216,17 @@ class SettingsDialog(QDialog):
             "Prefer live broker market data when connected"
         )
         market_layout.addWidget(self.prefer_live_broker)
+
+        # Live data in paper mode
+        self.enable_live_data_paper = QCheckBox(
+            "Enable live market data in paper trading mode"
+        )
+        self.enable_live_data_paper.setToolTip(
+            "When enabled, live market data from configured providers "
+            "will be used even in paper trading mode"
+        )
+        market_layout.addWidget(self.enable_live_data_paper)
+
         market_layout.addStretch()
 
         tabs.addTab(market_tab, "Market Data")
@@ -295,7 +306,7 @@ class SettingsDialog(QDialog):
             self.settings.value("auto_connect", False, type=bool)
         )
 
-        default_broker = self.settings.value("default_broker", "Mock Broker")
+        default_broker = self.settings.value("default_broker", "Trade Republic")
         index = self.default_broker_combo.findText(default_broker)
         if index >= 0:
             self.default_broker_combo.setCurrentIndex(index)
@@ -392,6 +403,11 @@ class SettingsDialog(QDialog):
             self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
 
         self.prefer_live_broker.setChecked(market_config.prefer_live_broker)
+
+        # Live data in paper mode
+        self.enable_live_data_paper.setChecked(
+            self.settings.value("live_data_enabled", False, type=bool)
+        )
 
         # Notifications
         self.order_filled_notif.setChecked(
@@ -509,6 +525,9 @@ class SettingsDialog(QDialog):
 
             # Persist profile changes
             config_manager.save_profile(profile)
+
+            # Live data in paper mode
+            self.settings.setValue("live_data_enabled", self.enable_live_data_paper.isChecked())
 
             # Notifications
             self.settings.setValue("order_filled_notif", self.order_filled_notif.isChecked())

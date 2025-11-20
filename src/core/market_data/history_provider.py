@@ -5,6 +5,7 @@ Primary source: IBKR, with fallbacks to Alpha Vantage and Finnhub.
 """
 
 import asyncio
+import importlib.util
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -36,18 +37,18 @@ class DataSource(Enum):
 
 class Timeframe(Enum):
     """Market data timeframes."""
-    SECOND_1 = "1S"
-    SECOND_5 = "5S"
-    SECOND_30 = "30S"
-    MINUTE_1 = "1T"
-    MINUTE_5 = "5T"
-    MINUTE_15 = "15T"
-    MINUTE_30 = "30T"
-    HOUR_1 = "1H"
-    HOUR_4 = "4H"
+    SECOND_1 = "1s"
+    SECOND_5 = "5s"
+    SECOND_30 = "30s"
+    MINUTE_1 = "1min"
+    MINUTE_5 = "5min"
+    MINUTE_15 = "15min"
+    MINUTE_30 = "30min"
+    HOUR_1 = "1h"
+    HOUR_4 = "4h"
     DAY_1 = "1D"
     WEEK_1 = "1W"
-    MONTH_1 = "1M"
+    MONTH_1 = "1ME"
 
 
 @dataclass
@@ -615,7 +616,15 @@ class YahooFinanceProvider(HistoricalDataProvider):
     def __init__(self):
         super().__init__("YahooFinance")
         self.base_url = "https://query1.finance.yahoo.com/v8/finance/chart"
-        self.rate_limit_delay = 0.5  # Avoid hammering public endpoint
+        self.rate_limit_delay = 1.0  # Avoid hammering public endpoint
+        self.max_retries = 3
+        self.headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
 
     async def fetch_bars(
         self,
@@ -625,15 +634,21 @@ class YahooFinanceProvider(HistoricalDataProvider):
         timeframe: Timeframe
     ) -> list[HistoricalBar]:
         """Fetch historical bars from Yahoo Finance."""
-        cache_key = self._cache_key(symbol, start_date, end_date, timeframe)
+        effective_start, effective_end = self._clamp_date_range(
+            start_date,
+            end_date,
+            timeframe
+        )
+
+        cache_key = self._cache_key(symbol, effective_start, effective_end, timeframe)
         if cache_key in self.cache:
             return self._df_to_bars(self.cache[cache_key])
 
         interval = self._timeframe_to_yahoo(timeframe)
 
         params = {
-            "period1": self._to_unix(start_date),
-            "period2": self._to_unix(end_date),
+            "period1": self._to_unix(effective_start),
+            "period2": self._to_unix(effective_end),
             "interval": interval,
             "includePrePost": "false",
             "events": "div,splits"
@@ -642,13 +657,42 @@ class YahooFinanceProvider(HistoricalDataProvider):
         endpoint = f"{self.base_url}/{symbol}"
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(endpoint, params=params) as response:
-                    if response.status != 200:
+            async with aiohttp.ClientSession(headers=self.headers) as session:
+                backoff = 1.5
+                last_error_status = None
+
+                for attempt in range(self.max_retries):
+                    async with session.get(endpoint, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            break
+
+                        last_error_status = response.status
+
+                        if response.status == 429 and attempt < self.max_retries - 1:
+                            retry_after_header = response.headers.get("Retry-After")
+                            try:
+                                retry_after = float(retry_after_header) if retry_after_header else backoff
+                            except ValueError:
+                                retry_after = backoff
+
+                            logger.warning(
+                                "Yahoo Finance rate limit for %s (attempt %s/%s). Retrying in %.1fs",
+                                symbol,
+                                attempt + 1,
+                                self.max_retries,
+                                retry_after
+                            )
+                            await asyncio.sleep(retry_after)
+                            backoff *= 2
+                            continue
+
                         logger.error(f"Yahoo Finance API error ({response.status}) for {symbol}")
                         return []
-
-                    data = await response.json()
+                else:
+                    # Retries exhausted without success
+                    logger.error(f"Yahoo Finance API error ({last_error_status}) for {symbol}")
+                    return []
 
             chart_data = data.get("chart", {})
             results = chart_data.get("result", [])
@@ -693,7 +737,7 @@ class YahooFinanceProvider(HistoricalDataProvider):
 
                 timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
 
-                if timestamp < start_date or timestamp > end_date:
+                if timestamp < effective_start or timestamp > effective_end:
                     continue
 
                 bar = HistoricalBar(
@@ -772,6 +816,45 @@ class YahooFinanceProvider(HistoricalDataProvider):
         if value.tzinfo is None:
             return int(value.replace(tzinfo=timezone.utc).timestamp())
         return int(value.astimezone(timezone.utc).timestamp())
+
+    def _clamp_date_range(
+        self,
+        requested_start: datetime,
+        requested_end: datetime,
+        timeframe: Timeframe
+    ) -> tuple[datetime, datetime]:
+        """Ensure Yahoo intraday requests stay within supported lookback windows."""
+        limit = self._get_lookback_limit(timeframe)
+        if not limit:
+            return requested_start, requested_end
+
+        earliest_supported = requested_end - limit
+        if requested_start < earliest_supported:
+            logger.debug(
+                "Yahoo Finance timeframe %s limited to %s days. Adjusted start from %s to %s.",
+                timeframe.value,
+                limit.days,
+                requested_start,
+                earliest_supported
+            )
+            return earliest_supported, requested_end
+
+        return requested_start, requested_end
+
+    def _get_lookback_limit(self, timeframe: Timeframe) -> timedelta | None:
+        """Return maximum supported lookback window for a timeframe."""
+        mapping = {
+            Timeframe.SECOND_1: timedelta(days=7),
+            Timeframe.SECOND_5: timedelta(days=7),
+            Timeframe.SECOND_30: timedelta(days=7),
+            Timeframe.MINUTE_1: timedelta(days=30),
+            Timeframe.MINUTE_5: timedelta(days=60),
+            Timeframe.MINUTE_15: timedelta(days=60),
+            Timeframe.MINUTE_30: timedelta(days=60),
+            Timeframe.HOUR_1: timedelta(days=730),  # ~2 years
+            Timeframe.HOUR_4: timedelta(days=730),
+        }
+        return mapping.get(timeframe)
 
 
 class FinnhubProvider(HistoricalDataProvider):
@@ -898,6 +981,9 @@ class AlpacaProvider(HistoricalDataProvider):
         self.api_key = api_key
         self.api_secret = api_secret
         self.rate_limit_delay = 0.3  # 200 calls/min = 3.33 calls/sec
+        self._sdk_available = self._check_sdk()
+        if not self._sdk_available:
+            logger.warning("Alpaca SDK not available. Alpaca provider will be disabled.")
 
     async def fetch_bars(
         self,
@@ -917,6 +1003,10 @@ class AlpacaProvider(HistoricalDataProvider):
         Returns:
             List of historical bars
         """
+        if not self._sdk_available:
+            logger.debug("Skipping Alpaca fetch because Alpaca SDK is not installed.")
+            return []
+
         try:
             from alpaca.data.historical import StockHistoricalDataClient
             from alpaca.data.requests import StockBarsRequest
@@ -969,7 +1059,7 @@ class AlpacaProvider(HistoricalDataProvider):
 
     async def is_available(self) -> bool:
         """Check if Alpaca is available."""
-        return bool(self.api_key and self.api_secret)
+        return bool(self.api_key and self.api_secret and self._sdk_available)
 
     def _timeframe_to_alpaca(self, timeframe: Timeframe):
         """Convert timeframe to Alpaca format.
@@ -994,6 +1084,13 @@ class AlpacaProvider(HistoricalDataProvider):
             Timeframe.MONTH_1: AlpacaTimeFrame(1, TimeFrameUnit.Month),
         }
         return mapping.get(timeframe, AlpacaTimeFrame(1, TimeFrameUnit.Minute))
+
+    def _check_sdk(self) -> bool:
+        """Check whether the Alpaca SDK is installed."""
+        try:
+            return importlib.util.find_spec("alpaca") is not None
+        except Exception:
+            return False
 
 
 class DatabaseProvider(HistoricalDataProvider):
@@ -1300,32 +1397,45 @@ class HistoryManager:
             bars: Bars to store
             symbol: Trading symbol
         """
+        if not bars:
+            return
+
         try:
             db_manager = get_db_manager()
             with db_manager.session() as session:
+                timestamps = [bar.timestamp for bar in bars]
+                min_ts = min(timestamps)
+                max_ts = max(timestamps)
+
+                existing_rows = session.query(MarketBar.timestamp).filter(
+                    MarketBar.symbol == symbol,
+                    MarketBar.timestamp >= min_ts,
+                    MarketBar.timestamp <= max_ts
+                ).all()
+                existing_timestamps = {row[0] for row in existing_rows}
+
+                new_bars = []
                 for bar in bars:
-                    # Check if bar already exists
-                    existing = session.query(MarketBar).filter(
-                        MarketBar.symbol == symbol,
-                        MarketBar.timestamp == bar.timestamp
-                    ).first()
+                    if bar.timestamp in existing_timestamps:
+                        continue
+                    new_bars.append(MarketBar(
+                        symbol=symbol,
+                        timestamp=bar.timestamp,
+                        open=bar.open,
+                        high=bar.high,
+                        low=bar.low,
+                        close=bar.close,
+                        volume=bar.volume,
+                        vwap=bar.vwap,
+                        source=bar.source
+                    ))
 
-                    if not existing:
-                        db_bar = MarketBar(
-                            symbol=symbol,
-                            timestamp=bar.timestamp,
-                            open=bar.open,
-                            high=bar.high,
-                            low=bar.low,
-                            close=bar.close,
-                            volume=bar.volume,
-                            vwap=bar.vwap,
-                            source=bar.source
-                        )
-                        session.add(db_bar)
-
-                session.commit()
-                logger.debug(f"Stored {len(bars)} bars to database")
+                if new_bars:
+                    session.bulk_save_objects(new_bars)
+                    session.commit()
+                    logger.debug(f"Stored {len(new_bars)} bars to database")
+                else:
+                    logger.debug("All fetched bars already cached locally")
 
         except Exception as e:
             logger.error(f"Failed to store bars to database: {e}")
