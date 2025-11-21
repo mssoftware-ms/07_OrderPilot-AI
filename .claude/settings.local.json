@@ -32,7 +32,8 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(if [ -d \"venv\" ])",
-      "Bash(then source venv/bin/activate)"
+      "Bash(then source venv/bin/activate)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

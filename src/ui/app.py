@@ -56,6 +56,7 @@ from .themes import ThemeManager
 from .widgets.alerts import AlertsWidget
 from .widgets.chart import ChartWidget
 from .widgets.chart_view import ChartView
+from .widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
 from .widgets.dashboard import DashboardWidget
 from .widgets.orders import OrdersWidget
 from .widgets.performance_dashboard import PerformanceDashboard
@@ -334,6 +335,10 @@ class TradingApplication(QMainWindow):
         # Advanced Chart View tab (with history manager)
         self.chart_view = ChartView(history_manager=self.history_manager)
         self.tab_widget.addTab(self.chart_view, "Advanced Charts")
+
+        # Pro Charts tab (embedded lightweight charts with indicators)
+        self.embedded_chart = EmbeddedTradingViewChart(history_manager=self.history_manager)
+        self.tab_widget.addTab(self.embedded_chart, "⚡ Pro Charts")
 
         # Positions tab
         self.positions_widget = PositionsWidget()
