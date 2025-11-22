@@ -45,904 +45,232 @@ CHART_HTML_TEMPLATE = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@5.0.9/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body {
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #0a0a0a;
+            overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #0a0a0a;
-            overflow: hidden;
-            height: 100vh;
-            width: 100vw;
         }
-
-        #chart-container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            width: 100%;
-            overflow: hidden;  /* No scrolling - flex takes care of sizing */
-        }
-
-        /* Price chart always takes up 3x space of other panels */
-        #price-chart {
-            flex: 3 1 0;  /* flex-grow: 3, flex-shrink: 1, flex-basis: 0 */
-            width: 100%;
-            min-height: 0;  /* Important for flex children */
-            background-color: #0a0a0a;
-            border-bottom: 1px solid #2a2a2a;
-            position: relative;
-            overflow: hidden;
-            box-sizing: border-box;  /* Include border in width */
-            padding: 0;
-            margin: 0;
-        }
-
-        /* Each indicator panel (volume, RSI, etc.) gets equal space */
-        .indicator-panel {
-            flex: 1 1 0;  /* flex-grow: 1, flex-shrink: 1, flex-basis: 0 */
-            width: 100%;
-            min-height: 0;  /* Important for flex children */
-            background-color: #0a0a0a;
-            border-bottom: 1px solid #2a2a2a;
-            position: relative;
-            overflow: hidden;
-            box-sizing: border-box;  /* Include border in width */
-            padding: 0;
-            margin: 0;
-        }
-
-        /* Last panel has no bottom border */
-        .indicator-panel:last-child {
-            border-bottom: none;
-        }
-
-        /* Panel header with indicator name - Stock3 style */
-        .panel-header {
-            position: absolute;
-            top: 3px;
-            left: 8px;
-            color: #d1d4dc;
-            font-size: 12px;
-            font-weight: 600;
-            z-index: 100;
-            pointer-events: all;  /* Enable clicking for editing */
-            background: rgba(10, 10, 10, 0.85);
-            padding: 3px 8px;
-            border-radius: 3px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .panel-header:hover {
-            background: rgba(10, 10, 10, 0.95);
-            color: #FF8C00;
-        }
-
-        /* Panel value display (current indicator value) */
-        .panel-value {
-            position: absolute;
-            top: 3px;
-            right: 8px;
-            color: #d1d4dc;
-            font-size: 11px;
-            font-weight: 500;
-            z-index: 100;
-            pointer-events: none;
-            background: rgba(10, 10, 10, 0.7);
-            padding: 2px 6px;
-            border-radius: 2px;
-            font-family: monospace;
-        }
-        #status {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: #00ff00;
-            font-size: 12px;
-            font-family: monospace;
-            z-index: 1000;
-        }
+        #chart-container { width: 100vw; height: 100vh; position: relative; }
+        #status { position: absolute; top: 10px; left: 10px; color: #00ff00; font-size: 12px; font-family: monospace; z-index: 1000; }
     </style>
 </head>
 <body>
-    <div id="status">Initializing chart...</div>
     <div id="chart-container">
-        <div id="price-chart"></div>
-        <!-- Indicator panels will be dynamically added here -->
+        <div id="status">Initializing chart...</div>
     </div>
     <script>
-        console.log('[INIT] Step 1: Script started');
+        const { createChart, CrosshairMode, LineStyle, LineSeries, HistogramSeries, CandlestickSeries } = LightweightCharts;
 
-        // Function to initialize charts
-        function initializeCharts() {
-            console.log('[INIT] Step 2: Initializing charts...');
-
+        function initializeChart() {
             try {
-                // Debug logging
-                console.log('[INIT] Step 3: Starting chart initialization...');
-
-                // Create price chart (top 70%)
-                console.log('[INIT] Step 4: Getting price-chart container...');
-                const priceContainer = document.getElementById('price-chart');
-
-                if (!priceContainer) {
-                    console.error('[ERROR] price-chart container not found!');
-                    document.getElementById('status').textContent = 'ERROR: Chart container not found';
-                    return;
-                }
-
-                console.log('[INIT] Step 5: Creating price chart...');
-
-                // Ensure we have valid dimensions
-                const priceWidth = priceContainer.clientWidth || 800;
-                const priceHeight = priceContainer.clientHeight || 400;
-                console.log('[INIT] Price chart dimensions - width:', priceWidth, 'height:', priceHeight);
-
-                const priceChart = LightweightCharts.createChart(priceContainer, {
-                width: priceWidth,
-                height: priceHeight,
-                layout: {
-                    background: { color: '#0a0a0a' },
-                    textColor: '#d1d4dc',
-                },
-                grid: {
-                    vertLines: { color: 'rgba(70, 70, 70, 0.4)' },
-                    horzLines: { color: 'rgba(70, 70, 70, 0.4)' },
-                },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                },
-                timeScale: {
-                    timeVisible: true,
-                    secondsVisible: false,
-                    borderColor: '#485c7b',
-                    visible: true,  // Show time scale
-                },
-                rightPriceScale: {
-                    borderColor: '#485c7b',
-                    scaleMargins: {
-                        top: 0.1,
-                        bottom: 0.1,
+                const container = document.getElementById('chart-container');
+                const scaleMargins = { top: 0.15, bottom: 0.15 };
+                const chart = createChart(container, {
+                    layout: {
+                        background: { type: 'solid', color: '#0a0a0a' },
+                        textColor: '#d1d4dc',
+                        panes: { separatorColor: '#2a2a2a', separatorHoverColor: '#3a3a3a', enableResize: true },
                     },
-                    minimumWidth: 60,  // Fixed width for alignment
-                },
-                handleScroll: {
-                    mouseWheel: true,      // Zoom with mouse wheel
-                    pressedMouseMove: true, // Pan with mouse drag
-                    horzTouchDrag: true,   // Pan horizontally on touch
-                    vertTouchDrag: true    // Pan vertically on touch
-                },
-                handleScale: {
-                    axisPressedMouseMove: true,   // Enable dragging price scale (vertical pan)
-                    mouseWheel: true,             // Zoom with mouse wheel
-                    pinch: true                   // Zoom with pinch gesture
-                },
-                kineticScroll: {
-                    mouse: false,  // Disable kinetic scroll with mouse
-                    touch: true    // Enable kinetic scroll on touch
-                }
-            });
-
-            console.log('Price chart created');
-
-            // Create candlestick series
-            const candlestickSeries = priceChart.addCandlestickSeries({
-                upColor: '#26a69a',
-                downColor: '#ef5350',
-                borderVisible: false,
-                wickUpColor: '#26a69a',
-                wickDownColor: '#ef5350',
-            });
-
-            console.log('Candlestick series created');
-
-            // Initial width alignment before any panels are added
-            syncPriceScaleWidths();
-
-            // Store all charts and their series
-            const charts = {
-                price: priceChart
-            };
-            const indicatorSeries = {};  // For overlays on price chart
-            const panelCharts = {};      // For separate indicator panels (Volume, RSI, etc.)
-            const panelSeries = {};      // Series in each panel
-
-            // Time scale synchronization array (global for access in API functions)
-            window.allCharts = [priceChart];
-            window.masterChart = priceChart;  // Price chart is the master
-
-            // Simple synchronization: Master chart controls all others
-            let isSyncing = false;
-
-            // Ensure price scale widths stay identical across price/indicator charts
-            function applyPriceScaleWidth(width) {
-                try {
-                    if (!width || width <= 0) return;
-
-                    // Lock master to its measured width to avoid jitter
-                    priceChart.priceScale('right').applyOptions({ minimumWidth: width });
-
-                    // Apply the same minimum width to every panel chart
-                    Object.values(panelCharts).forEach(chart => {
-                        chart.priceScale('right').applyOptions({ minimumWidth: width });
-                    });
-                } catch(e) {
-                    console.error('Error syncing price scale widths:', e);
-                }
-            }
-
-            // Measure current width and propagate to panels
-            function syncPriceScaleWidths() {
-                try {
-                    const masterScale = priceChart.priceScale('right');
-                    const masterWidth = masterScale && masterScale.width ? masterScale.width() : 0;
-                    applyPriceScaleWidth(masterWidth);
-                } catch(e) {
-                    console.error('Error measuring price scale width:', e);
-                }
-            }
-
-            // Subscribe to master chart changes
-            priceChart.timeScale().subscribeVisibleTimeRangeChange(() => {
-                if (isSyncing) return;
-
-                const masterTimeScale = priceChart.timeScale();
-                const timeRange = masterTimeScale.getVisibleRange();
-                if (!timeRange) return;
-
-                isSyncing = true;
-
-                // Sync time range AND bar spacing to all panel charts
-                const barSpacing = masterTimeScale.getBarSpacing ? masterTimeScale.getBarSpacing() : (masterTimeScale.options().barSpacing || 6);
-                const rightOffset = masterTimeScale.getRightOffset ? masterTimeScale.getRightOffset() : (masterTimeScale.options().rightOffset || 0);
-
-                Object.values(panelCharts).forEach(chart => {
-                    try {
-                        // Apply time scale options for alignment
-                        chart.applyOptions({
-                            timeScale: {
-                                barSpacing: barSpacing,
-                                rightOffset: rightOffset
-                            }
-                        });
-                        chart.timeScale().setVisibleRange(timeRange);
-                    } catch(e) {
-                        console.error('Error syncing chart:', e);
-                    }
+                    grid: {
+                        vertLines: { color: 'rgba(70, 70, 70, 0.35)' },
+                        horzLines: { color: 'rgba(70, 70, 70, 0.35)' },
+                    },
+                    crosshair: { mode: CrosshairMode.Normal },
+                    rightPriceScale: {
+                        borderColor: '#485c7b',
+                        minimumWidth: 60,
+                        autoScale: true,
+                        scaleMargins
+                    },
+                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b' },
+                    handleScroll: {
+                        mouseWheel: true,    // wheel zooms time scale
+                        pressedMouseMove: true,
+                        horzTouchDrag: true,
+                        vertTouchDrag: true,  // allow vertical pan via touch/drag
+                    },
+                    handleScale: {
+                        axisPressedMouseMove: { time: true, price: true },
+                        mouseWheel: true,    // wheel zooms price/time as default
+                        pinch: true,         // pinch scales both
+                    },
+                    autoSize: true,
                 });
 
-                isSyncing = false;
+                const overlaySeries = {};
+                const panelMap = {};          // panelId -> paneApi
+                const panelMainSeries = {};   // panelId -> series
+                const panelExtraSeries = {};  // panelId_key -> series
 
-                // Keep widths aligned whenever scale changes
-                syncPriceScaleWidths();
-            });
+                // Price pane with higher stretch factor
+                const pricePaneApi = chart.panes()[0];
+                if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(4);
 
-            priceChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-                if (isSyncing) return;
+                const rightScale = chart.priceScale('right');
 
-                const logicalRange = priceChart.timeScale().getVisibleLogicalRange();
-                if (!logicalRange) return;
+                function refitPriceScale() {
+                    rightScale.applyOptions({ autoScale: true, scaleMargins });
+                    chart.timeScale().fitContent();
+                    setTimeout(() => {
+                        rightScale.applyOptions({ autoScale: false, scaleMargins });
+                    }, 0);
+                }
 
-                isSyncing = true;
+                const priceSeries = chart.addSeries(CandlestickSeries, {
+                    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+                }, pricePaneApi.paneIndex());
 
-                // Apply to all panel charts
-                Object.values(panelCharts).forEach(chart => {
-                    try {
-                        chart.timeScale().setVisibleLogicalRange(logicalRange);
-                    } catch(e) {
-                        console.error('Error syncing logical range:', e);
+                function addPane(panelId) {
+                    if (panelMap[panelId] !== undefined) return panelMap[panelId];
+                    const paneApi = chart.addPane(); // appended at bottom
+                    if (paneApi.setStretchFactor) paneApi.setStretchFactor(1); // compact indicator pane
+                    panelMap[panelId] = paneApi;
+                    return paneApi;
+                }
+
+                function removePane(panelId) {
+                    const paneApi = panelMap[panelId];
+                    if (!paneApi) return false;
+                    if (paneApi === pricePaneApi) return false; // never remove price pane
+
+                    if (panelMainSeries[panelId]) {
+                        chart.removeSeries(panelMainSeries[panelId]);
+                        delete panelMainSeries[panelId];
                     }
-                });
-
-                isSyncing = false;
-            });
-
-            // Function to sync a new chart with master
-            window.syncChartWithMaster = function(chart) {
-                if (!window.masterChart) return;
-
-                try {
-                    const masterTimeScale = window.masterChart.timeScale();
-                    const chartTimeScale = chart.timeScale();
-
-                    // Sync all time scale properties for perfect alignment
-                    const timeRange = masterTimeScale.getVisibleRange();
-                    const logicalRange = masterTimeScale.getVisibleLogicalRange();
-
-                    // Get the bar spacing and right offset from master
-                    const options = {
-                        rightOffset: masterTimeScale.options().rightOffset || 0,
-                        barSpacing: masterTimeScale.options().barSpacing || 6,
-                    };
-
-                    // Apply to the new chart
-                    chart.applyOptions({
-                        timeScale: options
+                    Object.keys(panelExtraSeries).filter(k => k.startsWith(panelId + '_')).forEach(k => {
+                        chart.removeSeries(panelExtraSeries[k]);
+                        delete panelExtraSeries[k];
                     });
 
-                    if (timeRange) {
-                        chartTimeScale.setVisibleRange(timeRange);
-                    }
-                    if (logicalRange) {
-                        chartTimeScale.setVisibleLogicalRange(logicalRange);
-                    }
-
-                    // Force the same scroll position
-                    const scrollPos = masterTimeScale.scrollPosition();
-                    if (scrollPos !== null && scrollPos !== undefined && !isNaN(scrollPos)) {
-                        chartTimeScale.scrollToPosition(scrollPos, false);
-                    }
-                } catch(e) {
-                    console.error('Error syncing with master:', e);
+                    chart.removePane(paneApi.paneIndex());
+                    delete panelMap[panelId];
+                    return true;
                 }
-            };
 
-            // Old function for compatibility
-            window.synchronizeTimeScales = function() {
-                // No longer needed, master chart handles it
-            };
+                window.chartAPI = {
+                    setData: (data) => {
+                        try {
+                            priceSeries.setData(data);
+                            refitPriceScale();
+                        } catch(e){ console.error(e); }
+                    },
+                    updateCandle: (c) => { try { priceSeries.update(c); } catch(e){ console.error(e); } },
+                    setVolumeData: () => console.warn('setVolumeData is deprecated'),
+                    updateVolume: () => console.warn('updateVolume is deprecated'),
 
-            // Function to update time scale visibility (only last panel shows time)
-            window.updateTimeScaleVisibility = function() {
-                // Hide time scale on price chart if there are indicator panels
-                const hasIndicators = Object.keys(panelCharts).length > 0;
-                priceChart.applyOptions({
-                    timeScale: {
-                        visible: !hasIndicators  // Hide if indicators exist
-                    }
-                });
-
-                // Hide time scale on all indicator panels except the last one
-                const panelIds = Object.keys(panelCharts);
-                panelIds.forEach((panelId, index) => {
-                    const isLast = index === panelIds.length - 1;
-                    panelCharts[panelId].applyOptions({
-                        timeScale: {
-                            visible: isLast  // Only show on last panel
-                        }
-                    });
-                });
-
-                console.log('Updated time scale visibility - ' + panelIds.length + ' panels');
-            };
-
-            console.log('[INIT] Step 5: Calling synchronizeTimeScales...');
-            window.synchronizeTimeScales();
-            console.log('[INIT] Step 6: Time scales synchronized');
-
-            // Handle window resize for all charts
-            console.log('[INIT] Step 7: Setting up resize handler...');
-
-            // Function to resize a chart based on its container (use price chart width for alignment)
-            function resizeChart(chart) {
-                if (chart && chart.applyOptions && chart.chartElement) {
-                    const container = chart.chartElement().parentElement;
-                    if (container) {
-                        // For panel charts, use the price chart width for alignment
-                        const priceChartElement = document.getElementById('price-chart');
-                        const isPriceChart = container.id === 'price-chart';
-
-                        const width = isPriceChart ?
-                            container.clientWidth :
-                            (priceChartElement ? priceChartElement.clientWidth : container.clientWidth);
-                        const height = container.clientHeight;
-
-                        if (width > 0 && height > 0) {
-                            chart.applyOptions({ width, height });
-                        }
-                    }
-                }
-            }
-
-            // Window resize handler
-            window.addEventListener('resize', () => {
-                Object.values(charts).forEach(resizeChart);
-                Object.values(panelCharts).forEach(resizeChart);
-                syncPriceScaleWidths();
-            });
-
-            // ResizeObserver to handle flex layout changes
-            const resizeObserver = new ResizeObserver(entries => {
-                entries.forEach(entry => {
-                    const chartElement = entry.target.querySelector('*');
-                    if (chartElement) {
-                        // Find the chart that belongs to this container
-                        Object.values(charts).forEach(chart => {
-                            if (chart.chartElement && chart.chartElement().parentElement === entry.target) {
-                                resizeChart(chart);
-                            }
-                        });
-                        Object.values(panelCharts).forEach(chart => {
-                            if (chart.chartElement && chart.chartElement().parentElement === entry.target) {
-                                resizeChart(chart);
-                            }
-                        });
-                    }
-                });
-            });
-
-            // Observe price chart container
-            resizeObserver.observe(priceContainer);
-
-            // Store observer globally so we can observe new panels
-            window.chartResizeObserver = resizeObserver;
-
-            // API for Python integration
-            console.log('[INIT] Step 8: Creating chartAPI object...');
-            window.chartAPI = {
-                // Set candlestick data
-                setData: function(data) {
-                    try {
-                        candlestickSeries.setData(data);
-                        console.log('Set ' + data.length + ' candles');
-                        document.getElementById('status').textContent = 'Loaded ' + data.length + ' bars';
-                        syncPriceScaleWidths();
-                    } catch(e) {
-                        console.error('Error setting data:', e);
-                    }
-                },
-
-                // Update single candle
-                updateCandle: function(candle) {
-                    try {
-                        candlestickSeries.update(candle);
-                        syncPriceScaleWidths();
-                    } catch(e) {
-                        console.error('Error updating candle:', e);
-                    }
-                },
-
-                // Legacy: Set volume data (now handled by panels)
-                setVolumeData: function(data) {
-                    console.warn('setVolumeData is deprecated, use setPanelData instead');
-                    return this.setPanelData('volume', data);
-                },
-
-                // Legacy: Update volume (now handled by panels)
-                updateVolume: function(volume) {
-                    console.warn('updateVolume is deprecated, use updatePanelData instead');
-                    return this.updatePanelData('volume', volume);
-                },
-
-                // Add indicator line
-                addIndicator: function(name, color) {
-                    try {
-                        const series = priceChart.addLineSeries({
-                            color: color,
-                            lineWidth: 2,
-                            title: name,
-                        });
-                        indicatorSeries[name] = series;
-                        console.log('Added indicator: ' + name);
-                        return true;
-                    } catch(e) {
-                        console.error('Error adding indicator:', e);
-                        return false;
-                    }
-                },
-
-                // Remove indicator
-                removeIndicator: function(name) {
-                    try {
-                        if (indicatorSeries[name]) {
-                            priceChart.removeSeries(indicatorSeries[name]);
-                            delete indicatorSeries[name];
-                            console.log('Removed indicator: ' + name);
-                            return true;
-                        }
-                        return false;
-                    } catch(e) {
-                        console.error('Error removing indicator:', e);
-                        return false;
-                    }
-                },
-
-                // Set indicator data
-                setIndicatorData: function(name, data) {
-                    try {
-                        if (indicatorSeries[name]) {
-                            indicatorSeries[name].setData(data);
-                            console.log('Set data for indicator: ' + name);
-                            return true;
-                        }
-                        return false;
-                    } catch(e) {
-                        console.error('Error setting indicator data:', e);
-                        return false;
-                    }
-                },
-
-                // Update indicator point
-                updateIndicator: function(name, point) {
-                    try {
-                        if (indicatorSeries[name]) {
-                            indicatorSeries[name].update(point);
-                            return true;
-                        }
-                        return false;
-                    } catch(e) {
-                        console.error('Error updating indicator:', e);
-                        return false;
-                    }
-                },
-
-                // Create a new indicator panel (for Volume, RSI, MACD, etc.)
-                createPanel: function(panelId, name, type, color, min, max) {
-                    try {
-                        // Check if panel already exists
-                        if (panelCharts[panelId]) {
-                            console.log('Panel ' + panelId + ' already exists');
-                            return true;
-                        }
-
-                        // Create panel container
-                        const container = document.getElementById('chart-container');
-                        const panelDiv = document.createElement('div');
-                        panelDiv.id = 'panel-' + panelId;
-                        panelDiv.className = 'indicator-panel';
-
-                        // Add header label
-                        const header = document.createElement('div');
-                        header.className = 'panel-header';
-                        header.textContent = name;
-                        panelDiv.appendChild(header);
-
-                        container.appendChild(panelDiv);
-
-                        // Use the same width as the price chart for alignment
-                        const priceChartElement = document.getElementById('price-chart');
-                        const chartWidth = priceChartElement ? priceChartElement.clientWidth : (panelDiv.clientWidth || 800);
-                        const chartHeight = panelDiv.clientHeight || 200;
-
-                        // Wait a frame for the browser to calculate flex layout
-                        setTimeout(() => {
-                            const actualWidth = priceChartElement ? priceChartElement.clientWidth : panelDiv.clientWidth;
-                            const actualHeight = panelDiv.clientHeight || 200;
-
-                            console.log('Resizing panel: ' + panelId + ' - width:', actualWidth, 'height:', actualHeight);
-
-                            // Resize chart to match price chart width
-                            if (panelCharts[panelId]) {
-                                panelCharts[panelId].applyOptions({
-                                    width: actualWidth,
-                                    height: actualHeight
-                                });
-                            }
-                        }, 0);
-
-                        // Create chart in panel
-                        const chart = LightweightCharts.createChart(panelDiv, {
-                            width: chartWidth,
-                            height: chartHeight,
-                            layout: {
-                                background: { color: '#0a0a0a' },
-                                textColor: '#d1d4dc',
-                            },
-                            grid: {
-                                vertLines: { color: 'rgba(70, 70, 70, 0.4)' },
-                                horzLines: { color: 'rgba(70, 70, 70, 0.4)' },
-                            },
-                            crosshair: {
-                                mode: LightweightCharts.CrosshairMode.Normal,
-                            },
-                            timeScale: {
-                                timeVisible: true,
-                                secondsVisible: false,
-                                borderColor: '#485c7b',
-                            },
-                            rightPriceScale: {
-                                borderColor: '#485c7b',
-                                scaleMargins: {
-                                    top: 0.1,
-                                    bottom: 0.1,
-                                },
-                                minimumWidth: 60,  // Same width as price chart for alignment
-                            },
-                            // Horizontal pan/zoom happens only on the master price chart to avoid desync
-                            handleScroll: {
-                                mouseWheel: false,
-                                pressedMouseMove: false,
-                                horzTouchDrag: false,
-                                vertTouchDrag: true  // Keep vertical drag for price scale
-                            },
-                            handleScale: {
-                                axisPressedMouseMove: false,
-                                mouseWheel: false,
-                                pinch: false
-                            },
-                            kineticScroll: {
-                                mouse: false,
-                                touch: true
-                            }
-                        });
-
-                        // Create series based on type
-                        let series;
-                        if (type === 'histogram') {
-                            series = chart.addHistogramSeries({
-                                color: color,
-                                priceFormat: { type: 'volume' }
-                            });
-                        } else if (type === 'line') {
-                            const seriesOptions = {
-                                color: color,
+                    addIndicator: (name, color) => {
+                        try {
+                            const s = chart.addSeries(LineSeries, {
+                                color,
                                 lineWidth: 2,
-                                priceScaleId: 'right'
-                            };
-                            if (min !== null && max !== null) {
-                                seriesOptions.autoscaleInfoProvider = () => ({
-                                    priceRange: {
-                                        minValue: min,
-                                        maxValue: max
-                                    }
-                                });
-                            }
-                            series = chart.addLineSeries(seriesOptions);
-                        }
-
-                        panelCharts[panelId] = chart;
-                        panelSeries[panelId] = series;
-                        window.allCharts.push(chart);
-
-                        // Observe panel for resize events
-                        if (window.chartResizeObserver) {
-                            window.chartResizeObserver.observe(panelDiv);
-                        }
-
-                        // Sync new chart with master (price chart)
-                        window.syncChartWithMaster(chart);
-
-                        // Align price scale width with master
-                        syncPriceScaleWidths();
-
-                        // Update time scale visibility
-                        window.updateTimeScaleVisibility();
-
-                        console.log('Created panel: ' + panelId + ' (' + name + ')');
-                        return true;
-                    } catch(e) {
-                        console.error('Error creating panel:', e);
-                        return false;
-                    }
-                },
-
-                // Remove an indicator panel
-                removePanel: function(panelId) {
-                    try {
-                        if (!panelCharts[panelId]) {
-                            return false;
-                        }
-
-                        // Remove chart
-                        const chart = panelCharts[panelId];
-                        const index = window.allCharts.indexOf(chart);
-                        if (index > -1) {
-                            window.allCharts.splice(index, 1);
-                        }
-
-                        chart.remove();
-                        delete panelCharts[panelId];
-                        delete panelSeries[panelId];
-
-                        // Remove DOM element
-                        const panel = document.getElementById('panel-' + panelId);
-                        if (panel) {
-                            // Unobserve panel
-                            if (window.chartResizeObserver) {
-                                window.chartResizeObserver.unobserve(panel);
-                            }
-                            panel.remove();
-                        }
-
-                        // Update time scale visibility
-                        window.updateTimeScaleVisibility();
-
-                        console.log('Removed panel: ' + panelId);
-                        return true;
-                    } catch(e) {
-                        console.error('Error removing panel:', e);
-                        return false;
-                    }
-                },
-
-                // Set data for a panel
-                setPanelData: function(panelId, data) {
-                    try {
-                        if (panelSeries[panelId]) {
-                            panelSeries[panelId].setData(data);
-
-                            // Force sync with master chart after setting data
-                            if (panelCharts[panelId]) {
-                                window.syncChartWithMaster(panelCharts[panelId]);
-                            }
-
-                            // Keep price scales aligned if value ranges changed
-                            syncPriceScaleWidths();
-
-                            console.log('Set data for panel: ' + panelId);
+                                title: name,
+                                priceLineVisible: true,
+                                lastValueVisible: true,
+                            }, 0);
+                            // Label on price scale
+                            s.createPriceLine({ price: 0, color, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: name });
+                            overlaySeries[name] = s;
                             return true;
                         }
-                        return false;
-                    } catch(e) {
-                        console.error('Error setting panel data:', e);
-                        return false;
-                    }
-                },
+                        catch(e){ console.error(e); return false; }
+                    },
+                    removeIndicator: (name) => {
+                        try { if (!overlaySeries[name]) return false; chart.removeSeries(overlaySeries[name]); delete overlaySeries[name]; return true; }
+                        catch(e){ console.error(e); return false; }
+                    },
+                    setIndicatorData: (name, data) => { try { if (!overlaySeries[name]) return false; overlaySeries[name].setData(data); return true; } catch(e){ console.error(e); return false; } },
+                    updateIndicator: (name, point) => { try { if (!overlaySeries[name]) return false; overlaySeries[name].update(point); return true; } catch(e){ console.error(e); return false; } },
 
-                // Update panel data (single point)
-                updatePanelData: function(panelId, point) {
-                    try {
-                        if (panelSeries[panelId]) {
-                            panelSeries[panelId].update(point);
-                            return true;
-                        }
-                        return false;
-                    } catch(e) {
-                        console.error('Error updating panel data:', e);
-                        return false;
-                    }
-                },
-
-                // Add additional series to an existing panel (for multi-series indicators like MACD)
-                addPanelSeries: function(panelId, seriesKey, type, color, data) {
-                    try {
-                        if (!panelCharts[panelId]) {
-                            console.error('Panel not found:', panelId);
-                            return false;
-                        }
-
-                        const chart = panelCharts[panelId];
-                        let series;
-
-                        if (type === 'histogram') {
-                            series = chart.addHistogramSeries({
-                                color: color,
-                                priceFormat: { type: 'volume' }
-                            });
-                        } else if (type === 'line') {
-                            series = chart.addLineSeries({
-                                color: color,
-                                lineWidth: 2
-                            });
-                        }
-
-                        // Store series with composite key
-                        const fullKey = panelId + '_' + seriesKey;
-                        panelSeries[fullKey] = series;
-
-                        // Set data if provided
-                        if (data) {
-                            series.setData(data);
-                        }
-
-                        console.log('Added series ' + seriesKey + ' to panel ' + panelId);
-                        return true;
-                    } catch(e) {
-                        console.error('Error adding panel series:', e);
-                        return false;
-                    }
-                },
-
-                // Set data for a specific series in a panel
-                setPanelSeriesData: function(panelId, seriesKey, data) {
-                    try {
-                        const fullKey = panelId + '_' + seriesKey;
-                        if (panelSeries[fullKey]) {
-                            panelSeries[fullKey].setData(data);
-
-                            // Force sync with master chart after setting data (only for first series)
-                            if (seriesKey === 'macd' && panelCharts[panelId]) {
-                                window.syncChartWithMaster(panelCharts[panelId]);
+                    createPanel: (panelId, displayName, type, color, min, max) => {
+                        try {
+                            if (panelMap[panelId] !== undefined) return true;
+                            const paneApi = addPane(panelId);
+                            const paneIndex = paneApi.paneIndex();
+                            let series;
+                            if (type === 'histogram') {
+                                series = chart.addSeries(HistogramSeries, {
+                                    base: 0,
+                                    color,
+                                    priceScaleId: 'right',
+                                    priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
+                                    title: displayName,
+                                }, paneIndex);
+                            } else {
+                                const opts = { color, lineWidth: 2, title: displayName, priceScaleId: 'right' };
+                                if (min !== null && max !== null) {
+                                    opts.autoscaleInfoProvider = () => ({ priceRange: { minValue: min, maxValue: max } });
+                                }
+                                series = chart.addSeries(LineSeries, opts, paneIndex);
                             }
-
-                            syncPriceScaleWidths();
-
-                            console.log('Set data for panel series: ' + fullKey);
+                            panelMainSeries[panelId] = series;
                             return true;
-                        }
-                        return false;
-                    } catch(e) {
-                        console.error('Error setting panel series data:', e);
-                        return false;
+                        } catch(e){ console.error(e); return false; }
+                    },
+
+                    removePanel: (panelId) => { try { return removePane(panelId); } catch(e){ console.error(e); return false; } },
+
+                    setPanelData: (panelId, data) => { try { const s = panelMainSeries[panelId]; if (!s) return false; s.setData(data); return true; } catch(e){ console.error(e); return false; } },
+                    updatePanelData: (panelId, point) => { try { const s = panelMainSeries[panelId]; if (!s) return false; s.update(point); return true; } catch(e){ console.error(e); return false; } },
+
+                    addPanelSeries: (panelId, seriesKey, type, color, data) => {
+                        try {
+                            const paneApi = panelMap[panelId] ?? addPane(panelId);
+                            const paneIndex = paneApi.paneIndex();
+                            const seriesOpts = type === 'histogram'
+                                ? { base: 0, color, priceScaleId: 'right', priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, title: seriesKey.toUpperCase() }
+                                : { color, lineWidth: 2, title: seriesKey.toUpperCase(), priceScaleId: 'right' };
+                            const s = type === 'histogram'
+                                ? chart.addSeries(HistogramSeries, seriesOpts, paneIndex)
+                                : chart.addSeries(LineSeries, seriesOpts, paneIndex);
+                            const key = panelId + '_' + seriesKey;
+                            panelExtraSeries[key] = s;
+                            if (data) s.setData(data);
+                            return true;
+                        } catch(e){ console.error(e); return false; }
+                    },
+
+                    setPanelSeriesData: (panelId, seriesKey, data) => { try { const s = panelExtraSeries[panelId + '_' + seriesKey]; if (!s) return false; s.setData(data); return true; } catch(e){ console.error(e); return false; } },
+
+                    addPanelPriceLine: (panelId, price, color, lineStyle, title) => {
+                        try {
+                            const s = panelMainSeries[panelId];
+                            if (!s) return false;
+                            let style = LineStyle.Dashed;
+                            if (lineStyle === 'solid') style = LineStyle.Solid; else if (lineStyle === 'dotted') style = LineStyle.Dotted;
+                            s.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title: title || '' });
+                            return true;
+                        } catch(e){ console.error(e); return false; }
+                    },
+
+                    fitContent: () => { try { refitPriceScale(); } catch(e){ console.error(e); } },
+                    resetPriceScale: () => { try { refitPriceScale(); } catch(e){ console.error(e); } },
+
+                    clear: () => {
+                        try {
+                            priceSeries.setData([]);
+                            Object.values(overlaySeries).forEach(s => chart.removeSeries(s));
+                            Object.keys(overlaySeries).forEach(k => delete overlaySeries[k]);
+                            Object.keys(panelMap).forEach(pid => removePane(pid));
+                        } catch(e){ console.error(e); }
                     }
-                },
+                };
 
-                // Add horizontal reference line to a panel (e.g., RSI 30/70)
-                addPanelPriceLine: function(panelId, price, color, lineStyle, title) {
-                    try {
-                        if (!panelSeries[panelId]) {
-                            console.error('Panel not found:', panelId);
-                            return false;
-                        }
-
-                        const series = panelSeries[panelId];
-
-                        // Map lineStyle string to LineStyle enum
-                        let style = LightweightCharts.LineStyle.Dashed;
-                        if (lineStyle === 'solid') {
-                            style = LightweightCharts.LineStyle.Solid;
-                        } else if (lineStyle === 'dotted') {
-                            style = LightweightCharts.LineStyle.Dotted;
-                        } else if (lineStyle === 'dashed') {
-                            style = LightweightCharts.LineStyle.Dashed;
-                        }
-
-                        series.createPriceLine({
-                            price: price,
-                            color: color,
-                            lineWidth: 1,
-                            lineStyle: style,
-                            axisLabelVisible: true,
-                            title: title || ''
-                        });
-
-                        console.log('Added price line to panel ' + panelId + ' at ' + price);
-                        return true;
-                    } catch(e) {
-                        console.error('Error adding panel price line:', e);
-                        return false;
-                    }
-                },
-
-                // Fit content for all charts
-                fitContent: function() {
-                    try {
-                        window.allCharts.forEach(chart => {
-                            chart.timeScale().fitContent();
-                        });
-                        console.log('Fit content (' + window.allCharts.length + ' charts)');
-                    } catch(e) {
-                        console.error('Error fitting content:', e);
-                    }
-                },
-
-                // Clear all data
-                clear: function() {
-                    try {
-                        candlestickSeries.setData([]);
-
-                        // Clear overlay indicators
-                        for (const name in indicatorSeries) {
-                            priceChart.removeSeries(indicatorSeries[name]);
-                        }
-                        Object.keys(indicatorSeries).forEach(key => delete indicatorSeries[key]);
-
-                        // Clear all panels
-                        Object.keys(panelCharts).forEach(panelId => {
-                            this.removePanel(panelId);
-                        });
-
-                        console.log('Cleared all data (price + all panels)');
-                    } catch(e) {
-                        console.error('Error clearing data:', e);
-                    }
-                }
-            };
-
-            console.log('chartAPI created successfully');
-            console.log('Available API functions:', Object.keys(window.chartAPI));
-            console.log('Chart initialization complete!');
-            document.getElementById('status').textContent = 'Ready - waiting for data...';
-
-            } catch(error) {
-                console.error('[ERROR] CRITICAL ERROR during chart initialization:', error);
-                console.error('[ERROR] Stack:', error.stack);
+                document.getElementById('status').textContent = 'Ready - waiting for data...';
+                console.log('Chart initialized with v5 panes');
+            } catch (error) {
+                console.error('CRITICAL INIT ERROR:', error);
                 document.getElementById('status').textContent = 'ERROR: ' + error.message;
                 document.getElementById('status').style.color = '#ff0000';
             }
-        } // End initializeCharts function
+        }
 
-        // Call initialization after a short delay to ensure DOM is fully ready
-        // Note: QWebEngineView.setHtml() doesn't fire DOMContentLoaded reliably
-        console.log('[INIT] Scheduling initialization...');
-        setTimeout(function() {
-            console.log('[INIT] Timeout fired, DOM should be ready');
-            console.log('[INIT] price-chart exists:', document.getElementById('price-chart') !== null);
-            console.log('[INIT] status exists:', document.getElementById('status') !== null);
-            initializeCharts();
-        }, 50);  // 50ms delay to ensure DOM is ready
+        setTimeout(initializeChart, 50);
     </script>
 </body>
 </html>
@@ -1426,16 +754,19 @@ class EmbeddedTradingViewChart(QWidget):
                         col_names = result.values.columns.tolist()
                         logger.info(f"MACD columns: {col_names}")
 
-                        # Find columns
+                        # Find columns (check histogram and signal first to avoid false matches)
                         macd_col = signal_col = hist_col = None
                         for col in col_names:
                             col_lower = col.lower()
-                            if 'macd' in col_lower and 'signal' not in col_lower and 'hist' not in col_lower:
-                                macd_col = col
-                            elif 'signal' in col_lower or 'macds' in col_lower:
-                                signal_col = col
-                            elif 'hist' in col_lower or 'macdh' in col_lower:
+                            # Check histogram first (MACDh_12_26_9 or histogram)
+                            if 'macdh' in col_lower or 'hist' in col_lower:
                                 hist_col = col
+                            # Check signal (MACDs_12_26_9 or signal)
+                            elif 'macds' in col_lower or 'signal' in col_lower:
+                                signal_col = col
+                            # Check MACD line (MACD_12_26_9)
+                            elif 'macd' in col_lower:
+                                macd_col = col
 
                         # Prepare data for each series; align strictly with price bars to avoid truncation
                         macd_data = []
@@ -1446,34 +777,33 @@ class EmbeddedTradingViewChart(QWidget):
                         signal_series = result.values[signal_col] if signal_col else None
                         hist_series = result.values[hist_col] if hist_col else None
 
-                        # Pad all bars, even when values are NaN, so zooming doesn't "shrink" the MACD length
-                        for ts, macd_val, sig_val, hist_val in zip(
-                            self.data.index,
-                            macd_series.values if macd_series is not None else [None]*len(self.data),
-                            signal_series.values if signal_series is not None else [None]*len(self.data),
-                            hist_series.values if hist_series is not None else [None]*len(self.data),
-                        ):
-                            unix_time = int(ts.timestamp())
+                        logger.info(f"MACD column mapping: macd={macd_col}, signal={signal_col}, hist={hist_col}")
+                        if macd_series is not None:
+                            logger.info(f"MACD series has {len(macd_series)} values, non-null: {macd_series.notna().sum()}")
+                        if signal_series is not None:
+                            logger.info(f"Signal series has {len(signal_series)} values, non-null: {signal_series.notna().sum()}")
+                        if hist_series is not None:
+                            logger.info(f"Histogram series has {len(hist_series)} values, non-null: {hist_series.notna().sum()}")
 
-                            macd_data.append({
-                                'time': unix_time,
-                                'value': None if macd_val is None or pd.isna(macd_val) else float(macd_val)
+                        for ts, macd_val in zip(self.data.index, macd_series.values if macd_series is not None else []):
+                            if pd.isna(macd_val):
+                                continue
+                            macd_data.append({'time': int(ts.timestamp()), 'value': float(macd_val)})
+
+                        for ts, sig_val in zip(self.data.index, signal_series.values if signal_series is not None else []):
+                            if pd.isna(sig_val):
+                                continue
+                            signal_data.append({'time': int(ts.timestamp()), 'value': float(sig_val)})
+
+                        for ts, hist_val in zip(self.data.index, hist_series.values if hist_series is not None else []):
+                            if pd.isna(hist_val):
+                                continue
+                            hv = float(hist_val)
+                            hist_data.append({
+                                'time': int(ts.timestamp()),
+                                'value': hv,
+                                'color': '#26a69a' if hv >= 0 else '#ef5350'
                             })
-
-                            signal_data.append({
-                                'time': unix_time,
-                                'value': None if sig_val is None or pd.isna(sig_val) else float(sig_val)
-                            })
-
-                            if hist_val is None or pd.isna(hist_val):
-                                hist_data.append({'time': unix_time})
-                            else:
-                                hv = float(hist_val)
-                                hist_data.append({
-                                    'time': unix_time,
-                                    'value': hv,
-                                    'color': '#26a69a' if hv >= 0 else '#ef5350'
-                                })
 
                         # Store all three data series
                         ind_data = {
@@ -1481,6 +811,8 @@ class EmbeddedTradingViewChart(QWidget):
                             'signal': signal_data,
                             'histogram': hist_data
                         }
+
+                        logger.info(f"MACD data prepared: macd={len(macd_data)} points, signal={len(signal_data)} points, histogram={len(hist_data)} points")
 
                     elif isinstance(result.values, pd.DataFrame):
                         # Other multi-series indicators (Stochastic, BB, etc.)
