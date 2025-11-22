@@ -637,7 +637,8 @@ class EmbeddedTradingViewChart(QWidget):
 
         # Subscribe to events
         event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar)
-        event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick)  # Real-time market ticks
+        event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick)  # Legacy market ticks
+        event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick)  # Alpaca/stream ticks
 
         logger.info("EmbeddedTradingViewChart initialized")
 

@@ -3,7 +3,7 @@
 # Edit as needed; exact pins preserved from existing file.
 
 aiohttp==3.13.2
-alpaca==1.0.0
+alpaca-py>=0.43.0
 backtrader==1.9.78.123
 blinker==1.9.0
 cryptography==46.0.3

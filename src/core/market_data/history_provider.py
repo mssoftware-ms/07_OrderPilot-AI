@@ -1021,12 +1021,13 @@ class AlpacaProvider(HistoricalDataProvider):
             # Convert timeframe
             alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
 
-            # Create request
+            # Create request (using IEX feed for free accounts)
             request = StockBarsRequest(
                 symbol_or_symbols=symbol,
                 timeframe=alpaca_timeframe,
                 start=start_date,
-                end=end_date
+                end=end_date,
+                feed="iex"  # Required for free Alpaca accounts
             )
 
             # Fetch data
@@ -1289,8 +1290,11 @@ class HistoryManager:
             api_secret = config_manager.get_credential("alpaca_api_secret")
             if api_key and api_secret:
                 self.register_provider(DataSource.ALPACA, AlpacaProvider(api_key, api_secret))
+                logger.info(f"Registered Alpaca provider (key: {api_key[:8]}...)")
             else:
                 logger.warning("Alpaca provider enabled but API credentials not found")
+        else:
+            logger.warning("Alpaca provider is DISABLED in config")
 
         # Alpha Vantage
         if market_config.alpha_vantage_enabled:
@@ -1479,6 +1483,8 @@ class HistoryManager:
     ) -> bool:
         """Start real-time market data streaming.
 
+        Priority: Alpaca WebSocket (real-time) > Alpha Vantage (60s polling)
+
         Args:
             symbols: List of symbols to stream
             enable_indicators: Enable real-time indicator calculations
@@ -1486,37 +1492,60 @@ class HistoryManager:
         Returns:
             True if stream started successfully
         """
-        # Check if Alpha Vantage is available
-        if DataSource.ALPHA_VANTAGE not in self.providers:
-            logger.error("Alpha Vantage provider not available for streaming")
-            return False
-
-        # Get API key from provider
-        av_provider = self.providers[DataSource.ALPHA_VANTAGE]
-        if not isinstance(av_provider, AlphaVantageProvider):
-            logger.error("Invalid Alpha Vantage provider")
-            return False
-
         try:
-            # Import stream client (lazy import to avoid circular deps)
-            from src.core.market_data.alpha_vantage_stream import AlphaVantageStreamClient
+            logger.info(f"Starting real-time stream for {len(symbols)} symbols. Available providers: {list(self.providers.keys())}")
 
-            # Create stream client if not exists
-            if not self.stream_client:
-                self.stream_client = AlphaVantageStreamClient(
-                    api_key=av_provider.api_key,
-                    enable_indicators=enable_indicators
-                )
+            # Priority 1: Try Alpaca WebSocket (real-time streaming)
+            if DataSource.ALPACA in self.providers:
+                logger.info("Attempting to use Alpaca WebSocket for streaming...")
+                alpaca_provider = self.providers[DataSource.ALPACA]
+                if isinstance(alpaca_provider, AlpacaProvider):
+                    try:
+                        from src.core.market_data.alpaca_stream import AlpacaStreamClient
 
-            # Connect and subscribe
-            connected = await self.stream_client.connect()
-            if connected:
-                await self.stream_client.subscribe(symbols)
-                logger.info(f"Started real-time stream for {len(symbols)} symbols")
-                return True
-            else:
-                logger.error("Failed to connect stream client")
-                return False
+                        # Create Alpaca stream client if not exists
+                        if not self.stream_client or not isinstance(self.stream_client, AlpacaStreamClient):
+                            self.stream_client = AlpacaStreamClient(
+                                api_key=alpaca_provider.api_key,
+                                api_secret=alpaca_provider.api_secret,
+                                paper=True,
+                                feed="iex"
+                            )
+
+                        # Connect and subscribe
+                        connected = await self.stream_client.connect()
+                        if connected:
+                            await self.stream_client.subscribe(symbols)
+                            logger.info(f"Started Alpaca real-time WebSocket stream for {len(symbols)} symbols")
+                            return True
+                        else:
+                            logger.warning("Failed to connect Alpaca stream, trying fallback...")
+                    except Exception as e:
+                        logger.warning(f"Alpaca streaming failed: {e}, trying fallback...")
+
+            # Priority 2: Fallback to Alpha Vantage polling (60s intervals)
+            logger.info("Falling back to Alpha Vantage polling (60s intervals)")
+            if DataSource.ALPHA_VANTAGE in self.providers:
+                av_provider = self.providers[DataSource.ALPHA_VANTAGE]
+                if isinstance(av_provider, AlphaVantageProvider):
+                    from src.core.market_data.alpha_vantage_stream import AlphaVantageStreamClient
+
+                    # Create Alpha Vantage stream client if not exists
+                    if not self.stream_client:
+                        self.stream_client = AlphaVantageStreamClient(
+                            api_key=av_provider.api_key,
+                            enable_indicators=enable_indicators
+                        )
+
+                    # Connect and subscribe
+                    connected = await self.stream_client.connect()
+                    if connected:
+                        await self.stream_client.subscribe(symbols)
+                        logger.info(f"Started Alpha Vantage polling stream for {len(symbols)} symbols (60s interval)")
+                        return True
+
+            logger.error("No streaming provider available (need Alpaca or Alpha Vantage)")
+            return False
 
         except Exception as e:
             logger.error(f"Error starting real-time stream: {e}")

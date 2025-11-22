@@ -6,7 +6,7 @@ Free tier includes: 30 concurrent symbols, 200 REST calls/min, real-time bars.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from alpaca.data.live import StockDataStream
@@ -77,11 +77,21 @@ class AlpacaStreamClient(StreamClient):
             return True
 
         try:
+            # Convert feed string to DataFeed enum
+            from alpaca.data.enums import DataFeed
+
+            feed_map = {
+                "iex": DataFeed.IEX,
+                "sip": DataFeed.SIP,
+                "otc": DataFeed.OTC
+            }
+            feed_enum = feed_map.get(self.feed.lower(), DataFeed.IEX)
+
             # Create stream client
             self._stream = StockDataStream(
                 api_key=self.api_key,
                 secret_key=self.api_secret,
-                feed=self.feed
+                feed=feed_enum
             )
 
             # Create historical data client
@@ -122,7 +132,7 @@ class AlpacaStreamClient(StreamClient):
         """Run the Alpaca stream."""
         try:
             if self._stream:
-                await self._stream._run()
+                await self._stream._run_forever()
         except Exception as e:
             logger.error(f"Stream error: {e}")
             self.metrics.status = StreamStatus.ERROR
@@ -204,7 +214,8 @@ class AlpacaStreamClient(StreamClient):
             bar: Alpaca bar object
         """
         try:
-            request_time = datetime.utcnow()
+            logger.info(f"📊 Received bar: {bar.symbol} OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} Vol: {bar.volume}")
+            request_time = datetime.now(timezone.utc)  # Use timezone-aware datetime
 
             # Convert to MarketTick
             tick = MarketTick(
@@ -264,6 +275,8 @@ class AlpacaStreamClient(StreamClient):
             trade: Alpaca trade object
         """
         try:
+            logger.info(f"🔔 Received trade: {trade.symbol} @ ${trade.price} (size: {trade.size})")
+
             # Create tick from trade
             tick = MarketTick(
                 symbol=trade.symbol,
@@ -300,6 +313,7 @@ class AlpacaStreamClient(StreamClient):
             quote: Alpaca quote object
         """
         try:
+            logger.debug(f"💬 Received quote: {quote.symbol} Bid: ${quote.bid_price} Ask: ${quote.ask_price}")
             # Create tick with bid/ask
             tick = MarketTick(
                 symbol=quote.symbol,

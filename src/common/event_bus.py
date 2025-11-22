@@ -33,6 +33,12 @@ class EventType(Enum):
     MARKET_DATA_FETCHED = "market_data_fetched"
     MARKET_CONNECTED = "market_connected"
     MARKET_DISCONNECTED = "market_disconnected"
+    MARKET_DATA_CONNECTED = "market_data_connected"
+    MARKET_DATA_DISCONNECTED = "market_data_disconnected"
+    MARKET_DATA_TICK = "market_data_tick"
+
+    # Indicator Events
+    INDICATOR_CALCULATED = "indicator_calculated"
 
     # Order Events
     ORDER_CREATED = "order_created"
