@@ -51,6 +51,7 @@ from .dialogs.order_dialog import OrderDialog
 from .dialogs.settings_dialog import SettingsDialog
 
 # UI component imports
+from .chart_window_manager import ChartWindowManager
 from .icons import get_icon, set_icon_theme
 from .themes import ThemeManager
 from .widgets.alerts import AlertsWidget
@@ -85,6 +86,10 @@ class TradingApplication(QMainWindow):
         self.theme_manager = ThemeManager()
         self.settings = QSettings("OrderPilot", "TradingApp")
         self.history_manager = HistoryManager()
+        self.chart_window_manager = ChartWindowManager(
+            history_manager=self.history_manager,
+            parent=self
+        )
 
         # Async update lock to prevent concurrent updates
         self._updating = False
@@ -360,7 +365,8 @@ class TradingApplication(QMainWindow):
         self.watchlist_widget = WatchlistWidget()
 
         # Connect watchlist signals
-        self.watchlist_widget.symbol_selected.connect(self.show_chart_for_symbol)
+        # Double-click opens popup chart window
+        self.watchlist_widget.symbol_selected.connect(self.open_chart_popup)
         self.watchlist_widget.symbol_added.connect(self.on_watchlist_symbol_added)
 
         watchlist_dock.setWidget(self.watchlist_widget)
@@ -781,6 +787,23 @@ class TradingApplication(QMainWindow):
                         "An AI-powered trading platform for retail investors.\n\n"
                         "© 2025 OrderPilot")
 
+    def open_chart_popup(self, symbol: str):
+        """Open a popup chart window for the symbol.
+
+        Args:
+            symbol: Trading symbol
+        """
+        logger.info(f"Opening popup chart for {symbol}")
+
+        # Get currently selected data provider
+        current_index = self.data_provider_combo.currentIndex()
+        data_provider = self.data_provider_combo.itemData(current_index)
+
+        # Open or focus chart window
+        self.chart_window_manager.open_or_focus_chart(symbol, data_provider)
+
+        self.status_bar.showMessage(f"Opened chart window for {symbol}", 3000)
+
     @qasync.asyncSlot(str)
     async def show_chart_for_symbol(self, symbol: str):
         """Show chart for selected symbol.
@@ -1055,6 +1078,13 @@ class TradingApplication(QMainWindow):
     def closeEvent(self, event):
         """Handle application close event."""
         logger.info("Application closing...")
+
+        # Close all chart windows
+        try:
+            if hasattr(self, 'chart_window_manager'):
+                self.chart_window_manager.close_all_windows()
+        except Exception as e:
+            logger.error(f"Error closing chart windows: {e}")
 
         # Save settings
         try:

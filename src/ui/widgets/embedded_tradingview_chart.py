@@ -54,6 +54,7 @@ CHART_HTML_TEMPLATE = """
             background-color: #0a0a0a;
             overflow: hidden;
             height: 100vh;
+            width: 100vw;
         }
 
         #chart-container {
@@ -61,40 +62,78 @@ CHART_HTML_TEMPLATE = """
             flex-direction: column;
             height: 100vh;
             width: 100%;
+            overflow: hidden;  /* No scrolling - flex takes care of sizing */
         }
 
         /* Price chart always takes up 3x space of other panels */
         #price-chart {
-            flex: 3;
+            flex: 3 1 0;  /* flex-grow: 3, flex-shrink: 1, flex-basis: 0 */
             width: 100%;
+            min-height: 0;  /* Important for flex children */
             background-color: #0a0a0a;
-            border-bottom: 2px solid #2a2a2a;
-            min-height: 200px;
+            border-bottom: 1px solid #2a2a2a;
+            position: relative;
+            overflow: hidden;
+            box-sizing: border-box;  /* Include border in width */
+            padding: 0;
+            margin: 0;
         }
 
         /* Each indicator panel (volume, RSI, etc.) gets equal space */
         .indicator-panel {
-            flex: 1 1 200px;  /* flex-grow, flex-shrink, flex-basis */
+            flex: 1 1 0;  /* flex-grow: 1, flex-shrink: 1, flex-basis: 0 */
             width: 100%;
-            height: 200px;    /* Fixed height for each panel */
+            min-height: 0;  /* Important for flex children */
             background-color: #0a0a0a;
-            border-bottom: 2px solid #2a2a2a;
-            min-height: 150px;
-            max-height: 300px;
+            border-bottom: 1px solid #2a2a2a;
             position: relative;
-            overflow: hidden;  /* Prevent chart overflow */
+            overflow: hidden;
+            box-sizing: border-box;  /* Include border in width */
+            padding: 0;
+            margin: 0;
         }
 
-        /* Panel header with indicator name */
+        /* Last panel has no bottom border */
+        .indicator-panel:last-child {
+            border-bottom: none;
+        }
+
+        /* Panel header with indicator name - Stock3 style */
         .panel-header {
             position: absolute;
-            top: 5px;
-            left: 10px;
-            color: #888;
+            top: 3px;
+            left: 8px;
+            color: #d1d4dc;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 100;
+            pointer-events: all;  /* Enable clicking for editing */
+            background: rgba(10, 10, 10, 0.85);
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .panel-header:hover {
+            background: rgba(10, 10, 10, 0.95);
+            color: #FF8C00;
+        }
+
+        /* Panel value display (current indicator value) */
+        .panel-value {
+            position: absolute;
+            top: 3px;
+            right: 8px;
+            color: #d1d4dc;
             font-size: 11px;
-            font-weight: bold;
+            font-weight: 500;
             z-index: 100;
             pointer-events: none;
+            background: rgba(10, 10, 10, 0.7);
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-family: monospace;
         }
         #status {
             position: absolute;
@@ -159,10 +198,15 @@ CHART_HTML_TEMPLATE = """
                     timeVisible: true,
                     secondsVisible: false,
                     borderColor: '#485c7b',
-                    visible: false,  // Hide time scale on price chart
+                    visible: true,  // Show time scale
                 },
                 rightPriceScale: {
                     borderColor: '#485c7b',
+                    scaleMargins: {
+                        top: 0.1,
+                        bottom: 0.1,
+                    },
+                    minimumWidth: 60,  // Fixed width for alignment
                 },
                 handleScroll: {
                     mouseWheel: true,      // Zoom with mouse wheel
@@ -171,9 +215,9 @@ CHART_HTML_TEMPLATE = """
                     vertTouchDrag: true    // Pan vertically on touch
                 },
                 handleScale: {
-                    axisPressedMouseMove: false,  // No zoom when dragging
-                    mouseWheel: true,              // Zoom with mouse wheel only
-                    pinch: true                    // Zoom with pinch gesture
+                    axisPressedMouseMove: true,   // Enable dragging price scale (vertical pan)
+                    mouseWheel: true,             // Zoom with mouse wheel
+                    pinch: true                   // Zoom with pinch gesture
                 },
                 kineticScroll: {
                     mouse: false,  // Disable kinetic scroll with mouse
@@ -194,6 +238,9 @@ CHART_HTML_TEMPLATE = """
 
             console.log('Candlestick series created');
 
+            // Initial width alignment before any panels are added
+            syncPriceScaleWidths();
+
             // Store all charts and their series
             const charts = {
                 price: priceChart
@@ -204,22 +251,161 @@ CHART_HTML_TEMPLATE = """
 
             // Time scale synchronization array (global for access in API functions)
             window.allCharts = [priceChart];
+            window.masterChart = priceChart;  // Price chart is the master
 
-            // Function to synchronize time scales across all charts (global)
-            window.synchronizeTimeScales = function() {
-                window.allCharts.forEach(chart => {
-                    chart.timeScale().subscribeVisibleTimeRangeChange(timeRange => {
-                        window.allCharts.forEach(otherChart => {
-                            if (otherChart !== chart) {
-                                try {
-                                    otherChart.timeScale().setVisibleRange(timeRange);
-                                } catch(e) {
-                                    // Ignore errors for removed charts
-                                }
+            // Simple synchronization: Master chart controls all others
+            let isSyncing = false;
+
+            // Ensure price scale widths stay identical across price/indicator charts
+            function applyPriceScaleWidth(width) {
+                try {
+                    if (!width || width <= 0) return;
+
+                    // Lock master to its measured width to avoid jitter
+                    priceChart.priceScale('right').applyOptions({ minimumWidth: width });
+
+                    // Apply the same minimum width to every panel chart
+                    Object.values(panelCharts).forEach(chart => {
+                        chart.priceScale('right').applyOptions({ minimumWidth: width });
+                    });
+                } catch(e) {
+                    console.error('Error syncing price scale widths:', e);
+                }
+            }
+
+            // Measure current width and propagate to panels
+            function syncPriceScaleWidths() {
+                try {
+                    const masterScale = priceChart.priceScale('right');
+                    const masterWidth = masterScale && masterScale.width ? masterScale.width() : 0;
+                    applyPriceScaleWidth(masterWidth);
+                } catch(e) {
+                    console.error('Error measuring price scale width:', e);
+                }
+            }
+
+            // Subscribe to master chart changes
+            priceChart.timeScale().subscribeVisibleTimeRangeChange(() => {
+                if (isSyncing) return;
+
+                const masterTimeScale = priceChart.timeScale();
+                const timeRange = masterTimeScale.getVisibleRange();
+                if (!timeRange) return;
+
+                isSyncing = true;
+
+                // Sync time range AND bar spacing to all panel charts
+                const barSpacing = masterTimeScale.getBarSpacing ? masterTimeScale.getBarSpacing() : (masterTimeScale.options().barSpacing || 6);
+                const rightOffset = masterTimeScale.getRightOffset ? masterTimeScale.getRightOffset() : (masterTimeScale.options().rightOffset || 0);
+
+                Object.values(panelCharts).forEach(chart => {
+                    try {
+                        // Apply time scale options for alignment
+                        chart.applyOptions({
+                            timeScale: {
+                                barSpacing: barSpacing,
+                                rightOffset: rightOffset
                             }
                         });
+                        chart.timeScale().setVisibleRange(timeRange);
+                    } catch(e) {
+                        console.error('Error syncing chart:', e);
+                    }
+                });
+
+                isSyncing = false;
+
+                // Keep widths aligned whenever scale changes
+                syncPriceScaleWidths();
+            });
+
+            priceChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+                if (isSyncing) return;
+
+                const logicalRange = priceChart.timeScale().getVisibleLogicalRange();
+                if (!logicalRange) return;
+
+                isSyncing = true;
+
+                // Apply to all panel charts
+                Object.values(panelCharts).forEach(chart => {
+                    try {
+                        chart.timeScale().setVisibleLogicalRange(logicalRange);
+                    } catch(e) {
+                        console.error('Error syncing logical range:', e);
+                    }
+                });
+
+                isSyncing = false;
+            });
+
+            // Function to sync a new chart with master
+            window.syncChartWithMaster = function(chart) {
+                if (!window.masterChart) return;
+
+                try {
+                    const masterTimeScale = window.masterChart.timeScale();
+                    const chartTimeScale = chart.timeScale();
+
+                    // Sync all time scale properties for perfect alignment
+                    const timeRange = masterTimeScale.getVisibleRange();
+                    const logicalRange = masterTimeScale.getVisibleLogicalRange();
+
+                    // Get the bar spacing and right offset from master
+                    const options = {
+                        rightOffset: masterTimeScale.options().rightOffset || 0,
+                        barSpacing: masterTimeScale.options().barSpacing || 6,
+                    };
+
+                    // Apply to the new chart
+                    chart.applyOptions({
+                        timeScale: options
+                    });
+
+                    if (timeRange) {
+                        chartTimeScale.setVisibleRange(timeRange);
+                    }
+                    if (logicalRange) {
+                        chartTimeScale.setVisibleLogicalRange(logicalRange);
+                    }
+
+                    // Force the same scroll position
+                    const scrollPos = masterTimeScale.scrollPosition();
+                    if (scrollPos !== null && scrollPos !== undefined && !isNaN(scrollPos)) {
+                        chartTimeScale.scrollToPosition(scrollPos, false);
+                    }
+                } catch(e) {
+                    console.error('Error syncing with master:', e);
+                }
+            };
+
+            // Old function for compatibility
+            window.synchronizeTimeScales = function() {
+                // No longer needed, master chart handles it
+            };
+
+            // Function to update time scale visibility (only last panel shows time)
+            window.updateTimeScaleVisibility = function() {
+                // Hide time scale on price chart if there are indicator panels
+                const hasIndicators = Object.keys(panelCharts).length > 0;
+                priceChart.applyOptions({
+                    timeScale: {
+                        visible: !hasIndicators  // Hide if indicators exist
+                    }
+                });
+
+                // Hide time scale on all indicator panels except the last one
+                const panelIds = Object.keys(panelCharts);
+                panelIds.forEach((panelId, index) => {
+                    const isLast = index === panelIds.length - 1;
+                    panelCharts[panelId].applyOptions({
+                        timeScale: {
+                            visible: isLast  // Only show on last panel
+                        }
                     });
                 });
+
+                console.log('Updated time scale visibility - ' + panelIds.length + ' panels');
             };
 
             console.log('[INIT] Step 5: Calling synchronizeTimeScales...');
@@ -228,27 +414,60 @@ CHART_HTML_TEMPLATE = """
 
             // Handle window resize for all charts
             console.log('[INIT] Step 7: Setting up resize handler...');
-            window.addEventListener('resize', () => {
-                Object.values(charts).forEach(chart => {
-                    if (chart && chart.applyOptions) {
-                        const container = chart.chartElement().parentElement;
-                        chart.applyOptions({
-                            width: container.clientWidth,
-                            height: container.clientHeight,
-                        });
-                    }
-                });
 
-                Object.values(panelCharts).forEach(chart => {
-                    if (chart && chart.applyOptions) {
-                        const container = chart.chartElement().parentElement;
-                        chart.applyOptions({
-                            width: container.clientWidth,
-                            height: container.clientHeight,
+            // Function to resize a chart based on its container (use price chart width for alignment)
+            function resizeChart(chart) {
+                if (chart && chart.applyOptions && chart.chartElement) {
+                    const container = chart.chartElement().parentElement;
+                    if (container) {
+                        // For panel charts, use the price chart width for alignment
+                        const priceChartElement = document.getElementById('price-chart');
+                        const isPriceChart = container.id === 'price-chart';
+
+                        const width = isPriceChart ?
+                            container.clientWidth :
+                            (priceChartElement ? priceChartElement.clientWidth : container.clientWidth);
+                        const height = container.clientHeight;
+
+                        if (width > 0 && height > 0) {
+                            chart.applyOptions({ width, height });
+                        }
+                    }
+                }
+            }
+
+            // Window resize handler
+            window.addEventListener('resize', () => {
+                Object.values(charts).forEach(resizeChart);
+                Object.values(panelCharts).forEach(resizeChart);
+                syncPriceScaleWidths();
+            });
+
+            // ResizeObserver to handle flex layout changes
+            const resizeObserver = new ResizeObserver(entries => {
+                entries.forEach(entry => {
+                    const chartElement = entry.target.querySelector('*');
+                    if (chartElement) {
+                        // Find the chart that belongs to this container
+                        Object.values(charts).forEach(chart => {
+                            if (chart.chartElement && chart.chartElement().parentElement === entry.target) {
+                                resizeChart(chart);
+                            }
+                        });
+                        Object.values(panelCharts).forEach(chart => {
+                            if (chart.chartElement && chart.chartElement().parentElement === entry.target) {
+                                resizeChart(chart);
+                            }
                         });
                     }
                 });
             });
+
+            // Observe price chart container
+            resizeObserver.observe(priceContainer);
+
+            // Store observer globally so we can observe new panels
+            window.chartResizeObserver = resizeObserver;
 
             // API for Python integration
             console.log('[INIT] Step 8: Creating chartAPI object...');
@@ -259,6 +478,7 @@ CHART_HTML_TEMPLATE = """
                         candlestickSeries.setData(data);
                         console.log('Set ' + data.length + ' candles');
                         document.getElementById('status').textContent = 'Loaded ' + data.length + ' bars';
+                        syncPriceScaleWidths();
                     } catch(e) {
                         console.error('Error setting data:', e);
                     }
@@ -268,6 +488,7 @@ CHART_HTML_TEMPLATE = """
                 updateCandle: function(candle) {
                     try {
                         candlestickSeries.update(candle);
+                        syncPriceScaleWidths();
                     } catch(e) {
                         console.error('Error updating candle:', e);
                     }
@@ -370,11 +591,26 @@ CHART_HTML_TEMPLATE = """
 
                         container.appendChild(panelDiv);
 
-                        // Use fixed dimensions (CSS sets panel to 200px height)
-                        const chartWidth = container.clientWidth || 800;
-                        const chartHeight = 200;  // Fixed 200px to match CSS
+                        // Use the same width as the price chart for alignment
+                        const priceChartElement = document.getElementById('price-chart');
+                        const chartWidth = priceChartElement ? priceChartElement.clientWidth : (panelDiv.clientWidth || 800);
+                        const chartHeight = panelDiv.clientHeight || 200;
 
-                        console.log('Creating panel: ' + panelId + ' - width:', chartWidth, 'height:', chartHeight);
+                        // Wait a frame for the browser to calculate flex layout
+                        setTimeout(() => {
+                            const actualWidth = priceChartElement ? priceChartElement.clientWidth : panelDiv.clientWidth;
+                            const actualHeight = panelDiv.clientHeight || 200;
+
+                            console.log('Resizing panel: ' + panelId + ' - width:', actualWidth, 'height:', actualHeight);
+
+                            // Resize chart to match price chart width
+                            if (panelCharts[panelId]) {
+                                panelCharts[panelId].applyOptions({
+                                    width: actualWidth,
+                                    height: actualHeight
+                                });
+                            }
+                        }, 0);
 
                         // Create chart in panel
                         const chart = LightweightCharts.createChart(panelDiv, {
@@ -398,17 +634,23 @@ CHART_HTML_TEMPLATE = """
                             },
                             rightPriceScale: {
                                 borderColor: '#485c7b',
+                                scaleMargins: {
+                                    top: 0.1,
+                                    bottom: 0.1,
+                                },
+                                minimumWidth: 60,  // Same width as price chart for alignment
                             },
+                            // Horizontal pan/zoom happens only on the master price chart to avoid desync
                             handleScroll: {
-                                mouseWheel: true,
-                                pressedMouseMove: true,
-                                horzTouchDrag: true,
-                                vertTouchDrag: true
+                                mouseWheel: false,
+                                pressedMouseMove: false,
+                                horzTouchDrag: false,
+                                vertTouchDrag: true  // Keep vertical drag for price scale
                             },
                             handleScale: {
                                 axisPressedMouseMove: false,
-                                mouseWheel: true,
-                                pinch: true
+                                mouseWheel: false,
+                                pinch: false
                             },
                             kineticScroll: {
                                 mouse: false,
@@ -444,8 +686,19 @@ CHART_HTML_TEMPLATE = """
                         panelSeries[panelId] = series;
                         window.allCharts.push(chart);
 
-                        // Re-synchronize all charts
-                        window.synchronizeTimeScales();
+                        // Observe panel for resize events
+                        if (window.chartResizeObserver) {
+                            window.chartResizeObserver.observe(panelDiv);
+                        }
+
+                        // Sync new chart with master (price chart)
+                        window.syncChartWithMaster(chart);
+
+                        // Align price scale width with master
+                        syncPriceScaleWidths();
+
+                        // Update time scale visibility
+                        window.updateTimeScaleVisibility();
 
                         console.log('Created panel: ' + panelId + ' (' + name + ')');
                         return true;
@@ -476,8 +729,15 @@ CHART_HTML_TEMPLATE = """
                         // Remove DOM element
                         const panel = document.getElementById('panel-' + panelId);
                         if (panel) {
+                            // Unobserve panel
+                            if (window.chartResizeObserver) {
+                                window.chartResizeObserver.unobserve(panel);
+                            }
                             panel.remove();
                         }
+
+                        // Update time scale visibility
+                        window.updateTimeScaleVisibility();
 
                         console.log('Removed panel: ' + panelId);
                         return true;
@@ -492,6 +752,15 @@ CHART_HTML_TEMPLATE = """
                     try {
                         if (panelSeries[panelId]) {
                             panelSeries[panelId].setData(data);
+
+                            // Force sync with master chart after setting data
+                            if (panelCharts[panelId]) {
+                                window.syncChartWithMaster(panelCharts[panelId]);
+                            }
+
+                            // Keep price scales aligned if value ranges changed
+                            syncPriceScaleWidths();
+
                             console.log('Set data for panel: ' + panelId);
                             return true;
                         }
@@ -512,6 +781,107 @@ CHART_HTML_TEMPLATE = """
                         return false;
                     } catch(e) {
                         console.error('Error updating panel data:', e);
+                        return false;
+                    }
+                },
+
+                // Add additional series to an existing panel (for multi-series indicators like MACD)
+                addPanelSeries: function(panelId, seriesKey, type, color, data) {
+                    try {
+                        if (!panelCharts[panelId]) {
+                            console.error('Panel not found:', panelId);
+                            return false;
+                        }
+
+                        const chart = panelCharts[panelId];
+                        let series;
+
+                        if (type === 'histogram') {
+                            series = chart.addHistogramSeries({
+                                color: color,
+                                priceFormat: { type: 'volume' }
+                            });
+                        } else if (type === 'line') {
+                            series = chart.addLineSeries({
+                                color: color,
+                                lineWidth: 2
+                            });
+                        }
+
+                        // Store series with composite key
+                        const fullKey = panelId + '_' + seriesKey;
+                        panelSeries[fullKey] = series;
+
+                        // Set data if provided
+                        if (data) {
+                            series.setData(data);
+                        }
+
+                        console.log('Added series ' + seriesKey + ' to panel ' + panelId);
+                        return true;
+                    } catch(e) {
+                        console.error('Error adding panel series:', e);
+                        return false;
+                    }
+                },
+
+                // Set data for a specific series in a panel
+                setPanelSeriesData: function(panelId, seriesKey, data) {
+                    try {
+                        const fullKey = panelId + '_' + seriesKey;
+                        if (panelSeries[fullKey]) {
+                            panelSeries[fullKey].setData(data);
+
+                            // Force sync with master chart after setting data (only for first series)
+                            if (seriesKey === 'macd' && panelCharts[panelId]) {
+                                window.syncChartWithMaster(panelCharts[panelId]);
+                            }
+
+                            syncPriceScaleWidths();
+
+                            console.log('Set data for panel series: ' + fullKey);
+                            return true;
+                        }
+                        return false;
+                    } catch(e) {
+                        console.error('Error setting panel series data:', e);
+                        return false;
+                    }
+                },
+
+                // Add horizontal reference line to a panel (e.g., RSI 30/70)
+                addPanelPriceLine: function(panelId, price, color, lineStyle, title) {
+                    try {
+                        if (!panelSeries[panelId]) {
+                            console.error('Panel not found:', panelId);
+                            return false;
+                        }
+
+                        const series = panelSeries[panelId];
+
+                        // Map lineStyle string to LineStyle enum
+                        let style = LightweightCharts.LineStyle.Dashed;
+                        if (lineStyle === 'solid') {
+                            style = LightweightCharts.LineStyle.Solid;
+                        } else if (lineStyle === 'dotted') {
+                            style = LightweightCharts.LineStyle.Dotted;
+                        } else if (lineStyle === 'dashed') {
+                            style = LightweightCharts.LineStyle.Dashed;
+                        }
+
+                        series.createPriceLine({
+                            price: price,
+                            color: color,
+                            lineWidth: 1,
+                            lineStyle: style,
+                            axisLabelVisible: true,
+                            title: title || ''
+                        });
+
+                        console.log('Added price line to panel ' + panelId + ' at ' + price);
+                        return true;
+                    } catch(e) {
+                        console.error('Error adding panel price line:', e);
                         return false;
                     }
                 },
@@ -624,7 +994,10 @@ class EmbeddedTradingViewChart(QWidget):
 
         # Page load state
         self.page_loaded = False
+        self.chart_initialized = False  # Set to True once chartAPI is ready in JS
         self.pending_data_load: Optional[pd.DataFrame] = None
+        self.pending_js_commands: List[str] = []
+        self.chart_ready_timer: Optional[QTimer] = None
 
         # Update batching for performance
         self.pending_bars = deque(maxlen=100)
@@ -843,11 +1216,24 @@ class EmbeddedTradingViewChart(QWidget):
         return toolbar
 
     def _execute_js(self, script: str):
-        """Execute JavaScript in the web view."""
-        if self.page_loaded:
+        """Execute JavaScript in the web view, queueing until chart is ready."""
+        if self.page_loaded and self.chart_initialized:
             self.web_view.page().runJavaScript(script)
         else:
-            logger.debug("Page not loaded yet, skipping JS execution")
+            # Queue command until both page load and chart initialization are done
+            self.pending_js_commands.append(script)
+            if not self.page_loaded:
+                logger.debug("Page not loaded yet, queueing JS execution")
+            else:
+                logger.debug("Chart not initialized yet, queueing JS execution")
+
+    def _flush_pending_js(self):
+        """Run any JS commands that were queued before chart initialization completed."""
+        if not (self.page_loaded and self.chart_initialized):
+            return
+        while self.pending_js_commands:
+            script = self.pending_js_commands.pop(0)
+            self.web_view.page().runJavaScript(script)
 
     def _on_page_loaded(self, success: bool):
         """Handle page load completion."""
@@ -855,13 +1241,48 @@ class EmbeddedTradingViewChart(QWidget):
             self.page_loaded = True
             logger.info("Chart page loaded successfully")
 
-            # Load pending data if any
-            if self.pending_data_load is not None:
-                logger.info("Loading pending data after page load")
-                self.load_data(self.pending_data_load)
-                self.pending_data_load = None
+            # Start polling until chartAPI is present inside the WebView
+            self._start_chart_ready_poll()
         else:
             logger.error("Chart page failed to load")
+
+    def _start_chart_ready_poll(self):
+        """Poll inside the WebEngine until window.chartAPI exists."""
+        if self.chart_ready_timer:
+            self.chart_ready_timer.stop()
+
+        self.chart_ready_timer = QTimer(self)
+        self.chart_ready_timer.setInterval(150)
+        self.chart_ready_timer.timeout.connect(self._poll_chart_ready)
+        self.chart_ready_timer.start()
+
+    def _poll_chart_ready(self):
+        if not self.page_loaded:
+            return
+
+        # Ask JS if chartAPI is ready
+        self.web_view.page().runJavaScript(
+            "typeof window.chartAPI !== 'undefined' && typeof window.chartAPI.setData === 'function';",
+            self._on_chart_ready_result
+        )
+
+    def _on_chart_ready_result(self, ready: bool):
+        if not ready:
+            return
+
+        if self.chart_ready_timer:
+            self.chart_ready_timer.stop()
+            self.chart_ready_timer = None
+
+        self.chart_initialized = True
+        logger.info("chartAPI is ready")
+
+        # Flush queued JS and pending data load
+        self._flush_pending_js()
+        if self.pending_data_load is not None:
+            logger.info("Loading pending data after chart initialization")
+            self.load_data(self.pending_data_load)
+            self.pending_data_load = None
 
     def load_data(self, data: pd.DataFrame):
         """Load market data into chart.
@@ -869,9 +1290,9 @@ class EmbeddedTradingViewChart(QWidget):
         Args:
             data: OHLCV DataFrame with DatetimeIndex
         """
-        # Wait for page to load before setting data
-        if not self.page_loaded:
-            logger.info("Page not loaded yet, deferring data load")
+        # Wait for page + chart initialization before setting data
+        if not (self.page_loaded and self.chart_initialized):
+            logger.info("Chart not ready yet, deferring data load")
             self.pending_data_load = data
             return
 
@@ -998,19 +1419,75 @@ class EmbeddedTradingViewChart(QWidget):
 
                     # Convert to chart format
                     # Handle both Series (single line) and DataFrame (multiple lines)
-                    if isinstance(result.values, pd.DataFrame):
-                        # Multi-series indicator (MACD, STOCH, etc.)
-                        # For now, use the first/main column
-                        # MACD: use 'macd' column or 'MACD_12_26_9'
-                        # STOCH: use 'k' column or 'STOCHk_14_3_3'
+                    is_multi_series = isinstance(result.values, pd.DataFrame) and ind_id == "MACD"
+
+                    if is_multi_series:
+                        # MACD has 3 series: MACD line, Signal line, Histogram
+                        col_names = result.values.columns.tolist()
+                        logger.info(f"MACD columns: {col_names}")
+
+                        # Find columns
+                        macd_col = signal_col = hist_col = None
+                        for col in col_names:
+                            col_lower = col.lower()
+                            if 'macd' in col_lower and 'signal' not in col_lower and 'hist' not in col_lower:
+                                macd_col = col
+                            elif 'signal' in col_lower or 'macds' in col_lower:
+                                signal_col = col
+                            elif 'hist' in col_lower or 'macdh' in col_lower:
+                                hist_col = col
+
+                        # Prepare data for each series; align strictly with price bars to avoid truncation
+                        macd_data = []
+                        signal_data = []
+                        hist_data = []
+
+                        macd_series = result.values[macd_col] if macd_col else None
+                        signal_series = result.values[signal_col] if signal_col else None
+                        hist_series = result.values[hist_col] if hist_col else None
+
+                        # Pad all bars, even when values are NaN, so zooming doesn't "shrink" the MACD length
+                        for ts, macd_val, sig_val, hist_val in zip(
+                            self.data.index,
+                            macd_series.values if macd_series is not None else [None]*len(self.data),
+                            signal_series.values if signal_series is not None else [None]*len(self.data),
+                            hist_series.values if hist_series is not None else [None]*len(self.data),
+                        ):
+                            unix_time = int(ts.timestamp())
+
+                            macd_data.append({
+                                'time': unix_time,
+                                'value': None if macd_val is None or pd.isna(macd_val) else float(macd_val)
+                            })
+
+                            signal_data.append({
+                                'time': unix_time,
+                                'value': None if sig_val is None or pd.isna(sig_val) else float(sig_val)
+                            })
+
+                            if hist_val is None or pd.isna(hist_val):
+                                hist_data.append({'time': unix_time})
+                            else:
+                                hv = float(hist_val)
+                                hist_data.append({
+                                    'time': unix_time,
+                                    'value': hv,
+                                    'color': '#26a69a' if hv >= 0 else '#ef5350'
+                                })
+
+                        # Store all three data series
+                        ind_data = {
+                            'macd': macd_data,
+                            'signal': signal_data,
+                            'histogram': hist_data
+                        }
+
+                    elif isinstance(result.values, pd.DataFrame):
+                        # Other multi-series indicators (Stochastic, BB, etc.)
                         col_names = result.values.columns.tolist()
 
                         # Determine which column to use
-                        if 'macd' in col_names:
-                            main_col = 'macd'
-                        elif any('MACD' in col for col in col_names):
-                            main_col = [col for col in col_names if 'MACD' in col][0]
-                        elif 'k' in col_names:
+                        if 'k' in col_names:
                             main_col = 'k'
                         elif any('STOCHk' in col for col in col_names):
                             main_col = [col for col in col_names if 'STOCHk' in col][0]
@@ -1023,15 +1500,21 @@ class EmbeddedTradingViewChart(QWidget):
 
                         series_data = result.values[main_col]
                         logger.info(f"Using column '{main_col}' from multi-series indicator {ind_id}")
+
+                        ind_data = [
+                            {'time': int(ts.timestamp()), 'value': float(val)}
+                            for ts, val in zip(self.data.index, series_data.values)
+                            if not pd.isna(val)
+                        ]
                     else:
                         # Single series indicator (RSI, ATR, etc.)
                         series_data = result.values
 
-                    ind_data = [
-                        {'time': int(ts.timestamp()), 'value': float(val)}
-                        for ts, val in zip(self.data.index, series_data.values)
-                        if not pd.isna(val)
-                    ]
+                        ind_data = [
+                            {'time': int(ts.timestamp()), 'value': float(val)}
+                            for ts, val in zip(self.data.index, series_data.values)
+                            if not pd.isna(val)
+                        ]
 
                     # Add/update indicator
                     if ind_id not in self.active_indicators:
@@ -1039,18 +1522,48 @@ class EmbeddedTradingViewChart(QWidget):
                             # Add as overlay on price chart
                             self._execute_js(f"window.chartAPI.addIndicator('{display_name}', '{color}');")
                         else:
-                            # Oscillator - emit signal for dock creation
-                            oscillator_config = {
-                                'indicator_id': ind_id,
-                                'display_name': display_name,
-                                'color': color,
-                                'min_value': min_val,
-                                'max_value': max_val,
-                                'chart_type': 'line',
-                                'data': ind_data
-                            }
-                            self.indicator_toggled.emit(ind_id, True, oscillator_config)
-                            logger.info(f"Emitted signal to create dock for {ind_id}")
+                            # Oscillator - create panel directly in chart
+                            panel_id = ind_id.lower()
+
+                            if ind_id == "MACD":
+                                # MACD: Create panel with histogram (will add lines separately)
+                                js_min = 'null'
+                                js_max = 'null'
+                                self._execute_js(
+                                    f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'histogram', '#26a69a', {js_min}, {js_max});"
+                                )
+                                # Add MACD line
+                                self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'macd', 'line', '#2962FF', null);")
+                                # Add Signal line
+                                self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'signal', 'line', '#FF6D00', null);")
+                                # Add zero line
+                                self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'solid', '0');")
+                            else:
+                                # Other oscillators (RSI, STOCH, etc.)
+                                chart_type = 'line'
+                                js_min = 'null' if min_val is None else str(min_val)
+                                js_max = 'null' if max_val is None else str(max_val)
+                                self._execute_js(
+                                    f"window.chartAPI.createPanel('{panel_id}', '{display_name}', '{chart_type}', '{color}', {js_min}, {js_max});"
+                                )
+
+                                # Add reference lines for specific indicators
+                                if ind_id == "RSI":
+                                    # RSI: 30 (oversold), 70 (overbought)
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 30, '#FF0000', 'dashed', 'Oversold');")
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 70, '#00FF00', 'dashed', 'Overbought');")
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 50, '#888888', 'dotted', 'Neutral');")
+                                elif ind_id == "STOCH":
+                                    # Stochastic: 20 (oversold), 80 (overbought)
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 20, '#FF0000', 'dashed', 'Oversold');")
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 80, '#00FF00', 'dashed', 'Overbought');")
+                                elif ind_id == "CCI":
+                                    # CCI: -100, +100
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', -100, '#FF0000', 'dashed', '-100');")
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 100, '#00FF00', 'dashed', '+100');")
+                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'dotted', '0');")
+
+                            logger.info(f"Created panel for {ind_id}")
 
                         self.active_indicators[ind_id] = True
 
@@ -1060,28 +1573,35 @@ class EmbeddedTradingViewChart(QWidget):
                         ind_json = json.dumps(ind_data)
                         self._execute_js(f"window.chartAPI.setIndicatorData('{display_name}', {ind_json});")
                     else:
-                        # Oscillator - update existing dock (signal will handle if new)
-                        oscillator_config = {
-                            'indicator_id': ind_id,
-                            'display_name': display_name,
-                            'color': color,
-                            'min_value': min_val,
-                            'max_value': max_val,
-                            'chart_type': 'line',
-                            'data': ind_data
-                        }
-                        # Don't emit if just adding for first time (already emitted above)
-                        if ind_id in self.active_indicators:
-                            self.indicator_toggled.emit(ind_id, True, oscillator_config)
+                        # Oscillator - set data on panel
+                        panel_id = ind_id.lower()
+
+                        if is_multi_series and ind_id == "MACD":
+                            # MACD: Set data for all 3 series
+                            macd_json = json.dumps(ind_data['macd'])
+                            signal_json = json.dumps(ind_data['signal'])
+                            hist_json = json.dumps(ind_data['histogram'])
+
+                            # Set histogram data (main series)
+                            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {hist_json});")
+                            # Set MACD line data
+                            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'macd', {macd_json});")
+                            # Set Signal line data
+                            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'signal', {signal_json});")
+                        else:
+                            # Regular oscillator - single series
+                            ind_json = json.dumps(ind_data)
+                            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {ind_json});")
 
                 elif ind_id in self.active_indicators:
                     # Remove indicator if unchecked
                     if is_overlay:
                         self._execute_js(f"window.chartAPI.removeIndicator('{display_name}');")
                     else:
-                        # Oscillator - emit signal to close dock
-                        self.indicator_toggled.emit(ind_id, False, {})
-                        logger.info(f"Emitted signal to close dock for {ind_id}")
+                        # Oscillator - remove panel
+                        panel_id = ind_id.lower()
+                        self._execute_js(f"window.chartAPI.removePanel('{panel_id}');")
+                        logger.info(f"Removed panel for {ind_id}")
 
                     del self.active_indicators[ind_id]
 
