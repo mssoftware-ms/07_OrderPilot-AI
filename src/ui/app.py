@@ -61,7 +61,7 @@ from .widgets.dashboard import DashboardWidget
 from .widgets.orders import OrdersWidget
 from .widgets.performance_dashboard import PerformanceDashboard
 from .widgets.positions import PositionsWidget
-from .widgets.strategy_configurator import StrategyConfigurator
+from .widgets.indicators import IndicatorsWidget
 from .widgets.watchlist import WatchlistWidget
 
 logger = logging.getLogger(__name__)
@@ -344,9 +344,9 @@ class TradingApplication(QMainWindow):
         self.performance_dashboard = PerformanceDashboard()
         self.tab_widget.addTab(self.performance_dashboard, "Performance")
 
-        # Strategy Configurator tab
-        self.strategy_configurator = StrategyConfigurator()
-        self.tab_widget.addTab(self.strategy_configurator, "Strategy")
+        # Indicators tab
+        self.indicators_widget = IndicatorsWidget()
+        self.tab_widget.addTab(self.indicators_widget, "Indicators")
 
         # Alerts tab
         self.alerts_widget = AlertsWidget()
