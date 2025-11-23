@@ -1,63 +1,65 @@
 """Positions Widget for OrderPilot-AI Trading Application."""
 
+from decimal import Decimal
+
 from PyQt6.QtCore import pyqtSlot
-from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from src.common.event_bus import Event, EventType, event_bus
+from src.common.event_bus import Event, EventType
 from src.database import get_db_manager
+from src.ui.widgets.widget_helpers import BaseTableWidget
 
 
-class PositionsWidget(QWidget):
+class PositionsWidget(BaseTableWidget):
     """Widget for displaying current positions."""
 
-    def __init__(self):
-        super().__init__()
-        self.init_ui()
-        self.setup_event_handlers()
-
-    def init_ui(self):
-        """Initialize the positions UI."""
-        layout = QVBoxLayout(self)
-
-        # Create table
-        self.table = QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
+    def _get_table_columns(self) -> list[str]:
+        """Define position table columns."""
+        return [
             "Symbol", "Quantity", "Avg Cost", "Current Price",
             "Market Value", "P&L", "P&L %"
-        ])
+        ]
 
-        # Set column stretch
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    def _get_column_keys(self) -> list[str]:
+        """Define keys for mapping position data to columns."""
+        return [
+            "symbol", "quantity", "average_cost", "current_price",
+            "market_value", "unrealized_pnl", "pnl_percentage"
+        ]
 
-        layout.addWidget(self.table)
+    def _get_format_functions(self) -> dict:
+        """Define format functions for columns."""
+        return {
+            "average_cost": lambda v: f"€{float(v):.2f}" if v else "--",
+            "current_price": lambda v: f"€{float(v):.2f}" if v else "--",
+            "market_value": lambda v: f"€{float(v):.2f}" if v else "--",
+            "unrealized_pnl": lambda v: f"€{float(v):.2f}" if v else "--",
+            "pnl_percentage": lambda v: f"{float(v):.2f}%" if v else "--",
+        }
 
     def update_positions(self, positions):
         """Update positions table."""
+        if not self.table:
+            return
+
         self.table.setRowCount(len(positions))
 
         for row, position in enumerate(positions):
-            self.table.setItem(row, 0, QTableWidgetItem(str(position.symbol)))
-            self.table.setItem(row, 1, QTableWidgetItem(str(position.quantity)))
-            self.table.setItem(row, 2, QTableWidgetItem(f"€{position.average_cost:.2f}"))
-            self.table.setItem(row, 3, QTableWidgetItem(
-                f"€{position.current_price:.2f}" if position.current_price else "--"
-            ))
-            self.table.setItem(row, 4, QTableWidgetItem(
-                f"€{position.market_value:.2f}" if position.market_value else "--"
-            ))
-            self.table.setItem(row, 5, QTableWidgetItem(
-                f"€{position.unrealized_pnl:.2f}" if position.unrealized_pnl else "--"
-            ))
-            self.table.setItem(row, 6, QTableWidgetItem(
-                f"{position.pnl_percentage:.2f}%" if position.pnl_percentage else "--"
-            ))
+            # Convert position object to dict
+            position_data = {
+                "symbol": position.symbol,
+                "quantity": position.quantity,
+                "average_cost": position.average_cost,
+                "current_price": position.current_price,
+                "market_value": position.market_value,
+                "unrealized_pnl": position.unrealized_pnl,
+                "pnl_percentage": position.pnl_percentage,
+            }
+            self.update_row(row, position_data)
 
-    def setup_event_handlers(self):
+    def _setup_event_subscriptions(self):
         """Setup event bus handlers."""
-        event_bus.subscribe(EventType.ORDER_FILLED, self.on_order_filled)
-        event_bus.subscribe(EventType.MARKET_TICK, self.on_market_tick)
+        self._subscribe_event(EventType.ORDER_FILLED, self.on_order_filled)
+        self._subscribe_event(EventType.MARKET_TICK, self.on_market_tick)
 
     @pyqtSlot(object)
     def on_order_filled(self, event: Event):

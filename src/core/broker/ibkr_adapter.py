@@ -213,38 +213,33 @@ class IBKRAdapter(BrokerAdapter):
             self.next_req_id += 1
             return req_id
 
-    async def connect(self) -> None:
-        """Establish connection to IBKR TWS/Gateway."""
-        try:
-            # Connect to TWS/Gateway
-            self.client.connect(self.host, self.port, self.client_id)
+    # ==================== Template Method Implementations ====================
 
-            # Start API thread
-            self.api_thread = threading.Thread(
-                target=self.client.run,
-                daemon=True
+    async def _establish_connection(self) -> None:
+        """Establish connection to IBKR TWS/Gateway (template method implementation)."""
+        # Connect to TWS/Gateway
+        self.client.connect(self.host, self.port, self.client_id)
+
+        # Start API thread
+        self.api_thread = threading.Thread(
+            target=self.client.run,
+            daemon=True
+        )
+        self.api_thread.start()
+
+    async def _verify_connection(self) -> None:
+        """Verify IBKR connection by waiting for connection event."""
+        # Wait for connection
+        if not self.wrapper.connection_event.wait(timeout=10):
+            raise BrokerConnectionError(
+                "IBKR_TIMEOUT",
+                "Connection timeout - ensure TWS/Gateway is running"
             )
-            self.api_thread.start()
 
-            # Wait for connection
-            if not self.wrapper.connection_event.wait(timeout=10):
-                raise BrokerConnectionError(
-                    "TIMEOUT",
-                    "Connection timeout - ensure TWS/Gateway is running"
-                )
+        logger.info(f"IBKR connection verified ({'Paper' if self.paper_trading else 'Live'} Trading)")
 
-            self._connected = True
-            logger.info(f"Connected to IBKR {'Paper' if self.paper_trading else 'Live'} Trading")
-
-            # Request initial data
-            await self._request_initial_data()
-
-        except Exception as e:
-            logger.error(f"Failed to connect to IBKR: {e}")
-            raise BrokerConnectionError("IBKR_CONNECT", str(e))
-
-    async def _request_initial_data(self) -> None:
-        """Request initial account and position data."""
+    async def _setup_initial_state(self) -> None:
+        """Request initial account and position data (template method implementation)."""
         # Request account summary
         self.client.reqAccountSummary(
             self._get_next_req_id(),
@@ -258,13 +253,10 @@ class IBKRAdapter(BrokerAdapter):
         # Give time for responses
         await asyncio.sleep(2)
 
-    async def disconnect(self) -> None:
-        """Disconnect from IBKR."""
+    async def _cleanup_resources(self) -> None:
+        """Clean up IBKR resources (template method implementation)."""
         if self.client.isConnected():
             self.client.disconnect()
-
-        self._connected = False
-        logger.info("Disconnected from IBKR")
 
     async def is_connected(self) -> bool:
         """Check if connected to IBKR."""

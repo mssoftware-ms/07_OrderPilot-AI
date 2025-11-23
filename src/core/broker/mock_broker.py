@@ -59,20 +59,16 @@ class MockBroker(BrokerAdapter):
         self.partial_fill_probability = 0.1  # Probability of partial fill
         self.rejection_probability = 0.02  # Probability of order rejection
 
-    async def connect(self) -> None:
-        """Simulate broker connection."""
+    # ==================== Template Method Implementations ====================
+
+    async def _establish_connection(self) -> None:
+        """Simulate broker connection (template method implementation)."""
         await asyncio.sleep(0.1)  # Simulate connection delay
-        self._connected = True
-        logger.info("Connected to MockBroker")
 
-    async def disconnect(self) -> None:
-        """Simulate broker disconnection."""
-        self._connected = False
-        logger.info("Disconnected from MockBroker")
-
-    async def is_connected(self) -> bool:
-        """Check connection status."""
-        return self._connected
+    async def _cleanup_resources(self) -> None:
+        """Clean up mock broker resources (template method implementation)."""
+        # No resources to clean up in mock broker
+        pass
 
     async def _place_order_impl(
         self,

@@ -4,3 +4,6 @@ ruff>=0.6
 mypy>=1.11
 types-PyYAML
 types-requests
+
+sphinx
+furo

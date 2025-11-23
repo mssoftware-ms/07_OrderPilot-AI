@@ -86,24 +86,21 @@ class TradeRepublicAdapter(BrokerAdapter):
             "Your account may be suspended for violating ToS."
         )
 
-    async def connect(self) -> None:
-        """Establish connection to Trade Republic."""
-        try:
-            # Authenticate
-            await self._authenticate()
+    # ==================== Template Method Implementations ====================
 
-            # Connect WebSocket
-            await self._connect_websocket()
+    async def _establish_connection(self) -> None:
+        """Establish connection to Trade Republic (template method implementation)."""
+        # Authenticate
+        await self._authenticate()
 
-            # Start heartbeat
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        # Connect WebSocket
+        await self._connect_websocket()
 
-            self._connected = True
-            logger.info("Connected to Trade Republic (unofficial API)")
-
-        except Exception as e:
-            logger.error(f"Failed to connect to Trade Republic: {e}")
-            raise BrokerConnectionError("TR_CONNECT", str(e))
+    async def _setup_initial_state(self) -> None:
+        """Set up initial state after connection (template method implementation)."""
+        # Start heartbeat
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        logger.info("Trade Republic heartbeat started")
 
     async def _authenticate(self) -> None:
         """Authenticate with Trade Republic."""
@@ -218,17 +215,17 @@ class TradeRepublicAdapter(BrokerAdapter):
 
         logger.error("Failed to reconnect after 5 attempts")
 
-    async def disconnect(self) -> None:
-        """Disconnect from Trade Republic."""
-        self._connected = False
-
+    async def _cleanup_resources(self) -> None:
+        """Clean up Trade Republic resources (template method implementation)."""
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
         if self.ws:
             await self.ws.close()
-
-        logger.info("Disconnected from Trade Republic")
 
     async def is_connected(self) -> bool:
         """Check if connected to Trade Republic."""

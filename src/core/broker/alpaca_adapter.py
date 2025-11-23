@@ -79,34 +79,34 @@ class AlpacaAdapter(BrokerAdapter):
 
         logger.info(f"Alpaca adapter initialized (paper: {paper})")
 
-    async def connect(self) -> None:
-        """Connect to Alpaca."""
-        try:
-            self._client = TradingClient(
-                api_key=self.api_key,
-                secret_key=self.api_secret,
-                paper=self.paper
-            )
+    # ==================== Template Method Implementations ====================
 
-            # Test connection
-            account = self._client.get_account()
+    async def _establish_connection(self) -> None:
+        """Establish connection to Alpaca (template method implementation)."""
+        self._client = TradingClient(
+            api_key=self.api_key,
+            secret_key=self.api_secret,
+            paper=self.paper
+        )
 
-            logger.info(
-                f"Connected to Alpaca (account: {account.account_number}, "
-                f"status: {account.status})"
-            )
-
-        except Exception as e:
+    async def _verify_connection(self) -> None:
+        """Verify Alpaca connection by fetching account info."""
+        if not self._client:
             raise BrokerConnectionError(
-                code="ALPACA_CONNECT_FAILED",
-                message=f"Failed to connect to Alpaca: {e}",
-                details={"paper": self.paper}
+                code="ALPACA_NO_CLIENT",
+                message="Alpaca client not initialized"
             )
 
-    async def disconnect(self) -> None:
-        """Disconnect from Alpaca."""
+        # Test connection
+        account = self._client.get_account()
+        logger.info(
+            f"Alpaca connection verified (account: {account.account_number}, "
+            f"status: {account.status})"
+        )
+
+    async def _cleanup_resources(self) -> None:
+        """Clean up Alpaca resources (template method implementation)."""
         self._client = None
-        logger.info("Disconnected from Alpaca")
 
     async def is_connected(self) -> bool:
         """Check if connected to Alpaca.
