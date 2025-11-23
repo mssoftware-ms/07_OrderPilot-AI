@@ -1021,25 +1021,53 @@ class AlpacaProvider(HistoricalDataProvider):
             # Convert timeframe
             alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
 
-            # Create request (using IEX feed for free accounts)
-            request = StockBarsRequest(
-                symbol_or_symbols=symbol,
-                timeframe=alpaca_timeframe,
-                start=start_date,
-                end=end_date,
-                feed="iex"  # Required for free Alpaca accounts
-            )
+            # Convert timezone-aware datetimes to UTC if needed
+            if start_date.tzinfo is not None:
+                start_date_utc = start_date.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                start_date_utc = start_date
+
+            if end_date.tzinfo is not None:
+                end_date_utc = end_date.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                end_date_utc = end_date
+
+            logger.info(f"Alpaca request: {symbol}, timeframe={timeframe.value}, start={start_date_utc}, end={end_date_utc}")
+
+            # Create request (try SIP feed first for better data coverage, fallback to IEX)
+            try:
+                request = StockBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=alpaca_timeframe,
+                    start=start_date_utc,
+                    end=end_date_utc,
+                    feed="sip"  # SIP feed has better coverage
+                )
+                logger.debug(f"Using SIP feed for {symbol}")
+            except Exception as e:
+                logger.debug(f"SIP feed not available ({e}), falling back to IEX")
+                request = StockBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=alpaca_timeframe,
+                    start=start_date_utc,
+                    end=end_date_utc,
+                    feed="iex"  # IEX feed for free accounts
+                )
 
             # Fetch data
-            bars_dict = client.get_stock_bars(request)
+            bars_response = client.get_stock_bars(request)
 
-            if symbol not in bars_dict:
-                logger.warning(f"No data found for {symbol}")
+            # BarSet.data is a Dict[str, List[Bar]]
+            if not hasattr(bars_response, 'data') or symbol not in bars_response.data:
+                logger.warning(f"No data found for {symbol} from Alpaca")
+                logger.debug(f"Response type: {type(bars_response)}")
+                if hasattr(bars_response, 'data'):
+                    logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
                 return []
 
             # Convert to HistoricalBar objects
             bars = []
-            for bar in bars_dict[symbol]:
+            for bar in bars_response.data[symbol]:
                 hist_bar = HistoricalBar(
                     timestamp=bar.timestamp,
                     open=Decimal(str(bar.open)),

@@ -40,7 +40,13 @@
       "Bash(/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/.venv/Scripts/python.exe -m pip install:*)",
       "Bash(/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/.venv/Scripts/python.exe -m pip show:*)",
       "WebFetch(domain:alpaca.markets)",
-      "Bash(/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/.venv/Scripts/python.exe:*)"
+      "Bash(/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/.venv/Scripts/python.exe:*)",
+      "Bash(git push:*)",
+      "Bash(env)",
+      "Bash(printenv:*)",
+      "Bash(/tmp/push_temp.sh)",
+      "Bash(git config:*)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

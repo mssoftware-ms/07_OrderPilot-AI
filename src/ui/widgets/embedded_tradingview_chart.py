@@ -1286,7 +1286,8 @@ class EmbeddedTradingViewChart(QWidget):
             self.market_status_label.setStyleSheet("color: #FFA500; font-weight: bold;")
 
             # Import required classes
-            from datetime import timedelta
+            from datetime import timedelta, datetime
+            import pytz
             from src.core.market_data.history_provider import DataRequest, DataSource, Timeframe
 
             # Map timeframe
@@ -1330,13 +1331,40 @@ class EmbeddedTradingViewChart(QWidget):
             }
             lookback_days = period_to_days.get(self.current_period, 30)  # Default: 1 month
 
+            # --- Timezone-aware date calculation ---
+            ny_tz = pytz.timezone('America/New_York')
+            now_ny = datetime.now(ny_tz)
+            end_date = now_ny
+
+            # Adjust end_date for weekends (use last trading day)
+            weekday = end_date.weekday()  # Monday=0, Sunday=6
+            if weekday == 5:  # Saturday
+                end_date = end_date - timedelta(days=1)
+                logger.info("Weekend detected (Saturday), using Friday's data")
+            elif weekday == 6:  # Sunday
+                end_date = end_date - timedelta(days=2)
+                logger.info("Weekend detected (Sunday), using Friday's data")
+
+            # For intraday on weekends, fetch the entire last trading day
+            if self.current_period == "1D" and weekday >= 5:
+                # Set a specific window for the last trading day in New York time
+                friday = end_date.date()
+                start_date = ny_tz.localize(datetime.combine(friday, datetime.min.time())).replace(hour=4, minute=0)
+                end_date = ny_tz.localize(datetime.combine(friday, datetime.max.time())).replace(hour=18, minute=0)
+                logger.info(f"Intraday on weekend: fetching data for market day {friday} between {start_date} and {end_date}")
+            else:
+                # Standard lookback calculation
+                start_date = end_date - timedelta(days=lookback_days)
+
             logger.info(f"Loading {symbol} - Candles: {self.current_timeframe}, Period: {self.current_period} ({lookback_days} days)")
+            logger.info(f"Date range: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} to {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
 
             # Fetch data
             request = DataRequest(
                 symbol=symbol,
-                start_date=datetime.now() - timedelta(days=lookback_days),
-                end_date=datetime.now(),
+                start_date=start_date,
+                end_date=end_date,
                 timeframe=timeframe,
                 source=provider_source
             )

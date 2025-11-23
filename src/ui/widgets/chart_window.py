@@ -50,9 +50,10 @@ class ChartWindow(QMainWindow):
         self.chart_widget = EmbeddedTradingViewChart(history_manager=history_manager)
         layout.addWidget(self.chart_widget)
 
-        # Set symbol in chart
+        # Set symbol in chart (only if WebEngine is available)
         self.chart_widget.current_symbol = symbol
-        self.chart_widget.symbol_combo.setCurrentText(symbol)
+        if hasattr(self.chart_widget, 'symbol_combo'):
+            self.chart_widget.symbol_combo.setCurrentText(symbol)
 
         # Load window geometry from settings
         self._load_window_state()
@@ -81,30 +82,33 @@ class ChartWindow(QMainWindow):
         if window_state:
             self.restoreState(window_state)
 
-        # Load chart settings
-        timeframe = self.settings.value(f"{settings_key}/timeframe")
-        if timeframe:
-            self.chart_widget.current_timeframe = timeframe
-            # Update combo box
-            index = self.chart_widget.timeframe_combo.findData(timeframe)
-            if index >= 0:
-                self.chart_widget.timeframe_combo.setCurrentIndex(index)
+        # Load chart settings (only if WebEngine is available)
+        if hasattr(self.chart_widget, 'timeframe_combo'):
+            timeframe = self.settings.value(f"{settings_key}/timeframe")
+            if timeframe:
+                self.chart_widget.current_timeframe = timeframe
+                # Update combo box
+                index = self.chart_widget.timeframe_combo.findData(timeframe)
+                if index >= 0:
+                    self.chart_widget.timeframe_combo.setCurrentIndex(index)
 
-        period = self.settings.value(f"{settings_key}/period")
-        if period:
-            self.chart_widget.current_period = period
-            # Update combo box
-            index = self.chart_widget.period_combo.findData(period)
-            if index >= 0:
-                self.chart_widget.period_combo.setCurrentIndex(index)
+        if hasattr(self.chart_widget, 'period_combo'):
+            period = self.settings.value(f"{settings_key}/period")
+            if period:
+                self.chart_widget.current_period = period
+                # Update combo box
+                index = self.chart_widget.period_combo.findData(period)
+                if index >= 0:
+                    self.chart_widget.period_combo.setCurrentIndex(index)
 
         # Load active indicators
-        active_indicators = self.settings.value(f"{settings_key}/indicators")
-        if active_indicators and isinstance(active_indicators, list):
-            for indicator_id in active_indicators:
-                if indicator_id in self.chart_widget.indicator_actions:
-                    action = self.chart_widget.indicator_actions[indicator_id]
-                    action.setChecked(True)
+        if hasattr(self.chart_widget, 'indicator_actions'):
+            active_indicators = self.settings.value(f"{settings_key}/indicators")
+            if active_indicators and isinstance(active_indicators, list):
+                for indicator_id in active_indicators:
+                    if indicator_id in self.chart_widget.indicator_actions:
+                        action = self.chart_widget.indicator_actions[indicator_id]
+                        action.setChecked(True)
 
         logger.debug(f"Loaded window state for {self.symbol}")
 
@@ -118,16 +122,19 @@ class ChartWindow(QMainWindow):
         # Save window state
         self.settings.setValue(f"{settings_key}/windowState", self.saveState())
 
-        # Save chart settings
-        self.settings.setValue(f"{settings_key}/timeframe", self.chart_widget.current_timeframe)
-        self.settings.setValue(f"{settings_key}/period", self.chart_widget.current_period)
+        # Save chart settings (only if WebEngine is available)
+        if hasattr(self.chart_widget, 'current_timeframe'):
+            self.settings.setValue(f"{settings_key}/timeframe", self.chart_widget.current_timeframe)
+        if hasattr(self.chart_widget, 'current_period'):
+            self.settings.setValue(f"{settings_key}/period", self.chart_widget.current_period)
 
         # Save active indicators
-        active_indicators = [
-            ind_id for ind_id, action in self.chart_widget.indicator_actions.items()
-            if action.isChecked()
-        ]
-        self.settings.setValue(f"{settings_key}/indicators", active_indicators)
+        if hasattr(self.chart_widget, 'indicator_actions'):
+            active_indicators = [
+                ind_id for ind_id, action in self.chart_widget.indicator_actions.items()
+                if action.isChecked()
+            ]
+            self.settings.setValue(f"{settings_key}/indicators", active_indicators)
 
         logger.debug(f"Saved window state for {self.symbol}")
 

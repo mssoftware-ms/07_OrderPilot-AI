@@ -332,10 +332,6 @@ class TradingApplication(QMainWindow):
         self.dashboard_widget = DashboardWidget()
         self.tab_widget.addTab(self.dashboard_widget, "Dashboard")
 
-        # Pro Charts tab (embedded lightweight charts with indicators)
-        self.embedded_chart = EmbeddedTradingViewChart(history_manager=self.history_manager)
-        self.tab_widget.addTab(self.embedded_chart, "⚡ Pro Charts")
-
         # Positions tab
         self.positions_widget = PositionsWidget()
         self.tab_widget.addTab(self.positions_widget, "Positions")
@@ -804,34 +800,7 @@ class TradingApplication(QMainWindow):
 
         self.status_bar.showMessage(f"Opened chart window for {symbol}", 3000)
 
-    @qasync.asyncSlot(str)
-    async def show_chart_for_symbol(self, symbol: str):
-        """Show chart for selected symbol.
 
-        Args:
-            symbol: Trading symbol
-        """
-        logger.info(f"Showing chart for {symbol}")
-
-        # Get currently selected data provider
-        current_index = self.data_provider_combo.currentIndex()
-        data_provider = self.data_provider_combo.itemData(current_index)
-
-        # Switch to Pro Charts tab
-        self.tab_widget.setCurrentWidget(self.embedded_chart)
-
-        # Load symbol in chart with selected data provider
-        if hasattr(self.embedded_chart, 'load_symbol'):
-            try:
-                self.status_bar.showMessage(f"Loading {symbol} chart...", 2000)
-                await self.embedded_chart.load_symbol(symbol, data_provider)
-                self.status_bar.showMessage(f"Loaded {symbol} chart", 3000)
-            except Exception as e:
-                logger.error(f"Failed to load chart for {symbol}: {e}")
-                self.status_bar.showMessage(f"Failed to load chart: {e}", 5000)
-        else:
-            # Update status if not available
-            self.status_bar.showMessage(f"Chart for {symbol} (Implementation pending)", 3000)
 
     def on_watchlist_symbol_added(self, symbol: str):
         """Handle symbol added to watchlist.
@@ -1034,14 +1003,6 @@ class TradingApplication(QMainWindow):
                 logger.info("Using automatic provider priority order")
                 self.status_bar.showMessage("Market data: Auto (Priority Order)", 3000)
 
-            # Ensure the advanced chart view uses the newly selected provider
-            if hasattr(self.embedded_chart, 'current_data_provider'):
-                self.embedded_chart.current_data_provider = source
-
-            # Refresh data in chart view if visible
-            if hasattr(self.embedded_chart, 'refresh_data'):
-                await self.embedded_chart.refresh_data()
-
         except Exception as e:
             logger.error(f"Failed to change data provider: {e}")
 
@@ -1054,15 +1015,6 @@ class TradingApplication(QMainWindow):
             # Refresh watchlist
             if hasattr(self.watchlist_widget, 'refresh'):
                 await self.watchlist_widget.refresh()
-
-            # Refresh chart view with current data provider
-            if hasattr(self.embedded_chart, 'refresh_data'):
-                # Update data provider in case it changed
-                current_index = self.data_provider_combo.currentIndex()
-                data_provider = self.data_provider_combo.itemData(current_index)
-                if hasattr(self.embedded_chart, 'current_data_provider'):
-                    self.embedded_chart.current_data_provider = data_provider
-                await self.embedded_chart.refresh_data()
 
             # Refresh dashboard
             if hasattr(self.dashboard_widget, 'refresh'):
