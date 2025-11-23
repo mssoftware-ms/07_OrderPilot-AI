@@ -1,5 +1,7 @@
 # OrderPilot-AI – Detaillierte Codeanalyse
 
+_Stand: 23. November 2025_
+
 ## 1. Projektüberblick
 - **Zielsetzung:** OrderPilot-AI ist eine Desktop-Handelsplattform mit KI-gestützter Orderprüfung, mehrstufigem Risikomanagement und PyQt6-Oberfläche. Kernflüsse: Echtzeitmarktdaten → Indikatoren → Strategien → KI-Validierung → Orderausführung → Überwachung.
 - **Architektur:** Klare Schichten für Infrastruktur (`src/common`), Konfiguration (`src/config`), KI-Dienste (`src/ai`), Datenversorgung (`src/core/market_data`), Indikatoren & Strategien (`src/core/indicators`/`strategy`), Broker & Execution (`src/core/broker`/`execution`), Persistenz (`src/database`) und UI (`src/ui`). Tests liegen in `tests/`.
@@ -106,4 +108,3 @@ Die wichtigsten Abhängigkeiten aus `requirements.txt` und `dev-requirements.txt
 - Das Event-System ist zentral – Subscription-Übersicht (wer hört auf welche Events) sollte dokumentiert bleiben, um unbeabsichtigte Race Conditions zu vermeiden.
 - `ExecutionEngine` kombiniert Async (Queue) mit DB-Zugriff; Sicherstellen, dass `get_db_manager()` vor Start initialisiert wird (z.B. beim UI-Setup).
 - PyQt + `qasync` erfordern, dass alle `asyncio`-Tasks über den Qt-Loop laufen; UI-Widgets sollten lange Operationen stets auslagern (z.B. `asyncio.create_task`).
-
