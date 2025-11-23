@@ -90,15 +90,15 @@ CHART_HTML_TEMPLATE = """
                     },
                     timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b' },
                     handleScroll: {
-                        mouseWheel: true,    // wheel zooms time scale
-                        pressedMouseMove: true,
+                        mouseWheel: false,             // Disable mouse wheel for scrolling, use it for zooming instead
+                        pressedMouseMove: true,        // Drag to pan horizontally and vertically
                         horzTouchDrag: true,
-                        vertTouchDrag: true,  // allow vertical pan via touch/drag
+                        vertTouchDrag: true,
                     },
                     handleScale: {
-                        axisPressedMouseMove: { time: true, price: true },
-                        mouseWheel: true,    // wheel zooms price/time as default
-                        pinch: true,         // pinch scales both
+                        axisPressedMouseMove: { time: true, price: true }, // Drag axes to scale
+                        mouseWheel: true,              // Mouse wheel to zoom time scale
+                        pinch: true,                   // Pinch to zoom
                     },
                     autoSize: true,
                 });
