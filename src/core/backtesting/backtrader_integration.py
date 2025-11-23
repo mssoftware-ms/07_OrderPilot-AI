@@ -17,7 +17,6 @@ import pandas as pd
 try:
     import backtrader as bt
     import backtrader.analyzers as btanalyzers
-    import backtrader.feeds as btfeeds
     BACKTRADER_AVAILABLE = True
 except ImportError:
     BACKTRADER_AVAILABLE = False
@@ -606,7 +605,6 @@ class BacktestEngine:
             show: Whether to show plot
         """
         try:
-            import matplotlib.dates as mdates
             import matplotlib.pyplot as plt
 
             fig, axes = plt.subplots(3, 1, figsize=(12, 10))

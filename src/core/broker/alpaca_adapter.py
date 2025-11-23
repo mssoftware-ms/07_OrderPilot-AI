@@ -10,7 +10,6 @@ from typing import Any
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
-    GetOrdersRequest,
     MarketOrderRequest,
     LimitOrderRequest,
     StopOrderRequest,

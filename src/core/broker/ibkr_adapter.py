@@ -75,9 +75,9 @@ class IBKRWrapper(EWrapper):
             logger.error(f"IBKR error: {errorString}")
 
     def orderStatus(self, orderId: OrderId, status: str, filled: float,
-                   remaining: float, avgFillPrice: float, permId: int,
-                   parentId: int, lastFillPrice: float, clientId: int,
-                   whyHeld: str, mktCapPrice: float):
+                   _remaining: float, avgFillPrice: float, _permId: int,
+                   _parentId: int, _lastFillPrice: float, _clientId: int,
+                   _whyHeld: str, _mktCapPrice: float):
         """Order status update callback."""
         if orderId in self.order_responses:
             order_resp = self.order_responses[orderId]
@@ -114,7 +114,7 @@ class IBKRWrapper(EWrapper):
         self.historical_data[reqId].append(bar)
 
     def tickPrice(self, reqId: TickerId, tickType: int, price: float,
-                 attrib: Any):
+                 _attrib: Any):
         """Tick price callback."""
         if reqId not in self.market_data:
             self.market_data[reqId] = {}

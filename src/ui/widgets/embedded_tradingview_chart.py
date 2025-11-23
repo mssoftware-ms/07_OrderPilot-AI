@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 
 import pandas as pd
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -26,7 +26,6 @@ from PyQt6.QtGui import QAction
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebChannel import QWebChannel
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False
@@ -474,7 +473,7 @@ class EmbeddedTradingViewChart(QWidget):
             action = QAction(ind_name, self)
             action.setCheckable(True)
             action.setData({"id": ind_id, "color": color})
-            action.triggered.connect(lambda checked, a=action: self._on_indicator_toggled(a))
+            action.triggered.connect(lambda _checked, a=action: self._on_indicator_toggled(a))
             self.indicators_menu.addAction(action)
             self.indicator_actions[ind_id] = action
 
@@ -689,31 +688,252 @@ class EmbeddedTradingViewChart(QWidget):
             self.market_status_label.setText(f"Error: {str(e)[:30]}")
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
 
+    def _get_indicator_configs(self):
+        """Get indicator configuration dictionaries.
+
+        Returns:
+            Tuple of (overlay_configs, oscillator_configs)
+        """
+        overlay_configs = {
+            "SMA": (IndicatorType.SMA, {'period': 20}, "SMA(20)", None, None),
+            "EMA": (IndicatorType.EMA, {'period': 20}, "EMA(20)", None, None),
+            "BB": (IndicatorType.BB, {'period': 20, 'std': 2}, "BB(20,2)", None, None),
+        }
+
+        oscillator_configs = {
+            "RSI": (IndicatorType.RSI, {'period': 14}, "RSI(14)", 0, 100),
+            "MACD": (IndicatorType.MACD, {'fast': 12, 'slow': 26, 'signal': 9}, "MACD(12,26,9)", None, None),
+            "STOCH": (IndicatorType.STOCH, {'k_period': 14, 'd_period': 3}, "STOCH(14,3)", 0, 100),
+            "ATR": (IndicatorType.ATR, {'period': 14}, "ATR(14)", 0, None),
+            "ADX": (IndicatorType.ADX, {'period': 14}, "ADX(14)", 0, 100),
+            "CCI": (IndicatorType.CCI, {'period': 20}, "CCI(20)", -100, 100),
+            "MFI": (IndicatorType.MFI, {'period': 14}, "MFI(14)", 0, 100),
+        }
+
+        return overlay_configs, oscillator_configs
+
+    def _convert_macd_data_to_chart_format(self, result):
+        """Convert MACD indicator result to chart format.
+
+        Args:
+            result: IndicatorResult with DataFrame values
+
+        Returns:
+            Dict with 'macd', 'signal', 'histogram' keys
+        """
+        col_names = result.values.columns.tolist()
+        logger.info(f"MACD columns: {col_names}")
+
+        # Find columns (check histogram and signal first to avoid false matches)
+        macd_col = signal_col = hist_col = None
+        for col in col_names:
+            col_lower = col.lower()
+            if 'macdh' in col_lower or 'hist' in col_lower:
+                hist_col = col
+            elif 'macds' in col_lower or 'signal' in col_lower:
+                signal_col = col
+            elif 'macd' in col_lower:
+                macd_col = col
+
+        macd_series = result.values[macd_col] if macd_col else None
+        signal_series = result.values[signal_col] if signal_col else None
+        hist_series = result.values[hist_col] if hist_col else None
+
+        logger.info(f"MACD column mapping: macd={macd_col}, signal={signal_col}, hist={hist_col}")
+
+        # Convert each series to chart format
+        macd_data = [
+            {'time': int(ts.timestamp()), 'value': float(val)}
+            for ts, val in zip(self.data.index, macd_series.values if macd_series is not None else [])
+            if not pd.isna(val)
+        ]
+
+        signal_data = [
+            {'time': int(ts.timestamp()), 'value': float(val)}
+            for ts, val in zip(self.data.index, signal_series.values if signal_series is not None else [])
+            if not pd.isna(val)
+        ]
+
+        hist_data = [
+            {
+                'time': int(ts.timestamp()),
+                'value': float(val),
+                'color': '#26a69a' if float(val) >= 0 else '#ef5350'
+            }
+            for ts, val in zip(self.data.index, hist_series.values if hist_series is not None else [])
+            if not pd.isna(val)
+        ]
+
+        logger.info(f"MACD data prepared: macd={len(macd_data)} points, signal={len(signal_data)} points, histogram={len(hist_data)} points")
+
+        return {
+            'macd': macd_data,
+            'signal': signal_data,
+            'histogram': hist_data
+        }
+
+    def _convert_multi_series_data_to_chart_format(self, result, ind_id):
+        """Convert multi-series indicator result to chart format.
+
+        Args:
+            result: IndicatorResult with DataFrame values
+            ind_id: Indicator ID string
+
+        Returns:
+            List of time/value dicts
+        """
+        col_names = result.values.columns.tolist()
+
+        # Determine which column to use
+        if 'k' in col_names:
+            main_col = 'k'
+        elif any('STOCHk' in col for col in col_names):
+            main_col = [col for col in col_names if 'STOCHk' in col][0]
+        elif 'middle' in col_names:  # Bollinger Bands
+            main_col = 'middle'
+        elif any('BBM' in col for col in col_names):  # pandas_ta BB middle
+            main_col = [col for col in col_names if 'BBM' in col][0]
+        else:
+            main_col = col_names[0]  # Fallback to first column
+
+        series_data = result.values[main_col]
+        logger.info(f"Using column '{main_col}' from multi-series indicator {ind_id}")
+
+        return [
+            {'time': int(ts.timestamp()), 'value': float(val)}
+            for ts, val in zip(self.data.index, series_data.values)
+            if not pd.isna(val)
+        ]
+
+    def _convert_single_series_data_to_chart_format(self, result):
+        """Convert single-series indicator result to chart format.
+
+        Args:
+            result: IndicatorResult with Series values
+
+        Returns:
+            List of time/value dicts
+        """
+        return [
+            {'time': int(ts.timestamp()), 'value': float(val)}
+            for ts, val in zip(self.data.index, result.values.values)
+            if not pd.isna(val)
+        ]
+
+    def _create_overlay_indicator(self, display_name, color):
+        """Create overlay indicator on price chart.
+
+        Args:
+            display_name: Display name for the indicator
+            color: Color string for the indicator
+        """
+        self._execute_js(f"window.chartAPI.addIndicator('{display_name}', '{color}');")
+
+    def _create_oscillator_panel(self, ind_id, display_name, color, min_val, max_val):
+        """Create oscillator panel with indicator-specific reference lines.
+
+        Args:
+            ind_id: Indicator ID string
+            display_name: Display name for the panel
+            color: Color string for the indicator
+            min_val: Minimum value for y-axis (or None)
+            max_val: Maximum value for y-axis (or None)
+        """
+        panel_id = ind_id.lower()
+
+        if ind_id == "MACD":
+            # MACD: Create panel with histogram
+            self._execute_js(
+                f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'histogram', '#26a69a', null, null);"
+            )
+            self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'macd', 'line', '#2962FF', null);")
+            self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'signal', 'line', '#FF6D00', null);")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'solid', '0');")
+        else:
+            # Other oscillators
+            js_min = 'null' if min_val is None else str(min_val)
+            js_max = 'null' if max_val is None else str(max_val)
+            self._execute_js(
+                f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'line', '{color}', {js_min}, {js_max});"
+            )
+            self._add_oscillator_reference_lines(ind_id, panel_id)
+
+        logger.info(f"Created panel for {ind_id}")
+
+    def _add_oscillator_reference_lines(self, ind_id, panel_id):
+        """Add indicator-specific reference lines to oscillator panel.
+
+        Args:
+            ind_id: Indicator ID string
+            panel_id: Panel ID string
+        """
+        if ind_id == "RSI":
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 30, '#FF0000', 'dashed', 'Oversold');")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 70, '#00FF00', 'dashed', 'Overbought');")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 50, '#888888', 'dotted', 'Neutral');")
+        elif ind_id == "STOCH":
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 20, '#FF0000', 'dashed', 'Oversold');")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 80, '#00FF00', 'dashed', 'Overbought');")
+        elif ind_id == "CCI":
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', -100, '#FF0000', 'dashed', '-100');")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 100, '#00FF00', 'dashed', '+100');")
+            self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'dotted', '0');")
+
+    def _update_overlay_data(self, display_name, ind_data):
+        """Update overlay indicator data on price chart.
+
+        Args:
+            display_name: Display name of the indicator
+            ind_data: List of time/value dicts
+        """
+        ind_json = json.dumps(ind_data)
+        self._execute_js(f"window.chartAPI.setIndicatorData('{display_name}', {ind_json});")
+
+    def _update_oscillator_data(self, ind_id, ind_data):
+        """Update oscillator panel data.
+
+        Args:
+            ind_id: Indicator ID string
+            ind_data: Either list of time/value dicts or dict with multiple series
+        """
+        panel_id = ind_id.lower()
+
+        if isinstance(ind_data, dict) and ind_id == "MACD":
+            # MACD: Set data for all 3 series
+            macd_json = json.dumps(ind_data['macd'])
+            signal_json = json.dumps(ind_data['signal'])
+            hist_json = json.dumps(ind_data['histogram'])
+
+            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {hist_json});")
+            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'macd', {macd_json});")
+            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'signal', {signal_json});")
+        else:
+            # Regular oscillator - single series
+            ind_json = json.dumps(ind_data)
+            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {ind_json});")
+
+    def _remove_indicator_from_chart(self, ind_id, display_name, is_overlay):
+        """Remove indicator from chart.
+
+        Args:
+            ind_id: Indicator ID string
+            display_name: Display name of the indicator
+            is_overlay: True if overlay indicator, False if oscillator
+        """
+        if is_overlay:
+            self._execute_js(f"window.chartAPI.removeIndicator('{display_name}');")
+        else:
+            panel_id = ind_id.lower()
+            self._execute_js(f"window.chartAPI.removePanel('{panel_id}');")
+            logger.info(f"Removed panel for {ind_id}")
+
     def _update_indicators(self):
         """Update technical indicators on chart."""
         if self.data is None:
             return
 
         try:
-            # Categorize indicators: Overlay (on price chart) vs Oscillator (separate panel)
-            # Overlay indicators: SMA, EMA, BB (displayed on price chart)
-            # Oscillators: RSI, MACD, STOCH, ATR (displayed in separate panel below)
-
-            overlay_configs = {
-                "SMA": (IndicatorType.SMA, {'period': 20}, "SMA(20)", None, None),
-                "EMA": (IndicatorType.EMA, {'period': 20}, "EMA(20)", None, None),
-                "BB": (IndicatorType.BB, {'period': 20, 'std': 2}, "BB(20,2)", None, None),
-            }
-
-            oscillator_configs = {
-                "RSI": (IndicatorType.RSI, {'period': 14}, "RSI(14)", 0, 100),
-                "MACD": (IndicatorType.MACD, {'fast': 12, 'slow': 26, 'signal': 9}, "MACD(12,26,9)", None, None),
-                "STOCH": (IndicatorType.STOCH, {'k_period': 14, 'd_period': 3}, "STOCH(14,3)", 0, 100),
-                "ATR": (IndicatorType.ATR, {'period': 14}, "ATR(14)", 0, None),
-                "ADX": (IndicatorType.ADX, {'period': 14}, "ADX(14)", 0, 100),
-                "CCI": (IndicatorType.CCI, {'period': 20}, "CCI(20)", -100, 100),
-                "MFI": (IndicatorType.MFI, {'period': 14}, "MFI(14)", 0, 100),
-            }
+            overlay_configs, oscillator_configs = self._get_indicator_configs()
 
             # Process each indicator
             for ind_id, action in self.indicator_actions.items():
@@ -734,207 +954,39 @@ class EmbeddedTradingViewChart(QWidget):
                 # Get configuration
                 if is_overlay:
                     ind_type, params, display_name, _, _ = overlay_configs[ind_id]
-                else:  # oscillator
+                else:
                     ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
 
                 if is_checked:
                     # Calculate indicator
-                    config = IndicatorConfig(
-                        indicator_type=ind_type,
-                        params=params
-                    )
+                    config = IndicatorConfig(indicator_type=ind_type, params=params)
                     result = self.indicator_engine.calculate(self.data, config)
 
-                    # Convert to chart format
-                    # Handle both Series (single line) and DataFrame (multiple lines)
-                    is_multi_series = isinstance(result.values, pd.DataFrame) and ind_id == "MACD"
-
-                    if is_multi_series:
-                        # MACD has 3 series: MACD line, Signal line, Histogram
-                        col_names = result.values.columns.tolist()
-                        logger.info(f"MACD columns: {col_names}")
-
-                        # Find columns (check histogram and signal first to avoid false matches)
-                        macd_col = signal_col = hist_col = None
-                        for col in col_names:
-                            col_lower = col.lower()
-                            # Check histogram first (MACDh_12_26_9 or histogram)
-                            if 'macdh' in col_lower or 'hist' in col_lower:
-                                hist_col = col
-                            # Check signal (MACDs_12_26_9 or signal)
-                            elif 'macds' in col_lower or 'signal' in col_lower:
-                                signal_col = col
-                            # Check MACD line (MACD_12_26_9)
-                            elif 'macd' in col_lower:
-                                macd_col = col
-
-                        # Prepare data for each series; align strictly with price bars to avoid truncation
-                        macd_data = []
-                        signal_data = []
-                        hist_data = []
-
-                        macd_series = result.values[macd_col] if macd_col else None
-                        signal_series = result.values[signal_col] if signal_col else None
-                        hist_series = result.values[hist_col] if hist_col else None
-
-                        logger.info(f"MACD column mapping: macd={macd_col}, signal={signal_col}, hist={hist_col}")
-                        if macd_series is not None:
-                            logger.info(f"MACD series has {len(macd_series)} values, non-null: {macd_series.notna().sum()}")
-                        if signal_series is not None:
-                            logger.info(f"Signal series has {len(signal_series)} values, non-null: {signal_series.notna().sum()}")
-                        if hist_series is not None:
-                            logger.info(f"Histogram series has {len(hist_series)} values, non-null: {hist_series.notna().sum()}")
-
-                        for ts, macd_val in zip(self.data.index, macd_series.values if macd_series is not None else []):
-                            if pd.isna(macd_val):
-                                continue
-                            macd_data.append({'time': int(ts.timestamp()), 'value': float(macd_val)})
-
-                        for ts, sig_val in zip(self.data.index, signal_series.values if signal_series is not None else []):
-                            if pd.isna(sig_val):
-                                continue
-                            signal_data.append({'time': int(ts.timestamp()), 'value': float(sig_val)})
-
-                        for ts, hist_val in zip(self.data.index, hist_series.values if hist_series is not None else []):
-                            if pd.isna(hist_val):
-                                continue
-                            hv = float(hist_val)
-                            hist_data.append({
-                                'time': int(ts.timestamp()),
-                                'value': hv,
-                                'color': '#26a69a' if hv >= 0 else '#ef5350'
-                            })
-
-                        # Store all three data series
-                        ind_data = {
-                            'macd': macd_data,
-                            'signal': signal_data,
-                            'histogram': hist_data
-                        }
-
-                        logger.info(f"MACD data prepared: macd={len(macd_data)} points, signal={len(signal_data)} points, histogram={len(hist_data)} points")
-
+                    # Convert to chart format based on data type
+                    if isinstance(result.values, pd.DataFrame) and ind_id == "MACD":
+                        ind_data = self._convert_macd_data_to_chart_format(result)
                     elif isinstance(result.values, pd.DataFrame):
-                        # Other multi-series indicators (Stochastic, BB, etc.)
-                        col_names = result.values.columns.tolist()
-
-                        # Determine which column to use
-                        if 'k' in col_names:
-                            main_col = 'k'
-                        elif any('STOCHk' in col for col in col_names):
-                            main_col = [col for col in col_names if 'STOCHk' in col][0]
-                        elif 'middle' in col_names:  # Bollinger Bands
-                            main_col = 'middle'
-                        elif any('BBM' in col for col in col_names):  # pandas_ta BB middle
-                            main_col = [col for col in col_names if 'BBM' in col][0]
-                        else:
-                            main_col = col_names[0]  # Fallback to first column
-
-                        series_data = result.values[main_col]
-                        logger.info(f"Using column '{main_col}' from multi-series indicator {ind_id}")
-
-                        ind_data = [
-                            {'time': int(ts.timestamp()), 'value': float(val)}
-                            for ts, val in zip(self.data.index, series_data.values)
-                            if not pd.isna(val)
-                        ]
+                        ind_data = self._convert_multi_series_data_to_chart_format(result, ind_id)
                     else:
-                        # Single series indicator (RSI, ATR, etc.)
-                        series_data = result.values
+                        ind_data = self._convert_single_series_data_to_chart_format(result)
 
-                        ind_data = [
-                            {'time': int(ts.timestamp()), 'value': float(val)}
-                            for ts, val in zip(self.data.index, series_data.values)
-                            if not pd.isna(val)
-                        ]
-
-                    # Add/update indicator
+                    # Create indicator/panel if not exists
                     if ind_id not in self.active_indicators:
                         if is_overlay:
-                            # Add as overlay on price chart
-                            self._execute_js(f"window.chartAPI.addIndicator('{display_name}', '{color}');")
+                            self._create_overlay_indicator(display_name, color)
                         else:
-                            # Oscillator - create panel directly in chart
-                            panel_id = ind_id.lower()
-
-                            if ind_id == "MACD":
-                                # MACD: Create panel with histogram (will add lines separately)
-                                js_min = 'null'
-                                js_max = 'null'
-                                self._execute_js(
-                                    f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'histogram', '#26a69a', {js_min}, {js_max});"
-                                )
-                                # Add MACD line
-                                self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'macd', 'line', '#2962FF', null);")
-                                # Add Signal line
-                                self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'signal', 'line', '#FF6D00', null);")
-                                # Add zero line
-                                self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'solid', '0');")
-                            else:
-                                # Other oscillators (RSI, STOCH, etc.)
-                                chart_type = 'line'
-                                js_min = 'null' if min_val is None else str(min_val)
-                                js_max = 'null' if max_val is None else str(max_val)
-                                self._execute_js(
-                                    f"window.chartAPI.createPanel('{panel_id}', '{display_name}', '{chart_type}', '{color}', {js_min}, {js_max});"
-                                )
-
-                                # Add reference lines for specific indicators
-                                if ind_id == "RSI":
-                                    # RSI: 30 (oversold), 70 (overbought)
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 30, '#FF0000', 'dashed', 'Oversold');")
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 70, '#00FF00', 'dashed', 'Overbought');")
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 50, '#888888', 'dotted', 'Neutral');")
-                                elif ind_id == "STOCH":
-                                    # Stochastic: 20 (oversold), 80 (overbought)
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 20, '#FF0000', 'dashed', 'Oversold');")
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 80, '#00FF00', 'dashed', 'Overbought');")
-                                elif ind_id == "CCI":
-                                    # CCI: -100, +100
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', -100, '#FF0000', 'dashed', '-100');")
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 100, '#00FF00', 'dashed', '+100');")
-                                    self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'dotted', '0');")
-
-                            logger.info(f"Created panel for {ind_id}")
-
+                            self._create_oscillator_panel(ind_id, display_name, color, min_val, max_val)
                         self.active_indicators[ind_id] = True
 
                     # Update data
                     if is_overlay:
-                        # Set data on price chart
-                        ind_json = json.dumps(ind_data)
-                        self._execute_js(f"window.chartAPI.setIndicatorData('{display_name}', {ind_json});")
+                        self._update_overlay_data(display_name, ind_data)
                     else:
-                        # Oscillator - set data on panel
-                        panel_id = ind_id.lower()
-
-                        if is_multi_series and ind_id == "MACD":
-                            # MACD: Set data for all 3 series
-                            macd_json = json.dumps(ind_data['macd'])
-                            signal_json = json.dumps(ind_data['signal'])
-                            hist_json = json.dumps(ind_data['histogram'])
-
-                            # Set histogram data (main series)
-                            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {hist_json});")
-                            # Set MACD line data
-                            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'macd', {macd_json});")
-                            # Set Signal line data
-                            self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'signal', {signal_json});")
-                        else:
-                            # Regular oscillator - single series
-                            ind_json = json.dumps(ind_data)
-                            self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {ind_json});")
+                        self._update_oscillator_data(ind_id, ind_data)
 
                 elif ind_id in self.active_indicators:
                     # Remove indicator if unchecked
-                    if is_overlay:
-                        self._execute_js(f"window.chartAPI.removeIndicator('{display_name}');")
-                    else:
-                        # Oscillator - remove panel
-                        panel_id = ind_id.lower()
-                        self._execute_js(f"window.chartAPI.removePanel('{panel_id}');")
-                        logger.info(f"Removed panel for {ind_id}")
-
+                    self._remove_indicator_from_chart(ind_id, display_name, is_overlay)
                     del self.active_indicators[ind_id]
 
         except Exception as e:

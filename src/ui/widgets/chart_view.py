@@ -128,7 +128,7 @@ class CandlestickItem(pg.GraphicsObject):
             return self._bounds
         return pg.QtCore.QRectF(0, 0, 1, 1)
 
-    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+    def dataBounds(self, ax, _frac=1.0, _orthoRange=None):
         """Return the range of data along the specified axis.
 
         This is needed for proper AutoRange functionality.
@@ -649,6 +649,136 @@ class ChartView(QWidget):
             # Mark pending updates for tick data
             self.pending_updates = True
 
+    def _map_timeframe_string(self, timeframe_str: str):
+        """Map timeframe string to Timeframe enum.
+
+        Args:
+            timeframe_str: Timeframe string (e.g., '1T', '5T', '1D')
+
+        Returns:
+            Timeframe enum value
+        """
+        from src.core.market_data.history_provider import Timeframe
+
+        timeframe_map = {
+            "1T": Timeframe.MINUTE_1,
+            "5T": Timeframe.MINUTE_5,
+            "15T": Timeframe.MINUTE_15,
+            "30T": Timeframe.MINUTE_30,
+            "1H": Timeframe.HOUR_1,
+            "4H": Timeframe.HOUR_4,
+            "1D": Timeframe.DAY_1,
+        }
+        return timeframe_map.get(timeframe_str, Timeframe.MINUTE_1)
+
+    def _map_provider_string(self, provider_str: str | None):
+        """Map provider string to DataSource enum.
+
+        Args:
+            provider_str: Provider string (e.g., 'alpaca', 'yahoo')
+
+        Returns:
+            DataSource enum value or None
+        """
+        if not provider_str:
+            return None
+
+        from src.core.market_data.history_provider import DataSource
+
+        provider_map = {
+            "database": DataSource.DATABASE,
+            "ibkr": DataSource.IBKR,
+            "alpaca": DataSource.ALPACA,
+            "alpha_vantage": DataSource.ALPHA_VANTAGE,
+            "finnhub": DataSource.FINNHUB,
+            "yahoo": DataSource.YAHOO,
+        }
+        return provider_map.get(provider_str)
+
+    def _create_data_request(self, symbol: str, data_provider: str | None):
+        """Create data request for symbol.
+
+        Args:
+            symbol: Trading symbol
+            data_provider: Optional provider string
+
+        Returns:
+            DataRequest object
+        """
+        from datetime import datetime, timedelta
+        from src.core.market_data.history_provider import DataRequest
+
+        timeframe = self._map_timeframe_string(self.config.timeframe)
+        provider_source = self._map_provider_string(data_provider)
+
+        return DataRequest(
+            symbol=symbol,
+            start_date=datetime.now() - timedelta(days=90),
+            end_date=datetime.now(),
+            timeframe=timeframe,
+            source=provider_source
+        )
+
+    def _update_market_status_ui(self, bars: list, market_status: str):
+        """Update market status UI based on data age.
+
+        Args:
+            bars: List of market bars
+            market_status: Status message string
+
+        Returns:
+            Updated market_status string
+        """
+        from datetime import datetime
+
+        latest_bar_date = bars[-1].timestamp
+        days_old = (datetime.now() - latest_bar_date).days
+
+        if days_old >= 1:
+            market_status = f" ⚠ Market Closed - Last data: {latest_bar_date.strftime('%Y-%m-%d %H:%M')}"
+            logger.info(f"Market appears closed. Showing last available data from {latest_bar_date}")
+
+            if hasattr(self, 'market_status_label'):
+                self.market_status_label.setText(f"⚠ MARKET CLOSED - Last: {latest_bar_date.strftime('%Y-%m-%d')}")
+                self.market_status_label.setStyleSheet("color: #FFA500; font-weight: bold; padding: 5px; background-color: #332200;")
+        else:
+            if hasattr(self, 'market_status_label'):
+                self.market_status_label.setText("✓ Market: Live")
+                self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
+
+        return market_status
+
+    def _convert_bars_to_dataframe(self, bars: list):
+        """Convert market bars to pandas DataFrame.
+
+        Args:
+            bars: List of market bars
+
+        Returns:
+            DataFrame with OHLCV data
+        """
+        data_dict = {
+            'timestamp': [bar.timestamp for bar in bars],
+            'open': [float(bar.open) for bar in bars],
+            'high': [float(bar.high) for bar in bars],
+            'low': [float(bar.low) for bar in bars],
+            'close': [float(bar.close) for bar in bars],
+            'volume': [bar.volume for bar in bars]
+        }
+
+        df = pd.DataFrame(data_dict)
+        df.set_index('timestamp', inplace=True)
+        return df
+
+    def _set_chart_title(self, text: str):
+        """Set chart widget title if available.
+
+        Args:
+            text: Title text
+        """
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
+            self.chart_widget.setTitle(text)
+
     async def load_symbol(self, symbol: str, data_provider: str | None = None):
         """Load symbol data and display chart.
 
@@ -659,8 +789,7 @@ class ChartView(QWidget):
         try:
             if not self.history_manager:
                 logger.warning("No history manager available. Cannot load symbol data.")
-                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                    self.chart_widget.setTitle(f"{symbol} - No data source available")
+                self._set_chart_title(f"{symbol} - No data source available")
                 return
 
             # Update UI
@@ -668,116 +797,46 @@ class ChartView(QWidget):
             self.current_symbol = symbol
             self.current_data_provider = data_provider
 
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                self.chart_widget.setTitle(f"Loading {symbol}...")
-
+            self._set_chart_title(f"Loading {symbol}...")
             logger.info(f"Loading {symbol} from provider: {data_provider or 'auto'}")
 
-            # Import required classes
-            from datetime import datetime, timedelta
-            from src.core.market_data.history_provider import DataRequest, DataSource, Timeframe
+            # Create data request
+            request = self._create_data_request(symbol, data_provider)
 
-            # Map timeframe string to enum
-            timeframe_map = {
-                "1T": Timeframe.MINUTE_1,
-                "5T": Timeframe.MINUTE_5,
-                "15T": Timeframe.MINUTE_15,
-                "30T": Timeframe.MINUTE_30,
-                "1H": Timeframe.HOUR_1,
-                "4H": Timeframe.HOUR_4,
-                "1D": Timeframe.DAY_1,
-            }
-            timeframe = timeframe_map.get(self.config.timeframe, Timeframe.MINUTE_1)
-
-            # Map provider string to DataSource enum
-            provider_source = None
-            if data_provider:
-                provider_map = {
-                    "database": DataSource.DATABASE,
-                    "ibkr": DataSource.IBKR,
-                    "alpaca": DataSource.ALPACA,
-                    "alpha_vantage": DataSource.ALPHA_VANTAGE,
-                    "finnhub": DataSource.FINNHUB,
-                    "yahoo": DataSource.YAHOO,
-                }
-                provider_source = provider_map.get(data_provider)
-
-            # Create data request - always fetch last 90 days to ensure we have data even on weekends
-            request = DataRequest(
-                symbol=symbol,
-                start_date=datetime.now() - timedelta(days=90),  # Last 90 days to ensure data on weekends
-                end_date=datetime.now(),
-                timeframe=timeframe,
-                source=provider_source
-            )
-
-            # Fetch data with progress indicator
-            logger.info(f"Fetching data for {symbol} from {request.start_date} to {request.end_date}, timeframe={timeframe}, provider={data_provider or 'auto'}")
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                self.chart_widget.setTitle(f"Loading {symbol}... Please wait")
+            # Fetch data
+            logger.info(f"Fetching data for {symbol} from {request.start_date} to {request.end_date}, timeframe={request.timeframe}, provider={data_provider or 'auto'}")
+            self._set_chart_title(f"Loading {symbol}... Please wait")
             bars, source_used = await self.history_manager.fetch_data(request)
 
             if not bars:
                 logger.warning(f"No data available for {symbol} from source {source_used}")
-                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                    self.chart_widget.setTitle(f"{symbol} - No data available")
+                self._set_chart_title(f"{symbol} - No data available")
                 return
 
-            # Check if we have recent data or only historical data (market closed)
-            latest_bar_date = bars[-1].timestamp
-            today = datetime.now().date()
-            days_old = (datetime.now() - latest_bar_date).days
-
-            market_status = ""
-            if days_old >= 1:
-                market_status = f" ⚠ Market Closed - Last data: {latest_bar_date.strftime('%Y-%m-%d %H:%M')}"
-                logger.info(f"Market appears closed. Showing last available data from {latest_bar_date}")
-
-                # Update market status label
-                if hasattr(self, 'market_status_label'):
-                    self.market_status_label.setText(f"⚠ MARKET CLOSED - Last: {latest_bar_date.strftime('%Y-%m-%d')}")
-                    self.market_status_label.setStyleSheet("color: #FFA500; font-weight: bold; padding: 5px; background-color: #332200;")
-            else:
-                # Market is open/live data
-                if hasattr(self, 'market_status_label'):
-                    self.market_status_label.setText("✓ Market: Live")
-                    self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
-
+            # Check market status
+            market_status = self._update_market_status_ui(bars, "")
             logger.info(f"Loaded {len(bars)} bars for {symbol} from {source_used}{market_status}")
 
-            # Convert to DataFrame with progress indicator
+            # Convert to DataFrame
             if len(bars) > 5000:
-                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                    self.chart_widget.setTitle(f"Processing {len(bars)} bars...")
+                self._set_chart_title(f"Processing {len(bars)} bars...")
 
-            data_dict = {
-                'timestamp': [bar.timestamp for bar in bars],
-                'open': [float(bar.open) for bar in bars],
-                'high': [float(bar.high) for bar in bars],
-                'low': [float(bar.low) for bar in bars],
-                'close': [float(bar.close) for bar in bars],
-                'volume': [bar.volume for bar in bars]
-            }
+            df = self._convert_bars_to_dataframe(bars)
 
-            df = pd.DataFrame(data_dict)
-            df.set_index('timestamp', inplace=True)
-
-            # Load data into chart (with performance limit)
+            # Load data into chart
             total_bars = len(bars)
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                self.chart_widget.setTitle(f"Rendering chart...")
+            self._set_chart_title(f"Rendering chart...")
             self.load_data(df, max_bars=2000)
 
-            # Update title with source info and market status
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                displayed_bars = len(self.data) if self.data is not None else 0
-                if total_bars > displayed_bars:
-                    title = f"{symbol} ({source_used.upper()}) - Showing {displayed_bars}/{total_bars} bars"
-                else:
-                    title = f"{symbol} ({source_used.upper()}) - {total_bars} bars"
-                if market_status:
-                    title += market_status
-                self.chart_widget.setTitle(title)
+            # Update title with source info
+            displayed_bars = len(self.data) if self.data is not None else 0
+            if total_bars > displayed_bars:
+                title = f"{symbol} ({source_used.upper()}) - Showing {displayed_bars}/{total_bars} bars"
+            else:
+                title = f"{symbol} ({source_used.upper()}) - {total_bars} bars"
+            if market_status:
+                title += market_status
+            self._set_chart_title(title)
 
             # Check market hours and control real-time updates
             self._control_updates_based_on_market()
@@ -786,8 +845,7 @@ class ChartView(QWidget):
 
         except Exception as e:
             logger.error(f"Error loading symbol {symbol}: {e}", exc_info=True)
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'setTitle'):
-                self.chart_widget.setTitle(f"{symbol} - Error: {str(e)}")
+            self._set_chart_title(f"{symbol} - Error: {str(e)}")
 
     async def refresh_data(self):
         """Refresh current symbol data."""

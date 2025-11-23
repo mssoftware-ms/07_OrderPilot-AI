@@ -23,7 +23,6 @@ from PyQt6.QtWidgets import (
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebChannel import QWebChannel
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False

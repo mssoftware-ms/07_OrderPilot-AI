@@ -55,7 +55,6 @@ from .chart_window_manager import ChartWindowManager
 from .icons import get_icon, set_icon_theme
 from .themes import ThemeManager
 from .widgets.alerts import AlertsWidget
-from .widgets.chart_view import ChartView
 from .widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
 from .widgets.dashboard import DashboardWidget
 from .widgets.orders import OrdersWidget
