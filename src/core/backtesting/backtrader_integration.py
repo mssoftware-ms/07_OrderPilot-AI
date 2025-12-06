@@ -26,7 +26,12 @@ except ImportError:
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.indicators.engine import IndicatorEngine
 from src.core.market_data.history_provider import DataRequest, HistoryManager, Timeframe
+from src.core.models.backtest_models import BacktestResult
+from src.core.strategy.compiler import StrategyCompiler
+from src.core.strategy.definition import StrategyDefinition
 from src.core.strategy.engine import Signal, SignalType, StrategyConfig
+
+from .result_converter import backtrader_to_backtest_result
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +58,12 @@ class BacktestConfig:
 
 
 @dataclass
-class BacktestResult:
-    """Results from backtesting."""
+class BacktestResultLegacy:
+    """Legacy results from backtesting (deprecated, use BacktestResult from models).
+
+    Kept for backward compatibility only. New code should use
+    src.core.models.backtest_models.BacktestResult instead.
+    """
     total_return: float
     annual_return: float
     sharpe_ratio: float
@@ -287,12 +296,12 @@ class BacktestEngine:
         """Initialize backtest engine.
 
         Args:
-            history_manager: Historical data manager
+            history_manager: Historical data manager (optional, only needed if fetching from data sources)
         """
         if not BACKTRADER_AVAILABLE:
             raise ImportError("Backtrader not installed. Run: pip install backtrader")
 
-        self.history_manager = history_manager or HistoryManager()
+        self.history_manager = history_manager  # Can be None if using custom data feeds
         self.indicator_engine = IndicatorEngine()
 
         logger.info("Backtest engine initialized")
@@ -355,12 +364,13 @@ class BacktestEngine:
 
         final_value = cerebro.broker.getvalue()
 
-        # Process results
+        # Process results with new comprehensive model
         return self._process_results(
-            results[0],
-            initial_value,
-            final_value,
-            config
+            strategy=results[0],
+            initial_value=initial_value,
+            final_value=final_value,
+            config=config,
+            cerebro=cerebro
         )
 
     async def _get_data_feed(
@@ -427,100 +437,254 @@ class BacktestEngine:
         strategy,
         initial_value: float,
         final_value: float,
-        config: BacktestConfig
+        config: BacktestConfig,
+        cerebro=None
     ) -> BacktestResult:
-        """Process backtest results.
+        """Process backtest results using comprehensive BacktestResult model.
 
         Args:
             strategy: Backtrader strategy instance
             initial_value: Initial portfolio value
             final_value: Final portfolio value
             config: Backtest configuration
+            cerebro: Optional Backtrader Cerebro instance
 
         Returns:
-            Processed results
+            Comprehensive BacktestResult
         """
-        # Get analyzers
-        sharpe = strategy.analyzers.sharpe.get_analysis()
-        returns = strategy.analyzers.returns.get_analysis()
-        drawdown = strategy.analyzers.drawdown.get_analysis()
-        trades_analysis = strategy.analyzers.trades.get_analysis()
-        timereturn = strategy.analyzers.timereturn.get_analysis()
+        # Determine symbol and timeframe
+        symbol = config.symbols[0] if config.symbols else "UNKNOWN"
+        timeframe_str = config.timeframe.value if config.timeframe else "1min"
 
-        # Calculate metrics
-        total_return = (final_value - initial_value) / initial_value
+        # Get strategy name and params
+        strategy_name = None
+        strategy_params = {}
+        if config.strategies:
+            strategy_config = config.strategies[0]
+            strategy_name = strategy_config.name
+            strategy_params = strategy_config.parameters
 
-        # Annualized return
-        days = (config.end_date - config.start_date).days
-        years = days / 365.25
-        annual_return = (final_value / initial_value) ** (1/years) - 1 if years > 0 else 0
+        # Use converter to create comprehensive result
+        try:
+            result = backtrader_to_backtest_result(
+                strategy=strategy,
+                cerebro=cerebro,
+                initial_value=initial_value,
+                final_value=final_value,
+                symbol=symbol,
+                timeframe=timeframe_str,
+                start_date=config.start_date,
+                end_date=config.end_date,
+                strategy_name=strategy_name,
+                strategy_params=strategy_params
+            )
+        except Exception as e:
+            logger.error(f"Error converting backtest results: {e}")
+            # Fallback to basic result if conversion fails
+            from src.core.models.backtest_models import BacktestMetrics, EquityPoint
 
-        # Trade statistics
-        total_trades = trades_analysis.get('total', {}).get('total', 0)
-        won_trades = trades_analysis.get('won', {}).get('total', 0)
-        lost_trades = trades_analysis.get('lost', {}).get('total', 0)
-
-        win_rate = won_trades / total_trades if total_trades > 0 else 0
-
-        # Profit factor
-        gross_profit = trades_analysis.get('won', {}).get('pnl', {}).get('total', 0)
-        gross_loss = abs(trades_analysis.get('lost', {}).get('pnl', {}).get('total', 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
-
-        # Average trade
-        avg_trade_return = returns.get('ravg', 0)
-
-        # Best/worst trades
-        best_trade = trades_analysis.get('won', {}).get('pnl', {}).get('max', 0)
-        worst_trade = trades_analysis.get('lost', {}).get('pnl', {}).get('max', 0)
-
-        # Build equity curve
-        equity_curve = pd.DataFrame(list(timereturn.items()), columns=['date', 'return'])
-        equity_curve['cumulative'] = (1 + equity_curve['return']).cumprod()
-        equity_curve.set_index('date', inplace=True)
-
-        # Get trades from strategy
-        trades = strategy.trades if hasattr(strategy, 'trades') else []
-
-        result = BacktestResult(
-            total_return=total_return,
-            annual_return=annual_return,
-            sharpe_ratio=sharpe.get('sharperatio', 0),
-            max_drawdown=drawdown.get('max', {}).get('drawdown', 0),
-            win_rate=win_rate,
-            profit_factor=profit_factor,
-            total_trades=total_trades,
-            winning_trades=won_trades,
-            losing_trades=lost_trades,
-            avg_trade_return=avg_trade_return,
-            best_trade=best_trade,
-            worst_trade=worst_trade,
-            final_value=Decimal(str(final_value)),
-            trades=trades,
-            equity_curve=equity_curve,
-            metadata={
-                'initial_value': initial_value,
-                'days': days,
-                'source': 'backtrader'
-            }
-        )
+            result = BacktestResult(
+                symbol=symbol,
+                timeframe=timeframe_str,
+                mode="backtest",
+                start=config.start_date,
+                end=config.end_date,
+                initial_capital=initial_value,
+                final_capital=final_value,
+                bars=[],
+                trades=[],
+                equity_curve=[
+                    EquityPoint(time=config.start_date, equity=initial_value),
+                    EquityPoint(time=config.end_date, equity=final_value)
+                ],
+                metrics=BacktestMetrics(),
+                strategy_name=strategy_name or "Unknown",
+                strategy_params=strategy_params,
+                notes=f"Error during conversion: {e}"
+            )
 
         # Emit event
         event_bus.emit(Event(
             type=EventType.BACKTEST_COMPLETE,
             timestamp=datetime.utcnow(),
             data={
-                'total_return': total_return,
-                'sharpe_ratio': result.sharpe_ratio,
-                'max_drawdown': result.max_drawdown,
-                'total_trades': total_trades
+                'symbol': result.symbol,
+                'total_return_pct': result.metrics.total_return_pct,
+                'sharpe_ratio': result.metrics.sharpe_ratio,
+                'max_drawdown_pct': result.metrics.max_drawdown_pct,
+                'total_trades': result.metrics.total_trades,
+                'win_rate': result.metrics.win_rate
             }
         ))
 
-        logger.info(f"Backtest complete: Return={total_return:.2%}, "
-                   f"Sharpe={result.sharpe_ratio:.2f}, "
-                   f"MaxDD={result.max_drawdown:.2%}, "
-                   f"Trades={total_trades}")
+        logger.info(
+            f"Backtest complete for {symbol}: "
+            f"Return={result.metrics.total_return_pct:.2f}%, "
+            f"Sharpe={result.metrics.sharpe_ratio or 0:.2f}, "
+            f"MaxDD={result.metrics.max_drawdown_pct:.2f}%, "
+            f"Trades={result.metrics.total_trades}, "
+            f"WinRate={result.metrics.win_rate:.2%}"
+        )
+
+        return result
+
+    async def run_backtest_with_definition(
+        self,
+        strategy_def: StrategyDefinition,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        initial_cash: float = 10000.0,
+        commission: float = 0.001,
+        timeframe: Timeframe = Timeframe.DAY_1,
+        data_feed: bt.feeds.DataBase | None = None
+    ) -> BacktestResult:
+        """Run backtest with StrategyDefinition (YAML/JSON strategy).
+
+        This method compiles a declarative strategy definition into a Backtrader
+        strategy and runs a backtest with it.
+
+        Args:
+            strategy_def: Strategy definition (loaded from YAML/JSON)
+            symbol: Trading symbol
+            start_date: Backtest start date
+            end_date: Backtest end date
+            initial_cash: Starting capital
+            commission: Commission rate (default 0.1%)
+            timeframe: Data timeframe
+            data_feed: Optional custom data feed (if None, fetches from history manager)
+
+        Returns:
+            Comprehensive backtest results
+
+        Example:
+            >>> from src.core.strategy.definition import StrategyDefinition
+            >>> strategy_def = StrategyDefinition.from_yaml(yaml_content)
+            >>> result = await engine.run_backtest_with_definition(
+            ...     strategy_def=strategy_def,
+            ...     symbol="AAPL",
+            ...     start_date=datetime(2023, 1, 1),
+            ...     end_date=datetime(2023, 12, 31)
+            ... )
+        """
+        logger.info(
+            f"Running backtest with strategy: {strategy_def.name} v{strategy_def.version}"
+        )
+
+        # Compile strategy
+        compiler = StrategyCompiler()
+        strategy_class = compiler.compile(strategy_def)
+
+        # Create Cerebro engine
+        cerebro = bt.Cerebro()
+
+        # Set initial cash
+        cerebro.broker.setcash(initial_cash)
+
+        # Set commission
+        cerebro.broker.setcommission(commission=commission)
+
+        # Add data feed
+        if data_feed is not None:
+            cerebro.adddata(data_feed, name=symbol)
+        else:
+            # Fetch data from history manager
+            if not self.history_manager:
+                raise ValueError("HistoryManager required when data_feed is not provided")
+            data = await self._get_data_feed(symbol, start_date, end_date, timeframe)
+            if not data:
+                raise ValueError(f"No data available for {symbol}")
+            cerebro.adddata(data, name=symbol)
+
+        # Add compiled strategy
+        cerebro.addstrategy(strategy_class)
+
+        # Add analyzers
+        cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe')
+        cerebro.addanalyzer(btanalyzers.Returns, _name='returns')
+        cerebro.addanalyzer(btanalyzers.DrawDown, _name='drawdown')
+        cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
+        cerebro.addanalyzer(btanalyzers.TimeReturn, _name='timereturn')
+
+        # Run backtest
+        logger.info(f"Starting backtest from {start_date} to {end_date}")
+        initial_value = cerebro.broker.getvalue()
+
+        results = cerebro.run()
+        strategy_instance = results[0]
+
+        final_value = cerebro.broker.getvalue()
+
+        # Process results
+        timeframe_str = timeframe.value if timeframe else "1d"
+
+        try:
+            result = backtrader_to_backtest_result(
+                strategy=strategy_instance,
+                cerebro=cerebro,
+                initial_value=initial_value,
+                final_value=final_value,
+                symbol=symbol,
+                timeframe=timeframe_str,
+                start_date=start_date,
+                end_date=end_date,
+                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
+                strategy_params={
+                    "indicators": [
+                        {"type": ind.type, "alias": ind.alias, "params": ind.params}
+                        for ind in strategy_def.indicators
+                    ],
+                    "risk_management": strategy_def.risk_management.model_dump(exclude_none=True)
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error converting backtest results: {e}")
+            # Fallback to basic result
+            from src.core.models.backtest_models import BacktestMetrics, EquityPoint
+
+            result = BacktestResult(
+                symbol=symbol,
+                timeframe=timeframe_str,
+                mode="backtest",
+                start=start_date,
+                end=end_date,
+                initial_capital=initial_value,
+                final_capital=final_value,
+                bars=[],
+                trades=[],
+                equity_curve=[
+                    EquityPoint(time=start_date, equity=initial_value),
+                    EquityPoint(time=end_date, equity=final_value)
+                ],
+                metrics=BacktestMetrics(),
+                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
+                strategy_params={},
+                notes=f"Error during conversion: {e}"
+            )
+
+        # Emit event
+        event_bus.emit(Event(
+            type=EventType.BACKTEST_COMPLETE,
+            timestamp=datetime.utcnow(),
+            data={
+                'symbol': result.symbol,
+                'strategy': strategy_def.name,
+                'total_return_pct': result.metrics.total_return_pct,
+                'sharpe_ratio': result.metrics.sharpe_ratio,
+                'max_drawdown_pct': result.metrics.max_drawdown_pct,
+                'total_trades': result.metrics.total_trades,
+                'win_rate': result.metrics.win_rate
+            }
+        ))
+
+        logger.info(
+            f"Backtest complete for {symbol} with {strategy_def.name}: "
+            f"Return={result.metrics.total_return_pct:.2f}%, "
+            f"Sharpe={result.metrics.sharpe_ratio or 0:.2f}, "
+            f"MaxDD={result.metrics.max_drawdown_pct:.2f}%, "
+            f"Trades={result.metrics.total_trades}, "
+            f"WinRate={result.metrics.win_rate:.2%}"
+        )
 
         return result
 
@@ -601,7 +765,7 @@ class BacktestEngine:
         """Plot backtest results.
 
         Args:
-            result: Backtest results
+            result: Backtest results (new comprehensive model)
             show: Whether to show plot
         """
         try:
@@ -609,45 +773,58 @@ class BacktestEngine:
 
             fig, axes = plt.subplots(3, 1, figsize=(12, 10))
 
-            # Equity curve
-            ax1 = axes[0]
-            ax1.plot(result.equity_curve.index,
-                    result.equity_curve['cumulative'],
-                    label='Strategy')
-            ax1.set_title('Equity Curve')
-            ax1.set_xlabel('Date')
-            ax1.set_ylabel('Cumulative Return')
-            ax1.legend()
-            ax1.grid(True, alpha=0.3)
+            # Convert equity curve to pandas for plotting
+            if result.equity_curve:
+                equity_df = pd.DataFrame([
+                    {'date': point.time, 'equity': point.equity}
+                    for point in result.equity_curve
+                ])
+                equity_df.set_index('date', inplace=True)
+                equity_df['cumulative'] = equity_df['equity'] / result.initial_capital
 
-            # Drawdown
-            ax2 = axes[1]
-            cumulative = result.equity_curve['cumulative']
-            running_max = cumulative.expanding().max()
-            drawdown = (cumulative - running_max) / running_max
-            ax2.fill_between(drawdown.index, drawdown, 0, color='red', alpha=0.3)
-            ax2.set_title('Drawdown')
-            ax2.set_xlabel('Date')
-            ax2.set_ylabel('Drawdown %')
-            ax2.grid(True, alpha=0.3)
+                # Equity curve
+                ax1 = axes[0]
+                ax1.plot(equity_df.index, equity_df['cumulative'], label='Strategy')
+                ax1.set_title('Equity Curve')
+                ax1.set_xlabel('Date')
+                ax1.set_ylabel('Cumulative Return')
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
 
-            # Returns distribution
-            ax3 = axes[2]
-            returns = result.equity_curve['return'].dropna()
-            ax3.hist(returns, bins=50, alpha=0.7, color='blue')
-            ax3.set_title('Returns Distribution')
-            ax3.set_xlabel('Daily Return')
-            ax3.set_ylabel('Frequency')
-            ax3.grid(True, alpha=0.3)
+                # Drawdown
+                ax2 = axes[1]
+                cumulative = equity_df['cumulative']
+                running_max = cumulative.expanding().max()
+                drawdown = (cumulative - running_max) / running_max
+                ax2.fill_between(drawdown.index, drawdown, 0, color='red', alpha=0.3)
+                ax2.set_title('Drawdown')
+                ax2.set_xlabel('Date')
+                ax2.set_ylabel('Drawdown %')
+                ax2.grid(True, alpha=0.3)
+
+                # Returns distribution
+                ax3 = axes[2]
+                returns = equity_df['cumulative'].pct_change().dropna()
+                ax3.hist(returns, bins=50, alpha=0.7, color='blue')
+                ax3.set_title('Returns Distribution')
+                ax3.set_xlabel('Daily Return')
+                ax3.set_ylabel('Frequency')
+                ax3.grid(True, alpha=0.3)
+            else:
+                # No equity curve available
+                for ax in axes:
+                    ax.text(0.5, 0.5, 'No equity data available',
+                           ha='center', va='center', transform=ax.transAxes)
 
             # Add statistics text
+            m = result.metrics
             stats_text = (
-                f"Total Return: {result.total_return:.2%}\n"
-                f"Annual Return: {result.annual_return:.2%}\n"
-                f"Sharpe Ratio: {result.sharpe_ratio:.2f}\n"
-                f"Max Drawdown: {result.max_drawdown:.2%}\n"
-                f"Win Rate: {result.win_rate:.2%}\n"
-                f"Total Trades: {result.total_trades}"
+                f"Total Return: {m.total_return_pct:.2f}%\n"
+                f"Annual Return: {m.annual_return_pct or 0:.2f}%\n"
+                f"Sharpe Ratio: {m.sharpe_ratio or 0:.2f}\n"
+                f"Max Drawdown: {m.max_drawdown_pct:.2f}%\n"
+                f"Win Rate: {m.win_rate:.2%}\n"
+                f"Total Trades: {m.total_trades}"
             )
 
             fig.text(0.15, 0.02, stats_text, fontsize=10,

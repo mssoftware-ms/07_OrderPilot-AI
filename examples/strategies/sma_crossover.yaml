@@ -1,0 +1,63 @@
+# SMA Crossover Strategy
+# Classic dual moving average crossover strategy
+# Entry: Fast SMA crosses above slow SMA
+# Exit: Fast SMA crosses below slow SMA
+
+name: SMA Crossover Strategy
+version: 1.0.0
+description: |
+  Classic dual moving average crossover strategy.
+  Enters long when fast SMA (20) crosses above slow SMA (50).
+  Exits when fast SMA crosses below slow SMA.
+
+  Best suited for trending markets.
+
+# Technical Indicators
+indicators:
+  - type: SMA
+    params:
+      period: 20
+    alias: sma_fast
+    source: close
+    plot: true
+
+  - type: SMA
+    params:
+      period: 50
+    alias: sma_slow
+    source: close
+    plot: true
+
+# Entry/Exit Logic
+entry_long:
+  type: condition
+  left: sma_fast
+  operator: crosses_above
+  right: sma_slow
+  description: Fast SMA crosses above slow SMA (bullish signal)
+
+exit_long:
+  type: condition
+  left: sma_fast
+  operator: crosses_below
+  right: sma_slow
+  description: Fast SMA crosses below slow SMA (exit signal)
+
+# Risk Management
+risk_management:
+  stop_loss_pct: 2.0
+  take_profit_pct: 5.0
+  max_risk_per_trade_pct: 1.0
+  max_position_size_pct: 100.0
+
+# Metadata
+meta:
+  author: OrderPilot-AI
+  category: Trend Following
+  timeframe: 1D
+  asset_class: Stocks
+  tags:
+    - moving_average
+    - crossover
+    - trend_following
+    - beginner_friendly

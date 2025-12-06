@@ -1,0 +1,122 @@
+# Live Trading Mode Configuration
+# ⚠️ REAL MONEY - USE WITH EXTREME CAUTION ⚠️
+
+profile_name: live
+description: "Live trading profile - REAL MONEY - Maximum safety settings"
+environment: production
+trading_mode: live
+
+broker:
+  broker_type: alpaca
+  paper_trading: false  # ⚠️ REAL TRADING ⚠️
+  auto_reconnect: true
+  reconnect_interval: 10
+  account_id: null  # Load from secrets
+
+database:
+  engine: sqlite
+  path: ./data/live.db
+  echo: false
+  pool_size: 10
+  max_overflow: 20
+
+trading:
+  max_position_size: "5000"  # Conservative limit
+  max_portfolio_risk: 0.01  # 1% max risk (conservative)
+  max_daily_loss: "250"  # Strict daily loss limit
+  max_open_positions: 5  # Limited positions
+  default_stop_loss_pct: 0.015  # 1.5% stop loss
+  default_take_profit_pct: 0.03  # 3% take profit
+  allow_short_selling: false  # No shorting in live
+  use_margin: false  # No margin trading
+  commission_model: fixed
+  commission_value: 1.0  # Real commission
+  slippage_model: fixed
+  slippage_value: 0.002  # Conservative slippage estimate
+
+execution:
+  execution_algo: market
+  smart_routing: true
+  allow_partial_fills: true
+  cancel_on_disconnect: true
+  flatten_on_disconnect: false  # Don't auto-flatten
+  retry_failed_orders: true
+  max_retry_attempts: 1  # Limited retries in live
+  order_timeout_seconds: 60
+  use_native_stops: true
+  manual_approval_default: true  # ⚠️ REQUIRED - Manual approval for all orders
+  emergency_stop_active: true  # ⚠️ REQUIRED - Emergency stop
+  kill_switch_active: true  # Additional safety
+
+ai:
+  enabled: true
+  model: gpt-4-turbo-preview
+  temperature: 0.1  # More conservative/deterministic
+  max_tokens: 4000
+  timeouts:
+    read_ms: 12000  # Shorter timeout for live
+    connect_ms: 5000
+  rate_limits:
+    rps: 1  # Rate limit AI calls
+    burst: 2
+  cost_limit_monthly: 50.0  # Conservative budget
+  cost_limit_daily: 10.0
+  cache_responses: true
+  log_prompts: true  # Log for audit trail
+
+alerts:
+  email_enabled: true  # Email alerts recommended
+  sound_enabled: true
+  popup_enabled: true
+  alert_on_order_fill: true
+  alert_on_stop_loss: true
+  alert_on_target_hit: true
+  alert_on_error: true
+  alert_on_disconnect: true
+
+monitoring:
+  track_metrics: true
+  metrics_interval: 30  # More frequent monitoring
+  export_metrics: true
+  export_format: json
+  track_latency: true
+  track_memory: true
+  track_cpu: true
+  alert_on_high_latency: true
+  latency_threshold_ms: 50  # Stricter latency threshold
+  memory_threshold_mb: 1000
+
+market_data:
+  alpaca_enabled: true
+  alpha_vantage_enabled: true
+  prefer_live_broker: true
+
+ui:
+  theme: dark
+  language: en
+  chart_style: candlestick
+  default_timeframe: 5m
+  show_volume: true
+  show_indicators: true
+  confirm_orders: true  # ⚠️ REQUIRED
+  confirm_cancel: true  # Also confirm cancellations
+  show_pnl_percentage: true
+  timezone: Europe/Berlin
+
+features:
+  paper_trading: false
+  live_trading: true
+  backtesting: false  # No backtest in live mode
+  optimization: false  # No optimization in live mode
+  ai_analysis: true
+  advanced_charts: true
+  options_trading: false
+  crypto_trading: false
+  news_sentiment: true
+
+# Risk management overrides for live trading
+risk_controls:
+  max_risk_pct: 0.5  # Maximum 0.5% risk per trade
+  day_trade_limit: 3  # Maximum 3 day trades
+  require_stop_loss: true  # All orders must have stop loss
+  max_leverage: 1.0  # No leverage

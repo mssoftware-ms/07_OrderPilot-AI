@@ -44,9 +44,22 @@ class EventType(Enum):
     ORDER_CREATED = "order_created"
     ORDER_SUBMITTED = "order_submitted"
     ORDER_FILLED = "order_filled"
+    ORDER_PARTIAL_FILL = "order_partial_fill"
+    ORDER_MODIFIED = "order_modified"
     ORDER_CANCELLED = "order_cancelled"
     ORDER_REJECTED = "order_rejected"
     ORDER_APPROVAL_REQUEST = "order_approval_request"
+
+    # Position Events
+    POSITION_OPENED = "position_opened"
+    POSITION_CLOSED = "position_closed"
+    POSITION_MODIFIED = "position_modified"
+
+    # Execution Events (for chart markers)
+    TRADE_ENTRY = "trade_entry"  # Entry point for trade
+    TRADE_EXIT = "trade_exit"    # Exit point for trade
+    STOP_LOSS_HIT = "stop_loss_hit"
+    TAKE_PROFIT_HIT = "take_profit_hit"
 
     # Strategy Events
     STRATEGY_SIGNAL = "strategy_signal"
@@ -77,6 +90,56 @@ class Event:
     data: dict[str, Any]
     source: str | None = None
     metadata: dict[str, Any] | None = None
+
+
+@dataclass
+class OrderEvent(Event):
+    """Order-specific event with chart-relevant information."""
+    symbol: str | None = None
+    order_id: str | None = None
+    order_type: str | None = None  # market, limit, stop, etc.
+    side: str | None = None  # buy, sell, long, short
+    quantity: float | None = None
+    price: float | None = None
+    filled_quantity: float | None = None
+    avg_fill_price: float | None = None
+    status: str | None = None  # pending, submitted, filled, cancelled, rejected
+
+    def __post_init__(self):
+        """Ensure data dict contains chart-relevant info."""
+        if self.data is None:
+            self.data = {}
+        # Sync fields to data dict for compatibility
+        for field in ['symbol', 'order_id', 'order_type', 'side', 'quantity',
+                      'price', 'filled_quantity', 'avg_fill_price', 'status']:
+            value = getattr(self, field, None)
+            if value is not None:
+                self.data[field] = value
+
+
+@dataclass
+class ExecutionEvent(Event):
+    """Execution event for chart markers (entry/exit points)."""
+    symbol: str | None = None
+    trade_id: str | None = None
+    action: str | None = None  # entry, exit, stop_loss, take_profit
+    side: str | None = None  # long, short
+    quantity: float | None = None
+    price: float | None = None
+    pnl: float | None = None  # For exits
+    pnl_pct: float | None = None  # For exits
+    reason: str | None = None  # exit_signal, stop_loss, take_profit, etc.
+
+    def __post_init__(self):
+        """Ensure data dict contains chart-relevant info."""
+        if self.data is None:
+            self.data = {}
+        # Sync fields to data dict
+        for field in ['symbol', 'trade_id', 'action', 'side', 'quantity',
+                      'price', 'pnl', 'pnl_pct', 'reason']:
+            value = getattr(self, field, None)
+            if value is not None:
+                self.data[field] = value
 
 
 class EventBus:

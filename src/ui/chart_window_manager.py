@@ -144,3 +144,27 @@ class ChartWindowManager:
         """
         symbol = symbol.upper()
         return symbol in self.windows
+
+    def get_active_symbol(self) -> Optional[str]:
+        """Get the symbol of the currently focused/active chart window.
+
+        Returns:
+            Symbol string if an active chart exists, None otherwise
+        """
+        # Check all windows for the one that is currently active
+        for symbol, window in self.windows.items():
+            try:
+                if window.isActiveWindow():
+                    logger.debug(f"Active chart window: {symbol}")
+                    return symbol
+            except RuntimeError:
+                # Window was deleted
+                continue
+
+        # If no window is active, return the most recently opened window
+        if self.windows:
+            last_symbol = list(self.windows.keys())[-1]
+            logger.debug(f"No active window, returning last opened: {last_symbol}")
+            return last_symbol
+
+        return None

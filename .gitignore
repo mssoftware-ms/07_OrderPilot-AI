@@ -1,51 +1,73 @@
-# Byte-compiled / cache
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual environments
-.venv/
-env/
+# Virtual Environment
 venv/
+.venv/
 ENV/
-env.bak/
-venv.bak/
+env/
 
-# Tools/IDE
+# IDE
 .vscode/
 .idea/
-*.code-workspace
 *.swp
 *.swo
 *~
 
-# Tests/Build
-.pytest_cache/
-dist/
-build/
-*.egg-info/
-*.egg
-.eggs/
+# Temporary files
+tmp/
+*.tmp
+*.log
+
+# Test files in root (temporäre Tests)
+test_*.py
+!tests/test_*.py  # Aber tests/ erlauben
+
+# Documentation drafts (temporäre Markdown-Dateien im Root)
+*_COMPLETE.md
+*_SUMMARY.md
+PHASE_*.md
+STATUS_*.md
+*_AUDIT.md
+*_ANALYSIS.md
+*_FIXES.md
+*_IMPLEMENTATION.md
+*_INTEGRATION.md
+*_INVENTORY.md
+VOLLSTÄNDIGER_TEST_REPORT.md
+
+# Keep important docs
+!README.md
+!CLAUDE.md
+!docs/
+
+# AI Exchange (temporäre Notizen)
+.ai_exchange/
 
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
-ehthumbs.db
 
-# Secrets (falls vorhanden)
+# Environment variables
 .env
-*.key
-*.pem
-
-# Logs
-*.log
-logs/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
+.env.local
+secrets/

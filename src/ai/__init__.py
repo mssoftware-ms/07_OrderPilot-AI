@@ -14,12 +14,57 @@ from .openai_service import (
     StrategySignalAnalysis,
     get_openai_service,
 )
+from .anthropic_service import AnthropicService
+from .ai_provider_factory import AIProviderFactory
 from .prompts import JSONSchemas, PromptBuilder, PromptTemplates, PromptVersion, SchemaValidator
 
+
+# ==================== Unified AI Service Getter ====================
+
+_unified_service_instance = None
+
+
+async def get_ai_service(telemetry_callback=None):
+    """Get AI service instance based on settings (OpenAI or Anthropic).
+
+    Uses AIProviderFactory to create the appropriate service based on
+    user settings in QSettings.
+
+    Args:
+        telemetry_callback: Optional callback for telemetry
+
+    Returns:
+        AI service instance (OpenAIService or AnthropicService)
+
+    Raises:
+        ValueError: If AI is disabled or not configured
+    """
+    global _unified_service_instance
+
+    if _unified_service_instance is None:
+        # Create service using factory
+        _unified_service_instance = AIProviderFactory.create_service(
+            telemetry_callback=telemetry_callback
+        )
+        await _unified_service_instance.initialize()
+
+    return _unified_service_instance
+
+
+def reset_ai_service():
+    """Reset the AI service instance (e.g., when settings change)."""
+    global _unified_service_instance
+    _unified_service_instance = None
+
+
 __all__ = [
-    # Service
+    # Services
     'OpenAIService',
+    'AnthropicService',
     'get_openai_service',
+    'get_ai_service',  # NEW: Unified multi-provider getter
+    'reset_ai_service',
+    'AIProviderFactory',
     # Errors
     'OpenAIError',
     'RateLimitError',

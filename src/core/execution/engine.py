@@ -299,7 +299,7 @@ class ExecutionEngine:
                 # Store in database
                 await self._store_order(task, response)
 
-                # Emit success event
+                # Emit ORDER_SUBMITTED event
                 event_bus.emit(Event(
                     type=EventType.ORDER_SUBMITTED,
                     timestamp=datetime.utcnow(),
@@ -310,6 +310,85 @@ class ExecutionEngine:
                     },
                     source="execution_engine"
                 ))
+
+                # ===== CRITICAL: EMIT ORDER_FILLED EVENT FOR CHART MARKERS =====
+                # Check if order is filled (market orders are usually filled immediately)
+                if response.filled_qty and response.filled_qty > 0:
+                    from src.common.event_bus import OrderEvent
+
+                    event_bus.emit(OrderEvent(
+                        type=EventType.ORDER_FILLED,
+                        timestamp=datetime.utcnow(),
+                        symbol=task.order_request.symbol,
+                        order_id=response.broker_order_id,
+                        order_type=task.order_request.order_type.value if hasattr(task.order_request.order_type, 'value') else str(task.order_request.order_type),
+                        side=task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side),
+                        quantity=task.order_request.quantity,
+                        filled_quantity=response.filled_qty,
+                        avg_fill_price=response.filled_avg_price or response.limit_price or 0.0,
+                        status="filled",
+                        data={
+                            "symbol": task.order_request.symbol,
+                            "order_id": response.broker_order_id,
+                            "side": task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side),
+                            "filled_quantity": response.filled_qty,
+                            "avg_fill_price": response.filled_avg_price or response.limit_price or 0.0,
+                            "order_type": task.order_request.order_type.value if hasattr(task.order_request.order_type, 'value') else str(task.order_request.order_type)
+                        },
+                        source="execution_engine"
+                    ))
+
+                    logger.info(f"✅ ORDER_FILLED event emitted for {task.order_request.symbol} @ {response.filled_avg_price}")
+
+                    # ===== ALSO EMIT TRADE_ENTRY/EXIT EVENTS =====
+                    from src.common.event_bus import ExecutionEvent
+
+                    side_str = task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side)
+                    is_buy = side_str.upper() in ["BUY", "LONG"]
+
+                    if is_buy:
+                        # BUY order → Opening position (TRADE_ENTRY)
+                        event_bus.emit(ExecutionEvent(
+                            type=EventType.TRADE_ENTRY,
+                            timestamp=datetime.utcnow(),
+                            symbol=task.order_request.symbol,
+                            trade_id=f"trade_{task.order_request.symbol}_{response.broker_order_id}",
+                            action="entry",
+                            side="LONG",
+                            quantity=response.filled_qty,
+                            price=response.filled_avg_price or response.limit_price or 0.0,
+                            data={
+                                "symbol": task.order_request.symbol,
+                                "side": "LONG",
+                                "quantity": response.filled_qty,
+                                "price": response.filled_avg_price or response.limit_price or 0.0
+                            },
+                            source="execution_engine"
+                        ))
+                        logger.info(f"✅ TRADE_ENTRY event emitted for {task.order_request.symbol}")
+                    else:
+                        # SELL order → Closing position (TRADE_EXIT)
+                        event_bus.emit(ExecutionEvent(
+                            type=EventType.TRADE_EXIT,
+                            timestamp=datetime.utcnow(),
+                            symbol=task.order_request.symbol,
+                            trade_id=f"trade_{task.order_request.symbol}_{response.broker_order_id}",
+                            action="exit",
+                            side="SHORT",  # Exiting long = short action
+                            quantity=response.filled_qty,
+                            price=response.filled_avg_price or response.limit_price or 0.0,
+                            pnl=None,  # Would need position tracking for real P&L
+                            pnl_pct=None,
+                            reason="manual_exit",
+                            data={
+                                "symbol": task.order_request.symbol,
+                                "side": "SHORT",
+                                "quantity": response.filled_qty,
+                                "price": response.filled_avg_price or response.limit_price or 0.0
+                            },
+                            source="execution_engine"
+                        ))
+                        logger.info(f"✅ TRADE_EXIT event emitted for {task.order_request.symbol}")
 
                 logger.info(f"Order executed: {task.task_id}")
 

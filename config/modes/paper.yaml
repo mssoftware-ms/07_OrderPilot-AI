@@ -1,0 +1,112 @@
+# Paper Trading Mode Configuration
+# Real-time simulation with paper money
+
+profile_name: paper
+description: Paper trading profile for real-time strategy testing
+environment: paper
+trading_mode: paper
+
+broker:
+  broker_type: alpaca
+  paper_trading: true  # REQUIRED for paper mode
+  auto_reconnect: true
+  reconnect_interval: 10
+  account_id: null  # Load from secrets
+
+database:
+  engine: sqlite
+  path: ./data/paper.db
+  echo: false
+  pool_size: 5
+
+backtest:
+  initial_capital: "100000"
+  benchmark: SPY
+
+trading:
+  max_position_size: "10000"
+  max_portfolio_risk: 0.02
+  max_daily_loss: "500"
+  max_open_positions: 10
+  default_stop_loss_pct: 0.02
+  default_take_profit_pct: 0.05
+  allow_short_selling: false
+  use_margin: false
+  commission_model: fixed
+  commission_value: 0.0  # No commission in paper
+  slippage_model: fixed
+  slippage_value: 0.001
+
+execution:
+  execution_algo: market
+  smart_routing: true
+  allow_partial_fills: true
+  cancel_on_disconnect: true
+  flatten_on_disconnect: false
+  retry_failed_orders: true
+  max_retry_attempts: 3
+  order_timeout_seconds: 300
+  use_native_stops: true
+  manual_approval_default: true  # Require manual approval
+  emergency_stop_active: true
+  kill_switch_active: false
+
+ai:
+  enabled: true
+  model: gpt-4-turbo-preview
+  temperature: 0.2
+  max_tokens: 4000
+  timeouts:
+    read_ms: 30000
+    connect_ms: 10000
+  cost_limit_monthly: 100.0
+  cost_limit_daily: 20.0
+  cache_responses: true
+
+alerts:
+  email_enabled: false
+  sound_enabled: true
+  popup_enabled: true
+  alert_on_order_fill: true
+  alert_on_stop_loss: true
+  alert_on_target_hit: true
+  alert_on_error: true
+  alert_on_disconnect: true
+
+monitoring:
+  track_metrics: true
+  metrics_interval: 60
+  export_metrics: true
+  export_format: json
+  track_latency: true
+  track_memory: true
+  alert_on_high_latency: true
+  latency_threshold_ms: 100
+
+market_data:
+  alpaca_enabled: true
+  alpha_vantage_enabled: true
+  yahoo_enabled: true
+  prefer_live_broker: true
+
+ui:
+  theme: dark
+  language: en
+  chart_style: candlestick
+  default_timeframe: 5m
+  show_volume: true
+  show_indicators: true
+  confirm_orders: true  # Confirmation required
+  show_pnl_percentage: true
+  timezone: Europe/Berlin
+
+features:
+  paper_trading: true
+  live_trading: false
+  backtesting: true
+  optimization: true
+  ai_analysis: true
+  advanced_charts: true
+  options_trading: false
+  crypto_trading: false
+  news_sentiment: false

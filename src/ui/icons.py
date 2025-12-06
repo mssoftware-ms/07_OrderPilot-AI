@@ -118,6 +118,27 @@ _ICONS = {
         <path d="M12 12v4" stroke="{{secondary}}" stroke-width="2" stroke-linecap="round"/>
     </svg>
     """,
+
+    "ai": """
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9" stroke="{{primary}}" stroke-width="2" fill="none"/>
+        <path d="M12 8v8M8 12h8" stroke="{{secondary}}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="8" cy="8" r="1.5" fill="{{secondary}}"/>
+        <circle cx="16" cy="8" r="1.5" fill="{{secondary}}"/>
+        <circle cx="8" cy="16" r="1.5" fill="{{secondary}}"/>
+        <circle cx="16" cy="16" r="1.5" fill="{{secondary}}"/>
+        <path d="M12 5v2m0 10v2M5 12h2m10 0h2" stroke="{{primary}}" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    """,
+
+    "optimize": """
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 18h18M3 12h18M3 6h18" stroke="{{primary}}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="8" cy="6" r="2" fill="{{secondary}}" stroke="{{primary}}" stroke-width="1"/>
+        <circle cx="16" cy="12" r="2" fill="{{secondary}}" stroke="{{primary}}" stroke-width="1"/>
+        <circle cx="12" cy="18" r="2" fill="{{secondary}}" stroke="{{primary}}" stroke-width="1"/>
+    </svg>
+    """,
 }
 
 

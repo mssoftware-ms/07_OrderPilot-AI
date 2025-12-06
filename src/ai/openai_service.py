@@ -395,7 +395,7 @@ class OpenAIService:
         Raises:
             Various OpenAI errors
         """
-        model = model or self.config.model_default
+        model = model or self.config.model
         schema = response_model.model_json_schema()
 
         # Check cache
@@ -543,31 +543,79 @@ class OpenAIService:
         return await self.structured_completion(
             prompt=prompt,
             response_model=AlertTriageResult,
-            model=self.config.model_default,
+            model=self.config.model,
             context={"type": "alert_triage", "alert_type": alert.get("type")}
         )
 
     async def review_backtest(
         self,
-        results: dict[str, Any],
-        strategy_params: dict[str, Any]
+        result: "BacktestResult"
     ) -> BacktestReview:
-        """Review backtest results.
+        """Review backtest results with AI analysis.
 
         Args:
-            results: Backtest results
-            strategy_params: Strategy parameters used
+            result: Complete BacktestResult from backtest run
 
         Returns:
-            Structured backtest review
+            Structured backtest review with insights and recommendations
         """
-        prompt = self._build_backtest_review_prompt(results, strategy_params)
+        from src.ai.prompts import PromptBuilder
+
+        # Extract strategy info
+        strategy_name = result.strategy_name or "Unnamed Strategy"
+        test_period = f"{result.start.strftime('%Y-%m-%d')} to {result.end.strftime('%Y-%m-%d')}"
+        market_conditions = f"{result.duration_days:.1f} days, {result.symbol} on {result.timeframe} timeframe"
+
+        # Build performance metrics dict
+        performance_metrics = {
+            "total_return": f"{result.metrics.total_return_pct:.2f}%",
+            "sharpe_ratio": f"{result.metrics.sharpe_ratio:.2f}" if result.metrics.sharpe_ratio else "N/A",
+            "sortino_ratio": f"{result.metrics.sortino_ratio:.2f}" if result.metrics.sortino_ratio else "N/A",
+            "max_drawdown": f"{result.metrics.max_drawdown_pct:.2f}%",
+            "annual_return": f"{result.metrics.annual_return_pct:.2f}%" if result.metrics.annual_return_pct else "N/A",
+            "profit_factor": f"{result.metrics.profit_factor:.2f}",
+            "recovery_factor": f"{result.metrics.recovery_factor:.2f}" if result.metrics.recovery_factor else "N/A",
+            "initial_capital": f"${result.initial_capital:,.2f}",
+            "final_capital": f"${result.final_capital:,.2f}",
+            "total_pnl": f"${result.total_pnl:,.2f}"
+        }
+
+        # Build trade statistics dict
+        trade_statistics = {
+            "total_trades": result.metrics.total_trades,
+            "winning_trades": result.metrics.winning_trades,
+            "losing_trades": result.metrics.losing_trades,
+            "win_rate": f"{result.metrics.win_rate * 100:.1f}%",
+            "avg_win": f"${result.metrics.avg_win:,.2f}",
+            "avg_loss": f"${result.metrics.avg_loss:,.2f}",
+            "largest_win": f"${result.metrics.largest_win:,.2f}",
+            "largest_loss": f"${result.metrics.largest_loss:,.2f}",
+            "avg_r_multiple": f"{result.metrics.avg_r_multiple:.2f}" if result.metrics.avg_r_multiple else "N/A",
+            "avg_trade_duration": f"{result.metrics.avg_trade_duration_minutes:.1f} minutes" if result.metrics.avg_trade_duration_minutes else "N/A",
+            "max_consecutive_wins": result.metrics.max_consecutive_wins,
+            "max_consecutive_losses": result.metrics.max_consecutive_losses,
+            "expectancy": f"${result.metrics.expectancy:.2f}" if result.metrics.expectancy else "N/A"
+        }
+
+        # Build prompt using PromptBuilder
+        prompt = PromptBuilder.build_backtest_prompt(
+            strategy_name=strategy_name,
+            test_period=test_period,
+            market_conditions=market_conditions,
+            performance_metrics=performance_metrics,
+            trade_statistics=trade_statistics
+        )
 
         return await self.structured_completion(
             prompt=prompt,
             response_model=BacktestReview,
-            model=self.config.model_default,
-            context={"type": "backtest_review", "strategy": strategy_params.get("name")}
+            model=self.config.model,
+            context={
+                "type": "backtest_review",
+                "strategy": strategy_name,
+                "symbol": result.symbol,
+                "total_return": result.metrics.total_return_pct
+            }
         )
 
     async def analyze_signal(
@@ -589,7 +637,7 @@ class OpenAIService:
         return await self.structured_completion(
             prompt=prompt,
             response_model=StrategySignalAnalysis,
-            model=self.config.model_default,
+            model=self.config.model,
             context={"type": "signal_analysis", "signal_type": signal.get("type")}
         )
 
@@ -644,26 +692,6 @@ Portfolio Context:
 Assess the priority (0-1), determine if action is required, provide reasoning,
 and suggest specific actions. Consider the portfolio context and market conditions."""
 
-    def _build_backtest_review_prompt(
-        self,
-        results: dict[str, Any],
-        strategy_params: dict[str, Any]
-    ) -> str:
-        """Build prompt for backtest review."""
-        return f"""Review the following backtest results:
-
-Strategy: {strategy_params.get('name')}
-Parameters: {json.dumps(strategy_params, indent=2)}
-
-Results:
-- Total Return: {results.get('total_return')}%
-- Sharpe Ratio: {results.get('sharpe_ratio')}
-- Max Drawdown: {results.get('max_drawdown')}%
-- Win Rate: {results.get('win_rate')}%
-- Total Trades: {results.get('total_trades')}
-
-Provide a comprehensive review including strengths, weaknesses, suggested improvements,
-and parameter recommendations. Focus on actionable insights."""
 
     def _build_signal_analysis_prompt(
         self,

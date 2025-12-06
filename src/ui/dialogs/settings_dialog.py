@@ -1,5 +1,8 @@
 """Settings Dialog for OrderPilot-AI Trading Application."""
 
+import logging
+import os
+
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -18,6 +21,8 @@ from PyQt6.QtWidgets import (
 )
 
 from src.config.loader import config_manager
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsDialog(QDialog):
@@ -231,30 +236,101 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(market_tab, "Market Data")
 
-        # AI tab
+        # AI tab with multi-provider support
         ai_tab = QWidget()
-        ai_layout = QFormLayout(ai_tab)
+        ai_layout = QVBoxLayout(ai_tab)
+
+        # General AI settings
+        general_ai_layout = QFormLayout()
 
         self.ai_enabled = QCheckBox("Enable AI features")
         self.ai_enabled.setChecked(True)
-        ai_layout.addRow(self.ai_enabled)
+        general_ai_layout.addRow(self.ai_enabled)
 
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_edit.setPlaceholderText("Enter OpenAI API Key")
-        ai_layout.addRow("API Key:", self.api_key_edit)
-
-        # AI model
-        self.ai_model_combo = QComboBox()
-        self.ai_model_combo.addItems(["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"])
-        ai_layout.addRow("AI Model:", self.ai_model_combo)
+        # Default provider
+        self.ai_default_provider = QComboBox()
+        self.ai_default_provider.addItems(["Anthropic", "OpenAI"])
+        general_ai_layout.addRow("Default Provider:", self.ai_default_provider)
 
         # Monthly budget
         self.ai_budget = QDoubleSpinBox()
         self.ai_budget.setRange(1, 1000)
         self.ai_budget.setValue(50)
         self.ai_budget.setPrefix("€")
-        ai_layout.addRow("Monthly Budget:", self.ai_budget)
+        general_ai_layout.addRow("Monthly Budget:", self.ai_budget)
+
+        ai_layout.addLayout(general_ai_layout)
+
+        # Provider-specific settings in tabs
+        provider_tabs = QTabWidget()
+
+        # OpenAI settings
+        openai_tab = QWidget()
+        openai_layout = QFormLayout(openai_tab)
+
+        self.openai_api_key = QLineEdit()
+        self.openai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.openai_api_key.setPlaceholderText("Enter OpenAI API Key")
+        openai_layout.addRow("API Key:", self.openai_api_key)
+
+        self.openai_model = QComboBox()
+        self.openai_model.addItems([
+            "gpt-5.1 (Thinking Mode)",
+            "gpt-5.1-chat-latest (Instant)",
+            "gpt-4.1-2025-04-14 (GPT-4.1 Full)",
+            "gpt-4.1-mini-2025-04-14 (GPT-4.1 Mini)",
+            "gpt-4.1-nano-2025-04-14 (GPT-4.1 Nano - Fastest)"
+        ])
+        openai_layout.addRow("Default Model:", self.openai_model)
+
+        openai_info = QLabel(
+            "GPT-5.1: Adaptive reasoning modes for complex tasks. "
+            "GPT-4.1: 1M token context, excellent for coding. "
+            "GPT-4.1 Nano: Fastest and cheapest for low-latency tasks. "
+            "Set OPENAI_API_KEY environment variable for automatic configuration."
+        )
+        openai_info.setWordWrap(True)
+        openai_layout.addRow(openai_info)
+
+        provider_tabs.addTab(openai_tab, "OpenAI")
+
+        # Anthropic settings
+        anthropic_tab = QWidget()
+        anthropic_layout = QFormLayout(anthropic_tab)
+
+        self.anthropic_api_key = QLineEdit()
+        self.anthropic_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.anthropic_api_key.setPlaceholderText("Enter Anthropic API Key")
+        anthropic_layout.addRow("API Key:", self.anthropic_api_key)
+
+        self.anthropic_model = QComboBox()
+        self.anthropic_model.addItems([
+            "claude-sonnet-4-5-20250929 (Recommended)",
+            "claude-sonnet-4-5 (Latest)"
+        ])
+        anthropic_layout.addRow("Default Model:", self.anthropic_model)
+
+        anthropic_info = QLabel(
+            "Anthropic Claude Sonnet 4.5 excels at complex reasoning, code analysis, "
+            "and technical tasks. 1M token context window. "
+            "Set ANTHROPIC_API_KEY environment variable for automatic configuration."
+        )
+        anthropic_info.setWordWrap(True)
+        anthropic_layout.addRow(anthropic_info)
+
+        provider_tabs.addTab(anthropic_tab, "Anthropic")
+
+        ai_layout.addWidget(provider_tabs)
+
+        # Task routing info
+        routing_info = QLabel(
+            "<b>Note:</b> Task routing is configured in config/ai_providers.yaml. "
+            "Different tasks can use different models automatically."
+        )
+        routing_info.setWordWrap(True)
+        ai_layout.addWidget(routing_info)
+
+        ai_layout.addStretch()
 
         tabs.addTab(ai_tab, "AI")
 
@@ -332,13 +408,32 @@ class SettingsDialog(QDialog):
             self.settings.value("ai_enabled", True, type=bool)
         )
 
-        # Don't load API key from settings for security - user must enter it each session
-        # or we'd need to use secure keyring storage
-
-        ai_model = self.settings.value("ai_model", "gpt-4-turbo")
-        index = self.ai_model_combo.findText(ai_model)
+        # Default provider
+        ai_provider = self.settings.value("ai_default_provider", "Anthropic")
+        index = self.ai_default_provider.findText(ai_provider)
         if index >= 0:
-            self.ai_model_combo.setCurrentIndex(index)
+            self.ai_default_provider.setCurrentIndex(index)
+
+        # Don't load API keys from settings for security - user must enter them each session
+        # Check if environment variables are set and show placeholder
+        import os
+        if os.getenv("OPENAI_API_KEY"):
+            self.openai_api_key.setPlaceholderText("API key loaded from environment variable")
+
+        if os.getenv("ANTHROPIC_API_KEY"):
+            self.anthropic_api_key.setPlaceholderText("API key loaded from environment variable")
+
+        # OpenAI model
+        openai_model = self.settings.value("openai_model", "gpt-5.1 (Thinking Mode)")
+        index = self.openai_model.findText(openai_model)
+        if index >= 0:
+            self.openai_model.setCurrentIndex(index)
+
+        # Anthropic model
+        anthropic_model = self.settings.value("anthropic_model", "claude-sonnet-4-5-20250929 (Recommended)")
+        index = self.anthropic_model.findText(anthropic_model)
+        if index >= 0:
+            self.anthropic_model.setCurrentIndex(index)
 
         self.ai_budget.setValue(
             self.settings.value("ai_budget", 50, type=float)
@@ -436,18 +531,39 @@ class SettingsDialog(QDialog):
 
             # AI
             self.settings.setValue("ai_enabled", self.ai_enabled.isChecked())
-            self.settings.setValue("ai_model", self.ai_model_combo.currentText())
+            self.settings.setValue("ai_default_provider", self.ai_default_provider.currentText())
+            self.settings.setValue("openai_model", self.openai_model.currentText())
+            self.settings.setValue("anthropic_model", self.anthropic_model.currentText())
             self.settings.setValue("ai_budget", self.ai_budget.value())
 
-            # Save API key to secure keyring if provided
-            api_key = self.api_key_edit.text().strip()
-            if api_key:
+            # Reset AI service to apply new settings
+            from src.ai import reset_ai_service
+            reset_ai_service()
+            logger.info("AI service reset to apply new provider/model settings")
+
+            # Save OpenAI API key to secure keyring if provided
+            openai_key = self.openai_api_key.text().strip()
+            if openai_key:
                 try:
-                    config_manager.set_credential("openai_api_key", api_key)
+                    config_manager.set_credential("openai_api_key", openai_key)
+                    self.openai_api_key.clear()
                 except Exception as e:
                     QMessageBox.warning(
                         self, "API Key Storage",
-                        f"Could not store API key securely:\n{str(e)}\n\n"
+                        f"Could not store OpenAI API key securely:\n{str(e)}\n\n"
+                        "You may need to re-enter it next session."
+                    )
+
+            # Save Anthropic API key to secure keyring if provided
+            anthropic_key = self.anthropic_api_key.text().strip()
+            if anthropic_key:
+                try:
+                    config_manager.set_credential("anthropic_api_key", anthropic_key)
+                    self.anthropic_api_key.clear()
+                except Exception as e:
+                    QMessageBox.warning(
+                        self, "API Key Storage",
+                        f"Could not store Anthropic API key securely:\n{str(e)}\n\n"
                         "You may need to re-enter it next session."
                     )
 

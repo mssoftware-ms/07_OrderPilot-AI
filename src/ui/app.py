@@ -46,8 +46,10 @@ from src.core.broker.trade_republic_adapter import TradeRepublicAdapter
 from src.core.market_data.history_provider import HistoryManager
 from src.database import initialize_database
 
+from .dialogs.ai_backtest_dialog import AIBacktestDialog
 from .dialogs.backtest_dialog import BacktestDialog
 from .dialogs.order_dialog import OrderDialog
+from .dialogs.parameter_optimization_dialog import ParameterOptimizationDialog
 from .dialogs.settings_dialog import SettingsDialog
 
 # UI component imports
@@ -188,6 +190,18 @@ class TradingApplication(QMainWindow):
         backtest_action.triggered.connect(self.show_backtest_dialog)
         trading_menu.addAction(backtest_action)
 
+        ai_backtest_action = QAction("&AI Backtest Analysis...", self)
+        ai_backtest_action.setShortcut("Ctrl+Shift+B")
+        ai_backtest_action.triggered.connect(self.show_ai_backtest_dialog)
+        trading_menu.addAction(ai_backtest_action)
+
+        trading_menu.addSeparator()
+
+        param_opt_action = QAction("&Parameter Optimization...", self)
+        param_opt_action.setShortcut("Ctrl+Shift+P")
+        param_opt_action.triggered.connect(self.show_parameter_optimization_dialog)
+        trading_menu.addAction(param_opt_action)
+
         # Tools Menu
         tools_menu = menubar.addMenu("&Tools")
 
@@ -245,6 +259,48 @@ class TradingApplication(QMainWindow):
 
         toolbar.addSeparator()
 
+        # ===== CRITICAL: TRADING MODE SELECTOR =====
+        # This is a SAFETY feature to prevent accidental live trading!
+        mode_label = QLabel("🚦 Mode: ")
+        mode_label.setToolTip("Trading Mode - CRITICAL safety setting!")
+        mode_label.setStyleSheet("font-weight: bold; color: #FFA500;")
+        toolbar.addWidget(mode_label)
+
+        self.trading_mode_combo = QComboBox()
+        self.trading_mode_combo.addItems(["Backtest", "Paper", "Live"])
+        self.trading_mode_combo.setCurrentText("Backtest")  # Default: SAFEST mode
+        self.trading_mode_combo.setToolTip(
+            "⚠️ CRITICAL SAFETY SETTING ⚠️\n\n"
+            "• Backtest - Historical simulation (NO real orders)\n"
+            "• Paper - Real-time simulation (NO real money)\n"
+            "• Live - REAL TRADING with REAL MONEY!\n\n"
+            "⚠️ WARNING: Live mode places REAL orders with REAL money!"
+        )
+        self.trading_mode_combo.setStyleSheet("""
+            QComboBox {
+                font-weight: bold;
+                padding: 5px 10px;
+                border: 2px solid #FFA500;
+                border-radius: 3px;
+                background-color: #2a2a2a;
+                color: #FFA500;
+            }
+            QComboBox::drop-down {
+                border: 0px;
+            }
+            QComboBox:hover {
+                background-color: #3a3a3a;
+                border-color: #FFD700;
+            }
+        """)
+        self.trading_mode_combo.currentTextChanged.connect(self._on_trading_mode_changed)
+        toolbar.addWidget(self.trading_mode_combo)
+
+        # Store current trading mode
+        self.current_trading_mode = "Backtest"
+
+        toolbar.addSeparator()
+
         # Add Market Data Provider selector
         data_provider_label = QLabel("Market Data: ")
         data_provider_label.setToolTip("Select market data provider")
@@ -295,6 +351,16 @@ class TradingApplication(QMainWindow):
         backtest_action.setToolTip("Run backtest")
         backtest_action.triggered.connect(self.show_backtest_dialog)
         toolbar.addAction(backtest_action)
+
+        ai_backtest_action = QAction(get_icon("ai"), "AI Backtest", self)
+        ai_backtest_action.setToolTip("AI-powered backtest analysis")
+        ai_backtest_action.triggered.connect(self.show_ai_backtest_dialog)
+        toolbar.addAction(ai_backtest_action)
+
+        param_opt_action = QAction(get_icon("optimize"), "Optimize", self)
+        param_opt_action.setToolTip("Parameter optimization")
+        param_opt_action.triggered.connect(self.show_parameter_optimization_dialog)
+        toolbar.addAction(param_opt_action)
 
         settings_action = QAction(get_icon("settings"), "Settings", self)
         settings_action.setToolTip("Open settings")
@@ -495,6 +561,111 @@ class TradingApplication(QMainWindow):
         self.settings.setValue("windowState", self.saveState())
 
     @qasync.asyncSlot()
+    def _on_trading_mode_changed(self, mode: str):
+        """Handle trading mode changes.
+
+        CRITICAL SAFETY FEATURE: Warns user when switching to Live mode!
+
+        Args:
+            mode: New trading mode ("Backtest", "Paper", or "Live")
+        """
+        logger.info(f"Trading mode changed: {self.current_trading_mode} → {mode}")
+
+        # ===== CRITICAL: LIVE MODE WARNING =====
+        if mode == "Live":
+            reply = QMessageBox.warning(
+                self,
+                "⚠️ LIVE TRADING MODE",
+                "🚨 <b>WARNING: You are switching to LIVE TRADING mode!</b><br><br>"
+                "This will place <b>REAL ORDERS</b> with <b>REAL MONEY</b>!<br><br>"
+                "Are you absolutely sure you want to proceed?<br><br>"
+                "<i>Click 'Yes' only if you:</i><br>"
+                "• Have thoroughly tested your strategies in Backtest mode<br>"
+                "• Have verified everything in Paper mode<br>"
+                "• Understand the risks of live trading<br>"
+                "• Are prepared for potential losses<br><br>"
+                "<b>This is NOT a simulation!</b>",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No  # Default to NO
+            )
+
+            if reply == QMessageBox.StandardButton.No:
+                # User cancelled - revert to previous mode
+                logger.info("User cancelled Live mode switch - reverting to previous mode")
+                self.trading_mode_combo.blockSignals(True)
+                self.trading_mode_combo.setCurrentText(self.current_trading_mode)
+                self.trading_mode_combo.blockSignals(False)
+                return
+
+            # User confirmed - show additional warning
+            logger.warning("⚠️ USER CONFIRMED LIVE MODE - REAL TRADING ENABLED!")
+
+        # Update current mode
+        old_mode = self.current_trading_mode
+        self.current_trading_mode = mode
+
+        # Update UI styling based on mode
+        if mode == "Backtest":
+            # Green = Safe
+            self.trading_mode_combo.setStyleSheet("""
+                QComboBox {
+                    font-weight: bold;
+                    padding: 5px 10px;
+                    border: 2px solid #26a69a;
+                    border-radius: 3px;
+                    background-color: #2a2a2a;
+                    color: #26a69a;
+                }
+                QComboBox:hover { background-color: #3a3a3a; border-color: #4CAF50; }
+            """)
+        elif mode == "Paper":
+            # Orange = Caution
+            self.trading_mode_combo.setStyleSheet("""
+                QComboBox {
+                    font-weight: bold;
+                    padding: 5px 10px;
+                    border: 2px solid #FFA500;
+                    border-radius: 3px;
+                    background-color: #2a2a2a;
+                    color: #FFA500;
+                }
+                QComboBox:hover { background-color: #3a3a3a; border-color: #FFD700; }
+            """)
+        elif mode == "Live":
+            # Red = DANGER!
+            self.trading_mode_combo.setStyleSheet("""
+                QComboBox {
+                    font-weight: bold;
+                    padding: 5px 10px;
+                    border: 2px solid #ef5350;
+                    border-radius: 3px;
+                    background-color: #2a2a2a;
+                    color: #ef5350;
+                }
+                QComboBox:hover { background-color: #3a3a3a; border-color: #ff0000; }
+            """)
+
+        # Update status bar
+        status_messages = {
+            "Backtest": "✅ Backtest Mode - Historical simulation (SAFE)",
+            "Paper": "⚠️ Paper Mode - Real-time simulation (NO real money)",
+            "Live": "🚨 LIVE MODE - REAL TRADING ACTIVE!"
+        }
+        self.status_bar.showMessage(status_messages[mode], 10000)  # Show for 10 seconds
+
+        # Emit event for other components
+        event_bus.emit(Event(
+            EventType.SYSTEM_EVENT,
+            {
+                "type": "trading_mode_changed",
+                "old_mode": old_mode,
+                "new_mode": mode,
+                "timestamp": datetime.now()
+            }
+        ))
+
+        logger.info(f"✅ Trading mode changed to: {mode}")
+
     async def connect_broker(self):
         """Connect to the selected broker."""
         try:
@@ -698,6 +869,26 @@ class TradingApplication(QMainWindow):
     def show_backtest_dialog(self):
         """Show the backtest dialog."""
         dialog = BacktestDialog(self.ai_service, self)
+        dialog.exec()
+
+    def show_ai_backtest_dialog(self):
+        """Show the AI-powered backtest analysis dialog."""
+        # Get currently focused chart symbol (if any)
+        current_symbol = None
+        if hasattr(self, 'chart_window_manager'):
+            current_symbol = self.chart_window_manager.get_active_symbol()
+
+        dialog = AIBacktestDialog(self, current_symbol=current_symbol)
+        dialog.exec()
+
+    def show_parameter_optimization_dialog(self):
+        """Show the parameter optimization dialog."""
+        # Get currently focused chart symbol (if any)
+        current_symbol = None
+        if hasattr(self, 'chart_window_manager'):
+            current_symbol = self.chart_window_manager.get_active_symbol()
+
+        dialog = ParameterOptimizationDialog(self, current_symbol=current_symbol)
         dialog.exec()
 
     def show_ai_monitor(self):
