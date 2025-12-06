@@ -250,9 +250,54 @@ CHART_HTML_TEMPLATE = """
                     fitContent: () => { try { refitPriceScale(); } catch(e){ console.error(e); } },
                     resetPriceScale: () => { try { refitPriceScale(); } catch(e){ console.error(e); } },
 
+                    // Add trade markers (Entry/Exit points) to chart
+                    addTradeMarkers: (markers) => {
+                        try {
+                            if (!Array.isArray(markers)) {
+                                console.error('addTradeMarkers: markers must be an array');
+                                return false;
+                            }
+                            priceSeries.setMarkers(markers);
+                            console.log(`Added ${markers.length} trade markers to chart`);
+                            return true;
+                        } catch(e){
+                            console.error('Error adding trade markers:', e);
+                            return false;
+                        }
+                    },
+
+                    // Clear all markers from chart
+                    clearMarkers: () => {
+                        try {
+                            priceSeries.setMarkers([]);
+                            return true;
+                        } catch(e){
+                            console.error('Error clearing markers:', e);
+                            return false;
+                        }
+                    },
+
+                    // Update chart with new real-time bar
+                    updateBar: (bar) => {
+                        try {
+                            if (!bar || typeof bar !== 'object') {
+                                console.error('updateBar: bar must be an object');
+                                return false;
+                            }
+                            // TradingView Lightweight Charts: update() adds or updates the last bar
+                            priceSeries.update(bar);
+                            console.log(`Updated chart with real-time bar: ${new Date(bar.time * 1000).toISOString()}`);
+                            return true;
+                        } catch(e){
+                            console.error('Error updating bar:', e);
+                            return false;
+                        }
+                    },
+
                     clear: () => {
                         try {
                             priceSeries.setData([]);
+                            priceSeries.setMarkers([]);  // Also clear markers
                             Object.values(overlaySeries).forEach(s => chart.removeSeries(s));
                             Object.keys(overlaySeries).forEach(k => delete overlaySeries[k]);
                             Object.keys(panelMap).forEach(pid => removePane(pid));
@@ -532,6 +577,31 @@ class EmbeddedTradingViewChart(QWidget):
             }
         """)
         toolbar.addWidget(self.live_stream_button)
+
+        # ===== PANEL TOGGLE BUTTON (right after Live button) =====
+        self.toggle_panel_button = QPushButton("▼ Panel")
+        self.toggle_panel_button.setCheckable(True)
+        self.toggle_panel_button.setChecked(True)  # Panel initially visible
+        self.toggle_panel_button.setToolTip("Show/Hide bottom panel (Strategy, Backtest, Optimize)")
+        self.toggle_panel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #FFA500;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:checked {
+                background-color: #FFA500;
+                color: #000;
+            }
+        """)
+        # Signal will be emitted to parent ChartWindow
+        toolbar.addWidget(self.toggle_panel_button)
 
         toolbar.addSeparator()
 
@@ -1273,12 +1343,20 @@ class EmbeddedTradingViewChart(QWidget):
             return
 
         try:
-            # Start real-time stream via HistoryManager
-            success = await self.history_manager.start_realtime_stream([self.current_symbol])
+            # Detect if crypto symbol (contains "/" like BTC/USD)
+            is_crypto = "/" in self.current_symbol
+
+            # Start appropriate real-time stream via HistoryManager
+            if is_crypto:
+                success = await self.history_manager.start_crypto_realtime_stream([self.current_symbol])
+                logger.info(f"✓ Live crypto stream started for {self.current_symbol}")
+            else:
+                success = await self.history_manager.start_realtime_stream([self.current_symbol])
+                logger.info(f"✓ Live stock stream started for {self.current_symbol}")
 
             if success:
-                logger.info(f"✓ Live stream started for {self.current_symbol}")
-                self.market_status_label.setText(f"🟢 Live: {self.current_symbol}")
+                asset_type = "Crypto" if is_crypto else "Stock"
+                self.market_status_label.setText(f"🟢 Live ({asset_type}): {self.current_symbol}")
                 self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
             else:
                 logger.error("Failed to start live stream")
@@ -1302,7 +1380,9 @@ class EmbeddedTradingViewChart(QWidget):
             return
 
         try:
+            # Stop both stock and crypto streams
             await self.history_manager.stop_realtime_stream()
+            await self.history_manager.stop_crypto_realtime_stream()
             logger.info("✓ Live stream stopped")
             self.market_status_label.setText("Ready")
             self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
@@ -1341,6 +1421,12 @@ class EmbeddedTradingViewChart(QWidget):
             from datetime import timedelta, datetime
             import pytz
             from src.core.market_data.history_provider import DataRequest, DataSource, Timeframe
+            from src.core.market_data.types import AssetClass
+
+            # Detect asset class from symbol
+            # Crypto symbols contain "/" (e.g., BTC/USD, ETH/USD)
+            # Stock symbols don't (e.g., AAPL, MSFT)
+            asset_class = AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
 
             # Map timeframe
             timeframe_map = {
@@ -1360,14 +1446,19 @@ class EmbeddedTradingViewChart(QWidget):
                 provider_map = {
                     "database": DataSource.DATABASE,
                     "alpaca": DataSource.ALPACA,
+                    "alpaca_crypto": DataSource.ALPACA_CRYPTO,
                     "yahoo": DataSource.YAHOO,
                     "alpha_vantage": DataSource.ALPHA_VANTAGE,
                 }
                 provider_source = provider_map.get(data_provider)
             else:
-                # Default: Use Alpaca for live data (avoid stale database)
-                provider_source = DataSource.ALPACA
-                logger.info("No provider specified, using Alpaca for live data")
+                # Default: Use appropriate Alpaca provider based on asset class
+                if asset_class == AssetClass.CRYPTO:
+                    provider_source = DataSource.ALPACA_CRYPTO
+                    logger.info("No provider specified, using Alpaca Crypto for live data")
+                else:
+                    provider_source = DataSource.ALPACA
+                    logger.info("No provider specified, using Alpaca for live data")
 
             # Determine lookback period based on selected time period
             period_to_days = {
@@ -1388,22 +1479,44 @@ class EmbeddedTradingViewChart(QWidget):
             now_ny = datetime.now(ny_tz)
             end_date = now_ny
 
-            # Adjust end_date for weekends (use last trading day)
+            # Market hours: 9:30 AM - 4:00 PM EST
+            market_open_hour = 9
+            market_open_minute = 30
+
+            # Adjust end_date for weekends AND pre-market hours
             weekday = end_date.weekday()  # Monday=0, Sunday=6
+            current_hour = end_date.hour
+            current_minute = end_date.minute
+            is_before_market_open = (current_hour < market_open_hour or
+                                    (current_hour == market_open_hour and current_minute < market_open_minute))
+
+            # Determine if we need to use previous trading day
+            use_previous_trading_day = False
+
             if weekday == 5:  # Saturday
                 end_date = end_date - timedelta(days=1)
+                use_previous_trading_day = True
                 logger.info("Weekend detected (Saturday), using Friday's data")
             elif weekday == 6:  # Sunday
                 end_date = end_date - timedelta(days=2)
+                use_previous_trading_day = True
                 logger.info("Weekend detected (Sunday), using Friday's data")
+            elif weekday == 0 and is_before_market_open:  # Monday before market open
+                end_date = end_date - timedelta(days=3)  # Go back to Friday
+                use_previous_trading_day = True
+                logger.info(f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data")
+            elif weekday < 5 and is_before_market_open:  # Tuesday-Friday before market open
+                end_date = end_date - timedelta(days=1)  # Go back to previous day
+                use_previous_trading_day = True
+                logger.info(f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day")
 
-            # For intraday on weekends, fetch the entire last trading day
-            if self.current_period == "1D" and weekday >= 5:
+            # For intraday during non-trading periods, fetch the entire last trading day
+            if self.current_period == "1D" and use_previous_trading_day:
                 # Set a specific window for the last trading day in New York time
-                friday = end_date.date()
-                start_date = ny_tz.localize(datetime.combine(friday, datetime.min.time())).replace(hour=4, minute=0)
-                end_date = ny_tz.localize(datetime.combine(friday, datetime.max.time())).replace(hour=18, minute=0)
-                logger.info(f"Intraday on weekend: fetching data for market day {friday} between {start_date} and {end_date}")
+                last_trading_day = end_date.date()
+                start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(hour=4, minute=0)
+                end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(hour=20, minute=0)
+                logger.info(f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)")
             else:
                 # Standard lookback calculation
                 start_date = end_date - timedelta(days=lookback_days)
@@ -1418,6 +1531,7 @@ class EmbeddedTradingViewChart(QWidget):
                 start_date=start_date,
                 end_date=end_date,
                 timeframe=timeframe,
+                asset_class=asset_class,  # Important: Set asset class for proper routing
                 source=provider_source
             )
 

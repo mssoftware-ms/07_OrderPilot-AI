@@ -1199,25 +1199,18 @@ class AlpacaProvider(HistoricalDataProvider):
 
             logger.info(f"Alpaca request: {symbol}, timeframe={timeframe.value}, start={start_date_utc}, end={end_date_utc}")
 
-            # Create request (try SIP feed first for better data coverage, fallback to IEX)
-            try:
-                request = StockBarsRequest(
-                    symbol_or_symbols=symbol,
-                    timeframe=alpaca_timeframe,
-                    start=start_date_utc,
-                    end=end_date_utc,
-                    feed="sip"  # SIP feed has better coverage
-                )
-                logger.debug(f"Using SIP feed for {symbol}")
-            except Exception as e:
-                logger.debug(f"SIP feed not available ({e}), falling back to IEX")
-                request = StockBarsRequest(
-                    symbol_or_symbols=symbol,
-                    timeframe=alpaca_timeframe,
-                    start=start_date_utc,
-                    end=end_date_utc,
-                    feed="iex"  # IEX feed for free accounts
-                )
+            # Create request - USE IEX FEED (FREE TIER)
+            # IEX feed supports minute bars on free accounts
+            # SIP feed requires paid subscription and will fail with:
+            # "subscription does not permit querying recent SIP data"
+            request = StockBarsRequest(
+                symbol_or_symbols=symbol,
+                timeframe=alpaca_timeframe,
+                start=start_date_utc,
+                end=end_date_utc,
+                feed="iex"  # IEX feed - free tier, supports intraday minute bars
+            )
+            logger.debug(f"Using IEX feed for {symbol} (free tier compatible)")
 
             # Fetch data
             bars_response = client.get_stock_bars(request)
@@ -1454,6 +1447,7 @@ class HistoryManager:
                 DataSource.DATABASE,
                 DataSource.IBKR,
                 DataSource.ALPACA,
+                DataSource.ALPACA_CRYPTO,
                 DataSource.ALPHA_VANTAGE,
                 DataSource.FINNHUB,
                 DataSource.YAHOO
@@ -1462,6 +1456,7 @@ class HistoryManager:
             self.priority_order = [
                 DataSource.DATABASE,
                 DataSource.ALPACA,
+                DataSource.ALPACA_CRYPTO,
                 DataSource.ALPHA_VANTAGE,
                 DataSource.FINNHUB,
                 DataSource.YAHOO,
@@ -1477,13 +1472,18 @@ class HistoryManager:
         if ibkr_adapter:
             self.register_provider(DataSource.IBKR, IBKRHistoricalProvider(ibkr_adapter))
 
-        # Alpaca
+        # Alpaca (Stocks)
         if market_config.alpaca_enabled:
             api_key = config_manager.get_credential("alpaca_api_key")
             api_secret = config_manager.get_credential("alpaca_api_secret")
             if api_key and api_secret:
                 self.register_provider(DataSource.ALPACA, AlpacaProvider(api_key, api_secret))
-                logger.info(f"Registered Alpaca provider (key: {api_key[:8]}...)")
+                logger.info(f"Registered Alpaca stock provider (key: {api_key[:8]}...)")
+
+                # Also register Alpaca Crypto provider with same credentials
+                from src.core.market_data.alpaca_crypto_provider import AlpacaCryptoProvider
+                self.register_provider(DataSource.ALPACA_CRYPTO, AlpacaCryptoProvider(api_key, api_secret))
+                logger.info(f"Registered Alpaca crypto provider (key: {api_key[:8]}...)")
             else:
                 logger.warning("Alpaca provider enabled but API credentials not found")
         else:
@@ -1539,6 +1539,30 @@ class HistoryManager:
         for source in self.priority_order:
             if source not in self.providers:
                 continue
+
+            # Skip providers based on asset class
+            from src.core.market_data.types import AssetClass
+            if request.asset_class == AssetClass.CRYPTO:
+                # For crypto, only use crypto-specific providers
+                if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
+                    logger.debug(f"Skipping {source.value} for crypto asset class")
+                    continue
+            elif request.asset_class == AssetClass.STOCK:
+                # For stocks, skip crypto providers
+                if source == DataSource.ALPACA_CRYPTO:
+                    logger.debug(f"Skipping {source.value} for stock asset class")
+                    continue
+
+            # CRITICAL: Skip Yahoo Finance for intraday timeframes
+            # Yahoo only supports daily and higher timeframes
+            if source == DataSource.YAHOO:
+                intraday_timeframes = [
+                    Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15,
+                    Timeframe.MINUTE_30, Timeframe.HOUR_1, Timeframe.HOUR_4
+                ]
+                if request.timeframe in intraday_timeframes:
+                    logger.debug(f"Skipping Yahoo Finance for intraday timeframe {request.timeframe.value}")
+                    continue
 
             provider = self.providers[source]
             if not await provider.is_available():
@@ -1749,6 +1773,65 @@ class HistoryManager:
         if self.stream_client:
             await self.stream_client.disconnect()
             logger.info("Stopped real-time stream")
+
+    async def start_crypto_realtime_stream(
+        self,
+        crypto_symbols: list[str]
+    ) -> bool:
+        """Start real-time cryptocurrency market data streaming.
+
+        Args:
+            crypto_symbols: List of crypto trading pairs (e.g., ["BTC/USD", "ETH/USD"])
+
+        Returns:
+            True if stream started successfully
+        """
+        try:
+            logger.info(f"Starting crypto real-time stream for {len(crypto_symbols)} symbols")
+
+            # Try Alpaca Crypto WebSocket
+            if DataSource.ALPACA_CRYPTO in self.providers:
+                from src.core.market_data.alpaca_crypto_provider import AlpacaCryptoProvider
+                from src.core.market_data.alpaca_crypto_stream import AlpacaCryptoStreamClient
+
+                crypto_provider = self.providers[DataSource.ALPACA_CRYPTO]
+                if isinstance(crypto_provider, AlpacaCryptoProvider):
+                    try:
+                        # Create Alpaca crypto stream client
+                        crypto_stream_client = AlpacaCryptoStreamClient(
+                            api_key=crypto_provider.api_key,
+                            api_secret=crypto_provider.api_secret
+                        )
+
+                        # Connect and subscribe
+                        connected = await crypto_stream_client.connect()
+                        if connected:
+                            await crypto_stream_client.subscribe(crypto_symbols)
+                            # Store crypto stream client separately or in a dict
+                            if not hasattr(self, 'crypto_stream_client'):
+                                self.crypto_stream_client = crypto_stream_client
+                            logger.info(
+                                f"Started Alpaca crypto WebSocket stream "
+                                f"for {len(crypto_symbols)} symbols"
+                            )
+                            return True
+                        else:
+                            logger.warning("Failed to connect Alpaca crypto stream")
+                    except Exception as e:
+                        logger.error(f"Alpaca crypto streaming failed: {e}")
+
+            logger.error("No crypto streaming provider available (need Alpaca Crypto)")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error starting crypto real-time stream: {e}")
+            return False
+
+    async def stop_crypto_realtime_stream(self):
+        """Stop real-time cryptocurrency market data streaming."""
+        if hasattr(self, 'crypto_stream_client') and self.crypto_stream_client:
+            await self.crypto_stream_client.disconnect()
+            logger.info("Stopped crypto real-time stream")
 
     def get_realtime_tick(self, symbol: str):
         """Get latest real-time tick for a symbol.

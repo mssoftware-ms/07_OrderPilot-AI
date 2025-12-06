@@ -74,7 +74,7 @@ class WatchlistWidget(QWidget):
         input_layout = QHBoxLayout()
 
         self.symbol_input = QLineEdit()
-        self.symbol_input.setPlaceholderText("Enter symbol (e.g., AAPL)")
+        self.symbol_input.setPlaceholderText("Enter symbol (e.g., AAPL for stocks, BTC/USD for crypto)")
         self.symbol_input.returnPressed.connect(self.add_symbol_from_input)
         input_layout.addWidget(self.symbol_input)
 
@@ -146,6 +146,21 @@ class WatchlistWidget(QWidget):
         tech_btn.clicked.connect(self.add_tech_stocks)
         tech_btn.setToolTip("Add tech stocks (AAPL, MSFT, GOOGL, etc.)")
         quick_add_layout.addWidget(tech_btn)
+
+        crypto_btn = QPushButton("Crypto")
+        crypto_btn.clicked.connect(self.add_crypto_pairs)
+        crypto_btn.setToolTip("Add major crypto pairs (BTC/USD, ETH/USD, SOL/USD, etc.)")
+        crypto_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF8C00;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FFA500;
+            }
+        """)
+        quick_add_layout.addWidget(crypto_btn)
 
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.clear_watchlist)
@@ -442,6 +457,18 @@ class WatchlistWidget(QWidget):
         tech_stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
         for symbol in tech_stocks:
             self.add_symbol(symbol)
+
+    def add_crypto_pairs(self):
+        """Add major cryptocurrency trading pairs."""
+        crypto_pairs = [
+            {"symbol": "BTC/USD", "name": "Bitcoin", "wkn": ""},
+            {"symbol": "ETH/USD", "name": "Ethereum", "wkn": ""},
+            {"symbol": "SOL/USD", "name": "Solana", "wkn": ""},
+            {"symbol": "AVAX/USD", "name": "Avalanche", "wkn": ""},
+            {"symbol": "MATIC/USD", "name": "Polygon", "wkn": ""},
+        ]
+        for crypto in crypto_pairs:
+            self.add_symbol(crypto)
 
     def on_symbol_double_clicked(self, item):
         """Handle symbol double-click.

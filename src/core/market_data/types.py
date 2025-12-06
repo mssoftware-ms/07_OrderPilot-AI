@@ -9,10 +9,19 @@ from decimal import Decimal
 from enum import Enum
 
 
+class AssetClass(Enum):
+    """Asset class types supported by the platform."""
+    STOCK = "stock"
+    CRYPTO = "crypto"
+    OPTION = "option"
+    FOREX = "forex"
+
+
 class DataSource(Enum):
     """Available data sources."""
     IBKR = "ibkr"
     ALPACA = "alpaca"
+    ALPACA_CRYPTO = "alpaca_crypto"  # Alpaca cryptocurrency data
     ALPHA_VANTAGE = "alpha_vantage"
     FINNHUB = "finnhub"
     YAHOO = "yahoo"
@@ -56,6 +65,7 @@ class DataRequest:
     start_date: datetime
     end_date: datetime
     timeframe: Timeframe
+    asset_class: AssetClass = AssetClass.STOCK  # Default to stock for backwards compatibility
     source: DataSource | None = None
     include_extended_hours: bool = False
     adjust_for_splits: bool = True

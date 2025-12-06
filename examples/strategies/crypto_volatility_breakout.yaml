@@ -1,0 +1,162 @@
+# Crypto Volatility Breakout Strategy
+#
+# Strategie für hochvolatile Crypto-Assets wie BTC, ETH, SOL
+# Nutzt ATR (Average True Range) für Entry/Exit Signale
+#
+# Logik:
+# - Long Entry: Preis bricht über obere Volatility Band (SMA + 2*ATR)
+# - Long Exit: Preis fällt unter untere Volatility Band (SMA - 1.5*ATR)
+# - Ideal für: Trending Crypto Markets mit hoher Volatilität
+#
+# Empfohlene Assets: BTC/USD, ETH/USD, SOL/USD
+# Empfohlene Timeframes: 15min, 30min, 1H
+
+name: "Crypto Volatility Breakout"
+version: "1.0.0"
+category: "Trend Following"
+author: "OrderPilot-AI"
+description: |
+  ATR-basierte Breakout-Strategie speziell für volatile Crypto-Assets.
+  Nutzt dynamische Volatility Bands basierend auf Average True Range (ATR).
+
+# Asset-Klasse und empfohlene Symbole
+asset_class: crypto
+recommended_symbols:
+  - "BTC/USD"
+  - "ETH/USD"
+  - "SOL/USD"
+  - "AVAX/USD"
+
+# Zeitrahmen
+recommended_timeframes:
+  - "15min"
+  - "30min"
+  - "1H"
+  - "4H"
+
+# Indikatoren
+indicators:
+  # Basis SMA für Trend
+  - type: SMA
+    alias: sma_base
+    params:
+      period: 50
+    source: close
+    plot: true
+
+  # ATR für Volatilität
+  - type: ATR
+    alias: atr
+    params:
+      period: 14
+    plot: true
+
+  # Obere Volatility Band (SMA + 2*ATR)
+  - type: SMA
+    alias: sma_temp
+    params:
+      period: 50
+    source: close
+    plot: false
+
+  # RSI für Momentum-Filter
+  - type: RSI
+    alias: rsi
+    params:
+      period: 14
+    source: close
+    plot: true
+
+# Entry-Bedingungen
+# Long: Preis > SMA + (2 * ATR) UND RSI > 50
+entry_long:
+  type: composite
+  operator: AND
+  conditions:
+    - type: condition
+      left: close
+      operator: ">"
+      right_formula: "sma_base + (2 * atr)"
+      description: "Preis bricht über obere Volatility Band"
+
+    - type: condition
+      left: rsi
+      operator: ">"
+      right: 50
+      description: "Momentum ist positiv (RSI > 50)"
+
+# Exit-Bedingungen
+# Exit Long: Preis < SMA - (1.5 * ATR)
+exit_long:
+  type: condition
+  left: close
+  operator: "<"
+  right_formula: "sma_base - (1.5 * atr)"
+  description: "Preis fällt unter untere Volatility Band"
+
+# Short-Positionen (optional - für Crypto oft riskant)
+entry_short:
+  type: composite
+  operator: AND
+  conditions:
+    - type: condition
+      left: close
+      operator: "<"
+      right_formula: "sma_base - (2 * atr)"
+      description: "Preis bricht unter untere Volatility Band"
+
+    - type: condition
+      left: rsi
+      operator: "<"
+      right: 50
+      description: "Momentum ist negativ (RSI < 50)"
+
+exit_short:
+  type: condition
+  left: close
+  operator: ">"
+  right_formula: "sma_base + (1.5 * atr)"
+  description: "Preis steigt über obere Volatility Band"
+
+# Risk Management
+risk_management:
+  # Stop Loss: 3% unter Entry für Long, 3% über Entry für Short
+  stop_loss_pct: 3.0
+
+  # Take Profit: 9% über Entry für Long (3:1 R/R)
+  take_profit_pct: 9.0
+
+  # Position Size: 10% des Kapitals pro Trade
+  position_size_pct: 10.0
+
+  # Trailing Stop: Aktiviert nach 4.5% Gewinn
+  trailing_stop_enabled: true
+  trailing_stop_trigger_pct: 4.5
+  trailing_stop_distance_pct: 2.5
+
+# Backtest-Parameter
+backtest:
+  initial_capital: 10000
+  commission: 0.001  # 0.1% (typisch für Crypto)
+  slippage: 0.0005   # 0.05%
+
+# Hinweise
+notes: |
+  Diese Strategie ist speziell für Crypto-Assets entwickelt:
+
+  - Nutzt ATR für dynamische Entry/Exit-Levels
+  - Passt sich automatisch an Volatilität an
+  - RSI-Filter vermeidet Entries in überkauften/überverkauften Bereichen
+  - Trailing Stop sichert Gewinne in Trending Markets
+
+  **Wichtig für Crypto:**
+  - Crypto-Märkte handeln 24/7 (keine Weekend-Gaps)
+  - Höhere Volatilität = größere Gewinne UND Verluste
+  - Commission ist höher als bei Stocks (0.1% typisch)
+  - Slippage kann bei hoher Volatilität signifikant sein
+
+  **Optimierungsvorschläge:**
+  - ATR Period: 10-20 (Standard: 14)
+  - SMA Period: 30-100 (Standard: 50)
+  - ATR Multiplier: 1.5-3.0 (Standard: 2.0)
+  - RSI Threshold: 45-55 (Standard: 50)
