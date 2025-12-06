@@ -71,3 +71,16 @@ Thumbs.db
 .env
 .env.local
 secrets/
+
+# Local settings
+.claude/settings.local.json
+
+# Database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Additional temporary documentation patterns
+ALLE_FIXES_*.md
+SESSION_SUMMARY_*.md
