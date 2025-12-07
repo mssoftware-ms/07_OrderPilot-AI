@@ -84,3 +84,6 @@ data/
 # Additional temporary documentation patterns
 ALLE_FIXES_*.md
 SESSION_SUMMARY_*.md
+
+# WSL Virtual Environment
+.wsl_venv/
