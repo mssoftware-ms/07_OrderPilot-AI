@@ -188,9 +188,22 @@ CHART_HTML_TEMPLATE = """
 
                     createPanel: (panelId, displayName, type, color, min, max) => {
                         try {
-                            if (panelMap[panelId] !== undefined) return true;
+                            console.log(`📊 createPanel called: panelId='${panelId}', exists=${panelMap[panelId] !== undefined}`);
+                            if (panelMap[panelId] !== undefined) {
+                                // A stale pane reference (paneIndex === -1) can remain after rapid remove/add.
+                                const existingPane = panelMap[panelId];
+                                const existingIndex = typeof existingPane?.paneIndex === 'function' ? existingPane.paneIndex() : -1;
+                                if (existingIndex >= 0) {
+                                    console.log(`  ⚠️ Panel '${panelId}' already exists at index ${existingIndex}, skipping creation`);
+                                    return true;
+                                }
+                                console.warn(`  ⚠️ Panel '${panelId}' map entry is stale (index=${existingIndex}), recreating`);
+                                delete panelMap[panelId];
+                            }
+                            console.log(`  ✓ Creating new panel '${panelId}'`);
                             const paneApi = addPane(panelId);
                             const paneIndex = paneApi.paneIndex();
+                            console.log(`  ✓ Pane index: ${paneIndex}`);
                             let series;
                             if (type === 'histogram') {
                                 series = chart.addSeries(HistogramSeries, {
@@ -219,8 +232,23 @@ CHART_HTML_TEMPLATE = """
 
                     addPanelSeries: (panelId, seriesKey, type, color, data) => {
                         try {
-                            const paneApi = panelMap[panelId] ?? addPane(panelId);
-                            const paneIndex = paneApi.paneIndex();
+                            console.log(`📈 addPanelSeries called: panelId='${panelId}', seriesKey='${seriesKey}', panelExists=${panelMap[panelId] !== undefined}`);
+                            // Get or create pane. If an old paneApi survives with paneIndex -1 (after removal),
+                            // drop it and recreate to avoid "Index should be greater or equal to 0" assertions.
+                            let paneApi = panelMap[panelId];
+                            if (paneApi && (typeof paneApi.paneIndex !== 'function' || paneApi.paneIndex() < 0)) {
+                                console.warn(`  ⚠️ Stale paneApi for '${panelId}' (index=${paneApi.paneIndex?.()}); recreating pane`);
+                                delete panelMap[panelId];
+                                paneApi = undefined;
+                            }
+                            paneApi = paneApi || addPane(panelId);
+                            let paneIndex = paneApi.paneIndex();
+                            if (paneIndex < 0) {
+                                console.warn(`  ⚠️ paneIndex for '${panelId}' is ${paneIndex}, forcing fresh pane creation`);
+                                paneApi = addPane(panelId);
+                                paneIndex = paneApi.paneIndex();
+                            }
+                            console.log(`  ✓ Using pane index: ${paneIndex}`);
                             const seriesOpts = type === 'histogram'
                                 ? { base: 0, color, priceScaleId: 'right', priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, title: seriesKey.toUpperCase() }
                                 : { color, lineWidth: 2, title: seriesKey.toUpperCase(), priceScaleId: 'right' };
@@ -376,6 +404,9 @@ class EmbeddedTradingViewChart(QWidget):
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self._process_pending_updates)
         self.update_timer.setInterval(1000)  # Batch updates every 1 second
+
+        # Indicator update lock to prevent race conditions
+        self._updating_indicators = False
 
         # Setup UI
         self._setup_ui()
@@ -925,14 +956,19 @@ class EmbeddedTradingViewChart(QWidget):
         """
         panel_id = ind_id.lower()
 
+        # DON'T remove existing panels - causes pane index shifting issues
+        # Just create if not exists, JavaScript will check if it already exists
+
         if ind_id == "MACD":
             # MACD: Create panel with histogram
+            logger.info(f"  📊 Creating MACD panel with ID '{panel_id}'")
             self._execute_js(
                 f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'histogram', '#26a69a', null, null);"
             )
             self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'macd', 'line', '#2962FF', null);")
             self._execute_js(f"window.chartAPI.addPanelSeries('{panel_id}', 'signal', 'line', '#FF6D00', null);")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'solid', '0');")
+            logger.info(f"  ✓ MACD panel JavaScript calls completed")
         else:
             # Other oscillators
             js_min = 'null' if min_val is None else str(min_val)
@@ -988,9 +1024,11 @@ class EmbeddedTradingViewChart(QWidget):
             signal_json = json.dumps(ind_data['signal'])
             hist_json = json.dumps(ind_data['histogram'])
 
+            logger.info(f"  📈 Setting MACD data: histogram={len(ind_data['histogram'])} points, macd={len(ind_data['macd'])} points, signal={len(ind_data['signal'])} points")
             self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {hist_json});")
             self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'macd', {macd_json});")
             self._execute_js(f"window.chartAPI.setPanelSeriesData('{panel_id}', 'signal', {signal_json});")
+            logger.info(f"  ✓ MACD data set complete")
         else:
             # Regular oscillator - single series
             ind_json = json.dumps(ind_data)
@@ -1026,9 +1064,15 @@ class EmbeddedTradingViewChart(QWidget):
             self._pending_indicator_update = True
             return
 
+        # Prevent concurrent execution with real-time updates
+        if self._updating_indicators:
+            logger.warning("⏸️ Indicator update already in progress, skipping...")
+            return
+
         logger.info("✓ Chart ready, processing indicators...")
 
         try:
+            self._updating_indicators = True
             overlay_configs, oscillator_configs = self._get_indicator_configs()
 
             # Process each indicator
@@ -1072,8 +1116,10 @@ class EmbeddedTradingViewChart(QWidget):
                             ind_data = self._convert_single_series_data_to_chart_format(result)
                         logger.info(f"  ✓ Converted {ind_id} to chart format, {len(ind_data)} data points")
 
-                        # Create indicator/panel if not exists
-                        if ind_id not in self.active_indicators:
+                        # Create indicator/panel if not exists, or recreate if needed
+                        should_create = ind_id not in self.active_indicators
+
+                        if should_create:
                             logger.info(f"  → Creating new {'overlay' if is_overlay else 'panel'} for {ind_id}")
                             if is_overlay:
                                 self._create_overlay_indicator(display_name, color)
@@ -1095,12 +1141,118 @@ class EmbeddedTradingViewChart(QWidget):
                         logger.error(f"  ❌ Error processing indicator {ind_id}: {ind_error}", exc_info=True)
 
                 elif ind_id in self.active_indicators:
-                    # Remove indicator if unchecked
+                    # Remove indicator if unchecked - FIXED: This elif must be at same level as if is_checked!
+                    logger.info(f"  → Removing {ind_id} from chart (is_overlay={is_overlay})")
                     self._remove_indicator_from_chart(ind_id, display_name, is_overlay)
                     del self.active_indicators[ind_id]
+                    logger.info(f"  ✓ Removed {ind_id} from active indicators. Remaining: {list(self.active_indicators.keys())}")
 
         except Exception as e:
             logger.error(f"Error updating indicators: {e}", exc_info=True)
+        finally:
+            self._updating_indicators = False
+
+    def _update_indicators_realtime(self, candle: dict):
+        """Update indicators in real-time with new candle data.
+
+        Args:
+            candle: New candle dict with time, open, high, low, close
+        """
+        if self.data is None or not self.active_indicators:
+            return  # No data or no active indicators
+
+        if not (self.page_loaded and self.chart_initialized):
+            return  # Chart not ready
+
+        # Skip if full indicator update is running
+        if self._updating_indicators:
+            return
+
+        try:
+            # Update the last row of the DataFrame with new candle data
+            # Create a new row from the candle
+            new_row = pd.DataFrame([{
+                'time': pd.Timestamp.fromtimestamp(candle['time'], tz='UTC'),
+                'open': candle['open'],
+                'high': candle['high'],
+                'low': candle['low'],
+                'close': candle['close']
+            }])
+            new_row.set_index('time', inplace=True)
+
+            # Check if this timestamp already exists (update) or is new (append)
+            if new_row.index[0] in self.data.index:
+                # Update existing row
+                self.data.loc[new_row.index[0]] = new_row.iloc[0]
+            else:
+                # Append new row
+                self.data = pd.concat([self.data, new_row])
+
+            # Get indicator configs
+            overlay_configs, oscillator_configs = self._get_indicator_configs()
+
+            # Update each active indicator
+            for ind_id in self.active_indicators:
+                # Determine if overlay or oscillator
+                is_overlay = ind_id in overlay_configs
+                is_oscillator = ind_id in oscillator_configs
+
+                if not is_overlay and not is_oscillator:
+                    continue
+
+                # Get configuration
+                if is_overlay:
+                    ind_type, params, display_name, _, _ = overlay_configs[ind_id]
+                else:
+                    ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
+
+                # Recalculate indicator
+                config = IndicatorConfig(indicator_type=ind_type, params=params)
+                result = self.indicator_engine.calculate(self.data, config)
+
+                # Get the last value(s)
+                if isinstance(result.values, pd.DataFrame):
+                    # Multi-series indicator (MACD, Stoch)
+                    if ind_id == "MACD":
+                        last_idx = result.values.index[-1]
+                        hist_val = float(result.values.loc[last_idx, 'MACDh_12_26_9'])
+                        time_unix = int(last_idx.timestamp())
+
+                        # Update only the MACD histogram for real-time
+                        # (MACD and Signal lines are too slow for tick-by-tick updates)
+                        panel_id = ind_id.lower()
+                        hist_point = json.dumps({'time': time_unix, 'value': hist_val})
+                        self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {hist_point});")
+                    else:
+                        # Other multi-series indicators (Stoch, etc.)
+                        last_idx = result.values.index[-1]
+                        time_unix = int(last_idx.timestamp())
+
+                        # Use first column as main value
+                        main_val = float(result.values.iloc[-1, 0])
+                        point = json.dumps({'time': time_unix, 'value': main_val})
+
+                        if is_overlay:
+                            self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
+                        else:
+                            panel_id = ind_id.lower()
+                            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
+                else:
+                    # Single-series indicator (RSI, EMA, SMA, etc.)
+                    last_idx = result.values.index[-1]
+                    value = float(result.values.iloc[-1])
+                    time_unix = int(last_idx.timestamp())
+
+                    point = json.dumps({'time': time_unix, 'value': value})
+
+                    if is_overlay:
+                        self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
+                    else:
+                        panel_id = ind_id.lower()
+                        self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
+
+        except Exception as e:
+            logger.error(f"Error updating indicators in real-time: {e}", exc_info=True)
 
     def _update_indicators_button_badge(self):
         """Update indicators button to show count of active indicators."""
@@ -1155,13 +1307,15 @@ class EmbeddedTradingViewChart(QWidget):
         indicator_id = indicator_data["id"]
         is_checked = action.isChecked()
 
-        logger.info(f"Indicator {indicator_id} {'enabled' if is_checked else 'disabled'}")
+        logger.info(f"🔄 Indicator {indicator_id} {'enabled' if is_checked else 'disabled'} (currently active: {list(self.active_indicators.keys())})")
 
         # Update indicators display
         self._update_indicators()
 
         # Update button style to show how many indicators are active
         self._update_indicators_button_badge()
+
+        logger.info(f"✓ Toggle complete. Active indicators: {list(self.active_indicators.keys())}")
 
     @pyqtSlot(object)
     def _on_market_bar(self, event: Event):
@@ -1270,6 +1424,9 @@ class EmbeddedTradingViewChart(QWidget):
 
             self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
             self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
+
+            # ✅ FIX: Update indicators in real-time
+            self._update_indicators_realtime(candle)
 
         except Exception as e:
             logger.error(f"Error handling market tick: {e}", exc_info=True)
@@ -1382,7 +1539,13 @@ class EmbeddedTradingViewChart(QWidget):
         """Toggle live streaming on/off."""
         import asyncio
 
-        self.live_streaming_enabled = self.live_stream_button.isChecked()
+        # Get current button state
+        is_checked = self.live_stream_button.isChecked()
+
+        logger.info(f"🔄 Live stream toggle clicked: button_checked={is_checked}, current_enabled={self.live_streaming_enabled}")
+
+        # Update enabled flag
+        self.live_streaming_enabled = is_checked
 
         if self.live_streaming_enabled:
             # Start live stream

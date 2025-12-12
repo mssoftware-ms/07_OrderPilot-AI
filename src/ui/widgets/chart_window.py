@@ -1607,9 +1607,12 @@ class ChartWindow(QMainWindow):
         if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
             logger.info(f"Stopping live stream for {self.symbol}...")
             try:
-                import asyncio
-                # Create task to unsubscribe
-                asyncio.create_task(self.chart_widget._stop_live_stream())
+                # Simply disable streaming flag to stop receiving updates
+                # Don't try to unsubscribe async during close event (causes freeze)
+                self.chart_widget.live_streaming_enabled = False
+                if hasattr(self.chart_widget, 'live_stream_action'):
+                    self.chart_widget.live_stream_action.setChecked(False)
+                logger.info(f"✓ Disabled live streaming for {self.symbol}")
             except Exception as e:
                 logger.error(f"Error stopping live stream on close: {e}")
 
