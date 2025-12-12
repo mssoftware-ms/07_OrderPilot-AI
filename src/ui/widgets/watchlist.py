@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSettings
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -47,6 +47,9 @@ class WatchlistWidget(QWidget):
         self.symbols = []  # List of watched symbols
         self.symbol_data = {}  # Symbol -> {price, change, volume, etc.}
 
+        # Settings for persistent column state
+        self.settings = QSettings("OrderPilot", "TradingApp")
+
         self.init_ui()
         self.setup_event_handlers()
 
@@ -54,6 +57,9 @@ class WatchlistWidget(QWidget):
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_prices)
         self.update_timer.start(1000)  # Update every second
+
+        # Load column state after UI is initialized
+        self.load_column_state()
 
         # Load default watchlist
         self.load_default_watchlist()
@@ -117,20 +123,32 @@ class WatchlistWidget(QWidget):
             }
         """)
 
-        # Set column widths
+        # Configure header - make columns movable and resizable
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Symbol
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Name
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # WKN
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Price
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Change
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Change %
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Volume
+        header.setSectionsMovable(True)  # Allow column reordering
+        header.setSectionsClickable(True)  # Allow sorting by clicking
+        header.setStretchLastSection(False)  # Don't auto-stretch last section
+
+        # Set default column widths (Interactive allows user resizing)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+
+        # Set initial default widths
+        self.table.setColumnWidth(0, 80)   # Symbol
+        self.table.setColumnWidth(1, 150)  # Name
+        self.table.setColumnWidth(2, 80)   # WKN
+        self.table.setColumnWidth(3, 100)  # Price
+        self.table.setColumnWidth(4, 80)   # Change
+        self.table.setColumnWidth(5, 80)   # Change %
+        self.table.setColumnWidth(6, 100)  # Volume
 
         # Connect signals
         self.table.itemDoubleClicked.connect(self.on_symbol_double_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
+
+        # Save column state when columns are moved or resized
+        header.sectionMoved.connect(self.save_column_state)
+        header.sectionResized.connect(self.save_column_state)
 
         layout.addWidget(self.table)
 
@@ -150,16 +168,6 @@ class WatchlistWidget(QWidget):
         crypto_btn = QPushButton("Crypto")
         crypto_btn.clicked.connect(self.add_crypto_pairs)
         crypto_btn.setToolTip("Add major crypto pairs (BTC/USD, ETH/USD, SOL/USD, etc.)")
-        crypto_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #FF8C00;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FFA500;
-            }
-        """)
         quick_add_layout.addWidget(crypto_btn)
 
         clear_btn = QPushButton("Clear")
@@ -337,11 +345,12 @@ class WatchlistWidget(QWidget):
         self.add_symbol(symbol)
         self.symbol_input.clear()
 
-    def add_symbol(self, symbol_data: str | dict):
+    def add_symbol(self, symbol_data: str | dict, save: bool = True):
         """Add symbol to watchlist.
 
         Args:
             symbol_data: Trading symbol (string) or dict with {symbol, name, wkn}
+            save: Whether to save watchlist immediately (default: True, set False for batch operations)
         """
         # Handle both string and dict input
         if isinstance(symbol_data, dict):
@@ -398,8 +407,9 @@ class WatchlistWidget(QWidget):
         # Emit signal
         self.symbol_added.emit(symbol)
 
-        # Save watchlist
-        self.save_watchlist()
+        # Save watchlist (only if not in batch mode)
+        if save:
+            self.save_watchlist()
 
     def remove_symbol(self, symbol: str):
         """Remove symbol from watchlist.
@@ -448,15 +458,35 @@ class WatchlistWidget(QWidget):
 
     def add_indices(self):
         """Add major market indices."""
-        indices = ["QQQ", "DIA", "SPY", "IWM", "VTI"]
-        for symbol in indices:
-            self.add_symbol(symbol)
+        indices = [
+            {"symbol": "QQQ", "name": "NASDAQ 100 ETF"},
+            {"symbol": "DIA", "name": "Dow Jones ETF"},
+            {"symbol": "SPY", "name": "S&P 500 ETF"},
+            {"symbol": "IWM", "name": "Russell 2000 ETF"},
+            {"symbol": "VTI", "name": "Total Stock Market ETF"}
+        ]
+        # Batch add: disable save for each symbol
+        for index in indices:
+            self.add_symbol(index, save=False)
+        # Save once at the end
+        self.save_watchlist()
 
     def add_tech_stocks(self):
         """Add major tech stocks."""
-        tech_stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"]
-        for symbol in tech_stocks:
-            self.add_symbol(symbol)
+        tech_stocks = [
+            {"symbol": "AAPL", "name": "Apple Inc."},
+            {"symbol": "MSFT", "name": "Microsoft Corp."},
+            {"symbol": "GOOGL", "name": "Alphabet Inc."},
+            {"symbol": "AMZN", "name": "Amazon.com Inc."},
+            {"symbol": "META", "name": "Meta Platforms Inc."},
+            {"symbol": "NVDA", "name": "NVIDIA Corp."},
+            {"symbol": "TSLA", "name": "Tesla Inc."}
+        ]
+        # Batch add: disable save for each symbol
+        for stock in tech_stocks:
+            self.add_symbol(stock, save=False)
+        # Save once at the end
+        self.save_watchlist()
 
     def add_crypto_pairs(self):
         """Add major cryptocurrency trading pairs."""
@@ -467,8 +497,11 @@ class WatchlistWidget(QWidget):
             {"symbol": "AVAX/USD", "name": "Avalanche", "wkn": ""},
             {"symbol": "MATIC/USD", "name": "Polygon", "wkn": ""},
         ]
+        # Batch add: disable save for each symbol
         for crypto in crypto_pairs:
-            self.add_symbol(crypto)
+            self.add_symbol(crypto, save=False)
+        # Save once at the end
+        self.save_watchlist()
 
     def on_symbol_double_clicked(self, item):
         """Handle symbol double-click.
@@ -542,8 +575,9 @@ class WatchlistWidget(QWidget):
         try:
             watchlist = config_manager.load_watchlist()
             if watchlist:
+                # Batch load: disable save for each symbol
                 for symbol in watchlist:
-                    self.add_symbol(symbol)
+                    self.add_symbol(symbol, save=False)
                 logger.info(f"Loaded {len(watchlist)} symbols from saved watchlist")
                 return
         except Exception as e:
@@ -557,8 +591,11 @@ class WatchlistWidget(QWidget):
             {"symbol": "QQQ", "name": "NASDAQ 100 ETF", "wkn": "A0AE1X"},
             {"symbol": "SPY", "name": "S&P 500 ETF", "wkn": "A1JULM"}
         ]
+        # Batch load: disable save for each symbol
         for symbol_data in default_symbols:
-            self.add_symbol(symbol_data)
+            self.add_symbol(symbol_data, save=False)
+        # Save once at the end
+        self.save_watchlist()
         logger.info("Loaded default watchlist")
 
     def save_watchlist(self):
@@ -591,3 +628,36 @@ class WatchlistWidget(QWidget):
             List of symbols
         """
         return self.symbols.copy()
+
+    def save_column_state(self):
+        """Save column widths and order to settings."""
+        try:
+            header = self.table.horizontalHeader()
+            # Save header state (includes column order and widths)
+            state = header.saveState()
+            self.settings.setValue("watchlist/columnState", state)
+            logger.debug("Saved watchlist column state")
+        except Exception as e:
+            logger.error(f"Failed to save column state: {e}")
+
+    def load_column_state(self):
+        """Load column widths and order from settings."""
+        try:
+            header = self.table.horizontalHeader()
+            state = self.settings.value("watchlist/columnState")
+            if state:
+                header.restoreState(state)
+                logger.debug("Restored watchlist column state")
+            else:
+                logger.debug("No saved column state found, using defaults")
+        except Exception as e:
+            logger.error(f"Failed to load column state: {e}")
+
+    def closeEvent(self, event):
+        """Handle widget close event - save column state.
+
+        Args:
+            event: Close event
+        """
+        self.save_column_state()
+        super().closeEvent(event)

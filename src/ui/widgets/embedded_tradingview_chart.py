@@ -620,14 +620,17 @@ class EmbeddedTradingViewChart(QWidget):
     def _execute_js(self, script: str):
         """Execute JavaScript in the web view, queueing until chart is ready."""
         if self.page_loaded and self.chart_initialized:
+            # Log indicator-related JS calls
+            if 'Indicator' in script or 'Panel' in script or 'createPanel' in script:
+                logger.info(f"🔧 Executing JS (indicator): {script[:100]}...")
             self.web_view.page().runJavaScript(script)
         else:
             # Queue command until both page load and chart initialization are done
             self.pending_js_commands.append(script)
             if not self.page_loaded:
-                logger.debug("Page not loaded yet, queueing JS execution")
+                logger.warning(f"❌ Page not loaded yet, queueing JS: {script[:50]}...")
             else:
-                logger.debug("Chart not initialized yet, queueing JS execution")
+                logger.warning(f"❌ Chart not initialized yet, queueing JS: {script[:50]}...")
 
     def _flush_pending_js(self):
         """Run any JS commands that were queued before chart initialization completed."""
@@ -685,6 +688,12 @@ class EmbeddedTradingViewChart(QWidget):
             logger.info("Loading pending data after chart initialization")
             self.load_data(self.pending_data_load)
             self.pending_data_load = None
+
+        # Update indicators if pending
+        if hasattr(self, '_pending_indicator_update') and self._pending_indicator_update:
+            logger.info("Updating pending indicators after chart initialization")
+            self._pending_indicator_update = False
+            self._update_indicators()
 
     def load_data(self, data: pd.DataFrame):
         """Load market data into chart.
@@ -1004,8 +1013,20 @@ class EmbeddedTradingViewChart(QWidget):
 
     def _update_indicators(self):
         """Update technical indicators on chart."""
+        logger.info("🔧 _update_indicators called")
+
         if self.data is None:
+            logger.warning("❌ Cannot update indicators: chart data not loaded yet")
             return
+
+        if not (self.page_loaded and self.chart_initialized):
+            logger.warning("❌ Cannot update indicators: chart not fully initialized yet (page_loaded=%s, chart_initialized=%s)",
+                          self.page_loaded, self.chart_initialized)
+            # Mark that we need to update indicators once chart is ready
+            self._pending_indicator_update = True
+            return
+
+        logger.info("✓ Chart ready, processing indicators...")
 
         try:
             overlay_configs, oscillator_configs = self._get_indicator_configs()
@@ -1013,6 +1034,8 @@ class EmbeddedTradingViewChart(QWidget):
             # Process each indicator
             for ind_id, action in self.indicator_actions.items():
                 is_checked = action.isChecked()
+                if is_checked:
+                    logger.info(f"  → Processing checked indicator: {ind_id}")
                 indicator_data = action.data()
                 color = indicator_data["color"]
 
@@ -1033,31 +1056,43 @@ class EmbeddedTradingViewChart(QWidget):
                     ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
 
                 if is_checked:
-                    # Calculate indicator
-                    config = IndicatorConfig(indicator_type=ind_type, params=params)
-                    result = self.indicator_engine.calculate(self.data, config)
+                    try:
+                        # Calculate indicator
+                        logger.info(f"  → Calculating {ind_id} with params: {params}")
+                        config = IndicatorConfig(indicator_type=ind_type, params=params)
+                        result = self.indicator_engine.calculate(self.data, config)
+                        logger.info(f"  ✓ Calculated {ind_id}, values shape: {result.values.shape if hasattr(result.values, 'shape') else len(result.values)}")
 
-                    # Convert to chart format based on data type
-                    if isinstance(result.values, pd.DataFrame) and ind_id == "MACD":
-                        ind_data = self._convert_macd_data_to_chart_format(result)
-                    elif isinstance(result.values, pd.DataFrame):
-                        ind_data = self._convert_multi_series_data_to_chart_format(result, ind_id)
-                    else:
-                        ind_data = self._convert_single_series_data_to_chart_format(result)
-
-                    # Create indicator/panel if not exists
-                    if ind_id not in self.active_indicators:
-                        if is_overlay:
-                            self._create_overlay_indicator(display_name, color)
+                        # Convert to chart format based on data type
+                        if isinstance(result.values, pd.DataFrame) and ind_id == "MACD":
+                            ind_data = self._convert_macd_data_to_chart_format(result)
+                        elif isinstance(result.values, pd.DataFrame):
+                            ind_data = self._convert_multi_series_data_to_chart_format(result, ind_id)
                         else:
-                            self._create_oscillator_panel(ind_id, display_name, color, min_val, max_val)
-                        self.active_indicators[ind_id] = True
+                            ind_data = self._convert_single_series_data_to_chart_format(result)
+                        logger.info(f"  ✓ Converted {ind_id} to chart format, {len(ind_data)} data points")
 
-                    # Update data
-                    if is_overlay:
-                        self._update_overlay_data(display_name, ind_data)
-                    else:
-                        self._update_oscillator_data(ind_id, ind_data)
+                        # Create indicator/panel if not exists
+                        if ind_id not in self.active_indicators:
+                            logger.info(f"  → Creating new {'overlay' if is_overlay else 'panel'} for {ind_id}")
+                            if is_overlay:
+                                self._create_overlay_indicator(display_name, color)
+                            else:
+                                self._create_oscillator_panel(ind_id, display_name, color, min_val, max_val)
+                            self.active_indicators[ind_id] = True
+                            logger.info(f"  ✓ Created and activated {ind_id}")
+                        else:
+                            logger.info(f"  → {ind_id} already exists, updating data only")
+
+                        # Update data
+                        if is_overlay:
+                            self._update_overlay_data(display_name, ind_data)
+                        else:
+                            self._update_oscillator_data(ind_id, ind_data)
+                        logger.info(f"  ✓ Updated data for {ind_id}")
+
+                    except Exception as ind_error:
+                        logger.error(f"  ❌ Error processing indicator {ind_id}: {ind_error}", exc_info=True)
 
                 elif ind_id in self.active_indicators:
                     # Remove indicator if unchecked
@@ -1481,20 +1516,30 @@ class EmbeddedTradingViewChart(QWidget):
             self._toggle_live_stream()
 
     async def _stop_live_stream(self):
-        """Stop live streaming."""
-        if not self.history_manager:
+        """Stop live streaming for this symbol."""
+        if not self.history_manager or not self.current_symbol:
             return
 
         try:
-            # Stop both stock and crypto streams
-            await self.history_manager.stop_realtime_stream()
-            await self.history_manager.stop_crypto_realtime_stream()
-            logger.info("✓ Live stream stopped")
+            # Unsubscribe only this symbol (don't stop entire stream)
+            is_crypto = "/" in self.current_symbol
+
+            if is_crypto:
+                # Unsubscribe from crypto stream
+                if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
+                    await self.history_manager.crypto_stream_client.unsubscribe([self.current_symbol])
+                    logger.info(f"✓ Unsubscribed {self.current_symbol} from crypto stream")
+            else:
+                # Unsubscribe from stock stream
+                if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                    await self.history_manager.stream_client.unsubscribe([self.current_symbol])
+                    logger.info(f"✓ Unsubscribed {self.current_symbol} from stock stream")
+
             self.market_status_label.setText("Ready")
             self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
 
         except Exception as e:
-            logger.error(f"Error stopping live stream: {e}")
+            logger.error(f"Error unsubscribing {self.current_symbol} from stream: {e}")
 
     async def refresh_data(self):
         """Public method to refresh chart data (called by main app)."""

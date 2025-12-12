@@ -1603,29 +1603,15 @@ class ChartWindow(QMainWindow):
         """
         logger.info(f"Closing ChartWindow for {self.symbol}...")
 
-        # CRITICAL: Stop live stream if running (prevents freeze)
-        if hasattr(self, 'stream_client') and self.stream_client is not None:
-            logger.info("Stopping active stream before closing...")
+        # Stop live stream if running (unsubscribe from symbol)
+        if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
+            logger.info(f"Stopping live stream for {self.symbol}...")
             try:
-                # Force synchronous disconnect to prevent freeze
                 import asyncio
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Create task and wait briefly
-                    task = loop.create_task(self.stream_client.disconnect())
-                    # Don't wait indefinitely - timeout after 1 second
-                    try:
-                        loop.run_until_complete(asyncio.wait_for(task, timeout=1.0))
-                    except asyncio.TimeoutError:
-                        logger.warning("Stream disconnect timeout - forcing cleanup")
-                except RuntimeError:
-                    # No running loop - just mark as None
-                    logger.warning("No event loop - skipping async disconnect")
-                finally:
-                    self.stream_client = None
+                # Create task to unsubscribe
+                asyncio.create_task(self.chart_widget._stop_live_stream())
             except Exception as e:
-                logger.error(f"Error stopping stream on close: {e}")
-                self.stream_client = None
+                logger.error(f"Error stopping live stream on close: {e}")
 
         # Unsubscribe from event bus to prevent memory leaks
         self._unsubscribe_events()
