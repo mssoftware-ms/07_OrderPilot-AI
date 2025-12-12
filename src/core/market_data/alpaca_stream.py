@@ -129,13 +129,25 @@ class AlpacaStreamClient(StreamClient):
             return False
 
     async def _run_stream(self):
-        """Run the Alpaca stream."""
-        try:
-            if self._stream:
-                await self._stream._run_forever()
-        except Exception as e:
-            logger.error(f"Stream error: {e}")
-            self.metrics.status = StreamStatus.ERROR
+        """Run the Alpaca stream with automatic reconnection."""
+        while self.connected:
+            try:
+                if self._stream:
+                    logger.info("Starting Alpaca stream listener...")
+                    await self._stream._run_forever()
+                    
+                # If run_forever returns, it means the connection closed
+                if self.connected:
+                    logger.warning("Alpaca stream connection closed unexpectedly. Reconnecting in 5s...")
+                    await asyncio.sleep(5)
+                    
+            except Exception as e:
+                logger.error(f"Alpaca stream error: {e}")
+                self.metrics.status = StreamStatus.ERROR
+                
+                if self.connected:
+                    logger.info("Attempting to reconnect in 5s...")
+                    await asyncio.sleep(5)
 
     async def disconnect(self):
         """Disconnect from Alpaca stream."""

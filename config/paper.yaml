@@ -82,7 +82,7 @@ execution:
   trail_stop_atr_multiplier: 2.0
   use_native_stops: true
 features:
-  crypto_trading: false
+  crypto_trading: true
   news_sentiment: false
   options_trading: false
   trade_republic_enabled: false

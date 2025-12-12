@@ -550,9 +550,10 @@ class ChartWindow(QMainWindow):
 
         logger.info(f"Starting live stream for {self.symbol}")
 
-        # Get Alpaca credentials
-        api_key = os.getenv("APCA_API_KEY_ID")
-        api_secret = os.getenv("APCA_API_SECRET_KEY")
+        # Get Alpaca credentials (from ConfigManager)
+        from src.config.loader import config_manager
+        api_key = config_manager.get_credential("alpaca_api_key")
+        api_secret = config_manager.get_credential("alpaca_api_secret")
 
         if not api_key or not api_secret:
             from PyQt6.QtWidgets import QMessageBox
@@ -586,30 +587,64 @@ class ChartWindow(QMainWindow):
                     if not connected:
                         raise RuntimeError("Failed to connect to Alpaca stream")
 
-                    # Subscribe to bars for this symbol
-                    await self.stream_client.subscribe_bars([self.symbol])
+                    # Subscribe to symbols (includes bars, trades, quotes)
+                    await self.stream_client.subscribe([self.symbol])
 
                     logger.info(f"✅ Live stream started for {self.symbol}")
 
-                    # Update UI on main thread
-                    self.stream_status_label.setText(f"Status: Connected - Streaming {self.symbol}")
-                    self.stream_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
-                    self.start_stream_btn.setEnabled(False)
-                    self.stop_stream_btn.setEnabled(True)
+                    # Update UI on main thread using Qt signal/slot
+                    from PyQt6.QtCore import QMetaObject, Qt
+                    def update_ui():
+                        self.stream_status_label.setText(f"Status: Connected - Streaming {self.symbol}")
+                        self.stream_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
+                        self.start_stream_btn.setEnabled(False)
+                        self.stop_stream_btn.setEnabled(True)
+
+                    QMetaObject.invokeMethod(
+                        self.stream_status_label,
+                        lambda: update_ui(),
+                        Qt.ConnectionType.QueuedConnection
+                    )
 
                 except Exception as e:
                     logger.error(f"Stream start failed: {e}", exc_info=True)
-                    self.stream_status_label.setText(f"Status: Error - {str(e)[:50]}")
-                    self.stream_status_label.setStyleSheet("color: #dc3545;")
+
+                    def show_error():
+                        self.stream_status_label.setText(f"Status: Error - {str(e)[:50]}")
+                        self.stream_status_label.setStyleSheet("color: #dc3545;")
+
+                    from PyQt6.QtCore import QMetaObject, Qt
+                    QMetaObject.invokeMethod(
+                        self.stream_status_label,
+                        lambda: show_error(),
+                        Qt.ConnectionType.QueuedConnection
+                    )
                     raise
 
-            # Get or create event loop
+            # Get or create event loop (compatible with Qt)
             try:
                 loop = asyncio.get_running_loop()
+                logger.info("Using existing event loop")
             except RuntimeError:
-                # No running loop - create new one
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                # Check if we have qasync integration
+                try:
+                    from qasync import QEventLoop
+                    from PyQt6.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        loop = QEventLoop(app)
+                        asyncio.set_event_loop(loop)
+                        logger.info("Using qasync event loop")
+                    else:
+                        # Fallback to standard asyncio loop
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        logger.warning("Using standard asyncio loop (qasync recommended)")
+                except ImportError:
+                    # No qasync - use standard loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    logger.warning("qasync not available - using standard asyncio loop")
 
             # Run async task
             asyncio.create_task(start_stream())
@@ -637,19 +672,27 @@ class ChartWindow(QMainWindow):
         try:
             async def stop_stream():
                 try:
-                    # Unsubscribe from bars
-                    await self.stream_client.unsubscribe_bars([self.symbol])
+                    # Unsubscribe from symbols
+                    await self.stream_client.unsubscribe([self.symbol])
 
                     # Disconnect
                     await self.stream_client.disconnect()
 
                     logger.info(f"✅ Live stream stopped for {self.symbol}")
 
-                    # Update UI
-                    self.stream_status_label.setText("Status: Disconnected")
-                    self.stream_status_label.setStyleSheet("color: #888;")
-                    self.start_stream_btn.setEnabled(True)
-                    self.stop_stream_btn.setEnabled(False)
+                    # Update UI using Qt signal/slot
+                    from PyQt6.QtCore import QMetaObject, Qt
+                    def update_ui():
+                        self.stream_status_label.setText("Status: Disconnected")
+                        self.stream_status_label.setStyleSheet("color: #888;")
+                        self.start_stream_btn.setEnabled(True)
+                        self.stop_stream_btn.setEnabled(False)
+
+                    QMetaObject.invokeMethod(
+                        self.stream_status_label,
+                        lambda: update_ui(),
+                        Qt.ConnectionType.QueuedConnection
+                    )
 
                 except Exception as e:
                     logger.error(f"Stream stop failed: {e}", exc_info=True)
@@ -661,8 +704,20 @@ class ChartWindow(QMainWindow):
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                # Try to get qasync loop if available
+                try:
+                    from qasync import QEventLoop
+                    from PyQt6.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        loop = QEventLoop(app)
+                        asyncio.set_event_loop(loop)
+                    else:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except ImportError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
 
             # Run async task
             asyncio.create_task(stop_stream())
@@ -1546,6 +1601,32 @@ class ChartWindow(QMainWindow):
         Args:
             event: Close event
         """
+        logger.info(f"Closing ChartWindow for {self.symbol}...")
+
+        # CRITICAL: Stop live stream if running (prevents freeze)
+        if hasattr(self, 'stream_client') and self.stream_client is not None:
+            logger.info("Stopping active stream before closing...")
+            try:
+                # Force synchronous disconnect to prevent freeze
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Create task and wait briefly
+                    task = loop.create_task(self.stream_client.disconnect())
+                    # Don't wait indefinitely - timeout after 1 second
+                    try:
+                        loop.run_until_complete(asyncio.wait_for(task, timeout=1.0))
+                    except asyncio.TimeoutError:
+                        logger.warning("Stream disconnect timeout - forcing cleanup")
+                except RuntimeError:
+                    # No running loop - just mark as None
+                    logger.warning("No event loop - skipping async disconnect")
+                finally:
+                    self.stream_client = None
+            except Exception as e:
+                logger.error(f"Error stopping stream on close: {e}")
+                self.stream_client = None
+
         # Unsubscribe from event bus to prevent memory leaks
         self._unsubscribe_events()
 

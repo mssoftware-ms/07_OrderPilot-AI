@@ -19,62 +19,11 @@ import pandas as pd
 from src.common.event_bus import Event, EventType, event_bus
 from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
+from src.core.market_data.types import AssetClass, DataRequest, DataSource, HistoricalBar, Timeframe
 from src.database import get_db_manager
 from src.database.models import MarketBar
 
 logger = logging.getLogger(__name__)
-
-
-class DataSource(Enum):
-    """Available data sources."""
-    IBKR = "ibkr"
-    ALPACA = "alpaca"
-    ALPHA_VANTAGE = "alpha_vantage"
-    FINNHUB = "finnhub"
-    YAHOO = "yahoo"
-    DATABASE = "database"  # Local database cache
-
-
-class Timeframe(Enum):
-    """Market data timeframes."""
-    SECOND_1 = "1s"
-    SECOND_5 = "5s"
-    SECOND_30 = "30s"
-    MINUTE_1 = "1min"
-    MINUTE_5 = "5min"
-    MINUTE_15 = "15min"
-    MINUTE_30 = "30min"
-    HOUR_1 = "1h"
-    HOUR_4 = "4h"
-    DAY_1 = "1D"
-    WEEK_1 = "1W"
-    MONTH_1 = "1ME"
-
-
-@dataclass
-class HistoricalBar:
-    """Historical market bar data."""
-    timestamp: datetime
-    open: Decimal
-    high: Decimal
-    low: Decimal
-    close: Decimal
-    volume: int
-    vwap: Decimal | None = None
-    trades: int | None = None
-    source: str = ""
-
-
-@dataclass
-class DataRequest:
-    """Request for historical data."""
-    symbol: str
-    start_date: datetime
-    end_date: datetime
-    timeframe: Timeframe
-    source: DataSource | None = None
-    include_extended_hours: bool = False
-    adjust_for_splits: bool = True
 
 
 class HistoricalDataProvider(ABC):
@@ -1521,10 +1470,30 @@ class HistoryManager:
         Returns:
             Tuple of (bars, source_used)
         """
+        # CRITICAL FIX: Check if we need fresh data (end_date is very recent)
+        # If so, skip database cache to ensure we get live data
+        from datetime import timedelta, timezone
+        needs_fresh_data = False
+
+        if request.end_date:
+            # Make end_date timezone-aware if it isn't already
+            end_dt = request.end_date
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+            now_utc = datetime.now(timezone.utc)
+            time_diff = now_utc - end_dt.astimezone(timezone.utc)
+
+            # If requesting data from within last 5 minutes, we need fresh data
+            if time_diff < timedelta(minutes=5):
+                needs_fresh_data = True
+                logger.info(f"📡 Fresh data needed for {request.symbol} (end_date is {time_diff.total_seconds():.0f}s ago)")
+
         # Try specific source if requested
         if request.source and request.source in self.providers:
             provider = self.providers[request.source]
             if await provider.is_available():
+                logger.info(f"🎯 Using specific source: {request.source.value} for {request.symbol}")
                 bars = await provider.fetch_bars(
                     request.symbol,
                     request.start_date,
@@ -1533,15 +1502,25 @@ class HistoryManager:
                 )
                 if bars:
                     await self._store_to_database(bars, request.symbol)
+                    logger.info(f"✅ Got {len(bars)} bars from {request.source.value}")
                     return bars, request.source.value
+                else:
+                    logger.warning(f"⚠️ No bars returned from {request.source.value}, trying fallback...")
+            else:
+                logger.warning(f"⚠️ Provider {request.source.value} not available, trying fallback...")
 
         # Try providers in priority order
         for source in self.priority_order:
             if source not in self.providers:
                 continue
 
+            # CRITICAL: Skip DATABASE if we need fresh data
+            # Database cache can be stale, especially for crypto which trades 24/7
+            if needs_fresh_data and source == DataSource.DATABASE:
+                logger.debug(f"⏭️ Skipping {source.value} because fresh data is needed")
+                continue
+
             # Skip providers based on asset class
-            from src.core.market_data.types import AssetClass
             if request.asset_class == AssetClass.CRYPTO:
                 # For crypto, only use crypto-specific providers
                 if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
@@ -1800,7 +1779,8 @@ class HistoryManager:
                         # Create Alpaca crypto stream client
                         crypto_stream_client = AlpacaCryptoStreamClient(
                             api_key=crypto_provider.api_key,
-                            api_secret=crypto_provider.api_secret
+                            api_secret=crypto_provider.api_secret,
+                            paper=True
                         )
 
                         # Connect and subscribe

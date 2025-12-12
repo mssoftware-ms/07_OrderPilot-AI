@@ -1,29 +1,54 @@
 {
   "watchlist": [
     {
-      "symbol": "AAPL",
-      "name": "Apple Inc.",
-      "wkn": "865985"
-    },
-    {
-      "symbol": "MSFT",
-      "name": "Microsoft Corp.",
-      "wkn": "870747"
-    },
-    {
-      "symbol": "GOOGL",
-      "name": "Alphabet Inc.",
-      "wkn": "A14Y6F"
-    },
-    {
       "symbol": "QQQ",
-      "name": "NASDAQ 100 ETF",
-      "wkn": "A0AE1X"
+      "name": "",
+      "wkn": ""
+    },
+    {
+      "symbol": "DIA",
+      "name": "",
+      "wkn": ""
     },
     {
       "symbol": "SPY",
-      "name": "S&P 500 ETF",
-      "wkn": "A1JULM"
+      "name": "",
+      "wkn": ""
+    },
+    {
+      "symbol": "IWM",
+      "name": "",
+      "wkn": ""
+    },
+    {
+      "symbol": "VTI",
+      "name": "",
+      "wkn": ""
+    },
+    {
+      "symbol": "BTC/USD",
+      "name": "Bitcoin",
+      "wkn": ""
+    },
+    {
+      "symbol": "ETH/USD",
+      "name": "Ethereum",
+      "wkn": ""
+    },
+    {
+      "symbol": "SOL/USD",
+      "name": "Solana",
+      "wkn": ""
+    },
+    {
+      "symbol": "AVAX/USD",
+      "name": "Avalanche",
+      "wkn": ""
+    },
+    {
+      "symbol": "MATIC/USD",
+      "name": "Polygon",
+      "wkn": ""
     }
   ]
 }

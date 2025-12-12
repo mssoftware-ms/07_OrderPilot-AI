@@ -34,6 +34,7 @@ class AlpacaCryptoStreamClient(StreamClient):
         self,
         api_key: str,
         api_secret: str,
+        paper: bool = True,
         buffer_size: int = 10000
     ):
         """Initialize Alpaca crypto stream client.
@@ -41,6 +42,7 @@ class AlpacaCryptoStreamClient(StreamClient):
         Args:
             api_key: Alpaca API key
             api_secret: Alpaca API secret
+            paper: Use paper trading (default: True)
             buffer_size: Size of the data buffer
         """
         super().__init__(
@@ -53,11 +55,12 @@ class AlpacaCryptoStreamClient(StreamClient):
 
         self.api_key = api_key
         self.api_secret = api_secret
+        self.paper = paper
 
         # Alpaca crypto stream client
         self._stream: CryptoDataStream | None = None
 
-        logger.info("Alpaca crypto stream client initialized")
+        logger.info(f"Alpaca crypto stream client initialized (paper={paper})")
 
     async def connect(self) -> bool:
         """Connect to Alpaca Crypto WebSocket stream.
@@ -70,10 +73,18 @@ class AlpacaCryptoStreamClient(StreamClient):
             return True
 
         try:
+            # Determine URL based on paper mode
+            url_override = None
+            if self.paper:
+                # Use Sandbox URL for paper trading
+                url_override = "wss://stream.data.sandbox.alpaca.markets/v1beta3/crypto/us"
+                logger.info(f"Using Sandbox Crypto Stream: {url_override}")
+
             # Create crypto stream client
             self._stream = CryptoDataStream(
                 api_key=self.api_key,
-                secret_key=self.api_secret
+                secret_key=self.api_secret,
+                url_override=url_override
             )
 
             # Set up handlers for subscribed symbols
@@ -115,13 +126,25 @@ class AlpacaCryptoStreamClient(StreamClient):
             return False
 
     async def _run_stream(self):
-        """Run the Alpaca crypto stream."""
-        try:
-            if self._stream:
-                await self._stream._run_forever()
-        except Exception as e:
-            logger.error(f"Crypto stream error: {e}")
-            self.metrics.status = StreamStatus.ERROR
+        """Run the Alpaca crypto stream with automatic reconnection."""
+        while self.connected:
+            try:
+                if self._stream:
+                    logger.info("Starting Alpaca crypto stream listener...")
+                    await self._stream._run_forever()
+
+                # If run_forever returns, it means the connection closed
+                if self.connected:
+                    logger.warning("Alpaca crypto stream connection closed unexpectedly. Reconnecting in 5s...")
+                    await asyncio.sleep(5)
+
+            except Exception as e:
+                logger.error(f"Alpaca crypto stream error: {e}")
+                self.metrics.status = StreamStatus.ERROR
+
+                if self.connected:
+                    logger.info("Attempting to reconnect in 5s...")
+                    await asyncio.sleep(5)
 
     async def disconnect(self):
         """Disconnect from Alpaca crypto stream."""

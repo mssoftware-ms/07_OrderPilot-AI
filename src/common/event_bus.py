@@ -5,6 +5,8 @@ for decoupled communication between different components of the trading app.
 """
 
 import logging
+import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -166,7 +168,31 @@ class EventBus:
         """
         try:
             signal = self.get_signal(event.type)
-            signal.send(event)
+
+            # Deliver to each receiver individually so one bad handler
+            # doesn't break the entire event pipeline.
+            for receiver in list(signal.receivers_for(event)):
+                try:
+                    result = receiver(event)
+
+                    # Support async receivers (coroutine functions)
+                    if inspect.iscoroutine(result):
+                        try:
+                            asyncio.get_running_loop().create_task(result)
+                        except RuntimeError:
+                            # No running loop – log and drop the coroutine
+                            logger.warning(
+                                "Async event handler scheduled without a running loop: %s",
+                                receiver,
+                            )
+
+                except Exception as handler_err:
+                    logger.error(
+                        "Error delivering %s to %s: %s",
+                        event.type,
+                        receiver,
+                        handler_err,
+                    )
 
             # Store in history (with size limit)
             self._event_history.append(event)

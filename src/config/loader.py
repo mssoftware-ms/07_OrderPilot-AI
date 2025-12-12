@@ -547,18 +547,47 @@ class ConfigManager:
         logger.info(f"Profile saved to {profile_path}")
 
     def get_credential(self, key: str, service: str = "OrderPilot-AI") -> str | None:
-        """Retrieve a credential from Windows Credential Manager.
+        """Retrieve a credential from .env file or Windows Credential Manager.
+
+        Priority:
+        1. Check in-memory cache
+        2. Check .env file in config/secrets/
+        3. Check Windows Credential Manager
 
         Args:
-            key: Credential key (e.g., 'openai_api_key')
+            key: Credential key (e.g., 'openai_api_key', 'alpaca_api_key')
             service: Service name for keyring
 
         Returns:
             Credential value or None if not found
         """
+        # Check cache first
         if key in self._credentials:
             return self._credentials[key]
 
+        # Try loading from .env file
+        env_file = self.config_dir / "secrets" / ".env"
+        if env_file.exists():
+            try:
+                # Convert key to uppercase for .env format
+                env_key = key.upper()
+                with open(env_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            if "=" in line:
+                                k, v = line.split("=", 1)
+                                if k.strip() == env_key:
+                                    value = v.strip()
+                                    # Skip placeholder values
+                                    if value and not value.startswith("YOUR_") and not value.endswith("_HERE"):
+                                        self._credentials[key] = value
+                                        logger.debug(f"Credential {key} loaded from .env")
+                                        return value
+            except Exception as e:
+                logger.warning(f"Failed to read .env file: {e}")
+
+        # Fall back to keyring
         try:
             value = keyring.get_password(service, key)
             if value:

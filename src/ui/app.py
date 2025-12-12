@@ -382,6 +382,12 @@ class TradingApplication(QMainWindow):
         )
         toolbar.addWidget(self.ai_status)
 
+        # Crypto Stream Status
+        self.crypto_status = QLabel("Crypto: Off")
+        self.crypto_status.setStyleSheet("color: gray;")
+        self.crypto_status.setToolTip("Live Crypto Data Stream Status")
+        toolbar.addWidget(self.crypto_status)
+
     def create_central_widget(self):
         """Create the central widget with tabs."""
         central_widget = QWidget()
@@ -502,12 +508,93 @@ class TradingApplication(QMainWindow):
                     self.ai_status.setText("AI: No API Key")
                     self.ai_status.setStyleSheet("color: orange;")
 
+            # Initialize real-time streaming for stocks and crypto
+            await self.initialize_realtime_streaming()
+
             self.status_bar.showMessage("Services initialized", 3000)
 
         except Exception as e:
             logger.error(f"Failed to initialize services: {e}")
             QMessageBox.critical(self, "Initialization Error",
                                 f"Failed to initialize services: {e}")
+
+    async def initialize_realtime_streaming(self):
+        """Initialize real-time market data streaming for stocks and crypto."""
+        try:
+            profile = config_manager.load_profile()
+
+            # Check if Alpaca is configured
+            alpaca_api_key = config_manager.get_credential("alpaca_api_key")
+            alpaca_api_secret = config_manager.get_credential("alpaca_api_secret")
+
+            if not alpaca_api_key or not alpaca_api_secret:
+                logger.warning("Alpaca API keys not found - live streaming disabled")
+                self.crypto_status.setText("Live Data: No Keys")
+                self.crypto_status.setStyleSheet("color: orange;")
+                return
+
+            # Get initial symbols from watchlist (will be empty at start)
+            stock_symbols = []
+            crypto_symbols = []
+
+            # Classify symbols
+            for symbol in self.watchlist_widget.get_symbols():
+                if self._is_crypto_symbol(symbol):
+                    crypto_symbols.append(symbol)
+                else:
+                    stock_symbols.append(symbol)
+
+            # Start stock streaming if we have stock symbols or start it anyway for future subscriptions
+            logger.info("Starting stock streaming via HistoryManager...")
+            stock_stream_started = await self.history_manager.start_realtime_stream(
+                stock_symbols if stock_symbols else []  # Start even without symbols
+            )
+
+            if stock_stream_started:
+                logger.info(f"Stock streaming started - subscribed to {len(stock_symbols)} symbols")
+            else:
+                logger.warning("Failed to start stock streaming")
+
+            # Start crypto streaming if enabled and we have crypto symbols
+            if profile.features.crypto_trading:
+                logger.info("Starting crypto streaming via HistoryManager...")
+                crypto_stream_started = await self.history_manager.start_crypto_realtime_stream(
+                    crypto_symbols if crypto_symbols else ["BTC/USD", "ETH/USD"]  # Default crypto pairs
+                )
+
+                if crypto_stream_started:
+                    self.crypto_status.setText("Live Data: Active")
+                    self.crypto_status.setStyleSheet("color: #2ECC71; font-weight: bold;")
+                    self.crypto_status.setToolTip(
+                        f"Live Market Data Streaming: Active\n"
+                        f"Stocks: {len(stock_symbols)} symbols\n"
+                        f"Crypto: {len(crypto_symbols)} symbols"
+                    )
+                    logger.info(f"Crypto streaming started - subscribed to {len(crypto_symbols)} symbols")
+                else:
+                    self.crypto_status.setText("Live Data: Error")
+                    self.crypto_status.setStyleSheet("color: orange;")
+                    logger.error("Failed to start crypto streaming")
+            else:
+                logger.info("Crypto trading disabled in configuration")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize real-time streaming: {e}")
+            self.crypto_status.setText("Live Data: Error")
+            self.crypto_status.setStyleSheet("color: orange;")
+            self.crypto_status.setToolTip(f"Streaming error: {e}")
+
+    def _is_crypto_symbol(self, symbol: str) -> bool:
+        """Check if symbol is a cryptocurrency pair.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            True if crypto symbol
+        """
+        # Crypto pairs contain a slash (e.g., BTC/USD, ETH/USD)
+        return "/" in symbol
 
     def apply_theme(self, theme_name: str):
         """Apply a theme to the application."""
@@ -1000,12 +1087,37 @@ class TradingApplication(QMainWindow):
         """
         logger.info(f"Symbol added to watchlist: {symbol}")
 
-        # Subscribe to real-time data if streaming is active
-        if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
-            import asyncio
-            asyncio.create_task(self.history_manager.stream_client.subscribe([symbol]))
+        # Subscribe to real-time data stream
+        import asyncio
+        asyncio.create_task(self._subscribe_symbol_to_stream(symbol))
 
         self.status_bar.showMessage(f"Added {symbol} to watchlist", 3000)
+
+    async def _subscribe_symbol_to_stream(self, symbol: str):
+        """Subscribe a symbol to the appropriate real-time stream.
+
+        Args:
+            symbol: Trading symbol
+        """
+        try:
+            # Determine if crypto or stock
+            if self._is_crypto_symbol(symbol):
+                # Subscribe to crypto stream
+                if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
+                    await self.history_manager.crypto_stream_client.subscribe([symbol])
+                    logger.info(f"Subscribed {symbol} to crypto stream")
+                else:
+                    logger.warning(f"Crypto stream not available for {symbol}")
+            else:
+                # Subscribe to stock stream
+                if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                    await self.history_manager.stream_client.subscribe([symbol])
+                    logger.info(f"Subscribed {symbol} to stock stream")
+                else:
+                    logger.warning(f"Stock stream not available for {symbol}")
+
+        except Exception as e:
+            logger.error(f"Failed to subscribe {symbol} to stream: {e}")
 
     @pyqtSlot(dict)
     def on_order_placed(self, order_data: dict[str, Any]):
@@ -1093,6 +1205,15 @@ class TradingApplication(QMainWindow):
             # Get available providers from history manager
             available_sources = self.history_manager.get_available_sources()
 
+            # Collapse Alpaca variants (stocks + crypto) into a single selectable option
+            alpaca_available = "alpaca" in available_sources or "alpaca_crypto" in available_sources
+            filtered_sources = [
+                s for s in available_sources
+                if s not in ("alpaca_crypto",)  # hide dedicated crypto entry in UI
+            ]
+            if alpaca_available and "alpaca" not in filtered_sources:
+                filtered_sources.append("alpaca")
+
             # Clear and repopulate combo box
             self.data_provider_combo.clear()
 
@@ -1103,14 +1224,14 @@ class TradingApplication(QMainWindow):
             provider_display_names = {
                 "database": "Database (Cache)",
                 "ibkr": "Interactive Brokers",
-                "alpaca": "Alpaca",
+                "alpaca": "Alpaca (Stocks & Crypto)",
                 "alpha_vantage": "Alpha Vantage",
                 "finnhub": "Finnhub",
                 "yahoo": "Yahoo Finance"
             }
 
             # Add available (active) providers
-            for source in available_sources:
+            for source in filtered_sources:
                 display_name = provider_display_names.get(source, source.title())
                 self.data_provider_combo.addItem(f"{display_name}", source)
 
@@ -1119,7 +1240,7 @@ class TradingApplication(QMainWindow):
             market_config = profile.market_data
 
             # Check each provider and add with warning if enabled but not available
-            if market_config.alpaca_enabled and "alpaca" not in available_sources:
+            if market_config.alpaca_enabled and "alpaca" not in filtered_sources:
                 self.data_provider_combo.addItem(
                     "Alpaca (Configure API Keys)",
                     "alpaca_disabled"
@@ -1151,7 +1272,7 @@ class TradingApplication(QMainWindow):
             if index >= 0:
                 self.data_provider_combo.setCurrentIndex(index)
 
-            logger.info(f"Available market data providers: {available_sources}")
+            logger.info(f"Available market data providers: {filtered_sources}")
             logger.info(f"Total providers in dropdown: {self.data_provider_combo.count()}")
 
         except Exception as e:
@@ -1242,6 +1363,26 @@ class TradingApplication(QMainWindow):
                 self.dashboard_timer.stop()
         except Exception as e:
             logger.error(f"Error stopping timers: {e}")
+
+        # Disconnect real-time streams via HistoryManager
+        try:
+            if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                logger.info("Disconnecting stock stream...")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_realtime_stream())
+                else:
+                    loop.run_until_complete(self.history_manager.stop_realtime_stream())
+
+            if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
+                logger.info("Disconnecting crypto stream...")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_crypto_realtime_stream())
+                else:
+                    loop.run_until_complete(self.history_manager.stop_crypto_realtime_stream())
+        except Exception as e:
+            logger.error(f"Error disconnecting streams: {e}")
 
         # Disconnect broker (synchronously)
         if self.broker:

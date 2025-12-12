@@ -7,7 +7,7 @@ library rendered directly in a Qt WebEngine view (Chromium-based).
 import json
 import logging
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 
 import pandas as pd
@@ -1156,23 +1156,46 @@ class EmbeddedTradingViewChart(QWidget):
             self.info_label.setText(f"Last: ${price:.2f}")
             logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
 
+            # --- Time Handling Fix ---
+            # Use timestamp from event, NOT system time
+            ts = tick_data.get('timestamp')
+            if ts is None:
+                ts = event.timestamp
+
+            if ts is None:
+                ts = datetime.now(timezone.utc)
+
+            # Ensure ts is datetime and UTC
+            if isinstance(ts, str):
+                try:
+                    ts = pd.to_datetime(ts).to_pydatetime()
+                except Exception:
+                    ts = datetime.now(timezone.utc)
+            elif isinstance(ts, (int, float)):
+                ts = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+
+            current_tick_time = int(ts.timestamp())
+            current_minute_start = current_tick_time - (current_tick_time % 60)
+
+            # DEBUG LOGGING
+            logger.info(f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | TickUnix: {current_tick_time} | MinStart: {current_minute_start}")
+
             # Update current candle in real-time (Stock3 style)
             if not hasattr(self, '_current_candle_time'):
-                # Initialize with current minute boundary
-                now = datetime.now()
-                self._current_candle_time = int(now.replace(second=0, microsecond=0).timestamp())
+                # Initialize with current minute boundary from DATA
+                self._current_candle_time = current_minute_start
                 self._current_candle_open = price
                 self._current_candle_high = price
                 self._current_candle_low = price
                 self._current_candle_volume = 0
 
             # Check if we need a new candle (new minute)
-            now = datetime.now()
-            current_minute = int(now.replace(second=0, microsecond=0).timestamp())
-
-            if current_minute > self._current_candle_time:
+            if current_minute_start > self._current_candle_time:
                 # New candle - reset
-                self._current_candle_time = current_minute
+                self._current_candle_time = current_minute_start
                 self._current_candle_open = price
                 self._current_candle_high = price
                 self._current_candle_low = price
@@ -1221,8 +1244,19 @@ class EmbeddedTradingViewChart(QWidget):
             while self.pending_bars:
                 bar_data = self.pending_bars.popleft()
 
-                timestamp = bar_data.get('timestamp', datetime.now())
-                unix_time = int(timestamp.timestamp())
+                ts_raw = bar_data.get('timestamp', datetime.now())
+                # Robust parsing: handle str/np datetime/pandas Timestamp
+                try:
+                    if isinstance(ts_raw, str):
+                        ts_parsed = pd.to_datetime(ts_raw)
+                        ts_value = ts_parsed.to_pydatetime() if hasattr(ts_parsed, "to_pydatetime") else datetime.now()
+                    elif hasattr(ts_raw, "to_pydatetime"):
+                        ts_value = ts_raw.to_pydatetime()
+                    else:
+                        ts_value = ts_raw
+                    unix_time = int(pd.Timestamp(ts_value).timestamp())
+                except Exception:
+                    unix_time = int(datetime.now().timestamp())
 
                 candle = {
                     'time': unix_time,
@@ -1268,6 +1302,27 @@ class EmbeddedTradingViewChart(QWidget):
     def _on_load_chart(self):
         """Load chart data for current symbol."""
         import asyncio
+
+        # Get or create event loop compatible with Qt
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Try qasync loop if available
+            try:
+                from qasync import QEventLoop
+                from PyQt6.QtWidgets import QApplication
+                app = QApplication.instance()
+                if app:
+                    loop = QEventLoop(app)
+                    asyncio.set_event_loop(loop)
+                else:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+            except ImportError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+        # Create and schedule the task
         asyncio.create_task(self.load_symbol(self.current_symbol, self.current_data_provider))
 
     def _on_refresh(self):
@@ -1286,6 +1341,26 @@ class EmbeddedTradingViewChart(QWidget):
         if self.live_streaming_enabled:
             # Start live stream
             logger.info(f"Starting live stream for {self.current_symbol}...")
+
+            # Get or create event loop compatible with Qt
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # Try qasync loop if available
+                try:
+                    from qasync import QEventLoop
+                    from PyQt6.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        loop = QEventLoop(app)
+                        asyncio.set_event_loop(loop)
+                    else:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except ImportError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
             asyncio.create_task(self._start_live_stream())
 
             # Update button style
@@ -1309,6 +1384,26 @@ class EmbeddedTradingViewChart(QWidget):
         else:
             # Stop live stream
             logger.info("Stopping live stream...")
+
+            # Get or create event loop compatible with Qt
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # Try qasync loop if available
+                try:
+                    from qasync import QEventLoop
+                    from PyQt6.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        loop = QEventLoop(app)
+                        asyncio.set_event_loop(loop)
+                    else:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except ImportError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
             asyncio.create_task(self._stop_live_stream())
 
             # Reset button style
@@ -1440,17 +1535,24 @@ class EmbeddedTradingViewChart(QWidget):
             }
             timeframe = timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
 
-            # Map provider
+            # Map provider (single Alpaca option auto-selects crypto vs stocks)
             provider_source = None
             if data_provider:
-                provider_map = {
-                    "database": DataSource.DATABASE,
-                    "alpaca": DataSource.ALPACA,
-                    "alpaca_crypto": DataSource.ALPACA_CRYPTO,
-                    "yahoo": DataSource.YAHOO,
-                    "alpha_vantage": DataSource.ALPHA_VANTAGE,
-                }
-                provider_source = provider_map.get(data_provider)
+                if data_provider == "alpaca":
+                    provider_source = (
+                        DataSource.ALPACA_CRYPTO
+                        if asset_class == AssetClass.CRYPTO
+                        else DataSource.ALPACA
+                    )
+                else:
+                    provider_map = {
+                        "database": DataSource.DATABASE,
+                        "yahoo": DataSource.YAHOO,
+                        "alpha_vantage": DataSource.ALPHA_VANTAGE,
+                        "ibkr": DataSource.IBKR,
+                        "finnhub": DataSource.FINNHUB,
+                    }
+                    provider_source = provider_map.get(data_provider)
             else:
                 # Default: Use appropriate Alpaca provider based on asset class
                 if asset_class == AssetClass.CRYPTO:
@@ -1479,47 +1581,53 @@ class EmbeddedTradingViewChart(QWidget):
             now_ny = datetime.now(ny_tz)
             end_date = now_ny
 
-            # Market hours: 9:30 AM - 4:00 PM EST
-            market_open_hour = 9
-            market_open_minute = 30
-
-            # Adjust end_date for weekends AND pre-market hours
-            weekday = end_date.weekday()  # Monday=0, Sunday=6
-            current_hour = end_date.hour
-            current_minute = end_date.minute
-            is_before_market_open = (current_hour < market_open_hour or
-                                    (current_hour == market_open_hour and current_minute < market_open_minute))
-
-            # Determine if we need to use previous trading day
+            # CRITICAL: Crypto trades 24/7, stocks have market hours
             use_previous_trading_day = False
 
-            if weekday == 5:  # Saturday
-                end_date = end_date - timedelta(days=1)
-                use_previous_trading_day = True
-                logger.info("Weekend detected (Saturday), using Friday's data")
-            elif weekday == 6:  # Sunday
-                end_date = end_date - timedelta(days=2)
-                use_previous_trading_day = True
-                logger.info("Weekend detected (Sunday), using Friday's data")
-            elif weekday == 0 and is_before_market_open:  # Monday before market open
-                end_date = end_date - timedelta(days=3)  # Go back to Friday
-                use_previous_trading_day = True
-                logger.info(f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data")
-            elif weekday < 5 and is_before_market_open:  # Tuesday-Friday before market open
-                end_date = end_date - timedelta(days=1)  # Go back to previous day
-                use_previous_trading_day = True
-                logger.info(f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day")
-
-            # For intraday during non-trading periods, fetch the entire last trading day
-            if self.current_period == "1D" and use_previous_trading_day:
-                # Set a specific window for the last trading day in New York time
-                last_trading_day = end_date.date()
-                start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(hour=4, minute=0)
-                end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(hour=20, minute=0)
-                logger.info(f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)")
-            else:
-                # Standard lookback calculation
+            if asset_class == AssetClass.CRYPTO:
+                # Crypto: Always use current time, no market hours restrictions
                 start_date = end_date - timedelta(days=lookback_days)
+                logger.info(f"Crypto asset: Using current time (24/7 trading)")
+            else:
+                # Stocks: Apply market hours logic
+                # Market hours: 9:30 AM - 4:00 PM EST
+                market_open_hour = 9
+                market_open_minute = 30
+
+                # Adjust end_date for weekends AND pre-market hours
+                weekday = end_date.weekday()  # Monday=0, Sunday=6
+                current_hour = end_date.hour
+                current_minute = end_date.minute
+                is_before_market_open = (current_hour < market_open_hour or
+                                        (current_hour == market_open_hour and current_minute < market_open_minute))
+
+                if weekday == 5:  # Saturday
+                    end_date = end_date - timedelta(days=1)
+                    use_previous_trading_day = True
+                    logger.info("Weekend detected (Saturday), using Friday's data")
+                elif weekday == 6:  # Sunday
+                    end_date = end_date - timedelta(days=2)
+                    use_previous_trading_day = True
+                    logger.info("Weekend detected (Sunday), using Friday's data")
+                elif weekday == 0 and is_before_market_open:  # Monday before market open
+                    end_date = end_date - timedelta(days=3)  # Go back to Friday
+                    use_previous_trading_day = True
+                    logger.info(f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data")
+                elif weekday < 5 and is_before_market_open:  # Tuesday-Friday before market open
+                    end_date = end_date - timedelta(days=1)  # Go back to previous day
+                    use_previous_trading_day = True
+                    logger.info(f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day")
+
+                # For intraday during non-trading periods, fetch the entire last trading day
+                if self.current_period == "1D" and use_previous_trading_day:
+                    # Set a specific window for the last trading day in New York time
+                    last_trading_day = end_date.date()
+                    start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(hour=4, minute=0)
+                    end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(hour=20, minute=0)
+                    logger.info(f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)")
+                else:
+                    # Standard lookback calculation
+                    start_date = end_date - timedelta(days=lookback_days)
 
             logger.info(f"Loading {symbol} - Candles: {self.current_timeframe}, Period: {self.current_period} ({lookback_days} days)")
             logger.info(f"Date range: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} to {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
@@ -1535,7 +1643,21 @@ class EmbeddedTradingViewChart(QWidget):
                 source=provider_source
             )
 
+            # CRITICAL DEBUG: Log the actual date range being requested
+            logger.info(f"📅 Requesting data: {symbol}")
+            logger.info(f"   Start: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"   End:   {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"   Asset: {asset_class.value}, Source: {provider_source.value if provider_source else 'auto'}")
+
             bars, source_used = await self.history_manager.fetch_data(request)
+
+            # Log fetched data range
+            if bars:
+                first_bar = bars[0].timestamp
+                last_bar = bars[-1].timestamp
+                logger.info(f"📊 Fetched {len(bars)} bars from {source_used}")
+                logger.info(f"   First bar: {first_bar.strftime('%Y-%m-%d %H:%M:%S') if hasattr(first_bar, 'strftime') else first_bar}")
+                logger.info(f"   Last bar:  {last_bar.strftime('%Y-%m-%d %H:%M:%S') if hasattr(last_bar, 'strftime') else last_bar}")
 
             if not bars:
                 logger.warning(f"No data for {symbol}")
@@ -1565,9 +1687,15 @@ class EmbeddedTradingViewChart(QWidget):
 
             logger.info(f"Loaded {len(bars)} bars for {symbol} from {source_used}")
 
-            # Restart live stream if enabled
+            # Restart live stream if enabled (with proper cleanup)
             if self.live_streaming_enabled:
-                logger.info(f"Switching live stream to new symbol: {symbol}")
+                logger.info(f"Restarting live stream for symbol: {symbol}")
+                # CRITICAL: Stop existing stream first to prevent deadlock
+                await self._stop_live_stream()
+                # Small delay to ensure cleanup completes
+                import asyncio
+                await asyncio.sleep(0.5)
+                # Now start new stream
                 await self._start_live_stream()
 
         except Exception as e:

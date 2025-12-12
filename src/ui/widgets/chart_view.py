@@ -671,11 +671,12 @@ class ChartView(QWidget):
         }
         return timeframe_map.get(timeframe_str, Timeframe.MINUTE_1)
 
-    def _map_provider_string(self, provider_str: str | None):
-        """Map provider string to DataSource enum.
+    def _select_provider(self, provider_str: str | None, asset_class: str):
+        """Select provider enum, auto-routing Alpaca to crypto or stocks.
 
         Args:
             provider_str: Provider string (e.g., 'alpaca', 'yahoo')
+            asset_class: 'crypto' or 'stock'
 
         Returns:
             DataSource enum value or None
@@ -685,10 +686,12 @@ class ChartView(QWidget):
 
         from src.core.market_data.history_provider import DataSource
 
+        if provider_str == "alpaca":
+            return DataSource.ALPACA_CRYPTO if asset_class == "crypto" else DataSource.ALPACA
+
         provider_map = {
             "database": DataSource.DATABASE,
             "ibkr": DataSource.IBKR,
-            "alpaca": DataSource.ALPACA,
             "alpha_vantage": DataSource.ALPHA_VANTAGE,
             "finnhub": DataSource.FINNHUB,
             "yahoo": DataSource.YAHOO,
@@ -707,15 +710,18 @@ class ChartView(QWidget):
         """
         from datetime import datetime, timedelta
         from src.core.market_data.history_provider import DataRequest
+        from src.core.market_data.types import AssetClass
 
         timeframe = self._map_timeframe_string(self.config.timeframe)
-        provider_source = self._map_provider_string(data_provider)
+        asset_class = AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
+        provider_source = self._select_provider(data_provider, asset_class.value)
 
         return DataRequest(
             symbol=symbol,
             start_date=datetime.now() - timedelta(days=90),
             end_date=datetime.now(),
             timeframe=timeframe,
+            asset_class=asset_class,
             source=provider_source
         )
 
