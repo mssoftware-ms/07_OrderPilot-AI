@@ -1,31 +1,6 @@
 {
   "watchlist": [
     {
-      "symbol": "QQQ",
-      "name": "",
-      "wkn": ""
-    },
-    {
-      "symbol": "DIA",
-      "name": "",
-      "wkn": ""
-    },
-    {
-      "symbol": "SPY",
-      "name": "",
-      "wkn": ""
-    },
-    {
-      "symbol": "IWM",
-      "name": "",
-      "wkn": ""
-    },
-    {
-      "symbol": "VTI",
-      "name": "",
-      "wkn": ""
-    },
-    {
       "symbol": "BTC/USD",
       "name": "Bitcoin",
       "wkn": ""

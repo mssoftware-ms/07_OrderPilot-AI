@@ -73,18 +73,15 @@ class AlpacaCryptoStreamClient(StreamClient):
             return True
 
         try:
-            # Determine URL based on paper mode
-            url_override = None
-            if self.paper:
-                # Use Sandbox URL for paper trading
-                url_override = "wss://stream.data.sandbox.alpaca.markets/v1beta3/crypto/us"
-                logger.info(f"Using Sandbox Crypto Stream: {url_override}")
+            # IMPORTANT: Crypto streams use the LIVE URL for both paper and live trading
+            # The Sandbox URL does not support crypto streaming (auth fails)
+            # Alpaca crypto market data is the same for paper and live accounts
+            logger.info("Using Live Crypto Stream (same for paper and live trading)")
 
-            # Create crypto stream client
+            # Create crypto stream client (no url_override = uses default live URL)
             self._stream = CryptoDataStream(
                 api_key=self.api_key,
-                secret_key=self.api_secret,
-                url_override=url_override
+                secret_key=self.api_secret
             )
 
             # Set up handlers for subscribed symbols
@@ -307,8 +304,10 @@ class AlpacaCryptoStreamClient(StreamClient):
                     "asset_class": "crypto",
                     "price": float(trade.price),
                     "size": trade.size,
+                    "timestamp": trade.timestamp,  # Include timestamp in data for consistency
                     "exchange": trade.exchange if hasattr(trade, 'exchange') else None,
-                    "source": self.name
+                    "source": self.name,
+                    "type": "trade"  # Mark as trade update
                 }
             ))
 
@@ -322,9 +321,12 @@ class AlpacaCryptoStreamClient(StreamClient):
             quote: Alpaca crypto quote object
         """
         try:
+            # Calculate mid-price from bid/ask
+            mid_price = (quote.bid_price + quote.ask_price) / 2
+
             logger.debug(
                 f"💬 Received crypto quote: {quote.symbol} "
-                f"Bid: ${quote.bid_price} Ask: ${quote.ask_price}"
+                f"Bid: ${quote.bid_price} Ask: ${quote.ask_price} Mid: ${mid_price:.2f}"
             )
 
             # Create tick with bid/ask
@@ -332,12 +334,30 @@ class AlpacaCryptoStreamClient(StreamClient):
                 symbol=quote.symbol,
                 bid=Decimal(str(quote.bid_price)),
                 ask=Decimal(str(quote.ask_price)),
+                last=Decimal(str(mid_price)),  # Use mid-price as "last" for chart updates
                 timestamp=quote.timestamp,
                 source=self.name
             )
 
             # Update cache
             self.symbol_cache[quote.symbol] = tick
+
+            # Emit quote event as tick for real-time chart updates
+            # This provides much higher frequency updates than trades alone
+            event_bus.emit(Event(
+                type=EventType.MARKET_DATA_TICK,
+                timestamp=quote.timestamp,
+                data={
+                    "symbol": quote.symbol,
+                    "asset_class": "crypto",
+                    "price": float(mid_price),  # Mid-price
+                    "bid": float(quote.bid_price),
+                    "ask": float(quote.ask_price),
+                    "spread": float(quote.ask_price - quote.bid_price),
+                    "source": self.name,
+                    "type": "quote"  # Mark as quote update
+                }
+            ))
 
         except Exception as e:
             logger.error(f"Error handling crypto quote: {e}")

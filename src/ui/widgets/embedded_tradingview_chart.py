@@ -427,7 +427,12 @@ class EmbeddedTradingViewChart(QWidget):
         # Symbol selector
         toolbar.addWidget(QLabel("Symbol:"))
         self.symbol_combo = QComboBox()
-        self.symbol_combo.addItems(["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ"])
+        # Add crypto symbols with separator
+        self.symbol_combo.addItems([
+            "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",  # Crypto
+            "───────",  # Visual separator
+            "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ"  # Stocks
+        ])
         self.symbol_combo.setCurrentText(self.current_symbol)
         self.symbol_combo.currentTextChanged.connect(self._on_symbol_change)
         toolbar.addWidget(self.symbol_combo)
@@ -1284,6 +1289,12 @@ class EmbeddedTradingViewChart(QWidget):
 
     def _on_symbol_change(self, symbol: str):
         """Handle symbol change."""
+        # Ignore separator line
+        if symbol == "───────" or not symbol.strip():
+            # Revert to previous symbol
+            self.symbol_combo.setCurrentText(self.current_symbol)
+            return
+
         self.current_symbol = symbol
         self.symbol_changed.emit(symbol)
         logger.info(f"Symbol changed to: {symbol}")
