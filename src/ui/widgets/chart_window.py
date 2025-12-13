@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QVBoxLayout, QWidget, QSplitter, QTabWidget,
     QFormLayout, QComboBox, QDateEdit, QDoubleSpinBox, QPushButton,
     QSpinBox, QCheckBox, QGroupBox, QHBoxLayout, QLabel, QTextEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView
+    QTableWidget, QTableWidgetItem, QHeaderView, QDockWidget
 )
 from PyQt6.QtGui import QCloseEvent
 from datetime import datetime
@@ -48,45 +48,56 @@ class ChartWindow(QMainWindow):
         self.setWindowTitle(f"Chart - {symbol}")
         self.setMinimumSize(800, 600)
 
-        # Create central widget with splitter (like TradingView)
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Splitter: Chart above, Panels below
-        self.splitter = QSplitter(Qt.Orientation.Vertical)
-
-        # === TOP: Chart Widget ===
+        # === CENTER: Chart Widget ===
         self.chart_widget = EmbeddedTradingViewChart(history_manager=history_manager)
-        self.splitter.addWidget(self.chart_widget)
+        self.setCentralWidget(self.chart_widget)
 
         # Set symbol in chart (only if WebEngine is available)
         self.chart_widget.current_symbol = symbol
         if hasattr(self.chart_widget, 'symbol_combo'):
             self.chart_widget.symbol_combo.setCurrentText(symbol)
 
-        # === BOTTOM: Control Panels (wie TradingView) ===
-        # Connect toggle button from chart toolbar to panel visibility
+        # === DOCK: Control Panels (Strategy, Backtest, etc.) ===
+        # Create Dock Widget for Analysis Tools
+        self.dock_widget = QDockWidget("Analysis & Strategy", self)
+        self.dock_widget.setObjectName("analysisDock")  # For saving state
+        self.dock_widget.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea | 
+            Qt.DockWidgetArea.TopDockWidgetArea |
+            Qt.DockWidgetArea.RightDockWidgetArea
+        )
+
+        # Create the panel content
+        self.bottom_panel = self._create_bottom_panel()
+        self.dock_widget.setWidget(self.bottom_panel)
+
+        # Add dock to main window (initially at bottom)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_widget)
+
+        # Connect toggle button from chart toolbar to dock visibility
         if hasattr(self.chart_widget, 'toggle_panel_button'):
             self.chart_widget.toggle_panel_button.clicked.connect(self._toggle_bottom_panel)
-
-        # ===== ACTUAL PANEL (can be hidden) =====
-        self.bottom_panel = self._create_bottom_panel()
-        self.splitter.addWidget(self.bottom_panel)
-
-        # Set initial splitter sizes: 70% chart, 30% panels
-        self.splitter.setStretchFactor(0, 7)
-        self.splitter.setStretchFactor(1, 3)
-
-        main_layout.addWidget(self.splitter)
+            # Sync initial button state with dock visibility
+            self.chart_widget.toggle_panel_button.setChecked(self.dock_widget.isVisible())
 
         # Load window geometry from settings
         self._load_window_state()
 
+        # Update button text based on loaded state
+        self._update_toggle_button_text()
+
+        # Connect dock visibility change to button update
+        self.dock_widget.visibilityChanged.connect(self._on_dock_visibility_changed)
+
         # ===== CRITICAL: WIRE EVENT BUS FOR LIVE TRADE MARKERS =====
         # Subscribe to execution and order events for real-time chart markers
         self._setup_event_subscriptions()
+        
+        # State for closing
+        self._ready_to_close = False
+        
+        # Restore layout when data is loaded (and panels are created)
+        self.chart_widget.data_loaded.connect(self._restore_chart_state)
 
         logger.info(f"ChartWindow created for {symbol}")
 
@@ -124,26 +135,31 @@ class ChartWindow(QMainWindow):
         return panel_container
 
     def _toggle_bottom_panel(self):
-        """Toggle visibility of bottom panel.
-
-        Now controlled by toolbar button in chart_widget.
-        Button state (checked/unchecked) controls visibility.
-        """
+        """Toggle visibility of bottom panel dock widget."""
         # Get button from chart toolbar
         if not hasattr(self.chart_widget, 'toggle_panel_button'):
             return
 
         button = self.chart_widget.toggle_panel_button
-        is_checked = button.isChecked()
+        should_show = button.isChecked()
 
-        if is_checked:
-            # Button checked = Show panel
-            self.bottom_panel.show()
-            button.setText("▼ Panel")
-        else:
-            # Button unchecked = Hide panel
-            self.bottom_panel.hide()
-            button.setText("▲ Panel")
+        self.dock_widget.setVisible(should_show)
+        self._update_toggle_button_text()
+
+    def _on_dock_visibility_changed(self, visible: bool):
+        """Handle dock visibility changes (e.g. user closed dock via 'X')."""
+        if hasattr(self.chart_widget, 'toggle_panel_button'):
+            self.chart_widget.toggle_panel_button.setChecked(visible)
+            self._update_toggle_button_text()
+
+    def _update_toggle_button_text(self):
+        """Update the toggle button text based on state."""
+        if hasattr(self.chart_widget, 'toggle_panel_button'):
+            button = self.chart_widget.toggle_panel_button
+            if button.isChecked():
+                button.setText("▼ Panel")
+            else:
+                button.setText("▲ Panel")
 
     def _create_strategy_tab(self) -> QWidget:
         """Create strategy configuration tab."""
@@ -243,59 +259,6 @@ class ChartWindow(QMainWindow):
         apply_btn = QPushButton("📌 Apply Strategy to Chart")
         apply_btn.clicked.connect(self._apply_strategy)
         layout.addWidget(apply_btn)
-
-        # ===== LIVE STREAM BUTTON =====
-        stream_group = QGroupBox("Live Market Data")
-        stream_layout = QVBoxLayout()
-
-        self.stream_status_label = QLabel("Status: Not Connected")
-        self.stream_status_label.setStyleSheet("color: #888;")
-        stream_layout.addWidget(self.stream_status_label)
-
-        stream_btn_layout = QHBoxLayout()
-
-        self.start_stream_btn = QPushButton("📡 Start Live Stream")
-        self.start_stream_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                font-weight: bold;
-                padding: 5px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-            QPushButton:disabled {
-                background-color: #666;
-            }
-        """)
-        self.start_stream_btn.clicked.connect(self._start_live_stream)
-        stream_btn_layout.addWidget(self.start_stream_btn)
-
-        self.stop_stream_btn = QPushButton("⏹ Stop Stream")
-        self.stop_stream_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                font-weight: bold;
-                padding: 5px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
-            QPushButton:disabled {
-                background-color: #666;
-            }
-        """)
-        self.stop_stream_btn.clicked.connect(self._stop_live_stream)
-        self.stop_stream_btn.setEnabled(False)
-        stream_btn_layout.addWidget(self.stop_stream_btn)
-
-        stream_layout.addLayout(stream_btn_layout)
-        stream_group.setLayout(stream_layout)
-        layout.addWidget(stream_group)
 
         layout.addStretch()
 
@@ -532,209 +495,91 @@ class ChartWindow(QMainWindow):
             self.current_strategy_def = None
 
     def _apply_strategy(self):
-        """Apply selected strategy to chart."""
-        strategy = self.strategy_combo.currentText()
-        logger.info(f"Applying strategy: {strategy} to chart {self.symbol}")
-        # TODO: Implement strategy application with visual markers
-
-    def _start_live_stream(self):
-        """Start live market data stream for this symbol.
-
-        CRITICAL: This starts REAL WebSocket streaming from Alpaca.
-        Events are emitted to event_bus as MARKET_BAR events.
-        ChartWindow subscribes to these events to update the chart in real-time.
+        """Apply selected strategy to chart.
+        
+        Runs a simulation on the CURRENT visible chart data and adds 
+        BUY/SELL/SL/TP markers to the chart.
         """
-        import os
-        import asyncio
-        from src.core.market_data.alpaca_stream import AlpacaStreamClient
+        from src.core.backtesting.backtrader_integration import (
+            BacktestConfig, BacktraderIntegration
+        )
+        from src.core.market_data.history_provider import Timeframe
+        from decimal import Decimal
+        from PyQt6.QtWidgets import QMessageBox
+        from datetime import datetime
 
-        logger.info(f"Starting live stream for {self.symbol}")
-
-        # Get Alpaca credentials (from ConfigManager)
-        from src.config.loader import config_manager
-        api_key = config_manager.get_credential("alpaca_api_key")
-        api_secret = config_manager.get_credential("alpaca_api_secret")
-
-        if not api_key or not api_secret:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, "Missing Credentials",
-                "Alpaca API credentials not found.\n\n"
-                "Please set APCA_API_KEY_ID and APCA_API_SECRET_KEY in your .env file."
-            )
-            logger.warning("Live stream failed: Alpaca credentials not configured")
-            return
-
-        # Check if stream already running
-        if hasattr(self, 'stream_client') and self.stream_client is not None:
-            logger.warning(f"Stream already running for {self.symbol}")
-            return
+        strategy_name = self.strategy_combo.currentText()
+        logger.info(f"Applying strategy: {strategy_name} to chart {self.symbol}")
 
         try:
-            # Create stream client
-            self.stream_client = AlpacaStreamClient(
-                api_key=api_key,
-                api_secret=api_secret,
-                paper=True,  # ALWAYS use paper for safety
-                feed="iex"   # Free tier (30 symbols limit)
+            # 1. Get Chart Data
+            if not hasattr(self.chart_widget, 'data') or self.chart_widget.data is None or self.chart_widget.data.empty:
+                QMessageBox.warning(self, "No Data", "Please load chart data first.")
+                return
+
+            chart_data = self.chart_widget.data.copy()
+            
+            # Use the FULL date range available in the chart
+            start_datetime = chart_data.index[0].to_pydatetime()
+            end_datetime = chart_data.index[-1].to_pydatetime()
+
+            # 2. Create Strategy Config
+            strategy_config = self._create_strategy_config_from_ui()
+
+            # 3. Create Backtest Config (Simulation)
+            # Use nominal capital, doesn't matter for signal generation
+            backtest_config = BacktestConfig(
+                start_date=start_datetime,
+                end_date=end_datetime,
+                initial_cash=Decimal("10000"),
+                commission=0.001,
+                slippage=0.0005,
+                timeframe=Timeframe.DAY,  # TODO: Detect from chart
+                symbols=[self.symbol],
+                strategies=[strategy_config]
             )
 
-            # Start async connection and subscription
-            async def start_stream():
-                try:
-                    # Connect to WebSocket
-                    connected = await self.stream_client.connect()
-                    if not connected:
-                        raise RuntimeError("Failed to connect to Alpaca stream")
+            # 4. Run Simulation
+            if not self.history_manager:
+                logger.error("No history manager")
+                return
 
-                    # Subscribe to symbols (includes bars, trades, quotes)
-                    await self.stream_client.subscribe([self.symbol])
+            backtrader = BacktraderIntegration(
+                history_manager=self.history_manager,
+                config=backtest_config
+            )
 
-                    logger.info(f"✅ Live stream started for {self.symbol}")
+            # We use a progress dialog but auto-close it quickly
+            result = backtrader.run()
 
-                    # Update UI on main thread using Qt signal/slot
-                    from PyQt6.QtCore import QMetaObject, Qt
-                    def update_ui():
-                        self.stream_status_label.setText(f"Status: Connected - Streaming {self.symbol}")
-                        self.stream_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
-                        self.start_stream_btn.setEnabled(False)
-                        self.stop_stream_btn.setEnabled(True)
+            if not result:
+                logger.warning("No result from strategy application")
+                return
 
-                    QMetaObject.invokeMethod(
-                        self.stream_status_label,
-                        lambda: update_ui(),
-                        Qt.ConnectionType.QueuedConnection
-                    )
+            # 5. Visualize Markers
+            # Clear existing markers first? Maybe not, to allow comparison
+            # But usually yes to avoid clutter.
+            if hasattr(self.chart_widget, '_execute_js'):
+                 self.chart_widget._execute_js("window.chartAPI.clearMarkers();")
 
-                except Exception as e:
-                    logger.error(f"Stream start failed: {e}", exc_info=True)
+            self._add_trade_markers_to_chart(result)
 
-                    def show_error():
-                        self.stream_status_label.setText(f"Status: Error - {str(e)[:50]}")
-                        self.stream_status_label.setStyleSheet("color: #dc3545;")
-
-                    from PyQt6.QtCore import QMetaObject, Qt
-                    QMetaObject.invokeMethod(
-                        self.stream_status_label,
-                        lambda: show_error(),
-                        Qt.ConnectionType.QueuedConnection
-                    )
-                    raise
-
-            # Get or create event loop (compatible with Qt)
-            try:
-                loop = asyncio.get_running_loop()
-                logger.info("Using existing event loop")
-            except RuntimeError:
-                # Check if we have qasync integration
-                try:
-                    from qasync import QEventLoop
-                    from PyQt6.QtWidgets import QApplication
-                    app = QApplication.instance()
-                    if app:
-                        loop = QEventLoop(app)
-                        asyncio.set_event_loop(loop)
-                        logger.info("Using qasync event loop")
-                    else:
-                        # Fallback to standard asyncio loop
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        logger.warning("Using standard asyncio loop (qasync recommended)")
-                except ImportError:
-                    # No qasync - use standard loop
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    logger.warning("qasync not available - using standard asyncio loop")
-
-            # Run async task
-            asyncio.create_task(start_stream())
-
-            logger.info(f"Live stream task created for {self.symbol}")
+            # 6. Feedback
+            trade_count = len(result.trades)
+            win_rate = result.metrics.win_rate * 100 if result.metrics.total_trades > 0 else 0
+            
+            # Show toast or status message
+            msg = f"✅ Strategy applied: {trade_count} trades found (Win Rate: {win_rate:.1f}%)"
+            logger.info(msg)
+            
+            # Use chart widget's info label if available to show status
+            if hasattr(self.chart_widget, 'market_status_label'):
+                self.chart_widget.market_status_label.setText(msg)
+                self.chart_widget.market_status_label.setStyleSheet("color: #28a745; font-weight: bold;")
 
         except Exception as e:
-            logger.error(f"Failed to start live stream: {e}", exc_info=True)
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self, "Stream Error",
-                f"Failed to start live stream:\n\n{str(e)}"
-            )
-
-    def _stop_live_stream(self):
-        """Stop live market data stream."""
-        import asyncio
-
-        logger.info(f"Stopping live stream for {self.symbol}")
-
-        if not hasattr(self, 'stream_client') or self.stream_client is None:
-            logger.warning("No stream client to stop")
-            return
-
-        try:
-            async def stop_stream():
-                try:
-                    # Unsubscribe from symbols
-                    await self.stream_client.unsubscribe([self.symbol])
-
-                    # Disconnect
-                    await self.stream_client.disconnect()
-
-                    logger.info(f"✅ Live stream stopped for {self.symbol}")
-
-                    # Update UI using Qt signal/slot
-                    from PyQt6.QtCore import QMetaObject, Qt
-                    def update_ui():
-                        self.stream_status_label.setText("Status: Disconnected")
-                        self.stream_status_label.setStyleSheet("color: #888;")
-                        self.start_stream_btn.setEnabled(True)
-                        self.stop_stream_btn.setEnabled(False)
-
-                    QMetaObject.invokeMethod(
-                        self.stream_status_label,
-                        lambda: update_ui(),
-                        Qt.ConnectionType.QueuedConnection
-                    )
-
-                except Exception as e:
-                    logger.error(f"Stream stop failed: {e}", exc_info=True)
-                    raise
-                finally:
-                    self.stream_client = None
-
-            # Get event loop
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # Try to get qasync loop if available
-                try:
-                    from qasync import QEventLoop
-                    from PyQt6.QtWidgets import QApplication
-                    app = QApplication.instance()
-                    if app:
-                        loop = QEventLoop(app)
-                        asyncio.set_event_loop(loop)
-                    else:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                except ImportError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-            # Run async task
-            asyncio.create_task(stop_stream())
-
-        except Exception as e:
-            logger.error(f"Failed to stop live stream: {e}", exc_info=True)
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, "Stream Error",
-                f"Failed to stop stream cleanly:\n\n{str(e)}"
-            )
-            # Force cleanup
-            self.stream_client = None
-            self.stream_status_label.setText("Status: Error (Force Stopped)")
-            self.stream_status_label.setStyleSheet("color: #dc3545;")
-            self.start_stream_btn.setEnabled(True)
-            self.stop_stream_btn.setEnabled(False)
+            logger.error(f"Failed to apply strategy: {e}", exc_info=True)
+            QMessageBox.warning(self, "Strategy Error", f"Failed to apply strategy:\n{e}")
 
     def _run_backtest(self):
         """Run REAL backtest with LIVE chart data.
@@ -877,12 +722,13 @@ class ChartWindow(QMainWindow):
             # Switch to Results tab
             self.panel_tabs.setCurrentWidget(self.results_tab)
 
-            # Show bottom panel if hidden
-            if not self.bottom_panel.isVisible():
+            # Show dock widget if hidden
+            if not self.dock_widget.isVisible():
+                self.dock_widget.setVisible(True)
                 # Set button to checked state to show panel
                 if hasattr(self.chart_widget, 'toggle_panel_button'):
                     self.chart_widget.toggle_panel_button.setChecked(True)
-                self._toggle_bottom_panel()
+                    self._update_toggle_button_text()
 
         except Exception as e:
             logger.error(f"Backtest execution failed: {e}", exc_info=True)
@@ -1535,9 +1381,15 @@ class ChartWindow(QMainWindow):
 
         logger.debug(f"Loaded window state for {self.symbol}")
 
+    def _get_settings_key(self):
+        """Get sanitized settings key for this symbol."""
+        # Replace / with _ to avoid QSettings path issues
+        safe_symbol = self.symbol.replace("/", "_")
+        return f"ChartWindow/{safe_symbol}"
+
     def _save_window_state(self):
         """Save window position, size, and chart settings."""
-        settings_key = f"ChartWindow/{self.symbol}"
+        settings_key = self._get_settings_key()
 
         # Save geometry
         self.settings.setValue(f"{settings_key}/geometry", self.saveGeometry())
@@ -1560,6 +1412,72 @@ class ChartWindow(QMainWindow):
             self.settings.setValue(f"{settings_key}/indicators", active_indicators)
 
         logger.debug(f"Saved window state for {self.symbol}")
+
+    def _restore_chart_state(self):
+        """Restore pane sizes and zoom level from settings.
+
+        WICHTIG: Diese Methode wird NACH dem Laden der Daten aufgerufen,
+        damit die Indikator-Panels bereits existieren.
+        """
+        settings_key = self._get_settings_key()
+
+        # Wait a bit for indicators to be created
+        from PyQt6.QtCore import QTimer
+        def _do_restore():
+            logger.info(f"🔄 Starting chart state restoration for {self.symbol}")
+
+            # 1. Restore Pane Layout (Row Heights)
+            try:
+                layout_json = self.settings.value(f"{settings_key}/paneLayout")
+                logger.info(f"📂 Read from settings: {settings_key}/paneLayout = {layout_json}")
+
+                if layout_json:
+                    # QSettings might return string or actual dict if it parsed it
+                    if isinstance(layout_json, str):
+                        layout = json.loads(layout_json)
+                    else:
+                        layout = layout_json
+
+                    if layout and isinstance(layout, dict):
+                        logger.info(f"📐 Restoring pane layout for {self.symbol}: {layout}")
+                        self.chart_widget.set_pane_layout(layout)
+                        logger.info(f"✅ Pane layout restoration command sent")
+                    else:
+                        logger.warning(f"⚠️ Invalid layout format: {type(layout)}")
+                else:
+                    logger.info(f"ℹ️ No saved pane layout found for {self.symbol}")
+            except Exception as e:
+                logger.error(f"❌ Error restoring pane layout: {e}", exc_info=True)
+
+            # 2. Restore Visible Range (Zoom)
+            try:
+                range_json = self.settings.value(f"{settings_key}/visibleRange")
+                logger.info(f"📂 Read from settings: {settings_key}/visibleRange = {range_json}")
+
+                if range_json:
+                    if isinstance(range_json, str):
+                        visible_range = json.loads(range_json)
+                    else:
+                        visible_range = range_json
+
+                    if visible_range and isinstance(visible_range, dict):
+                        logger.info(f"🔍 Restoring visible range for {self.symbol}: {visible_range}")
+                        self.chart_widget.set_visible_range(visible_range)
+                        logger.info(f"✅ Visible range restoration command sent")
+                    else:
+                        logger.warning(f"⚠️ Invalid range format: {type(visible_range)}")
+                else:
+                    logger.info(f"ℹ️ No saved visible range found for {self.symbol}")
+            except Exception as e:
+                logger.error(f"❌ Error restoring visible range: {e}", exc_info=True)
+
+        # Delay restoration to ensure indicators are fully created
+        # We need to wait longer because:
+        # 1. Indicators need to be calculated (takes time)
+        # 2. Indicator panels need to be created in JavaScript (async)
+        # 3. setStretchFactor only works after panels fully exist
+        logger.info(f"⏳ Scheduling chart state restoration in 1000ms...")
+        QTimer.singleShot(1000, _do_restore)
 
     def load_backtest_result(self, result):
         """Load and display backtest result in chart window.
@@ -1596,39 +1514,95 @@ class ChartWindow(QMainWindow):
         self.activateWindow()
 
     def closeEvent(self, event: QCloseEvent):
-        """Handle window close event.
+        """Handle window close event with async state saving.
+
+        Speichert beim Schließen:
+        1. Fensterposition und -größe
+        2. Dock-Widget-Status
+        3. Chart-Einstellungen (Zeitrahmen, Periode)
+        4. Aktive Indikatoren
+        5. Pane-Layout (Zeilenhöhen der einzelnen Panels)
+        6. Zoom-Level (Visible Range)
 
         Args:
             event: Close event
         """
-        logger.info(f"Closing ChartWindow for {self.symbol}...")
+        if self._ready_to_close:
+            logger.info(f"🚪 Closing ChartWindow for {self.symbol}...")
 
-        # Stop live stream if running (unsubscribe from symbol)
-        if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
-            logger.info(f"Stopping live stream for {self.symbol}...")
+            # Stop live stream if running
+            if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
+                try:
+                    self.chart_widget.live_streaming_enabled = False
+                    if hasattr(self.chart_widget, 'live_stream_action'):
+                        self.chart_widget.live_stream_action.setChecked(False)
+                except Exception:
+                    pass
+
+            # Unsubscribe from event bus
+            self._unsubscribe_events()
+
+            # Save sync state (window geometry, indicators, etc.)
+            self._save_window_state()
+
+            # Emit signal
+            self.window_closed.emit(self.symbol)
+
+            event.accept()
+            return
+
+        # Request async cleanup (Layout + Zoom)
+        logger.info(f"💾 Requesting chart state before closing {self.symbol}...")
+        event.ignore()
+
+        # Step 2: Get Visible Range (Zoom Level)
+        def on_range_received(visible_range):
             try:
-                # Simply disable streaming flag to stop receiving updates
-                # Don't try to unsubscribe async during close event (causes freeze)
-                self.chart_widget.live_streaming_enabled = False
-                if hasattr(self.chart_widget, 'live_stream_action'):
-                    self.chart_widget.live_stream_action.setChecked(False)
-                logger.info(f"✓ Disabled live streaming for {self.symbol}")
+                if visible_range:
+                    settings_key = self._get_settings_key()
+                    # Store as JSON string to ensure clean saving
+                    self.settings.setValue(f"{settings_key}/visibleRange", json.dumps(visible_range))
+                    logger.info(f"✓ Saved visible range for {self.symbol}: {visible_range}")
             except Exception as e:
-                logger.error(f"Error stopping live stream on close: {e}")
+                logger.error(f"Error saving visible range: {e}")
 
-        # Unsubscribe from event bus to prevent memory leaks
-        self._unsubscribe_events()
+            # Final Step: Close
+            self._ready_to_close = True
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self.close)
 
-        # Save state before closing
-        self._save_window_state()
+        # Step 1: Get Pane Layout (Zeilenhöhen)
+        def on_layout_received(layout):
+            try:
+                logger.info(f"📥 Received pane layout callback, type: {type(layout)}, value: {layout}")
+                if layout:
+                    settings_key = self._get_settings_key()
+                    # Store as JSON string
+                    layout_json = json.dumps(layout)
+                    self.settings.setValue(f"{settings_key}/paneLayout", layout_json)
+                    logger.info(f"✅ Saved pane layout for {self.symbol}")
+                    logger.info(f"   Settings key: {settings_key}/paneLayout")
+                    logger.info(f"   Layout data: {layout_json}")
+                else:
+                    logger.warning(f"⚠️ No pane layout received for {self.symbol} (empty or None)")
+            except Exception as e:
+                logger.error(f"❌ Error saving pane layout: {e}", exc_info=True)
 
-        # Emit signal that window is closing
-        self.window_closed.emit(self.symbol)
+            # Next step
+            self.chart_widget.get_visible_range(on_range_received)
 
-        logger.info(f"ChartWindow closed for {self.symbol}")
+        # Timeout to force close if JS hangs
+        from PyQt6.QtCore import QTimer
+        def force_close():
+            if not self._ready_to_close:
+                logger.warning("⏱ Chart state fetch timed out, forcing close")
+                self._ready_to_close = True
+                self.close()
 
-        # Accept the close event
-        event.accept()
+        QTimer.singleShot(2000, force_close)  # Increased timeout to 2 seconds
+
+        # Start Chain
+        self.chart_widget.get_pane_layout(on_layout_received)
 
     async def load_chart(self, data_provider: Optional[str] = None):
         """Load chart data for the symbol.

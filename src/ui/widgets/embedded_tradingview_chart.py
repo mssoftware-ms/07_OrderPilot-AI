@@ -322,6 +322,166 @@ CHART_HTML_TEMPLATE = """
                         }
                     },
 
+                    getVisibleRange: () => {
+                        try {
+                            return chart.timeScale().getVisibleLogicalRange();
+                        } catch(e) { console.error('Error getting visible range:', e); return null; }
+                    },
+
+                    setVisibleRange: (range) => {
+                        try {
+                            if (!range) return false;
+                            chart.timeScale().setVisibleLogicalRange(range);
+                            return true;
+                        } catch(e) { console.error('Error setting visible range:', e); return false; }
+                    },
+
+                    getPaneLayout: () => {
+                        try {
+                            const layout = {};
+
+                            console.log('📊 getPaneLayout called');
+                            console.log('  Chart panes count:', chart.panes().length);
+                            console.log('  panelMap keys:', Object.keys(panelMap));
+
+                            // Get ALL panes from chart
+                            const allPanes = chart.panes();
+
+                            // Collect all stretch factors
+                            const factors = {};
+
+                            // Price pane (always index 0)
+                            if (allPanes.length > 0 && typeof allPanes[0].getStretchFactor === 'function') {
+                                factors['price'] = allPanes[0].getStretchFactor();
+                                console.log('  ✓ Price pane stretch factor:', factors['price']);
+                            }
+
+                            // Indicator panels
+                            for (const [id, paneApi] of Object.entries(panelMap)) {
+                                if (paneApi && typeof paneApi.getStretchFactor === 'function') {
+                                    factors[id] = paneApi.getStretchFactor();
+                                    console.log(`  ✓ Panel '${id}' stretch factor:`, factors[id]);
+                                }
+                            }
+
+                            // Calculate total to normalize to simple ratios
+                            let total = 0;
+                            for (const factor of Object.values(factors)) {
+                                total += factor;
+                            }
+
+                            if (total > 0) {
+                                // Normalize to percentage-based values (0-100 scale)
+                                // This makes it portable across different screen sizes
+                                for (const [id, factor] of Object.entries(factors)) {
+                                    layout[id] = Math.round((factor / total) * 100);
+                                }
+                                console.log('  → Normalized layout (percentage):', JSON.stringify(layout));
+                            } else {
+                                console.warn('  ⚠ No valid stretch factors found');
+                            }
+
+                            return layout;
+                        } catch(e) {
+                            console.error('❌ Error getting pane layout:', e, e.stack);
+                            return {};
+                        }
+                    },
+
+                    setPaneLayout: (layout) => {
+                        try {
+                            if (!layout) {
+                                console.warn('⚠ setPaneLayout: No layout provided');
+                                return false;
+                            }
+                            console.log('📐 setPaneLayout called with (percentage values):', JSON.stringify(layout));
+                            console.log('  Available panelMap keys:', Object.keys(panelMap));
+                            console.log('  Chart panes count:', chart.panes().length);
+
+                            let restored = 0;
+                            const allPanes = chart.panes();
+
+                            // Price pane (always index 0)
+                            if (layout['price'] !== undefined && allPanes.length > 0) {
+                                const pricePane = allPanes[0];
+                                if (typeof pricePane.setStretchFactor === 'function') {
+                                    const factor = layout['price'];
+                                    const before = pricePane.getStretchFactor();
+                                    pricePane.setStretchFactor(factor);
+                                    const after = pricePane.getStretchFactor();
+                                    console.log(`  ✓ Price pane: before=${before}, set to=${factor}, after=${after}, changed=${before !== after}`);
+                                    restored++;
+                                } else {
+                                    console.warn('  ⚠ Price pane setStretchFactor not available');
+                                }
+                            }
+
+                            // Indicator panels - restore by ID
+                            for (const [id, percentValue] of Object.entries(layout)) {
+                                if (id === 'price') continue;
+
+                                const paneApi = panelMap[id];
+                                if (paneApi) {
+                                    if (typeof paneApi.setStretchFactor === 'function') {
+                                        const before = paneApi.getStretchFactor();
+                                        paneApi.setStretchFactor(percentValue);
+                                        const after = paneApi.getStretchFactor();
+                                        console.log(`  ✓ Panel '${id}': before=${before}, set to=${percentValue}, after=${after}, changed=${before !== after}`);
+                                        restored++;
+                                    } else {
+                                        console.warn(`  ⚠ Panel '${id}' setStretchFactor not available (type: ${typeof paneApi.setStretchFactor})`);
+                                    }
+                                } else {
+                                    console.warn(`  ⚠ Panel '${id}' not found in panelMap (available: ${Object.keys(panelMap).join(', ')})`);
+                                }
+                            }
+
+                            console.log(`  → Restored ${restored} pane layouts out of ${Object.keys(layout).length} total`);
+
+                            // CRITICAL: Force chart to re-render/recalculate layout
+                            setTimeout(() => {
+                                try {
+                                    // Multiple approaches to force layout recalculation:
+
+                                    // 1. Try applyOptions (may trigger layout update)
+                                    try {
+                                        chart.applyOptions({});
+                                        console.log('  ✓ Applied chart options to trigger layout');
+                                    } catch(e1) {
+                                        console.warn('  ⚠ applyOptions failed:', e1.message);
+                                    }
+
+                                    // 2. Try resize with current dimensions
+                                    try {
+                                        const container = document.getElementById('tv_chart_container');
+                                        if (container) {
+                                            chart.resize(container.clientWidth, container.clientHeight);
+                                            console.log('  ✓ Triggered chart resize to apply stretch factors');
+                                        }
+                                    } catch(e2) {
+                                        console.warn('  ⚠ resize failed:', e2.message);
+                                    }
+
+                                    // 3. Try timeScale fitContent (may indirectly trigger layout)
+                                    try {
+                                        chart.timeScale().fitContent();
+                                        console.log('  ✓ Called fitContent on timeScale');
+                                    } catch(e3) {
+                                        console.warn('  ⚠ fitContent failed:', e3.message);
+                                    }
+
+                                } catch(resizeErr) {
+                                    console.warn('  ⚠ Error in layout recalculation:', resizeErr);
+                                }
+                            }, 100);
+
+                            return restored > 0;
+                        } catch(e) {
+                            console.error('❌ Error setting pane layout:', e, e.stack);
+                            return false;
+                        }
+                    },
+
                     clear: () => {
                         try {
                             priceSeries.setData([]);
@@ -725,6 +885,83 @@ class EmbeddedTradingViewChart(QWidget):
             logger.info("Updating pending indicators after chart initialization")
             self._pending_indicator_update = False
             self._update_indicators()
+
+    def get_visible_range(self, callback):
+        """Asynchronously get the current visible logical range.
+        
+        Args:
+            callback: Function to call with the result (dict/None)
+        """
+        if self.page_loaded and self.chart_initialized:
+            self.web_view.page().runJavaScript(
+                "window.chartAPI.getVisibleRange();",
+                callback
+            )
+        else:
+            callback(None)
+
+    def set_visible_range(self, range_data: dict):
+        """Restore visible logical range.
+        
+        Args:
+            range_data: Dictionary with 'from' and 'to' logical indices
+        """
+        if not range_data:
+            return
+            
+        json_range = json.dumps(range_data)
+        self._execute_js(f"window.chartAPI.setVisibleRange({json_range});")
+
+    def get_pane_layout(self, callback):
+        """Asynchronously get the current pane layout (stretch factors).
+
+        Args:
+            callback: Function to call with the result (dict)
+        """
+        logger.info(f"🔍 get_pane_layout called (page_loaded={self.page_loaded}, chart_initialized={self.chart_initialized})")
+
+        if self.page_loaded and self.chart_initialized:
+            logger.info("✅ Chart ready, requesting pane layout from JavaScript...")
+
+            def _on_result(result):
+                logger.info(f"📥 JavaScript returned pane layout: type={type(result)}, value={result}")
+                callback(result)
+
+            self.web_view.page().runJavaScript(
+                "window.chartAPI.getPaneLayout();",
+                _on_result
+            )
+        else:
+            logger.warning("⚠️ Cannot get pane layout: chart not initialized")
+            callback({})
+
+    def set_pane_layout(self, layout: dict):
+        """Restore pane layout (stretch factors).
+
+        Args:
+            layout: Dictionary mapping pane IDs to stretch factors
+        """
+        if not layout:
+            logger.warning("⚠️ set_pane_layout: No layout provided")
+            return
+
+        logger.info(f"📐 set_pane_layout called with: {layout}")
+        json_layout = json.dumps(layout)
+        js_command = f"window.chartAPI.setPaneLayout({json_layout});"
+        logger.info(f"🔧 Executing JS: {js_command}")
+
+        # Execute with callback to verify result
+        def _on_result(success):
+            if success:
+                logger.info(f"✅ setPaneLayout succeeded: {success}")
+            else:
+                logger.warning(f"⚠️ setPaneLayout failed or returned false")
+
+        if self.page_loaded and self.chart_initialized:
+            self.web_view.page().runJavaScript(js_command, _on_result)
+        else:
+            logger.warning("⚠️ Chart not ready, queueing setPaneLayout command")
+            self._execute_js(js_command)
 
     def load_data(self, data: pd.DataFrame):
         """Load market data into chart.
