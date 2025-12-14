@@ -6,6 +6,43 @@ Dieses Dokument definiert, wie du (Claude Code) in diesem Repository arbeiten so
 
 ---
 
+## 0. Arbeitsmodus für Änderungen in großen Repos (≈35k+ LOC)
+
+Für alle Änderungen/Erweiterungen gilt: **arbeite nach dem Runbook**:
+
+- `docs/ai/change-workflow.md` (voller Prozess)
+- `docs/ai/context-packet-template.md` (Template, das du von mir anforderst)
+
+**Regeln (Kurzform):**
+- Max. **5 Rückfragen** pro Iteration; fehlende Infos als **„Annahme:"** markieren.
+- Erst **Project Map**, dann **Plan (3–7 Schritte)**, dann **Patch 1**.
+- **Kleine, testbare Patches**: Patch → Checks → nächster Patch (rückrollbar, minimal).
+- **Search-Driven Development**: erst `rg/grep`, dann ändern (keine Bauchentscheidungen).
+- Immer liefern: **Unified Diff**, **Verifikations-Commands**, **Erwartetes Ergebnis** + **welche Logs** ich bei Fehlern liefern soll.
+
+### Architektur-Dokumentation (ARCHITECTURE.md)
+
+**Vor jeder strukturellen Änderung:**
+1. Lies `ARCHITECTURE.md` im Projekt-Root, um die aktuelle Architektur zu verstehen.
+2. Prüfe, welche Schichten, Mixins und Provider betroffen sind.
+3. Beachte die dokumentierten Datenflüsse und Event-Bus-Patterns.
+
+**Nach jeder strukturellen Änderung:**
+- **Aktualisiere `ARCHITECTURE.md`** wenn du:
+  - Neue Module, Klassen oder Mixins hinzufügst
+  - Bestehende Schichten oder Datenflüsse änderst
+  - Provider oder Strategien hinzufügst/entfernst
+  - Event-Typen oder Interfaces änderst
+- Halte die Diagramme und Verzeichnisstruktur synchron mit dem Code.
+
+**Strukturelle Änderungen umfassen:**
+- Neue Dateien/Module anlegen
+- Klassen zwischen Dateien verschieben
+- Mixin-Hierarchien ändern
+- Provider/Strategien hinzufügen
+- Event-Bus-Kanäle erweitern
+
+
 ## 1. Projektüberblick
 
 **OrderPilot-AI** ist eine Python-basierte Trading-Anwendung mit folgenden Zielen:
