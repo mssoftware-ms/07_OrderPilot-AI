@@ -1,6 +1,6 @@
 # Code-Inventur Bericht
 
-**Erstellt:** 2025-12-14T14:38:13.611037
+**Erstellt:** 2025-12-14T15:00:23.487478
 
 **Projekt:** /mnt/d/03_GIT/02_Python/07_OrderPilot-AI
 
@@ -9,80 +9,16 @@
 
 | Metrik | Wert |
 |--------|------|
-| Dateien | 155 |
-| Gesamte Zeilen | 51,333 |
-| Code-Zeilen | 38,454 |
-| Funktionen | 1719 |
-| Klassen | 338 |
-| UI-Komponenten | 22 |
-| Event-Handler | 173 |
-| Imports | 1195 |
+| Dateien | 141 |
+| Gesamte Zeilen | 47,788 |
+| Code-Zeilen | 35,878 |
+| Funktionen | 1549 |
+| Klassen | 325 |
+| UI-Komponenten | 18 |
+| Event-Handler | 139 |
+| Imports | 1047 |
 
 ## Datei-Details
-
-### check_db_data.py
-
-- **Zeilen:** 35 (Code: 26)
-- **Checksum:** `d9f8d0ef1656038cb8f1446186d5b776`
-- **Funktionen:** 0
-- **Klassen:** 0
-
----
-
-### code_analysis_tool.py
-
-- **Zeilen:** 350 (Code: 283)
-- **Checksum:** `75f1c314cf2385a47d304c27ae627d17`
-- **Funktionen:** 17
-- **Klassen:** 2
-
-**Klassen:**
-- `ComplexityVisitor` (Zeile 20-73)
-  - Methoden: __init__, visit_FunctionDef, visit_ClassDef, visit_If, visit_For, visit_While, visit_Try
-- `FunctionAnalyzer` (Zeile 75-124)
-  - Methoden: __init__, visit_FunctionDef, visit_ClassDef, visit_Import, visit_ImportFrom
-
-**Top-Level Funktionen:**
-- `analyze_file(file_path: Path) -> Dict[str, Any]` (Zeile 126)
-- `find_duplicates(analysis_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]` (Zeile 155)
-- `find_dead_code_candidates(analysis_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]` (Zeile 194)
-- `generate_complexity_report(analysis_results: List[Dict[str, Any]]) -> Dict[str, Any]` (Zeile 224)
-- `analyze_codebase(src_path: Path) -> Dict[str, Any]` (Zeile 262)
-
----
-
-### comprehensive_system_test.py
-
-- **Zeilen:** 512 (Code: 390)
-- **Checksum:** `5eb818d8fba443bae77f5d114a94caba`
-- **Funktionen:** 29
-- **Klassen:** 1
-
-**Klassen:**
-- `ComprehensiveApplicationTester` (Zeile 17-501)
-  - Methoden: __init__, run_test, test_imports, test_configuration, test_database, test_security, test_broker_adapter, test_event_system, test_ui_components, generate_report... (+1)
-
-**Top-Level Funktionen:**
-- `main()` (Zeile 504)
-
----
-
-### dead_code_finder.py
-
-- **Zeilen:** 141 (Code: 106)
-- **Checksum:** `989fd77f2d56e346ffaeccada0fb8730`
-- **Funktionen:** 7
-- **Klassen:** 1
-
-**Klassen:**
-- `DeadCodeFinder` (Zeile 15-45)
-  - Methoden: __init__, visit_FunctionDef, visit_ClassDef, visit_Call, visit_Name
-
-**Top-Level Funktionen:**
-- `analyze_file(filepath: Path) -> Dict[str, Set[str]]` (Zeile 48)
-- `find_dead_code_in_directory(directory: Path) -> Dict[str, any]` (Zeile 74)
-
----
 
 ### examples/alpaca_realtime_demo.py
 
@@ -102,17 +38,17 @@
 
 ### examples/chart_state_persistence_demo.py
 
-- **Zeilen:** 301 (Code: 214)
-- **Checksum:** `c7dd0074c251500d99ede1508b625250`
+- **Zeilen:** 302 (Code: 214)
+- **Checksum:** `3204cba2a044dc6bdde566cba0f610a3`
 - **Funktionen:** 10
 - **Klassen:** 1
 
 **Klassen:**
-- `ChartStateDemoWindow` (Zeile 33-259) 🖥️
+- `ChartStateDemoWindow` (Zeile 34-260) 🖥️
   - Methoden: __init__, _setup_ui, _connect_signals, open_chart, create_demo_states, show_saved_states, clear_all_states, _on_state_saved, _on_state_loaded
 
 **Top-Level Funktionen:**
-- `main()` (Zeile 262)
+- `main()` (Zeile 263)
 
 ---
 
@@ -129,34 +65,6 @@
 
 **Top-Level Funktionen:**
 - `async main()` (Zeile 276)
-
----
-
-### fix_credentials.py
-
-- **Zeilen:** 175 (Code: 130)
-- **Checksum:** `5be1441e0680aa9701011460bbaafb98`
-- **Funktionen:** 4
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `check_alternative_names()` (Zeile 26)
-- `migrate_credentials(found_creds)` (Zeile 51)
-- `manual_entry()` (Zeile 73)
-- `main()` (Zeile 113)
-
----
-
-### fix_imports.py
-
-- **Zeilen:** 74 (Code: 52)
-- **Checksum:** `ab5e3a1f273a86680c0fc271234bc5d2`
-- **Funktionen:** 2
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `fix_imports_in_file(file_path: Path) -> bool` (Zeile 8)
-- `main()` (Zeile 60)
 
 ---
 
@@ -1297,14 +1205,17 @@
 
 ### src/ui/chart_window_manager.py
 
-- **Zeilen:** 171 (Code: 118)
-- **Checksum:** `5967e2f59b1bb872a82d42614763c4e2`
-- **Funktionen:** 8
+- **Zeilen:** 218 (Code: 150)
+- **Checksum:** `568ff2cd39f7fda05cdd4995d70ced66`
+- **Funktionen:** 11
 - **Klassen:** 1
 
 **Klassen:**
-- `ChartWindowManager` (Zeile 16-170)
-  - Methoden: __init__, open_or_focus_chart, _on_window_closed, close_window, close_all_windows, get_open_symbols, has_open_window, get_active_symbol
+- `ChartWindowManager` (Zeile 16-188)
+  - Methoden: __init__, open_or_focus_chart, _on_window_closed, close_window, close_all_windows, get_open_symbols, has_open_window, get_active_symbol, open_chart, close_all_charts
+
+**Top-Level Funktionen:**
+- `get_chart_window_manager(history_manager, parent) -> ChartWindowManager` (Zeile 195)
 
 ---
 
@@ -1478,62 +1389,21 @@
 
 ---
 
-### src/ui/widgets/chart.py
-
-- **Zeilen:** 236 (Code: 163)
-- **Checksum:** `dbf2b8489196362b88f27aa5cde509c9`
-- **Funktionen:** 10
-- **Klassen:** 1
-
-**Klassen:**
-- `ChartWidget` (Zeile 23-235) 🖥️
-  - Methoden: __init__, init_ui, setup_event_handlers, on_market_bar, on_market_tick, update_chart, on_symbol_changed, on_timeframe_changed, clear_chart, add_test_data
-
----
-
 ### src/ui/widgets/chart_factory.py
 
-- **Zeilen:** 279 (Code: 218)
-- **Checksum:** `eafdf5d1809be337264964d86a4906c4`
-- **Funktionen:** 10
+- **Zeilen:** 209 (Code: 159)
+- **Checksum:** `51ddf3af6136e63675aa29ce23b89639`
+- **Funktionen:** 7
 - **Klassen:** 2
 
 **Klassen:**
-- `ChartType` (Zeile 16-22)
-- `ChartFactory` (Zeile 25-246)
-  - Methoden: create_chart, _determine_best_chart_type, _create_pyqtgraph_chart, _create_advanced_chart, _create_tradingview_chart, _create_lightweight_chart, get_available_chart_types, get_chart_features
+- `ChartType` (Zeile 25-38)
+- `ChartFactory` (Zeile 41-176)
+  - Methoden: create_chart, _create_tradingview_chart, get_available_chart_types, get_chart_features, _determine_best_chart_type
 
 **Top-Level Funktionen:**
-- `create_chart(symbol: str, chart_type: str) -> QWidget` (Zeile 250)
-- `get_recommended_chart_type() -> ChartType` (Zeile 272)
-
----
-
-### src/ui/widgets/chart_integration_patch.py
-
-- **Zeilen:** 365 (Code: 235)
-- **Checksum:** `f53b05c4a0a00f5e7b8d185623373b28`
-- **Funktionen:** 24
-- **Klassen:** 2
-
-**Klassen:**
-- `EnhancedEmbeddedTradingViewChart` (Zeile 29-104)
-  - Methoden: __init__, _connect_state_management_hooks, closeEvent
-- `EnhancedChartView` (Zeile 134-192)
-  - Methoden: __init__, _connect_pyqtgraph_hooks, _schedule_state_save
-
-**Top-Level Funktionen:**
-- `patch_embedded_tradingview_chart()` (Zeile 13)
-- `patch_chart_view()` (Zeile 122)
-- `patch_chart_window()` (Zeile 210)
-- `enhanced_init(self, symbol, history_manager, parent)` (Zeile 225)
-- `enhanced_close_event(self, event)` (Zeile 238)
-- `_save_enhanced_state(self)` (Zeile 254)
-- `_restore_enhanced_state(self)` (Zeile 268)
-- `patch_chart_factory()` (Zeile 295)
-- `enhanced_create_chart(chart_type, symbol, enable_state_persistence, **kwargs)` (Zeile 310)
-- `apply_all_patches()` (Zeile 338)
-- `is_patched() -> bool` (Zeile 350)
+- `create_chart(symbol: str, chart_type: str, history_manager) -> QWidget` (Zeile 180)
+- `get_recommended_chart_type() -> ChartType` (Zeile 202)
 
 ---
 
@@ -1556,6 +1426,61 @@
 **Top-Level Funktionen:**
 - `register_chart_adapter(widget_class, capabilities: ChartCapabilities) -> None` (Zeile 246)
 - `get_chart_capabilities(widget_class) -> Optional[ChartCapabilities]` (Zeile 258)
+
+---
+
+### src/ui/widgets/chart_shared/__init__.py
+
+- **Zeilen:** 37 (Code: 30)
+- **Checksum:** `f60e8c901da478fc72f05e0a752c14ce`
+- **Funktionen:** 0
+- **Klassen:** 0
+
+---
+
+### src/ui/widgets/chart_shared/constants.py
+
+- **Zeilen:** 292 (Code: 190)
+- **Checksum:** `16843f8d1f8b9afe4b487a1602fc0463`
+- **Funktionen:** 0
+- **Klassen:** 0
+
+---
+
+### src/ui/widgets/chart_shared/data_conversion.py
+
+- **Zeilen:** 313 (Code: 236)
+- **Checksum:** `a11be6f2e504c2591bbd40cff57319a5`
+- **Funktionen:** 6
+- **Klassen:** 0
+
+**Top-Level Funktionen:**
+- `convert_bars_to_dataframe(bars: List[Any], timestamp_column: str) -> pd.DataFrame` (Zeile 23)
+- `convert_dict_bars_to_dataframe(bars: List[dict], timestamp_key: str) -> pd.DataFrame` (Zeile 96)
+- `validate_ohlcv_data(df: pd.DataFrame) -> bool` (Zeile 146)
+- `convert_dataframe_to_ohlcv_list(df: pd.DataFrame, use_unix_timestamp: bool) -> List[Tuple[Union[int, datetime], float, float, float, float, float]]` (Zeile 200)
+- `convert_dataframe_to_js_format(df: pd.DataFrame, include_volume: bool) -> List[dict]` (Zeile 238)
+- `resample_ohlcv(df: pd.DataFrame, target_timeframe: str) -> pd.DataFrame` (Zeile 283)
+
+---
+
+### src/ui/widgets/chart_shared/theme_utils.py
+
+- **Zeilen:** 304 (Code: 231)
+- **Checksum:** `f1ab597c04e04c085f7bc68a24f102da`
+- **Funktionen:** 9
+- **Klassen:** 0
+
+**Top-Level Funktionen:**
+- `get_theme_colors(theme: str) -> Dict[str, str]` (Zeile 17)
+- `get_candle_colors(theme: str) -> Dict[str, str]` (Zeile 38)
+- `get_volume_colors(theme: str) -> Dict[str, str]` (Zeile 56)
+- `apply_theme_to_chart(chart_options: Dict[str, Any], theme: str) -> Dict[str, Any]` (Zeile 72)
+- `get_pyqtgraph_theme(theme: str) -> Dict[str, Any]` (Zeile 135)
+- `get_tradingview_chart_options(theme: str) -> Dict[str, Any]` (Zeile 157)
+- `get_candlestick_series_options(theme: str) -> Dict[str, Any]` (Zeile 221)
+- `get_volume_series_options(theme: str) -> Dict[str, Any]` (Zeile 241)
+- `generate_indicator_color(indicator_type: str, index: int) -> str` (Zeile 265)
 
 ---
 
@@ -1602,22 +1527,6 @@
 
 ---
 
-### src/ui/widgets/chart_view.py
-
-- **Zeilen:** 866 (Code: 622)
-- **Checksum:** `5b408d82c99cc94c614b128dea782ce8`
-- **Funktionen:** 33
-- **Klassen:** 3
-
-**Klassen:**
-- `ChartConfig` (Zeile 39-46)
-- `CandlestickItemView` (Zeile 49-87)
-  - Methoden: __init__, setData, dataBounds
-- `ChartView` (Zeile 90-865) 🖥️
-  - Methoden: __init__, _setup_ui, _create_toolbar, load_data, _update_chart, _draw_indicators, _draw_volume, _toggle_indicator, _set_drawing_mode, _on_mouse_move... (+20)
-
----
-
 ### src/ui/widgets/chart_window.py
 
 - **Zeilen:** 1873 (Code: 1305)
@@ -1657,24 +1566,6 @@
 
 ---
 
-### src/ui/widgets/enhanced_chart_window.py
-
-- **Zeilen:** 569 (Code: 396)
-- **Checksum:** `5f9f38b4ebfd108542c1b24fc1aff07e`
-- **Funktionen:** 33
-- **Klassen:** 2
-
-**Klassen:**
-- `EnhancedChartWindow` (Zeile 26-440) 🖥️
-  - Methoden: __init__, _setup_ui, _setup_chart, _connect_signals, _show_error_message, save_state_now, load_state_now, clear_saved_state, enable_auto_save, _save_window_state... (+14)
-- `ChartWindowManager` (Zeile 443-557)
-  - Methoden: __init__, open_chart, close_chart, close_all_charts, get_chart_window, list_open_charts, get_state_summary, _on_window_closed
-
-**Top-Level Funktionen:**
-- `get_chart_window_manager() -> ChartWindowManager` (Zeile 563)
-
----
-
 ### src/ui/widgets/indicators.py
 
 - **Zeilen:** 166 (Code: 124)
@@ -1685,19 +1576,6 @@
 **Klassen:**
 - `IndicatorsWidget` (Zeile 27-165) 🖥️
   - Methoden: __init__, _setup_ui, _add_indicator, _remove_indicator
-
----
-
-### src/ui/widgets/lightweight_chart.py
-
-- **Zeilen:** 555 (Code: 407)
-- **Checksum:** `ee4024322bd849cb1db9674e1f5bb831`
-- **Funktionen:** 16
-- **Klassen:** 1
-
-**Klassen:**
-- `LightweightChartWidget` (Zeile 44-554) 🖥️
-  - Methoden: __init__, _show_error_ui, _setup_ui, _create_toolbar, _create_chart, load_data, _update_indicators, _toggle_indicator, _on_market_bar, _on_market_tick... (+6)
 
 ---
 
@@ -1794,91 +1672,6 @@
 - `create_parser() -> argparse.ArgumentParser` (Zeile 122)
 - `main() -> int` (Zeile 178)
 - `global_exception_handler(exc_type, exc_value, exc_traceback)` (Zeile 181)
-
----
-
-### systemvariablen.py
-
-- **Zeilen:** 39 (Code: 29)
-- **Checksum:** `edb4042b243861c66e8f86d89f081ea0`
-- **Funktionen:** 3
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `dump_env(path: Path)` (Zeile 11)
-- `load_env(path: Path)` (Zeile 16)
-- `main()` (Zeile 24)
-
----
-
-### test_alpaca_daily.py
-
-- **Zeilen:** 57 (Code: 43)
-- **Checksum:** `f9d2c5ab0f1b3e8c4f170577ac724a8a`
-- **Funktionen:** 1
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `async test_daily_data()` (Zeile 11)
-
----
-
-### test_alpaca_temp.py
-
-- **Zeilen:** 80 (Code: 62)
-- **Checksum:** `0122d46281a7ee20e88320158c58a586`
-- **Funktionen:** 0
-- **Klassen:** 0
-
----
-
-### test_chart_load.py
-
-- **Zeilen:** 67 (Code: 44)
-- **Checksum:** `3497380e64a6252a342275797d7af8ad`
-- **Funktionen:** 1
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `test_chart_window()` (Zeile 13)
-
----
-
-### test_credentials.py
-
-- **Zeilen:** 124 (Code: 86)
-- **Checksum:** `bc7924dfcb051ec5747ed15ecc1598c2`
-- **Funktionen:** 2
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `test_credentials()` (Zeile 21)
-- `list_all_credentials()` (Zeile 72)
-
----
-
-### test_macd_fix.py
-
-- **Zeilen:** 145 (Code: 102)
-- **Checksum:** `492c6cef4f72faeb6c402350a6cb2ae9`
-- **Funktionen:** 2
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `create_sample_data(num_bars)` (Zeile 11)
-- `test_macd()` (Zeile 35)
-
----
-
-### test_market_hours_logic.py
-
-- **Zeilen:** 79 (Code: 60)
-- **Checksum:** `9cc85e998e0001dc37938a84133688bc`
-- **Funktionen:** 1
-- **Klassen:** 0
-
-**Top-Level Funktionen:**
-- `test_market_hours_logic()` (Zeile 7)
 
 ---
 

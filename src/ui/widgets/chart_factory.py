@@ -1,7 +1,16 @@
 """Chart Factory for OrderPilot-AI.
 
-This module provides a unified interface for creating different types of charts,
-eliminating the complexity of choosing between multiple chart implementations.
+This module provides a unified interface for creating chart widgets.
+
+REFACTORED V2.0:
+- Removed redundant chart types (PYQTGRAPH, ADVANCED, LIGHTWEIGHT)
+- Now only creates EmbeddedTradingViewChart (TradingView Lightweight Charts)
+- ChartType enum kept for backward compatibility but all types map to TradingView
+
+Previously supported chart types (NOW REMOVED):
+- chart.py (ChartWidget) - replaced by EmbeddedTradingViewChart
+- chart_view.py (ChartView) - replaced by EmbeddedTradingViewChart
+- lightweight_chart.py (LightweightChartWidget) - replaced by EmbeddedTradingViewChart
 """
 
 import logging
@@ -14,154 +23,96 @@ logger = logging.getLogger(__name__)
 
 
 class ChartType(Enum):
-    """Available chart types."""
-    PYQTGRAPH = "pyqtgraph"  # Basic PyQtGraph-based chart
-    ADVANCED = "advanced"     # Advanced PyQtGraph chart with indicators
-    TRADINGVIEW = "tradingview"  # Embedded TradingView chart
-    LIGHTWEIGHT = "lightweight"  # Lightweight charts library
-    AUTO = "auto"            # Automatically choose best available
+    """Available chart types.
+
+    NOTE: All types now map to TradingView implementation for consistency.
+    These are kept for backward compatibility only.
+    """
+    # Deprecated - all map to TRADINGVIEW
+    PYQTGRAPH = "pyqtgraph"      # Deprecated: maps to TradingView
+    ADVANCED = "advanced"        # Deprecated: maps to TradingView
+    LIGHTWEIGHT = "lightweight"  # Deprecated: maps to TradingView
+
+    # Current implementation
+    TRADINGVIEW = "tradingview"  # Embedded TradingView Lightweight Charts
+    AUTO = "auto"                # Same as TRADINGVIEW
 
 
 class ChartFactory:
-    """Factory for creating chart widgets."""
+    """Factory for creating chart widgets.
+
+    All chart types now use EmbeddedTradingViewChart for consistency
+    and best user experience.
+    """
 
     @staticmethod
     def create_chart(
         chart_type: ChartType = ChartType.AUTO,
         symbol: str = "AAPL",
+        history_manager=None,
         **kwargs
     ) -> QWidget:
-        """Create a chart widget of the specified type.
+        """Create a chart widget.
 
         Args:
-            chart_type: Type of chart to create
+            chart_type: Type of chart (all types now use TradingView)
             symbol: Trading symbol
-            **kwargs: Additional chart-specific parameters
+            history_manager: Optional HistoryManager for data loading
+            **kwargs: Additional chart parameters
 
         Returns:
-            Chart widget instance
+            EmbeddedTradingViewChart widget instance
 
-        Raises:
-            ImportError: If required dependencies are not available
-            ValueError: If chart type is not supported
+        Note:
+            All chart_type values now create EmbeddedTradingViewChart.
+            The parameter is kept for backward compatibility.
         """
-        if chart_type == ChartType.AUTO:
-            chart_type = ChartFactory._determine_best_chart_type()
+        # Log deprecation warning for old chart types
+        if chart_type in (ChartType.PYQTGRAPH, ChartType.ADVANCED, ChartType.LIGHTWEIGHT):
+            logger.warning(
+                f"ChartType.{chart_type.name} is deprecated. "
+                f"Using TradingView chart instead for best performance."
+            )
 
-        try:
-            if chart_type == ChartType.PYQTGRAPH:
-                return ChartFactory._create_pyqtgraph_chart(symbol, **kwargs)
-            elif chart_type == ChartType.ADVANCED:
-                return ChartFactory._create_advanced_chart(symbol, **kwargs)
-            elif chart_type == ChartType.TRADINGVIEW:
-                return ChartFactory._create_tradingview_chart(symbol, **kwargs)
-            elif chart_type == ChartType.LIGHTWEIGHT:
-                return ChartFactory._create_lightweight_chart(symbol, **kwargs)
-            else:
-                raise ValueError(f"Unsupported chart type: {chart_type}")
-
-        except ImportError as e:
-            logger.warning(f"Failed to create {chart_type.value} chart: {e}")
-            # Fallback to basic chart
-            if chart_type != ChartType.PYQTGRAPH:
-                logger.info("Falling back to basic PyQtGraph chart")
-                return ChartFactory._create_pyqtgraph_chart(symbol, **kwargs)
-            else:
-                raise
+        return ChartFactory._create_tradingview_chart(
+            symbol=symbol,
+            history_manager=history_manager,
+            **kwargs
+        )
 
     @staticmethod
-    def _determine_best_chart_type() -> ChartType:
-        """Automatically determine the best available chart type.
+    def _create_tradingview_chart(
+        symbol: str,
+        history_manager=None,
+        **kwargs
+    ) -> QWidget:
+        """Create embedded TradingView chart.
+
+        This is now the ONLY chart implementation.
+
+        Args:
+            symbol: Trading symbol
+            history_manager: Optional HistoryManager for data loading
+            **kwargs: Additional chart parameters
 
         Returns:
-            Best available chart type
+            EmbeddedTradingViewChart instance
         """
-        # Prefer lightweight charts when the library and WebEngine are available
-        try:
-            import lightweight_charts  # noqa: F401
-            from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
-            logger.info("Using lightweight charts (best performance)")
-            return ChartType.LIGHTWEIGHT
-        except ImportError:
-            pass
-
-        # TradingView embedded charts (requires WebEngine)
-        try:
-            from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
-            logger.info("Using TradingView embedded charts")
-            return ChartType.TRADINGVIEW
-        except ImportError:
-            logger.warning("PyQt6-WebEngine not installed, falling back to PyQtGraph charts")
-
-        # Check for PyQtGraph
-        try:
-            import pyqtgraph
-            logger.info("Using PyQtGraph advanced charts")
-            return ChartType.ADVANCED
-        except ImportError:
-            pass
-
-        # Fallback to basic implementation
-        logger.warning("No advanced charting libraries available, using basic implementation")
-        return ChartType.PYQTGRAPH
-
-    @staticmethod
-    def _create_pyqtgraph_chart(symbol: str, **kwargs) -> QWidget:
-        """Create basic PyQtGraph chart."""
-        from .chart import ChartWidget
-
-        chart = ChartWidget()
-        chart.current_symbol = symbol
-        return chart
-
-    @staticmethod
-    def _create_advanced_chart(symbol: str, **kwargs) -> QWidget:
-        """Create advanced PyQtGraph chart with indicators."""
-        from .chart_view import ChartView
-
-        # Default configuration
-        config_dict = {
-            'symbol': symbol,
-            'timeframe': kwargs.get('timeframe', '1T'),
-            'show_volume': kwargs.get('show_volume', True),
-            'show_indicators': kwargs.get('show_indicators', True),
-            'theme': kwargs.get('theme', 'dark'),
-            'update_interval': kwargs.get('update_interval', 1000)
-        }
-
-        from .chart_view import ChartConfig
-        config = ChartConfig(**config_dict)
-
-        chart = ChartView()
-        chart.configure(config)
-        return chart
-
-    @staticmethod
-    def _create_tradingview_chart(symbol: str, **kwargs) -> QWidget:
-        """Create embedded TradingView chart."""
         from .embedded_tradingview_chart import EmbeddedTradingViewChart
 
-        chart = EmbeddedTradingViewChart()
+        chart = EmbeddedTradingViewChart(history_manager=history_manager)
+
+        # Set symbol
         if hasattr(chart, 'symbol_combo'):
             chart.symbol_combo.setCurrentText(symbol)
-        else:
-            chart.current_symbol = symbol
+        chart.current_symbol = symbol
 
         # Apply configuration if provided
-        if 'theme' in kwargs:
+        if 'theme' in kwargs and hasattr(chart, 'set_theme'):
             chart.set_theme(kwargs['theme'])
-        if 'timeframe' in kwargs:
+        if 'timeframe' in kwargs and hasattr(chart, 'set_timeframe'):
             chart.set_timeframe(kwargs['timeframe'])
 
-        return chart
-
-    @staticmethod
-    def _create_lightweight_chart(symbol: str, **kwargs) -> QWidget:
-        """Create lightweight chart."""
-        from .lightweight_chart import LightweightChartWidget
-
-        chart = LightweightChartWidget(embedded=True)
-        chart.set_symbol(symbol)
         return chart
 
     @staticmethod
@@ -170,109 +121,88 @@ class ChartFactory:
 
         Returns:
             Dictionary mapping chart types to availability
+
+        Note:
+            All types return True if WebEngine is available,
+            as they all use the same TradingView implementation.
         """
-        availability = {}
-
-        # Check PyQtGraph
+        webengine_available = False
         try:
-            import pyqtgraph
-            availability[ChartType.PYQTGRAPH] = True
-            availability[ChartType.ADVANCED] = True
+            from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
+            webengine_available = True
         except ImportError:
-            availability[ChartType.PYQTGRAPH] = False
-            availability[ChartType.ADVANCED] = False
+            logger.error(
+                "PyQt6-WebEngine not installed! Charts will not work. "
+                "Install with: pip install PyQt6-WebEngine"
+            )
 
-        # Check WebEngine for TradingView
-        try:
-            from PyQt6.QtWebEngineWidgets import QWebEngineView
-            availability[ChartType.TRADINGVIEW] = True
-        except ImportError:
-            availability[ChartType.TRADINGVIEW] = False
-
-        # Check Lightweight Charts
-        try:
-            import lightweight_charts
-            availability[ChartType.LIGHTWEIGHT] = True
-        except ImportError:
-            availability[ChartType.LIGHTWEIGHT] = False
-
-        return availability
+        return {
+            ChartType.PYQTGRAPH: webengine_available,  # Deprecated, uses TradingView
+            ChartType.ADVANCED: webengine_available,   # Deprecated, uses TradingView
+            ChartType.TRADINGVIEW: webengine_available,
+            ChartType.LIGHTWEIGHT: webengine_available,  # Deprecated, uses TradingView
+            ChartType.AUTO: webengine_available,
+        }
 
     @staticmethod
-    def get_chart_features(chart_type: ChartType) -> Dict[str, Any]:
-        """Get features supported by a chart type.
+    def get_chart_features(chart_type: ChartType = ChartType.AUTO) -> Dict[str, Any]:
+        """Get features supported by chart implementation.
 
         Args:
-            chart_type: Chart type to query
+            chart_type: Chart type (ignored, all use same features)
 
         Returns:
             Dictionary of supported features
         """
-        features = {
-            ChartType.PYQTGRAPH: {
-                "performance": "Good",
-                "indicators": "Basic",
-                "real_time": True,
-                "interactive": True,
-                "web_based": False,
-                "customizable": True
-            },
-            ChartType.ADVANCED: {
-                "performance": "Good",
-                "indicators": "Advanced",
-                "real_time": True,
-                "interactive": True,
-                "web_based": False,
-                "customizable": True
-            },
-            ChartType.TRADINGVIEW: {
-                "performance": "Excellent",
-                "indicators": "Professional",
-                "real_time": True,
-                "interactive": True,
-                "web_based": True,
-                "customizable": False
-            },
-            ChartType.LIGHTWEIGHT: {
-                "performance": "Excellent",
-                "indicators": "Good",
-                "real_time": True,
-                "interactive": True,
-                "web_based": True,
-                "customizable": True
-            }
+        # All chart types now have the same features
+        return {
+            "performance": "Excellent",
+            "indicators": "Professional",
+            "real_time": True,
+            "interactive": True,
+            "web_based": True,
+            "customizable": True,
+            "state_persistence": True,
+            "multi_pane": True,
         }
 
-        return features.get(chart_type, {})
+    @staticmethod
+    def _determine_best_chart_type() -> ChartType:
+        """Determine the best available chart type.
+
+        Returns:
+            Always returns ChartType.TRADINGVIEW
+        """
+        return ChartType.TRADINGVIEW
 
 
 # Convenience functions for backward compatibility
-def create_chart(symbol: str = "AAPL", chart_type: str = "auto") -> QWidget:
+def create_chart(
+    symbol: str = "AAPL",
+    chart_type: str = "auto",
+    history_manager=None
+) -> QWidget:
     """Create a chart widget with simplified interface.
 
     Args:
         symbol: Trading symbol
-        chart_type: Type of chart ("auto", "basic", "advanced", "tradingview", "lightweight")
+        chart_type: Type of chart (ignored, always uses TradingView)
+        history_manager: Optional HistoryManager for data loading
 
     Returns:
-        Chart widget
+        EmbeddedTradingViewChart widget
     """
-    type_mapping = {
-        "auto": ChartType.AUTO,
-        "basic": ChartType.PYQTGRAPH,
-        "advanced": ChartType.ADVANCED,
-        "tradingview": ChartType.TRADINGVIEW,
-        "lightweight": ChartType.LIGHTWEIGHT
-    }
-
-    chart_type_enum = type_mapping.get(chart_type.lower(), ChartType.AUTO)
-    return ChartFactory.create_chart(chart_type_enum, symbol)
+    return ChartFactory.create_chart(
+        ChartType.AUTO,
+        symbol,
+        history_manager=history_manager
+    )
 
 
 def get_recommended_chart_type() -> ChartType:
-    """Get the recommended chart type for current environment.
+    """Get the recommended chart type.
 
     Returns:
-        Recommended chart type
+        Always ChartType.TRADINGVIEW
     """
-    return ChartFactory._determine_best_chart_type()
+    return ChartType.TRADINGVIEW

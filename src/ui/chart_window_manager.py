@@ -168,3 +168,50 @@ class ChartWindowManager:
             return last_symbol
 
         return None
+
+    def open_chart(self, symbol: str, chart_type=None):
+        """Open a chart window (alias for open_or_focus_chart).
+
+        This method provides compatibility with code that used EnhancedChartWindow.
+
+        Args:
+            symbol: Trading symbol
+            chart_type: Chart type (ignored, uses TradingView)
+
+        Returns:
+            ChartWindow instance
+        """
+        return self.open_or_focus_chart(symbol)
+
+    def close_all_charts(self):
+        """Close all open chart windows (alias for close_all_windows)."""
+        self.close_all_windows()
+
+
+# Singleton instance
+_chart_window_manager_instance: Optional[ChartWindowManager] = None
+
+
+def get_chart_window_manager(history_manager=None, parent=None) -> ChartWindowManager:
+    """Get or create the singleton ChartWindowManager instance.
+
+    This function provides a global access point to the ChartWindowManager,
+    migrated from enhanced_chart_window.py.
+
+    Args:
+        history_manager: HistoryManager instance (only used on first call)
+        parent: Parent widget (only used on first call)
+
+    Returns:
+        ChartWindowManager singleton instance
+    """
+    global _chart_window_manager_instance
+
+    if _chart_window_manager_instance is None:
+        _chart_window_manager_instance = ChartWindowManager(
+            history_manager=history_manager,
+            parent=parent
+        )
+        logger.info("Created ChartWindowManager singleton")
+
+    return _chart_window_manager_instance

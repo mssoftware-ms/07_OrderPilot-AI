@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 
-from ui.widgets.enhanced_chart_window import get_chart_window_manager, EnhancedChartWindow
+# Refactored V2.0: EnhancedChartWindow removed, using ChartWindowManager
+from ui.chart_window_manager import get_chart_window_manager
 from ui.widgets.chart_factory import ChartType
 from ui.widgets.chart_state_manager import get_chart_state_manager, IndicatorState, PaneLayout, ViewRange
 
