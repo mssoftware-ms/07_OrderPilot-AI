@@ -208,13 +208,17 @@ class LightweightChartWidget(QWidget):
     def _create_chart(self):
         """Create a new lightweight chart instance."""
         try:
-            # Create chart with optimized settings
-            self.chart = Chart(
-                volume_enabled=True,
-                width=1200,
-                height=600,
-                toolbox=True,  # Enable drawing tools
-            )
+            if self.embedded:
+                # Create chart inside the QWebEngineView
+                self.chart = Chart(widget=self.web_view)
+            else:
+                # Create chart that opens in browser
+                self.chart = Chart(
+                    volume_enabled=True,
+                    width=1200,
+                    height=600,
+                    toolbox=True,
+                )
 
             # Configure chart appearance
             self.chart.layout(
@@ -292,8 +296,9 @@ class LightweightChartWidget(QWidget):
             # Update indicators
             self._update_indicators()
 
-            # Show chart
-            self.chart.show(block=False)  # Non-blocking
+            # Show chart only if not embedded
+            if not self.embedded:
+                self.chart.show(block=False)  # Non-blocking
 
             # Update UI
             self.info_label.setText(
@@ -405,8 +410,8 @@ class LightweightChartWidget(QWidget):
             price = tick_data.get('price', 0)
             self.info_label.setText(f"Last: ${price:.2f}")
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error updating chart info display: {e}")
 
     def _process_pending_updates(self):
         """Process pending bar updates (batched for performance)."""

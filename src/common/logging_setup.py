@@ -14,6 +14,14 @@ from typing import Any
 
 from pythonjsonlogger.json import JsonFormatter
 
+# Import security types for audit logging
+try:
+    from .security_core import SecurityAction, SecurityContext
+except ImportError:
+    # Fallback if security_core not available
+    SecurityAction = None
+    SecurityContext = None
+
 
 class AITelemetryFilter(logging.Filter):
     """Custom filter to add AI telemetry data to log records."""
@@ -189,6 +197,52 @@ def log_order_action(
         **details
     }
     logger.info(f"Order action: {action}", extra=extra)
+
+
+def log_security_action(
+    action: Any,  # SecurityAction enum or string
+    user_id: str = "system",
+    session_id: str = "unknown",
+    ip_address: str = None,
+    details: dict[str, Any] = None,
+    success: bool = True
+) -> None:
+    """Log security-relevant actions.
+
+    Args:
+        action: Security action performed
+        user_id: User identifier
+        session_id: Session identifier
+        ip_address: IP address
+        details: Additional details
+        success: Whether action succeeded
+    """
+    logger = logging.getLogger('security_audit')
+
+    # Convert action to string if it's an enum
+    action_str = action.value if hasattr(action, 'value') else str(action)
+
+    extra = {
+        'security_action': action_str,
+        'user_id': user_id,
+        'session_id': session_id,
+        'ip_address': ip_address,
+        'success': success,
+        'details': details or {}
+    }
+
+    level = logging.WARNING if not success else logging.INFO
+    logger.log(level, f"Security action: {action_str}", extra=extra)
+
+
+def get_audit_logger() -> logging.Logger:
+    """Get the audit logger instance."""
+    return logging.getLogger('audit')
+
+
+def get_security_audit_logger() -> logging.Logger:
+    """Get the security audit logger instance."""
+    return logging.getLogger('security_audit')
 
 
 def log_ai_request(

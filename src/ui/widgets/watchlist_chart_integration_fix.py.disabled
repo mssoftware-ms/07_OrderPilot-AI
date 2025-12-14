@@ -1,0 +1,380 @@
+"""Fix for Watchlist-Chart Integration State Persistence.
+
+This module provides a targeted fix for the race condition between
+window initialization and async data loading that prevents indicators
+from being restored correctly.
+"""
+
+import logging
+import json
+from typing import Dict, Any, Optional
+from PyQt6.QtCore import QTimer, pyqtSlot, QSettings
+from PyQt6.QtWidgets import QAction
+
+logger = logging.getLogger(__name__)
+
+
+class ChartWindowStateFixer:
+    """Fixes state persistence issues in ChartWindow."""
+
+    def __init__(self, chart_window):
+        self.chart_window = chart_window
+        self.chart_widget = chart_window.chart_widget
+        self.settings = QSettings("OrderPilot", "TradingApp")
+
+        # Track restoration state
+        self._indicators_to_restore = {}
+        self._state_restoration_pending = False
+        self._data_load_completed = False
+
+        logger.info(f"ChartWindowStateFixer initialized for {chart_window.symbol}")
+
+    def install_fixes(self):
+        """Install all fixes for the chart window."""
+        try:
+            # Fix 1: Replace the data_loaded signal connection
+            self._fix_data_loaded_signal_connection()
+
+            # Fix 2: Store indicators for later restoration
+            self._prepare_indicator_restoration()
+
+            # Fix 3: Hook into the chart initialization
+            self._hook_chart_initialization()
+
+            logger.info("All state persistence fixes installed successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to install fixes: {e}")
+
+    def _fix_data_loaded_signal_connection(self):
+        """Fix the data_loaded signal to properly restore indicators."""
+        try:
+            # Disconnect existing connection if present
+            try:
+                self.chart_widget.data_loaded.disconnect(self.chart_window._restore_chart_state)
+            except TypeError:
+                pass  # No connection existed
+
+            # Connect our enhanced restoration method
+            self.chart_widget.data_loaded.connect(self._enhanced_restore_chart_state)
+
+            logger.debug("Fixed data_loaded signal connection")
+
+        except Exception as e:
+            logger.error(f"Failed to fix data_loaded signal: {e}")
+
+    def _prepare_indicator_restoration(self):
+        """Prepare indicators for restoration after data loading."""
+        try:
+            symbol = self.chart_window.symbol
+            settings_key = f"ChartWindow/{self._sanitize_symbol(symbol)}"
+
+            # Load saved indicators
+            saved_indicators = self.settings.value(f"{settings_key}/indicators")
+            if saved_indicators and isinstance(saved_indicators, list):
+                logger.info(f"Found {len(saved_indicators)} saved indicators for {symbol}")
+
+                # Also load indicator parameters
+                for indicator_id in saved_indicators:
+                    param_key = f"{settings_key}/indicator_params/{indicator_id}"
+                    params = self.settings.value(param_key)
+                    if params:
+                        try:
+                            if isinstance(params, str):
+                                params = json.loads(params)
+                            self._indicators_to_restore[indicator_id] = params
+                        except (json.JSONDecodeError, TypeError):
+                            logger.warning(f"Could not parse params for {indicator_id}")
+
+                self._state_restoration_pending = True
+
+        except Exception as e:
+            logger.error(f"Failed to prepare indicator restoration: {e}")
+
+    def _hook_chart_initialization(self):
+        """Hook into chart initialization to apply fixes after chart is ready."""
+        try:
+            # Hook into page load completion
+            original_on_page_loaded = getattr(self.chart_widget, '_on_page_loaded', None)
+
+            if original_on_page_loaded:
+                def enhanced_on_page_loaded(ok):
+                    result = original_on_page_loaded(ok)
+
+                    if ok:
+                        logger.debug("Chart page loaded, scheduling indicator restoration")
+                        # Schedule restoration after a short delay
+                        QTimer.singleShot(500, self._attempt_indicator_restoration)
+
+                    return result
+
+                self.chart_widget._on_page_loaded = enhanced_on_page_loaded
+
+        except Exception as e:
+            logger.error(f"Failed to hook chart initialization: {e}")
+
+    @pyqtSlot()
+    def _enhanced_restore_chart_state(self):
+        """Enhanced chart state restoration that includes indicators."""
+        try:
+            self._data_load_completed = True
+            logger.info(f"Data loaded for {self.chart_window.symbol}, starting enhanced restoration")
+
+            # Call original restoration method
+            if hasattr(self.chart_window, '_restore_chart_state'):
+                self.chart_window._restore_chart_state()
+
+            # Now restore indicators
+            self._restore_indicators_after_data_load()
+
+        except Exception as e:
+            logger.error(f"Failed in enhanced chart state restoration: {e}")
+
+    def _attempt_indicator_restoration(self):
+        """Attempt to restore indicators if data is ready."""
+        if self._data_load_completed and self._state_restoration_pending:
+            self._restore_indicators_after_data_load()
+
+    def _restore_indicators_after_data_load(self):
+        """Restore indicators after data has been loaded."""
+        try:
+            if not self._state_restoration_pending:
+                logger.debug("No indicator restoration pending")
+                return
+
+            if not hasattr(self.chart_widget, 'indicator_actions'):
+                logger.warning("Chart widget has no indicator_actions")
+                return
+
+            # Check if chart is properly initialized
+            if not getattr(self.chart_widget, 'page_loaded', False):
+                logger.debug("Chart page not yet loaded, deferring indicator restoration")
+                QTimer.singleShot(1000, self._restore_indicators_after_data_load)
+                return
+
+            if not getattr(self.chart_widget, 'chart_initialized', False):
+                logger.debug("Chart not yet initialized, deferring indicator restoration")
+                QTimer.singleShot(1000, self._restore_indicators_after_data_load)
+                return
+
+            restored_count = 0
+
+            # Restore indicators from saved state
+            for indicator_id, params in self._indicators_to_restore.items():
+                if indicator_id in self.chart_widget.indicator_actions:
+                    action = self.chart_widget.indicator_actions[indicator_id]
+
+                    logger.info(f"Restoring indicator: {indicator_id} with params: {params}")
+
+                    # Set the action as checked
+                    action.setChecked(True)
+
+                    # Store the parameters
+                    if hasattr(self.chart_widget, 'active_indicator_params'):
+                        self.chart_widget.active_indicator_params[indicator_id] = params
+
+                    # Mark as active
+                    if hasattr(self.chart_widget, 'active_indicators'):
+                        self.chart_widget.active_indicators[indicator_id] = True
+
+                    restored_count += 1
+
+            # Force update of indicators after restoration
+            if restored_count > 0:
+                logger.info(f"Restored {restored_count} indicators, forcing chart update")
+
+                # Call _update_indicators to recalculate and display
+                if hasattr(self.chart_widget, '_update_indicators'):
+                    QTimer.singleShot(200, self.chart_widget._update_indicators)
+
+                # Alternative: trigger via action signals if available
+                for indicator_id in self._indicators_to_restore.keys():
+                    if indicator_id in self.chart_widget.indicator_actions:
+                        action = self.chart_widget.indicator_actions[indicator_id]
+                        # Emit triggered signal to force recalculation
+                        action.triggered.emit(True)
+
+            # Mark restoration as completed
+            self._state_restoration_pending = False
+
+            logger.info(f"Indicator restoration completed for {self.chart_window.symbol}")
+
+        except Exception as e:
+            logger.error(f"Failed to restore indicators: {e}")
+
+    def _sanitize_symbol(self, symbol: str) -> str:
+        """Sanitize symbol for use in settings keys."""
+        return symbol.replace("/", "_").replace(":", "_").replace("*", "_")
+
+
+class EmbeddedTradingViewChartStateFixer:
+    """Fixes state persistence issues in EmbeddedTradingViewChart."""
+
+    def __init__(self, chart_widget):
+        self.chart_widget = chart_widget
+        self._original_methods = {}
+
+    def install_fixes(self):
+        """Install all fixes for the chart widget."""
+        try:
+            # Fix 1: Enhance _update_indicators to handle restoration better
+            self._fix_update_indicators()
+
+            # Fix 2: Add indicator restoration trigger
+            self._add_indicator_restoration_trigger()
+
+            logger.info("EmbeddedTradingViewChart state fixes installed")
+
+        except Exception as e:
+            logger.error(f"Failed to install chart widget fixes: {e}")
+
+    def _fix_update_indicators(self):
+        """Fix _update_indicators to better handle state restoration."""
+        try:
+            # Store original method
+            original_update_indicators = self.chart_widget._update_indicators
+
+            def enhanced_update_indicators():
+                """Enhanced indicator update with better state handling."""
+                try:
+                    logger.debug("Enhanced _update_indicators called")
+
+                    # Call original method
+                    result = original_update_indicators()
+
+                    # Additional logging for debugging
+                    if hasattr(self.chart_widget, 'indicator_actions'):
+                        checked_indicators = [
+                            ind_id for ind_id, action in self.chart_widget.indicator_actions.items()
+                            if action.isChecked()
+                        ]
+                        if checked_indicators:
+                            logger.info(f"Active indicators after update: {checked_indicators}")
+
+                    return result
+
+                except Exception as e:
+                    logger.error(f"Error in enhanced _update_indicators: {e}")
+                    return None
+
+            # Replace method
+            self.chart_widget._update_indicators = enhanced_update_indicators
+
+        except Exception as e:
+            logger.error(f"Failed to fix _update_indicators: {e}")
+
+    def _add_indicator_restoration_trigger(self):
+        """Add explicit indicator restoration trigger."""
+        def trigger_indicator_restoration():
+            """Explicitly trigger indicator restoration."""
+            try:
+                if hasattr(self.chart_widget, '_update_indicators'):
+                    logger.info("Triggering explicit indicator restoration")
+                    self.chart_widget._update_indicators()
+
+            except Exception as e:
+                logger.error(f"Failed to trigger indicator restoration: {e}")
+
+        # Add method to chart widget
+        self.chart_widget.trigger_indicator_restoration = trigger_indicator_restoration
+
+
+def patch_chart_window_class():
+    """Patch the ChartWindow class to include state persistence fixes."""
+    try:
+        from .chart_window import ChartWindow
+
+        # Check if already patched
+        if hasattr(ChartWindow, '__state_fix_patched__'):
+            logger.debug("ChartWindow already patched with state fixes")
+            return
+
+        # Store original __init__
+        original_init = ChartWindow.__init__
+
+        def enhanced_init(self, symbol, history_manager=None, parent=None):
+            """Enhanced ChartWindow initialization with state fixes."""
+            # Call original init
+            original_init(self, symbol, history_manager, parent)
+
+            # Install state fixes
+            try:
+                self._state_fixer = ChartWindowStateFixer(self)
+                self._state_fixer.install_fixes()
+
+                # Also fix the chart widget
+                self._chart_widget_fixer = EmbeddedTradingViewChartStateFixer(self.chart_widget)
+                self._chart_widget_fixer.install_fixes()
+
+                logger.info(f"State persistence fixes installed for {symbol}")
+
+            except Exception as e:
+                logger.error(f"Failed to install state fixes for {symbol}: {e}")
+
+        # Patch the class
+        ChartWindow.__init__ = enhanced_init
+        ChartWindow.__state_fix_patched__ = True
+
+        logger.info("ChartWindow class patched with state persistence fixes")
+
+    except ImportError:
+        logger.warning("ChartWindow class not available for patching")
+    except Exception as e:
+        logger.error(f"Failed to patch ChartWindow class: {e}")
+
+
+def patch_chart_window_manager():
+    """Patch ChartWindowManager to log chart opening for debugging."""
+    try:
+        from ..chart_window_manager import ChartWindowManager
+
+        # Check if already patched
+        if hasattr(ChartWindowManager, '__debug_patched__'):
+            return
+
+        # Store original method
+        original_open_or_focus = ChartWindowManager.open_or_focus_chart
+
+        def enhanced_open_or_focus_chart(self, symbol, data_provider=None):
+            """Enhanced chart opening with debug logging."""
+            logger.info(f"Opening chart for {symbol} with data provider: {data_provider}")
+
+            result = original_open_or_focus(self, symbol, data_provider)
+
+            # Log the window creation result
+            if symbol in self.windows:
+                window = self.windows[symbol]
+                logger.info(f"Chart window created/focused for {symbol}, "
+                          f"chart_widget type: {type(window.chart_widget).__name__}")
+
+            return result
+
+        # Patch the method
+        ChartWindowManager.open_or_focus_chart = enhanced_open_or_focus_chart
+        ChartWindowManager.__debug_patched__ = True
+
+        logger.info("ChartWindowManager patched with debug logging")
+
+    except ImportError:
+        logger.warning("ChartWindowManager not available for patching")
+    except Exception as e:
+        logger.error(f"Failed to patch ChartWindowManager: {e}")
+
+
+def apply_watchlist_chart_fixes():
+    """Apply all fixes for watchlist-chart integration."""
+    logger.info("Applying watchlist-chart integration fixes...")
+
+    patch_chart_window_class()
+    patch_chart_window_manager()
+
+    logger.info("All watchlist-chart integration fixes applied")
+
+
+# Auto-apply fixes when module is imported
+import os
+if os.getenv('ORDERPILOT_DISABLE_WATCHLIST_FIXES') != '1':
+    try:
+        apply_watchlist_chart_fixes()
+    except Exception as e:
+        logger.warning(f"Auto-patching watchlist fixes failed: {e}")

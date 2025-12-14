@@ -147,7 +147,7 @@ class ChartBridge(QObject):
             logger.info(f"Live data requested for {symbol}")
             self.statusChanged.emit(f"Loading live data for {symbol}...")
 
-            # TODO: Implement live data loading
+            # Live data loading not yet implemented - using historical data only
             # For now, emit error indicating it's not implemented
             error_msg = "Live data loading not yet implemented"
             logger.warning(error_msg)

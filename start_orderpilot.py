@@ -177,6 +177,19 @@ Examples:
 
 def main() -> int:
     """Main entry point"""
+    # Set up global exception handler for uncaught exceptions
+    def global_exception_handler(exc_type, exc_value, exc_traceback):
+        """Handle uncaught exceptions"""
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+
+        logging.error("❌ UNCAUGHT EXCEPTION:", exc_info=(exc_type, exc_value, exc_traceback))
+        print(f"\n❌ CRITICAL ERROR: {exc_type.__name__}: {exc_value}")
+        print("Check logs for full traceback")
+
+    sys.excepthook = global_exception_handler
+
     parser = create_parser()
     args = parser.parse_args()
 

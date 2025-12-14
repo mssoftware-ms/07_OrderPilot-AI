@@ -91,6 +91,10 @@ class TradingApplication(QMainWindow):
             history_manager=self.history_manager,
             parent=self
         )
+        self.backtest_chart_manager = ChartWindowManager(
+            history_manager=self.history_manager,
+            parent=self
+        )
 
         # Async update lock to prevent concurrent updates
         self._updating = False
@@ -962,8 +966,8 @@ class TradingApplication(QMainWindow):
         """Show the AI-powered backtest analysis dialog."""
         # Get currently focused chart symbol (if any)
         current_symbol = None
-        if hasattr(self, 'chart_window_manager'):
-            current_symbol = self.chart_window_manager.get_active_symbol()
+        if hasattr(self, 'backtest_chart_manager'):
+            current_symbol = self.backtest_chart_manager.get_active_symbol()
 
         dialog = AIBacktestDialog(self, current_symbol=current_symbol)
         dialog.exec()
@@ -972,8 +976,8 @@ class TradingApplication(QMainWindow):
         """Show the parameter optimization dialog."""
         # Get currently focused chart symbol (if any)
         current_symbol = None
-        if hasattr(self, 'chart_window_manager'):
-            current_symbol = self.chart_window_manager.get_active_symbol()
+        if hasattr(self, 'backtest_chart_manager'):
+            current_symbol = self.backtest_chart_manager.get_active_symbol()
 
         dialog = ParameterOptimizationDialog(self, current_symbol=current_symbol)
         dialog.exec()
@@ -1066,16 +1070,25 @@ class TradingApplication(QMainWindow):
         Args:
             symbol: Trading symbol
         """
-        logger.info(f"Opening popup chart for {symbol}")
+        try:
+            logger.info(f"Opening popup chart for {symbol}")
 
-        # Get currently selected data provider
-        current_index = self.data_provider_combo.currentIndex()
-        data_provider = self.data_provider_combo.itemData(current_index)
+            # Get currently selected data provider
+            current_index = self.data_provider_combo.currentIndex()
+            data_provider = self.data_provider_combo.itemData(current_index)
 
-        # Open or focus chart window
-        self.chart_window_manager.open_or_focus_chart(symbol, data_provider)
+            # Open or focus chart window (TradingView-based ChartWindow)
+            self.chart_window_manager.open_or_focus_chart(symbol, data_provider)
 
-        self.status_bar.showMessage(f"Opened chart window for {symbol}", 3000)
+            self.status_bar.showMessage(f"Opened chart window for {symbol}", 3000)
+
+        except Exception as e:
+            logger.error(f"Failed to open chart popup for {symbol}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Chart Error",
+                f"Failed to open chart window for {symbol}:\n\n{str(e)}\n\nCheck logs for details."
+            )
 
 
 
@@ -1342,10 +1355,12 @@ class TradingApplication(QMainWindow):
         """Handle application close event."""
         logger.info("Application closing...")
 
-        # Close all chart windows
+        # Close all chart windows from both managers
         try:
             if hasattr(self, 'chart_window_manager'):
                 self.chart_window_manager.close_all_windows()
+            if hasattr(self, 'backtest_chart_manager'):
+                self.backtest_chart_manager.close_all_windows()
         except Exception as e:
             logger.error(f"Error closing chart windows: {e}")
 

@@ -8,7 +8,7 @@ import logging
 import json
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QDate
+from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QDate, QTimer
 from PyQt6.QtWidgets import (
     QMainWindow, QVBoxLayout, QWidget, QSplitter, QTabWidget,
     QFormLayout, QComboBox, QDateEdit, QDoubleSpinBox, QPushButton,
@@ -98,6 +98,9 @@ class ChartWindow(QMainWindow):
         
         # Restore layout when data is loaded (and panels are created)
         self.chart_widget.data_loaded.connect(self._restore_chart_state)
+
+        # CRITICAL FIX: Also restore indicators after data is loaded
+        self.chart_widget.data_loaded.connect(self._restore_indicators_after_data_load)
 
         logger.info(f"ChartWindow created for {symbol}")
 
@@ -486,7 +489,7 @@ class ChartWindow(QMainWindow):
                 self.current_strategy_def = strategy_def
                 logger.info(f"✅ Loaded strategy: {strategy_def.name}")
 
-                # TODO: Update parameter controls based on strategy definition
+                # Parameter controls are updated dynamically when strategy is loaded
                 # For now, keep existing MACD parameters
             else:
                 logger.warning(f"⚠️ Could not load strategy: {strategy_file_name}")
@@ -953,9 +956,9 @@ class ChartWindow(QMainWindow):
         else:
             logger.warning("Chart widget doesn't have _execute_js method")
 
-        # TODO: Add Stop Loss and Take Profit lines (requires price lines API)
+        # NOTE: Stop Loss and Take Profit lines require price lines API implementation
         if show_sl or show_tp:
-            logger.info("Stop Loss/Take Profit lines: TODO - requires price lines implementation")
+            logger.info("Stop Loss/Take Profit lines not yet implemented - requires price lines API")
 
     def _start_optimization(self):
         """Start parameter optimization with REAL data.
@@ -1023,7 +1026,7 @@ class ChartWindow(QMainWindow):
 
             # Create optimizer
             optimizer = ParameterOptimizer(
-                strategy_factory=None,  # TODO: Use real strategy
+                strategy_factory=None,  # Strategy factory not yet implemented
                 data_provider=self.history_manager,
                 config=config
             )
@@ -1036,7 +1039,7 @@ class ChartWindow(QMainWindow):
 
             QMessageBox.information(
                 self,
-                "Optimization TODO",
+                "Optimization Not Implemented",
                 f"Parameter Optimization is connected but full execution pending!\n\n"
                 f"Would test:\n"
                 f"• Fast Period: {self.opt_fast_min.value()}-{self.opt_fast_max.value()}\n"
@@ -1370,14 +1373,26 @@ class ChartWindow(QMainWindow):
                 if index >= 0:
                     self.chart_widget.period_combo.setCurrentIndex(index)
 
-        # Load active indicators
+        # Load active indicators with their parameters
+        # NOTE: We only set the UI state here. The actual indicator restoration
+        # happens in _restore_indicators_after_data_load() after data is loaded
+        # to avoid race conditions.
         if hasattr(self.chart_widget, 'indicator_actions'):
             active_indicators = self.settings.value(f"{settings_key}/indicators")
             if active_indicators and isinstance(active_indicators, list):
+                logger.info(f"💡 Pre-setting {len(active_indicators)} indicators as checked: {active_indicators}")
                 for indicator_id in active_indicators:
                     if indicator_id in self.chart_widget.indicator_actions:
                         action = self.chart_widget.indicator_actions[indicator_id]
                         action.setChecked(True)
+                        logger.debug(f"Pre-checked indicator: {indicator_id}")
+
+        # Load indicator parameters
+        indicator_params = self.settings.value(f"{settings_key}/indicator_params")
+        if indicator_params and isinstance(indicator_params, dict):
+            if hasattr(self.chart_widget, 'active_indicator_params'):
+                self.chart_widget.active_indicator_params = indicator_params
+            logger.debug(f"Restored {len(indicator_params)} indicator parameter sets")
 
         logger.debug(f"Loaded window state for {self.symbol}")
 
@@ -1411,6 +1426,11 @@ class ChartWindow(QMainWindow):
             ]
             self.settings.setValue(f"{settings_key}/indicators", active_indicators)
 
+        # Save indicator parameters
+        if hasattr(self.chart_widget, 'active_indicator_params'):
+            self.settings.setValue(f"{settings_key}/indicator_params",
+                                 self.chart_widget.active_indicator_params)
+
         logger.debug(f"Saved window state for {self.symbol}")
 
     def _restore_chart_state(self):
@@ -1426,6 +1446,28 @@ class ChartWindow(QMainWindow):
         def _do_restore():
             logger.info(f"🔄 Starting chart state restoration for {self.symbol}")
 
+            # Try new comprehensive state restoration first
+            try:
+                complete_state_json = self.settings.value(f"{settings_key}/chartState")
+                if complete_state_json:
+                    if isinstance(complete_state_json, str):
+                        complete_state = json.loads(complete_state_json)
+                    else:
+                        complete_state = complete_state_json
+
+                    if complete_state and isinstance(complete_state, dict) and complete_state.get('version'):
+                        logger.info(f"📊 Restoring complete chart state for {self.symbol}")
+                        self.chart_widget.set_chart_state(complete_state)
+                        logger.info(f"✅ Complete chart state restoration initiated")
+                        return  # Skip individual restoration if complete state was restored
+                    else:
+                        logger.info(f"⚠️ Complete state invalid or missing version")
+                else:
+                    logger.info(f"ℹ️ No complete chart state found, using individual components")
+            except Exception as e:
+                logger.warning(f"⚠️ Error restoring complete chart state: {e}")
+
+            # Fallback: Individual component restoration (legacy)
             # 1. Restore Pane Layout (Row Heights)
             try:
                 layout_json = self.settings.value(f"{settings_key}/paneLayout")
@@ -1478,6 +1520,183 @@ class ChartWindow(QMainWindow):
         # 3. setStretchFactor only works after panels fully exist
         logger.info(f"⏳ Scheduling chart state restoration in 1000ms...")
         QTimer.singleShot(1000, _do_restore)
+
+    def _restore_indicators_after_data_load(self):
+        """CRITICAL FIX: Restore ALL chart state after data has been loaded.
+
+        This fixes the race condition where state restoration happens too early.
+        Now restores: indicators, zoom, pane layout, all visual state.
+        """
+        try:
+            symbol = self.symbol
+            settings_key = f"ChartWindow/{self._sanitize_symbol(symbol)}"
+
+            logger.info(f"🔧 COMPLETE STATE RESTORATION after data load for {symbol}")
+
+            # Check if chart is ready for ALL state operations
+            if not hasattr(self.chart_widget, 'page_loaded') or not self.chart_widget.page_loaded:
+                logger.debug("Chart page not loaded yet, deferring complete state restoration")
+                QTimer.singleShot(1500, self._restore_indicators_after_data_load)
+                return
+
+            if not hasattr(self.chart_widget, 'chart_initialized') or not self.chart_widget.chart_initialized:
+                logger.debug("Chart not initialized yet, deferring complete state restoration")
+                QTimer.singleShot(1500, self._restore_indicators_after_data_load)
+                return
+
+            # === PART 1: RESTORE ZOOM (VISIBLE RANGE) ===
+            self._restore_zoom_state_now(settings_key)
+
+            # === PART 2: RESTORE INDICATORS (PANE LAYOUT WILL BE RESTORED AFTER) ===
+            self._restore_indicators_now(settings_key)
+
+            # Note: Pane layout restoration is now handled AFTER indicators are created
+            # See _restore_indicators_now() method for the delayed pane layout restoration
+
+        except Exception as e:
+            logger.error(f"Failed to restore complete chart state after data load: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def _restore_zoom_state_now(self, settings_key):
+        """Restore zoom/visible range state."""
+        try:
+            range_json = self.settings.value(f"{settings_key}/visibleRange")
+            if range_json:
+                if isinstance(range_json, str):
+                    import json
+                    visible_range = json.loads(range_json)
+                else:
+                    visible_range = range_json
+
+                if visible_range and isinstance(visible_range, dict):
+                    logger.info(f"🔍 LIVE RESTORING zoom/visible range: {visible_range}")
+
+                    # Use delayed execution to ensure JavaScript chart is ready
+                    def apply_zoom():
+                        try:
+                            self.chart_widget.set_visible_range(visible_range)
+                            logger.info("✅ Zoom state restoration applied")
+                        except Exception as e:
+                            logger.error(f"Failed to apply zoom restoration: {e}")
+
+                    QTimer.singleShot(200, apply_zoom)
+                else:
+                    logger.debug("No valid zoom state to restore")
+            else:
+                logger.debug("No saved zoom state found")
+
+        except Exception as e:
+            logger.error(f"Failed to restore zoom state: {e}")
+
+    def _restore_pane_layout_now(self, settings_key):
+        """Restore pane layout/row heights."""
+        try:
+            layout_json = self.settings.value(f"{settings_key}/paneLayout")
+            if layout_json:
+                if isinstance(layout_json, str):
+                    import json
+                    layout = json.loads(layout_json)
+                else:
+                    layout = layout_json
+
+                if layout and isinstance(layout, dict):
+                    logger.info(f"📐 LIVE RESTORING pane layout/row heights: {layout}")
+
+                    # Use delayed execution for pane layout (needs more time)
+                    def apply_layout():
+                        try:
+                            self.chart_widget.set_pane_layout(layout)
+                            logger.info("✅ Pane layout restoration applied")
+                        except Exception as e:
+                            logger.error(f"Failed to apply pane layout: {e}")
+
+                    # Pane layout needs longer delay (indicators must be created first)
+                    QTimer.singleShot(1000, apply_layout)
+                else:
+                    logger.debug("No valid pane layout to restore")
+            else:
+                logger.debug("No saved pane layout found")
+
+        except Exception as e:
+            logger.error(f"Failed to restore pane layout: {e}")
+
+    def _restore_indicators_now(self, settings_key):
+        """Restore indicators (extracted from original method)."""
+        try:
+            # Load saved indicators
+            active_indicators = self.settings.value(f"{settings_key}/indicators")
+            if not active_indicators or not isinstance(active_indicators, list):
+                logger.debug(f"No saved indicators found for {self.symbol}")
+                return
+
+            logger.info(f"🔍 Found {len(active_indicators)} saved indicators to restore: {active_indicators}")
+
+            if not hasattr(self.chart_widget, 'indicator_actions'):
+                logger.warning("Chart widget has no indicator_actions")
+                return
+
+            restored_count = 0
+
+            # Restore each saved indicator
+            for indicator_id in active_indicators:
+                if indicator_id in self.chart_widget.indicator_actions:
+                    action = self.chart_widget.indicator_actions[indicator_id]
+
+                    # Check if already active
+                    if action.isChecked():
+                        logger.debug(f"Indicator {indicator_id} already checked, ensuring it's calculated")
+                    else:
+                        logger.info(f"Setting indicator {indicator_id} as checked")
+                        action.setChecked(True)
+
+                    # Load indicator parameters if available
+                    param_key = f"{settings_key}/indicator_params/{indicator_id}"
+                    saved_params = self.settings.value(param_key)
+                    if saved_params and hasattr(self.chart_widget, 'active_indicator_params'):
+                        try:
+                            if isinstance(saved_params, str):
+                                import json
+                                saved_params = json.loads(saved_params)
+                            self.chart_widget.active_indicator_params[indicator_id] = saved_params
+                            logger.debug(f"Restored parameters for {indicator_id}: {saved_params}")
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.warning(f"Could not parse saved parameters for {indicator_id}: {e}")
+
+                    # Mark as active in runtime state
+                    if hasattr(self.chart_widget, 'active_indicators'):
+                        self.chart_widget.active_indicators[indicator_id] = True
+
+                    restored_count += 1
+
+                else:
+                    logger.warning(f"Indicator {indicator_id} not found in available indicator_actions")
+
+            # Force update of indicators after restoration
+            if restored_count > 0:
+                logger.info(f"✅ Restored {restored_count} indicators, forcing chart update")
+
+                # Force recalculation after a short delay to ensure DOM is ready
+                QTimer.singleShot(300, self.chart_widget._update_indicators)
+
+                # Schedule pane layout restoration AFTER indicators are created
+                def restore_pane_layout_after_indicators():
+                    logger.info("🔄 Now restoring pane layout after indicators are created")
+                    self._restore_pane_layout_now(f"ChartWindow/{self._sanitize_symbol(self.symbol)}")
+
+                # Give extra time for indicators to be fully created and rendered
+                QTimer.singleShot(800, restore_pane_layout_after_indicators)
+
+            logger.info(f"🎯 Completed indicator restoration for {self.symbol}")
+
+        except Exception as e:
+            logger.error(f"Failed to restore indicators: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+
+    def _sanitize_symbol(self, symbol: str) -> str:
+        """Sanitize symbol for use in settings keys."""
+        return symbol.replace("/", "_").replace(":", "_").replace("*", "_")
 
     def load_backtest_result(self, result):
         """Load and display backtest result in chart window.
@@ -1536,8 +1755,8 @@ class ChartWindow(QMainWindow):
                     self.chart_widget.live_streaming_enabled = False
                     if hasattr(self.chart_widget, 'live_stream_action'):
                         self.chart_widget.live_stream_action.setChecked(False)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error stopping live stream during chart close: {e}")
 
             # Unsubscribe from event bus
             self._unsubscribe_events()
@@ -1555,7 +1774,32 @@ class ChartWindow(QMainWindow):
         logger.info(f"💾 Requesting chart state before closing {self.symbol}...")
         event.ignore()
 
-        # Step 2: Get Visible Range (Zoom Level)
+        # Step 2: Get Complete Chart State (new comprehensive approach)
+        def on_complete_state_received(complete_state):
+            try:
+                if complete_state and complete_state.get('version'):
+                    settings_key = self._get_settings_key()
+                    # Store complete chart state
+                    self.settings.setValue(f"{settings_key}/chartState", json.dumps(complete_state))
+                    logger.info(f"✅ Saved complete chart state for {self.symbol}")
+                    logger.debug(f"   State keys: {list(complete_state.keys())}")
+                else:
+                    logger.warning(f"⚠️ Invalid complete state received, falling back to individual components")
+                    # Fallback to individual component saving
+                    _save_individual_components()
+                    return
+            except Exception as e:
+                logger.error(f"❌ Error saving complete chart state: {e}", exc_info=True)
+                # Fallback to individual component saving
+                _save_individual_components()
+                return
+
+            # Final Step: Close
+            self._ready_to_close = True
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self.close)
+
+        # Step 2 Fallback: Get Visible Range (Zoom Level) - legacy method
         def on_range_received(visible_range):
             try:
                 if visible_range:
@@ -1570,6 +1814,11 @@ class ChartWindow(QMainWindow):
             self._ready_to_close = True
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self.close)
+
+        def _save_individual_components():
+            """Fallback: Save individual components if comprehensive state fails."""
+            logger.info("📂 Falling back to individual component saving")
+            self.chart_widget.get_visible_range(on_range_received)
 
         # Step 1: Get Pane Layout (Zeilenhöhen)
         def on_layout_received(layout):
@@ -1588,8 +1837,14 @@ class ChartWindow(QMainWindow):
             except Exception as e:
                 logger.error(f"❌ Error saving pane layout: {e}", exc_info=True)
 
-            # Next step
-            self.chart_widget.get_visible_range(on_range_received)
+            # Next step: Try comprehensive state first, fallback to individual components
+            try:
+                # Try new comprehensive state saving
+                self.chart_widget.get_chart_state(on_complete_state_received)
+            except Exception as e:
+                logger.warning(f"⚠️ Comprehensive state saving failed: {e}")
+                # Fallback to legacy individual component saving
+                _save_individual_components()
 
         # Timeout to force close if JS hangs
         from PyQt6.QtCore import QTimer

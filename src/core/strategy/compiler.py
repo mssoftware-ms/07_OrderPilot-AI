@@ -500,196 +500,21 @@ class StrategyCompiler:
             definition: Strategy definition
 
         Returns:
-            Strategy class
+            Strategy class configured with definition
         """
-        # Capture definition in closure
-        strategy_def = definition
+        # Import here to avoid circular imports
+        from .compiled_strategy import CompiledStrategy
 
-        class CompiledStrategy(bt.Strategy):
-            """Dynamically compiled strategy from StrategyDefinition."""
-
-            # Strategy metadata
-            __strategy_name__ = strategy_def.name
-            __strategy_version__ = strategy_def.version
+        # Create a dynamic class that wraps CompiledStrategy with the definition
+        class DynamicCompiledStrategy(CompiledStrategy):
+            """Strategy class with embedded definition."""
 
             def __init__(self):
-                """Initialize strategy and indicators."""
-                super().__init__()
+                """Initialize with the compiled definition."""
+                super().__init__(definition)
 
-                # Create indicators
-                self.indicators_map = {}
-                for ind_config in strategy_def.indicators:
-                    try:
-                        indicator = IndicatorFactory.create_indicator(
-                            ind_config,
-                            self.data
-                        )
-                        # Store with alias
-                        setattr(self, f"ind_{ind_config.alias}", indicator)
-                        self.indicators_map[ind_config.alias] = indicator
+        # Set metadata
+        DynamicCompiledStrategy.__strategy_name__ = definition.name
+        DynamicCompiledStrategy.__strategy_version__ = definition.version
 
-                        logger.debug(
-                            f"Created indicator: {ind_config.alias} = "
-                            f"{ind_config.type}({ind_config.params})"
-                        )
-                    except Exception as e:
-                        raise CompilationError(
-                            f"Failed to create indicator {ind_config.alias}: {e}"
-                        ) from e
-
-                # Create condition evaluators
-                self.entry_long_evaluator = ConditionEvaluator(self)
-                self.exit_long_evaluator = ConditionEvaluator(self)
-                self.entry_short_evaluator = (
-                    ConditionEvaluator(self) if strategy_def.entry_short else None
-                )
-                self.exit_short_evaluator = (
-                    ConditionEvaluator(self) if strategy_def.exit_short else None
-                )
-
-                # Risk management
-                self.risk_mgmt = strategy_def.risk_management
-
-                # Track orders
-                self.order = None
-                self.entry_price = None
-
-                logger.info(
-                    f"Strategy initialized: {strategy_def.name} "
-                    f"(Indicators: {len(self.indicators_map)})"
-                )
-
-            def next(self):
-                """Execute strategy logic on each bar."""
-                # Skip if order pending
-                if self.order:
-                    return
-
-                # Check if we have a position
-                if not self.position:
-                    # No position: check entry signals
-
-                    # Check LONG entry
-                    if self.entry_long_evaluator.evaluate(strategy_def.entry_long):
-                        self._enter_long()
-
-                    # Check SHORT entry (if defined)
-                    elif strategy_def.entry_short and self.entry_short_evaluator:
-                        if self.entry_short_evaluator.evaluate(strategy_def.entry_short):
-                            self._enter_short()
-
-                else:
-                    # Have position: check exit signals
-
-                    if self.position.size > 0:
-                        # Long position: check exit
-                        if self.exit_long_evaluator.evaluate(strategy_def.exit_long):
-                            self._exit_position("LONG EXIT SIGNAL")
-                        else:
-                            self._check_risk_management()
-
-                    elif self.position.size < 0:
-                        # Short position: check exit
-                        if strategy_def.exit_short and self.exit_short_evaluator:
-                            if self.exit_short_evaluator.evaluate(strategy_def.exit_short):
-                                self._exit_position("SHORT EXIT SIGNAL")
-                            else:
-                                self._check_risk_management()
-
-            def _enter_long(self):
-                """Enter long position."""
-                logger.info(f"LONG ENTRY @ {self.data.close[0]:.2f}")
-                self.order = self.buy()
-                self.entry_price = self.data.close[0]
-
-            def _enter_short(self):
-                """Enter short position."""
-                logger.info(f"SHORT ENTRY @ {self.data.close[0]:.2f}")
-                self.order = self.sell()
-                self.entry_price = self.data.close[0]
-
-            def _exit_position(self, reason: str = "EXIT"):
-                """Exit current position."""
-                logger.info(
-                    f"{reason} @ {self.data.close[0]:.2f} "
-                    f"(P&L: {self.position.size * (self.data.close[0] - self.entry_price):.2f})"
-                )
-                self.order = self.close()
-                self.entry_price = None
-
-            def _check_risk_management(self):
-                """Check stop loss and take profit."""
-                if not self.entry_price:
-                    return
-
-                current_price = self.data.close[0]
-
-                # Calculate P&L percentage
-                if self.position.size > 0:  # Long
-                    pnl_pct = (current_price - self.entry_price) / self.entry_price * 100
-                else:  # Short
-                    pnl_pct = (self.entry_price - current_price) / self.entry_price * 100
-
-                # Check stop loss (percentage)
-                if self.risk_mgmt.stop_loss_pct:
-                    if pnl_pct <= -self.risk_mgmt.stop_loss_pct:
-                        self._exit_position(f"STOP LOSS ({pnl_pct:.2f}%)")
-                        return
-
-                # Check stop loss (ATR)
-                if self.risk_mgmt.stop_loss_atr:
-                    if hasattr(self, "ind_atr"):
-                        atr_value = self.ind_atr[0]
-                        stop_distance = self.risk_mgmt.stop_loss_atr * atr_value
-
-                        if self.position.size > 0:  # Long
-                            if current_price <= self.entry_price - stop_distance:
-                                self._exit_position(f"STOP LOSS (ATR)")
-                                return
-                        else:  # Short
-                            if current_price >= self.entry_price + stop_distance:
-                                self._exit_position(f"STOP LOSS (ATR)")
-                                return
-
-                # Check take profit (percentage)
-                if self.risk_mgmt.take_profit_pct:
-                    if pnl_pct >= self.risk_mgmt.take_profit_pct:
-                        self._exit_position(f"TAKE PROFIT ({pnl_pct:.2f}%)")
-                        return
-
-                # Check take profit (ATR)
-                if self.risk_mgmt.take_profit_atr:
-                    if hasattr(self, "ind_atr"):
-                        atr_value = self.ind_atr[0]
-                        target_distance = self.risk_mgmt.take_profit_atr * atr_value
-
-                        if self.position.size > 0:  # Long
-                            if current_price >= self.entry_price + target_distance:
-                                self._exit_position(f"TAKE PROFIT (ATR)")
-                                return
-                        else:  # Short
-                            if current_price <= self.entry_price - target_distance:
-                                self._exit_position(f"TAKE PROFIT (ATR)")
-                                return
-
-            def notify_order(self, order):
-                """Handle order notifications."""
-                if order.status in [order.Completed]:
-                    if order.isbuy():
-                        logger.debug(
-                            f"BUY EXECUTED @ {order.executed.price:.2f}, "
-                            f"Cost: {order.executed.value:.2f}"
-                        )
-                    elif order.issell():
-                        logger.debug(
-                            f"SELL EXECUTED @ {order.executed.price:.2f}, "
-                            f"Cost: {order.executed.value:.2f}"
-                        )
-
-                    self.order = None
-
-                elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-                    logger.warning(f"Order {order.status}")
-                    self.order = None
-
-        return CompiledStrategy
+        return DynamicCompiledStrategy

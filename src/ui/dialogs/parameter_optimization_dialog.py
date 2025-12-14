@@ -599,12 +599,12 @@ class ParameterOptimizationDialog(QDialog):
 
         # Get parent app to access chart_window_manager
         parent_app = self.parent()
-        if not hasattr(parent_app, 'chart_window_manager'):
-            logger.warning("Parent app doesn't have chart_window_manager")
+        if not hasattr(parent_app, 'backtest_chart_manager'):
+            logger.warning("Parent app doesn't have backtest_chart_manager")
             return
 
         # Open or focus chart window for symbol
-        chart_window = parent_app.chart_window_manager.open_or_focus_chart(result.symbol)
+        chart_window = parent_app.backtest_chart_manager.open_or_focus_chart(result.symbol)
 
         # Load backtest result into chart
         chart_window.load_backtest_result(result)

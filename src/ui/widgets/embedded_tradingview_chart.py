@@ -390,7 +390,7 @@ CHART_HTML_TEMPLATE = """
 
                     setPaneLayout: (layout) => {
                         try {
-                            if (!layout) {
+                            if (!layout || Object.keys(layout).length === 0) {
                                 console.warn('⚠ setPaneLayout: No layout provided');
                                 return false;
                             }
@@ -453,9 +453,13 @@ CHART_HTML_TEMPLATE = """
 
                                     // 2. Try resize with current dimensions
                                     try {
-                                        const container = document.getElementById('tv_chart_container');
+                                        // Find chart container - try multiple possible IDs
+                                        const container = document.getElementById('tv_chart_container')
+                                            || document.getElementById('chart-container')
+                                            || document.body;
                                         if (container) {
-                                            chart.resize(container.clientWidth, container.clientHeight);
+                                            chart.resize(container.clientWidth || window.innerWidth,
+                                                       container.clientHeight || window.innerHeight);
                                             console.log('  ✓ Triggered chart resize to apply stretch factors');
                                         }
                                     } catch(e2) {
@@ -478,6 +482,90 @@ CHART_HTML_TEMPLATE = """
                             return restored > 0;
                         } catch(e) {
                             console.error('❌ Error setting pane layout:', e, e.stack);
+                            return false;
+                        }
+                    },
+
+                    // Extended state management APIs
+                    getChartState: () => {
+                        try {
+                            console.log('🔍 getChartState: Starting state collection...');
+
+                            // Collect comprehensive chart state
+                            const visibleRange = chart.timeScale().getVisibleLogicalRange();
+                            const paneLayout = window.chartAPI.getPaneLayout();
+
+                            console.log('  📊 Visible range:', visibleRange);
+                            console.log('  📊 Pane layout:', paneLayout);
+                            console.log('  📊 Active overlays:', Object.keys(overlaySeries));
+                            console.log('  📊 Active panels:', Object.keys(panelMap));
+
+                            const state = {
+                                version: '1.0.0',
+                                timestamp: Date.now(),
+
+                                // Visual settings
+                                visibleRange: visibleRange,
+                                paneLayout: paneLayout,
+
+                                // Active series and indicators
+                                activeSeries: {
+                                    overlays: Object.keys(overlaySeries),
+                                    panels: Object.keys(panelMap)
+                                },
+
+                                // Chart appearance
+                                chartOptions: {
+                                    autoSize: true,
+                                    // Add other visual preferences here
+                                }
+                            };
+
+                            console.log('✅ Complete chart state collected:', JSON.stringify(state, null, 2));
+                            return state;
+                        } catch(e) {
+                            console.error('❌ Error getting chart state:', e, e.stack);
+                            return {};
+                        }
+                    },
+
+                    setChartState: (state) => {
+                        try {
+                            if (!state || !state.version) {
+                                console.warn('Invalid chart state provided');
+                                return false;
+                            }
+
+                            console.log('📊 Restoring chart state:', state);
+                            let restored = 0;
+
+                            // Restore visible range
+                            if (state.visibleRange) {
+                                try {
+                                    window.chartAPI.setVisibleRange(state.visibleRange);
+                                    restored++;
+                                } catch(e) {
+                                    console.warn('Failed to restore visible range:', e);
+                                }
+                            }
+
+                            // Restore pane layout (after indicators are loaded)
+                            if (state.paneLayout) {
+                                setTimeout(() => {
+                                    try {
+                                        window.chartAPI.setPaneLayout(state.paneLayout);
+                                        console.log('✓ Delayed pane layout restoration completed');
+                                    } catch(e) {
+                                        console.warn('Failed to restore pane layout:', e);
+                                    }
+                                }, 500);  // Give indicators time to load
+                                restored++;
+                            }
+
+                            console.log(`✓ Chart state restoration: ${restored} components restored`);
+                            return restored > 0;
+                        } catch(e) {
+                            console.error('Error setting chart state:', e);
                             return false;
                         }
                     },
@@ -550,7 +638,12 @@ class EmbeddedTradingViewChart(QWidget):
         self.data: Optional[pd.DataFrame] = None
         self.volume_data: list = []  # Volume data for external dock widgets
         self.active_indicators: Dict[str, bool] = {}
+        self.active_indicator_params: Dict[str, dict] = {}  # Store indicator parameters
         self.live_streaming_enabled = False
+
+        # State restoration queue
+        self._pending_state_restoration = None
+        self._indicators_loaded = False
 
         # Page load state
         self.page_loaded = False
@@ -961,6 +1054,48 @@ class EmbeddedTradingViewChart(QWidget):
             self.web_view.page().runJavaScript(js_command, _on_result)
         else:
             logger.warning("⚠️ Chart not ready, queueing setPaneLayout command")
+            self._execute_js(js_command)
+
+    def get_chart_state(self, callback):
+        """Get comprehensive chart state including panes, zoom, and indicators.
+
+        Args:
+            callback: Function to call with the complete state dict
+        """
+        if self.page_loaded and self.chart_initialized:
+            logger.info("🔍 Requesting complete chart state from JavaScript")
+            self.web_view.page().runJavaScript(
+                "window.chartAPI.getChartState();",
+                callback
+            )
+        else:
+            logger.warning("⚠️ Cannot get chart state: chart not initialized")
+            callback({})
+
+    def set_chart_state(self, state: dict):
+        """Restore comprehensive chart state.
+
+        Args:
+            state: State dictionary from get_chart_state()
+        """
+        if not state:
+            logger.warning("⚠️ set_chart_state: No state provided")
+            return
+
+        logger.info(f"📊 set_chart_state called with keys: {list(state.keys())}")
+        json_state = json.dumps(state)
+        js_command = f"window.chartAPI.setChartState({json_state});"
+
+        def _on_result(success):
+            if success:
+                logger.info(f"✅ Chart state restoration succeeded")
+            else:
+                logger.warning(f"⚠️ Chart state restoration failed")
+
+        if self.page_loaded and self.chart_initialized:
+            self.web_view.page().runJavaScript(js_command, _on_result)
+        else:
+            logger.warning("⚠️ Chart not ready, queueing setChartState command")
             self._execute_js(js_command)
 
     def load_data(self, data: pd.DataFrame):

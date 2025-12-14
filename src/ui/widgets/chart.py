@@ -17,61 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.common.event_bus import Event, EventType, event_bus
-
-
-class CandlestickItem(pg.GraphicsObject):
-    """Custom GraphicsObject for drawing candlestick charts."""
-
-    def __init__(self):
-        super().__init__()
-        self.data = []
-        self.picture = None
-        self.generatePicture()
-
-    def set_data(self, data):
-        """Set candlestick data."""
-        self.data = data
-        self.generatePicture()
-
-    def generatePicture(self):
-        """Generate the candlestick picture."""
-        self.picture = pg.QtGui.QPicture()
-        if not self.data:
-            return
-
-        painter = pg.QtGui.QPainter(self.picture)
-        painter.setPen(pg.mkPen('w'))
-
-        for t, open_price, high, low, close in self.data:
-            # Determine candle color
-            if close > open_price:
-                color = pg.mkColor(0, 255, 0, 200)  # Green for up
-            else:
-                color = pg.mkColor(255, 0, 0, 200)  # Red for down
-
-            # Draw high-low line
-            painter.setPen(pg.mkPen(color, width=1))
-            painter.drawLine(pg.QtCore.QPointF(t, low), pg.QtCore.QPointF(t, high))
-
-            # Draw candle body
-            body_height = abs(close - open_price)
-            body_top = max(open_price, close)
-
-            painter.setBrush(pg.mkBrush(color))
-            painter.drawRect(pg.QtCore.QRectF(t - 0.3, body_top, 0.6, -body_height))
-
-        painter.end()
-
-    def paint(self, painter, *args):
-        """Paint the candlestick chart."""
-        if self.picture:
-            painter.drawPicture(0, 0, self.picture)
-
-    def boundingRect(self):
-        """Return the bounding rectangle."""
-        if self.picture:
-            return pg.QtCore.QRectF(self.picture.boundingRect())
-        return pg.QtCore.QRectF()
+from .candlestick_item import CandlestickItem
 
 
 class ChartWidget(QWidget):
@@ -217,8 +163,8 @@ class ChartWidget(QWidget):
             price = float(tick_data.get('price', 0))
             self.status_label.setText(f"Last tick: ${price:.2f}")
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error updating chart status: {e}")
 
     def update_chart(self):
         """Update the candlestick chart with current data."""

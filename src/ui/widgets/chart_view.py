@@ -30,6 +30,7 @@ import pandas as pd
 
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.indicators.engine import IndicatorConfig, IndicatorEngine, IndicatorType
+from .candlestick_item import CandlestickItem
 
 logger = logging.getLogger(__name__)
 
@@ -45,102 +46,37 @@ class ChartConfig:
     update_interval: int = 1000  # milliseconds
 
 
-class CandlestickItem(pg.GraphicsObject):
-    """Custom candlestick item for PyQtGraph."""
+class CandlestickItemView(CandlestickItem):
+    """Extended candlestick item for chart_view with additional functionality."""
 
     def __init__(self, data):
         super().__init__()
-        self.data = data
-        self.picture = None
-        self._bounds = None
-        self.generatePicture()
+        self.setData(data)
 
     def setData(self, data):
         """Update candlestick data and regenerate picture."""
-        self.prepareGeometryChange()  # Notify Qt that geometry will change
-        self.data = data
-        self.generatePicture()
-        self.update()  # Trigger repaint
+        # Convert data format to match base class expectations
+        converted_data = []
+        for i, (timestamp, o, h, l, c, v) in enumerate(data):
+            # Use index as x-coordinate instead of timestamp for proper spacing
+            converted_data.append((i, o, h, l, c))
 
-    def generatePicture(self):
-        """Generate the picture of candlesticks."""
-        if not self.data:
-            self.picture = pg.QtGui.QPicture()
-            self._bounds = pg.QtCore.QRectF(0, 0, 1, 1)
-            return
-
-        self.picture = pg.QtGui.QPicture()
-        painter = pg.QtGui.QPainter(self.picture)
-
-        width = 0.6
-        min_price = float('inf')
-        max_price = float('-inf')
-
-        for i, (timestamp, o, h, l, c, v) in enumerate(self.data):
-            # Skip invalid data
-            if not all(isinstance(x, (int, float)) and not (x != x) for x in [o, h, l, c]):  # NaN check
-                continue
-
-            # Track bounds
-            min_price = min(min_price, l)
-            max_price = max(max_price, h)
-
-            # Determine color
-            if c > o:
-                painter.setPen(pg.mkPen('g', width=1))
-                painter.setBrush(pg.mkBrush('g'))
-            else:
-                painter.setPen(pg.mkPen('r', width=1))
-                painter.setBrush(pg.mkBrush('r'))
-
-            # Draw the wick
-            painter.drawLine(pg.QtCore.QPointF(i, l), pg.QtCore.QPointF(i, h))
-
-            # Draw the body
-            body_height = abs(c - o)
-            body_top = max(o, c)
-            if body_height > 0:
-                painter.drawRect(pg.QtCore.QRectF(i - width/2, body_top - body_height,
-                                                 width, body_height))
-            else:
-                # Draw a line for doji candles (open == close)
-                painter.drawLine(pg.QtCore.QPointF(i - width/2, o), pg.QtCore.QPointF(i + width/2, o))
-
-        painter.end()
-
-        # Store bounds for boundingRect()
-        if len(self.data) > 0 and min_price != float('inf'):
-            self._bounds = pg.QtCore.QRectF(
-                -0.5, min_price,
-                len(self.data) + 0.5, max_price - min_price
-            )
-        else:
-            self._bounds = pg.QtCore.QRectF(0, 0, 1, 1)
-
-    def paint(self, painter, *args):
-        """Paint the candlesticks."""
-        if self.picture:
-            painter.drawPicture(0, 0, self.picture)
-
-    def boundingRect(self):
-        """Get bounding rectangle."""
-        if self._bounds:
-            return self._bounds
-        return pg.QtCore.QRectF(0, 0, 1, 1)
+        self.set_data(converted_data)
+        self._original_data = data
 
     def dataBounds(self, ax, _frac=1.0, _orthoRange=None):
         """Return the range of data along the specified axis.
 
         This is needed for proper AutoRange functionality.
         """
-        if not self.data or len(self.data) == 0:
+        if not hasattr(self, '_original_data') or not self._original_data:
             return (0, 1)
 
         if ax == 0:  # X axis
-            return (0, len(self.data))
+            return (0, len(self._original_data))
         elif ax == 1:  # Y axis
             prices = []
-            for timestamp, o, h, l, c, v in self.data:
+            for timestamp, o, h, l, c, v in self._original_data:
                 if all(isinstance(x, (int, float)) and not (x != x) for x in [h, l]):
                     prices.extend([h, l])
 
@@ -404,7 +340,7 @@ class ChartView(QWidget):
             # Draw candlesticks
             if candle_data:
                 logger.debug(f"Drawing {len(candle_data)} candlesticks")
-                candles = CandlestickItem(candle_data)
+                candles = CandlestickItemView(candle_data)
                 self.chart_widget.addItem(candles)
 
                 # Re-add crosshair on top
