@@ -63,13 +63,67 @@ CHART_HTML_TEMPLATE = """
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
-        #chart-container { width: 100vw; height: 100vh; position: relative; }
+        #main-container { display: flex; width: 100vw; height: 100vh; }
+        #drawing-toolbar {
+            width: 36px;
+            background: #1a1a1a;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            padding: 4px 0;
+            z-index: 1000;
+        }
+        .tool-btn {
+            width: 32px;
+            height: 32px;
+            margin: 2px auto;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .tool-btn:hover { background: #333; }
+        .tool-btn.active { background: #2962ff; }
+        .tool-btn svg { width: 18px; height: 18px; }
+        .tool-separator { height: 1px; background: #333; margin: 6px 4px; }
+        #chart-container { flex: 1; height: 100vh; position: relative; }
         #status { position: absolute; top: 10px; left: 10px; color: #00ff00; font-size: 12px; font-family: monospace; z-index: 1000; }
     </style>
 </head>
 <body>
-    <div id="chart-container">
-        <div id="status">Initializing chart...</div>
+    <div id="main-container">
+        <div id="drawing-toolbar">
+            <button class="tool-btn active" id="tool-pointer" title="Auswahl (Esc)">
+                <svg viewBox="0 0 24 24" fill="#aaa"><path d="M13.64 21.97C13.14 22.21 12.54 22 12.31 21.5L10.13 16.76L7.62 18.78C7.45 18.92 7.24 19 7 19C6.45 19 6 18.55 6 18V3C6 2.45 6.45 2 7 2C7.24 2 7.47 2.09 7.64 2.23L19.14 11.74C19.64 12.12 19.5 12.91 18.91 13.09L14.62 14.38L16.8 19.12C17.04 19.62 16.83 20.22 16.33 20.46L13.64 21.97Z"/></svg>
+            </button>
+            <div class="tool-separator"></div>
+            <button class="tool-btn" id="tool-hline-green" title="Horizontale Linie (Grün)">
+                <svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12" stroke="#26a69a" stroke-width="3"/></svg>
+            </button>
+            <button class="tool-btn" id="tool-hline-red" title="Horizontale Linie (Rot)">
+                <svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12" stroke="#ef5350" stroke-width="3"/></svg>
+            </button>
+            <button class="tool-btn" id="tool-trendline" title="Trendlinie">
+                <svg viewBox="0 0 24 24"><line x1="4" y1="18" x2="20" y2="6" stroke="#ffeb3b" stroke-width="2"/></svg>
+            </button>
+            <button class="tool-btn" id="tool-ray" title="Strahl">
+                <svg viewBox="0 0 24 24"><line x1="4" y1="16" x2="20" y2="8" stroke="#9c27b0" stroke-width="2"/><circle cx="4" cy="16" r="3" fill="#9c27b0"/></svg>
+            </button>
+            <div class="tool-separator"></div>
+            <button class="tool-btn" id="tool-delete" title="Löschen (Del)">
+                <svg viewBox="0 0 24 24" fill="#ef5350"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12z"/></svg>
+            </button>
+            <button class="tool-btn" id="tool-clear-all" title="Alle löschen">
+                <svg viewBox="0 0 24 24" fill="#ff9800"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>
+            </button>
+        </div>
+        <div id="chart-container">
+            <div id="status">Initializing chart...</div>
+        </div>
     </div>
     <script>
         const { createChart, CrosshairMode, LineStyle, LineSeries, HistogramSeries, CandlestickSeries, createSeriesMarkers } = LightweightCharts;
@@ -486,6 +540,474 @@ CHART_HTML_TEMPLATE = """
                         } catch(e){ console.error(e); }
                     }
                 };
+
+                // ==================== DRAWING TOOLS ====================
+
+                // Drawing state
+                let currentTool = 'pointer';
+                let drawingPoints = [];
+                let previewPrimitive = null;
+                const drawings = []; // All drawn primitives
+                let selectedDrawing = null;
+
+                // Drawing primitive classes
+                class HorizontalLinePrimitive {
+                    constructor(price, color, id) {
+                        this.price = price;
+                        this.color = color;
+                        this.id = id;
+                        this.type = 'hline';
+                        this._paneViews = [new HorizontalLinePaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class HorizontalLinePaneView {
+                    constructor(source) { this._source = source; this._y = null; }
+                    update() { this._y = priceSeries.priceToCoordinate(this._source.price); }
+                    renderer() { return new HorizontalLineRenderer(this._y, this._source.color); }
+                }
+
+                class HorizontalLineRenderer {
+                    constructor(y, color) { this._y = y; this._color = color; }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._y === null) return;
+                            const ctx = scope.context;
+                            const yScaled = Math.round(this._y * scope.verticalPixelRatio);
+                            ctx.strokeStyle = this._color;
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(0, yScaled);
+                            ctx.lineTo(scope.bitmapSize.width, yScaled);
+                            ctx.stroke();
+                        });
+                    }
+                }
+
+                class TrendLinePrimitive {
+                    constructor(p1, p2, color, id) {
+                        this.p1 = p1; this.p2 = p2; this.color = color; this.id = id;
+                        this.type = 'trendline';
+                        this._paneViews = [new TrendLinePaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class TrendLinePaneView {
+                    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+                    update() {
+                        const ts = chart.timeScale();
+                        this._p1 = { x: ts.timeToCoordinate(this._source.p1.time), y: priceSeries.priceToCoordinate(this._source.p1.price) };
+                        this._p2 = { x: ts.timeToCoordinate(this._source.p2.time), y: priceSeries.priceToCoordinate(this._source.p2.price) };
+                    }
+                    renderer() { return new TrendLineRenderer(this._p1, this._p2, this._source.color); }
+                }
+
+                class TrendLineRenderer {
+                    constructor(p1, p2, color) { this._p1 = p1; this._p2 = p2; this._color = color; }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._p1.x === null || this._p1.y === null || this._p2.x === null || this._p2.y === null) return;
+                            const ctx = scope.context;
+                            const x1 = Math.round(this._p1.x * scope.horizontalPixelRatio);
+                            const y1 = Math.round(this._p1.y * scope.verticalPixelRatio);
+                            const x2 = Math.round(this._p2.x * scope.horizontalPixelRatio);
+                            const y2 = Math.round(this._p2.y * scope.verticalPixelRatio);
+                            ctx.strokeStyle = this._color;
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y1);
+                            ctx.lineTo(x2, y2);
+                            ctx.stroke();
+                            // Draw endpoints
+                            ctx.fillStyle = this._color;
+                            ctx.beginPath(); ctx.arc(x1, y1, 4, 0, 2*Math.PI); ctx.fill();
+                            ctx.beginPath(); ctx.arc(x2, y2, 4, 0, 2*Math.PI); ctx.fill();
+                        });
+                    }
+                }
+
+                class RayPrimitive {
+                    constructor(p1, p2, color, id) {
+                        this.p1 = p1; this.p2 = p2; this.color = color; this.id = id;
+                        this.type = 'ray';
+                        this._paneViews = [new RayPaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class RayPaneView {
+                    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+                    update() {
+                        const ts = chart.timeScale();
+                        this._p1 = { x: ts.timeToCoordinate(this._source.p1.time), y: priceSeries.priceToCoordinate(this._source.p1.price) };
+                        this._p2 = { x: ts.timeToCoordinate(this._source.p2.time), y: priceSeries.priceToCoordinate(this._source.p2.price) };
+                    }
+                    renderer() { return new RayRenderer(this._p1, this._p2, this._source.color); }
+                }
+
+                class RayRenderer {
+                    constructor(p1, p2, color) { this._p1 = p1; this._p2 = p2; this._color = color; }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._p1.x === null || this._p1.y === null || this._p2.x === null || this._p2.y === null) return;
+                            const ctx = scope.context;
+                            const x1 = Math.round(this._p1.x * scope.horizontalPixelRatio);
+                            const y1 = Math.round(this._p1.y * scope.verticalPixelRatio);
+                            const x2 = Math.round(this._p2.x * scope.horizontalPixelRatio);
+                            const y2 = Math.round(this._p2.y * scope.verticalPixelRatio);
+                            // Extend line to edge of chart
+                            const dx = x2 - x1; const dy = y2 - y1;
+                            const len = Math.sqrt(dx*dx + dy*dy);
+                            if (len === 0) return;
+                            const extendX = x1 + (dx/len) * scope.bitmapSize.width * 2;
+                            const extendY = y1 + (dy/len) * scope.bitmapSize.width * 2;
+                            ctx.strokeStyle = this._color;
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y1);
+                            ctx.lineTo(extendX, extendY);
+                            ctx.stroke();
+                            // Draw start point
+                            ctx.fillStyle = this._color;
+                            ctx.beginPath(); ctx.arc(x1, y1, 5, 0, 2*Math.PI); ctx.fill();
+                        });
+                    }
+                }
+
+                // Generate unique ID
+                let drawingIdCounter = 0;
+                const genId = () => 'drawing_' + (++drawingIdCounter);
+
+                // Crosshair mode management
+                let savedCrosshairMode = CrosshairMode.Normal;
+                function disableCrosshairMagnet() {
+                    savedCrosshairMode = CrosshairMode.Normal;
+                    chart.applyOptions({ crosshair: { mode: CrosshairMode.Hidden } });
+                }
+                function restoreCrosshairMode() {
+                    chart.applyOptions({ crosshair: { mode: savedCrosshairMode } });
+                }
+
+                // Drag state
+                let isDragging = false;
+                let dragTarget = null;      // { drawing, handle: 'line'|'p1'|'p2' }
+                let dragStartY = 0;
+                let dragStartX = 0;
+
+                // Tool selection
+                function selectTool(toolId) {
+                    // Restore crosshair when switching away from drawing tools
+                    if (currentTool !== 'pointer' && toolId === 'pointer') {
+                        restoreCrosshairMode();
+                    }
+                    // Disable crosshair for drawing tools
+                    if (toolId !== 'pointer' && toolId !== 'delete') {
+                        disableCrosshairMagnet();
+                    }
+                    currentTool = toolId;
+                    drawingPoints = [];
+                    removePreview();
+                    document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+                    const btn = document.getElementById('tool-' + toolId);
+                    if (btn) btn.classList.add('active');
+                    container.style.cursor = toolId === 'pointer' ? 'default' : 'crosshair';
+                }
+
+                function removePreview() {
+                    if (previewPrimitive) {
+                        priceSeries.detachPrimitive(previewPrimitive);
+                        previewPrimitive = null;
+                    }
+                }
+
+                function removeDrawing(drawing) {
+                    priceSeries.detachPrimitive(drawing);
+                    const idx = drawings.indexOf(drawing);
+                    if (idx > -1) drawings.splice(idx, 1);
+                }
+
+                function clearAllDrawings() {
+                    drawings.forEach(d => priceSeries.detachPrimitive(d));
+                    drawings.length = 0;
+                    selectedDrawing = null;
+                }
+
+                // Hit detection for drag handles
+                function findDragTarget(x, y) {
+                    const threshold = 10;
+                    for (const d of drawings) {
+                        if (d.type === 'hline') {
+                            const lineY = priceSeries.priceToCoordinate(d.price);
+                            if (lineY !== null && Math.abs(y - lineY) < threshold) {
+                                return { drawing: d, handle: 'line' };
+                            }
+                        } else if (d.type === 'trendline' || d.type === 'ray') {
+                            const ts = chart.timeScale();
+                            const x1 = ts.timeToCoordinate(d.p1.time);
+                            const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                            const x2 = ts.timeToCoordinate(d.p2.time);
+                            const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                            if (x1 !== null && y1 !== null) {
+                                // Check P1 handle
+                                if (Math.sqrt((x-x1)*(x-x1) + (y-y1)*(y-y1)) < threshold) {
+                                    return { drawing: d, handle: 'p1' };
+                                }
+                            }
+                            if (x2 !== null && y2 !== null) {
+                                // Check P2 handle
+                                if (Math.sqrt((x-x2)*(x-x2) + (y-y2)*(y-y2)) < threshold) {
+                                    return { drawing: d, handle: 'p2' };
+                                }
+                            }
+                            // Check line itself for whole-line drag
+                            if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                const dist = pointToSegmentDist(x, y, x1, y1, x2, y2);
+                                if (dist < threshold) {
+                                    return { drawing: d, handle: 'line' };
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                }
+
+                // Mouse event handlers for dragging
+                container.addEventListener('mousedown', e => {
+                    if (currentTool !== 'pointer') return;
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const target = findDragTarget(x, y);
+                    if (target) {
+                        isDragging = true;
+                        dragTarget = target;
+                        dragStartX = x;
+                        dragStartY = y;
+                        container.style.cursor = 'grabbing';
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, true);
+
+                container.addEventListener('mousemove', e => {
+                    if (!isDragging || !dragTarget) {
+                        // Update cursor on hover
+                        if (currentTool === 'pointer') {
+                            const rect = container.getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const y = e.clientY - rect.top;
+                            const target = findDragTarget(x, y);
+                            if (target) {
+                                if (target.handle === 'p1' || target.handle === 'p2') {
+                                    container.style.cursor = 'move';
+                                } else if (target.drawing.type === 'hline') {
+                                    container.style.cursor = 'ns-resize';
+                                } else {
+                                    container.style.cursor = 'grab';
+                                }
+                            } else {
+                                container.style.cursor = 'default';
+                            }
+                        }
+                        return;
+                    }
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const d = dragTarget.drawing;
+                    const ts = chart.timeScale();
+
+                    if (d.type === 'hline') {
+                        // Move horizontal line in Y only
+                        const newPrice = priceSeries.coordinateToPrice(y);
+                        if (newPrice !== null) {
+                            d.price = newPrice;
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({}); // Force redraw
+                        }
+                    } else if (d.type === 'trendline' || d.type === 'ray') {
+                        const newPrice = priceSeries.coordinateToPrice(y);
+                        const newTime = ts.coordinateToTime(x);
+                        if (newPrice !== null && newTime !== null) {
+                            if (dragTarget.handle === 'p1') {
+                                d.p1 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'p2') {
+                                d.p2 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'line') {
+                                // Move whole line
+                                const dx = x - dragStartX;
+                                const dy = y - dragStartY;
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const newTime1 = ts.coordinateToTime(x1 + dx);
+                                    const newPrice1 = priceSeries.coordinateToPrice(y1 + dy);
+                                    const newTime2 = ts.coordinateToTime(x2 + dx);
+                                    const newPrice2 = priceSeries.coordinateToPrice(y2 + dy);
+                                    if (newTime1 && newPrice1 && newTime2 && newPrice2) {
+                                        d.p1 = { time: newTime1, price: newPrice1 };
+                                        d.p2 = { time: newTime2, price: newPrice2 };
+                                        dragStartX = x;
+                                        dragStartY = y;
+                                    }
+                                }
+                            }
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({}); // Force redraw
+                        }
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, true);
+
+                container.addEventListener('mouseup', e => {
+                    if (isDragging) {
+                        isDragging = false;
+                        dragTarget = null;
+                        container.style.cursor = currentTool === 'pointer' ? 'default' : 'crosshair';
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, true);
+
+                container.addEventListener('mouseleave', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        dragTarget = null;
+                    }
+                });
+
+                // Click handler for drawing
+                chart.subscribeClick(param => {
+                    if (isDragging) return; // Ignore clicks during drag
+                    if (!param.time || !param.point) return;
+                    const price = priceSeries.coordinateToPrice(param.point.y);
+                    if (price === null) return;
+
+                    if (currentTool === 'hline-green') {
+                        const line = new HorizontalLinePrimitive(price, '#26a69a', genId());
+                        priceSeries.attachPrimitive(line);
+                        drawings.push(line);
+                        selectTool('pointer');
+                    }
+                    else if (currentTool === 'hline-red') {
+                        const line = new HorizontalLinePrimitive(price, '#ef5350', genId());
+                        priceSeries.attachPrimitive(line);
+                        drawings.push(line);
+                        selectTool('pointer');
+                    }
+                    else if (currentTool === 'trendline' || currentTool === 'ray') {
+                        drawingPoints.push({ time: param.time, price });
+                        if (drawingPoints.length === 2) {
+                            removePreview();
+                            const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
+                            const color = currentTool === 'trendline' ? '#ffeb3b' : '#9c27b0';
+                            const line = new PrimitiveClass(drawingPoints[0], drawingPoints[1], color, genId());
+                            priceSeries.attachPrimitive(line);
+                            drawings.push(line);
+                            selectTool('pointer');
+                        }
+                    }
+                    else if (currentTool === 'delete') {
+                        let nearest = null;
+                        let minDist = 20;
+                        drawings.forEach(d => {
+                            if (d.type === 'hline') {
+                                const lineY = priceSeries.priceToCoordinate(d.price);
+                                if (lineY !== null) {
+                                    const dist = Math.abs(param.point.y - lineY);
+                                    if (dist < minDist) { minDist = dist; nearest = d; }
+                                }
+                            } else if (d.type === 'trendline' || d.type === 'ray') {
+                                const ts = chart.timeScale();
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const dist = pointToSegmentDist(param.point.x, param.point.y, x1, y1, x2, y2);
+                                    if (dist < minDist) { minDist = dist; nearest = d; }
+                                }
+                            }
+                        });
+                        if (nearest) removeDrawing(nearest);
+                    }
+                });
+
+                // Mouse move for preview (using raw coordinates, not snapped)
+                container.addEventListener('mousemove', e => {
+                    if ((currentTool === 'trendline' || currentTool === 'ray') && drawingPoints.length === 1 && !isDragging) {
+                        const rect = container.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const price = priceSeries.coordinateToPrice(y);
+                        const time = chart.timeScale().coordinateToTime(x);
+                        if (price === null || time === null) return;
+                        removePreview();
+                        const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
+                        const color = currentTool === 'trendline' ? 'rgba(255,235,59,0.5)' : 'rgba(156,39,176,0.5)';
+                        previewPrimitive = new PrimitiveClass(drawingPoints[0], { time, price }, color, 'preview');
+                        priceSeries.attachPrimitive(previewPrimitive);
+                    }
+                });
+
+                // Helper: distance from point to line segment
+                function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+                    const dx = x2 - x1, dy = y2 - y1;
+                    const lenSq = dx*dx + dy*dy;
+                    if (lenSq === 0) return Math.sqrt((px-x1)*(px-x1) + (py-y1)*(py-y1));
+                    let t = ((px-x1)*dx + (py-y1)*dy) / lenSq;
+                    t = Math.max(0, Math.min(1, t));
+                    const projX = x1 + t*dx, projY = y1 + t*dy;
+                    return Math.sqrt((px-projX)*(px-projX) + (py-projY)*(py-projY));
+                }
+
+                // Toolbar button handlers
+                document.getElementById('tool-pointer').onclick = () => selectTool('pointer');
+                document.getElementById('tool-hline-green').onclick = () => selectTool('hline-green');
+                document.getElementById('tool-hline-red').onclick = () => selectTool('hline-red');
+                document.getElementById('tool-trendline').onclick = () => selectTool('trendline');
+                document.getElementById('tool-ray').onclick = () => selectTool('ray');
+                document.getElementById('tool-delete').onclick = () => selectTool('delete');
+                document.getElementById('tool-clear-all').onclick = () => { clearAllDrawings(); selectTool('pointer'); };
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', e => {
+                    if (e.key === 'Escape') selectTool('pointer');
+                    if (e.key === 'Delete' && selectedDrawing) { removeDrawing(selectedDrawing); selectedDrawing = null; }
+                });
+
+                // Expose drawing API
+                window.chartAPI.getDrawings = () => drawings.map(d => ({
+                    id: d.id, type: d.type,
+                    ...(d.type === 'hline' ? { price: d.price, color: d.color } : { p1: d.p1, p2: d.p2, color: d.color })
+                }));
+                window.chartAPI.clearDrawings = clearAllDrawings;
+                window.chartAPI.addHorizontalLine = (price, color) => {
+                    const line = new HorizontalLinePrimitive(price, color || '#26a69a', genId());
+                    priceSeries.attachPrimitive(line);
+                    drawings.push(line);
+                    return line.id;
+                };
+                window.chartAPI.addTrendLine = (p1, p2, color) => {
+                    const line = new TrendLinePrimitive(p1, p2, color || '#ffeb3b', genId());
+                    priceSeries.attachPrimitive(line);
+                    drawings.push(line);
+                    return line.id;
+                };
+                window.chartAPI.removeDrawingById = (id) => {
+                    const d = drawings.find(x => x.id === id);
+                    if (d) removeDrawing(d);
+                };
+
+                // ==================== END DRAWING TOOLS ====================
 
                 document.getElementById('status').textContent = 'Ready - waiting for data...';
             } catch (error) {
