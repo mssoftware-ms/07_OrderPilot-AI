@@ -172,6 +172,12 @@ class PanelsMixin:
         apply_btn.clicked.connect(self._apply_strategy)
         layout.addWidget(apply_btn)
 
+        # Clear Markers Button
+        clear_markers_btn = QPushButton("Clear Strategy Markers")
+        clear_markers_btn.clicked.connect(self._clear_strategy_markers)
+        clear_markers_btn.setStyleSheet("background-color: #555; color: white;")
+        layout.addWidget(clear_markers_btn)
+
         layout.addStretch()
         return widget
 

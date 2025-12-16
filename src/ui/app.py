@@ -75,6 +75,7 @@ class TradingApplication(MenuMixin, ToolbarMixin, BrokerMixin, QMainWindow):
     order_placed = pyqtSignal(dict)
     position_updated = pyqtSignal(dict)
     alert_triggered = pyqtSignal(dict)
+    _market_data_error = pyqtSignal(object)  # Thread-safe error signal
 
     def __init__(self):
         super().__init__()
@@ -218,6 +219,37 @@ class TradingApplication(MenuMixin, ToolbarMixin, BrokerMixin, QMainWindow):
         event_bus.subscribe(EventType.MARKET_DISCONNECTED, self.on_broker_disconnected)
         event_bus.subscribe(EventType.ORDER_FILLED, self.on_order_filled)
         event_bus.subscribe(EventType.ALERT_TRIGGERED, self.on_alert_triggered)
+        event_bus.subscribe(EventType.MARKET_DATA_ERROR, self._on_market_data_error_event)
+
+        # Connect thread-safe signal for error popups
+        self._market_data_error.connect(self._show_market_data_error_popup)
+
+    def _on_market_data_error_event(self, event: Event):
+        """Handle market data error from background thread."""
+        # Emit signal to show popup in main thread
+        self._market_data_error.emit(event)
+
+    @pyqtSlot(object)
+    def _show_market_data_error_popup(self, event: Event):
+        """Show error popup in main thread (thread-safe)."""
+        error_type = event.data.get("error", "unknown")
+        message = event.data.get("message", "Ein unbekannter Fehler ist aufgetreten.")
+        source = event.data.get("source", "Market Data")
+
+        if error_type == "connection_limit_exceeded":
+            QMessageBox.warning(
+                self,
+                f"⚠️ {source} - Verbindungsfehler",
+                message,
+                QMessageBox.StandardButton.Ok
+            )
+        else:
+            QMessageBox.critical(
+                self,
+                f"❌ {source} - Fehler",
+                message,
+                QMessageBox.StandardButton.Ok
+            )
 
     def setup_timers(self):
         """Setup update timers."""

@@ -3,6 +3,7 @@
 Provides historical market data from Alpaca Markets API.
 """
 
+import asyncio
 import importlib.util
 import logging
 from datetime import datetime, timezone
@@ -92,8 +93,8 @@ class AlpacaProvider(HistoricalDataProvider):
             )
             logger.debug(f"Using IEX feed for {symbol} (free tier compatible)")
 
-            # Fetch data
-            bars_response = client.get_stock_bars(request)
+            # Fetch data - run in thread to avoid blocking event loop
+            bars_response = await asyncio.to_thread(client.get_stock_bars, request)
 
             # BarSet.data is a Dict[str, List[Bar]]
             if not hasattr(bars_response, 'data') or symbol not in bars_response.data:

@@ -12,6 +12,7 @@ import pandas as pd
 from PyQt6.QtCore import pyqtSlot
 
 from src.common.event_bus import Event
+from .data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ class StreamingMixin:
                 return
 
             self.info_label.setText(f"Last: ${price:.2f}")
+            # Print to console for debugging (always visible)
+            print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
             logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
 
             # --- Time Handling Fix ---
@@ -73,7 +76,9 @@ class StreamingMixin:
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
 
-            current_tick_time = int(ts.timestamp())
+            # Add local timezone offset so X-axis shows local time
+            local_offset = get_local_timezone_offset_seconds()
+            current_tick_time = int(ts.timestamp()) + local_offset
             current_minute_start = current_tick_time - (current_tick_time % 60)
 
             # DEBUG LOGGING
@@ -145,6 +150,7 @@ class StreamingMixin:
 
                 ts_raw = bar_data.get('timestamp', datetime.now())
                 # Robust parsing: handle str/np datetime/pandas Timestamp
+                local_offset = get_local_timezone_offset_seconds()
                 try:
                     if isinstance(ts_raw, str):
                         ts_parsed = pd.to_datetime(ts_raw)
@@ -153,9 +159,9 @@ class StreamingMixin:
                         ts_value = ts_raw.to_pydatetime()
                     else:
                         ts_value = ts_raw
-                    unix_time = int(pd.Timestamp(ts_value).timestamp())
+                    unix_time = int(pd.Timestamp(ts_value).timestamp()) + local_offset
                 except Exception:
-                    unix_time = int(datetime.now().timestamp())
+                    unix_time = int(datetime.now().timestamp()) + local_offset
 
                 candle = {
                     'time': unix_time,
@@ -192,31 +198,20 @@ class StreamingMixin:
         self.live_streaming_enabled = is_checked
 
         if self.live_streaming_enabled:
-            # Start live stream
+            # Start live stream - schedule async without blocking
             logger.info(f"Starting live stream for {self.current_symbol}...")
+            asyncio.ensure_future(self._start_live_stream_async())
+        else:
+            # Stop live stream - schedule async without blocking
+            logger.info("Stopping live stream...")
+            asyncio.ensure_future(self._stop_live_stream_async())
 
-            # Get or create event loop compatible with Qt
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # Try qasync loop if available
-                try:
-                    from qasync import QEventLoop
-                    from PyQt6.QtWidgets import QApplication
-                    app = QApplication.instance()
-                    if app:
-                        loop = QEventLoop(app)
-                        asyncio.set_event_loop(loop)
-                    else:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                except ImportError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+    async def _start_live_stream_async(self):
+        """Async wrapper for starting live stream."""
+        try:
+            await self._start_live_stream()
 
-            asyncio.create_task(self._start_live_stream())
-
-            # Update button style
+            # Update button style after successful start
             self.live_stream_button.setStyleSheet("""
                 QPushButton {
                     background-color: #00FF00;
@@ -234,32 +229,15 @@ class StreamingMixin:
             self.market_status_label.setText("🔴 Streaming...")
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
 
-        else:
-            # Stop live stream
-            logger.info("Stopping live stream...")
+        except Exception as e:
+            logger.error(f"Failed to start live stream: {e}")
 
-            # Get or create event loop compatible with Qt
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # Try qasync loop if available
-                try:
-                    from qasync import QEventLoop
-                    from PyQt6.QtWidgets import QApplication
-                    app = QApplication.instance()
-                    if app:
-                        loop = QEventLoop(app)
-                        asyncio.set_event_loop(loop)
-                    else:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                except ImportError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+    async def _stop_live_stream_async(self):
+        """Async wrapper for stopping live stream."""
+        try:
+            await self._stop_live_stream()
 
-            asyncio.create_task(self._stop_live_stream())
-
-            # Reset button style
+            # Reset button style after successful stop
             self.live_stream_button.setStyleSheet("""
                 QPushButton {
                     background-color: #2a2a2a;
@@ -277,6 +255,8 @@ class StreamingMixin:
             self.live_stream_button.setText("🔴 Live")
             self.market_status_label.setText("Ready")
             self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
+        except Exception as e:
+            logger.error(f"Failed to stop live stream: {e}")
 
     async def _start_live_stream(self):
         """Start live streaming for current symbol."""
@@ -293,12 +273,15 @@ class StreamingMixin:
         try:
             # Detect if crypto symbol (contains "/" like BTC/USD)
             is_crypto = "/" in self.current_symbol
+            logger.warning(f"🔍 START STREAM: symbol={self.current_symbol}, is_crypto={is_crypto}")
 
             # Start appropriate real-time stream via HistoryManager
             if is_crypto:
+                logger.warning(f"📡 Starting CRYPTO stream for {self.current_symbol}")
                 success = await self.history_manager.start_crypto_realtime_stream([self.current_symbol])
                 logger.info(f"✓ Live crypto stream started for {self.current_symbol}")
             else:
+                logger.warning(f"📡 Starting STOCK stream for {self.current_symbol}")
                 success = await self.history_manager.start_realtime_stream([self.current_symbol])
                 logger.info(f"✓ Live stock stream started for {self.current_symbol}")
 
@@ -323,27 +306,26 @@ class StreamingMixin:
             self._toggle_live_stream()
 
     async def _stop_live_stream(self):
-        """Stop live streaming for this symbol."""
-        if not self.history_manager or not self.current_symbol:
+        """Stop live streaming - disconnect WebSocket to free connection slot."""
+        if not self.history_manager:
             return
 
         try:
-            # Unsubscribe only this symbol (don't stop entire stream)
-            is_crypto = "/" in self.current_symbol
+            is_crypto = "/" in self.current_symbol if self.current_symbol else False
 
             if is_crypto:
-                # Unsubscribe from crypto stream
+                # Disconnect crypto stream completely to free connection
                 if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
-                    await self.history_manager.crypto_stream_client.unsubscribe([self.current_symbol])
-                    logger.info(f"✓ Unsubscribed {self.current_symbol} from crypto stream")
+                    await self.history_manager.crypto_stream_client.disconnect()
+                    logger.info(f"✓ Disconnected crypto stream")
             else:
-                # Unsubscribe from stock stream
+                # Disconnect stock stream completely to free connection
                 if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
-                    await self.history_manager.stream_client.unsubscribe([self.current_symbol])
-                    logger.info(f"✓ Unsubscribed {self.current_symbol} from stock stream")
+                    await self.history_manager.stream_client.disconnect()
+                    logger.info(f"✓ Disconnected stock stream")
 
             self.market_status_label.setText("Ready")
             self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
 
         except Exception as e:
-            logger.error(f"Error unsubscribing {self.current_symbol} from stream: {e}")
+            logger.error(f"Error disconnecting stream: {e}")

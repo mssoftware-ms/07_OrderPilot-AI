@@ -348,6 +348,8 @@ class HistoryManager:
     ) -> bool:
         """Start real-time market data streaming."""
         try:
+            logger.warning(f"📡 STOCK STREAM: start_realtime_stream called for {symbols}")
+            logger.warning(f"📡 Available providers: {list(self.providers.keys())}")
             logger.info(f"Starting real-time stream for {len(symbols)} symbols. Available providers: {list(self.providers.keys())}")
 
             # Priority 1: Try Alpaca WebSocket
@@ -414,6 +416,8 @@ class HistoryManager:
     ) -> bool:
         """Start real-time cryptocurrency market data streaming."""
         try:
+            print(f"📡 CRYPTO STREAM: start_crypto_realtime_stream called for {crypto_symbols}")
+            print(f"📡 Available providers: {list(self.providers.keys())}")
             logger.info(f"Starting crypto real-time stream for {len(crypto_symbols)} symbols")
 
             if DataSource.ALPACA_CRYPTO in self.providers:
@@ -423,17 +427,27 @@ class HistoryManager:
                 crypto_provider = self.providers[DataSource.ALPACA_CRYPTO]
                 if isinstance(crypto_provider, AlpacaCryptoProvider):
                     try:
-                        crypto_stream_client = AlpacaCryptoStreamClient(
-                            api_key=crypto_provider.api_key,
-                            api_secret=crypto_provider.api_secret,
-                            paper=True
-                        )
+                        # Reuse existing client if available
+                        if not hasattr(self, 'crypto_stream_client') or self.crypto_stream_client is None:
+                            print("📡 Creating NEW crypto stream client")
+                            self.crypto_stream_client = AlpacaCryptoStreamClient(
+                                api_key=crypto_provider.api_key,
+                                api_secret=crypto_provider.api_secret,
+                                paper=True
+                            )
+                        else:
+                            print("📡 Reusing EXISTING crypto stream client")
 
-                        connected = await crypto_stream_client.connect()
+                        if not self.crypto_stream_client.connected:
+                            print("📡 Connecting crypto stream...")
+                            connected = await self.crypto_stream_client.connect()
+                        else:
+                            print("📡 Already connected")
+                            connected = True
+
                         if connected:
-                            await crypto_stream_client.subscribe(crypto_symbols)
-                            if not hasattr(self, 'crypto_stream_client'):
-                                self.crypto_stream_client = crypto_stream_client
+                            print(f"📡 Subscribing to {crypto_symbols}...")
+                            await self.crypto_stream_client.subscribe(crypto_symbols)
                             logger.info(
                                 f"Started Alpaca crypto WebSocket stream "
                                 f"for {len(crypto_symbols)} symbols"

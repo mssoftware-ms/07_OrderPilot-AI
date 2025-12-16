@@ -4,6 +4,7 @@ Provides historical crypto market data using Alpaca's Crypto Data API.
 Endpoint: /v1beta3/crypto/us/*
 """
 
+import asyncio
 import importlib.util
 import logging
 from datetime import datetime, timezone
@@ -99,8 +100,8 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
                 end=end_date_utc
             )
 
-            # Fetch data
-            bars_response = client.get_crypto_bars(request)
+            # Fetch data - run in thread to avoid blocking event loop
+            bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
 
             # Check response
             if not hasattr(bars_response, 'data') or symbol not in bars_response.data:

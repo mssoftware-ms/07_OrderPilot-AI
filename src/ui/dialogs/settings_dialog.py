@@ -249,7 +249,7 @@ class SettingsDialog(QDialog):
 
         # Default provider
         self.ai_default_provider = QComboBox()
-        self.ai_default_provider.addItems(["Anthropic", "OpenAI"])
+        self.ai_default_provider.addItems(["Anthropic", "OpenAI", "Gemini"])
         general_ai_layout.addRow("Default Provider:", self.ai_default_provider)
 
         # Monthly budget
@@ -319,6 +319,34 @@ class SettingsDialog(QDialog):
         anthropic_layout.addRow(anthropic_info)
 
         provider_tabs.addTab(anthropic_tab, "Anthropic")
+
+        # Gemini settings
+        gemini_tab = QWidget()
+        gemini_layout = QFormLayout(gemini_tab)
+
+        self.gemini_api_key = QLineEdit()
+        self.gemini_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_api_key.setPlaceholderText("Enter Gemini API Key")
+        gemini_layout.addRow("API Key:", self.gemini_api_key)
+
+        self.gemini_model = QComboBox()
+        self.gemini_model.addItems([
+            "gemini-2.0-flash-exp (Latest)",
+            "gemini-1.5-pro (Most Capable)",
+            "gemini-1.5-flash (Fast)"
+        ])
+        gemini_layout.addRow("Default Model:", self.gemini_model)
+
+        gemini_info = QLabel(
+            "Google Gemini offers excellent performance at competitive pricing. "
+            "gemini-2.0-flash-exp is the latest experimental model. "
+            "gemini-1.5-pro has the largest context (2M tokens). "
+            "Set GEMINI_API_KEY environment variable for automatic configuration."
+        )
+        gemini_info.setWordWrap(True)
+        gemini_layout.addRow(gemini_info)
+
+        provider_tabs.addTab(gemini_tab, "Gemini")
 
         ai_layout.addWidget(provider_tabs)
 
@@ -423,6 +451,9 @@ class SettingsDialog(QDialog):
         if os.getenv("ANTHROPIC_API_KEY"):
             self.anthropic_api_key.setPlaceholderText("API key loaded from environment variable")
 
+        if os.getenv("GEMINI_API_KEY"):
+            self.gemini_api_key.setPlaceholderText("API key loaded from environment variable")
+
         # OpenAI model
         openai_model = self.settings.value("openai_model", "gpt-5.1 (Thinking Mode)")
         index = self.openai_model.findText(openai_model)
@@ -434,6 +465,12 @@ class SettingsDialog(QDialog):
         index = self.anthropic_model.findText(anthropic_model)
         if index >= 0:
             self.anthropic_model.setCurrentIndex(index)
+
+        # Gemini model
+        gemini_model = self.settings.value("gemini_model", "gemini-2.0-flash-exp (Latest)")
+        index = self.gemini_model.findText(gemini_model)
+        if index >= 0:
+            self.gemini_model.setCurrentIndex(index)
 
         self.ai_budget.setValue(
             self.settings.value("ai_budget", 50, type=float)
@@ -534,6 +571,7 @@ class SettingsDialog(QDialog):
             self.settings.setValue("ai_default_provider", self.ai_default_provider.currentText())
             self.settings.setValue("openai_model", self.openai_model.currentText())
             self.settings.setValue("anthropic_model", self.anthropic_model.currentText())
+            self.settings.setValue("gemini_model", self.gemini_model.currentText())
             self.settings.setValue("ai_budget", self.ai_budget.value())
 
             # Reset AI service to apply new settings
@@ -564,6 +602,19 @@ class SettingsDialog(QDialog):
                     QMessageBox.warning(
                         self, "API Key Storage",
                         f"Could not store Anthropic API key securely:\n{str(e)}\n\n"
+                        "You may need to re-enter it next session."
+                    )
+
+            # Save Gemini API key to secure keyring if provided
+            gemini_key = self.gemini_api_key.text().strip()
+            if gemini_key:
+                try:
+                    config_manager.set_credential("gemini_api_key", gemini_key)
+                    self.gemini_api_key.clear()
+                except Exception as e:
+                    QMessageBox.warning(
+                        self, "API Key Storage",
+                        f"Could not store Gemini API key securely:\n{str(e)}\n\n"
                         "You may need to re-enter it next session."
                     )
 

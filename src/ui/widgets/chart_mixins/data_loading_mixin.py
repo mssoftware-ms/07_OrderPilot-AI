@@ -6,6 +6,7 @@ Contains data loading methods (load_data, load_symbol).
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -13,6 +14,18 @@ import pandas as pd
 import pytz
 
 logger = logging.getLogger(__name__)
+
+
+def get_local_timezone_offset_seconds() -> int:
+    """Get local timezone offset in seconds (positive for east of UTC).
+
+    This accounts for DST automatically.
+    """
+    # time.timezone is seconds west of UTC (negative for CET)
+    # time.daylight tells if DST is observed, time.altzone is DST offset
+    if time.daylight and time.localtime().tm_isdst > 0:
+        return -time.altzone
+    return -time.timezone
 
 
 class DataLoadingMixin:
@@ -37,12 +50,18 @@ class DataLoadingMixin:
             candle_data = []
             volume_data = []
 
+            # Get local timezone offset to display local time on X-axis
+            # lightweight-charts displays UTC by default, so we shift timestamps
+            local_offset = get_local_timezone_offset_seconds()
+            logger.debug(f"Local timezone offset: {local_offset} seconds ({local_offset // 3600}h)")
+
             for timestamp, row in data.iterrows():
                 # Skip invalid data
                 if any(pd.isna(x) for x in [row['open'], row['high'], row['low'], row['close']]):
                     continue
 
-                unix_time = int(timestamp.timestamp())
+                # Add local offset so X-axis shows local time instead of UTC
+                unix_time = int(timestamp.timestamp()) + local_offset
 
                 candle_data.append({
                     'time': unix_time,
@@ -348,27 +367,18 @@ class DataLoadingMixin:
 
     def _on_load_chart(self):
         """Load chart data for current symbol."""
-        # Get or create event loop compatible with Qt
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # Try qasync loop if available
-            try:
-                from qasync import QEventLoop
-                from PyQt6.QtWidgets import QApplication
-                app = QApplication.instance()
-                if app:
-                    loop = QEventLoop(app)
-                    asyncio.set_event_loop(loop)
-                else:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-            except ImportError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+            # Schedule async task without blocking UI
+            asyncio.ensure_future(self._load_chart_async())
+        except Exception as e:
+            logger.error(f"Failed to schedule chart load: {e}")
 
-        # Create and schedule the task
-        asyncio.create_task(self.load_symbol(self.current_symbol, self.current_data_provider))
+    async def _load_chart_async(self):
+        """Async implementation of chart loading."""
+        try:
+            await self.load_symbol(self.current_symbol, self.current_data_provider)
+        except Exception as e:
+            logger.error(f"Failed to load chart: {e}")
 
     def _on_refresh(self):
         """Refresh current chart."""

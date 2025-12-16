@@ -3,6 +3,7 @@
 Provides historical market data from local database cache.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from decimal import Decimal
@@ -35,37 +36,51 @@ class DatabaseProvider(HistoricalDataProvider):
     ) -> list[HistoricalBar]:
         """Fetch historical bars from database."""
         try:
-            with self.db_manager.session() as session:
-                bars_db = session.query(MarketBar).filter(
-                    MarketBar.symbol == symbol,
-                    MarketBar.timestamp >= start_date,
-                    MarketBar.timestamp <= end_date
-                ).order_by(MarketBar.timestamp).all()
-
-                bars = []
-                for bar_db in bars_db:
-                    bar = HistoricalBar(
-                        timestamp=bar_db.timestamp,
-                        open=bar_db.open,
-                        high=bar_db.high,
-                        low=bar_db.low,
-                        close=bar_db.close,
-                        volume=bar_db.volume,
-                        vwap=bar_db.vwap,
-                        source="database"
-                    )
-                    bars.append(bar)
-
-                # Resample if needed
-                if bars and timeframe != Timeframe.SECOND_1:
-                    bars = self._resample_bars(bars, timeframe)
-
-                logger.info(f"Fetched {len(bars)} bars from database for {symbol}")
-                return bars
+            # Run database query in thread to avoid blocking event loop
+            bars = await asyncio.to_thread(
+                self._fetch_bars_sync, symbol, start_date, end_date, timeframe
+            )
+            return bars
 
         except Exception as e:
             logger.error(f"Error fetching database bars: {e}")
             return []
+
+    def _fetch_bars_sync(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: Timeframe
+    ) -> list[HistoricalBar]:
+        """Synchronous database fetch (runs in thread)."""
+        with self.db_manager.session() as session:
+            bars_db = session.query(MarketBar).filter(
+                MarketBar.symbol == symbol,
+                MarketBar.timestamp >= start_date,
+                MarketBar.timestamp <= end_date
+            ).order_by(MarketBar.timestamp).all()
+
+            bars = []
+            for bar_db in bars_db:
+                bar = HistoricalBar(
+                    timestamp=bar_db.timestamp,
+                    open=bar_db.open,
+                    high=bar_db.high,
+                    low=bar_db.low,
+                    close=bar_db.close,
+                    volume=bar_db.volume,
+                    vwap=bar_db.vwap,
+                    source="database"
+                )
+                bars.append(bar)
+
+            # Resample if needed
+            if bars and timeframe != Timeframe.SECOND_1:
+                bars = self._resample_bars(bars, timeframe)
+
+            logger.info(f"Fetched {len(bars)} bars from database for {symbol}")
+            return bars
 
     async def is_available(self) -> bool:
         """Check if database is available."""

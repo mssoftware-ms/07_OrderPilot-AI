@@ -112,6 +112,7 @@ class AlpacaStreamClient(StreamClient):
             self.metrics.status = StreamStatus.CONNECTED
             self.metrics.connected_at = datetime.utcnow()
 
+            print("✅ STOCK STREAM CONNECTED!")
             logger.info("Alpaca stream connected")
 
             # Emit connection event
@@ -135,16 +136,45 @@ class AlpacaStreamClient(StreamClient):
                 if self._stream:
                     logger.info("Starting Alpaca stream listener...")
                     await self._stream._run_forever()
-                    
+
                 # If run_forever returns, it means the connection closed
                 if self.connected:
                     logger.warning("Alpaca stream connection closed unexpectedly. Reconnecting in 5s...")
                     await asyncio.sleep(5)
-                    
+
+            except ValueError as e:
+                error_msg = str(e)
+                if "connection limit exceeded" in error_msg.lower():
+                    print("\n" + "="*60)
+                    print("⚠️  ALPACA CONNECTION LIMIT EXCEEDED!")
+                    print("="*60)
+                    print("Eine alte Verbindung ist noch auf Alpaca's Server aktiv.")
+                    print("Das passiert wenn die App nicht sauber beendet wurde.")
+                    print("\nLösung: Warte 1-2 Minuten und versuche es erneut.")
+                    print("="*60 + "\n")
+                    self.connected = False
+                    self.metrics.status = StreamStatus.ERROR
+                    # Emit error event for UI popup
+                    event_bus.emit(Event(
+                        type=EventType.MARKET_DATA_ERROR,
+                        timestamp=datetime.utcnow(),
+                        data={
+                            "source": self.name,
+                            "error": "connection_limit_exceeded",
+                            "message": "Alpaca Verbindungslimit erreicht!\n\n"
+                                       "Eine alte Verbindung ist noch auf Alpaca's Server aktiv.\n"
+                                       "Das passiert wenn die App nicht sauber beendet wurde.\n\n"
+                                       "Lösung: Warte 1-2 Minuten und versuche es erneut."
+                        }
+                    ))
+                    return  # Don't retry - wait for user
+                else:
+                    raise
+
             except Exception as e:
                 logger.error(f"Alpaca stream error: {e}")
                 self.metrics.status = StreamStatus.ERROR
-                
+
                 if self.connected:
                     logger.info("Attempting to reconnect in 5s...")
                     await asyncio.sleep(5)
@@ -155,12 +185,16 @@ class AlpacaStreamClient(StreamClient):
             return
 
         try:
-            if self._stream:
-                await self._stream.stop_ws()
-
+            # Set connected=False FIRST to stop the _run_stream loop
             self.connected = False
             self.metrics.status = StreamStatus.DISCONNECTED
+            self.metrics.subscribed_symbols.clear()
 
+            if self._stream:
+                # Run in thread to avoid blocking - stop_ws may be synchronous
+                await asyncio.to_thread(self._stop_stream_sync)
+
+            print("🔴 STOCK STREAM DISCONNECTED!")
             logger.info("Alpaca stream disconnected")
 
             # Emit disconnection event
@@ -172,6 +206,13 @@ class AlpacaStreamClient(StreamClient):
 
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
+
+    def _stop_stream_sync(self):
+        """Synchronous stream stop (runs in thread)."""
+        if self._stream:
+            # StockDataStream.stop_ws() is synchronous
+            self._stream.stop_ws()
+            self._stream = None
 
     async def subscribe(self, symbols: list[str]):
         """Subscribe to symbols.
@@ -211,13 +252,16 @@ class AlpacaStreamClient(StreamClient):
             if symbol in self.metrics.subscribed_symbols:
                 self.metrics.subscribed_symbols.remove(symbol)
 
-        # Unsubscribe from stream if connected
+        # Unsubscribe from stream if connected - run in thread to avoid blocking
         if self.connected and self._stream:
-            self._stream.unsubscribe_bars(*symbols)
-            self._stream.unsubscribe_trades(*symbols)
-            self._stream.unsubscribe_quotes(*symbols)
-
+            await asyncio.to_thread(self._unsubscribe_sync, symbols)
             logger.info(f"Unsubscribed from {len(symbols)} symbols")
+
+    def _unsubscribe_sync(self, symbols: list[str]):
+        """Synchronous unsubscribe (runs in thread)."""
+        self._stream.unsubscribe_bars(*symbols)
+        self._stream.unsubscribe_trades(*symbols)
+        self._stream.unsubscribe_quotes(*symbols)
 
     async def _on_bar(self, bar: Bar):
         """Handle bar (OHLCV) data.

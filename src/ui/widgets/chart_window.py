@@ -96,8 +96,18 @@ class ChartWindow(PanelsMixin, BacktestMixin, EventBusMixin, StateMixin, QMainWi
         # Restore layout when data is loaded (from StateMixin)
         self.chart_widget.data_loaded.connect(self._restore_chart_state)
         self.chart_widget.data_loaded.connect(self._restore_indicators_after_data_load)
+        self.chart_widget.data_loaded.connect(self._activate_live_stream)
 
         logger.info(f"ChartWindow created for {symbol}")
+
+    def _activate_live_stream(self):
+        """Activate live streaming when chart data is loaded."""
+        if hasattr(self.chart_widget, 'live_stream_button'):
+            # Only activate if not already streaming
+            if not self.chart_widget.live_stream_button.isChecked():
+                logger.info(f"Auto-activating live stream for {self.symbol}")
+                # click() toggles checked state and triggers the connected slot
+                self.chart_widget.live_stream_button.click()
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event with async state saving."""

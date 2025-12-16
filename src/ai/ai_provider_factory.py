@@ -83,6 +83,22 @@ class AIProviderFactory:
             except Exception as e:
                 logger.warning(f"Could not retrieve Anthropic key from keyring: {e}")
 
+        elif provider == "Gemini":
+            # Try environment variable first
+            key = os.getenv("GEMINI_API_KEY")
+            if key:
+                logger.debug("Using Gemini API key from environment")
+                return key
+
+            # Try secure keyring
+            try:
+                key = config_manager.get_credential("gemini_api_key")
+                if key:
+                    logger.debug("Using Gemini API key from keyring")
+                    return key
+            except Exception as e:
+                logger.warning(f"Could not retrieve Gemini key from keyring: {e}")
+
         logger.warning(f"No API key found for provider: {provider}")
         return None
 
@@ -112,6 +128,14 @@ class AIProviderFactory:
             if "(" in model:
                 model = model.split("(")[0].strip()
             logger.debug(f"Anthropic model: {model}")
+            return model
+
+        elif provider == "Gemini":
+            model = settings.value("gemini_model", "gemini-2.0-flash-exp")
+            # Extract just the model ID
+            if "(" in model:
+                model = model.split("(")[0].strip()
+            logger.debug(f"Gemini model: {model}")
             return model
 
         return "gpt-4o"  # Fallback
@@ -173,6 +197,18 @@ class AIProviderFactory:
             from src.ai.anthropic_service import AnthropicService
             logger.info(f"✅ Creating Anthropic service with model: {model}")
             service = AnthropicService(
+                config=ai_config,
+                api_key=api_key,
+                telemetry_callback=telemetry_callback
+            )
+            # Override default model if specified in settings
+            service.default_model = model
+            return service
+
+        elif provider == "Gemini":
+            from src.ai.gemini_service import GeminiService
+            logger.info(f"✅ Creating Gemini service with model: {model}")
+            service = GeminiService(
                 config=ai_config,
                 api_key=api_key,
                 telemetry_callback=telemetry_callback

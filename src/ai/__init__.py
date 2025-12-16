@@ -12,9 +12,11 @@ from .openai_service import (
     RateLimitError,
     SchemaValidationError,
     StrategySignalAnalysis,
+    StrategyTradeAnalysis,
     get_openai_service,
 )
 from .anthropic_service import AnthropicService
+from .gemini_service import GeminiService
 from .ai_provider_factory import AIProviderFactory
 from .prompts import JSONSchemas, PromptBuilder, PromptTemplates, PromptVersion, SchemaValidator
 
@@ -61,6 +63,7 @@ __all__ = [
     # Services
     'OpenAIService',
     'AnthropicService',
+    'GeminiService',
     'get_openai_service',
     'get_ai_service',  # NEW: Unified multi-provider getter
     'reset_ai_service',

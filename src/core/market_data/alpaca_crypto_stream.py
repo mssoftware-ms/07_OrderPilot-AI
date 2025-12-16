@@ -85,19 +85,24 @@ class AlpacaCryptoStreamClient(StreamClient):
             )
 
             # Set up handlers for subscribed symbols
+            print(f"🔍 DEBUG: subscribed_symbols at connect = {self.metrics.subscribed_symbols}")
             if self.metrics.subscribed_symbols:
+                symbols_list = list(self.metrics.subscribed_symbols)
+                print(f"🔍 DEBUG: Subscribing to {symbols_list} during connect")
                 self._stream.subscribe_bars(
                     self._on_bar,
-                    *list(self.metrics.subscribed_symbols)
+                    *symbols_list
                 )
                 self._stream.subscribe_trades(
                     self._on_trade,
-                    *list(self.metrics.subscribed_symbols)
+                    *symbols_list
                 )
                 self._stream.subscribe_quotes(
                     self._on_quote,
-                    *list(self.metrics.subscribed_symbols)
+                    *symbols_list
                 )
+            else:
+                print("⚠️ DEBUG: No symbols to subscribe during connect!")
 
             # Start stream in background
             asyncio.create_task(self._run_stream())
@@ -106,6 +111,7 @@ class AlpacaCryptoStreamClient(StreamClient):
             self.metrics.status = StreamStatus.CONNECTED
             self.metrics.connected_at = datetime.utcnow()
 
+            print("✅ CRYPTO STREAM CONNECTED!")
             logger.info("Alpaca crypto stream connected")
 
             # Emit connection event
@@ -135,6 +141,35 @@ class AlpacaCryptoStreamClient(StreamClient):
                     logger.warning("Alpaca crypto stream connection closed unexpectedly. Reconnecting in 5s...")
                     await asyncio.sleep(5)
 
+            except ValueError as e:
+                error_msg = str(e)
+                if "connection limit exceeded" in error_msg.lower():
+                    print("\n" + "="*60)
+                    print("⚠️  ALPACA CONNECTION LIMIT EXCEEDED!")
+                    print("="*60)
+                    print("Eine alte Verbindung ist noch auf Alpaca's Server aktiv.")
+                    print("Das passiert wenn die App nicht sauber beendet wurde.")
+                    print("\nLösung: Warte 1-2 Minuten und versuche es erneut.")
+                    print("="*60 + "\n")
+                    self.connected = False
+                    self.metrics.status = StreamStatus.ERROR
+                    # Emit error event for UI popup
+                    event_bus.emit(Event(
+                        type=EventType.MARKET_DATA_ERROR,
+                        timestamp=datetime.utcnow(),
+                        data={
+                            "source": self.name,
+                            "error": "connection_limit_exceeded",
+                            "message": "Alpaca Verbindungslimit erreicht!\n\n"
+                                       "Eine alte Verbindung ist noch auf Alpaca's Server aktiv.\n"
+                                       "Das passiert wenn die App nicht sauber beendet wurde.\n\n"
+                                       "Lösung: Warte 1-2 Minuten und versuche es erneut."
+                        }
+                    ))
+                    return  # Don't retry - wait for user
+                else:
+                    raise
+
             except Exception as e:
                 logger.error(f"Alpaca crypto stream error: {e}")
                 self.metrics.status = StreamStatus.ERROR
@@ -149,12 +184,16 @@ class AlpacaCryptoStreamClient(StreamClient):
             return
 
         try:
-            if self._stream:
-                await self._stream.stop_ws()
-
+            # Set connected=False FIRST to stop the _run_stream loop
             self.connected = False
             self.metrics.status = StreamStatus.DISCONNECTED
+            self.metrics.subscribed_symbols.clear()
 
+            if self._stream:
+                # Run in thread to avoid blocking - stop_ws may be synchronous
+                await asyncio.to_thread(self._stop_stream_sync)
+
+            print("🔴 CRYPTO STREAM DISCONNECTED!")
             logger.info("Alpaca crypto stream disconnected")
 
             # Emit disconnection event
@@ -167,12 +206,22 @@ class AlpacaCryptoStreamClient(StreamClient):
         except Exception as e:
             logger.error(f"Error disconnecting crypto stream: {e}")
 
+    def _stop_stream_sync(self):
+        """Synchronous stream stop (runs in thread)."""
+        if self._stream:
+            # CryptoDataStream.stop_ws() is synchronous
+            self._stream.stop_ws()
+            self._stream = None
+
     async def subscribe(self, symbols: list[str]):
         """Subscribe to crypto symbols.
 
         Args:
             symbols: List of crypto trading pairs (e.g., ["BTC/USD", "ETH/USD"])
         """
+        print(f"🔔 SUBSCRIBE called with symbols: {symbols}")
+        print(f"🔔 connected={self.connected}, _stream={self._stream is not None}")
+
         # Add to subscribed set
         for symbol in symbols:
             if symbol not in self.metrics.subscribed_symbols:
@@ -180,11 +229,15 @@ class AlpacaCryptoStreamClient(StreamClient):
 
         # Subscribe to stream if connected
         if self.connected and self._stream:
+            print(f"🔔 Subscribing to bars/trades/quotes for: {symbols}")
             self._stream.subscribe_bars(self._on_bar, *symbols)
             self._stream.subscribe_trades(self._on_trade, *symbols)
             self._stream.subscribe_quotes(self._on_quote, *symbols)
+            print(f"✅ Subscription complete for: {symbols}")
 
             logger.info(f"Subscribed to {len(symbols)} crypto symbols: {', '.join(symbols)}")
+        else:
+            print(f"⚠️ Cannot subscribe - not connected or no stream!")
 
     async def unsubscribe(self, symbols: list[str]):
         """Unsubscribe from crypto symbols.
@@ -196,13 +249,16 @@ class AlpacaCryptoStreamClient(StreamClient):
             if symbol in self.metrics.subscribed_symbols:
                 self.metrics.subscribed_symbols.remove(symbol)
 
-        # Unsubscribe from stream if connected
+        # Unsubscribe from stream if connected - run in thread to avoid blocking
         if self.connected and self._stream:
-            self._stream.unsubscribe_bars(*symbols)
-            self._stream.unsubscribe_trades(*symbols)
-            self._stream.unsubscribe_quotes(*symbols)
-
+            await asyncio.to_thread(self._unsubscribe_sync, symbols)
             logger.info(f"Unsubscribed from {len(symbols)} crypto symbols")
+
+    def _unsubscribe_sync(self, symbols: list[str]):
+        """Synchronous unsubscribe (runs in thread)."""
+        self._stream.unsubscribe_bars(*symbols)
+        self._stream.unsubscribe_trades(*symbols)
+        self._stream.unsubscribe_quotes(*symbols)
 
     async def _on_bar(self, bar: Bar):
         """Handle crypto bar (OHLCV) data.
@@ -211,6 +267,8 @@ class AlpacaCryptoStreamClient(StreamClient):
             bar: Alpaca crypto bar object
         """
         try:
+            # Print to console for debugging
+            print(f"📊 CRYPTO BAR: {bar.symbol} | Close: ${float(bar.close):.2f} | O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} | Vol: {bar.volume}")
             logger.info(
                 f"📊 Received crypto bar: {bar.symbol} "
                 f"OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} "
@@ -278,6 +336,8 @@ class AlpacaCryptoStreamClient(StreamClient):
             trade: Alpaca crypto trade object
         """
         try:
+            # Print to console for debugging
+            print(f"💰 CRYPTO TRADE: {trade.symbol} | Price: ${float(trade.price):.2f} | Size: {trade.size}")
             logger.info(
                 f"🔔 Received crypto trade: {trade.symbol} "
                 f"@ ${trade.price} (size: {trade.size})"

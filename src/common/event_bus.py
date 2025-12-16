@@ -38,6 +38,7 @@ class EventType(Enum):
     MARKET_DATA_CONNECTED = "market_data_connected"
     MARKET_DATA_DISCONNECTED = "market_data_disconnected"
     MARKET_DATA_TICK = "market_data_tick"
+    MARKET_DATA_ERROR = "market_data_error"  # For connection errors etc.
 
     # Indicator Events
     INDICATOR_CALCULATED = "indicator_calculated"

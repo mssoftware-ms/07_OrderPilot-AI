@@ -16,7 +16,7 @@ from collections import deque
 from typing import Optional, Dict, List
 
 import pandas as pd
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -72,12 +72,20 @@ CHART_HTML_TEMPLATE = """
         <div id="status">Initializing chart...</div>
     </div>
     <script>
-        const { createChart, CrosshairMode, LineStyle, LineSeries, HistogramSeries, CandlestickSeries } = LightweightCharts;
+        const { createChart, CrosshairMode, LineStyle, LineSeries, HistogramSeries, CandlestickSeries, createSeriesMarkers } = LightweightCharts;
 
         function initializeChart() {
             try {
                 const container = document.getElementById('chart-container');
                 const scaleMargins = { top: 0.15, bottom: 0.15 };
+                // Get timezone offset for local time display (e.g., CET = +1, CEST = +2)
+                const getLocalTimezoneOffsetHours = () => {
+                    const now = new Date();
+                    return -now.getTimezoneOffset() / 60;  // Offset in hours (positive for east of UTC)
+                };
+                const tzOffsetHours = getLocalTimezoneOffsetHours();
+                console.log('Local timezone offset: UTC+' + tzOffsetHours);
+
                 const chart = createChart(container, {
                     layout: {
                         background: { type: 'solid', color: '#0a0a0a' },
@@ -95,7 +103,31 @@ CHART_HTML_TEMPLATE = """
                         autoScale: true,
                         scaleMargins
                     },
-                    timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#485c7b' },
+                    timeScale: {
+                        timeVisible: true,
+                        secondsVisible: false,
+                        borderColor: '#485c7b',
+                        // Shift displayed time by local timezone offset
+                        shiftVisibleRangeOnNewBar: true,
+                    },
+                    localization: {
+                        locale: 'de-DE',
+                        // Timestamps are already shifted to local time in Python,
+                        // so we use UTC methods to display them directly without double conversion
+                        timeFormatter: (timestamp) => {
+                            const date = new Date(timestamp * 1000);
+                            const hours = String(date.getUTCHours()).padStart(2, '0');
+                            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                            return `${hours}:${minutes}`;
+                        },
+                        dateFormatter: (timestamp) => {
+                            const date = new Date(timestamp * 1000);
+                            const day = String(date.getUTCDate()).padStart(2, '0');
+                            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                            const year = date.getUTCFullYear();
+                            return `${day}.${month}.${year}`;
+                        },
+                    },
                     handleScroll: {
                         mouseWheel: false,
                         pressedMouseMove: true,
@@ -161,6 +193,9 @@ CHART_HTML_TEMPLATE = """
 
                 // Global flag to suppress fitContent during state restoration
                 let suppressFitContent = false;
+
+                // Markers primitive holder (v5 API)
+                let seriesMarkers = null;
 
                 window.chartAPI = {
                     // Set data with optional skipFit parameter
@@ -269,6 +304,7 @@ CHART_HTML_TEMPLATE = """
                     },
 
                     setPanelSeriesData: (panelId, seriesKey, data) => { try { const s = panelExtraSeries[panelId + '_' + seriesKey]; if (!s) return false; s.setData(data); return true; } catch(e){ console.error(e); return false; } },
+                    updatePanelSeriesData: (panelId, seriesKey, point) => { try { const s = panelExtraSeries[panelId + '_' + seriesKey]; if (!s) return false; s.update(point); return true; } catch(e){ console.error(e); return false; } },
 
                     addPanelPriceLine: (panelId, price, color, lineStyle, title) => {
                         try {
@@ -295,14 +331,28 @@ CHART_HTML_TEMPLATE = """
                     addTradeMarkers: (markers) => {
                         try {
                             if (!Array.isArray(markers)) return false;
-                            priceSeries.setMarkers(markers);
+                            // Use v5 createSeriesMarkers API
+                            if (seriesMarkers) {
+                                // Update existing markers primitive
+                                seriesMarkers.setMarkers(markers);
+                            } else if (markers.length > 0) {
+                                // Create new markers primitive
+                                seriesMarkers = createSeriesMarkers(priceSeries, markers);
+                            }
+                            console.log('Added ' + markers.length + ' trade markers');
                             return true;
-                        } catch(e){ console.error(e); return false; }
+                        } catch(e){ console.error('addTradeMarkers error:', e); return false; }
                     },
 
                     clearMarkers: () => {
-                        try { priceSeries.setMarkers([]); return true; }
-                        catch(e){ console.error(e); return false; }
+                        try {
+                            if (seriesMarkers) {
+                                seriesMarkers.setMarkers([]);
+                            }
+                            console.log('Cleared markers');
+                            return true;
+                        }
+                        catch(e){ console.error('clearMarkers error:', e); return false; }
                     },
 
                     updateBar: (bar) => {
@@ -425,7 +475,11 @@ CHART_HTML_TEMPLATE = """
                     clear: () => {
                         try {
                             priceSeries.setData([]);
-                            priceSeries.setMarkers([]);
+                            // Clear markers using v5 API
+                            if (seriesMarkers) {
+                                seriesMarkers.destroy();
+                                seriesMarkers = null;
+                            }
                             Object.values(overlaySeries).forEach(s => chart.removeSeries(s));
                             Object.keys(overlaySeries).forEach(k => delete overlaySeries[k]);
                             Object.keys(panelMap).forEach(pid => removePane(pid));
@@ -471,6 +525,9 @@ class EmbeddedTradingViewChart(
     timeframe_changed = pyqtSignal(str)
     data_loaded = pyqtSignal()
     indicator_toggled = pyqtSignal(str, bool, dict)
+    # Thread-safe signals for streaming updates (called from background threads)
+    _tick_received = pyqtSignal(object)
+    _bar_received = pyqtSignal(object)
 
     def __init__(self, history_manager=None):
         """Initialize embedded chart widget.
@@ -524,12 +581,36 @@ class EmbeddedTradingViewChart(
         # Setup UI
         self._setup_ui()
 
-        # Subscribe to events
-        event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar)
-        event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick)
-        event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick)
+        # Connect thread-safe signals to handlers (runs in main thread)
+        self._tick_received.connect(self._handle_tick_main_thread)
+        self._bar_received.connect(self._handle_bar_main_thread)
+
+        # Subscribe to events - these emit signals for thread safety
+        event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar_event)
+        event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick_event)
+        event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick_event)
 
         logger.info("EmbeddedTradingViewChart initialized")
+
+    def _on_market_tick_event(self, event):
+        """Event bus callback - emit signal for thread-safe handling."""
+        # This may be called from background thread, so emit signal
+        self._tick_received.emit(event)
+
+    def _on_market_bar_event(self, event):
+        """Event bus callback - emit signal for thread-safe handling."""
+        # This may be called from background thread, so emit signal
+        self._bar_received.emit(event)
+
+    @pyqtSlot(object)
+    def _handle_tick_main_thread(self, event):
+        """Handle tick in main thread (thread-safe)."""
+        self._on_market_tick(event)
+
+    @pyqtSlot(object)
+    def _handle_bar_main_thread(self, event):
+        """Handle bar in main thread (thread-safe)."""
+        self._on_market_bar(event)
 
     def _show_error_ui(self):
         """Show error message if WebEngine not available."""

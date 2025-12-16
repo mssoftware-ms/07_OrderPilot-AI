@@ -137,6 +137,34 @@ class StrategySignalAnalysis(BaseModel):
     suggested_delay_minutes: int | None = None
 
 
+class StrategyTradeAnalysis(BaseModel):
+    """Structured output for strategy trade analysis after Apply Strategy."""
+    # Overall assessment
+    overall_assessment: str
+    strategy_rating: float = Field(ge=0.0, le=10.0)
+    win_rate_assessment: str
+
+    # Trade analysis
+    winning_patterns: list[str]  # What made winning trades successful
+    losing_patterns: list[str]   # Why losing trades failed
+    best_entry_conditions: str
+    worst_entry_conditions: str
+
+    # Improvements
+    parameter_suggestions: dict[str, Any]  # e.g., {"stop_loss": 3.0, "take_profit": 6.0}
+    timing_improvements: list[str]
+    risk_management_tips: list[str]
+
+    # Optimized strategy suggestion
+    optimized_strategy: dict[str, Any]  # Complete suggested strategy params
+    expected_improvement: str  # e.g., "Could improve win rate by ~10-15%"
+
+    # Market fit
+    market_conditions_fit: str  # trending, ranging, volatile
+    recommended_timeframes: list[str]
+    avoid_conditions: list[str]
+
+
 # ==================== Cost Tracking ====================
 
 class CostTracker:
@@ -641,6 +669,42 @@ class OpenAIService:
             context={"type": "signal_analysis", "signal_type": signal.get("type")}
         )
 
+    async def analyze_strategy_trades(
+        self,
+        strategy_name: str,
+        symbol: str,
+        trades: list[dict[str, Any]],
+        stats: dict[str, Any],
+        strategy_params: dict[str, Any]
+    ) -> StrategyTradeAnalysis:
+        """Analyze strategy trades and provide improvement suggestions.
+
+        Args:
+            strategy_name: Name of the strategy
+            symbol: Trading symbol
+            trades: List of trade dictionaries with entry/exit info
+            stats: Statistics dict with wins, losses, win_rate, etc.
+            strategy_params: Current strategy parameters (SL, TP, etc.)
+
+        Returns:
+            Structured analysis with improvements and optimized strategy
+        """
+        prompt = self._build_strategy_trade_analysis_prompt(
+            strategy_name, symbol, trades, stats, strategy_params
+        )
+
+        return await self.structured_completion(
+            prompt=prompt,
+            response_model=StrategyTradeAnalysis,
+            model=self.config.model,
+            context={
+                "type": "strategy_trade_analysis",
+                "strategy": strategy_name,
+                "symbol": symbol,
+                "total_trades": len(trades)
+            }
+        )
+
     # ==================== Prompt Builders ====================
 
     def _build_order_analysis_prompt(
@@ -711,6 +775,56 @@ Technical Indicators:
 
 Evaluate signal quality, identify confirming and warning signals,
 assess timing, and provide a proceed/wait recommendation."""
+
+    def _build_strategy_trade_analysis_prompt(
+        self,
+        strategy_name: str,
+        symbol: str,
+        trades: list[dict[str, Any]],
+        stats: dict[str, Any],
+        strategy_params: dict[str, Any]
+    ) -> str:
+        """Build prompt for strategy trade analysis."""
+        # Format trades for prompt (limit to prevent token overflow)
+        trade_summaries = []
+        for i, t in enumerate(trades[:20]):  # Max 20 trades for context
+            trade_summaries.append(
+                f"  Trade {i+1}: Entry ${t.get('entry_price', 0):.2f} -> "
+                f"Exit ${t.get('exit_price', 0):.2f} | "
+                f"{t.get('exit_reason', 'N/A')} | "
+                f"P&L: {t.get('pnl_pct', 0):+.2f}%"
+            )
+        trades_text = "\n".join(trade_summaries)
+
+        return f"""Analyze this trading strategy's performance and suggest improvements:
+
+STRATEGY: {strategy_name}
+SYMBOL: {symbol}
+
+CURRENT PARAMETERS:
+- Stop Loss: {strategy_params.get('stop_loss_pct', 'N/A')}%
+- Take Profit: {strategy_params.get('take_profit_pct', 'N/A')}%
+- Position Size: {strategy_params.get('position_size_pct', 'N/A')}%
+
+PERFORMANCE STATISTICS:
+- Total Trades: {stats.get('wins', 0) + stats.get('losses', 0)}
+- Winning Trades: {stats.get('wins', 0)}
+- Losing Trades: {stats.get('losses', 0)}
+- Win Rate: {stats.get('win_rate', 0):.1f}%
+- Average P&L per Trade: {stats.get('avg_pnl', 0):+.2f}%
+- Total P&L: {stats.get('total_pnl', 0):+.2f}%
+
+TRADE DETAILS:
+{trades_text}
+
+Please analyze:
+1. What patterns made winning trades successful?
+2. Why did losing trades fail?
+3. What parameter adjustments would improve performance?
+4. Suggest an optimized version of this strategy with specific parameters
+5. What market conditions is this strategy best/worst suited for?
+
+Be specific with numbers and percentages. Focus on actionable improvements."""
 
 
 # ==================== Singleton Instance ====================

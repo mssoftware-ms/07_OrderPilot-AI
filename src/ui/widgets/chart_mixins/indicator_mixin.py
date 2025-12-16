@@ -10,8 +10,14 @@ import pandas as pd
 from PyQt6.QtGui import QAction
 
 from src.core.indicators.engine import IndicatorConfig, IndicatorType
+from .data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
+
+
+def _ts_to_local_unix(ts) -> int:
+    """Convert timestamp to Unix seconds with local timezone offset for chart display."""
+    return int(ts.timestamp()) + get_local_timezone_offset_seconds()
 
 
 class IndicatorMixin:
@@ -72,20 +78,20 @@ class IndicatorMixin:
 
         # Convert each series to chart format
         macd_data = [
-            {'time': int(ts.timestamp()), 'value': float(val)}
+            {'time': _ts_to_local_unix(ts), 'value': float(val)}
             for ts, val in zip(self.data.index, macd_series.values if macd_series is not None else [])
             if not pd.isna(val)
         ]
 
         signal_data = [
-            {'time': int(ts.timestamp()), 'value': float(val)}
+            {'time': _ts_to_local_unix(ts), 'value': float(val)}
             for ts, val in zip(self.data.index, signal_series.values if signal_series is not None else [])
             if not pd.isna(val)
         ]
 
         hist_data = [
             {
-                'time': int(ts.timestamp()),
+                'time': _ts_to_local_unix(ts),
                 'value': float(val),
                 'color': '#26a69a' if float(val) >= 0 else '#ef5350'
             }
@@ -129,7 +135,7 @@ class IndicatorMixin:
         logger.info(f"Using column '{main_col}' from multi-series indicator {ind_id}")
 
         return [
-            {'time': int(ts.timestamp()), 'value': float(val)}
+            {'time': _ts_to_local_unix(ts), 'value': float(val)}
             for ts, val in zip(self.data.index, series_data.values)
             if not pd.isna(val)
         ]
@@ -144,7 +150,7 @@ class IndicatorMixin:
             List of time/value dicts
         """
         return [
-            {'time': int(ts.timestamp()), 'value': float(val)}
+            {'time': _ts_to_local_unix(ts), 'value': float(val)}
             for ts, val in zip(self.data.index, result.values.values)
             if not pd.isna(val)
         ]
@@ -381,9 +387,14 @@ class IndicatorMixin:
 
         try:
             # Update the last row of the DataFrame with new candle data
+            # candle['time'] has local timezone offset added for chart display,
+            # but self.data has UTC timestamps - so we need to remove the offset
+            local_offset = get_local_timezone_offset_seconds()
+            utc_timestamp = candle['time'] - local_offset
+
             # Create a new row from the candle
             new_row = pd.DataFrame([{
-                'time': pd.Timestamp.fromtimestamp(candle['time'], tz='UTC'),
+                'time': pd.Timestamp.fromtimestamp(utc_timestamp, tz='UTC'),
                 'open': candle['open'],
                 'high': candle['high'],
                 'low': candle['low'],
@@ -426,17 +437,44 @@ class IndicatorMixin:
                     # Multi-series indicator (MACD, Stoch)
                     if ind_id == "MACD":
                         last_idx = result.values.index[-1]
-                        hist_val = float(result.values.loc[last_idx, 'MACDh_12_26_9'])
-                        time_unix = int(last_idx.timestamp())
-
-                        # Update only the MACD histogram for real-time
+                        time_unix = _ts_to_local_unix(last_idx)
                         panel_id = ind_id.lower()
-                        hist_point = json.dumps({'time': time_unix, 'value': hist_val})
-                        self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {hist_point});")
+
+                        # Find MACD column names dynamically
+                        col_names = result.values.columns.tolist()
+                        macd_col = signal_col = hist_col = None
+                        for col in col_names:
+                            col_lower = col.lower()
+                            if 'macdh' in col_lower or 'hist' in col_lower:
+                                hist_col = col
+                            elif 'macds' in col_lower or 'signal' in col_lower:
+                                signal_col = col
+                            elif 'macd' in col_lower:
+                                macd_col = col
+
+                        # Update all three MACD series
+                        if hist_col:
+                            hist_val = float(result.values.loc[last_idx, hist_col])
+                            hist_point = json.dumps({
+                                'time': time_unix,
+                                'value': hist_val,
+                                'color': '#26a69a' if hist_val >= 0 else '#ef5350'
+                            })
+                            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {hist_point});")
+
+                        if macd_col:
+                            macd_val = float(result.values.loc[last_idx, macd_col])
+                            macd_point = json.dumps({'time': time_unix, 'value': macd_val})
+                            self._execute_js(f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'macd', {macd_point});")
+
+                        if signal_col:
+                            signal_val = float(result.values.loc[last_idx, signal_col])
+                            signal_point = json.dumps({'time': time_unix, 'value': signal_val})
+                            self._execute_js(f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'signal', {signal_point});")
                     else:
                         # Other multi-series indicators (Stoch, etc.)
                         last_idx = result.values.index[-1]
-                        time_unix = int(last_idx.timestamp())
+                        time_unix = _ts_to_local_unix(last_idx)
 
                         # Use first column as main value
                         main_val = float(result.values.iloc[-1, 0])
@@ -451,7 +489,7 @@ class IndicatorMixin:
                     # Single-series indicator (RSI, EMA, SMA, etc.)
                     last_idx = result.values.index[-1]
                     value = float(result.values.iloc[-1])
-                    time_unix = int(last_idx.timestamp())
+                    time_unix = _ts_to_local_unix(last_idx)
 
                     point = json.dumps({'time': time_unix, 'value': value})
 
