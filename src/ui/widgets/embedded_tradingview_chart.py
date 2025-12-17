@@ -114,6 +114,9 @@ CHART_HTML_TEMPLATE = """
             <button class="tool-btn" id="tool-ray" title="Strahl">
                 <svg viewBox="0 0 24 24"><line x1="4" y1="16" x2="20" y2="8" stroke="#9c27b0" stroke-width="2"/><circle cx="4" cy="16" r="3" fill="#9c27b0"/></svg>
             </button>
+            <button class="tool-btn" id="tool-percent-rect" title="Prozent-Rechteck (% Differenz)">
+                <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="rgba(38,166,154,0.3)" stroke="#26a69a" stroke-width="1.5"/><text x="12" y="14" text-anchor="middle" fill="#26a69a" font-size="8" font-weight="bold">%</text></svg>
+            </button>
             <div class="tool-separator"></div>
             <button class="tool-btn" id="tool-delete" title="Löschen (Del)">
                 <svg viewBox="0 0 24 24" fill="#ef5350"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12z"/></svg>
@@ -715,6 +718,125 @@ CHART_HTML_TEMPLATE = """
                     }
                 }
 
+                // ==================== PERCENT RECTANGLE TOOL ====================
+                class PercentRectPrimitive {
+                    constructor(p1, p2, id) {
+                        this.p1 = p1;  // First point: reference price (100%)
+                        this.p2 = p2;  // Second point: comparison price
+                        this.id = id;
+                        this.type = 'percent-rect';
+                        // Calculate percent difference
+                        this.percentDiff = ((p2.price - p1.price) / p1.price) * 100;
+                        // Color: green for positive, red for negative
+                        this.color = this.percentDiff >= 0 ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)';
+                        this.borderColor = this.percentDiff >= 0 ? '#26a69a' : '#ef5350';
+                        this._paneViews = [new PercentRectPaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class PercentRectPaneView {
+                    constructor(source) {
+                        this._source = source;
+                        this._p1 = {x:null,y:null};
+                        this._p2 = {x:null,y:null};
+                    }
+                    update() {
+                        const ts = chart.timeScale();
+                        this._p1 = {
+                            x: ts.timeToCoordinate(this._source.p1.time),
+                            y: priceSeries.priceToCoordinate(this._source.p1.price)
+                        };
+                        this._p2 = {
+                            x: ts.timeToCoordinate(this._source.p2.time),
+                            y: priceSeries.priceToCoordinate(this._source.p2.price)
+                        };
+                    }
+                    renderer() {
+                        return new PercentRectRenderer(
+                            this._p1, this._p2,
+                            this._source.color, this._source.borderColor,
+                            this._source.percentDiff, this._source.p1.price, this._source.p2.price
+                        );
+                    }
+                }
+
+                class PercentRectRenderer {
+                    constructor(p1, p2, fillColor, borderColor, percentDiff, price1, price2) {
+                        this._p1 = p1;
+                        this._p2 = p2;
+                        this._fillColor = fillColor;
+                        this._borderColor = borderColor;
+                        this._percentDiff = percentDiff;
+                        this._price1 = price1;
+                        this._price2 = price2;
+                    }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._p1.x === null || this._p1.y === null ||
+                                this._p2.x === null || this._p2.y === null) return;
+                            const ctx = scope.context;
+                            const x1 = Math.round(this._p1.x * scope.horizontalPixelRatio);
+                            const y1 = Math.round(this._p1.y * scope.verticalPixelRatio);
+                            const x2 = Math.round(this._p2.x * scope.horizontalPixelRatio);
+                            const y2 = Math.round(this._p2.y * scope.verticalPixelRatio);
+
+                            // Draw filled rectangle
+                            ctx.fillStyle = this._fillColor;
+                            ctx.fillRect(Math.min(x1, x2), Math.min(y1, y2),
+                                        Math.abs(x2 - x1), Math.abs(y2 - y1));
+
+                            // Draw border
+                            ctx.strokeStyle = this._borderColor;
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2),
+                                          Math.abs(x2 - x1), Math.abs(y2 - y1));
+
+                            // Draw percentage label in the center
+                            const centerX = (x1 + x2) / 2;
+                            const centerY = (y1 + y2) / 2;
+                            const sign = this._percentDiff >= 0 ? '+' : '';
+                            const labelText = `${sign}${this._percentDiff.toFixed(2)}%`;
+
+                            const fontSize = 14 * scope.verticalPixelRatio;
+                            ctx.font = `bold ${fontSize}px Arial`;
+                            const textWidth = ctx.measureText(labelText).width;
+                            const padding = 6 * scope.verticalPixelRatio;
+
+                            // Background for label
+                            ctx.fillStyle = this._borderColor;
+                            ctx.fillRect(centerX - textWidth/2 - padding, centerY - fontSize/2 - padding/2,
+                                        textWidth + padding*2, fontSize + padding);
+
+                            // Label text
+                            ctx.fillStyle = '#ffffff';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(labelText, centerX, centerY);
+
+                            // Draw price labels at corners
+                            const smallFontSize = 10 * scope.verticalPixelRatio;
+                            ctx.font = `${smallFontSize}px Arial`;
+                            ctx.fillStyle = this._borderColor;
+
+                            // Start price (100%)
+                            const price1Text = `${this._price1.toFixed(2)} (100%)`;
+                            ctx.textAlign = 'left';
+                            ctx.fillText(price1Text, Math.min(x1, x2) + 4, y1 + (y1 < y2 ? smallFontSize + 2 : -4));
+
+                            // End price
+                            const price2Text = `${this._price2.toFixed(2)}`;
+                            ctx.fillText(price2Text, Math.min(x1, x2) + 4, y2 + (y2 < y1 ? smallFontSize + 2 : -4));
+
+                            // Draw corner points
+                            ctx.fillStyle = this._borderColor;
+                            ctx.beginPath(); ctx.arc(x1, y1, 4, 0, 2*Math.PI); ctx.fill();
+                            ctx.beginPath(); ctx.arc(x2, y2, 4, 0, 2*Math.PI); ctx.fill();
+                        });
+                    }
+                }
+
                 // Generate unique ID
                 let drawingIdCounter = 0;
                 const genId = () => 'drawing_' + (++drawingIdCounter);
@@ -729,11 +851,16 @@ CHART_HTML_TEMPLATE = """
                     chart.applyOptions({ crosshair: { mode: savedCrosshairMode } });
                 }
 
-                // Drag state
+                // Drag state for drawings
                 let isDragging = false;
                 let dragTarget = null;      // { drawing, handle: 'line'|'p1'|'p2' }
                 let dragStartY = 0;
                 let dragStartX = 0;
+
+                // Y-Pan state for price axis scrolling
+                let isYPanning = false;
+                let yPanStartY = 0;
+                let yPanStartRange = null;
 
                 // Tool selection
                 function selectTool(toolId) {
@@ -820,6 +947,7 @@ CHART_HTML_TEMPLATE = """
                     const y = e.clientY - rect.top;
                     const target = findDragTarget(x, y);
                     if (target) {
+                        // Drawing drag
                         isDragging = true;
                         dragTarget = target;
                         dragStartX = x;
@@ -827,10 +955,39 @@ CHART_HTML_TEMPLATE = """
                         container.style.cursor = 'grabbing';
                         e.preventDefault();
                         e.stopPropagation();
+                    } else if (e.button === 0) {
+                        // Left click without drawing target - enable Y-panning
+                        // First disable autoScale to allow manual Y control
+                        rightScale.applyOptions({ autoScale: false });
+                        const range = rightScale.getVisiblePriceRange();
+                        if (range) {
+                            isYPanning = true;
+                            yPanStartY = y;
+                            yPanStartRange = { from: range.from, to: range.to };
+                        }
                     }
                 }, true);
 
                 container.addEventListener('mousemove', e => {
+                    // Handle Y-panning (when no drawing is being dragged)
+                    if (isYPanning && yPanStartRange) {
+                        const rect = container.getBoundingClientRect();
+                        const y = e.clientY - rect.top;
+                        const dy = y - yPanStartY;
+
+                        // Convert pixel movement to price movement
+                        const chartHeight = rect.height;
+                        const priceRange = yPanStartRange.to - yPanStartRange.from;
+                        const pricePerPixel = priceRange / chartHeight;
+                        const priceDelta = dy * pricePerPixel;
+
+                        // Apply new range (move in same direction as mouse)
+                        const newFrom = yPanStartRange.from + priceDelta;
+                        const newTo = yPanStartRange.to + priceDelta;
+                        rightScale.setVisiblePriceRange({ from: newFrom, to: newTo });
+                        return;
+                    }
+
                     if (!isDragging || !dragTarget) {
                         // Update cursor on hover
                         if (currentTool === 'pointer') {
@@ -904,6 +1061,12 @@ CHART_HTML_TEMPLATE = """
                 }, true);
 
                 container.addEventListener('mouseup', e => {
+                    // End Y-panning
+                    if (isYPanning) {
+                        isYPanning = false;
+                        yPanStartRange = null;
+                    }
+
                     if (isDragging) {
                         isDragging = false;
                         dragTarget = null;
@@ -917,6 +1080,10 @@ CHART_HTML_TEMPLATE = """
                     if (isDragging) {
                         isDragging = false;
                         dragTarget = null;
+                    }
+                    if (isYPanning) {
+                        isYPanning = false;
+                        yPanStartRange = null;
                     }
                 });
 
@@ -951,6 +1118,16 @@ CHART_HTML_TEMPLATE = """
                             selectTool('pointer');
                         }
                     }
+                    else if (currentTool === 'percent-rect') {
+                        drawingPoints.push({ time: param.time, price });
+                        if (drawingPoints.length === 2) {
+                            removePreview();
+                            const rect = new PercentRectPrimitive(drawingPoints[0], drawingPoints[1], genId());
+                            priceSeries.attachPrimitive(rect);
+                            drawings.push(rect);
+                            selectTool('pointer');
+                        }
+                    }
                     else if (currentTool === 'delete') {
                         let nearest = null;
                         let minDist = 20;
@@ -970,6 +1147,21 @@ CHART_HTML_TEMPLATE = """
                                 if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
                                     const dist = pointToSegmentDist(param.point.x, param.point.y, x1, y1, x2, y2);
                                     if (dist < minDist) { minDist = dist; nearest = d; }
+                                }
+                            } else if (d.type === 'percent-rect') {
+                                // Check if click is inside the rectangle
+                                const ts = chart.timeScale();
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const px = param.point.x, py = param.point.y;
+                                    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+                                    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+                                        nearest = d; minDist = 0;
+                                    }
                                 }
                             }
                         });
@@ -992,6 +1184,17 @@ CHART_HTML_TEMPLATE = """
                         previewPrimitive = new PrimitiveClass(drawingPoints[0], { time, price }, color, 'preview');
                         priceSeries.attachPrimitive(previewPrimitive);
                     }
+                    else if (currentTool === 'percent-rect' && drawingPoints.length === 1 && !isDragging) {
+                        const rect = container.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const price = priceSeries.coordinateToPrice(y);
+                        const time = chart.timeScale().coordinateToTime(x);
+                        if (price === null || time === null) return;
+                        removePreview();
+                        previewPrimitive = new PercentRectPrimitive(drawingPoints[0], { time, price }, 'preview');
+                        priceSeries.attachPrimitive(previewPrimitive);
+                    }
                 });
 
                 // Helper: distance from point to line segment
@@ -1011,6 +1214,7 @@ CHART_HTML_TEMPLATE = """
                 document.getElementById('tool-hline-red').onclick = () => selectTool('hline-red');
                 document.getElementById('tool-trendline').onclick = () => selectTool('trendline');
                 document.getElementById('tool-ray').onclick = () => selectTool('ray');
+                document.getElementById('tool-percent-rect').onclick = () => selectTool('percent-rect');
                 document.getElementById('tool-delete').onclick = () => selectTool('delete');
                 document.getElementById('tool-clear-all').onclick = () => { clearAllDrawings(); selectTool('pointer'); };
 

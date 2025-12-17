@@ -162,7 +162,8 @@ class BotOverlayMixin:
             side: "long" or "short"
             score: Entry score (0-100)
         """
-        text = f"C:{score:.0f}"
+        # Show score and price in marker text
+        text = f"C:{score:.0f} @{price:.2f}"
         self.add_bot_marker(
             timestamp, price, MarkerType.ENTRY_CANDIDATE,
             side, text, score
@@ -183,7 +184,8 @@ class BotOverlayMixin:
             side: "long" or "short"
             score: Entry score
         """
-        text = f"E:{score:.0f}"
+        # Show score and price in marker text
+        text = f"E:{score:.0f} @{price:.2f}"
         self.add_bot_marker(
             timestamp, price, MarkerType.ENTRY_CONFIRMED,
             side, text, score

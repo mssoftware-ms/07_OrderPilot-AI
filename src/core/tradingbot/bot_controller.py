@@ -592,22 +592,32 @@ class BotController:
         self._current_signal.score = new_score
         self._state_machine.on_signal(self._current_signal, confirmed=True)
 
+        # Notify UI that signal is now confirmed
+        if self._on_signal:
+            self._on_signal(self._current_signal)
+
+        # Get initial stop price from signal BEFORE on_order callback
+        # (on_order may call simulate_fill which clears _current_signal)
+        initial_stop = self._current_signal.stop_loss_price
+        order_id = None
+
+        self._log_activity("DEBUG", f"ENTRY: initial_stop={initial_stop}")
+
         # Create entry order intent
         order = self._create_entry_order(features, self._current_signal)
+        order_id = order.id
 
         if self._on_order:
             self._on_order(order)
 
-        # Get initial stop price from signal
-        initial_stop = self._current_signal.stop_loss_price
-
+        self._log_activity("DEBUG", f"Creating ENTER decision with stop_after={initial_stop}")
         return self._create_decision(
             BotAction.ENTER,
             side,
             features,
             ["SIGNAL_CONFIRMED", "ENTRY_ORDER_SENT"],
             stop_after=initial_stop,  # Initial stop price for chart display
-            notes=f"Entry order: {order.id}, Initial SL: {initial_stop:.4f}"
+            notes=f"Entry order: {order_id}, Initial SL: {initial_stop:.4f}"
         )
 
     async def _process_manage(

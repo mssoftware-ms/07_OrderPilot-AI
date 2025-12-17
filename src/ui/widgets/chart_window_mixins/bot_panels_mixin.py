@@ -357,6 +357,10 @@ class BotPanelsMixin:
         self.position_stop_label = QLabel("-")
         position_form.addRow("Stop:", self.position_stop_label)
 
+        self.position_current_label = QLabel("-")
+        self.position_current_label.setStyleSheet("font-weight: bold;")
+        position_form.addRow("Current:", self.position_current_label)
+
         self.position_pnl_label = QLabel("-")
         position_form.addRow("P&L:", self.position_pnl_label)
 
@@ -652,6 +656,14 @@ class BotPanelsMixin:
         entry_price = getattr(signal, 'entry_price', 0)
         score = getattr(signal, 'score', 0)
 
+        # Determine status based on signal type
+        if signal_type == "confirmed":
+            status = "ENTERED"
+        elif signal_type == "candidate":
+            status = "PENDING"
+        else:
+            status = "ACTIVE"
+
         logger.info(
             f"Bot signal received: {signal_type} {side} @ {entry_price:.4f} (Score: {score:.2f})"
         )
@@ -663,31 +675,28 @@ class BotPanelsMixin:
             "side": side,
             "score": score,
             "price": entry_price,
-            "status": "ACTIVE"
+            "status": status
         })
 
         self._update_signals_table()
 
-        # Add marker to chart
-        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'display_signal'):
-            try:
-                self.chart_widget.display_signal(signal)
-                logger.info(f"Signal marker added to chart: {side} @ {entry_price:.4f}")
-            except Exception as e:
-                logger.error(f"Failed to display signal on chart: {e}", exc_info=True)
+        # Only add marker to chart for CONFIRMED signals (after buy), not for candidates
+        if signal_type == "confirmed":
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'display_signal'):
+                try:
+                    self.chart_widget.display_signal(signal)
+                    logger.info(f"Confirmed signal marker added to chart: {side} @ {entry_price:.4f}")
+                except Exception as e:
+                    logger.error(f"Failed to display signal on chart: {e}", exc_info=True)
         else:
-            logger.warning(
-                f"Cannot display signal on chart: "
-                f"has chart_widget={hasattr(self, 'chart_widget')}, "
-                f"has display_signal={hasattr(self.chart_widget, 'display_signal') if hasattr(self, 'chart_widget') else False}"
-            )
+            logger.debug(f"Candidate signal - no chart marker (waiting for confirmation): {side} @ {entry_price:.4f}")
 
     def _on_bot_decision(self, decision: Any) -> None:
         """Handle bot decision event."""
         from src.core.tradingbot.models import BotAction
 
         action = decision.action if hasattr(decision, 'action') else None
-        logger.info(f"Bot decision: {action.value if action else 'unknown'}")
+        self._add_ki_log_entry("DEBUG", f"_on_bot_decision called: action={action.value if action else 'unknown'}")
 
         # Handle stop line updates on chart
         if hasattr(self, 'chart_widget') and action:
@@ -695,14 +704,18 @@ class BotPanelsMixin:
                 if action == BotAction.ENTER:
                     # Draw initial stop line
                     stop_price = getattr(decision, 'stop_price_after', None)
+                    self._add_ki_log_entry("DEBUG", f"ENTER: stop_price_after={stop_price}, has chart={hasattr(self, 'chart_widget')}")
                     if stop_price:
+                        self._add_ki_log_entry("DEBUG", f"Calling add_stop_line({stop_price})")
                         self.chart_widget.add_stop_line(
                             "position_stop",
                             stop_price,
                             line_type="initial",
                             label=f"Initial SL @ {stop_price:.2f}"
                         )
-                        logger.info(f"Added initial stop line at {stop_price}")
+                        self._add_ki_log_entry("STOP", f"Stop-Line gezeichnet @ {stop_price:.2f}")
+                    else:
+                        self._add_ki_log_entry("ERROR", "stop_price_after ist None - keine Stop-Line!")
 
                 elif action == BotAction.ADJUST_STOP:
                     # Update trailing stop line
@@ -802,26 +815,29 @@ class BotPanelsMixin:
         # For paper trading, immediately simulate the fill
         if self._bot_controller:
             try:
+                # Get signal info BEFORE simulate_fill (it clears _current_signal)
+                signal = self._bot_controller._current_signal
+                score = signal.score * 100 if signal else 0.0  # Convert to 0-100
+                signal_entry_price = signal.entry_price if signal else None
+
                 # Get current price from the last known signal or estimate from order
                 fill_price = getattr(order, 'stop_price', None)
                 if fill_price is None and hasattr(self, 'chart_widget'):
                     # Use latest close price from chart data
                     if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                         fill_price = float(self.chart_widget.data['close'].iloc[-1])
+                    elif signal_entry_price:
+                        # Fallback: get from signal
+                        fill_price = signal_entry_price
                     else:
-                        # Fallback: get from bot controller's signal
-                        signal = self._bot_controller._current_signal
-                        if signal:
-                            fill_price = signal.entry_price
-                        else:
-                            logger.warning("No price available for paper fill simulation")
-                            return
+                        logger.warning("No price available for paper fill simulation")
+                        return
 
                 if fill_price is None:
                     logger.error("Cannot simulate fill: no price available")
                     return
 
-                # Simulate fill
+                # Simulate fill (this clears _current_signal!)
                 self._bot_controller.simulate_fill(
                     fill_price=fill_price,
                     fill_qty=order.quantity,
@@ -829,13 +845,9 @@ class BotPanelsMixin:
                 )
                 logger.info(f"Paper fill simulated: {order.quantity:.4f} @ {fill_price:.4f}")
 
-                # Add entry marker to chart
+                # Add entry marker to chart (using pre-saved score)
                 if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_entry_confirmed'):
                     side = order.side.value if hasattr(order.side, 'value') else str(order.side)
-                    # Get signal score if available
-                    score = 0.0
-                    if self._bot_controller._current_signal:
-                        score = self._bot_controller._current_signal.score * 100  # Convert to 0-100
 
                     self.chart_widget.add_entry_confirmed(
                         timestamp=datetime.utcnow(),
@@ -897,8 +909,16 @@ class BotPanelsMixin:
                     f"{position.trailing.current_stop_price:.4f}"  # Correct: current_stop_price
                 )
 
-            # Display P&L
-            self.position_pnl_label.setText(f"{position.unrealized_pnl:.2f} ({position.unrealized_pnl_pct:.2f}%)")
+            # Display current price
+            self.position_current_label.setText(f"{position.current_price:.4f}")
+
+            # Display P&L with color
+            pnl = position.unrealized_pnl
+            pnl_pct = position.unrealized_pnl_pct
+            pnl_color = "#26a69a" if pnl >= 0 else "#ef5350"  # Green for profit, red for loss
+            pnl_sign = "+" if pnl >= 0 else ""
+            self.position_pnl_label.setText(f"{pnl_sign}{pnl:.2f} € ({pnl_sign}{pnl_pct:.2f}%)")
+            self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {pnl_color}; font-size: 14px;")
             self.position_bars_held_label.setText(str(position.bars_held))
         else:
             self.position_side_label.setText("FLAT")
@@ -906,7 +926,9 @@ class BotPanelsMixin:
             self.position_entry_label.setText("-")
             self.position_size_label.setText("-")
             self.position_stop_label.setText("-")
+            self.position_current_label.setText("-")
             self.position_pnl_label.setText("-")
+            self.position_pnl_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
             self.position_bars_held_label.setText("-")
 
         # Update strategy display
