@@ -7,8 +7,14 @@ import json
 import logging
 
 from src.common.event_bus import event_bus, EventType, ExecutionEvent, OrderEvent
+from src.ui.widgets.chart_mixins.data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
+
+
+def _ts_to_chart_time(timestamp) -> int:
+    """Convert timestamp to chart time (with local timezone offset)."""
+    return int(timestamp.timestamp()) + get_local_timezone_offset_seconds()
 
 
 class EventBusMixin:
@@ -38,7 +44,7 @@ class EventBusMixin:
             logger.info(f"TRADE_ENTRY event: {event.side} {event.quantity} @ {event.price}")
 
             marker = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "position": "belowBar" if event.side == "LONG" else "aboveBar",
                 "color": "#26a69a" if event.side == "LONG" else "#ef5350",
                 "shape": "arrowUp" if event.side == "LONG" else "arrowDown",
@@ -61,7 +67,7 @@ class EventBusMixin:
             is_win = event.pnl is not None and event.pnl > 0
 
             marker = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "position": "aboveBar" if event.side == "LONG" else "belowBar",
                 "color": "#26a69a" if is_win else "#ef5350",
                 "shape": "circle",
@@ -82,7 +88,7 @@ class EventBusMixin:
             logger.warning(f"STOP_LOSS_HIT event: {event.side} @ {event.price}")
 
             marker = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "position": "aboveBar",
                 "color": "#ef5350",
                 "shape": "circle",
@@ -103,7 +109,7 @@ class EventBusMixin:
             logger.info(f"TAKE_PROFIT_HIT event: {event.side} @ {event.price}")
 
             marker = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "position": "aboveBar",
                 "color": "#26a69a",
                 "shape": "circle",
@@ -126,7 +132,7 @@ class EventBusMixin:
             is_buy = event.side and event.side.upper() in ["BUY", "LONG"]
 
             marker = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "position": "belowBar" if is_buy else "aboveBar",
                 "color": "#26a69a" if is_buy else "#ef5350",
                 "shape": "arrowUp" if is_buy else "arrowDown",
@@ -148,7 +154,7 @@ class EventBusMixin:
 
             # Bar data for chart (JSON-serializable)
             bar_data = {
-                "time": int(event.timestamp.timestamp()),
+                "time": _ts_to_chart_time(event.timestamp),
                 "open": event.data.get("open"),
                 "high": event.data.get("high"),
                 "low": event.data.get("low"),

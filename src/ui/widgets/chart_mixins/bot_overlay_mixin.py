@@ -13,6 +13,8 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from .data_loading_mixin import get_local_timezone_offset_seconds
+
 if TYPE_CHECKING:
     from src.core.tradingbot.models import PositionState, Signal
 
@@ -130,10 +132,13 @@ class BotOverlayMixin:
             text: Optional text to display
             score: Optional score value
         """
+        # Convert to Unix timestamp and add local timezone offset
+        # to match chart data which is also shifted to local time
+        local_offset = get_local_timezone_offset_seconds()
         if isinstance(timestamp, datetime):
-            ts = int(timestamp.timestamp())
+            ts = int(timestamp.timestamp()) + local_offset
         else:
-            ts = timestamp
+            ts = timestamp + local_offset
 
         marker = BotMarker(
             timestamp=ts,

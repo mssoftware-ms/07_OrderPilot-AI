@@ -273,7 +273,21 @@ CHART_HTML_TEMPLATE = """
                         suppressFitContent = suppress;
                         console.log('suppressFitContent set to:', suppress);
                     },
-                    updateCandle: (c) => { try { priceSeries.update(c); } catch(e){ console.error(e); } },
+                    updateCandle: (c) => {
+                        try {
+                            // Track last update time to avoid "Cannot update oldest data" errors
+                            if (window._lastCandleTime && c.time < window._lastCandleTime) {
+                                return false;
+                            }
+                            priceSeries.update(c);
+                            window._lastCandleTime = c.time;
+                            return true;
+                        } catch(e){
+                            if (e.message && e.message.includes('oldest data')) return false;
+                            console.error(e);
+                            return false;
+                        }
+                    },
                     setVolumeData: () => console.warn('setVolumeData is deprecated'),
                     updateVolume: () => console.warn('updateVolume is deprecated'),
 
@@ -285,6 +299,7 @@ CHART_HTML_TEMPLATE = """
                                 title: name,
                                 priceLineVisible: true,
                                 lastValueVisible: true,
+                                zOrder: -10,  // Render behind drawings
                             }, 0);
                             s.createPriceLine({ price: 0, color, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: name });
                             overlaySeries[name] = s;
@@ -333,7 +348,26 @@ CHART_HTML_TEMPLATE = """
                     removePanel: (panelId) => { try { return removePane(panelId); } catch(e){ console.error(e); return false; } },
 
                     setPanelData: (panelId, data) => { try { const s = panelMainSeries[panelId]; if (!s) return false; s.setData(data); return true; } catch(e){ console.error(e); return false; } },
-                    updatePanelData: (panelId, point) => { try { const s = panelMainSeries[panelId]; if (!s) return false; s.update(point); return true; } catch(e){ console.error(e); return false; } },
+                    updatePanelData: (panelId, point) => {
+                        try {
+                            const s = panelMainSeries[panelId];
+                            if (!s) return false;
+                            // Track last update time to avoid "Cannot update oldest data" errors
+                            const timeKey = '_lastTime_' + panelId;
+                            if (window[timeKey] && point.time < window[timeKey]) {
+                                // Skip older data silently
+                                return false;
+                            }
+                            s.update(point);
+                            window[timeKey] = point.time;
+                            return true;
+                        } catch(e){
+                            // Silently ignore "Cannot update oldest data" errors
+                            if (e.message && e.message.includes('oldest data')) return false;
+                            console.error(e);
+                            return false;
+                        }
+                    },
 
                     addPanelSeries: (panelId, seriesKey, type, color, data) => {
                         try {
@@ -416,9 +450,18 @@ CHART_HTML_TEMPLATE = """
                     updateBar: (bar) => {
                         try {
                             if (!bar || typeof bar !== 'object') return false;
+                            // Track last update time to avoid "Cannot update oldest data" errors
+                            if (window._lastBarTime && bar.time < window._lastBarTime) {
+                                return false;
+                            }
                             priceSeries.update(bar);
+                            window._lastBarTime = bar.time;
                             return true;
-                        } catch(e){ console.error(e); return false; }
+                        } catch(e){
+                            if (e.message && e.message.includes('oldest data')) return false;
+                            console.error(e);
+                            return false;
+                        }
                     },
 
                     getVisibleRange: () => {
@@ -725,12 +768,15 @@ CHART_HTML_TEMPLATE = """
                         this.p2 = p2;  // Second point: comparison price
                         this.id = id;
                         this.type = 'percent-rect';
-                        // Calculate percent difference
-                        this.percentDiff = ((p2.price - p1.price) / p1.price) * 100;
+                        this.updatePercent();
+                        this._paneViews = [new PercentRectPaneView(this)];
+                    }
+                    updatePercent() {
+                        // Calculate percent difference based on current p1 and p2
+                        this.percentDiff = ((this.p2.price - this.p1.price) / this.p1.price) * 100;
                         // Color: green for positive, red for negative
                         this.color = this.percentDiff >= 0 ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)';
                         this.borderColor = this.percentDiff >= 0 ? '#26a69a' : '#ef5350';
-                        this._paneViews = [new PercentRectPaneView(this)];
                     }
                     updateAllViews() { this._paneViews.forEach(v => v.update()); }
                     paneViews() { return this._paneViews; }
@@ -934,6 +980,35 @@ CHART_HTML_TEMPLATE = """
                                     return { drawing: d, handle: 'line' };
                                 }
                             }
+                        } else if (d.type === 'percent-rect') {
+                            // Hit detection for percent rectangle corners
+                            const ts = chart.timeScale();
+                            const x1 = ts.timeToCoordinate(d.p1.time);
+                            const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                            const x2 = ts.timeToCoordinate(d.p2.time);
+                            const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                            if (x1 !== null && y1 !== null) {
+                                // Check P1 handle (top-left or start point)
+                                if (Math.sqrt((x-x1)*(x-x1) + (y-y1)*(y-y1)) < threshold) {
+                                    return { drawing: d, handle: 'p1' };
+                                }
+                            }
+                            if (x2 !== null && y2 !== null) {
+                                // Check P2 handle (bottom-right or end point)
+                                if (Math.sqrt((x-x2)*(x-x2) + (y-y2)*(y-y2)) < threshold) {
+                                    return { drawing: d, handle: 'p2' };
+                                }
+                            }
+                            // Check if inside rectangle for whole-rect drag
+                            if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                const minX = Math.min(x1, x2);
+                                const maxX = Math.max(x1, x2);
+                                const minY = Math.min(y1, y2);
+                                const maxY = Math.max(y1, y2);
+                                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                                    return { drawing: d, handle: 'rect' };
+                                }
+                            }
                         }
                     }
                     return null;
@@ -1000,6 +1075,8 @@ CHART_HTML_TEMPLATE = """
                                     container.style.cursor = 'move';
                                 } else if (target.drawing.type === 'hline') {
                                     container.style.cursor = 'ns-resize';
+                                } else if (target.drawing.type === 'percent-rect' && target.handle === 'rect') {
+                                    container.style.cursor = 'grab';
                                 } else {
                                     container.style.cursor = 'grab';
                                 }
@@ -1052,6 +1129,43 @@ CHART_HTML_TEMPLATE = """
                                     }
                                 }
                             }
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({}); // Force redraw
+                        }
+                    } else if (d.type === 'percent-rect') {
+                        // Drag handling for percent rectangle
+                        const newPrice = priceSeries.coordinateToPrice(y);
+                        const newTime = ts.coordinateToTime(x);
+                        if (newPrice !== null && newTime !== null) {
+                            if (dragTarget.handle === 'p1') {
+                                // Move P1 corner
+                                d.p1 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'p2') {
+                                // Move P2 corner
+                                d.p2 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'rect') {
+                                // Move whole rectangle
+                                const dx = x - dragStartX;
+                                const dy = y - dragStartY;
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const newTime1 = ts.coordinateToTime(x1 + dx);
+                                    const newPrice1 = priceSeries.coordinateToPrice(y1 + dy);
+                                    const newTime2 = ts.coordinateToTime(x2 + dx);
+                                    const newPrice2 = priceSeries.coordinateToPrice(y2 + dy);
+                                    if (newTime1 && newPrice1 && newTime2 && newPrice2) {
+                                        d.p1 = { time: newTime1, price: newPrice1 };
+                                        d.p2 = { time: newTime2, price: newPrice2 };
+                                        dragStartX = x;
+                                        dragStartY = y;
+                                    }
+                                }
+                            }
+                            // Recalculate percent difference after move
+                            d.updatePercent();
                             d.updateAllViews();
                             chart.timeScale().applyOptions({}); // Force redraw
                         }

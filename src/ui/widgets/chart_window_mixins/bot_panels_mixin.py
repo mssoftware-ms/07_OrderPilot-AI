@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QColor, QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -380,9 +380,9 @@ class BotPanelsMixin:
         signals_inner = QVBoxLayout()
 
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(6)
+        self.signals_table.setColumnCount(9)
         self.signals_table.setHorizontalHeaderLabels([
-            "Time", "Type", "Side", "Score", "Price", "Status"
+            "Time", "Type", "Side", "Score", "Entry", "Status", "Current", "P&L €", "P&L %"
         ])
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -664,32 +664,67 @@ class BotPanelsMixin:
         else:
             status = "ACTIVE"
 
+        # Debug: Log signal reception with type
+        self._add_ki_log_entry(
+            "SIGNAL",
+            f"Signal empfangen: type={signal_type} side={side} @ {entry_price:.4f} → status={status}"
+        )
+
         logger.info(
             f"Bot signal received: {signal_type} {side} @ {entry_price:.4f} (Score: {score:.2f})"
         )
 
-        # Add to signal history
-        self._signal_history.append({
-            "time": datetime.utcnow().strftime("%H:%M:%S"),
-            "type": signal_type,
-            "side": side,
-            "score": score,
-            "price": entry_price,
-            "status": status
-        })
+        # For confirmed signals, DON'T add a new entry - update the existing candidate instead
+        if signal_type == "confirmed":
+            # Find and update the last candidate signal for this side
+            for sig in reversed(self._signal_history):
+                if sig["type"] == "candidate" and sig["side"] == side and sig["status"] == "PENDING":
+                    # Update existing candidate to confirmed
+                    sig["type"] = "confirmed"
+                    sig["status"] = "ENTERED"
+                    sig["score"] = score  # Update with confirmed score
+                    sig["price"] = entry_price  # Update price
+                    sig["is_open"] = True
+                    sig["label"] = f"E:{int(score * 100)}"  # Entry label like E:66
+                    logger.info(f"Updated candidate to confirmed: {side} @ {entry_price:.4f}")
+                    break
+            else:
+                # No candidate found - add new confirmed entry (shouldn't happen normally)
+                self._signal_history.append({
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "type": signal_type,
+                    "side": side,
+                    "score": score,
+                    "price": entry_price,
+                    "status": "ENTERED",
+                    "quantity": 0.0,
+                    "current_price": entry_price,
+                    "pnl_currency": 0.0,
+                    "pnl_percent": 0.0,
+                    "is_open": True,
+                    "label": f"E:{int(score * 100)}"
+                })
+        else:
+            # Candidate signal - add new entry
+            self._signal_history.append({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "type": signal_type,
+                "side": side,
+                "score": score,
+                "price": entry_price,
+                "status": status,
+                "quantity": 0.0,
+                "current_price": entry_price,
+                "pnl_currency": 0.0,
+                "pnl_percent": 0.0,
+                "is_open": False,
+                "label": ""  # No label for candidates
+            })
 
         self._update_signals_table()
 
-        # Only add marker to chart for CONFIRMED signals (after buy), not for candidates
-        if signal_type == "confirmed":
-            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'display_signal'):
-                try:
-                    self.chart_widget.display_signal(signal)
-                    logger.info(f"Confirmed signal marker added to chart: {side} @ {entry_price:.4f}")
-                except Exception as e:
-                    logger.error(f"Failed to display signal on chart: {e}", exc_info=True)
-        else:
-            logger.debug(f"Candidate signal - no chart marker (waiting for confirmation): {side} @ {entry_price:.4f}")
+        # NOTE: Chart markers are added in _on_bot_order after fill confirmation
+        # Don't add markers here to avoid duplicates
 
     def _on_bot_decision(self, decision: Any) -> None:
         """Handle bot decision event."""
@@ -736,22 +771,56 @@ class BotPanelsMixin:
                         self.chart_widget.remove_stop_line("position_stop")
                         logger.info("Removed stop line on exit")
 
-                    # Add exit marker to chart
-                    from datetime import datetime
-                    reason_codes = getattr(decision, 'reason_codes', []) or []
-                    side = decision.side.value if hasattr(decision, 'side') and hasattr(decision.side, 'value') else 'long'
-
-                    # Get exit price from position or decision
+                    # Get exit price for final P&L calculation
                     exit_price = None
                     if self._bot_controller and self._bot_controller._last_features:
                         exit_price = self._bot_controller._last_features.close
 
+                    # Update signal history - mark position as CLOSED with final P&L
+                    reason_codes = getattr(decision, 'reason_codes', []) or []
+                    for signal in reversed(self._signal_history):
+                        if signal["status"] == "ENTERED" and signal.get("is_open", False):
+                            # Calculate and save final P&L at exit price
+                            if exit_price and signal.get("quantity", 0) > 0:
+                                entry_price = signal["price"]
+                                quantity = signal["quantity"]
+                                side = signal["side"]
+
+                                # Final P&L calculation
+                                if side == "long":
+                                    pnl_per_unit = exit_price - entry_price
+                                else:
+                                    pnl_per_unit = entry_price - exit_price
+
+                                signal["current_price"] = exit_price
+                                signal["pnl_currency"] = pnl_per_unit * quantity
+                                signal["pnl_percent"] = (pnl_per_unit / entry_price) * 100 if entry_price > 0 else 0
+
+                                self._add_ki_log_entry(
+                                    "EXIT",
+                                    f"Position geschlossen: {signal['pnl_currency']:+.2f}€ ({signal['pnl_percent']:+.2f}%)"
+                                )
+
+                            signal["status"] = "CLOSED"
+                            signal["is_open"] = False
+                            # Add exit reason to status if available
+                            if reason_codes:
+                                signal["status"] = f"CLOSED ({reason_codes[0]})"
+                            logger.debug(f"Marked signal as CLOSED: {signal['side']} @ {signal['price']}")
+                            break
+                    self._update_signals_table()
+
+                    # Add exit marker to chart
+                    from datetime import datetime
+                    side = decision.side.value if hasattr(decision, 'side') and hasattr(decision.side, 'value') else 'long'
+
+                    # exit_price was already retrieved above
                     if exit_price:
                         if "STOP_HIT" in reason_codes:
                             # Stop-loss was triggered
                             if hasattr(self.chart_widget, 'add_stop_triggered_marker'):
                                 self.chart_widget.add_stop_triggered_marker(
-                                    timestamp=datetime.utcnow(),
+                                    timestamp=datetime.now(),
                                     price=exit_price,
                                     side=side
                                 )
@@ -761,7 +830,7 @@ class BotPanelsMixin:
                             if hasattr(self.chart_widget, 'add_exit_marker'):
                                 reason = reason_codes[0] if reason_codes else "EXIT"
                                 self.chart_widget.add_exit_marker(
-                                    timestamp=datetime.utcnow(),
+                                    timestamp=datetime.now(),
                                     price=exit_price,
                                     side=side,
                                     reason=reason
@@ -807,58 +876,98 @@ class BotPanelsMixin:
         """
         from datetime import datetime
 
+        # Debug: Log entry into callback
+        order_qty = getattr(order, 'quantity', 'N/A')
+        order_side = order.side.value if hasattr(order.side, 'value') else str(getattr(order, 'side', 'N/A'))
+        order_symbol = getattr(order, 'symbol', 'N/A')
+        self._add_ki_log_entry("ORDER", f"Order empfangen: {order_side} {order_symbol} qty={order_qty}")
+
         logger.info(
-            f"Bot order received: {order.side.value if hasattr(order.side, 'value') else order.side} "
-            f"{order.symbol} qty={order.quantity:.4f} @ market"
+            f"Bot order received: {order_side} {order_symbol} qty={order_qty} @ market"
         )
 
         # For paper trading, immediately simulate the fill
-        if self._bot_controller:
-            try:
-                # Get signal info BEFORE simulate_fill (it clears _current_signal)
-                signal = self._bot_controller._current_signal
-                score = signal.score * 100 if signal else 0.0  # Convert to 0-100
-                signal_entry_price = signal.entry_price if signal else None
+        if not self._bot_controller:
+            self._add_ki_log_entry("ERROR", "Bot controller is None - cannot process order!")
+            return
 
-                # Get current price from the last known signal or estimate from order
-                fill_price = getattr(order, 'stop_price', None)
-                if fill_price is None and hasattr(self, 'chart_widget'):
-                    # Use latest close price from chart data
-                    if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                        fill_price = float(self.chart_widget.data['close'].iloc[-1])
-                    elif signal_entry_price:
-                        # Fallback: get from signal
-                        fill_price = signal_entry_price
-                    else:
-                        logger.warning("No price available for paper fill simulation")
-                        return
+        try:
+            # Get signal info BEFORE simulate_fill (it clears _current_signal)
+            signal = self._bot_controller._current_signal
+            score = signal.score * 100 if signal else 0.0  # Convert to 0-100
+            signal_entry_price = signal.entry_price if signal else None
 
-                if fill_price is None:
-                    logger.error("Cannot simulate fill: no price available")
-                    return
+            # Get current market price for fill (NOT stop_price - that's the stop-loss!)
+            fill_price = None
 
-                # Simulate fill (this clears _current_signal!)
-                self._bot_controller.simulate_fill(
-                    fill_price=fill_price,
-                    fill_qty=order.quantity,
-                    order_id=order.id if hasattr(order, 'id') else f"paper_{datetime.utcnow().timestamp()}"
+            # Priority 1: Use signal entry price (most accurate)
+            if signal_entry_price:
+                fill_price = signal_entry_price
+
+            # Priority 2: Use latest close from chart data
+            if fill_price is None and hasattr(self, 'chart_widget'):
+                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                    fill_price = float(self.chart_widget.data['close'].iloc[-1])
+
+            # Priority 3: Use last features from bot controller
+            if fill_price is None and self._bot_controller._last_features:
+                fill_price = self._bot_controller._last_features.close
+
+            if fill_price is None:
+                self._add_ki_log_entry("ERROR", "Kein Marktpreis für Paper-Fill verfügbar")
+                logger.error("Cannot simulate fill: no market price available")
+                return
+
+            self._add_ki_log_entry("FILL", f"Simuliere Fill: qty={order.quantity:.4f} @ {fill_price:.4f}")
+
+            # Simulate fill (this clears _current_signal!)
+            self._bot_controller.simulate_fill(
+                fill_price=fill_price,
+                fill_qty=order.quantity,
+                order_id=order.id if hasattr(order, 'id') else f"paper_{datetime.now().timestamp()}"
+            )
+            logger.info(f"Paper fill simulated: {order.quantity:.4f} @ {fill_price:.4f}")
+
+            # Update the last ENTERED signal in history with quantity
+            self._add_ki_log_entry("DEBUG", f"Suche ENTERED-Signal. History: {len(self._signal_history)} Einträge")
+            found_signal = False
+            for sig in reversed(self._signal_history):
+                sig_status = sig['status']
+                sig_qty = sig.get('quantity', 'N/A')
+                self._add_ki_log_entry("DEBUG", f"  → status={sig_status}, qty={sig_qty}")
+                if sig_status == "ENTERED" and sig.get("quantity", 0) == 0.0:
+                    sig["quantity"] = order.quantity
+                    sig["price"] = fill_price  # Update with actual fill price
+                    sig["is_open"] = True
+                    # Set entry label if not already set
+                    if not sig.get("label"):
+                        sig["label"] = f"E:{int(score)}"
+                    found_signal = True
+                    self._add_ki_log_entry("FILL", f"Signal aktualisiert: qty={order.quantity:.4f}, price={fill_price:.4f}, label={sig['label']}")
+                    logger.info(f"Updated signal history with qty={order.quantity}")
+                    break
+
+            if not found_signal:
+                self._add_ki_log_entry("WARNING", "Kein ENTERED-Signal mit qty=0 gefunden!")
+
+            # Refresh table immediately
+            self._update_signals_table()
+
+            # Add entry marker to chart (using pre-saved score)
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_entry_confirmed'):
+                side = order.side.value if hasattr(order.side, 'value') else str(order.side)
+
+                self.chart_widget.add_entry_confirmed(
+                    timestamp=datetime.now(),
+                    price=fill_price,
+                    side=side,
+                    score=score
                 )
-                logger.info(f"Paper fill simulated: {order.quantity:.4f} @ {fill_price:.4f}")
+                logger.info(f"Entry marker added to chart: {side} @ {fill_price:.4f}")
 
-                # Add entry marker to chart (using pre-saved score)
-                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_entry_confirmed'):
-                    side = order.side.value if hasattr(order.side, 'value') else str(order.side)
-
-                    self.chart_widget.add_entry_confirmed(
-                        timestamp=datetime.utcnow(),
-                        price=fill_price,
-                        side=side,
-                        score=score
-                    )
-                    logger.info(f"Entry marker added to chart: {side} @ {fill_price:.4f}")
-
-            except Exception as e:
-                logger.error(f"Failed to simulate paper fill: {e}", exc_info=True)
+        except Exception as e:
+            self._add_ki_log_entry("ERROR", f"Paper-Fill fehlgeschlagen: {e}")
+            logger.error(f"Failed to simulate paper fill: {e}", exc_info=True)
 
     def _on_bot_state_change(self, old_state: str, new_state: str) -> None:
         """Handle bot state change."""
@@ -893,6 +1002,14 @@ class BotPanelsMixin:
         """Update all bot display elements."""
         if not self._bot_controller:
             return
+
+        # Periodic diagnostic logging (every 60 bars = ~1 minute)
+        bar_count = self._bot_controller._bar_count
+        if bar_count > 0 and bar_count % 60 == 0:
+            self._log_bot_diagnostics()
+
+        # Update live P&L in signals table
+        self._update_signals_pnl()
 
         # Update position display
         position = self._bot_controller.position
@@ -944,20 +1061,142 @@ class BotPanelsMixin:
                 self.regime_label.setText(regime.regime.value)
                 self.volatility_label.setText(regime.volatility.value)
 
+    def _update_signals_pnl(self) -> None:
+        """Update P&L values for all open positions in signal history."""
+        if not self._bot_controller:
+            return
+
+        # Get current price from bot controller's last features or position
+        current_price = None
+        if self._bot_controller._last_features:
+            current_price = self._bot_controller._last_features.close
+        elif self._bot_controller.position:
+            current_price = self._bot_controller.position.current_price
+
+        if current_price is None:
+            return
+
+        # Debug: Show signal history status every few seconds
+        bar_count = self._bot_controller._bar_count if self._bot_controller else 0
+        show_debug = (bar_count % 5 == 0) and len(self._signal_history) > 0
+
+        if show_debug:
+            entered_signals = [s for s in self._signal_history if s["status"] == "ENTERED"]
+            if entered_signals:
+                for es in entered_signals:
+                    self._add_ki_log_entry(
+                        "P&L-CHECK",
+                        f"ENTERED: qty={es.get('quantity', 0)}, is_open={es.get('is_open', False)}, price={es.get('price', 0):.2f}"
+                    )
+
+        # Update P&L for all ENTERED signals
+        table_updated = False
+        active_count = 0
+        for signal in self._signal_history:
+            # Check for ENTERED status OR is_open flag (for positions that might have different status text)
+            qty = signal.get("quantity", 0)
+            is_active = (signal["status"] == "ENTERED" or signal.get("is_open", False)) and qty > 0
+            if is_active:
+                active_count += 1
+                entry_price = signal["price"]
+                quantity = signal["quantity"]
+                side = signal["side"]
+
+                # Calculate P&L based on side
+                if side == "long":
+                    pnl_per_unit = current_price - entry_price
+                else:  # short
+                    pnl_per_unit = entry_price - current_price
+
+                # P&L in currency (assuming quantity is in units)
+                pnl_currency = pnl_per_unit * quantity
+
+                # P&L in percent
+                pnl_percent = (pnl_per_unit / entry_price) * 100 if entry_price > 0 else 0
+
+                # Update signal data
+                signal["current_price"] = current_price
+                signal["pnl_currency"] = pnl_currency
+                signal["pnl_percent"] = pnl_percent
+                table_updated = True
+
+                # Debug: Log P&L calculation (every 5 bars)
+                if show_debug:
+                    self._add_ki_log_entry(
+                        "P&L-CALC",
+                        f"P&L berechnet: {pnl_currency:+.2f}€ ({pnl_percent:+.2f}%) | Entry={entry_price:.2f} Current={current_price:.2f}"
+                    )
+
+        # Debug: Log P&L update status (only occasionally to avoid spam)
+        if bar_count % 10 == 0 and len(self._signal_history) > 0:
+            logger.debug(f"P&L update: {active_count} active signals, current_price={current_price:.2f}")
+
+        # Only update table if something changed
+        if table_updated:
+            self._update_signals_table()
+
     def _update_signals_table(self) -> None:
         """Update signals table with recent entries."""
-        self.signals_table.setRowCount(len(self._signal_history))
-        for row, signal in enumerate(reversed(self._signal_history[-20:])):
+        recent_signals = list(reversed(self._signal_history[-20:]))
+        self.signals_table.setRowCount(len(recent_signals))
+
+        for row, signal in enumerate(recent_signals):
+            # Basic columns
             self.signals_table.setItem(row, 0, QTableWidgetItem(signal["time"]))
-            self.signals_table.setItem(row, 1, QTableWidgetItem(signal["type"]))
+
+            # Type column - show entry label (E:66) for confirmed, otherwise type
+            signal_type = signal["type"]
+            label = signal.get("label", "")
+            if label and signal_type == "confirmed":
+                type_item = QTableWidgetItem(label)
+                type_item.setForeground(QColor("#26a69a"))  # Green for entries
+            else:
+                type_item = QTableWidgetItem(signal_type)
+            self.signals_table.setItem(row, 1, type_item)
+
             self.signals_table.setItem(row, 2, QTableWidgetItem(signal["side"]))
             self.signals_table.setItem(row, 3, QTableWidgetItem(f"{signal['score']:.0f}"))
             self.signals_table.setItem(row, 4, QTableWidgetItem(f"{signal['price']:.4f}"))
             self.signals_table.setItem(row, 5, QTableWidgetItem(signal["status"]))
 
+            # P&L columns - show for positions that have quantity (active OR closed)
+            has_position = signal.get("quantity", 0) > 0
+            status = signal["status"]
+            is_closed = status.startswith("CLOSED")
+
+            if has_position:
+                current_price = signal.get("current_price", signal["price"])
+                pnl_currency = signal.get("pnl_currency", 0.0)
+                pnl_percent = signal.get("pnl_percent", 0.0)
+
+                # Current price (show exit price for closed, current for active)
+                if is_closed:
+                    current_item = QTableWidgetItem(f"{current_price:.2f} (Exit)")
+                else:
+                    current_item = QTableWidgetItem(f"{current_price:.2f}")
+                self.signals_table.setItem(row, 6, current_item)
+
+                # P&L in currency (colored)
+                pnl_sign = "+" if pnl_currency >= 0 else ""
+                pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f} €")
+                pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
+                pnl_item.setForeground(QColor(pnl_color))
+                self.signals_table.setItem(row, 7, pnl_item)
+
+                # P&L in percent (colored)
+                pct_sign = "+" if pnl_percent >= 0 else ""
+                pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
+                pct_item.setForeground(QColor(pnl_color))
+                self.signals_table.setItem(row, 8, pct_item)
+            else:
+                # Empty cells for positions without quantity (candidates, pending)
+                self.signals_table.setItem(row, 6, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 7, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
+
     def _add_ki_log_entry(self, entry_type: str, message: str) -> None:
-        """Add entry to KI log."""
-        timestamp = datetime.utcnow().strftime("%H:%M:%S")
+        """Add entry to KI log (uses local time)."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
         entry = f"[{timestamp}] [{entry_type}] {message}"
         self.ki_log_text.appendPlainText(entry)
         self._ki_log_entries.append({
@@ -965,6 +1204,49 @@ class BotPanelsMixin:
             "type": entry_type,
             "message": message
         })
+
+    def _log_bot_diagnostics(self) -> None:
+        """Log periodic bot diagnostics for debugging."""
+        if not self._bot_controller:
+            return
+
+        bc = self._bot_controller
+
+        # Get current state
+        state = bc.state.value if hasattr(bc.state, 'value') else str(bc.state)
+
+        # Check can_trade conditions
+        can_trade = bc.can_trade
+        reasons = []
+
+        if hasattr(bc, '_state_machine'):
+            if bc._state_machine.is_paused():
+                reasons.append("PAUSED")
+            if bc._state_machine.is_error():
+                reasons.append("ERROR")
+
+        if bc._trades_today >= bc.config.risk.max_trades_per_day:
+            reasons.append(f"MAX_TRADES({bc._trades_today}/{bc.config.risk.max_trades_per_day})")
+
+        if abs(bc._daily_pnl) >= bc.config.risk.max_daily_loss_pct:
+            reasons.append(f"MAX_LOSS({bc._daily_pnl:.2f}%)")
+
+        if bc._consecutive_losses >= bc.config.risk.loss_streak_cooldown:
+            reasons.append(f"LOSS_STREAK({bc._consecutive_losses}/{bc.config.risk.loss_streak_cooldown})")
+
+        # Position status
+        pos_status = "None"
+        if bc.position:
+            pos_status = f"{bc.position.side.value.upper()} @ {bc.position.entry_price:.2f}"
+
+        # Build diagnostic message
+        status_str = "✅" if can_trade else "❌"
+        reason_str = ", ".join(reasons) if reasons else "OK"
+
+        self._add_ki_log_entry(
+            "DIAG",
+            f"State={state} | CanTrade={status_str} [{reason_str}] | Pos={pos_status} | Trades={bc._trades_today} | Losses={bc._consecutive_losses}"
+        )
 
     def update_strategy_scores(self, scores: list[dict]) -> None:
         """Update strategy scores table.
@@ -1029,4 +1311,4 @@ class BotPanelsMixin:
         # Update counts
         calls = int(self.ki_calls_today_label.text()) + 1
         self.ki_calls_today_label.setText(str(calls))
-        self.ki_last_call_label.setText(datetime.utcnow().strftime("%H:%M:%S"))
+        self.ki_last_call_label.setText(datetime.now().strftime("%H:%M:%S"))
