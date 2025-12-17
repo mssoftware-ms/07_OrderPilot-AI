@@ -1,0 +1,160 @@
+Hier ist der **konkrete Integrationsplan** (basierend auf deiner vorhandenen Struktur) plus eine **projekt-spezifische Checkliste** als Markdown-Datei zum Abhaken.
+
+Deine Zielanforderungen sind klar: **1m-Bot (Long/Short) für Krypto + NASDAQ-Derivate**, **tägliche Strategy-Selection** aus 1m-Tagesdaten (optional Multi-Timeframe + Historie), **Entry im Live-Chart markieren**, **kein fixer Take-Profit**, stattdessen **HOLD/EXIT/ADJUST_STOP** inkl. Trailing, und eine **kontrollierte OpenAI-KI-Integration mit Guardrails**; neue UI-Funktionen sollen als **neue Tabs** ins Analyse-&-Strategy-Fenster.
+
+---
+
+## 1) Zielarchitektur in deiner bestehenden Struktur (minimal-invasiv)
+
+Deine App hat bereits genau die richtigen “Säulen”: **Market Data**, **Strategy**, **Broker/Execution**, **AI-Services**, **Event-Bus**, **UI/Chart-Bridge**. Der Tradingbot sollte **nicht** quer durch alles verteilt werden, sondern als **eigenes, gekapseltes Subsystem** “oben drauf” kommen.
+
+### Neue Module (neu anlegen)
+
+Ich würde **neu** einen klaren Bot-Bereich unter `src/core/` hinzufügen:
+
+* `src/core/tradingbot/__init__.py`
+* `src/core/tradingbot/bot_controller.py`
+  *Orchestrator pro Symbol/Timeframe, Single Source of Truth*
+* `src/core/tradingbot/state_machine.py`
+  *FLAT → SIGNAL → ENTERED → MANAGE → EXITED (+PAUSED/ERROR)*
+* `src/core/tradingbot/data_facade.py`
+  *Unified Zugriff: Realtime + Historie + Multi-Timeframe (nutzt bestehende Market-Data-Provider)*
+* `src/core/tradingbot/feature_engine.py`
+  *Wrap/Reuse deiner Indikatoren + abgeleitete Features*
+* `src/core/tradingbot/regime_engine.py`
+  *Trend/Range + High/Low Vol mit Hysterese*
+* `src/core/tradingbot/strategy_selector.py`
+  *Daily Selection (Rolling + Walk-forward + OOS Gate)*
+* `src/core/tradingbot/signal_engine.py`
+  *Entry-Scoring, Candidate/Confirmed Signals*
+* `src/core/tradingbot/trade_manager.py`
+  *HOLD/EXIT/ADJUST_STOP + Trailing-Varianten*
+* `src/core/tradingbot/risk_manager.py`
+  *Sizing, Risiko pro Trade, Limits*
+* `src/core/tradingbot/execution_router.py`
+  *OrderIntent → Broker Adapter, Idempotency, Guardrails*
+* `src/core/tradingbot/no_trade_filter.py`
+  *Spread/Vol-Spike/Session/Illiquidity Filter (Crypto vs Nasdaq Defaults)*
+* `src/core/tradingbot/llm_advisor.py`
+  *KI als “Second Opinion”, JSON only, Schema Validation, Budget Policy*
+* `src/core/tradingbot/persistence.py`
+  *Decision-/Run-Logs + Strategy-Snapshots (DB oder Files)*
+
+Zusätzlich (Models/DTOs sauber halten):
+
+* `src/core/models/tradingbot_models.py` *(neu)*: `Candle`, `FeatureVector`, `RegimeState`, `StrategyProfile`, `Signal`, `OrderIntent`, `PositionState`, `BotDecision`, `LLMDecision`
+
+### Bestehende Module (minimal anfassen)
+
+Nur dort anfassen, wo “Verdrahtung” nötig ist:
+
+* **Market Data**: Du hast schon Streaming + Provider. Der Bot nutzt sie über `data_facade.py`, statt Provider direkt überall aufzurufen.
+* **Strategy**: Du hast bereits `src/core/strategy/*` + mehrere Strategien. Der Bot sollte diese als **StrategyProfile** referenzieren (z. B. “trend_following”, “mean_reversion”, “breakout”) und nur Parameter/Switching darüber steuern – nicht parallel ein zweites Strategy-System bauen. 
+* **AI Layer**: Du hast `src/ai/*` bereits. Der Bot ruft KI ausschließlich über `llm_advisor.py` auf und nutzt vorhandene Provider-Factory/Services.
+* **UI/Chart**: Integration über vorhandene Bridge/Adapter, aber neue Bot-Tabs als **neue Widgets/Komponenten**.
+
+---
+
+## 2) Datenfluss & Eventing (sauber und debuggbar)
+
+**Datenfluss pro Candle-Close (1m):**
+
+1. Realtime Candle kommt rein (Stream)
+2. Feature Snapshot berechnen
+3. Regime updaten
+4. (Daily: StrategySelector ggf. bereits gesetzt; intraday nur Status aktualisieren)
+5. Entry-Score berechnen (Long/Short)
+6. Decision Engine:
+
+   * wenn FLAT: NO_TRADE / SIGNAL / ENTER
+   * wenn ENTERED/MANAGE: HOLD / EXIT / ADJUST_STOP
+7. Execution Router setzt Orders/Stops
+8. UI erhält Events: Marker/Stop-Linien/Debug HUD + Tabs aktualisieren
+
+**Events (über deinen Event-Bus):**
+
+* `BotCandleClosed(symbol, tf, candle)`
+* `BotFeatureSnapshot(symbol, tf, features)`
+* `BotRegimeUpdated(symbol, regime)`
+* `BotStrategySelected(date, symbol, profile, scores)`
+* `BotSignalCandidate(symbol, side, score)`
+* `BotSignalConfirmed(symbol, side, score, sl_price)`
+* `BotDecisionMade(action, reason_codes, confidence, stop_before, stop_after)`
+* `BotOrderPlaced / BotOrderFilled / BotStopUpdated / BotExit`
+
+Wichtig: **Ein BotController pro Symbol/Timeframe**, kein Wildwuchs an Timern/Threads.
+
+---
+
+## 3) UI-Integration (Lightweight Charts + neue Analyse/Strategy Tabs)
+
+Deine Vorgabe ist eindeutig: **bestehende Tabs nicht “umbauen”**, sondern **neue Tabs hinzufügen**.
+
+### Live-Chart Overlays (Lightweight Charts)
+
+* **Marker-Typen**
+
+  * *Candidate*: z. B. hell/klein (Entry-Kandidat)
+  * *Confirmed*: z. B. kräftig/groß (Entry bestätigt)
+* **Label-Inhalt**: `Side`, `Score`, `Initial-SL Preis`, optional `KI-Confidence`
+* **Linien**
+
+  * Initial-Stop-Loss Linie
+  * Trailing-Stop Linie (updates bei ADJUST_STOP)
+* Optional **Debug HUD** (oben links): `Regime`, `ActiveStrategy`, `TrailingMode`, `No-Trade Reason`, `KI Mode`
+
+### Neue Tabs im Analyse-&-Strategy-Fenster (konkret)
+
+1. **Daily Strategy Selection**
+
+   * Gewählte Strategie + Parameter
+   * Scores/Metriken (OOS Gate bestanden/failed)
+   * Datenfenster (Rolling Window) + letzter Auswahlzeitpunkt
+2. **Bot Control**
+
+   * Start/Stop, Auto/Manual
+   * SL% (Pflicht), optional Risiko%
+   * KI-Modus: `NO-KI / LOW-KI / FULL-KI`
+   * Limits: max Trades/Tag, cooldown, max positions
+3. **Signals & Trade Management**
+
+   * Entry-Score Verlauf (letzte N Kerzen)
+   * Aktueller Zustand der State-Machine
+   * Stop-Historie + letzte “Decision Reasons”
+4. **KI Logs**
+
+   * Feature-Input Hash, Response, Schema-Validierung, Fallbacks
+   * Kosten/Budget-Zähler, Rate Limits, Errors
+
+---
+
+## 4) KI-Integrationsstrategie (kontrolliert, nicht-orakelhaft)
+
+Du willst “bestes Ergebnis”, aber stabil und kontrollierbar. Das geht nur, wenn die KI **nicht** “Buy/Sell” direkt ausführt, sondern **Empfehlungen liefert**, die dein deterministisches Regelwerk **validiert**.
+
+**Call-Policy (konkret):**
+
+* **Daily**: 1 Call zur Strategy-Selection / Param-Tuning (optional “Second Opinion”)
+* **Intraday**: nur bei *kritischen Events* (Signalwechsel, Regime-Flip, Exit-Kandidat, Vol-Spike)
+* Hard Limits: max Calls/Minute, Cooldown, Tagesbudget
+* Degradationsmodi: `NO-KI` (reine Regeln), `LOW-KI` (nur daily), `FULL-KI` (daily + Events)
+
+**Prompt/Response:**
+
+* Input: ausschließlich **numerische Features/States** (kein Fließtext)
+* Output: **hartes JSON**, strikt per Schema validiert (Enums, Ranges, required fields)
+* Bei invalid JSON: **Reject → Repair → Fallback** auf Regelwerk
+
+Das ist exakt der Guardrail-Ansatz, den du in der Spezifikation verlangst.
+
+---
+
+## 5) Projekt-spezifische Checkliste (Download)
+
+Ich habe dir eine **OrderPilot-AI Tradingbot Integration Checkliste** im Stil deiner Vorlage gebaut (inkl. Status-Legende, Tracking-Format, Phasen, Review-Gates). Sie orientiert sich an deinen Qualitätsstandards (vollständig implementieren, Tests, Logging, keine TODOs etc.). 
+
+[Download: CHECKLIST_OrderPilot_AI_Tradingbot.md](sandbox:/mnt/data/CHECKLIST_OrderPilot_AI_Tradingbot.md)
+
+---
+
+Wenn du als nächstes “richtig Gas geben” willst: **Phase 1 (Bot-Core + Models + State-Machine)** zuerst, und parallel **Phase 6 (UI Overlays + Tabs)** als sichtbaren Proof. KI kommt **danach** – sonst debugst du dich tot.

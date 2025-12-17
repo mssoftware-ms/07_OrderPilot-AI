@@ -54,6 +54,28 @@ class PanelsMixin:
         self.results_tab = self._create_results_tab()
         self.panel_tabs.addTab(self.results_tab, "Results")
 
+        # Bot Tabs (from BotPanelsMixin)
+        if hasattr(self, '_create_bot_control_tab'):
+            # Tab 5: Bot Control
+            self.bot_control_tab = self._create_bot_control_tab()
+            self.panel_tabs.addTab(self.bot_control_tab, "Bot")
+
+            # Tab 6: Daily Strategy Selection
+            self.bot_strategy_tab = self._create_strategy_selection_tab()
+            self.panel_tabs.addTab(self.bot_strategy_tab, "Daily Strategy")
+
+            # Tab 7: Signals & Trade Management
+            self.bot_signals_tab = self._create_signals_tab()
+            self.panel_tabs.addTab(self.bot_signals_tab, "Signals")
+
+            # Tab 8: KI Logs
+            self.bot_ki_tab = self._create_ki_logs_tab()
+            self.panel_tabs.addTab(self.bot_ki_tab, "KI Logs")
+
+            # Initialize bot panel state
+            if hasattr(self, '_init_bot_panels'):
+                self._init_bot_panels()
+
         panel_layout.addWidget(self.panel_tabs)
         return panel_container
 

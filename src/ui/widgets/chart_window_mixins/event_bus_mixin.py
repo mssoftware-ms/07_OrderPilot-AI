@@ -146,6 +146,7 @@ class EventBusMixin:
 
             logger.debug(f"MARKET_BAR event: {event.data.get('symbol')}")
 
+            # Bar data for chart (JSON-serializable)
             bar_data = {
                 "time": int(event.timestamp.timestamp()),
                 "open": event.data.get("open"),
@@ -157,8 +158,33 @@ class EventBusMixin:
 
             self._update_chart_bar(bar_data)
 
+            # Feed bar to trading bot if active (with timestamp for bot)
+            bot_bar_data = {**bar_data, "timestamp": event.timestamp}
+            self._feed_bar_to_bot(bot_bar_data)
+
         except Exception as e:
             logger.error(f"Error handling MARKET_BAR event: {e}", exc_info=True)
+
+    def _feed_bar_to_bot(self, bar_data: dict):
+        """Feed bar data to the trading bot if active.
+
+        Args:
+            bar_data: Bar data dictionary with OHLCV
+        """
+        # Check if bot controller exists and is running
+        if not hasattr(self, '_bot_controller') or self._bot_controller is None:
+            return
+
+        if not self._bot_controller._running:
+            return
+
+        try:
+            # Use qasync-compatible async scheduling
+            import asyncio
+            # ensure_future works with qasync event loop
+            asyncio.ensure_future(self._bot_controller.on_bar(bar_data))
+        except Exception as e:
+            logger.error(f"Error feeding bar to bot: {e}")
 
     def _update_chart_bar(self, bar_data: dict):
         """Update the chart with a new real-time bar."""

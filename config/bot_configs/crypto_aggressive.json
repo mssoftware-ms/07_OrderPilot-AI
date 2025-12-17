@@ -1,0 +1,45 @@
+{
+  "_description": "Aggressive Crypto-Konfiguration (BTC, ETH, Altcoins)",
+  "_risk_level": "HIGH",
+  "_notes": "Mehr Trades, weitere Stops, volle KI-Integration",
+
+  "bot_config": {
+    "symbol": "BTC/USD",
+    "timeframe": "1T",
+    "market_type": "CRYPTO",
+    "ki_mode": "FULL_KI",
+    "trailing_mode": "ATR",
+    "entry_score_threshold": 55
+  },
+
+  "risk_config": {
+    "initial_stop_loss_pct": 3.5,
+    "risk_per_trade_pct": 2.0,
+    "max_daily_loss_pct": 8.0,
+    "max_trades_per_day": 10,
+    "max_concurrent_positions": 2,
+    "loss_streak_cooldown": 3,
+    "cooldown_duration_minutes": 60,
+
+    "trailing_config": {
+      "atr_multiple": 3.0,
+      "min_step_pct": 0.3,
+      "update_cooldown_bars": 2
+    }
+  },
+
+  "llm_policy": {
+    "enabled": true,
+    "model": "gpt-4o-mini",
+    "max_daily_calls": 20,
+    "daily_budget_usd": 2.0,
+    "rate_limit_per_minute": 5,
+    "max_retries": 3
+  },
+
+  "trading_hours": {
+    "mode": "24_7",
+    "avoid_first_minutes": 2,
+    "avoid_last_minutes": 2
+  }
+}

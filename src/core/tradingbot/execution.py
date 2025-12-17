@@ -1,0 +1,908 @@
+"""Execution Layer for Tradingbot.
+
+Handles position sizing, risk management, order execution,
+and paper trading simulation.
+"""
+
+from __future__ import annotations
+
+import logging
+import random
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Callable
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+from .config import MarketType, TradingEnvironment
+from .models import OrderIntent, Signal, TradeSide
+
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger(__name__)
+
+
+class OrderStatus(str, Enum):
+    """Order status."""
+    PENDING = "pending"
+    SUBMITTED = "submitted"
+    PARTIAL = "partial"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class OrderType(str, Enum):
+    """Order types."""
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP = "stop"
+    STOP_LIMIT = "stop_limit"
+
+
+@dataclass
+class OrderResult:
+    """Result of order execution."""
+    order_id: str
+    status: OrderStatus
+    filled_qty: float = 0.0
+    filled_price: float = 0.0
+    fees: float = 0.0
+    slippage: float = 0.0
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    error_message: str | None = None
+
+    @property
+    def is_filled(self) -> bool:
+        return self.status == OrderStatus.FILLED
+
+    @property
+    def is_rejected(self) -> bool:
+        return self.status in (OrderStatus.REJECTED, OrderStatus.CANCELLED)
+
+
+@dataclass
+class PositionSizeResult:
+    """Result of position size calculation."""
+    quantity: float
+    risk_amount: float
+    position_value: float
+    risk_pct_actual: float
+    sizing_method: str
+    constraints_applied: list[str] = field(default_factory=list)
+
+
+class RiskLimits(BaseModel):
+    """Risk limit configuration."""
+    # Daily limits
+    max_trades_per_day: int = Field(default=10, ge=1, le=100)
+    max_daily_loss_pct: float = Field(default=3.0, ge=0.5, le=20.0)
+    max_daily_loss_amount: float | None = Field(default=None, ge=0)
+
+    # Position limits
+    max_position_size_pct: float = Field(default=10.0, ge=1, le=100)
+    max_position_value: float | None = Field(default=None, ge=0)
+    max_concurrent_positions: int = Field(default=3, ge=1, le=20)
+
+    # Loss streak
+    loss_streak_cooldown: int = Field(default=3, ge=1, le=10)
+    cooldown_duration_minutes: int = Field(default=60, ge=5)
+
+    # Per-trade limits
+    max_risk_per_trade_pct: float = Field(default=2.0, ge=0.1, le=10.0)
+    min_risk_reward_ratio: float = Field(default=1.5, ge=1.0, le=5.0)
+
+
+class RiskState(BaseModel):
+    """Current risk tracking state."""
+    date: datetime = Field(default_factory=datetime.utcnow)
+    trades_today: int = 0
+    daily_pnl: float = 0.0
+    open_positions: int = 0
+    consecutive_losses: int = 0
+    last_loss_time: datetime | None = None
+    in_cooldown: bool = False
+    cooldown_until: datetime | None = None
+
+
+class PositionSizer:
+    """Calculates position sizes based on risk parameters.
+
+    Supports multiple sizing methods:
+    - Fixed fractional (% of account)
+    - ATR-based (volatility-adjusted)
+    - Fixed quantity
+    """
+
+    def __init__(
+        self,
+        account_value: float,
+        risk_limits: RiskLimits | None = None,
+        default_risk_pct: float = 1.0,
+        include_fees: bool = True,
+        fee_pct: float = 0.1
+    ):
+        """Initialize position sizer.
+
+        Args:
+            account_value: Current account value
+            risk_limits: Risk limit configuration
+            default_risk_pct: Default risk per trade
+            include_fees: Include fees in calculations
+            fee_pct: Fee percentage (round-trip)
+        """
+        self.account_value = account_value
+        self.risk_limits = risk_limits or RiskLimits()
+        self.default_risk_pct = default_risk_pct
+        self.include_fees = include_fees
+        self.fee_pct = fee_pct
+
+        logger.info(
+            f"PositionSizer initialized: account=${account_value:.2f}, "
+            f"default_risk={default_risk_pct}%"
+        )
+
+    def calculate_size(
+        self,
+        signal: Signal,
+        current_price: float,
+        atr: float | None = None,
+        risk_pct: float | None = None
+    ) -> PositionSizeResult:
+        """Calculate position size for a signal.
+
+        Args:
+            signal: Entry signal with stop-loss
+            current_price: Current market price
+            atr: Average True Range (for ATR-based sizing)
+            risk_pct: Override risk percentage
+
+        Returns:
+            PositionSizeResult with calculated size
+        """
+        risk_pct = risk_pct or self.default_risk_pct
+        constraints = []
+
+        # Calculate stop distance
+        stop_distance = abs(current_price - signal.stop_loss_price)
+        if stop_distance <= 0:
+            return PositionSizeResult(
+                quantity=0,
+                risk_amount=0,
+                position_value=0,
+                risk_pct_actual=0,
+                sizing_method="rejected",
+                constraints_applied=["ZERO_STOP_DISTANCE"]
+            )
+
+        # Calculate base risk amount
+        risk_amount = self.account_value * (risk_pct / 100)
+
+        # Apply max risk per trade limit
+        max_risk = self.account_value * (self.risk_limits.max_risk_per_trade_pct / 100)
+        if risk_amount > max_risk:
+            risk_amount = max_risk
+            constraints.append("MAX_RISK_PER_TRADE")
+
+        # Calculate quantity based on risk
+        quantity = risk_amount / stop_distance
+
+        # Calculate position value
+        position_value = quantity * current_price
+
+        # Apply max position size limits
+        max_position_pct = self.risk_limits.max_position_size_pct
+        max_position_value = self.account_value * (max_position_pct / 100)
+
+        if self.risk_limits.max_position_value:
+            max_position_value = min(max_position_value, self.risk_limits.max_position_value)
+
+        if position_value > max_position_value:
+            quantity = max_position_value / current_price
+            position_value = max_position_value
+            risk_amount = quantity * stop_distance
+            constraints.append("MAX_POSITION_SIZE")
+
+        # Account for fees
+        if self.include_fees:
+            fee_amount = position_value * (self.fee_pct / 100)
+            # Reduce quantity slightly to account for fees
+            quantity = quantity * (1 - self.fee_pct / 100 / 2)
+            position_value = quantity * current_price
+
+        # Calculate actual risk percentage
+        risk_pct_actual = (risk_amount / self.account_value) * 100
+
+        return PositionSizeResult(
+            quantity=round(quantity, 8),  # Crypto precision
+            risk_amount=risk_amount,
+            position_value=position_value,
+            risk_pct_actual=risk_pct_actual,
+            sizing_method="fixed_fractional",
+            constraints_applied=constraints
+        )
+
+    def calculate_size_atr(
+        self,
+        signal: Signal,
+        current_price: float,
+        atr: float,
+        atr_multiple: float = 2.0,
+        risk_pct: float | None = None
+    ) -> PositionSizeResult:
+        """Calculate position size using ATR-based stop distance.
+
+        Args:
+            signal: Entry signal
+            current_price: Current price
+            atr: Average True Range
+            atr_multiple: ATR multiple for stop distance
+            risk_pct: Risk percentage
+
+        Returns:
+            PositionSizeResult
+        """
+        risk_pct = risk_pct or self.default_risk_pct
+        constraints = []
+
+        # ATR-based stop distance
+        stop_distance = atr * atr_multiple
+
+        if stop_distance <= 0:
+            return PositionSizeResult(
+                quantity=0,
+                risk_amount=0,
+                position_value=0,
+                risk_pct_actual=0,
+                sizing_method="atr_rejected",
+                constraints_applied=["ZERO_ATR"]
+            )
+
+        # Risk amount
+        risk_amount = self.account_value * (risk_pct / 100)
+        max_risk = self.account_value * (self.risk_limits.max_risk_per_trade_pct / 100)
+        if risk_amount > max_risk:
+            risk_amount = max_risk
+            constraints.append("MAX_RISK_PER_TRADE")
+
+        # Quantity
+        quantity = risk_amount / stop_distance
+        position_value = quantity * current_price
+
+        # Position size limits
+        max_position_value = self.account_value * (self.risk_limits.max_position_size_pct / 100)
+        if position_value > max_position_value:
+            quantity = max_position_value / current_price
+            position_value = max_position_value
+            risk_amount = quantity * stop_distance
+            constraints.append("MAX_POSITION_SIZE")
+
+        risk_pct_actual = (risk_amount / self.account_value) * 100
+
+        return PositionSizeResult(
+            quantity=round(quantity, 8),
+            risk_amount=risk_amount,
+            position_value=position_value,
+            risk_pct_actual=risk_pct_actual,
+            sizing_method="atr_based",
+            constraints_applied=constraints
+        )
+
+    def update_account_value(self, value: float) -> None:
+        """Update account value.
+
+        Args:
+            value: New account value
+        """
+        self.account_value = value
+        logger.debug(f"Account value updated: ${value:.2f}")
+
+
+class RiskManager:
+    """Manages trading risk limits and tracking.
+
+    Tracks daily P&L, position count, loss streaks,
+    and enforces risk limits.
+    """
+
+    def __init__(
+        self,
+        limits: RiskLimits | None = None,
+        account_value: float = 10000.0
+    ):
+        """Initialize risk manager.
+
+        Args:
+            limits: Risk limit configuration
+            account_value: Account value for calculations
+        """
+        self.limits = limits or RiskLimits()
+        self.account_value = account_value
+        self._state = RiskState()
+
+        logger.info(
+            f"RiskManager initialized: max_trades={self.limits.max_trades_per_day}, "
+            f"max_daily_loss={self.limits.max_daily_loss_pct}%"
+        )
+
+    @property
+    def state(self) -> RiskState:
+        """Current risk state."""
+        self._check_day_rollover()
+        self._check_cooldown_expired()
+        return self._state
+
+    def can_trade(self) -> tuple[bool, list[str]]:
+        """Check if trading is allowed.
+
+        Returns:
+            (can_trade, list of blocking reasons)
+        """
+        self._check_day_rollover()
+        self._check_cooldown_expired()
+
+        blocks = []
+
+        # Daily trade limit
+        if self._state.trades_today >= self.limits.max_trades_per_day:
+            blocks.append(f"MAX_TRADES: {self._state.trades_today}/{self.limits.max_trades_per_day}")
+
+        # Daily loss limit
+        daily_loss_pct = (-self._state.daily_pnl / self.account_value) * 100
+        if self._state.daily_pnl < 0 and daily_loss_pct >= self.limits.max_daily_loss_pct:
+            blocks.append(f"DAILY_LOSS: {daily_loss_pct:.1f}%")
+
+        if self.limits.max_daily_loss_amount:
+            if self._state.daily_pnl < 0 and abs(self._state.daily_pnl) >= self.limits.max_daily_loss_amount:
+                blocks.append(f"DAILY_LOSS_AMOUNT: ${abs(self._state.daily_pnl):.2f}")
+
+        # Position count
+        if self._state.open_positions >= self.limits.max_concurrent_positions:
+            blocks.append(f"MAX_POSITIONS: {self._state.open_positions}")
+
+        # Loss streak cooldown
+        if self._state.in_cooldown:
+            blocks.append(f"COOLDOWN: until {self._state.cooldown_until}")
+
+        return len(blocks) == 0, blocks
+
+    def record_trade_start(self) -> None:
+        """Record start of a new trade."""
+        self._state.trades_today += 1
+        self._state.open_positions += 1
+        logger.debug(f"Trade started: count={self._state.trades_today}")
+
+    def record_trade_end(self, pnl: float) -> None:
+        """Record end of a trade.
+
+        Args:
+            pnl: Trade P&L
+        """
+        self._state.daily_pnl += pnl
+        self._state.open_positions = max(0, self._state.open_positions - 1)
+
+        if pnl < 0:
+            self._state.consecutive_losses += 1
+            self._state.last_loss_time = datetime.utcnow()
+
+            # Check for cooldown trigger
+            if self._state.consecutive_losses >= self.limits.loss_streak_cooldown:
+                self._enter_cooldown()
+        else:
+            self._state.consecutive_losses = 0
+
+        logger.debug(
+            f"Trade ended: PnL=${pnl:.2f}, daily=${self._state.daily_pnl:.2f}, "
+            f"losses={self._state.consecutive_losses}"
+        )
+
+    def _check_day_rollover(self) -> None:
+        """Check if we've rolled into a new trading day."""
+        now = datetime.utcnow()
+        if self._state.date.date() != now.date():
+            self._state = RiskState(date=now)
+            logger.info("New trading day - risk state reset")
+
+    def _check_cooldown_expired(self) -> None:
+        """Check if cooldown has expired."""
+        if self._state.in_cooldown and self._state.cooldown_until:
+            if datetime.utcnow() >= self._state.cooldown_until:
+                self._state.in_cooldown = False
+                self._state.cooldown_until = None
+                self._state.consecutive_losses = 0
+                logger.info("Cooldown expired - trading resumed")
+
+    def _enter_cooldown(self) -> None:
+        """Enter cooldown mode."""
+        self._state.in_cooldown = True
+        self._state.cooldown_until = (
+            datetime.utcnow() +
+            timedelta(minutes=self.limits.cooldown_duration_minutes)
+        )
+        logger.warning(
+            f"Entering cooldown: {self._state.consecutive_losses} consecutive losses, "
+            f"until {self._state.cooldown_until}"
+        )
+
+    def update_account_value(self, value: float) -> None:
+        """Update account value."""
+        self.account_value = value
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get current risk stats.
+
+        Returns:
+            Dict with risk metrics
+        """
+        return {
+            "date": self._state.date.isoformat(),
+            "trades_today": self._state.trades_today,
+            "daily_pnl": self._state.daily_pnl,
+            "daily_pnl_pct": (self._state.daily_pnl / self.account_value) * 100 if self.account_value > 0 else 0,
+            "open_positions": self._state.open_positions,
+            "consecutive_losses": self._state.consecutive_losses,
+            "in_cooldown": self._state.in_cooldown,
+            "cooldown_until": self._state.cooldown_until.isoformat() if self._state.cooldown_until else None,
+        }
+
+
+class PaperExecutor:
+    """Paper trading executor with slippage simulation.
+
+    Simulates order execution for backtesting and paper trading.
+    """
+
+    def __init__(
+        self,
+        slippage_pct: float = 0.05,
+        fill_probability: float = 1.0,
+        partial_fill_probability: float = 0.0,
+        latency_ms: int = 50,
+        fee_pct: float = 0.1
+    ):
+        """Initialize paper executor.
+
+        Args:
+            slippage_pct: Simulated slippage percentage
+            fill_probability: Probability of fill (1.0 = always)
+            partial_fill_probability: Probability of partial fill
+            latency_ms: Simulated latency in milliseconds
+            fee_pct: Fee percentage (per side)
+        """
+        self.slippage_pct = slippage_pct
+        self.fill_probability = fill_probability
+        self.partial_fill_probability = partial_fill_probability
+        self.latency_ms = latency_ms
+        self.fee_pct = fee_pct
+
+        # Tracking
+        self._orders: dict[str, OrderIntent] = {}
+        self._results: dict[str, OrderResult] = {}
+
+        logger.info(
+            f"PaperExecutor initialized: slippage={slippage_pct}%, "
+            f"fees={fee_pct}%"
+        )
+
+    def execute(
+        self,
+        order: OrderIntent,
+        current_price: float
+    ) -> OrderResult:
+        """Execute an order (paper).
+
+        Args:
+            order: Order intent
+            current_price: Current market price
+
+        Returns:
+            OrderResult
+        """
+        order_id = str(uuid4())[:8]
+        self._orders[order_id] = order
+
+        # Simulate rejection
+        if random.random() > self.fill_probability:
+            result = OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                error_message="Simulated rejection"
+            )
+            self._results[order_id] = result
+            return result
+
+        # Calculate fill price with slippage
+        slippage_direction = 1 if order.side == TradeSide.LONG else -1
+        slippage = current_price * (self.slippage_pct / 100) * slippage_direction
+        fill_price = current_price + slippage
+
+        # Calculate quantity (check for partial fill)
+        if random.random() < self.partial_fill_probability:
+            filled_qty = order.quantity * random.uniform(0.5, 0.9)
+            status = OrderStatus.PARTIAL
+        else:
+            filled_qty = order.quantity
+            status = OrderStatus.FILLED
+
+        # Calculate fees
+        fees = filled_qty * fill_price * (self.fee_pct / 100)
+
+        result = OrderResult(
+            order_id=order_id,
+            status=status,
+            filled_qty=filled_qty,
+            filled_price=fill_price,
+            fees=fees,
+            slippage=abs(slippage)
+        )
+        self._results[order_id] = result
+
+        logger.info(
+            f"Paper order executed: {order_id} - {order.side.value} "
+            f"{filled_qty:.4f} @ {fill_price:.4f} (slip={slippage:.4f})"
+        )
+
+        return result
+
+    def cancel(self, order_id: str) -> OrderResult:
+        """Cancel an order.
+
+        Args:
+            order_id: Order ID to cancel
+
+        Returns:
+            OrderResult with cancelled status
+        """
+        if order_id not in self._orders:
+            return OrderResult(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                error_message="Order not found"
+            )
+
+        result = OrderResult(
+            order_id=order_id,
+            status=OrderStatus.CANCELLED
+        )
+        self._results[order_id] = result
+        return result
+
+    def get_order(self, order_id: str) -> OrderResult | None:
+        """Get order result by ID.
+
+        Args:
+            order_id: Order ID
+
+        Returns:
+            OrderResult or None
+        """
+        return self._results.get(order_id)
+
+
+class ExecutionGuardrails:
+    """Safety guardrails for order execution.
+
+    Validates orders before execution and prevents
+    dangerous operations.
+    """
+
+    def __init__(
+        self,
+        max_order_value: float = 10000.0,
+        max_order_quantity: float = 1000.0,
+        min_order_value: float = 10.0,
+        rate_limit_per_minute: int = 10,
+        require_stop_loss: bool = True,
+        prevent_duplicates: bool = True
+    ):
+        """Initialize guardrails.
+
+        Args:
+            max_order_value: Maximum order value
+            max_order_quantity: Maximum quantity
+            min_order_value: Minimum order value
+            rate_limit_per_minute: Orders per minute limit
+            require_stop_loss: Require stop-loss for entries
+            prevent_duplicates: Prevent duplicate orders
+        """
+        self.max_order_value = max_order_value
+        self.max_order_quantity = max_order_quantity
+        self.min_order_value = min_order_value
+        self.rate_limit_per_minute = rate_limit_per_minute
+        self.require_stop_loss = require_stop_loss
+        self.prevent_duplicates = prevent_duplicates
+
+        # Tracking
+        self._recent_orders: list[tuple[datetime, str]] = []
+        self._pending_signals: set[str] = set()
+
+        logger.info(
+            f"ExecutionGuardrails initialized: max_value=${max_order_value}, "
+            f"rate_limit={rate_limit_per_minute}/min"
+        )
+
+    def validate(
+        self,
+        order: OrderIntent,
+        current_price: float
+    ) -> tuple[bool, list[str]]:
+        """Validate an order before execution.
+
+        Args:
+            order: Order to validate
+            current_price: Current market price
+
+        Returns:
+            (is_valid, list of rejection reasons)
+        """
+        rejections = []
+
+        # Calculate order value
+        order_value = order.quantity * current_price
+
+        # Max order value
+        if order_value > self.max_order_value:
+            rejections.append(f"ORDER_VALUE_EXCEEDED: ${order_value:.2f} > ${self.max_order_value}")
+
+        # Min order value
+        if order_value < self.min_order_value:
+            rejections.append(f"ORDER_VALUE_TOO_SMALL: ${order_value:.2f} < ${self.min_order_value}")
+
+        # Max quantity
+        if order.quantity > self.max_order_quantity:
+            rejections.append(f"QUANTITY_EXCEEDED: {order.quantity} > {self.max_order_quantity}")
+
+        # Stop loss required for entry
+        if self.require_stop_loss and order.action == "entry":
+            if not order.stop_price or order.stop_price <= 0:
+                rejections.append("STOP_LOSS_REQUIRED")
+
+        # Rate limit
+        if not self._check_rate_limit():
+            rejections.append(f"RATE_LIMIT_EXCEEDED: >{self.rate_limit_per_minute}/min")
+
+        # Duplicate prevention
+        if self.prevent_duplicates and order.signal_id:
+            if order.signal_id in self._pending_signals:
+                rejections.append(f"DUPLICATE_SIGNAL: {order.signal_id}")
+
+        return len(rejections) == 0, rejections
+
+    def record_order(self, order: OrderIntent) -> None:
+        """Record an executed order for tracking.
+
+        Args:
+            order: Executed order
+        """
+        now = datetime.utcnow()
+        self._recent_orders.append((now, order.symbol))
+
+        if order.signal_id:
+            self._pending_signals.add(order.signal_id)
+
+        # Clean old records
+        cutoff = now - timedelta(minutes=1)
+        self._recent_orders = [
+            (t, s) for t, s in self._recent_orders
+            if t > cutoff
+        ]
+
+    def clear_signal(self, signal_id: str) -> None:
+        """Clear a signal from pending.
+
+        Args:
+            signal_id: Signal ID to clear
+        """
+        self._pending_signals.discard(signal_id)
+
+    def _check_rate_limit(self) -> bool:
+        """Check if within rate limit."""
+        now = datetime.utcnow()
+        cutoff = now - timedelta(minutes=1)
+        recent_count = sum(1 for t, _ in self._recent_orders if t > cutoff)
+        return recent_count < self.rate_limit_per_minute
+
+
+class OrderExecutor:
+    """Unified order executor supporting paper and live modes.
+
+    Combines position sizing, risk management, guardrails,
+    and execution in a single interface.
+    """
+
+    def __init__(
+        self,
+        environment: TradingEnvironment = TradingEnvironment.PAPER,
+        account_value: float = 10000.0,
+        risk_limits: RiskLimits | None = None,
+        guardrails: ExecutionGuardrails | None = None,
+        on_fill: Callable[[OrderResult], None] | None = None
+    ):
+        """Initialize order executor.
+
+        Args:
+            environment: Trading environment (paper/live)
+            account_value: Account value
+            risk_limits: Risk limits
+            guardrails: Execution guardrails
+            on_fill: Callback for fills
+        """
+        self.environment = environment
+        self.account_value = account_value
+
+        self.position_sizer = PositionSizer(account_value, risk_limits)
+        self.risk_manager = RiskManager(risk_limits, account_value)
+        self.guardrails = guardrails or ExecutionGuardrails()
+        self.paper_executor = PaperExecutor()
+
+        self._on_fill = on_fill
+
+        logger.info(
+            f"OrderExecutor initialized: env={environment.value}, "
+            f"account=${account_value:.2f}"
+        )
+
+    def execute_entry(
+        self,
+        signal: Signal,
+        current_price: float,
+        atr: float | None = None
+    ) -> OrderResult:
+        """Execute an entry order.
+
+        Args:
+            signal: Entry signal
+            current_price: Current price
+            atr: ATR for sizing
+
+        Returns:
+            OrderResult
+        """
+        # Check risk limits
+        can_trade, blocks = self.risk_manager.can_trade()
+        if not can_trade:
+            return OrderResult(
+                order_id="blocked",
+                status=OrderStatus.REJECTED,
+                error_message=f"Risk blocked: {', '.join(blocks)}"
+            )
+
+        # Calculate position size
+        if atr:
+            size_result = self.position_sizer.calculate_size_atr(
+                signal, current_price, atr
+            )
+        else:
+            size_result = self.position_sizer.calculate_size(
+                signal, current_price
+            )
+
+        if size_result.quantity <= 0:
+            return OrderResult(
+                order_id="zero_size",
+                status=OrderStatus.REJECTED,
+                error_message="Position size calculation resulted in zero"
+            )
+
+        # Create order intent
+        order = OrderIntent(
+            symbol=signal.symbol,
+            side=signal.side,
+            action="entry",
+            quantity=size_result.quantity,
+            order_type="market",
+            stop_price=signal.stop_loss_price,
+            signal_id=signal.id,
+            reason=f"Entry signal {signal.id}"
+        )
+
+        # Validate with guardrails
+        is_valid, rejections = self.guardrails.validate(order, current_price)
+        if not is_valid:
+            return OrderResult(
+                order_id="guardrail",
+                status=OrderStatus.REJECTED,
+                error_message=f"Guardrail rejected: {', '.join(rejections)}"
+            )
+
+        # Execute
+        if self.environment == TradingEnvironment.PAPER:
+            result = self.paper_executor.execute(order, current_price)
+        else:
+            # Live execution would go here
+            logger.warning("Live execution not implemented - using paper")
+            result = self.paper_executor.execute(order, current_price)
+
+        # Record if filled
+        if result.is_filled:
+            self.guardrails.record_order(order)
+            self.risk_manager.record_trade_start()
+
+            if self._on_fill:
+                self._on_fill(result)
+
+        return result
+
+    def execute_exit(
+        self,
+        symbol: str,
+        side: TradeSide,
+        quantity: float,
+        current_price: float,
+        reason: str
+    ) -> OrderResult:
+        """Execute an exit order.
+
+        Args:
+            symbol: Symbol
+            side: Original position side
+            quantity: Quantity to exit
+            current_price: Current price
+            reason: Exit reason
+
+        Returns:
+            OrderResult
+        """
+        # Exit side is opposite
+        exit_side = TradeSide.SHORT if side == TradeSide.LONG else TradeSide.LONG
+
+        order = OrderIntent(
+            symbol=symbol,
+            side=exit_side,
+            action="exit",
+            quantity=quantity,
+            order_type="market",
+            reason=reason
+        )
+
+        # Execute
+        if self.environment == TradingEnvironment.PAPER:
+            result = self.paper_executor.execute(order, current_price)
+        else:
+            logger.warning("Live execution not implemented - using paper")
+            result = self.paper_executor.execute(order, current_price)
+
+        # Calculate P&L if filled
+        if result.is_filled and self._on_fill:
+            self._on_fill(result)
+
+        return result
+
+    def record_trade_pnl(self, pnl: float) -> None:
+        """Record trade P&L for risk tracking.
+
+        Args:
+            pnl: Trade P&L
+        """
+        self.risk_manager.record_trade_end(pnl)
+
+    def update_account_value(self, value: float) -> None:
+        """Update account value.
+
+        Args:
+            value: New account value
+        """
+        self.account_value = value
+        self.position_sizer.update_account_value(value)
+        self.risk_manager.update_account_value(value)
+
+    def get_risk_stats(self) -> dict[str, Any]:
+        """Get current risk statistics.
+
+        Returns:
+            Risk stats dict
+        """
+        return self.risk_manager.get_stats()
+
+    def is_trading_allowed(self) -> bool:
+        """Check if trading is allowed.
+
+        Returns:
+            True if trading allowed
+        """
+        can_trade, _ = self.risk_manager.can_trade()
+        return can_trade

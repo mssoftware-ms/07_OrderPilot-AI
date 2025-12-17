@@ -9,6 +9,7 @@ from .indicator_mixin import IndicatorMixin
 from .streaming_mixin import StreamingMixin
 from .data_loading_mixin import DataLoadingMixin
 from .state_mixin import ChartStateMixin
+from .bot_overlay_mixin import BotOverlayMixin
 
 __all__ = [
     "ToolbarMixin",
@@ -16,4 +17,5 @@ __all__ = [
     "StreamingMixin",
     "DataLoadingMixin",
     "ChartStateMixin",
+    "BotOverlayMixin",
 ]

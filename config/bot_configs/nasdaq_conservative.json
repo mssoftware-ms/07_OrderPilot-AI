@@ -1,0 +1,48 @@
+{
+  "_description": "Konservative NASDAQ-Konfiguration (Large Caps)",
+  "_risk_level": "LOW",
+  "_notes": "Nur Regular Trading Hours, engere Stops, fokussiert auf AAPL, MSFT, GOOGL",
+
+  "bot_config": {
+    "symbol": "AAPL",
+    "timeframe": "1T",
+    "market_type": "STOCK",
+    "ki_mode": "LOW_KI",
+    "trailing_mode": "PCT",
+    "entry_score_threshold": 65
+  },
+
+  "risk_config": {
+    "initial_stop_loss_pct": 1.5,
+    "risk_per_trade_pct": 0.5,
+    "max_daily_loss_pct": 2.0,
+    "max_trades_per_day": 5,
+    "max_concurrent_positions": 1,
+    "loss_streak_cooldown": 2,
+    "cooldown_duration_minutes": 90,
+
+    "trailing_config": {
+      "trailing_pct": 1.0,
+      "min_step_pct": 0.3,
+      "update_cooldown_bars": 5
+    }
+  },
+
+  "llm_policy": {
+    "enabled": true,
+    "model": "gpt-4o-mini",
+    "max_daily_calls": 1,
+    "daily_budget_usd": 0.10,
+    "rate_limit_per_minute": 1,
+    "max_retries": 2
+  },
+
+  "trading_hours": {
+    "mode": "RTH",
+    "market_open": "09:30",
+    "market_close": "16:00",
+    "timezone": "America/New_York",
+    "avoid_first_minutes": 15,
+    "avoid_last_minutes": 15
+  }
+}

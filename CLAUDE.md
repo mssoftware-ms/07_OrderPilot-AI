@@ -267,4 +267,40 @@ Wenn du erkennst, dass du wiederholt denselben Fehler machst (z. B. einen bestim
 
 - Antworte präzise und technisch; keine überflüssigen Floskeln.
 - Wenn Annahmen nötig sind (z. B. zu Frameworks oder Projektstruktur), benenne sie explizit.
-- Wenn dir Informationen fehlen, schlage gezielte Schritte vor (z. B. „Bitte gib mir die aktuelle `pyproject.toml`, damit ich die Laufzeitumgebung sehe“), statt ins Blaue zu implementieren.
+- Wenn dir Informationen fehlen, schlage gezielte Schritte vor (z. B. „Bitte gib mir die aktuelle `pyproject.toml`, damit ich die Laufzeitumgebung sehe"), statt ins Blaue zu implementieren.
+
+---
+
+## 12. Projektplan & Dokumentation
+
+### .kipj-Datei (Projekt-Snapshot)
+
+Die Datei `01_Projectplan/orderpilot-ai.kipj` (sowie `docs/ai/07_orderpilot-ai.kipj`) enthält einen vollständigen Snapshot der aktuellen Softwarestruktur inkl. aller Klassen, Funktionen und Kommentare.
+
+**Regeln:**
+1. **Nach jeder strukturellen Änderung** (neue Module, Klassen, Funktionen hinzugefügt/entfernt) soll die `.kipj`-Datei aktualisiert werden.
+2. Die `.kipj`-Datei dient als Referenz für den aktuellen Softwarestand und sollte immer synchron mit dem Code gehalten werden.
+3. Bei der Analyse neuer Anforderungen sollte diese Datei als Ausgangspunkt verwendet werden.
+
+### Tradingbot-Integration Checkliste
+
+Die Datei `01_Projectplan/3_CHECKLIST_OrderPilot_AI_Tradingbot.md` enthält die vollständige Implementierungs-Checkliste für die Tradingbot-Integration.
+
+**Regeln:**
+1. **Nach jedem erfolgreichen Abschließen eines Checklistenpunkts** muss dieser in der Checkliste abgehakt und mit Timestamp, Code-Referenz und Nachweis versehen werden.
+2. Format für abgeschlossene Tasks:
+   ```markdown
+   - [x] **X.Y.Z Task Name**
+     Status: ✅ Abgeschlossen (YYYY-MM-DD HH:MM) → *Was wurde implementiert*
+     Code: `src/.../datei.py:zeilen`
+     Tests: `tests/.../test_x.py::TestClass::test_name`
+     Nachweis: Log-Ausgabe / Screenshot / Backtest-Report (Pfad)
+   ```
+3. Halte den Gesamtfortschritt in der Checkliste aktuell.
+
+### Tradingbot-Projektpläne
+
+Die nummerierten Dateien im Ordner `01_Projectplan/` definieren die Anforderungen:
+- `1_Tradingbot.md` – Anforderungen und Architektur-Spezifikation
+- `2_Intigrationseinschaetzung.txt` – Integrationsplan
+- `3_CHECKLIST_OrderPilot_AI_Tradingbot.md` – Implementierungs-Checkliste

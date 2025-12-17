@@ -40,6 +40,7 @@ from .chart_mixins import (
     StreamingMixin,
     DataLoadingMixin,
     ChartStateMixin,
+    BotOverlayMixin,
 )
 
 logger = logging.getLogger(__name__)
@@ -552,10 +553,12 @@ CHART_HTML_TEMPLATE = """
 
                 // Drawing primitive classes
                 class HorizontalLinePrimitive {
-                    constructor(price, color, id) {
+                    constructor(price, color, id, label = '', lineStyle = 'solid') {
                         this.price = price;
                         this.color = color;
                         this.id = id;
+                        this.label = label;
+                        this.lineStyle = lineStyle;
                         this.type = 'hline';
                         this._paneViews = [new HorizontalLinePaneView(this)];
                     }
@@ -566,22 +569,55 @@ CHART_HTML_TEMPLATE = """
                 class HorizontalLinePaneView {
                     constructor(source) { this._source = source; this._y = null; }
                     update() { this._y = priceSeries.priceToCoordinate(this._source.price); }
-                    renderer() { return new HorizontalLineRenderer(this._y, this._source.color); }
+                    renderer() { return new HorizontalLineRenderer(this._y, this._source.color, this._source.label, this._source.lineStyle); }
                 }
 
                 class HorizontalLineRenderer {
-                    constructor(y, color) { this._y = y; this._color = color; }
+                    constructor(y, color, label = '', lineStyle = 'solid') {
+                        this._y = y;
+                        this._color = color;
+                        this._label = label;
+                        this._lineStyle = lineStyle;
+                    }
                     draw(target) {
                         target.useBitmapCoordinateSpace(scope => {
                             if (this._y === null) return;
                             const ctx = scope.context;
                             const yScaled = Math.round(this._y * scope.verticalPixelRatio);
+
+                            // Draw line
                             ctx.strokeStyle = this._color;
                             ctx.lineWidth = 2;
+                            if (this._lineStyle === 'dashed') {
+                                ctx.setLineDash([8, 4]);
+                            } else if (this._lineStyle === 'dotted') {
+                                ctx.setLineDash([2, 2]);
+                            } else {
+                                ctx.setLineDash([]);
+                            }
                             ctx.beginPath();
                             ctx.moveTo(0, yScaled);
                             ctx.lineTo(scope.bitmapSize.width, yScaled);
                             ctx.stroke();
+                            ctx.setLineDash([]);
+
+                            // Draw label if provided
+                            if (this._label) {
+                                const fontSize = 11 * scope.verticalPixelRatio;
+                                ctx.font = `bold ${fontSize}px Arial`;
+                                const textWidth = ctx.measureText(this._label).width;
+                                const padding = 4 * scope.verticalPixelRatio;
+                                const labelX = scope.bitmapSize.width - textWidth - padding * 3;
+                                const labelY = yScaled - padding;
+
+                                // Background
+                                ctx.fillStyle = this._color;
+                                ctx.fillRect(labelX - padding, labelY - fontSize, textWidth + padding * 2, fontSize + padding);
+
+                                // Text
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillText(this._label, labelX, labelY - padding/2);
+                            }
                         });
                     }
                 }
@@ -990,10 +1026,11 @@ CHART_HTML_TEMPLATE = """
                     ...(d.type === 'hline' ? { price: d.price, color: d.color } : { p1: d.p1, p2: d.p2, color: d.color })
                 }));
                 window.chartAPI.clearDrawings = clearAllDrawings;
-                window.chartAPI.addHorizontalLine = (price, color) => {
-                    const line = new HorizontalLinePrimitive(price, color || '#26a69a', genId());
+                window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid') => {
+                    const line = new HorizontalLinePrimitive(price, color || '#26a69a', genId(), label, lineStyle);
                     priceSeries.attachPrimitive(line);
                     drawings.push(line);
+                    console.log('Added horizontal line at', price, 'with label:', label);
                     return line.id;
                 };
                 window.chartAPI.addTrendLine = (p1, p2, color) => {
@@ -1025,6 +1062,7 @@ CHART_HTML_TEMPLATE = """
 
 
 class EmbeddedTradingViewChart(
+    BotOverlayMixin,
     ToolbarMixin,
     IndicatorMixin,
     StreamingMixin,
@@ -1099,6 +1137,9 @@ class EmbeddedTradingViewChart(
 
         # Indicator update lock to prevent race conditions
         self._updating_indicators = False
+
+        # Initialize bot overlay (from BotOverlayMixin)
+        self._init_bot_overlay()
 
         # Setup UI
         self._setup_ui()

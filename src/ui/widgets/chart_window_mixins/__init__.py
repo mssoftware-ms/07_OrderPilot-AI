@@ -8,10 +8,12 @@ from .panels_mixin import PanelsMixin
 from .backtest_mixin import BacktestMixin
 from .event_bus_mixin import EventBusMixin
 from .state_mixin import StateMixin
+from .bot_panels_mixin import BotPanelsMixin
 
 __all__ = [
     "PanelsMixin",
     "BacktestMixin",
     "EventBusMixin",
     "StateMixin",
+    "BotPanelsMixin",
 ]

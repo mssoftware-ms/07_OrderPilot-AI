@@ -19,12 +19,25 @@ from PyQt6.QtWidgets import QMainWindow, QDockWidget
 from PyQt6.QtGui import QCloseEvent
 
 from .embedded_tradingview_chart import EmbeddedTradingViewChart
-from .chart_window_mixins import PanelsMixin, BacktestMixin, EventBusMixin, StateMixin
+from .chart_window_mixins import (
+    PanelsMixin,
+    BacktestMixin,
+    EventBusMixin,
+    StateMixin,
+    BotPanelsMixin,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class ChartWindow(PanelsMixin, BacktestMixin, EventBusMixin, StateMixin, QMainWindow):
+class ChartWindow(
+    BotPanelsMixin,
+    PanelsMixin,
+    BacktestMixin,
+    EventBusMixin,
+    StateMixin,
+    QMainWindow
+):
     """Popup window for displaying a single chart."""
 
     # Signals

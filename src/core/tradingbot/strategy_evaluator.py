@@ -1,0 +1,676 @@
+"""Strategy Evaluator for Tradingbot.
+
+Evaluates strategy performance using walk-forward analysis
+with rolling windows and out-of-sample validation.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .strategy_catalog import StrategyDefinition
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TradeResult:
+    """Result of a single trade."""
+    entry_time: datetime
+    exit_time: datetime
+    side: str  # "long" or "short"
+    entry_price: float
+    exit_price: float
+    quantity: float
+    pnl: float
+    pnl_pct: float
+    bars_held: int
+    exit_reason: str
+    strategy_name: str
+
+
+@dataclass
+class PerformanceMetrics:
+    """Performance metrics for a strategy evaluation period."""
+    # Core metrics
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    win_rate: float = 0.0
+
+    # Profit metrics
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    net_profit: float = 0.0
+    profit_factor: float = 0.0
+
+    # Average metrics
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    avg_trade: float = 0.0
+    expectancy: float = 0.0
+
+    # Risk metrics
+    max_drawdown: float = 0.0
+    max_drawdown_pct: float = 0.0
+    max_consecutive_losses: int = 0
+    max_consecutive_wins: int = 0
+
+    # Time metrics
+    avg_bars_held: float = 0.0
+    avg_win_bars: float = 0.0
+    avg_loss_bars: float = 0.0
+
+    # Ratios
+    sharpe_ratio: float | None = None
+    sortino_ratio: float | None = None
+    calmar_ratio: float | None = None
+
+    # Period info
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    sample_type: str = "in_sample"  # "in_sample" or "out_of_sample"
+
+    def is_robust(
+        self,
+        min_trades: int = 30,
+        min_profit_factor: float = 1.2,
+        max_drawdown_pct: float = 15.0,
+        min_win_rate: float = 0.35
+    ) -> bool:
+        """Check if metrics meet robustness criteria.
+
+        Args:
+            min_trades: Minimum number of trades
+            min_profit_factor: Minimum profit factor
+            max_drawdown_pct: Maximum allowed drawdown %
+            min_win_rate: Minimum win rate
+
+        Returns:
+            True if all criteria met
+        """
+        return (
+            self.total_trades >= min_trades and
+            self.profit_factor >= min_profit_factor and
+            abs(self.max_drawdown_pct) <= max_drawdown_pct and
+            self.win_rate >= min_win_rate
+        )
+
+
+class RobustnessGate(BaseModel):
+    """Configuration for robustness validation."""
+    min_trades: int = Field(default=30, ge=10)
+    min_profit_factor: float = Field(default=1.2, ge=1.0)
+    max_drawdown_pct: float = Field(default=15.0, ge=1.0, le=50.0)
+    min_win_rate: float = Field(default=0.35, ge=0.1, le=0.9)
+    min_expectancy: float = Field(default=0.0)  # Minimum expected value per trade
+    require_oos_validation: bool = Field(default=True)
+    oos_degradation_max: float = Field(default=0.3)  # Max 30% worse in OOS
+
+
+class WalkForwardConfig(BaseModel):
+    """Configuration for walk-forward analysis."""
+    training_window_days: int = Field(default=30, ge=7)
+    test_window_days: int = Field(default=7, ge=1)
+    min_training_trades: int = Field(default=20, ge=5)
+    anchored: bool = Field(default=False)  # Anchored vs rolling window
+    step_days: int = Field(default=7, ge=1)  # Step size for rolling
+
+
+@dataclass
+class WalkForwardResult:
+    """Result of walk-forward analysis."""
+    strategy_name: str
+    config: WalkForwardConfig
+    in_sample_metrics: PerformanceMetrics
+    out_of_sample_metrics: PerformanceMetrics
+    periods_evaluated: int = 0
+    periods_passed: int = 0
+    robustness_score: float = 0.0
+    is_robust: bool = False
+    evaluation_date: datetime = field(default_factory=datetime.utcnow)
+
+
+class StrategyEvaluator:
+    """Evaluator for strategy performance.
+
+    Provides methods for calculating performance metrics
+    and running walk-forward analysis.
+    """
+
+    def __init__(
+        self,
+        robustness_gate: RobustnessGate | None = None,
+        walk_forward_config: WalkForwardConfig | None = None
+    ):
+        """Initialize evaluator.
+
+        Args:
+            robustness_gate: Robustness validation criteria
+            walk_forward_config: Walk-forward analysis configuration
+        """
+        self.robustness_gate = robustness_gate or RobustnessGate()
+        self.walk_forward_config = walk_forward_config or WalkForwardConfig()
+
+        logger.info(
+            f"StrategyEvaluator initialized "
+            f"(training={self.walk_forward_config.training_window_days}d, "
+            f"test={self.walk_forward_config.test_window_days}d)"
+        )
+
+    def calculate_metrics(
+        self,
+        trades: list[TradeResult],
+        initial_capital: float = 10000.0,
+        sample_type: str = "in_sample"
+    ) -> PerformanceMetrics:
+        """Calculate performance metrics from trade results.
+
+        Args:
+            trades: List of trade results
+            initial_capital: Starting capital for drawdown calculations
+            sample_type: "in_sample" or "out_of_sample"
+
+        Returns:
+            PerformanceMetrics
+        """
+        metrics = PerformanceMetrics(sample_type=sample_type)
+
+        if not trades:
+            return metrics
+
+        # Sort by exit time
+        trades = sorted(trades, key=lambda t: t.exit_time)
+
+        metrics.total_trades = len(trades)
+        metrics.start_date = trades[0].entry_time
+        metrics.end_date = trades[-1].exit_time
+
+        # Separate wins and losses
+        wins = [t for t in trades if t.pnl > 0]
+        losses = [t for t in trades if t.pnl <= 0]
+
+        metrics.winning_trades = len(wins)
+        metrics.losing_trades = len(losses)
+        metrics.win_rate = len(wins) / len(trades) if trades else 0
+
+        # Profit metrics
+        metrics.gross_profit = sum(t.pnl for t in wins)
+        metrics.gross_loss = abs(sum(t.pnl for t in losses))
+        metrics.net_profit = metrics.gross_profit - metrics.gross_loss
+
+        if metrics.gross_loss > 0:
+            metrics.profit_factor = metrics.gross_profit / metrics.gross_loss
+        else:
+            metrics.profit_factor = float('inf') if metrics.gross_profit > 0 else 0
+
+        # Average metrics
+        if wins:
+            metrics.avg_win = metrics.gross_profit / len(wins)
+            metrics.avg_win_bars = np.mean([t.bars_held for t in wins])
+        if losses:
+            metrics.avg_loss = -metrics.gross_loss / len(losses)
+            metrics.avg_loss_bars = np.mean([t.bars_held for t in losses])
+
+        metrics.avg_trade = metrics.net_profit / len(trades) if trades else 0
+        metrics.avg_bars_held = np.mean([t.bars_held for t in trades])
+
+        # Expectancy = (Win% × Avg Win) - (Loss% × Avg Loss)
+        if metrics.winning_trades > 0 and metrics.losing_trades > 0:
+            metrics.expectancy = (
+                metrics.win_rate * metrics.avg_win +
+                (1 - metrics.win_rate) * metrics.avg_loss  # avg_loss is negative
+            )
+        else:
+            metrics.expectancy = metrics.avg_trade
+
+        # Drawdown calculation
+        self._calculate_drawdown(trades, initial_capital, metrics)
+
+        # Consecutive wins/losses
+        self._calculate_consecutive_streaks(trades, metrics)
+
+        # Risk-adjusted ratios
+        self._calculate_risk_ratios(trades, metrics)
+
+        return metrics
+
+    def _calculate_drawdown(
+        self,
+        trades: list[TradeResult],
+        initial_capital: float,
+        metrics: PerformanceMetrics
+    ) -> None:
+        """Calculate maximum drawdown."""
+        if not trades:
+            return
+
+        # Build equity curve
+        equity = [initial_capital]
+        for trade in trades:
+            equity.append(equity[-1] + trade.pnl)
+
+        equity_array = np.array(equity)
+        peak = np.maximum.accumulate(equity_array)
+        drawdown = equity_array - peak
+
+        metrics.max_drawdown = float(np.min(drawdown))
+        peak_at_max_dd = peak[np.argmin(drawdown)]
+        if peak_at_max_dd > 0:
+            metrics.max_drawdown_pct = (metrics.max_drawdown / peak_at_max_dd) * 100
+
+    def _calculate_consecutive_streaks(
+        self,
+        trades: list[TradeResult],
+        metrics: PerformanceMetrics
+    ) -> None:
+        """Calculate consecutive win/loss streaks."""
+        if not trades:
+            return
+
+        max_wins = 0
+        max_losses = 0
+        current_wins = 0
+        current_losses = 0
+
+        for trade in trades:
+            if trade.pnl > 0:
+                current_wins += 1
+                current_losses = 0
+                max_wins = max(max_wins, current_wins)
+            else:
+                current_losses += 1
+                current_wins = 0
+                max_losses = max(max_losses, current_losses)
+
+        metrics.max_consecutive_wins = max_wins
+        metrics.max_consecutive_losses = max_losses
+
+    def _calculate_risk_ratios(
+        self,
+        trades: list[TradeResult],
+        metrics: PerformanceMetrics
+    ) -> None:
+        """Calculate Sharpe, Sortino, Calmar ratios."""
+        if len(trades) < 2:
+            return
+
+        returns = np.array([t.pnl_pct for t in trades])
+
+        # Sharpe ratio (assuming risk-free rate = 0)
+        if np.std(returns) > 0:
+            metrics.sharpe_ratio = float(np.mean(returns) / np.std(returns))
+
+        # Sortino ratio (downside deviation)
+        downside = returns[returns < 0]
+        if len(downside) > 0 and np.std(downside) > 0:
+            metrics.sortino_ratio = float(np.mean(returns) / np.std(downside))
+
+        # Calmar ratio (return / max drawdown)
+        if abs(metrics.max_drawdown_pct) > 0:
+            total_return = sum(t.pnl_pct for t in trades)
+            metrics.calmar_ratio = float(total_return / abs(metrics.max_drawdown_pct))
+
+    def validate_robustness(
+        self,
+        metrics: PerformanceMetrics,
+        gate: RobustnessGate | None = None
+    ) -> tuple[bool, list[str]]:
+        """Validate metrics against robustness criteria.
+
+        Args:
+            metrics: Performance metrics to validate
+            gate: Custom robustness gate (uses default if None)
+
+        Returns:
+            (is_robust, list of failure reasons)
+        """
+        gate = gate or self.robustness_gate
+        failures = []
+
+        if metrics.total_trades < gate.min_trades:
+            failures.append(
+                f"Insufficient trades: {metrics.total_trades} < {gate.min_trades}"
+            )
+
+        if metrics.profit_factor < gate.min_profit_factor:
+            failures.append(
+                f"Low profit factor: {metrics.profit_factor:.2f} < {gate.min_profit_factor}"
+            )
+
+        if abs(metrics.max_drawdown_pct) > gate.max_drawdown_pct:
+            failures.append(
+                f"High drawdown: {abs(metrics.max_drawdown_pct):.1f}% > {gate.max_drawdown_pct}%"
+            )
+
+        if metrics.win_rate < gate.min_win_rate:
+            failures.append(
+                f"Low win rate: {metrics.win_rate:.1%} < {gate.min_win_rate:.1%}"
+            )
+
+        if metrics.expectancy < gate.min_expectancy:
+            failures.append(
+                f"Low expectancy: {metrics.expectancy:.2f} < {gate.min_expectancy}"
+            )
+
+        return len(failures) == 0, failures
+
+    def run_walk_forward(
+        self,
+        strategy: "StrategyDefinition",
+        all_trades: list[TradeResult],
+        config: WalkForwardConfig | None = None
+    ) -> WalkForwardResult:
+        """Run walk-forward analysis on strategy.
+
+        Args:
+            strategy: Strategy definition
+            all_trades: All historical trades for this strategy
+            config: Walk-forward configuration
+
+        Returns:
+            WalkForwardResult with in-sample and out-of-sample metrics
+        """
+        config = config or self.walk_forward_config
+
+        if not all_trades:
+            return WalkForwardResult(
+                strategy_name=strategy.profile.name,
+                config=config,
+                in_sample_metrics=PerformanceMetrics(),
+                out_of_sample_metrics=PerformanceMetrics(),
+            )
+
+        # Sort trades by exit time
+        trades = sorted(all_trades, key=lambda t: t.exit_time)
+
+        # Calculate date ranges
+        start_date = trades[0].entry_time
+        end_date = trades[-1].exit_time
+        total_days = (end_date - start_date).days
+
+        if total_days < config.training_window_days + config.test_window_days:
+            logger.warning(
+                f"Insufficient history for walk-forward: {total_days} days"
+            )
+            # Fall back to simple split
+            return self._simple_train_test_split(strategy, trades, config)
+
+        # Run rolling walk-forward
+        is_results = []
+        oos_results = []
+        periods_passed = 0
+
+        if config.anchored:
+            # Anchored walk-forward (expanding window)
+            periods = self._generate_anchored_periods(
+                start_date, end_date, config
+            )
+        else:
+            # Rolling walk-forward
+            periods = self._generate_rolling_periods(
+                start_date, end_date, config
+            )
+
+        for train_start, train_end, test_start, test_end in periods:
+            # Get trades for each period
+            train_trades = [
+                t for t in trades
+                if train_start <= t.exit_time < train_end
+            ]
+            test_trades = [
+                t for t in trades
+                if test_start <= t.exit_time < test_end
+            ]
+
+            if len(train_trades) < config.min_training_trades:
+                continue
+
+            # Calculate metrics
+            is_metrics = self.calculate_metrics(train_trades, sample_type="in_sample")
+            oos_metrics = self.calculate_metrics(test_trades, sample_type="out_of_sample")
+
+            is_results.append(is_metrics)
+            oos_results.append(oos_metrics)
+
+            # Check if this period passed
+            is_robust, _ = self.validate_robustness(is_metrics)
+            if is_robust and oos_metrics.total_trades > 0:
+                # Check OOS degradation
+                degradation = self._calculate_oos_degradation(is_metrics, oos_metrics)
+                if degradation <= self.robustness_gate.oos_degradation_max:
+                    periods_passed += 1
+
+        # Aggregate results
+        agg_is_metrics = self._aggregate_metrics(is_results)
+        agg_oos_metrics = self._aggregate_metrics(oos_results)
+
+        # Calculate robustness score
+        robustness_score = (
+            periods_passed / len(is_results)
+            if is_results else 0.0
+        )
+
+        # Determine if overall robust
+        is_robust, _ = self.validate_robustness(agg_is_metrics)
+        if self.robustness_gate.require_oos_validation:
+            oos_robust = agg_oos_metrics.profit_factor >= 1.0
+            is_robust = is_robust and oos_robust
+
+        return WalkForwardResult(
+            strategy_name=strategy.profile.name,
+            config=config,
+            in_sample_metrics=agg_is_metrics,
+            out_of_sample_metrics=agg_oos_metrics,
+            periods_evaluated=len(is_results),
+            periods_passed=periods_passed,
+            robustness_score=robustness_score,
+            is_robust=is_robust,
+        )
+
+    def _simple_train_test_split(
+        self,
+        strategy: "StrategyDefinition",
+        trades: list[TradeResult],
+        config: WalkForwardConfig
+    ) -> WalkForwardResult:
+        """Simple 70/30 train/test split when not enough history."""
+        split_idx = int(len(trades) * 0.7)
+        train_trades = trades[:split_idx]
+        test_trades = trades[split_idx:]
+
+        is_metrics = self.calculate_metrics(train_trades, sample_type="in_sample")
+        oos_metrics = self.calculate_metrics(test_trades, sample_type="out_of_sample")
+
+        is_robust, _ = self.validate_robustness(is_metrics)
+
+        return WalkForwardResult(
+            strategy_name=strategy.profile.name,
+            config=config,
+            in_sample_metrics=is_metrics,
+            out_of_sample_metrics=oos_metrics,
+            periods_evaluated=1,
+            periods_passed=1 if is_robust else 0,
+            robustness_score=1.0 if is_robust else 0.0,
+            is_robust=is_robust,
+        )
+
+    def _generate_rolling_periods(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        config: WalkForwardConfig
+    ) -> list[tuple[datetime, datetime, datetime, datetime]]:
+        """Generate rolling window periods."""
+        periods = []
+        current_start = start_date
+
+        while True:
+            train_end = current_start + timedelta(days=config.training_window_days)
+            test_start = train_end
+            test_end = test_start + timedelta(days=config.test_window_days)
+
+            if test_end > end_date:
+                break
+
+            periods.append((current_start, train_end, test_start, test_end))
+            current_start += timedelta(days=config.step_days)
+
+        return periods
+
+    def _generate_anchored_periods(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        config: WalkForwardConfig
+    ) -> list[tuple[datetime, datetime, datetime, datetime]]:
+        """Generate anchored (expanding) window periods."""
+        periods = []
+        anchor_start = start_date
+        current_end = anchor_start + timedelta(days=config.training_window_days)
+
+        while True:
+            test_start = current_end
+            test_end = test_start + timedelta(days=config.test_window_days)
+
+            if test_end > end_date:
+                break
+
+            periods.append((anchor_start, current_end, test_start, test_end))
+            current_end += timedelta(days=config.step_days)
+
+        return periods
+
+    def _calculate_oos_degradation(
+        self,
+        is_metrics: PerformanceMetrics,
+        oos_metrics: PerformanceMetrics
+    ) -> float:
+        """Calculate performance degradation from IS to OOS.
+
+        Returns:
+            Degradation ratio (0 = same, 0.3 = 30% worse)
+        """
+        if is_metrics.profit_factor <= 0:
+            return 1.0
+
+        if oos_metrics.profit_factor >= is_metrics.profit_factor:
+            return 0.0  # No degradation
+
+        degradation = 1 - (oos_metrics.profit_factor / is_metrics.profit_factor)
+        return max(0, min(1, degradation))
+
+    def _aggregate_metrics(
+        self,
+        metrics_list: list[PerformanceMetrics]
+    ) -> PerformanceMetrics:
+        """Aggregate metrics from multiple periods."""
+        if not metrics_list:
+            return PerformanceMetrics()
+
+        agg = PerformanceMetrics()
+
+        # Sum totals
+        agg.total_trades = sum(m.total_trades for m in metrics_list)
+        agg.winning_trades = sum(m.winning_trades for m in metrics_list)
+        agg.losing_trades = sum(m.losing_trades for m in metrics_list)
+        agg.gross_profit = sum(m.gross_profit for m in metrics_list)
+        agg.gross_loss = sum(m.gross_loss for m in metrics_list)
+        agg.net_profit = agg.gross_profit - agg.gross_loss
+
+        # Calculate derived metrics
+        if agg.total_trades > 0:
+            agg.win_rate = agg.winning_trades / agg.total_trades
+
+        if agg.gross_loss > 0:
+            agg.profit_factor = agg.gross_profit / agg.gross_loss
+
+        if agg.winning_trades > 0:
+            agg.avg_win = agg.gross_profit / agg.winning_trades
+
+        if agg.losing_trades > 0:
+            agg.avg_loss = -agg.gross_loss / agg.losing_trades
+
+        if agg.total_trades > 0:
+            agg.avg_trade = agg.net_profit / agg.total_trades
+
+        # Expectancy
+        if agg.winning_trades > 0 and agg.losing_trades > 0:
+            agg.expectancy = (
+                agg.win_rate * agg.avg_win +
+                (1 - agg.win_rate) * agg.avg_loss
+            )
+
+        # Worst drawdown across periods
+        agg.max_drawdown = min(m.max_drawdown for m in metrics_list)
+        agg.max_drawdown_pct = min(m.max_drawdown_pct for m in metrics_list)
+
+        # Max consecutive streaks
+        agg.max_consecutive_wins = max(m.max_consecutive_wins for m in metrics_list)
+        agg.max_consecutive_losses = max(m.max_consecutive_losses for m in metrics_list)
+
+        # Average bars held
+        total_bars = sum(m.avg_bars_held * m.total_trades for m in metrics_list)
+        if agg.total_trades > 0:
+            agg.avg_bars_held = total_bars / agg.total_trades
+
+        # Date range
+        agg.start_date = min(m.start_date for m in metrics_list if m.start_date)
+        agg.end_date = max(m.end_date for m in metrics_list if m.end_date)
+
+        return agg
+
+    def compare_strategies(
+        self,
+        results: list[WalkForwardResult]
+    ) -> list[tuple[str, float]]:
+        """Rank strategies by composite score.
+
+        Args:
+            results: Walk-forward results for strategies
+
+        Returns:
+            List of (strategy_name, score) sorted by score descending
+        """
+        scores = []
+
+        for result in results:
+            if not result.is_robust:
+                scores.append((result.strategy_name, 0.0))
+                continue
+
+            # Composite score components
+            pf_score = min(result.in_sample_metrics.profit_factor / 2.0, 1.0)
+            wr_score = result.in_sample_metrics.win_rate
+            dd_score = 1 - (abs(result.in_sample_metrics.max_drawdown_pct) / 20.0)
+            dd_score = max(0, min(1, dd_score))
+            robust_score = result.robustness_score
+
+            # OOS bonus/penalty
+            oos_bonus = 0.0
+            if result.out_of_sample_metrics.total_trades > 0:
+                if result.out_of_sample_metrics.profit_factor >= 1.0:
+                    oos_bonus = 0.2
+                elif result.out_of_sample_metrics.net_profit > 0:
+                    oos_bonus = 0.1
+
+            # Weighted composite
+            composite = (
+                pf_score * 0.30 +
+                wr_score * 0.20 +
+                dd_score * 0.20 +
+                robust_score * 0.20 +
+                oos_bonus * 0.10
+            )
+
+            scores.append((result.strategy_name, composite))
+
+        return sorted(scores, key=lambda x: x[1], reverse=True)
