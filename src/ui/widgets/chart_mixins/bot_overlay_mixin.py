@@ -28,6 +28,8 @@ class MarkerType(str, Enum):
     EXIT_SIGNAL = "exit_signal"
     STOP_TRIGGERED = "stop_triggered"
     TRAILING_UPDATE = "trailing_update"
+    MACD_BEARISH = "macd_bearish"
+    MACD_BULLISH = "macd_bullish"
 
 
 @dataclass
@@ -60,6 +62,14 @@ class BotMarker:
             shape = "circle"
             color = "#f44336"  # Red
             position = "aboveBar" if self.side == "long" else "belowBar"
+        elif self.marker_type == MarkerType.MACD_BEARISH:
+            shape = "arrowDown"
+            color = "#e91e63"  # Pink/Magenta for bearish MACD
+            position = "aboveBar"
+        elif self.marker_type == MarkerType.MACD_BULLISH:
+            shape = "arrowUp"
+            color = "#00bcd4"  # Cyan for bullish MACD
+            position = "belowBar"
         else:
             shape = "circle"
             color = "#607d8b"  # Grey
@@ -235,6 +245,29 @@ class BotOverlayMixin:
             side, "STOP"
         )
 
+    def add_macd_marker(
+        self,
+        timestamp: datetime | int,
+        price: float,
+        is_bearish: bool
+    ) -> None:
+        """Add MACD cross marker (info only, no exit triggered).
+
+        Args:
+            timestamp: Bar timestamp
+            price: Current price
+            is_bearish: True for bearish cross, False for bullish
+        """
+        marker_type = MarkerType.MACD_BEARISH if is_bearish else MarkerType.MACD_BULLISH
+        text = "MACD↓" if is_bearish else "MACD↑"
+        # Use "macd" as side since it's not position-related
+        side = "macd"
+        self.add_bot_marker(
+            timestamp, price, marker_type,
+            side, text
+        )
+        logger.info(f"Added MACD marker: {'bearish' if is_bearish else 'bullish'} @ {price:.2f}")
+
     def clear_bot_markers(self) -> None:
         """Clear all bot markers from chart."""
         self._bot_overlay_state.markers.clear()
@@ -292,8 +325,8 @@ class BotOverlayMixin:
             else:
                 color = "#4caf50"  # Green for target
 
-        # Line style based on type
-        line_style = "dashed" if line_type == "trailing" else "solid"
+        # Line style - all solid for better visibility
+        line_style = "solid"
 
         # Remove existing line if updating
         if line_id in self._bot_overlay_state.stop_lines:
@@ -340,8 +373,8 @@ class BotOverlayMixin:
         stop_line.price = new_price
         stop_line.label = f"SL @ {new_price:.2f}"
 
-        # Line style based on type
-        line_style = "dashed" if stop_line.line_type == "trailing" else "solid"
+        # Line style - all solid for better visibility
+        line_style = "solid"
 
         self._execute_js(
             f"window.chartAPI?.addHorizontalLine({new_price}, '{stop_line.color}', '{stop_line.label}', '{line_style}');"
@@ -520,15 +553,16 @@ class BotOverlayMixin:
         """
         # Clear existing position markers
         self.remove_stop_line("pos_entry")
-        self.remove_stop_line("pos_stop")
-        self.remove_stop_line("pos_initial_stop")
+        self.remove_stop_line("initial_stop")
+        self.remove_stop_line("trailing_stop")
 
-        if not position.is_open:
+        # If position is None, just return after clearing
+        if position is None:
             return
 
         side = position.side.value if hasattr(position.side, 'value') else str(position.side)
 
-        # Entry line (dotted, subtle)
+        # Entry line (blue, solid)
         self.add_stop_line(
             "pos_entry",
             position.entry_price,
@@ -537,33 +571,33 @@ class BotOverlayMixin:
             label=f"Entry @ {position.entry_price:.4f}"
         )
 
-        # Initial stop (if different from current)
-        if position.trailing_state and position.trailing_state.initial_stop:
-            initial_stop = position.trailing_state.initial_stop
-            if abs(initial_stop - position.trailing_state.current_stop) > 0.0001:
-                self.add_stop_line(
-                    "pos_initial_stop",
-                    initial_stop,
-                    line_type="initial",
-                    color="#ff5722",
-                    label=f"Initial SL @ {initial_stop:.4f}"
-                )
-
-        # Current stop (trailing)
-        if position.trailing_state:
+        # Initial stop loss line (red, solid)
+        if position.trailing and position.trailing.initial_stop_price:
+            initial_stop = position.trailing.initial_stop_price
             self.add_stop_line(
-                "pos_stop",
-                position.trailing_state.current_stop,
-                line_type="trailing",
-                color="#ff9800",
-                label=f"Trailing SL @ {position.trailing_state.current_stop:.4f}"
+                "initial_stop",
+                initial_stop,
+                line_type="initial",
+                color="#ef5350",  # Red for initial stop loss
+                label=f"Initial SL @ {initial_stop:.4f}"
             )
+
+            # Trailing stop (orange, solid) - only if different from initial
+            current_stop = position.trailing.current_stop_price
+            if abs(current_stop - initial_stop) > 0.0001:
+                self.add_stop_line(
+                    "trailing_stop",
+                    current_stop,
+                    line_type="trailing",
+                    color="#ff9800",  # Orange for trailing stop
+                    label=f"Trailing SL @ {current_stop:.4f}"
+                )
 
     def clear_position_display(self) -> None:
         """Clear position display elements."""
         self.remove_stop_line("pos_entry")
-        self.remove_stop_line("pos_stop")
-        self.remove_stop_line("pos_initial_stop")
+        self.remove_stop_line("initial_stop")
+        self.remove_stop_line("trailing_stop")
 
     # ==================== SIGNAL DISPLAY ====================
 

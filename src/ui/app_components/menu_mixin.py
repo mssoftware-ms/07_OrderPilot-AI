@@ -83,6 +83,12 @@ class MenuMixin:
         ai_monitor_action.triggered.connect(self.show_ai_monitor)
         tools_menu.addAction(ai_monitor_action)
 
+        pattern_db_action = QAction("&Pattern Database...", self)
+        pattern_db_action.setShortcut("Ctrl+Shift+D")
+        pattern_db_action.setToolTip("Manage Qdrant pattern database for signal validation")
+        pattern_db_action.triggered.connect(self.show_pattern_db_dialog)
+        tools_menu.addAction(pattern_db_action)
+
         tools_menu.addSeparator()
 
         reset_layout_action = QAction("&Reset Toolbars && Docks", self)

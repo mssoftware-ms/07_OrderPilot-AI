@@ -95,6 +95,14 @@ class BotConfig(BaseModel):
         default=False,
         description="Show debug HUD on chart"
     )
+    disable_restrictions: bool = Field(
+        default=True,
+        description="Disable max trades/loss limits (for paper trading)"
+    )
+    disable_macd_exit: bool = Field(
+        default=False,
+        description="Disable automatic exit on MACD cross (use stop-loss only)"
+    )
 
     @field_validator('symbol')
     @classmethod
@@ -112,8 +120,8 @@ class RiskConfig(BaseModel):
     risk_per_trade_pct: float = Field(
         default=1.0,
         ge=0.1,
-        le=10.0,
-        description="Risk per trade as % of account"
+        le=100.0,
+        description="Risk per trade as % of account (invested capital per trade)"
     )
     max_position_size_pct: float = Field(
         default=20.0,
@@ -131,6 +139,12 @@ class RiskConfig(BaseModel):
     )
 
     # Trailing stop parameters
+    trailing_activation_pct: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=20.0,
+        description="Minimum profit % before trailing stop activates (0 = activate immediately when in profit)"
+    )
     trailing_pct_distance: float = Field(
         default=1.5,
         ge=0.1,
@@ -138,15 +152,15 @@ class RiskConfig(BaseModel):
         description="Trailing stop distance in % (PCT mode)"
     )
     trailing_atr_multiple: float = Field(
-        default=2.0,
+        default=2.5,
         ge=0.5,
         le=10.0,
         description="ATR multiple for trailing (ATR mode)"
     )
     trailing_min_step_pct: float = Field(
-        default=0.1,
+        default=0.3,
         ge=0.01,
-        le=1.0,
+        le=2.0,
         description="Minimum step for trailing stop updates"
     )
     trailing_cooldown_bars: int = Field(
@@ -154,6 +168,30 @@ class RiskConfig(BaseModel):
         ge=1,
         le=20,
         description="Cooldown bars between trailing updates"
+    )
+
+    # Regime-Adaptive Trailing Stop Settings
+    regime_adaptive_trailing: bool = Field(
+        default=True,
+        description="Enable regime-based ATR multiplier adjustment"
+    )
+    trailing_atr_trending: float = Field(
+        default=2.0,
+        ge=0.5,
+        le=5.0,
+        description="ATR multiplier for trending markets (tighter)"
+    )
+    trailing_atr_ranging: float = Field(
+        default=3.5,
+        ge=1.0,
+        le=8.0,
+        description="ATR multiplier for ranging/choppy markets (wider)"
+    )
+    trailing_volatility_bonus: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=2.0,
+        description="Extra ATR multiplier added during high volatility"
     )
 
     # Risk limits
@@ -204,6 +242,11 @@ class RiskConfig(BaseModel):
             initial_stop_loss_pct=3.0,
             trailing_pct_distance=2.0,
             trailing_atr_multiple=2.5,
+            trailing_min_step_pct=0.3,
+            regime_adaptive_trailing=True,
+            trailing_atr_trending=2.0,
+            trailing_atr_ranging=3.5,
+            trailing_volatility_bonus=0.5,
             expected_slippage_pct=0.1,
             commission_pct=0.1
         )
@@ -215,6 +258,11 @@ class RiskConfig(BaseModel):
             initial_stop_loss_pct=1.5,
             trailing_pct_distance=1.0,
             trailing_atr_multiple=1.5,
+            trailing_min_step_pct=0.1,
+            regime_adaptive_trailing=True,
+            trailing_atr_trending=1.5,
+            trailing_atr_ranging=2.5,
+            trailing_volatility_bonus=0.3,
             expected_slippage_pct=0.02,
             commission_pct=0.0  # Commission-free on many platforms
         )

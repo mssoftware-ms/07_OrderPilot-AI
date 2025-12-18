@@ -30,10 +30,31 @@ class EventBusMixin:
             event_bus.subscribe(EventType.ORDER_FILLED, self._on_order_filled)
             event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar)
 
+            # Connect to chart widget's symbol change signal
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'signals'):
+                self.chart_widget.signals.symbolChanged.connect(self._on_chart_symbol_changed)
+                logger.debug("Connected to chart symbolChanged signal")
+
             logger.info(f"Event bus subscriptions established for {self.symbol} chart")
 
         except Exception as e:
             logger.error(f"Failed to set up event subscriptions: {e}", exc_info=True)
+
+    def _on_chart_symbol_changed(self, new_symbol: str) -> None:
+        """Handle symbol change in chart - update bot panel settings.
+
+        Args:
+            new_symbol: The new symbol that was selected
+        """
+        logger.info(f"Chart symbol changed to: {new_symbol}")
+
+        # Update window title
+        self.setWindowTitle(f"Chart - {new_symbol}")
+        self.symbol = new_symbol
+
+        # Update bot panel if available
+        if hasattr(self, 'update_bot_symbol'):
+            self.update_bot_symbol(new_symbol)
 
     def _on_trade_entry(self, event: ExecutionEvent):
         """Handle TRADE_ENTRY event - add entry marker to chart."""

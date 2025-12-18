@@ -339,7 +339,9 @@ class BacktestHarness:
         self._regime_engine = RegimeEngine()
         self._entry_scorer = EntryScorer()
         self._exit_checker = ExitSignalChecker()
-        self._trailing_manager = TrailingStopManager()
+        self._trailing_manager = TrailingStopManager(
+            activation_pct=self.bot_config.risk.trailing_activation_pct
+        )
         self._no_trade_filter = NoTradeFilter(self.bot_config.risk)
         self._strategy_selector = StrategySelector()
 

@@ -4,10 +4,10 @@ Provides a dedicated window for viewing charts with full screen support.
 Can be detached from the main application for multi-monitor setups.
 
 REFACTORED: Extracted mixins to meet 600 LOC limit.
-- PanelsMixin: Tab creation (Strategy, Backtest, Optimization, Results)
-- BacktestMixin: Backtest execution and visualization
+- PanelsMixin: Tab creation (Bot tabs only)
 - EventBusMixin: Event bus integration for live markers
 - StateMixin: State save/restore functionality
+- BotPanelsMixin: Trading bot control and signals
 """
 
 import json
@@ -15,8 +15,11 @@ import logging
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QTimer
-from PyQt6.QtWidgets import QMainWindow, QDockWidget
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtWidgets import (
+    QMainWindow, QDockWidget, QWidget, QHBoxLayout,
+    QLabel, QToolButton, QSizePolicy
+)
+from PyQt6.QtGui import QCloseEvent, QShortcut, QKeySequence
 
 from .embedded_tradingview_chart import EmbeddedTradingViewChart
 from .chart_window_mixins import (
@@ -28,6 +31,124 @@ from .chart_window_mixins import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class DockTitleBar(QWidget):
+    """Custom title bar for dock widget with minimize/maximize buttons."""
+
+    minimize_clicked = pyqtSignal()
+    maximize_clicked = pyqtSignal()
+    reset_clicked = pyqtSignal()
+    close_clicked = pyqtSignal()
+    help_clicked = pyqtSignal()
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self._is_maximized = False
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(2)
+
+        # Title label
+        self.title_label = QLabel(title)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self.title_label)
+
+        # Help button (blue circle with ?)
+        self.help_btn = QToolButton()
+        self.help_btn.setObjectName("helpButton")
+        self.help_btn.setText("?")
+        self.help_btn.setToolTip("Hilfe zu Trailing Stop & Exit-Strategien (F1)")
+        self.help_btn.setFixedSize(24, 24)
+        self.help_btn.clicked.connect(self.help_clicked.emit)
+        layout.addWidget(self.help_btn)
+
+        # Reset button
+        self.reset_btn = QToolButton()
+        self.reset_btn.setText("⊞")
+        self.reset_btn.setToolTip("Layout zurücksetzen (Strg+R)")
+        self.reset_btn.setFixedSize(24, 24)
+        self.reset_btn.clicked.connect(self.reset_clicked.emit)
+        layout.addWidget(self.reset_btn)
+
+        # Minimize button
+        self.minimize_btn = QToolButton()
+        self.minimize_btn.setText("−")
+        self.minimize_btn.setToolTip("Minimieren")
+        self.minimize_btn.setFixedSize(24, 24)
+        self.minimize_btn.clicked.connect(self.minimize_clicked.emit)
+        layout.addWidget(self.minimize_btn)
+
+        # Maximize/Restore button
+        self.maximize_btn = QToolButton()
+        self.maximize_btn.setText("□")
+        self.maximize_btn.setToolTip("Maximieren")
+        self.maximize_btn.setFixedSize(24, 24)
+        self.maximize_btn.clicked.connect(self._on_maximize_clicked)
+        layout.addWidget(self.maximize_btn)
+
+        # Close button
+        self.close_btn = QToolButton()
+        self.close_btn.setText("×")
+        self.close_btn.setToolTip("Schließen")
+        self.close_btn.setFixedSize(24, 24)
+        self.close_btn.clicked.connect(self.close_clicked.emit)
+        layout.addWidget(self.close_btn)
+
+        self.setStyleSheet("""
+            DockTitleBar {
+                background: #2d2d2d;
+                border-bottom: 1px solid #3d3d3d;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-weight: bold;
+                padding-left: 4px;
+            }
+            QToolButton {
+                background: transparent;
+                border: none;
+                color: #e0e0e0;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QToolButton:hover {
+                background: #3d3d3d;
+                border-radius: 2px;
+            }
+            QToolButton:pressed {
+                background: #4d4d4d;
+            }
+            QToolButton#helpButton {
+                background: #2196f3;
+                border-radius: 12px;
+                color: white;
+            }
+            QToolButton#helpButton:hover {
+                background: #1976d2;
+            }
+        """)
+
+    def _on_maximize_clicked(self):
+        self._is_maximized = not self._is_maximized
+        if self._is_maximized:
+            self.maximize_btn.setText("❐")
+            self.maximize_btn.setToolTip("Wiederherstellen")
+        else:
+            self.maximize_btn.setText("□")
+            self.maximize_btn.setToolTip("Maximieren")
+        self.maximize_clicked.emit()
+
+    def set_maximized(self, maximized: bool):
+        """Update button state without emitting signal."""
+        self._is_maximized = maximized
+        if maximized:
+            self.maximize_btn.setText("❐")
+            self.maximize_btn.setToolTip("Wiederherstellen")
+        else:
+            self.maximize_btn.setText("□")
+            self.maximize_btn.setToolTip("Maximieren")
 
 
 class ChartWindow(
@@ -79,6 +200,20 @@ class ChartWindow(
             Qt.DockWidgetArea.RightDockWidgetArea
         )
 
+        # Custom title bar with min/max/reset buttons
+        self._dock_title_bar = DockTitleBar("Analysis & Strategy")
+        self._dock_title_bar.minimize_clicked.connect(self._minimize_dock)
+        self._dock_title_bar.maximize_clicked.connect(self._toggle_dock_maximized)
+        self._dock_title_bar.reset_clicked.connect(self._reset_layout)
+        self._dock_title_bar.close_clicked.connect(self.dock_widget.close)
+        self._dock_title_bar.help_clicked.connect(self._open_trailing_stop_help)
+        self.dock_widget.setTitleBarWidget(self._dock_title_bar)
+
+        # State for dock maximize/minimize
+        self._dock_maximized = False
+        self._dock_minimized = False
+        self._saved_dock_height = 250
+
         # Create panel content (from PanelsMixin)
         self.bottom_panel = self._create_bottom_panel()
         self.dock_widget.setWidget(self.bottom_panel)
@@ -93,6 +228,21 @@ class ChartWindow(
 
         # Load window geometry from settings (from StateMixin)
         self._load_window_state()
+
+        # SAFETY: Always ensure chart is visible after loading state
+        # This prevents the window from being stuck in maximized dock state
+        self.chart_widget.setVisible(True)
+        self._dock_maximized = False
+        self._dock_minimized = False
+        self._dock_title_bar.set_maximized(False)
+
+        # Keyboard shortcut for reset layout (Ctrl+R)
+        self._reset_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        self._reset_shortcut.activated.connect(self._reset_layout)
+
+        # Keyboard shortcut for help (F1)
+        self._help_shortcut = QShortcut(QKeySequence("F1"), self)
+        self._help_shortcut.activated.connect(self._open_trailing_stop_help)
 
         # Update button text based on loaded state
         self._update_toggle_button_text()
@@ -138,6 +288,13 @@ class ChartWindow(
 
             # Unsubscribe from event bus (from EventBusMixin)
             self._unsubscribe_events()
+
+            # Save signal history (from BotPanelsMixin)
+            if hasattr(self, '_save_signal_history'):
+                try:
+                    self._save_signal_history()
+                except Exception as e:
+                    logger.debug(f"Error saving signal history: {e}")
 
             # Save sync state (from StateMixin)
             self._save_window_state()
@@ -224,3 +381,96 @@ class ChartWindow(
             await self.chart_widget.load_symbol(self.symbol, data_provider)
         except Exception as e:
             logger.error(f"Error loading chart in popup window: {e}", exc_info=True)
+
+    def _minimize_dock(self):
+        """Minimize the dock widget to show only the title bar."""
+        if self._dock_minimized:
+            # Restore from minimized state
+            self._dock_minimized = False
+            self.bottom_panel.setVisible(True)
+            self.bottom_panel.setMaximumHeight(16777215)
+            self.bottom_panel.setMinimumHeight(self._saved_dock_height)
+            QTimer.singleShot(10, lambda: self.bottom_panel.setMinimumHeight(0))
+            logger.debug("Dock restored from minimized state")
+        else:
+            # Minimize
+            self._dock_minimized = True
+            self._saved_dock_height = max(self.bottom_panel.height(), 150)
+            self.bottom_panel.setVisible(False)
+            logger.debug("Dock minimized")
+
+    def _toggle_dock_maximized(self):
+        """Toggle dock widget between maximized and normal state."""
+        if self._dock_maximized:
+            # Restore from maximized state
+            self._dock_maximized = False
+            self.chart_widget.setVisible(True)
+            self.bottom_panel.setMaximumHeight(16777215)
+            self.bottom_panel.setMinimumHeight(0)
+            logger.debug("Dock restored from maximized state")
+        else:
+            # Maximize - hide chart and expand dock
+            self._dock_maximized = True
+            self._dock_minimized = False
+            self.bottom_panel.setVisible(True)
+            self.chart_widget.setVisible(False)
+            logger.debug("Dock maximized")
+
+    def _reset_layout(self):
+        """Reset window layout to default state.
+
+        Restores chart visibility, dock position, and clears any
+        maximized/minimized state. Use this if the window gets into
+        a broken state.
+        """
+        logger.info("Resetting window layout to defaults")
+
+        # Reset state flags
+        self._dock_maximized = False
+        self._dock_minimized = False
+        self._dock_title_bar.set_maximized(False)
+
+        # Ensure chart is visible
+        self.chart_widget.setVisible(True)
+
+        # Ensure dock panel is visible and properly sized
+        self.bottom_panel.setVisible(True)
+        self.bottom_panel.setMaximumHeight(16777215)
+        self.bottom_panel.setMinimumHeight(0)
+
+        # Show dock widget
+        self.dock_widget.setVisible(True)
+        self.dock_widget.setFloating(False)
+
+        # Re-dock to bottom
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_widget)
+
+        # Reset window size if too small
+        if self.width() < 800 or self.height() < 600:
+            self.resize(1200, 800)
+            # Center on screen
+            screen = self.screen().geometry()
+            x = (screen.width() - self.width()) // 2
+            y = (screen.height() - self.height()) // 2
+            self.move(x, y)
+
+        logger.info("Window layout reset complete")
+
+    def _open_trailing_stop_help(self):
+        """Open the trailing stop help documentation in browser."""
+        import webbrowser
+        from pathlib import Path
+
+        try:
+            # Find project root and help file
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent.parent
+            help_file = project_root / "Help" / "trailing-stop-hilfe.html"
+
+            if help_file.exists():
+                webbrowser.open(help_file.as_uri())
+                logger.info(f"Opened help file: {help_file}")
+            else:
+                logger.warning(f"Help file not found: {help_file}")
+        except Exception as e:
+            logger.error(f"Error opening help file: {e}")

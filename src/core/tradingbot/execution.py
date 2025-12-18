@@ -93,7 +93,7 @@ class RiskLimits(BaseModel):
     cooldown_duration_minutes: int = Field(default=60, ge=5)
 
     # Per-trade limits
-    max_risk_per_trade_pct: float = Field(default=2.0, ge=0.1, le=10.0)
+    max_risk_per_trade_pct: float = Field(default=2.0, ge=0.1, le=100.0)
     min_risk_reward_ratio: float = Field(default=1.5, ge=1.0, le=5.0)
 
 
@@ -797,7 +797,9 @@ class OrderExecutor:
             order_type="market",
             stop_price=signal.stop_loss_price,
             signal_id=signal.id,
-            reason=f"Entry signal {signal.id}"
+            reason=f"Entry signal {signal.id}",
+            risk_amount=size_result.risk_amount,
+            position_value=size_result.position_value
         )
 
         # Validate with guardrails

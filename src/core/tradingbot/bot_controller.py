@@ -65,6 +65,8 @@ class BotController:
         on_decision: Callable[[BotDecision], None] | None = None,
         on_order: Callable[[OrderIntent], None] | None = None,
         on_log: Callable[[str, str], None] | None = None,
+        on_trading_blocked: Callable[[list[str]], None] | None = None,
+        on_macd_signal: Callable[[str, float], None] | None = None,
     ):
         """Initialize bot controller.
 
@@ -75,6 +77,8 @@ class BotController:
             on_decision: Callback for bot decisions
             on_order: Callback for order intents
             on_log: Callback for activity logging (log_type, message)
+            on_trading_blocked: Callback when trading is blocked (list of reasons)
+            on_macd_signal: Callback for MACD cross signals (signal_type, price) for chart markers
         """
         self.config = config
         self.symbol = config.bot.symbol
@@ -86,6 +90,8 @@ class BotController:
         self._on_decision = on_decision
         self._on_order = on_order
         self._on_log = on_log
+        self._on_trading_blocked = on_trading_blocked
+        self._on_macd_signal = on_macd_signal
 
         # State machine
         self._state_machine = BotStateMachine(
@@ -128,6 +134,10 @@ class BotController:
         self._running: bool = False
         self._run_id: str = str(uuid4())[:8]
 
+        # Block notification tracking (to avoid spam)
+        self._trading_blocked: bool = False
+        self._last_block_reasons: list[str] = []
+
         logger.info(
             f"BotController initialized: symbol={self.symbol}, "
             f"timeframe={self.timeframe}, run_id={self._run_id}"
@@ -167,9 +177,19 @@ class BotController:
             return False
         if self._state_machine.is_paused() or self._state_machine.is_error():
             return False
+
+        # Skip restrictions if disabled (paper trading mode)
+        if self.config.bot.disable_restrictions:
+            return True
+
+        # Apply restrictions only if enabled
         if self._trades_today >= self.config.risk.max_trades_per_day:
             return False
-        if abs(self._daily_pnl) >= self.config.risk.max_daily_loss_pct:
+        # Calculate daily PnL as percentage of account (assume $10k account)
+        # Only block on LOSSES, not profits
+        account_value = 10000.0
+        daily_pnl_pct = (self._daily_pnl / account_value) * 100
+        if daily_pnl_pct <= -self.config.risk.max_daily_loss_pct:
             return False
         if self._consecutive_losses >= self.config.risk.loss_streak_cooldown:
             return False
@@ -205,10 +225,12 @@ class BotController:
 
         self._running = True
         self._run_id = str(uuid4())[:8]
+        restrictions_status = "AUS (Paper)" if self.config.bot.disable_restrictions else "AN"
         self._log_activity(
             "START",
             f"Bot gestartet: {self.symbol} | Timeframe: {self.timeframe} | "
-            f"KI-Mode: {self.config.bot.ki_mode.value} | Run-ID: {self._run_id}"
+            f"KI-Mode: {self.config.bot.ki_mode.value} | Restriktionen: {restrictions_status} | "
+            f"Run-ID: {self._run_id}"
         )
 
     def stop(self) -> None:
@@ -519,17 +541,62 @@ class BotController:
             BotDecision or None
         """
         if not self.can_trade:
+            # Log why we can't trade for debugging
+            reasons = []
+            if not self._running:
+                reasons.append("Bot nicht gestartet")
+            if self._state_machine.is_paused():
+                reasons.append("Bot pausiert")
+            if self._state_machine.is_error():
+                reasons.append("Bot im Fehlerzustand")
+            # Only check restrictions if not disabled
+            if not self.config.bot.disable_restrictions:
+                if self._trades_today >= self.config.risk.max_trades_per_day:
+                    reasons.append(f"Max Trades erreicht ({self._trades_today}/{self.config.risk.max_trades_per_day})")
+                account_value = 10000.0
+                daily_pnl_pct = (self._daily_pnl / account_value) * 100
+                if daily_pnl_pct <= -self.config.risk.max_daily_loss_pct:
+                    reasons.append(f"Tagesverlust-Limit ({daily_pnl_pct:.2f}%)")
+                if self._consecutive_losses >= self.config.risk.loss_streak_cooldown:
+                    reasons.append(f"Verlustserie ({self._consecutive_losses} in Folge)")
+
+            # Only notify once when trading becomes blocked (not every bar)
+            if not self._trading_blocked or reasons != self._last_block_reasons:
+                self._trading_blocked = True
+                self._last_block_reasons = reasons.copy()
+                self._log_activity("BLOCKED", f"Trading blockiert: {', '.join(reasons) if reasons else 'unknown'}")
+
+                # Trigger popup callback
+                if self._on_trading_blocked and reasons:
+                    try:
+                        self._on_trading_blocked(reasons)
+                    except Exception as e:
+                        logger.error(f"Trading blocked callback error: {e}")
+
             return None
+
+        # Reset block tracking when trading is possible again
+        if self._trading_blocked:
+            self._trading_blocked = False
+            self._last_block_reasons = []
+            self._log_activity("UNBLOCKED", "Trading wieder möglich")
 
         # Calculate entry score
         long_score = self._calculate_entry_score(features, TradeSide.LONG)
         short_score = self._calculate_entry_score(features, TradeSide.SHORT)
+        threshold = self._get_entry_threshold()
+
+        # Log scores for transparency
+        self._log_activity(
+            "SCORE",
+            f"Long: {long_score:.3f} | Short: {short_score:.3f} | Threshold: {threshold:.3f}"
+        )
 
         # Get best signal
-        if long_score > short_score and long_score >= self._get_entry_threshold():
+        if long_score > short_score and long_score >= threshold:
             side = TradeSide.LONG
             score = long_score
-        elif short_score > long_score and short_score >= self._get_entry_threshold():
+        elif short_score > long_score and short_score >= threshold:
             side = TradeSide.SHORT
             score = short_score
         else:
@@ -544,6 +611,12 @@ class BotController:
         # Create signal
         signal = self._create_signal(features, side, score)
         self._current_signal = signal
+
+        self._log_activity(
+            "SIGNAL",
+            f"{side.value.upper()} Signal generiert | Score: {score:.3f} | "
+            f"Entry: {signal.entry_price:.2f} | SL: {signal.stop_loss_price:.2f}"
+        )
 
         if self._on_signal:
             self._on_signal(signal)
@@ -654,14 +727,21 @@ class BotController:
 
         # Update trailing stop
         new_stop = self._calculate_trailing_stop(features, self._position)
+        self._log_activity("DEBUG", f"_calculate_trailing_stop returned: {new_stop}")
         if new_stop:
             old_stop = self._position.trailing.current_stop_price
+            is_long = self._position.side == TradeSide.LONG
+            self._log_activity(
+                "DEBUG",
+                f"Calling update_stop: new={new_stop:.4f}, old={old_stop:.4f}, is_long={is_long}"
+            )
             updated = self._position.trailing.update_stop(
                 new_stop,
                 self._bar_count,
                 datetime.utcnow(),
-                is_long=self._position.side == TradeSide.LONG
+                is_long=is_long
             )
+            self._log_activity("DEBUG", f"update_stop returned: {updated}")
 
             if updated:
                 self._state_machine.trigger(BotTrigger.STOP_UPDATED)
@@ -933,6 +1013,9 @@ class BotController:
     ) -> float | None:
         """Calculate new trailing stop price.
 
+        Trailing stop is only activated when position is in profit.
+        Until then, the initial stop loss remains active.
+
         Args:
             features: Current features
             position: Current position
@@ -940,6 +1023,41 @@ class BotController:
         Returns:
             New stop price or None if no update needed
         """
+        # Only activate trailing when position reaches activation threshold
+        # Activation is based on RETURN ON RISK (not price change)
+        # e.g., 10% activation = 10€ profit on 100€ risk
+        entry_price = position.entry_price
+        current_price = features.close
+        initial_stop = position.trailing.initial_stop_price
+        activation_pct = self.config.risk.trailing_activation_pct
+
+        # Calculate return on risk (not price change)
+        if position.side == TradeSide.LONG:
+            risk_per_unit = entry_price - initial_stop
+            pnl_per_unit = current_price - entry_price
+        else:  # SHORT
+            risk_per_unit = initial_stop - entry_price
+            pnl_per_unit = entry_price - current_price
+
+        # Return on risk percentage
+        if risk_per_unit > 0:
+            profit_pct = (pnl_per_unit / risk_per_unit) * 100
+        else:
+            profit_pct = 0
+
+        self._log_activity(
+            "DEBUG",
+            f"Trailing Check: RoR={profit_pct:.2f}%, activation={activation_pct:.2f}%, "
+            f"risk/unit={risk_per_unit:.4f}, pnl/unit={pnl_per_unit:.4f}, side={position.side.value}"
+        )
+
+        if profit_pct < activation_pct:
+            # Position not yet at activation threshold - keep initial stop loss
+            self._log_activity("DEBUG", f"Trailing nicht aktiviert: RoR {profit_pct:.2f}% < {activation_pct:.2f}%")
+            return None
+
+        self._log_activity("DEBUG", f"Trailing AKTIVIERT: RoR {profit_pct:.2f}% >= {activation_pct:.2f}%")
+
         mode = self.config.bot.trailing_mode
 
         if mode == TrailingMode.PCT:
@@ -958,6 +1076,9 @@ class BotController:
     ) -> float | None:
         """Percentage-based trailing stop.
 
+        Distance is calculated from CURRENT price, not highest/lowest.
+        The stop only moves in favorable direction (up for long, down for short).
+
         Args:
             features: Current features
             position: Current position
@@ -967,26 +1088,42 @@ class BotController:
         """
         distance_pct = self.config.risk.trailing_pct_distance
         min_step = self.config.risk.trailing_min_step_pct
+        current_price = features.close
+        current_stop = position.trailing.current_stop_price
 
         if position.side == TradeSide.LONG:
-            # Trail up based on highest price
-            new_stop = position.trailing.highest_price * (1 - distance_pct / 100)
-            current_stop = position.trailing.current_stop_price
+            # Stop at X% below current price, only moves up
+            new_stop = current_price * (1 - distance_pct / 100)
 
-            # Check minimum step
-            step_pct = ((new_stop - current_stop) / current_stop) * 100
-            if step_pct >= min_step:
-                return new_stop
+            self._log_activity(
+                "DEBUG",
+                f"LONG PCT: current_price={current_price:.4f}, "
+                f"distance={distance_pct}%, new_stop={new_stop:.4f}, current_stop={current_stop:.4f}"
+            )
+
+            # Only update if new stop is higher (stop can only go up for long)
+            if new_stop > current_stop:
+                step_pct = ((new_stop - current_stop) / current_stop) * 100
+                self._log_activity("DEBUG", f"LONG step_pct={step_pct:.2f}%, min_step={min_step}%")
+                if step_pct >= min_step:
+                    return new_stop
 
         else:  # SHORT
-            # Trail down based on lowest price
-            new_stop = position.trailing.lowest_price * (1 + distance_pct / 100)
-            current_stop = position.trailing.current_stop_price
+            # Stop at X% above current price, only moves down
+            new_stop = current_price * (1 + distance_pct / 100)
 
-            # Check minimum step
-            step_pct = ((current_stop - new_stop) / current_stop) * 100
-            if step_pct >= min_step:
-                return new_stop
+            self._log_activity(
+                "DEBUG",
+                f"SHORT PCT: current_price={current_price:.4f}, "
+                f"distance={distance_pct}%, new_stop={new_stop:.4f}, current_stop={current_stop:.4f}"
+            )
+
+            # Only update if new stop is lower (stop can only go down for short)
+            if new_stop < current_stop:
+                step_pct = ((current_stop - new_stop) / current_stop) * 100
+                self._log_activity("DEBUG", f"SHORT step_pct={step_pct:.2f}%, min_step={min_step}%")
+                if step_pct >= min_step:
+                    return new_stop
 
         return None
 
@@ -995,7 +1132,7 @@ class BotController:
         features: FeatureVector,
         position: PositionState
     ) -> float | None:
-        """ATR-based trailing stop.
+        """ATR-based trailing stop with regime-adaptive multiplier.
 
         Args:
             features: Current features
@@ -1007,14 +1144,43 @@ class BotController:
         if features.atr_14 is None:
             return None
 
-        atr_multiple = self.config.risk.trailing_atr_multiple
         min_step = self.config.risk.trailing_min_step_pct
 
-        # Adjust ATR multiple by regime
-        if self._regime.volatility == VolatilityLevel.HIGH:
-            atr_multiple *= 1.5
-        elif self._regime.volatility == VolatilityLevel.LOW:
-            atr_multiple *= 0.8
+        # Determine ATR multiplier based on settings
+        if self.config.risk.regime_adaptive_trailing:
+            # Regime-adaptive mode: use ADX to determine multiplier
+            adx = features.adx_14 if features.adx_14 is not None else 25.0
+
+            if adx > 25:
+                # Trending market - use tighter stop
+                atr_multiple = self.config.risk.trailing_atr_trending
+                regime_type = "TRENDING"
+            elif adx < 20:
+                # Ranging/choppy market - use wider stop
+                atr_multiple = self.config.risk.trailing_atr_ranging
+                regime_type = "RANGING"
+            else:
+                # Neutral - interpolate between trending and ranging
+                t = (adx - 20) / 5.0  # 0 to 1
+                atr_multiple = (
+                    self.config.risk.trailing_atr_ranging * (1 - t) +
+                    self.config.risk.trailing_atr_trending * t
+                )
+                regime_type = "NEUTRAL"
+
+            # Add volatility bonus if ATR is high (> 2% of price)
+            atr_pct = (features.atr_14 / features.close) * 100
+            if atr_pct > 2.0:
+                vol_bonus = self.config.risk.trailing_volatility_bonus
+                atr_multiple += vol_bonus
+                self._log_activity(
+                    "TRAILING",
+                    f"High Vol ({atr_pct:.1f}%): +{vol_bonus}x Bonus | "
+                    f"Regime={regime_type} | Final ATR×{atr_multiple:.1f}"
+                )
+        else:
+            # Fixed mode: use single multiplier
+            atr_multiple = self.config.risk.trailing_atr_multiple
 
         distance = features.atr_14 * atr_multiple
 
@@ -1030,7 +1196,14 @@ class BotController:
             new_stop = position.trailing.lowest_price + distance
             current_stop = position.trailing.current_stop_price
 
+            self._log_activity(
+                "DEBUG",
+                f"SHORT ATR: lowest={position.trailing.lowest_price:.4f}, "
+                f"distance={distance:.4f}, new_stop={new_stop:.4f}, current_stop={current_stop:.4f}"
+            )
+
             step_pct = ((current_stop - new_stop) / current_stop) * 100
+            self._log_activity("DEBUG", f"SHORT ATR step_pct={step_pct:.2f}%, min_step={min_step}%")
             if step_pct >= min_step:
                 return new_stop
 
@@ -1102,19 +1275,39 @@ class BotController:
             elif self._position.side == TradeSide.SHORT and features.rsi_14 < 20:
                 return "RSI_EXTREME_OVERSOLD"
 
-        # MACD cross
+        # MACD cross - always detect and notify, but optionally don't exit
         if features.macd is not None and features.macd_signal is not None:
+            macd_signal_type = None
+
             if self._position.side == TradeSide.LONG:
                 if features.macd < features.macd_signal and features.macd_hist and features.macd_hist < 0:
-                    return "MACD_BEARISH_CROSS"
-            else:
+                    macd_signal_type = "MACD_BEARISH_CROSS"
+            else:  # SHORT position
                 if features.macd > features.macd_signal and features.macd_hist and features.macd_hist > 0:
-                    return "MACD_BULLISH_CROSS"
+                    macd_signal_type = "MACD_BULLISH_CROSS"
 
-        # Time stop (optional)
-        max_bars = 200  # ~3 hours at 1m
-        if self._position.bars_held > max_bars:
-            return "TIME_STOP"
+            if macd_signal_type:
+                # Always notify for chart marker (even if exit is disabled)
+                if self._on_macd_signal:
+                    try:
+                        self._on_macd_signal(macd_signal_type, features.close)
+                    except Exception as e:
+                        logger.error(f"MACD signal callback error: {e}")
+
+                self._log_activity(
+                    "MACD",
+                    f"{macd_signal_type} erkannt @ {features.close:.2f} | "
+                    f"Exit: {'DEAKTIVIERT' if self.config.bot.disable_macd_exit else 'AKTIV'}"
+                )
+
+                # Only trigger exit if MACD exit is enabled
+                if not self.config.bot.disable_macd_exit:
+                    return macd_signal_type
+
+        # Time stop - DISABLED (positions can run indefinitely)
+        # max_bars = 200  # ~3 hours at 1m
+        # if self._position.bars_held > max_bars:
+        #     return "TIME_STOP"
 
         return None
 
@@ -1257,6 +1450,7 @@ class BotController:
         account_value = 10000
         risk_amount = account_value * (risk_pct / 100)
         quantity = risk_amount / sl_distance if sl_distance > 0 else 0
+        position_value = quantity * signal.entry_price
 
         return OrderIntent(
             symbol=self.symbol,
@@ -1266,7 +1460,9 @@ class BotController:
             order_type="market",
             stop_price=signal.stop_loss_price,
             signal_id=signal.id,
-            reason=f"Entry signal {signal.id}: {signal.side.value}"
+            reason=f"Entry signal {signal.id}: {signal.side.value}",
+            risk_amount=risk_amount,
+            position_value=position_value
         )
 
     def _create_decision(

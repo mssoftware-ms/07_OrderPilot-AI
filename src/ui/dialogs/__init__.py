@@ -4,6 +4,7 @@ from .ai_backtest_dialog import AIBacktestDialog
 from .backtest_dialog import BacktestDialog
 from .order_dialog import OrderDialog
 from .parameter_optimization_dialog import ParameterOptimizationDialog
+from .pattern_db_dialog import PatternDatabaseDialog
 from .settings_dialog import SettingsDialog
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "BacktestDialog",
     "OrderDialog",
     "ParameterOptimizationDialog",
+    "PatternDatabaseDialog",
     "SettingsDialog",
 ]

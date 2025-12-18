@@ -773,16 +773,19 @@ class TrailingStopManager:
     def __init__(
         self,
         min_step_pct: float = 0.1,
-        update_cooldown_bars: int = 3
+        update_cooldown_bars: int = 3,
+        activation_pct: float = 0.0
     ):
         """Initialize trailing stop manager.
 
         Args:
             min_step_pct: Minimum step size as percentage
             update_cooldown_bars: Bars between updates
+            activation_pct: Minimum profit % before trailing activates
         """
         self.min_step_pct = min_step_pct
         self.update_cooldown_bars = update_cooldown_bars
+        self.activation_pct = activation_pct
 
     def calculate_trailing_stop(
         self,
@@ -793,6 +796,9 @@ class TrailingStopManager:
     ) -> TrailingStopResult:
         """Calculate new trailing stop price.
 
+        Trailing stop is only activated when position is in profit.
+        Until then, the initial stop loss remains active.
+
         Args:
             features: Current features
             position: Current position
@@ -802,6 +808,20 @@ class TrailingStopManager:
         Returns:
             TrailingStopResult with new stop price if applicable
         """
+        # Only activate trailing when position reaches activation threshold
+        # Until then, the initial stop loss protects against losses
+        entry_price = position.entry_price
+        current_price = features.close
+
+        if position.side == TradeSide.LONG:
+            profit_pct = ((current_price - entry_price) / entry_price) * 100
+        else:  # SHORT
+            profit_pct = ((entry_price - current_price) / entry_price) * 100
+
+        if profit_pct < self.activation_pct:
+            # Position not yet at activation threshold - keep initial stop loss
+            return TrailingStopResult()
+
         # Check cooldown
         bars_since_update = current_bar - position.trailing.last_update_bar
         if bars_since_update < self.update_cooldown_bars:

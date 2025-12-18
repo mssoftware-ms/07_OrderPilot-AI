@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trailing Stop & Exit-Strategien - OrderPilot-AI</title>
+    <style>
+        :root {
+            --primary: #2196f3;
+            --primary-dark: #1976d2;
+            --success: #26a69a;
+            --danger: #ef5350;
+            --warning: #ff9800;
+            --info: #29b6f6;
+            --bg-dark: #1e1e1e;
+            --bg-card: #2d2d2d;
+            --bg-code: #363636;
+            --text: #e0e0e0;
+            --text-muted: #9e9e9e;
+            --border: #404040;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 20px 0;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 0 20px 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.2em;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        .sidebar-header span {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+
+        .nav-section {
+            margin-bottom: 15px;
+        }
+
+        .nav-section-title {
+            padding: 8px 20px;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 10px 20px;
+            color: var(--text);
+            text-decoration: none;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+            font-size: 0.95em;
+        }
+
+        .nav-link:hover {
+            background: rgba(33, 150, 243, 0.1);
+            border-left-color: var(--primary);
+        }
+
+        .nav-link.active {
+            background: rgba(33, 150, 243, 0.15);
+            border-left-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            padding: 40px;
+            max-width: 900px;
+        }
+
+        section {
+            margin-bottom: 50px;
+        }
+
+        h2 {
+            color: var(--primary);
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        h3 {
+            color: var(--text);
+            font-size: 1.3em;
+            margin: 30px 0 15px;
+        }
+
+        h4 {
+            color: var(--text-muted);
+            font-size: 1.1em;
+            margin: 20px 0 10px;
+        }
+
+        p {
+            margin-bottom: 15px;
+            color: var(--text);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .card-success { border-left: 4px solid var(--success); }
+        .card-warning { border-left: 4px solid var(--warning); }
+        .card-danger { border-left: 4px solid var(--danger); }
+        .card-info { border-left: 4px solid var(--info); }
+
+        .card h4 {
+            margin-top: 0;
+            color: var(--text);
+        }
+
+        /* Mode Cards */
+        .mode-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+
+        .mode-card.pct { border-top: 4px solid var(--success); }
+        .mode-card.atr { border-top: 4px solid var(--warning); }
+        .mode-card.swing { border-top: 4px solid var(--info); }
+
+        .mode-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .mode-badge {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .mode-badge.pct { background: var(--success); color: white; }
+        .mode-badge.atr { background: var(--warning); color: black; }
+        .mode-badge.swing { background: var(--info); color: white; }
+
+        /* Formula Box */
+        .formula {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 1.1em;
+            color: var(--success);
+        }
+
+        /* Example Box */
+        .example {
+            background: rgba(33, 150, 243, 0.1);
+            border: 1px solid rgba(33, 150, 243, 0.3);
+            border-radius: 6px;
+            padding: 15px 20px;
+            margin: 15px 0;
+        }
+
+        .example-title {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .example-calc {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: var(--text);
+            line-height: 1.8;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: var(--bg-card);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: rgba(33, 150, 243, 0.2);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 15px 0 15px 25px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        /* Settings List */
+        .setting-item {
+            display: flex;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .setting-name {
+            min-width: 180px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .setting-desc {
+            flex: 1;
+        }
+
+        .setting-default {
+            color: var(--text-muted);
+            font-size: 0.9em;
+        }
+
+        /* Trigger Cards */
+        .trigger-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .trigger-icon {
+            font-size: 2em;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .trigger-content h4 {
+            margin: 0 0 8px 0;
+        }
+
+        .trigger-active {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+
+        .trigger-active.yes { background: var(--success); color: white; }
+        .trigger-active.no { background: var(--danger); color: white; }
+        .trigger-active.optional { background: var(--warning); color: black; }
+
+        /* Color Line */
+        .color-line {
+            display: inline-block;
+            width: 40px;
+            height: 4px;
+            border-radius: 2px;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        .color-red { background: #ef5350; }
+        .color-orange { background: #ff9800; }
+        .color-blue { background: #2196f3; }
+
+        /* Diagram */
+        .diagram {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 30px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .diagram svg {
+            max-width: 100%;
+        }
+
+        /* Code */
+        code {
+            background: var(--bg-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .sidebar {
+                width: 220px;
+            }
+            .main-content {
+                margin-left: 220px;
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 700px) {
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
+            .main-content {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Trailing Stop Hilfe</h1>
+            <span>Exit-Strategien & Einstellungen</span>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Grundlagen</div>
+            <a href="#uebersicht" class="nav-link">Uebersicht</a>
+            <a href="#konzept" class="nav-link">Stop Loss vs Trailing</a>
+            <a href="#chart-linien" class="nav-link">Chart-Darstellung</a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Trailing Modi</div>
+            <a href="#mode-pct" class="nav-link">PCT (Prozent)</a>
+            <a href="#mode-atr" class="nav-link">ATR (Volatilitaet)</a>
+            <a href="#mode-swing" class="nav-link">SWING (Struktur)</a>
+            <a href="#mode-vergleich" class="nav-link">Vergleich & Empfehlung</a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Exit-Trigger</div>
+            <a href="#trigger-stop" class="nav-link">Stop Loss / Trailing</a>
+            <a href="#trigger-macd" class="nav-link">MACD Cross</a>
+            <a href="#trigger-rsi" class="nav-link">RSI Extreme</a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Einstellungen</div>
+            <a href="#settings-basic" class="nav-link">Basis-Einstellungen</a>
+            <a href="#settings-pct" class="nav-link">PCT-Einstellungen</a>
+            <a href="#settings-atr" class="nav-link">ATR-Einstellungen</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- Uebersicht -->
+        <section id="uebersicht">
+            <h2>Uebersicht</h2>
+            <p>
+                Der Trading-Bot verwendet ein zweistufiges Stop-System, um Verluste zu begrenzen
+                und Gewinne zu sichern. Diese Hilfe erklaert die verschiedenen Modi und Einstellungen.
+            </p>
+
+            <div class="card card-info">
+                <h4>Zwei-Stufen-System</h4>
+                <ol>
+                    <li><strong>Initial Stop Loss</strong> - Fixe Verlustbegrenzung ab Einstieg</li>
+                    <li><strong>Trailing Stop</strong> - Dynamische Gewinnsicherung (aktiviert ab X% Gewinn)</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Konzept -->
+        <section id="konzept">
+            <h2>Stop Loss vs Trailing Stop</h2>
+
+            <h3>Initial Stop Loss (Rot)</h3>
+            <p>
+                Der initiale Stop Loss wird sofort beim Einstieg gesetzt und bleibt <strong>fix</strong>.
+                Er dient ausschliesslich der Verlustbegrenzung.
+            </p>
+            <div class="formula">
+                Stop Loss = Entry-Preis × (1 - Initial SL%)
+            </div>
+            <div class="example">
+                <div class="example-title">Beispiel:</div>
+                <div class="example-calc">
+                    Entry: 100€, Initial SL: 2%<br>
+                    Stop Loss = 100€ × 0.98 = <strong>98€</strong>
+                </div>
+            </div>
+
+            <h3>Trailing Stop (Orange)</h3>
+            <p>
+                Der Trailing Stop wird erst aktiviert, wenn die Position einen bestimmten <strong>Return on Risk</strong> erreicht hat.
+                Er folgt dann dem aktuellen Kurs und sichert Gewinne.
+            </p>
+            <div class="card card-success">
+                <h4>Aktivierungs-Logik (Return on Risk)</h4>
+                <p>Die Aktivierung basiert auf dem <strong>Gewinn relativ zum Risiko</strong>, nicht auf der Kursaenderung!</p>
+                <ol>
+                    <li>Position wird eroeffnet → Initial Stop Loss aktiv (rot)</li>
+                    <li>Beispiel: 100€ Risiko, Aktivierung bei 10%</li>
+                    <li>Gewinn erreicht 10€ (= 10% von 100€) → Trailing Stop aktiviert (orange)</li>
+                    <li>Trailing Stop = Aktueller Kurs +/- Abstand%</li>
+                    <li>Stop bewegt sich nur in guenstige Richtung</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Chart-Linien -->
+        <section id="chart-linien">
+            <h2>Chart-Darstellung</h2>
+            <p>Im Chart werden die Stop-Level als horizontale Linien angezeigt:</p>
+
+            <table>
+                <tr>
+                    <th>Linie</th>
+                    <th>Farbe</th>
+                    <th>Bedeutung</th>
+                </tr>
+                <tr>
+                    <td><span class="color-line color-red"></span>Initial SL</td>
+                    <td>Rot</td>
+                    <td>Fixer Stop Loss ab Einstieg (Verlustbegrenzung)</td>
+                </tr>
+                <tr>
+                    <td><span class="color-line color-orange"></span>Trailing SL</td>
+                    <td>Orange</td>
+                    <td>Dynamischer Stop (folgt dem Kurs, sichert Gewinne)</td>
+                </tr>
+                <tr>
+                    <td><span class="color-line color-blue"></span>Entry</td>
+                    <td>Blau</td>
+                    <td>Einstiegspreis der Position</td>
+                </tr>
+            </table>
+
+            <div class="card card-warning">
+                <h4>Hinweis</h4>
+                <p>
+                    Die orange Trailing-Linie erscheint erst, wenn der Trailing Stop aktiviert wurde
+                    (Gewinn >= Aktivierungsschwelle). Bis dahin ist nur die rote Initial-Stop-Linie sichtbar.
+                </p>
+            </div>
+        </section>
+
+        <!-- PCT Mode -->
+        <section id="mode-pct">
+            <h2>PCT-Modus (Prozent-basiert)</h2>
+
+            <div class="mode-card pct">
+                <div class="mode-title">
+                    <span class="mode-badge pct">PCT</span>
+                    <h3>Fester Prozent-Abstand</h3>
+                </div>
+
+                <p>
+                    Der einfachste Modus: Der Trailing Stop haelt immer einen festen Prozent-Abstand
+                    zum <strong>aktuellen Kurs</strong>. Die Aktivierung erfolgt basierend auf dem
+                    <strong>Return on Risk</strong> (Gewinn/Risiko).
+                </p>
+
+                <div class="formula">
+                    LONG:  Trailing Stop = Aktueller Kurs × (1 - Abstand%)<br>
+                    SHORT: Trailing Stop = Aktueller Kurs × (1 + Abstand%)
+                </div>
+
+                <div class="example">
+                    <div class="example-title">Beispiel LONG (100€ Risiko, 10% Aktivierung, 1.5% Abstand):</div>
+                    <div class="example-calc">
+                        Entry: 100€, Initial Stop: 98€ (2€ Risiko pro Einheit)<br><br>
+                        Kurs 100.10€ → Gewinn 0.10€ = 5% RoR → noch nicht aktiviert<br>
+                        Kurs 100.20€ → Gewinn 0.20€ = 10% RoR → <strong>Trailing aktiviert!</strong><br>
+                        → Stop = 100.20 × 0.985 = <strong>98.70€</strong> (orange)<br><br>
+                        Kurs 102€ → Stop = 102 × 0.985 = <strong>100.47€</strong><br>
+                        Kurs 100€ → Stop bleibt bei 100.47€ (nur aufwaerts!)<br>
+                        Kurs 100.40€ → <strong>Position geschlossen</strong>
+                    </div>
+                </div>
+
+                <div class="example">
+                    <div class="example-title">Beispiel SHORT (100€ Risiko, 10% Aktivierung, 1.5% Abstand):</div>
+                    <div class="example-calc">
+                        Entry: 100€, Initial Stop: 102€ (2€ Risiko pro Einheit)<br><br>
+                        Kurs 99.80€ → Gewinn 0.20€ = 10% RoR → <strong>Trailing aktiviert!</strong><br>
+                        → Stop = 99.80 × 1.015 = <strong>101.30€</strong> (orange)<br><br>
+                        Kurs 98€ → Stop = 98 × 1.015 = <strong>99.47€</strong><br>
+                        Kurs 99€ → Stop bleibt bei 99.47€ (nur abwaerts!)<br>
+                        Kurs 99.50€ → <strong>Position geschlossen</strong>
+                    </div>
+                </div>
+
+                <h4>Vorteile</h4>
+                <ul>
+                    <li>Einfach und vorhersehbar</li>
+                    <li>Leicht zu berechnen und zu verstehen</li>
+                    <li>Konsistentes Verhalten in allen Marktphasen</li>
+                </ul>
+
+                <h4>Nachteile</h4>
+                <ul>
+                    <li>Beruecksichtigt keine Volatilitaet</li>
+                    <li>Bei hoher Vola: Stop zu eng → Whipsaws</li>
+                    <li>Bei niedriger Vola: Stop zu weit → verschenkte Gewinne</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- ATR Mode -->
+        <section id="mode-atr">
+            <h2>ATR-Modus (Volatilitaets-basiert)</h2>
+
+            <div class="mode-card atr">
+                <div class="mode-title">
+                    <span class="mode-badge atr">ATR</span>
+                    <h3>Volatilitaets-adaptiv</h3>
+                </div>
+
+                <p>
+                    Der ATR-Modus passt den Stop-Abstand automatisch an die aktuelle Marktvolatilitaet an.
+                    ATR (Average True Range) misst die durchschnittliche Kursschwankung.
+                </p>
+
+                <div class="formula">
+                    Trailing Stop = Hoechster Kurs - (ATR × Multiplier)
+                </div>
+
+                <div class="example">
+                    <div class="example-title">Beispiel:</div>
+                    <div class="example-calc">
+                        Hoechster Kurs: 105€<br>
+                        ATR (14): 2€ (durchschnittliche Tagesschwankung)<br>
+                        Multiplier: 2.5×<br><br>
+                        Stop = 105€ - (2€ × 2.5) = 105€ - 5€ = <strong>100€</strong>
+                    </div>
+                </div>
+
+                <h3>Regime-Adaptiv</h3>
+                <p>
+                    Bei aktivierter Regime-Adaption wird der Multiplier automatisch angepasst:
+                </p>
+
+                <table>
+                    <tr>
+                        <th>Marktphase</th>
+                        <th>ADX-Wert</th>
+                        <th>Multiplier</th>
+                        <th>Effekt</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Trending</strong></td>
+                        <td>&gt; 25</td>
+                        <td>ATR Trending (z.B. 2.0×)</td>
+                        <td>Engerer Stop → mehr Gewinn mitnehmen</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Ranging</strong></td>
+                        <td>&lt; 20</td>
+                        <td>ATR Ranging (z.B. 3.5×)</td>
+                        <td>Weiterer Stop → weniger Whipsaws</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Neutral</strong></td>
+                        <td>20-25</td>
+                        <td>Interpoliert</td>
+                        <td>Fliessender Uebergang</td>
+                    </tr>
+                </table>
+
+                <div class="card card-warning">
+                    <h4>Volatilitaets-Bonus</h4>
+                    <p>
+                        Bei extremer Volatilitaet (ATR &gt; 2% des Kurses) wird ein zusaetzlicher Bonus
+                        zum Multiplier addiert, um den Stop weiter zu setzen.
+                    </p>
+                </div>
+
+                <h4>Vorteile</h4>
+                <ul>
+                    <li>Passt sich automatisch an Marktbedingungen an</li>
+                    <li>Weniger Whipsaws in volatilen Phasen</li>
+                    <li>Engere Stops in ruhigen Trends</li>
+                </ul>
+
+                <h4>Nachteile</h4>
+                <ul>
+                    <li>Komplexer zu verstehen</li>
+                    <li>Mehr Parameter zu konfigurieren</li>
+                    <li>Stop-Abstand nicht sofort ersichtlich</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- SWING Mode -->
+        <section id="mode-swing">
+            <h2>SWING-Modus (Struktur-basiert)</h2>
+
+            <div class="mode-card swing">
+                <div class="mode-title">
+                    <span class="mode-badge swing">SWING</span>
+                    <h3>Technische Unterstuetzung</h3>
+                </div>
+
+                <p>
+                    Der SWING-Modus orientiert sich an technischen Unterstuetzungslevels.
+                    Er verwendet Bollinger Baender als dynamische Support/Resistance-Zonen.
+                </p>
+
+                <div class="formula">
+                    Trailing Stop = Bollinger Band Lower - (ATR × 0.5)
+                </div>
+
+                <div class="example">
+                    <div class="example-title">Beispiel:</div>
+                    <div class="example-calc">
+                        Bollinger Band Lower: 98€<br>
+                        ATR: 2€<br>
+                        Buffer: 2€ × 0.5 = 1€<br><br>
+                        Stop = 98€ - 1€ = <strong>97€</strong>
+                    </div>
+                </div>
+
+                <h4>Vorteile</h4>
+                <ul>
+                    <li>Beruecksichtigt Marktstruktur</li>
+                    <li>Laesst Raum fuer natuerliche Pullbacks</li>
+                    <li>Gut fuer Swing-Trading</li>
+                </ul>
+
+                <h4>Nachteile</h4>
+                <ul>
+                    <li>Bollinger Baender koennen hinterherhinken</li>
+                    <li>In starken Trends evtl. zu weiter Stop</li>
+                    <li>Schwerer vorherzusagen</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Mode Comparison -->
+        <section id="mode-vergleich">
+            <h2>Vergleich & Empfehlung</h2>
+
+            <table>
+                <tr>
+                    <th>Kriterium</th>
+                    <th>PCT</th>
+                    <th>ATR</th>
+                    <th>SWING</th>
+                </tr>
+                <tr>
+                    <td>Komplexitaet</td>
+                    <td>Einfach</td>
+                    <td>Mittel</td>
+                    <td>Komplex</td>
+                </tr>
+                <tr>
+                    <td>Volatilitaets-Anpassung</td>
+                    <td>Keine</td>
+                    <td>Automatisch</td>
+                    <td>Indirekt</td>
+                </tr>
+                <tr>
+                    <td>Vorhersehbarkeit</td>
+                    <td>Hoch</td>
+                    <td>Mittel</td>
+                    <td>Niedrig</td>
+                </tr>
+                <tr>
+                    <td>Whipsaw-Schutz</td>
+                    <td>Niedrig</td>
+                    <td>Hoch</td>
+                    <td>Mittel</td>
+                </tr>
+            </table>
+
+            <h3>Empfehlungen nach Markt</h3>
+
+            <div class="card card-success">
+                <h4>Crypto (hohe Volatilitaet)</h4>
+                <p><strong>Empfohlen: ATR mit Regime-Adaptiv</strong></p>
+                <p>
+                    Crypto-Maerkte sind extrem volatil. Der ATR-Modus passt den Stop automatisch an
+                    und verhindert fruehzeitiges Ausstoppen bei normalen Schwankungen.
+                </p>
+            </div>
+
+            <div class="card card-info">
+                <h4>Aktien (normale Volatilitaet)</h4>
+                <p><strong>Empfohlen: ATR oder PCT</strong></p>
+                <p>
+                    Beide Modi funktionieren gut. PCT fuer Anfaenger, ATR fuer fortgeschrittene Trader
+                    die sich an verschiedene Marktphasen anpassen wollen.
+                </p>
+            </div>
+
+            <div class="card card-warning">
+                <h4>Seitwaertsmaerkte</h4>
+                <p><strong>Empfohlen: SWING</strong></p>
+                <p>
+                    In Seitwaertsmaerkten bietet der SWING-Modus mehr Spielraum fuer die
+                    natuerlichen Auf- und Abbewegungen innerhalb der Range.
+                </p>
+            </div>
+        </section>
+
+        <!-- Exit Triggers -->
+        <section id="trigger-stop">
+            <h2>Exit-Trigger: Stop Loss / Trailing</h2>
+
+            <div class="trigger-card">
+                <div class="trigger-icon">🛑</div>
+                <div class="trigger-content">
+                    <h4>Stop Loss Hit <span class="trigger-active yes">Immer aktiv</span></h4>
+                    <p>
+                        Position wird geschlossen, wenn der Kurs den aktuellen Stop-Level erreicht.
+                        Dies ist der primaere Schutzmechanismus.
+                    </p>
+                    <p><strong>Ausloeser:</strong> Kurs <= Stop-Preis (Long) oder Kurs >= Stop-Preis (Short)</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="trigger-macd">
+            <h2>Exit-Trigger: MACD Cross</h2>
+
+            <div class="trigger-card">
+                <div class="trigger-icon">📉</div>
+                <div class="trigger-content">
+                    <h4>MACD Bearish Cross <span class="trigger-active optional">Optional</span></h4>
+                    <p>
+                        Bei einem bearishen MACD-Kreuz (MACD-Linie kreuzt unter Signal-Linie)
+                        kann die Position geschlossen werden.
+                    </p>
+                    <p><strong>Deaktivierbar:</strong> Checkbox "MACD-Exit deaktivieren" in Bot Settings</p>
+                    <p><strong>Bei Deaktivierung:</strong> MACD-Signale werden nur als Marker im Chart angezeigt</p>
+                </div>
+            </div>
+
+            <div class="card card-info">
+                <h4>Wann MACD deaktivieren?</h4>
+                <ul>
+                    <li>In starken Trends (MACD kann zu frueh ausloesen)</li>
+                    <li>Wenn Sie nur Stop-Loss-basiertes Trading bevorzugen</li>
+                    <li>Bei laengerfristigen Positionen</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="trigger-rsi">
+            <h2>Exit-Trigger: RSI Extreme</h2>
+
+            <div class="trigger-card">
+                <div class="trigger-icon">📊</div>
+                <div class="trigger-content">
+                    <h4>RSI Extreme Levels <span class="trigger-active yes">Immer aktiv</span></h4>
+                    <p>
+                        Bei extremen RSI-Werten kann ein Exit-Signal generiert werden:
+                    </p>
+                    <ul>
+                        <li><strong>Long-Position:</strong> RSI > 80 (ueberkauft)</li>
+                        <li><strong>Short-Position:</strong> RSI < 20 (ueberverkauft)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Basic Settings -->
+        <section id="settings-basic">
+            <h2>Basis-Einstellungen</h2>
+
+            <div class="setting-item">
+                <div class="setting-name">Initial SL %</div>
+                <div class="setting-desc">
+                    Fixer Stop-Loss in Prozent vom Entry-Preis. Begrenzt den maximalen Verlust pro Trade.
+                    <div class="setting-default">Standard: 2.0% | Bereich: 0.1% - 10%</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">Aktivierung ab</div>
+                <div class="setting-desc">
+                    Ab welchem <strong>Return on Risk</strong> der Trailing Stop aktiviert wird.<br>
+                    Beispiel: Bei 100€ Risiko und 10% Aktivierung → Trailing ab 10€ Gewinn.<br>
+                    Bis dahin gilt nur der Initial Stop Loss (rot).
+                    <div class="setting-default">Standard: 0% (sofort bei Gewinn) | Bereich: 0% - 100%</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">Min Step</div>
+                <div class="setting-desc">
+                    Mindestbewegung fuer Stop-Updates. Verhindert zu haeufige kleine Anpassungen.
+                    <div class="setting-default">Standard: 0.3% | Bereich: 0.05% - 2%</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PCT Settings -->
+        <section id="settings-pct">
+            <h2>PCT-Einstellungen</h2>
+
+            <div class="setting-item">
+                <div class="setting-name">Abstand (PCT)</div>
+                <div class="setting-desc">
+                    Prozent-Abstand des Trailing Stops zum <strong>aktuellen Kurs</strong>.<br>
+                    Beispiel LONG: Kurs 100€, Abstand 1.5% → Stop bei 98.50€<br>
+                    Beispiel SHORT: Kurs 100€, Abstand 1.5% → Stop bei 101.50€
+                    <div class="setting-default">Standard: 1.5% | Bereich: 0.1% - 10%</div>
+                </div>
+            </div>
+
+            <div class="example">
+                <div class="example-title">Beispiel: Abstand 1.5%</div>
+                <div class="example-calc">
+                    Hoechster Kurs: 100€ → Stop = 98.50€<br>
+                    Hoechster Kurs: 110€ → Stop = 108.35€<br>
+                    Hoechster Kurs: 120€ → Stop = 118.20€
+                </div>
+            </div>
+        </section>
+
+        <!-- ATR Settings -->
+        <section id="settings-atr">
+            <h2>ATR-Einstellungen</h2>
+
+            <div class="setting-item">
+                <div class="setting-name">Regime-Adaptiv</div>
+                <div class="setting-desc">
+                    Passt den ATR-Multiplier automatisch an das Marktregime (Trend/Range) an.
+                    <div class="setting-default">Standard: Aktiviert</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">ATR Multiplier</div>
+                <div class="setting-desc">
+                    Fixer Multiplier wenn Regime-Adaptiv deaktiviert ist.
+                    <div class="setting-default">Standard: 2.5× | Bereich: 0.5× - 8×</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">ATR Trending</div>
+                <div class="setting-desc">
+                    Multiplier fuer Trendmaerkte (ADX > 25). Engerer Stop = mehr Gewinn mitnehmen.
+                    <div class="setting-default">Standard: 2.0× | Bereich: 0.5× - 5×</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">ATR Ranging</div>
+                <div class="setting-desc">
+                    Multiplier fuer Seitwaertsmaerkte (ADX < 20). Weiterer Stop = weniger Whipsaws.
+                    <div class="setting-default">Standard: 3.5× | Bereich: 1× - 8×</div>
+                </div>
+            </div>
+
+            <div class="setting-item">
+                <div class="setting-name">Vol. Bonus</div>
+                <div class="setting-desc">
+                    Zusaetzlicher Multiplier bei hoher Volatilitaet (ATR > 2% des Kurses).
+                    <div class="setting-default">Standard: 0.5× | Bereich: 0× - 2×</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href').slice(1);
+                const target = document.getElementById(targetId);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                // Update active state
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Update active nav on scroll
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('section[id]');
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - 100;
+                if (window.scrollY >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

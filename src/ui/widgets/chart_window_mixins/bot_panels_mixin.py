@@ -9,14 +9,15 @@ Provides additional tabs for tradingbot control and monitoring:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal, QSettings
+from PyQt6.QtGui import QColor, QDesktopServices, QAction
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,6 +27,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -60,6 +63,17 @@ class BotPanelsMixin:
         self._ki_log_entries: list[dict] = []
         self._signal_history: list[dict] = []
         self._trade_history: list[dict] = []
+        self._current_bot_symbol: str = ""  # Track current symbol for settings
+        self._bot_settings = QSettings("OrderPilot", "TradingApp")
+
+        # Initialize settings manager
+        from src.core.tradingbot.bot_settings_manager import get_bot_settings_manager
+        self._bot_settings_manager = get_bot_settings_manager()
+
+        # Update symbol display and load settings (delayed to ensure UI is ready)
+        QTimer.singleShot(100, self.update_bot_symbol)
+        # Load signal history after UI is ready
+        QTimer.singleShot(200, self._load_signal_history)
 
     def _create_bot_control_tab(self) -> QWidget:
         """Create bot control tab with start/stop and settings."""
@@ -108,20 +122,6 @@ class BotPanelsMixin:
 
         control_layout.addLayout(btn_layout)
 
-        # Risk Warning Banner
-        risk_warning = QLabel(
-            "⚠️ RISIKO-HINWEIS: Automatisierter Handel birgt erhebliche Risiken. "
-            "Vergangene Performance garantiert keine zukünftigen Ergebnisse. "
-            "Handeln Sie nur mit Kapital, dessen Verlust Sie verkraften können. "
-            "Keine Anlageberatung!"
-        )
-        risk_warning.setWordWrap(True)
-        risk_warning.setStyleSheet(
-            "background-color: #fff3cd; color: #856404; padding: 8px; "
-            "border: 1px solid #ffc107; border-radius: 4px; font-size: 11px;"
-        )
-        control_layout.addWidget(risk_warning)
-
         control_group.setLayout(control_layout)
         layout.addWidget(control_group)
 
@@ -130,8 +130,8 @@ class BotPanelsMixin:
         settings_layout = QFormLayout()
 
         # Symbol (read from chart)
-        self.bot_symbol_label = QLabel("AAPL")
-        self.bot_symbol_label.setStyleSheet("font-weight: bold;")
+        self.bot_symbol_label = QLabel("-")
+        self.bot_symbol_label.setStyleSheet("font-weight: bold; font-size: 13px;")
         settings_layout.addRow("Symbol:", self.bot_symbol_label)
 
         # KI Mode
@@ -153,10 +153,11 @@ class BotPanelsMixin:
         self.trailing_mode_combo.setCurrentIndex(0)
         self.trailing_mode_combo.setToolTip(
             "Trailing Stop Mode:\n"
-            "• PCT: Fester Prozent-Abstand vom Höchst-/Tiefstpreis\n"
+            "• PCT: Fester Prozent-Abstand vom aktuellen Kurs\n"
             "• ATR: Volatilitäts-basiert (ATR-Multiple), Regime-angepasst\n"
             "• SWING: Bollinger Bands als Support/Resistance"
         )
+        self.trailing_mode_combo.currentTextChanged.connect(self._on_trailing_mode_changed)
         settings_layout.addRow("Trailing Mode:", self.trailing_mode_combo)
 
         # Initial Stop Loss %
@@ -164,7 +165,7 @@ class BotPanelsMixin:
         self.initial_sl_spin.setRange(0.1, 10.0)
         self.initial_sl_spin.setValue(2.0)
         self.initial_sl_spin.setSuffix(" %")
-        self.initial_sl_spin.setDecimals(1)
+        self.initial_sl_spin.setDecimals(2)
         self.initial_sl_spin.setToolTip(
             "Initial Stop-Loss in Prozent vom Entry-Preis.\n"
             "Dies ist der EINZIGE fixe Parameter - alle anderen Exits sind dynamisch.\n"
@@ -172,16 +173,28 @@ class BotPanelsMixin:
         )
         settings_layout.addRow("Initial SL %:", self.initial_sl_spin)
 
+        # Account capital for bot
+        self.bot_capital_spin = QDoubleSpinBox()
+        self.bot_capital_spin.setRange(100, 10000000)
+        self.bot_capital_spin.setValue(10000)
+        self.bot_capital_spin.setPrefix("€")
+        self.bot_capital_spin.setDecimals(0)
+        self.bot_capital_spin.setToolTip(
+            "Verfügbares Kapital für den Bot.\n"
+            "Basis für Positionsgrößen-Berechnung und P&L%."
+        )
+        settings_layout.addRow("Kapital:", self.bot_capital_spin)
+
         # Risk per trade %
         self.risk_per_trade_spin = QDoubleSpinBox()
-        self.risk_per_trade_spin.setRange(0.1, 5.0)
-        self.risk_per_trade_spin.setValue(1.0)
+        self.risk_per_trade_spin.setRange(0.1, 100.0)
+        self.risk_per_trade_spin.setValue(10.0)
         self.risk_per_trade_spin.setSuffix(" %")
-        self.risk_per_trade_spin.setDecimals(1)
+        self.risk_per_trade_spin.setDecimals(2)
         self.risk_per_trade_spin.setToolTip(
-            "Maximales Risiko pro Trade in Prozent des Kontostands.\n"
-            "Bestimmt die Positionsgröße: Größere SL% = kleinere Position.\n"
-            "Empfohlen: 0.5-2% für konservativ, max 3% für aggressiv."
+            "Prozent des Kapitals, das pro Trade investiert wird.\n"
+            "Beispiel: 10.000€ Kapital × 10% = 1.000€ pro Trade.\n"
+            "P&L% wird auf diesen Betrag berechnet."
         )
         settings_layout.addRow("Risk/Trade %:", self.risk_per_trade_spin)
 
@@ -196,10 +209,158 @@ class BotPanelsMixin:
         self.max_daily_loss_spin.setRange(0.5, 10.0)
         self.max_daily_loss_spin.setValue(3.0)
         self.max_daily_loss_spin.setSuffix(" %")
+        self.max_daily_loss_spin.setDecimals(2)
         settings_layout.addRow("Max Daily Loss %:", self.max_daily_loss_spin)
+
+        # Disable restrictions checkbox (for paper trading)
+        self.disable_restrictions_cb = QCheckBox("Restriktionen deaktivieren")
+        self.disable_restrictions_cb.setChecked(True)  # Default: checked for paper mode
+        self.disable_restrictions_cb.setToolTip(
+            "Deaktiviert Max Trades/Day und Max Daily Loss Limits.\n"
+            "Empfohlen für Paper Trading und Strategie-Tests.\n"
+            "⚠️ Im Live-Modus sollten Restriktionen AKTIVIERT sein!"
+        )
+        self.disable_restrictions_cb.setStyleSheet(
+            "color: #ff9800; font-weight: bold;"
+        )
+        settings_layout.addRow("Paper Mode:", self.disable_restrictions_cb)
+
+        # Disable MACD exit checkbox
+        self.disable_macd_exit_cb = QCheckBox("MACD-Exit deaktivieren")
+        self.disable_macd_exit_cb.setChecked(False)
+        self.disable_macd_exit_cb.setToolTip(
+            "Deaktiviert den automatischen Verkauf bei MACD-Kreuzungen.\n"
+            "Position wird nur durch Stop-Loss geschlossen.\n"
+            "MACD-Signale werden trotzdem im Chart angezeigt."
+        )
+        settings_layout.addRow("Stop-Loss Only:", self.disable_macd_exit_cb)
 
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
+
+        # ==================== TRAILING STOP SETTINGS ====================
+        trailing_group = QGroupBox("Trailing Stop Settings")
+        trailing_layout = QFormLayout()
+
+        # Regime-Adaptive checkbox
+        self.regime_adaptive_cb = QCheckBox("Regime-Adaptiv")
+        self.regime_adaptive_cb.setChecked(True)
+        self.regime_adaptive_cb.setToolTip(
+            "Passt ATR-Multiplier automatisch an Marktregime an:\n"
+            "• Trending (ADX > 25): Engerer Stop (mehr Gewinn mitnehmen)\n"
+            "• Ranging (ADX < 20): Weiterer Stop (weniger Whipsaws)"
+        )
+        self.regime_adaptive_cb.stateChanged.connect(self._on_regime_adaptive_changed)
+        trailing_layout.addRow("Adaptive:", self.regime_adaptive_cb)
+
+        # Trailing Activation Threshold
+        self.trailing_activation_spin = QDoubleSpinBox()
+        self.trailing_activation_spin.setRange(0.0, 100.0)
+        self.trailing_activation_spin.setValue(0.0)
+        self.trailing_activation_spin.setSingleStep(1.0)
+        self.trailing_activation_spin.setDecimals(1)
+        self.trailing_activation_spin.setSuffix(" %")
+        self.trailing_activation_spin.setToolTip(
+            "Ab welchem GEWINN (Return on Risk) der Trailing Stop aktiviert wird.\n\n"
+            "Beispiel bei 100€ Risiko:\n"
+            "• 0% = sofort wenn im Gewinn\n"
+            "• 10% = Trailing erst ab 10€ Gewinn aktiv\n"
+            "• 50% = Trailing erst ab 50€ Gewinn aktiv\n\n"
+            "Bis zur Aktivierung gilt nur der Initial Stop Loss (rot)."
+        )
+        trailing_layout.addRow("Aktivierung ab:", self.trailing_activation_spin)
+
+        # Trailing Stop Distance (PCT mode)
+        self.trailing_distance_spin = QDoubleSpinBox()
+        self.trailing_distance_spin.setRange(0.1, 10.0)
+        self.trailing_distance_spin.setValue(1.5)
+        self.trailing_distance_spin.setSingleStep(0.1)
+        self.trailing_distance_spin.setDecimals(2)
+        self.trailing_distance_spin.setSuffix(" %")
+        self.trailing_distance_spin.setToolTip(
+            "Abstand des Trailing Stops zum AKTUELLEN Kurs in %.\n\n"
+            "Beispiel LONG:\n"
+            "• Kurs bei 102€, Abstand 1.5% → Stop bei 100.47€\n"
+            "• Kurs steigt auf 105€ → Stop steigt auf 103.43€\n\n"
+            "Beispiel SHORT:\n"
+            "• Kurs bei 98€, Abstand 1.5% → Stop bei 99.47€\n"
+            "• Kurs fällt auf 95€ → Stop fällt auf 96.43€\n\n"
+            "Stop bewegt sich NUR in günstige Richtung!"
+        )
+        trailing_layout.addRow("Abstand (PCT):", self.trailing_distance_spin)
+
+        # ATR Multiplier (fixed, when not adaptive)
+        self.atr_multiplier_spin = QDoubleSpinBox()
+        self.atr_multiplier_spin.setRange(0.5, 8.0)
+        self.atr_multiplier_spin.setValue(2.5)
+        self.atr_multiplier_spin.setSingleStep(0.1)
+        self.atr_multiplier_spin.setDecimals(2)
+        self.atr_multiplier_spin.setToolTip(
+            "Fester ATR-Multiplier (wenn Regime-Adaptiv AUS).\n"
+            "Stop = Highest High - (ATR × Multiplier)\n"
+            "Höher = weiterer Stop, weniger Whipsaws"
+        )
+        trailing_layout.addRow("ATR Multiplier:", self.atr_multiplier_spin)
+
+        # ATR Trending (for adaptive mode)
+        self.atr_trending_spin = QDoubleSpinBox()
+        self.atr_trending_spin.setRange(0.5, 5.0)
+        self.atr_trending_spin.setValue(2.0)
+        self.atr_trending_spin.setSingleStep(0.1)
+        self.atr_trending_spin.setDecimals(2)
+        self.atr_trending_spin.setToolTip(
+            "ATR-Multiplier für TRENDING Märkte (ADX > 25).\n"
+            "Niedriger = engerer Stop = mehr Gewinn mitnehmen\n"
+            "Empfohlen: 1.5-2.5x"
+        )
+        trailing_layout.addRow("ATR Trending:", self.atr_trending_spin)
+
+        # ATR Ranging (for adaptive mode)
+        self.atr_ranging_spin = QDoubleSpinBox()
+        self.atr_ranging_spin.setRange(1.0, 8.0)
+        self.atr_ranging_spin.setValue(3.5)
+        self.atr_ranging_spin.setSingleStep(0.1)
+        self.atr_ranging_spin.setDecimals(2)
+        self.atr_ranging_spin.setToolTip(
+            "ATR-Multiplier für RANGING/CHOPPY Märkte (ADX < 20).\n"
+            "Höher = weiterer Stop = weniger Whipsaws\n"
+            "Empfohlen: 3.0-4.0x"
+        )
+        trailing_layout.addRow("ATR Ranging:", self.atr_ranging_spin)
+
+        # Volatility Bonus
+        self.volatility_bonus_spin = QDoubleSpinBox()
+        self.volatility_bonus_spin.setRange(0.0, 2.0)
+        self.volatility_bonus_spin.setValue(0.5)
+        self.volatility_bonus_spin.setSingleStep(0.1)
+        self.volatility_bonus_spin.setDecimals(2)
+        self.volatility_bonus_spin.setToolTip(
+            "Extra ATR-Multiplier bei hoher Volatilität.\n"
+            "Wird hinzuaddiert wenn ATR > 2% des Preises.\n"
+            "Empfohlen: 0.3-0.5x"
+        )
+        trailing_layout.addRow("Vol. Bonus:", self.volatility_bonus_spin)
+
+        # Min Step %
+        self.min_step_spin = QDoubleSpinBox()
+        self.min_step_spin.setRange(0.05, 2.0)
+        self.min_step_spin.setValue(0.3)
+        self.min_step_spin.setSingleStep(0.05)
+        self.min_step_spin.setSuffix(" %")
+        self.min_step_spin.setDecimals(2)
+        self.min_step_spin.setToolTip(
+            "Mindest-Bewegung für Stop-Update.\n"
+            "Verhindert zu häufige kleine Anpassungen.\n"
+            "Empfohlen: 0.2-0.5% für Crypto"
+        )
+        trailing_layout.addRow("Min Step:", self.min_step_spin)
+
+        trailing_group.setLayout(trailing_layout)
+        layout.addWidget(trailing_group)
+
+        # Update visibility based on trailing mode and regime_adaptive
+        self._on_trailing_mode_changed()
+        self._on_regime_adaptive_changed()
 
         # ==================== DISPLAY OPTIONS ====================
         display_group = QGroupBox("Chart Display")
@@ -354,6 +515,10 @@ class BotPanelsMixin:
         self.position_size_label = QLabel("-")
         position_form.addRow("Size:", self.position_size_label)
 
+        self.position_invested_label = QLabel("-")
+        self.position_invested_label.setStyleSheet("font-weight: bold;")
+        position_form.addRow("Invested:", self.position_invested_label)
+
         self.position_stop_label = QLabel("-")
         position_form.addRow("Stop:", self.position_stop_label)
 
@@ -380,42 +545,26 @@ class BotPanelsMixin:
         signals_inner = QVBoxLayout()
 
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(9)
+        self.signals_table.setColumnCount(10)
         self.signals_table.setHorizontalHeaderLabels([
-            "Time", "Type", "Side", "Score", "Entry", "Status", "Current", "P&L €", "P&L %"
+            "Time", "Type", "Side", "Score", "Entry", "Status", "Current", "Δ%", "P&L €", "P&L %"
         ])
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
         self.signals_table.setAlternatingRowColors(True)
+        self.signals_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.signals_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+
+        # Context menu for signals table
+        self.signals_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.signals_table.customContextMenuRequested.connect(self._show_signals_context_menu)
+
         signals_inner.addWidget(self.signals_table)
 
         signals_group.setLayout(signals_inner)
         signals_layout.addWidget(signals_group)
         splitter.addWidget(signals_widget)
-
-        # ==================== STOP HISTORY ====================
-        stop_widget = QWidget()
-        stop_layout = QVBoxLayout(stop_widget)
-        stop_layout.setContentsMargins(0, 0, 0, 0)
-
-        stop_group = QGroupBox("Stop History")
-        stop_inner = QVBoxLayout()
-
-        self.stop_history_table = QTableWidget()
-        self.stop_history_table.setColumnCount(4)
-        self.stop_history_table.setHorizontalHeaderLabels([
-            "Time", "Old Stop", "New Stop", "Reason"
-        ])
-        self.stop_history_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
-        self.stop_history_table.setAlternatingRowColors(True)
-        stop_inner.addWidget(self.stop_history_table)
-
-        stop_group.setLayout(stop_inner)
-        stop_layout.addWidget(stop_group)
-        splitter.addWidget(stop_widget)
 
         layout.addWidget(splitter)
         return widget
@@ -517,6 +666,61 @@ class BotPanelsMixin:
         if self._bot_controller:
             self._bot_controller.set_ki_mode(mode)
 
+    def _on_trailing_mode_changed(self, mode: str = "") -> None:
+        """Handle trailing mode change - toggle field visibility based on mode."""
+        current_mode = self.trailing_mode_combo.currentText()
+        is_pct = current_mode == "PCT"
+        is_atr = current_mode == "ATR"
+
+        disabled_style = "color: #666666;"
+        enabled_style = ""
+
+        # PCT distance only for PCT mode
+        self.trailing_distance_spin.setEnabled(is_pct)
+        self.trailing_distance_spin.setStyleSheet(enabled_style if is_pct else disabled_style)
+
+        # ATR settings only for ATR mode
+        self.regime_adaptive_cb.setEnabled(is_atr)
+        self.atr_multiplier_spin.setEnabled(is_atr)
+        self.atr_trending_spin.setEnabled(is_atr)
+        self.atr_ranging_spin.setEnabled(is_atr)
+        self.volatility_bonus_spin.setEnabled(is_atr)
+
+        self.regime_adaptive_cb.setStyleSheet(enabled_style if is_atr else disabled_style)
+        self.atr_multiplier_spin.setStyleSheet(enabled_style if is_atr else disabled_style)
+        self.atr_trending_spin.setStyleSheet(enabled_style if is_atr else disabled_style)
+        self.atr_ranging_spin.setStyleSheet(enabled_style if is_atr else disabled_style)
+        self.volatility_bonus_spin.setStyleSheet(enabled_style if is_atr else disabled_style)
+
+        # Update regime-adaptive visibility when in ATR mode
+        if is_atr:
+            self._on_regime_adaptive_changed()
+
+    def _on_regime_adaptive_changed(self, state: int = 0) -> None:
+        """Handle regime-adaptive checkbox change - toggle field visibility."""
+        # Only apply if ATR mode is active
+        if self.trailing_mode_combo.currentText() != "ATR":
+            return
+
+        is_adaptive = self.regime_adaptive_cb.isChecked()
+
+        # Fixed multiplier only visible when NOT adaptive
+        self.atr_multiplier_spin.setEnabled(not is_adaptive)
+
+        # Adaptive settings only visible when adaptive
+        self.atr_trending_spin.setEnabled(is_adaptive)
+        self.atr_ranging_spin.setEnabled(is_adaptive)
+        self.volatility_bonus_spin.setEnabled(is_adaptive)
+
+        # Update styling to show enabled/disabled state
+        disabled_style = "color: #666666;"
+        enabled_style = ""
+
+        self.atr_multiplier_spin.setStyleSheet(enabled_style if not is_adaptive else disabled_style)
+        self.atr_trending_spin.setStyleSheet(enabled_style if is_adaptive else disabled_style)
+        self.atr_ranging_spin.setStyleSheet(enabled_style if is_adaptive else disabled_style)
+        self.volatility_bonus_spin.setStyleSheet(enabled_style if is_adaptive else disabled_style)
+
     def _on_display_option_changed(self, state: int) -> None:
         """Handle display option checkbox change."""
         if not hasattr(self, 'chart_widget'):
@@ -553,6 +757,146 @@ class BotPanelsMixin:
         self.ki_log_text.clear()
         self._ki_log_entries.clear()
 
+    # ==================== SYMBOL & SETTINGS MANAGEMENT ====================
+
+    def update_bot_symbol(self, symbol: str | None = None) -> None:
+        """Update the bot panel with current symbol and load its settings.
+
+        Args:
+            symbol: Symbol to use, or None to get from chart
+        """
+        # Get symbol from chart if not provided
+        if symbol is None:
+            symbol = getattr(self, 'current_symbol', None)
+            if symbol is None and hasattr(self, 'chart_widget'):
+                symbol = getattr(self.chart_widget, 'current_symbol', None)
+
+        if not symbol:
+            symbol = "UNKNOWN"
+
+        # Update label
+        if hasattr(self, 'bot_symbol_label'):
+            self.bot_symbol_label.setText(symbol)
+
+        # Load settings if symbol changed
+        if symbol != self._current_bot_symbol:
+            self._current_bot_symbol = symbol
+            self._load_bot_settings(symbol)
+            logger.info(f"Bot panel updated for symbol: {symbol}")
+
+    def _load_bot_settings(self, symbol: str) -> None:
+        """Load saved settings for a symbol into UI controls.
+
+        Args:
+            symbol: Symbol to load settings for
+        """
+        settings = self._bot_settings_manager.get_settings(symbol)
+
+        if not settings:
+            logger.debug(f"No saved settings for {symbol}, using defaults")
+            return
+
+        logger.info(f"Loading bot settings for {symbol}")
+
+        try:
+            # Bot settings
+            if "ki_mode" in settings:
+                idx = self.ki_mode_combo.findText(settings["ki_mode"])
+                if idx >= 0:
+                    self.ki_mode_combo.setCurrentIndex(idx)
+
+            if "trailing_mode" in settings:
+                idx = self.trailing_mode_combo.findText(settings["trailing_mode"])
+                if idx >= 0:
+                    self.trailing_mode_combo.setCurrentIndex(idx)
+
+            if "initial_sl_pct" in settings:
+                self.initial_sl_spin.setValue(settings["initial_sl_pct"])
+
+            if "bot_capital" in settings:
+                self.bot_capital_spin.setValue(settings["bot_capital"])
+
+            if "risk_per_trade_pct" in settings:
+                self.risk_per_trade_spin.setValue(settings["risk_per_trade_pct"])
+
+            if "max_trades_per_day" in settings:
+                self.max_trades_spin.setValue(settings["max_trades_per_day"])
+
+            if "max_daily_loss_pct" in settings:
+                self.max_daily_loss_spin.setValue(settings["max_daily_loss_pct"])
+
+            if "disable_restrictions" in settings:
+                self.disable_restrictions_cb.setChecked(settings["disable_restrictions"])
+
+            if "disable_macd_exit" in settings:
+                self.disable_macd_exit_cb.setChecked(settings["disable_macd_exit"])
+
+            # Trailing stop settings
+            if "regime_adaptive" in settings:
+                self.regime_adaptive_cb.setChecked(settings["regime_adaptive"])
+
+            if "atr_multiplier" in settings:
+                self.atr_multiplier_spin.setValue(settings["atr_multiplier"])
+
+            if "atr_trending" in settings:
+                self.atr_trending_spin.setValue(settings["atr_trending"])
+
+            if "atr_ranging" in settings:
+                self.atr_ranging_spin.setValue(settings["atr_ranging"])
+
+            if "volatility_bonus" in settings:
+                self.volatility_bonus_spin.setValue(settings["volatility_bonus"])
+
+            if "min_step_pct" in settings:
+                self.min_step_spin.setValue(settings["min_step_pct"])
+
+            if "trailing_activation_pct" in settings:
+                self.trailing_activation_spin.setValue(settings["trailing_activation_pct"])
+
+            if "trailing_pct_distance" in settings:
+                self.trailing_distance_spin.setValue(settings["trailing_pct_distance"])
+
+            # Update UI state
+            self._on_trailing_mode_changed()
+            self._on_regime_adaptive_changed()
+
+            logger.info(f"Loaded {len(settings)} settings for {symbol}")
+
+        except Exception as e:
+            logger.error(f"Error loading settings for {symbol}: {e}")
+
+    def _save_bot_settings(self, symbol: str) -> None:
+        """Save current UI settings for a symbol.
+
+        Args:
+            symbol: Symbol to save settings for
+        """
+        settings = {
+            # Bot settings
+            "ki_mode": self.ki_mode_combo.currentText(),
+            "trailing_mode": self.trailing_mode_combo.currentText(),
+            "initial_sl_pct": self.initial_sl_spin.value(),
+            "bot_capital": self.bot_capital_spin.value(),
+            "risk_per_trade_pct": self.risk_per_trade_spin.value(),
+            "max_trades_per_day": self.max_trades_spin.value(),
+            "max_daily_loss_pct": self.max_daily_loss_spin.value(),
+            "disable_restrictions": self.disable_restrictions_cb.isChecked(),
+            "disable_macd_exit": self.disable_macd_exit_cb.isChecked(),
+
+            # Trailing stop settings
+            "regime_adaptive": self.regime_adaptive_cb.isChecked(),
+            "atr_multiplier": self.atr_multiplier_spin.value(),
+            "atr_trending": self.atr_trending_spin.value(),
+            "atr_ranging": self.atr_ranging_spin.value(),
+            "volatility_bonus": self.volatility_bonus_spin.value(),
+            "min_step_pct": self.min_step_spin.value(),
+            "trailing_activation_pct": self.trailing_activation_spin.value(),
+            "trailing_pct_distance": self.trailing_distance_spin.value(),
+        }
+
+        self._bot_settings_manager.save_settings(symbol, settings)
+        logger.info(f"Saved bot settings for {symbol}")
+
     # ==================== BOT CONTROL ====================
 
     def _start_bot_with_config(self) -> None:
@@ -583,10 +927,22 @@ class BotPanelsMixin:
         # Override with UI values
         config.bot.ki_mode = ki_mode
         config.bot.trailing_mode = trailing_mode
+        config.bot.disable_restrictions = self.disable_restrictions_cb.isChecked()
+        config.bot.disable_macd_exit = self.disable_macd_exit_cb.isChecked()
         config.risk.initial_stop_loss_pct = self.initial_sl_spin.value()
         config.risk.risk_per_trade_pct = self.risk_per_trade_spin.value()
         config.risk.max_trades_per_day = self.max_trades_spin.value()
         config.risk.max_daily_loss_pct = self.max_daily_loss_spin.value()
+
+        # Trailing stop settings
+        config.risk.regime_adaptive_trailing = self.regime_adaptive_cb.isChecked()
+        config.risk.trailing_atr_multiple = self.atr_multiplier_spin.value()
+        config.risk.trailing_atr_trending = self.atr_trending_spin.value()
+        config.risk.trailing_atr_ranging = self.atr_ranging_spin.value()
+        config.risk.trailing_volatility_bonus = self.volatility_bonus_spin.value()
+        config.risk.trailing_min_step_pct = self.min_step_spin.value()
+        config.risk.trailing_activation_pct = self.trailing_activation_spin.value()
+        config.risk.trailing_pct_distance = self.trailing_distance_spin.value()
 
         # Create and start controller with callbacks
         from src.core.tradingbot.bot_controller import BotController
@@ -597,6 +953,8 @@ class BotPanelsMixin:
             on_decision=self._on_bot_decision,
             on_order=self._on_bot_order,
             on_log=self._on_bot_log,
+            on_trading_blocked=self._on_trading_blocked,
+            on_macd_signal=self._on_macd_signal,
         )
 
         # Register state change callback (receives StateTransition object)
@@ -633,6 +991,9 @@ class BotPanelsMixin:
             self._bot_update_timer = QTimer()
             self._bot_update_timer.timeout.connect(self._update_bot_display)
         self._bot_update_timer.start(1000)
+
+        # Save settings for this symbol
+        self._save_bot_settings(symbol)
 
         logger.info(f"Bot started for {symbol} with {ki_mode.value} mode")
 
@@ -737,39 +1098,61 @@ class BotPanelsMixin:
         if hasattr(self, 'chart_widget') and action:
             try:
                 if action == BotAction.ENTER:
-                    # Draw initial stop line
+                    # Draw initial stop line (red, solid)
                     stop_price = getattr(decision, 'stop_price_after', None)
                     self._add_ki_log_entry("DEBUG", f"ENTER: stop_price_after={stop_price}, has chart={hasattr(self, 'chart_widget')}")
                     if stop_price:
                         self._add_ki_log_entry("DEBUG", f"Calling add_stop_line({stop_price})")
                         self.chart_widget.add_stop_line(
-                            "position_stop",
+                            "initial_stop",  # Separate ID for initial stop
                             stop_price,
                             line_type="initial",
+                            color="#ef5350",  # Red for initial stop loss
                             label=f"Initial SL @ {stop_price:.2f}"
                         )
-                        self._add_ki_log_entry("STOP", f"Stop-Line gezeichnet @ {stop_price:.2f}")
+                        self._add_ki_log_entry("STOP", f"Initial Stop-Line gezeichnet @ {stop_price:.2f}")
                     else:
                         self._add_ki_log_entry("ERROR", "stop_price_after ist None - keine Stop-Line!")
 
                 elif action == BotAction.ADJUST_STOP:
-                    # Update trailing stop line
+                    # Update trailing stop line (orange, solid, separate from initial)
                     new_stop = getattr(decision, 'stop_price_after', None)
                     old_stop = getattr(decision, 'stop_price_before', None)
                     if new_stop:
+                        # Calculate change percentage if old_stop available
+                        if old_stop:
+                            change_pct = ((new_stop - old_stop) / old_stop) * 100
+                            self._add_ki_log_entry(
+                                "TRAILING",
+                                f"Stop angepasst: {old_stop:.2f} → {new_stop:.2f} ({change_pct:+.2f}%)"
+                            )
+                            logger.info(f"Trailing stop updated: {old_stop:.2f} -> {new_stop:.2f} ({change_pct:+.2f}%)")
+                        else:
+                            self._add_ki_log_entry(
+                                "TRAILING",
+                                f"Trailing Stop aktiviert @ {new_stop:.2f}"
+                            )
+                            logger.info(f"Trailing stop activated: {new_stop:.2f}")
+
+                        # Add/update trailing stop line (separate from initial stop)
                         self.chart_widget.add_stop_line(
-                            "position_stop",
+                            "trailing_stop",  # Separate ID for trailing stop
                             new_stop,
                             line_type="trailing",
+                            color="#ff9800",  # Orange for trailing stop
                             label=f"Trailing SL @ {new_stop:.2f}"
                         )
-                        logger.info(f"Updated stop line: {old_stop} -> {new_stop}")
+                        self._add_ki_log_entry(
+                            "CHART",
+                            f"Trailing Stop Linie gezeichnet @ {new_stop:.2f} (orange)"
+                        )
 
                 elif action == BotAction.EXIT:
-                    # Remove stop line
+                    # Remove both stop lines
                     if hasattr(self.chart_widget, 'remove_stop_line'):
-                        self.chart_widget.remove_stop_line("position_stop")
-                        logger.info("Removed stop line on exit")
+                        self.chart_widget.remove_stop_line("initial_stop")
+                        self.chart_widget.remove_stop_line("trailing_stop")
+                        logger.info("Removed stop lines on exit")
 
                     # Get exit price for final P&L calculation
                     exit_price = None
@@ -783,18 +1166,30 @@ class BotPanelsMixin:
                             # Calculate and save final P&L at exit price
                             if exit_price and signal.get("quantity", 0) > 0:
                                 entry_price = signal["price"]
-                                quantity = signal["quantity"]
                                 side = signal["side"]
 
-                                # Final P&L calculation
+                                # Get invested capital
+                                invested_capital = signal.get("invested_capital", 0)
+                                if invested_capital <= 0:
+                                    initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+                                    risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+                                    invested_capital = initial_cap * (risk_pct / 100)
+
+                                # Calculate price change percentage
+                                price_change_pct = ((exit_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+                                # P&L based on price change: LONG = price change, SHORT = -price change
                                 if side == "long":
-                                    pnl_per_unit = exit_price - entry_price
+                                    pnl_percent = price_change_pct
                                 else:
-                                    pnl_per_unit = entry_price - exit_price
+                                    pnl_percent = -price_change_pct
+
+                                # P&L€ = invested × P&L%
+                                pnl_currency = invested_capital * (pnl_percent / 100)
 
                                 signal["current_price"] = exit_price
-                                signal["pnl_currency"] = pnl_per_unit * quantity
-                                signal["pnl_percent"] = (pnl_per_unit / entry_price) * 100 if entry_price > 0 else 0
+                                signal["pnl_currency"] = pnl_currency
+                                signal["pnl_percent"] = pnl_percent
 
                                 self._add_ki_log_entry(
                                     "EXIT",
@@ -938,12 +1333,22 @@ class BotPanelsMixin:
                 if sig_status == "ENTERED" and sig.get("quantity", 0) == 0.0:
                     sig["quantity"] = order.quantity
                     sig["price"] = fill_price  # Update with actual fill price
+                    # Invested capital = Initial Capital × Risk/Trade %
+                    initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+                    risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+                    sig["invested_capital"] = initial_cap * (risk_pct / 100)
+                    # Also store position value for reference
+                    sig["position_value"] = fill_price * order.quantity
+                    # Store risk_amount if available (for ROI calculation on risk capital)
+                    if hasattr(order, 'risk_amount') and order.risk_amount:
+                        sig["risk_amount"] = order.risk_amount
                     sig["is_open"] = True
                     # Set entry label if not already set
                     if not sig.get("label"):
                         sig["label"] = f"E:{int(score)}"
                     found_signal = True
-                    self._add_ki_log_entry("FILL", f"Signal aktualisiert: qty={order.quantity:.4f}, price={fill_price:.4f}, label={sig['label']}")
+                    risk_info = f", risk={sig.get('risk_amount', 0):.2f}€" if sig.get('risk_amount') else ""
+                    self._add_ki_log_entry("FILL", f"Signal aktualisiert: qty={order.quantity:.4f}, price={fill_price:.4f}, invested={sig['invested_capital']:.2f}€ (={initial_cap:.0f}×{risk_pct:.1f}%){risk_info}, label={sig['label']}")
                     logger.info(f"Updated signal history with qty={order.quantity}")
                     break
 
@@ -968,6 +1373,70 @@ class BotPanelsMixin:
         except Exception as e:
             self._add_ki_log_entry("ERROR", f"Paper-Fill fehlgeschlagen: {e}")
             logger.error(f"Failed to simulate paper fill: {e}", exc_info=True)
+
+    def _on_macd_signal(self, signal_type: str, price: float) -> None:
+        """Handle MACD cross signal - add marker to chart.
+
+        Args:
+            signal_type: "MACD_BEARISH_CROSS" or "MACD_BULLISH_CROSS"
+            price: Current price where signal occurred
+        """
+        from datetime import datetime
+
+        # Log to KI log
+        self._add_ki_log_entry(
+            "MACD",
+            f"{signal_type} @ {price:.2f} (nur Marker, kein Verkauf)"
+        )
+
+        # Add marker to chart
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_macd_marker'):
+            try:
+                is_bearish = "BEARISH" in signal_type
+                self.chart_widget.add_macd_marker(
+                    timestamp=datetime.now(),
+                    price=price,
+                    is_bearish=is_bearish
+                )
+                logger.info(f"MACD marker added: {signal_type} @ {price:.2f}")
+            except Exception as e:
+                logger.error(f"Failed to add MACD marker: {e}")
+
+    def _on_trading_blocked(self, reasons: list[str]) -> None:
+        """Handle trading blocked notification - show popup.
+
+        Args:
+            reasons: List of reasons why trading is blocked
+        """
+        # Build message
+        reason_list = "\n".join(f"  • {r}" for r in reasons)
+        message = (
+            f"⚠️ Trading wurde blockiert!\n\n"
+            f"Gründe:\n{reason_list}\n\n"
+            f"Der Bot wird keine neuen Positionen eröffnen, "
+            f"bis die Blockierung aufgehoben wird."
+        )
+
+        # Log to KI log
+        self._add_ki_log_entry("BLOCKED", f"Trading blockiert: {', '.join(reasons)}")
+
+        # Show warning popup
+        msg_box = QMessageBox(self if hasattr(self, 'window') else None)
+        msg_box.setWindowTitle("Trading Blockiert")
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setText(message)
+
+        # Add hint about restrictions checkbox
+        if not self._bot_controller.config.bot.disable_restrictions:
+            msg_box.setInformativeText(
+                "💡 Tipp: Im Paper-Modus können Sie die Restriktionen "
+                "deaktivieren (Checkbox im Bot Control Tab)."
+            )
+
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+
+        logger.warning(f"Trading blocked popup shown: {reasons}")
 
     def _on_bot_state_change(self, old_state: str, new_state: str) -> None:
         """Handle bot state change."""
@@ -1013,6 +1482,17 @@ class BotPanelsMixin:
 
         # Update position display
         position = self._bot_controller.position
+
+        # Debug logging for position display (every 10 seconds)
+        if bar_count > 0 and bar_count % 10 == 0:
+            if position:
+                logger.debug(
+                    f"[DISPLAY] Position: {position.side.value} entry={position.entry_price:.4f} "
+                    f"qty={position.quantity:.4f} current={position.current_price:.4f} "
+                    f"pnl={position.unrealized_pnl:.2f} trailing={position.trailing is not None}"
+                )
+            else:
+                logger.debug("[DISPLAY] No position")
         if position:  # PositionState doesn't have is_open, check if position exists
             self.position_side_label.setText(position.side.value.upper())
             self.position_side_label.setStyleSheet(
@@ -1021,17 +1501,45 @@ class BotPanelsMixin:
             self.position_entry_label.setText(f"{position.entry_price:.4f}")
             self.position_size_label.setText(f"{position.quantity:.4f}")
 
+            # Calculate and display invested amount (Initial Capital × Risk/Trade %)
+            initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+            risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+            invested = initial_cap * (risk_pct / 100)
+            self.position_invested_label.setText(f"{invested:.2f} €")
+
             if position.trailing:  # Correct attribute: trailing (not trailing_state)
                 self.position_stop_label.setText(
                     f"{position.trailing.current_stop_price:.4f}"  # Correct: current_stop_price
                 )
+            else:
+                self.position_stop_label.setText("-")
 
             # Display current price
             self.position_current_label.setText(f"{position.current_price:.4f}")
 
-            # Display P&L with color
-            pnl = position.unrealized_pnl
-            pnl_pct = position.unrealized_pnl_pct
+            # Display P&L with color - based on price change × invested capital
+            initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+            risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+            invested_capital = initial_cap * (risk_pct / 100)
+
+            # Calculate price change percentage
+            entry_price = position.entry_price
+            current_price = position.current_price
+            price_change_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+            # P&L% = price change for LONG, -price change for SHORT
+            from src.core.tradingbot.models import TradeSide
+            if position.side == TradeSide.LONG:
+                pnl_pct = price_change_pct
+            else:
+                pnl_pct = -price_change_pct
+
+            # P&L€ = invested × P&L%
+            pnl = invested_capital * (pnl_pct / 100)
+
+            # Debug: log invested capital calculation (every 30 seconds)
+            if self._bot_controller and self._bot_controller._bar_count % 30 == 0:
+                logger.debug(f"[P&L] capital={initial_cap:.0f}€, risk_pct={risk_pct:.1f}%, invested={invested_capital:.2f}€, Δ%={price_change_pct:.2f}%, pnl={pnl:.2f}€, pnl_pct={pnl_pct:.2f}%")
             pnl_color = "#26a69a" if pnl >= 0 else "#ef5350"  # Green for profit, red for loss
             pnl_sign = "+" if pnl >= 0 else ""
             self.position_pnl_label.setText(f"{pnl_sign}{pnl:.2f} € ({pnl_sign}{pnl_pct:.2f}%)")
@@ -1042,6 +1550,7 @@ class BotPanelsMixin:
             self.position_side_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
             self.position_entry_label.setText("-")
             self.position_size_label.setText("-")
+            self.position_invested_label.setText("-")
             self.position_stop_label.setText("-")
             self.position_current_label.setText("-")
             self.position_pnl_label.setText("-")
@@ -1099,20 +1608,28 @@ class BotPanelsMixin:
             if is_active:
                 active_count += 1
                 entry_price = signal["price"]
-                quantity = signal["quantity"]
                 side = signal["side"]
 
-                # Calculate P&L based on side
+                # Get invested capital
+                invested_capital = signal.get("invested_capital", 0)
+                if invested_capital <= 0:
+                    # Fallback: use current settings
+                    initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+                    risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+                    invested_capital = initial_cap * (risk_pct / 100)
+
+                # Calculate price change percentage
+                price_change_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+                # P&L based on price change and invested capital
+                # LONG: price up = profit, SHORT: price up = loss
                 if side == "long":
-                    pnl_per_unit = current_price - entry_price
+                    pnl_percent = price_change_pct
                 else:  # short
-                    pnl_per_unit = entry_price - current_price
+                    pnl_percent = -price_change_pct
 
-                # P&L in currency (assuming quantity is in units)
-                pnl_currency = pnl_per_unit * quantity
-
-                # P&L in percent
-                pnl_percent = (pnl_per_unit / entry_price) * 100 if entry_price > 0 else 0
+                # P&L€ = invested × P&L%
+                pnl_currency = invested_capital * (pnl_percent / 100)
 
                 # Update signal data
                 signal["current_price"] = current_price
@@ -1166,6 +1683,7 @@ class BotPanelsMixin:
 
             if has_position:
                 current_price = signal.get("current_price", signal["price"])
+                entry_price = signal["price"]
                 pnl_currency = signal.get("pnl_currency", 0.0)
                 pnl_percent = signal.get("pnl_percent", 0.0)
 
@@ -1176,23 +1694,35 @@ class BotPanelsMixin:
                     current_item = QTableWidgetItem(f"{current_price:.2f}")
                 self.signals_table.setItem(row, 6, current_item)
 
+                # Price change % (Δ%) - how much the price changed since entry
+                if entry_price > 0:
+                    price_change_pct = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    price_change_pct = 0.0
+                price_sign = "+" if price_change_pct >= 0 else ""
+                price_color = "#26a69a" if price_change_pct >= 0 else "#ef5350"
+                price_item = QTableWidgetItem(f"{price_sign}{price_change_pct:.2f}%")
+                price_item.setForeground(QColor(price_color))
+                self.signals_table.setItem(row, 7, price_item)
+
                 # P&L in currency (colored)
                 pnl_sign = "+" if pnl_currency >= 0 else ""
                 pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f} €")
                 pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
                 pnl_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 7, pnl_item)
+                self.signals_table.setItem(row, 8, pnl_item)
 
                 # P&L in percent (colored)
                 pct_sign = "+" if pnl_percent >= 0 else ""
                 pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
                 pct_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 8, pct_item)
+                self.signals_table.setItem(row, 9, pct_item)
             else:
                 # Empty cells for positions without quantity (candidates, pending)
                 self.signals_table.setItem(row, 6, QTableWidgetItem("-"))
                 self.signals_table.setItem(row, 7, QTableWidgetItem("-"))
                 self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 9, QTableWidgetItem("-"))
 
     def _add_ki_log_entry(self, entry_type: str, message: str) -> None:
         """Add entry to KI log (uses local time)."""
@@ -1225,14 +1755,20 @@ class BotPanelsMixin:
             if bc._state_machine.is_error():
                 reasons.append("ERROR")
 
-        if bc._trades_today >= bc.config.risk.max_trades_per_day:
-            reasons.append(f"MAX_TRADES({bc._trades_today}/{bc.config.risk.max_trades_per_day})")
+        # Only check restrictions if enabled
+        if not bc.config.bot.disable_restrictions:
+            if bc._trades_today >= bc.config.risk.max_trades_per_day:
+                reasons.append(f"MAX_TRADES({bc._trades_today}/{bc.config.risk.max_trades_per_day})")
 
-        if abs(bc._daily_pnl) >= bc.config.risk.max_daily_loss_pct:
-            reasons.append(f"MAX_LOSS({bc._daily_pnl:.2f}%)")
+            account_value = 10000.0
+            daily_pnl_pct = (bc._daily_pnl / account_value) * 100
+            if daily_pnl_pct <= -bc.config.risk.max_daily_loss_pct:
+                reasons.append(f"MAX_LOSS({daily_pnl_pct:.2f}%)")
 
-        if bc._consecutive_losses >= bc.config.risk.loss_streak_cooldown:
-            reasons.append(f"LOSS_STREAK({bc._consecutive_losses}/{bc.config.risk.loss_streak_cooldown})")
+            if bc._consecutive_losses >= bc.config.risk.loss_streak_cooldown:
+                reasons.append(f"LOSS_STREAK({bc._consecutive_losses}/{bc.config.risk.loss_streak_cooldown})")
+        else:
+            reasons.append("UNRESTRICTED")
 
         # Position status
         pos_status = "None"
@@ -1312,3 +1848,259 @@ class BotPanelsMixin:
         calls = int(self.ki_calls_today_label.text()) + 1
         self.ki_calls_today_label.setText(str(calls))
         self.ki_last_call_label.setText(datetime.now().strftime("%H:%M:%S"))
+
+    # ==================== SIGNAL HISTORY PERSISTENCE ====================
+
+    def _get_signal_history_key(self) -> str:
+        """Get settings key for signal history based on current symbol."""
+        symbol = getattr(self, 'symbol', '') or self._current_bot_symbol
+        safe_symbol = symbol.replace("/", "_").replace(":", "_")
+        return f"SignalHistory/{safe_symbol}"
+
+    def _save_signal_history(self) -> None:
+        """Save signal history to settings for the current symbol."""
+        if not self._signal_history:
+            return
+
+        key = self._get_signal_history_key()
+        if not key or key == "SignalHistory/":
+            return
+
+        try:
+            # Convert to JSON-serializable format
+            history_json = json.dumps(self._signal_history)
+            self._bot_settings.setValue(key, history_json)
+            logger.info(f"Saved {len(self._signal_history)} signals for {key}")
+        except Exception as e:
+            logger.error(f"Failed to save signal history: {e}")
+
+    def _load_signal_history(self) -> None:
+        """Load signal history from settings for the current symbol."""
+        key = self._get_signal_history_key()
+        if not key or key == "SignalHistory/":
+            return
+
+        try:
+            history_json = self._bot_settings.value(key)
+            if history_json:
+                if isinstance(history_json, str):
+                    self._signal_history = json.loads(history_json)
+                else:
+                    self._signal_history = history_json
+
+                logger.info(f"Loaded {len(self._signal_history)} signals for {key}")
+
+                # Update table
+                if hasattr(self, 'signals_table'):
+                    self._update_signals_table()
+
+                # Check for active positions and start P&L updates
+                active_positions = [s for s in self._signal_history
+                                   if s.get("status") == "ENTERED" and s.get("is_open", False)]
+                if active_positions:
+                    logger.info(f"Found {len(active_positions)} active positions, starting P&L updates")
+                    self._start_pnl_update_timer()
+
+        except Exception as e:
+            logger.error(f"Failed to load signal history: {e}")
+
+    def _start_pnl_update_timer(self) -> None:
+        """Start timer for live P&L updates on restored positions."""
+        if not hasattr(self, '_pnl_update_timer') or self._pnl_update_timer is None:
+            self._pnl_update_timer = QTimer()
+            self._pnl_update_timer.timeout.connect(self._update_restored_positions_pnl)
+            self._pnl_update_timer.start(1000)  # Update every second
+
+    def _update_restored_positions_pnl(self) -> None:
+        """Update P&L for restored positions using current price."""
+        # Get current price from chart widget
+        current_price = None
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, '_last_price'):
+            current_price = self.chart_widget._last_price
+
+        if current_price is None:
+            return
+
+        updated = False
+        for signal in self._signal_history:
+            if signal.get("status") == "ENTERED" and signal.get("is_open", False):
+                entry_price = signal.get("price", 0)
+                quantity = signal.get("quantity", 0)
+                side = signal.get("side", "long")
+
+                if quantity > 0 and entry_price > 0:
+                    # Get invested capital
+                    invested_capital = signal.get("invested_capital", 0)
+                    if invested_capital <= 0:
+                        initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+                        risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+                        invested_capital = initial_cap * (risk_pct / 100)
+
+                    # Calculate price change percentage
+                    price_change_pct = ((current_price - entry_price) / entry_price) * 100
+
+                    # P&L based on price change: LONG = price change, SHORT = -price change
+                    if side == "long":
+                        pnl_percent = price_change_pct
+                    else:
+                        pnl_percent = -price_change_pct
+
+                    # P&L€ = invested × P&L%
+                    pnl_currency = invested_capital * (pnl_percent / 100)
+
+                    signal["current_price"] = current_price
+                    signal["pnl_currency"] = pnl_currency
+                    signal["pnl_percent"] = pnl_percent
+                    updated = True
+
+        if updated:
+            self._update_signals_table()
+
+    # ==================== SIGNALS TABLE CONTEXT MENU ====================
+
+    def _show_signals_context_menu(self, position) -> None:
+        """Show context menu for signals table."""
+        row = self.signals_table.rowAt(position.y())
+        if row < 0:
+            return
+
+        # Get the signal data for this row
+        recent_signals = list(reversed(self._signal_history[-20:]))
+        if row >= len(recent_signals):
+            return
+
+        signal = recent_signals[row]
+        status = signal.get("status", "")
+        is_entered = status == "ENTERED" and signal.get("is_open", False)
+
+        menu = QMenu(self.signals_table)
+
+        # Sell action - only for ENTERED positions
+        sell_action = QAction("Verkaufen (Sofort)", menu)
+        sell_action.setEnabled(is_entered)
+        if is_entered:
+            sell_action.triggered.connect(lambda: self._sell_signal(row, signal))
+        menu.addAction(sell_action)
+
+        menu.addSeparator()
+
+        # Delete action - only for non-ENTERED signals
+        delete_action = QAction("Löschen", menu)
+        delete_action.setEnabled(not is_entered)
+        if not is_entered:
+            delete_action.triggered.connect(lambda: self._delete_signal(row, signal))
+        menu.addAction(delete_action)
+
+        menu.exec(self.signals_table.viewport().mapToGlobal(position))
+
+    def _sell_signal(self, row: int, signal: dict) -> None:
+        """Sell/close the position for the given signal."""
+        symbol = getattr(self, 'symbol', '') or self._current_bot_symbol
+        side = signal.get("side", "long")
+        quantity = signal.get("quantity", 0)
+
+        if quantity <= 0:
+            QMessageBox.warning(self, "Fehler", "Keine gültige Position zum Verkaufen.")
+            return
+
+        # Confirm sell
+        reply = QMessageBox.question(
+            self,
+            "Position verkaufen",
+            f"Position {side.upper()} {quantity:.4f} {symbol} sofort verkaufen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Get current price for exit
+        exit_price = signal.get("current_price", signal.get("price", 0))
+
+        try:
+            # If bot controller exists, reset its position
+            if self._bot_controller and self._bot_controller._position:
+                self._bot_controller._position = None
+                # Remove stop lines from chart
+                if hasattr(self, 'chart_widget'):
+                    self.chart_widget.remove_stop_line("initial_stop")
+                    self.chart_widget.remove_stop_line("trailing_stop")
+                self._add_ki_log_entry("MANUAL", f"Position manuell geschlossen: {side} {quantity:.4f} @ {exit_price:.4f}")
+            else:
+                # Manual update without bot controller
+                self._add_ki_log_entry("MANUAL", f"Position manuell als geschlossen markiert: {side} {quantity:.4f}")
+
+            # Update signal status
+            # Find the actual signal in history (row is reversed)
+            actual_index = len(self._signal_history) - 1 - row
+            if 0 <= actual_index < len(self._signal_history):
+                sig = self._signal_history[actual_index]
+
+                # Get invested capital
+                invested_capital = sig.get("invested_capital", 0)
+                if invested_capital <= 0:
+                    initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+                    risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+                    invested_capital = initial_cap * (risk_pct / 100)
+
+                # Calculate price change percentage
+                entry_price = sig.get("price", 0)
+                price_change_pct = ((exit_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+
+                # P&L based on price change: LONG = price change, SHORT = -price change
+                if side == "long":
+                    pnl_percent = price_change_pct
+                else:
+                    pnl_percent = -price_change_pct
+
+                # P&L€ = invested × P&L%
+                pnl_currency = invested_capital * (pnl_percent / 100)
+
+                sig["status"] = "CLOSED (MANUAL)"
+                sig["is_open"] = False
+                sig["current_price"] = exit_price
+                sig["pnl_currency"] = pnl_currency
+                sig["pnl_percent"] = pnl_percent
+
+            self._update_signals_table()
+            self._save_signal_history()
+
+            QMessageBox.information(
+                self,
+                "Position geschlossen",
+                f"Position wurde geschlossen.\nP&L: {pnl_currency:+.2f}€ ({pnl_percent:+.2f}%)"
+            )
+
+        except Exception as e:
+            logger.error(f"Error selling signal: {e}")
+            QMessageBox.critical(self, "Fehler", f"Fehler beim Verkaufen: {e}")
+
+    def _delete_signal(self, row: int, signal: dict) -> None:
+        """Delete a signal from history (only non-ENTERED signals)."""
+        status = signal.get("status", "")
+        if status == "ENTERED" and signal.get("is_open", False):
+            QMessageBox.warning(
+                self,
+                "Löschen nicht möglich",
+                "Aktive Positionen können nicht gelöscht werden.\nBitte erst verkaufen."
+            )
+            return
+
+        # Confirm delete
+        reply = QMessageBox.question(
+            self,
+            "Signal löschen",
+            f"Signal '{signal.get('type', 'unknown')}' wirklich löschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Find and remove the actual signal (row is reversed)
+        actual_index = len(self._signal_history) - 1 - row
+        if 0 <= actual_index < len(self._signal_history):
+            removed = self._signal_history.pop(actual_index)
+            logger.info(f"Deleted signal: {removed}")
+            self._update_signals_table()
+            self._save_signal_history()

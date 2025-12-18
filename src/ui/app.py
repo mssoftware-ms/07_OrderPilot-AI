@@ -402,6 +402,12 @@ class TradingApplication(MenuMixin, ToolbarMixin, BrokerMixin, QMainWindow):
         else:
             QMessageBox.information(self, "AI Usage", "AI service not initialized")
 
+    def show_pattern_db_dialog(self):
+        """Show the pattern database management dialog."""
+        from src.ui.dialogs import PatternDatabaseDialog
+        dialog = PatternDatabaseDialog(self)
+        dialog.exec()
+
     def reset_toolbars_and_docks(self):
         """Reset all toolbars and dock widgets to their default positions."""
         from PyQt6.QtWidgets import QToolBar

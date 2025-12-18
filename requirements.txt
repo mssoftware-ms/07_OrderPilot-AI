@@ -30,3 +30,6 @@ qasync==0.28.0
 SQLAlchemy==2.0.44
 tenacity==9.1.2
 websockets==15.0.1
+
+# Pattern Database (Qdrant Vector DB)
+qdrant-client>=1.7.0

@@ -246,6 +246,10 @@ class OrderIntent(BaseModel):
     signal_id: str | None = Field(None, description="Source signal ID")
     reason: str = Field(..., description="Why this order")
 
+    # Position sizing context (for P&L calculation)
+    risk_amount: float | None = Field(None, description="Risk capital for this trade")
+    position_value: float | None = Field(None, description="Total position value at entry")
+
     # Validation state
     validated: bool = Field(default=False)
     validation_errors: list[str] = Field(default_factory=list)
@@ -348,13 +352,16 @@ class PositionState(BaseModel):
         """Update current price and recalculate P&L."""
         self.current_price = price
 
+        # P&L% based on invested capital (entry_price × quantity)
+        invested_capital = self.entry_price * self.quantity
+
         if self.side == TradeSide.LONG:
             self.unrealized_pnl = (price - self.entry_price) * self.quantity
-            self.unrealized_pnl_pct = ((price / self.entry_price) - 1) * 100
+            self.unrealized_pnl_pct = (self.unrealized_pnl / invested_capital) * 100 if invested_capital > 0 else 0
             self.trailing.highest_price = max(self.trailing.highest_price, price)
         else:
             self.unrealized_pnl = (self.entry_price - price) * self.quantity
-            self.unrealized_pnl_pct = ((self.entry_price / price) - 1) * 100
+            self.unrealized_pnl_pct = (self.unrealized_pnl / invested_capital) * 100 if invested_capital > 0 else 0
             self.trailing.lowest_price = min(self.trailing.lowest_price, price)
 
         # Track excursions
