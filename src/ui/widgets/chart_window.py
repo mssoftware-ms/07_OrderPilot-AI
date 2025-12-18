@@ -24,7 +24,6 @@ from PyQt6.QtGui import QCloseEvent, QShortcut, QKeySequence
 from .embedded_tradingview_chart import EmbeddedTradingViewChart
 from .chart_window_mixins import (
     PanelsMixin,
-    BacktestMixin,
     EventBusMixin,
     StateMixin,
     BotPanelsMixin,
@@ -154,7 +153,6 @@ class DockTitleBar(QWidget):
 class ChartWindow(
     BotPanelsMixin,
     PanelsMixin,
-    BacktestMixin,
     EventBusMixin,
     StateMixin,
     QMainWindow
@@ -212,7 +210,7 @@ class ChartWindow(
         # State for dock maximize/minimize
         self._dock_maximized = False
         self._dock_minimized = False
-        self._saved_dock_height = 250
+        self._saved_dock_height = 175  # Reduced from 250 (-30%)
 
         # Create panel content (from PanelsMixin)
         self.bottom_panel = self._create_bottom_panel()
@@ -395,7 +393,7 @@ class ChartWindow(
         else:
             # Minimize
             self._dock_minimized = True
-            self._saved_dock_height = max(self.bottom_panel.height(), 150)
+            self._saved_dock_height = max(self.bottom_panel.height(), 105)  # Reduced from 150
             self.bottom_panel.setVisible(False)
             logger.debug("Dock minimized")
 

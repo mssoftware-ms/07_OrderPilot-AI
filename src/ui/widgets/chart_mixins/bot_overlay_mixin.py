@@ -344,18 +344,19 @@ class BotOverlayMixin:
         )
         self._bot_overlay_state.stop_lines[line_id] = stop_line
 
-        # Add to chart with label and style
+        # Add to chart with label, style and custom ID for later updates
         self._execute_js(
-            f"window.chartAPI?.addHorizontalLine({price}, '{color}', '{display_label}', '{line_style}');"
+            f"window.chartAPI?.addHorizontalLine({price}, '{color}', '{display_label}', '{line_style}', '{line_id}');"
         )
         logger.info(f"Added stop line: {line_id} at {price} ({display_label})")
 
-    def update_stop_line(self, line_id: str, new_price: float) -> bool:
+    def update_stop_line(self, line_id: str, new_price: float, label: str | None = None) -> bool:
         """Update an existing stop line.
 
         Args:
             line_id: Line identifier
             new_price: New price level
+            label: Optional custom label (if None, uses default format)
 
         Returns:
             True if updated, False if line not found
@@ -366,18 +367,19 @@ class BotOverlayMixin:
 
         stop_line = self._bot_overlay_state.stop_lines[line_id]
 
-        # Remove old line
-        self._remove_chart_line(line_id)
-
         # Update price and label
         stop_line.price = new_price
-        stop_line.label = f"SL @ {new_price:.2f}"
+        if label is not None:
+            stop_line.label = label
+        else:
+            stop_line.label = f"SL @ {new_price:.2f}"
 
         # Line style - all solid for better visibility
         line_style = "solid"
 
+        # Add with custom ID - JavaScript will remove existing line with same ID
         self._execute_js(
-            f"window.chartAPI?.addHorizontalLine({new_price}, '{stop_line.color}', '{stop_line.label}', '{line_style}');"
+            f"window.chartAPI?.addHorizontalLine({new_price}, '{stop_line.color}', '{stop_line.label}', '{line_style}', '{line_id}');"
         )
         logger.info(f"Updated stop line: {line_id} to {new_price}")
         return True

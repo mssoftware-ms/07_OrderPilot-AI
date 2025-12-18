@@ -74,53 +74,52 @@ class BotPanelsMixin:
         QTimer.singleShot(100, self.update_bot_symbol)
         # Load signal history after UI is ready
         QTimer.singleShot(200, self._load_signal_history)
+        # Connect chart line drag signal (delayed to ensure chart_widget exists)
+        QTimer.singleShot(300, self._connect_chart_line_signals)
 
     def _create_bot_control_tab(self) -> QWidget:
         """Create bot control tab with start/stop and settings."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
 
-        # ==================== CONTROL GROUP ====================
+        # ==================== CONTROL GROUP (full width at top) ====================
         control_group = QGroupBox("Bot Control")
-        control_layout = QVBoxLayout()
+        control_layout = QHBoxLayout()  # Horizontal for compact layout
+        control_layout.setContentsMargins(8, 8, 8, 8)
 
         # Status indicator
-        status_layout = QHBoxLayout()
         self.bot_status_label = QLabel("Status: STOPPED")
         self.bot_status_label.setStyleSheet(
             "font-weight: bold; color: #9e9e9e; font-size: 14px;"
         )
-        status_layout.addWidget(self.bot_status_label)
-        status_layout.addStretch()
-        control_layout.addLayout(status_layout)
+        control_layout.addWidget(self.bot_status_label)
+        control_layout.addStretch()
 
-        # Start/Stop buttons
-        btn_layout = QHBoxLayout()
-
+        # Start/Stop buttons inline
         self.bot_start_btn = QPushButton("Start Bot")
         self.bot_start_btn.setStyleSheet(
             "background-color: #26a69a; color: white; font-weight: bold; "
-            "padding: 10px 20px;"
+            "padding: 8px 16px;"
         )
         self.bot_start_btn.clicked.connect(self._on_bot_start_clicked)
-        btn_layout.addWidget(self.bot_start_btn)
+        control_layout.addWidget(self.bot_start_btn)
 
         self.bot_stop_btn = QPushButton("Stop Bot")
         self.bot_stop_btn.setStyleSheet(
             "background-color: #ef5350; color: white; font-weight: bold; "
-            "padding: 10px 20px;"
+            "padding: 8px 16px;"
         )
         self.bot_stop_btn.setEnabled(False)
         self.bot_stop_btn.clicked.connect(self._on_bot_stop_clicked)
-        btn_layout.addWidget(self.bot_stop_btn)
+        control_layout.addWidget(self.bot_stop_btn)
 
         self.bot_pause_btn = QPushButton("Pause")
-        self.bot_pause_btn.setStyleSheet("padding: 10px;")
+        self.bot_pause_btn.setStyleSheet("padding: 8px;")
         self.bot_pause_btn.setEnabled(False)
         self.bot_pause_btn.clicked.connect(self._on_bot_pause_clicked)
-        btn_layout.addWidget(self.bot_pause_btn)
-
-        control_layout.addLayout(btn_layout)
+        control_layout.addWidget(self.bot_pause_btn)
 
         control_group.setLayout(control_layout)
         layout.addWidget(control_group)
@@ -236,7 +235,6 @@ class BotPanelsMixin:
         settings_layout.addRow("Stop-Loss Only:", self.disable_macd_exit_cb)
 
         settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
 
         # ==================== TRAILING STOP SETTINGS ====================
         trailing_group = QGroupBox("Trailing Stop Settings")
@@ -356,42 +354,54 @@ class BotPanelsMixin:
         trailing_layout.addRow("Min Step:", self.min_step_spin)
 
         trailing_group.setLayout(trailing_layout)
-        layout.addWidget(trailing_group)
+
+        # ==================== SIDE-BY-SIDE LAYOUT FOR SETTINGS ====================
+        settings_row = QHBoxLayout()
+        settings_row.setSpacing(10)
+        settings_row.addWidget(settings_group)
+        settings_row.addWidget(trailing_group)
+        layout.addLayout(settings_row)
 
         # Update visibility based on trailing mode and regime_adaptive
         self._on_trailing_mode_changed()
         self._on_regime_adaptive_changed()
 
-        # ==================== DISPLAY OPTIONS ====================
-        display_group = QGroupBox("Chart Display")
-        display_layout = QVBoxLayout()
+        # ==================== BOTTOM ROW: DISPLAY + HELP ====================
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(10)
 
-        self.show_entry_markers_cb = QCheckBox("Show Entry Markers")
+        # Display options (compact)
+        display_group = QGroupBox("Chart Display")
+        display_layout = QHBoxLayout()  # Horizontal for compact layout
+        display_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.show_entry_markers_cb = QCheckBox("Entry Markers")
         self.show_entry_markers_cb.setChecked(True)
         self.show_entry_markers_cb.stateChanged.connect(self._on_display_option_changed)
         display_layout.addWidget(self.show_entry_markers_cb)
 
-        self.show_stop_lines_cb = QCheckBox("Show Stop Lines")
+        self.show_stop_lines_cb = QCheckBox("Stop Lines")
         self.show_stop_lines_cb.setChecked(True)
         self.show_stop_lines_cb.stateChanged.connect(self._on_display_option_changed)
         display_layout.addWidget(self.show_stop_lines_cb)
 
-        self.show_debug_hud_cb = QCheckBox("Show Debug HUD")
+        self.show_debug_hud_cb = QCheckBox("Debug HUD")
         self.show_debug_hud_cb.setChecked(False)
         self.show_debug_hud_cb.stateChanged.connect(self._on_debug_hud_changed)
         display_layout.addWidget(self.show_debug_hud_cb)
 
         display_group.setLayout(display_layout)
-        layout.addWidget(display_group)
+        bottom_row.addWidget(display_group)
 
-        # ==================== HELP BUTTON ====================
-        help_btn = QPushButton("📖 Trading-Bot Hilfe öffnen")
-        help_btn.setStyleSheet(
-            "padding: 8px; font-size: 12px;"
-        )
+        # Help button
+        help_btn = QPushButton("📖 Trading-Bot Hilfe")
+        help_btn.setStyleSheet("padding: 8px; font-size: 12px;")
         help_btn.setToolTip("Öffnet die ausführliche Dokumentation zum Trading-Bot")
         help_btn.clicked.connect(self._on_open_help_clicked)
-        layout.addWidget(help_btn)
+        bottom_row.addWidget(help_btn)
+
+        bottom_row.addStretch()
+        layout.addLayout(bottom_row)
 
         layout.addStretch()
         return widget
@@ -504,6 +514,8 @@ class BotPanelsMixin:
 
         position_group = QGroupBox("Current Position")
         position_form = QFormLayout()
+        position_form.setVerticalSpacing(2)  # Compact spacing
+        position_form.setContentsMargins(8, 8, 8, 8)
 
         self.position_side_label = QLabel("FLAT")
         self.position_side_label.setStyleSheet("font-weight: bold;")
@@ -533,6 +545,7 @@ class BotPanelsMixin:
         position_form.addRow("Bars Held:", self.position_bars_held_label)
 
         position_group.setLayout(position_form)
+        position_group.setMaximumHeight(160)  # Compact height (-30%)
         position_layout.addWidget(position_group)
         splitter.addWidget(position_widget)
 
@@ -545,9 +558,9 @@ class BotPanelsMixin:
         signals_inner = QVBoxLayout()
 
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(10)
+        self.signals_table.setColumnCount(16)
         self.signals_table.setHorizontalHeaderLabels([
-            "Time", "Type", "Side", "Score", "Entry", "Status", "Current", "Δ%", "P&L €", "P&L %"
+            "Time", "Type", "Side", "Score", "Entry", "Stop", "SL%", "TR%", "TR Kurs", "TRA%", "TR Lock", "Status", "Current", "Δ%", "P&L €", "P&L %"
         ])
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
@@ -559,6 +572,10 @@ class BotPanelsMixin:
         # Context menu for signals table
         self.signals_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.signals_table.customContextMenuRequested.connect(self._show_signals_context_menu)
+
+        # Connect cell editing for bidirectional chart trading (SL% and TR% columns)
+        self.signals_table.cellChanged.connect(self._on_signals_table_cell_changed)
+        self._signals_table_updating = False  # Flag to prevent recursive updates
 
         signals_inner.addWidget(self.signals_table)
 
@@ -1047,6 +1064,7 @@ class BotPanelsMixin:
                     sig["price"] = entry_price  # Update price
                     sig["is_open"] = True
                     sig["label"] = f"E:{int(score * 100)}"  # Entry label like E:66
+                    sig["entry_timestamp"] = int(datetime.now().timestamp())  # Unix timestamp for chart marker
                     logger.info(f"Updated candidate to confirmed: {side} @ {entry_price:.4f}")
                     break
             else:
@@ -1063,7 +1081,8 @@ class BotPanelsMixin:
                     "pnl_currency": 0.0,
                     "pnl_percent": 0.0,
                     "is_open": True,
-                    "label": f"E:{int(score * 100)}"
+                    "label": f"E:{int(score * 100)}",
+                    "entry_timestamp": int(datetime.now().timestamp())  # Unix timestamp for chart marker
                 })
         else:
             # Candidate signal - add new entry
@@ -1102,15 +1121,26 @@ class BotPanelsMixin:
                     stop_price = getattr(decision, 'stop_price_after', None)
                     self._add_ki_log_entry("DEBUG", f"ENTER: stop_price_after={stop_price}, has chart={hasattr(self, 'chart_widget')}")
                     if stop_price:
+                        # Get SL% for label
+                        initial_sl_pct = self.initial_sl_spin.value() if hasattr(self, 'initial_sl_spin') else 0.0
+                        sl_label = f"SL @ {stop_price:.2f} ({initial_sl_pct:.2f}%)" if initial_sl_pct > 0 else f"SL @ {stop_price:.2f}"
+
                         self._add_ki_log_entry("DEBUG", f"Calling add_stop_line({stop_price})")
                         self.chart_widget.add_stop_line(
                             "initial_stop",  # Separate ID for initial stop
                             stop_price,
                             line_type="initial",
                             color="#ef5350",  # Red for initial stop loss
-                            label=f"Initial SL @ {stop_price:.2f}"
+                            label=sl_label
                         )
-                        self._add_ki_log_entry("STOP", f"Initial Stop-Line gezeichnet @ {stop_price:.2f}")
+                        self._add_ki_log_entry("STOP", f"Initial Stop-Line gezeichnet @ {stop_price:.2f} ({initial_sl_pct:.2f}%)")
+                        for sig in reversed(self._signal_history):
+                            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                                sig["stop_price"] = stop_price
+                                sig["initial_sl_pct"] = initial_sl_pct
+                                self._save_signal_history()
+                                self._add_ki_log_entry("DEBUG", f"stop_price {stop_price:.2f} ({initial_sl_pct:.2f}%) in Signal-History gespeichert")
+                                break
                     else:
                         self._add_ki_log_entry("ERROR", "stop_price_after ist None - keine Stop-Line!")
 
@@ -1134,18 +1164,36 @@ class BotPanelsMixin:
                             )
                             logger.info(f"Trailing stop activated: {new_stop:.2f}")
 
+                        # Get TR% and TRA% for label
+                        trailing_pct = self.trailing_distance_spin.value() if hasattr(self, 'trailing_distance_spin') else 0.0
+                        # Calculate TRA% (distance from current price)
+                        tra_pct = 0.0
+                        if self._bot_controller and self._bot_controller._last_features:
+                            current_price = self._bot_controller._last_features.close
+                            if current_price > 0:
+                                tra_pct = abs((current_price - new_stop) / current_price) * 100
+                        tr_label = f"TSL @ {new_stop:.2f} ({trailing_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+
                         # Add/update trailing stop line (separate from initial stop)
                         self.chart_widget.add_stop_line(
                             "trailing_stop",  # Separate ID for trailing stop
                             new_stop,
                             line_type="trailing",
                             color="#ff9800",  # Orange for trailing stop
-                            label=f"Trailing SL @ {new_stop:.2f}"
+                            label=tr_label
                         )
                         self._add_ki_log_entry(
                             "CHART",
-                            f"Trailing Stop Linie gezeichnet @ {new_stop:.2f} (orange)"
+                            f"Trailing Stop Linie gezeichnet @ {new_stop:.2f} ({trailing_pct:.2f}% / TRA: {tra_pct:.2f}%) (orange)"
                         )
+                        for sig in reversed(self._signal_history):
+                            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                                sig["stop_price"] = new_stop
+                                sig["trailing_stop_price"] = new_stop
+                                sig["trailing_stop_pct"] = trailing_pct
+                                self._save_signal_history()
+                                logger.info(f"Signal history updated: trailing_stop_price={new_stop:.2f}, trailing_stop_pct={trailing_pct:.2f}%")
+                                break
 
                 elif action == BotAction.EXIT:
                     # Remove both stop lines
@@ -1654,6 +1702,9 @@ class BotPanelsMixin:
 
     def _update_signals_table(self) -> None:
         """Update signals table with recent entries."""
+        # Prevent recursive cellChanged events
+        self._signals_table_updating = True
+
         recent_signals = list(reversed(self._signal_history[-20:]))
         self.signals_table.setRowCount(len(recent_signals))
 
@@ -1672,9 +1723,106 @@ class BotPanelsMixin:
             self.signals_table.setItem(row, 1, type_item)
 
             self.signals_table.setItem(row, 2, QTableWidgetItem(signal["side"]))
-            self.signals_table.setItem(row, 3, QTableWidgetItem(f"{signal['score']:.0f}"))
+            self.signals_table.setItem(row, 3, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
             self.signals_table.setItem(row, 4, QTableWidgetItem(f"{signal['price']:.4f}"))
-            self.signals_table.setItem(row, 5, QTableWidgetItem(signal["status"]))
+
+            # Stop Loss column (5) - Initial Stop Price
+            stop_price = signal.get("stop_price", 0.0)
+            if stop_price > 0:
+                self.signals_table.setItem(row, 5, QTableWidgetItem(f"{stop_price:.2f}"))
+            else:
+                self.signals_table.setItem(row, 5, QTableWidgetItem("-"))
+
+            # SL% column (6) - Stop Loss Percent from Entry (EDITABLE for active positions)
+            initial_sl_pct = signal.get("initial_sl_pct", 0.0)
+            is_active = signal.get("status") == "ENTERED" and signal.get("is_open", False)
+            if initial_sl_pct > 0:
+                sl_pct_item = QTableWidgetItem(f"{initial_sl_pct:.2f}")
+                sl_pct_item.setForeground(QColor("#ef5350"))  # Red for stop loss
+            else:
+                # Fallback: calculate from entry and stop price
+                entry_price = signal.get("price", 0)
+                if entry_price > 0 and stop_price > 0:
+                    calculated_sl_pct = abs((stop_price - entry_price) / entry_price) * 100
+                    sl_pct_item = QTableWidgetItem(f"{calculated_sl_pct:.2f}")
+                    sl_pct_item.setForeground(QColor("#ef5350"))
+                else:
+                    sl_pct_item = QTableWidgetItem("-")
+            # Make editable for active positions
+            if is_active:
+                sl_pct_item.setFlags(sl_pct_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.signals_table.setItem(row, 6, sl_pct_item)
+
+            # TR% column (7) - Trailing Stop Percent (EDITABLE for active positions)
+            trailing_pct = signal.get("trailing_stop_pct", 0.0)
+            trailing_price = signal.get("trailing_stop_price", 0.0)
+
+            # Calculate TR% from trailing_stop_price if not stored but price exists
+            if trailing_pct <= 0 and trailing_price > 0 and entry_price > 0:
+                side = signal.get("side", "long")
+                if side == "long":
+                    trailing_pct = abs((entry_price - trailing_price) / entry_price) * 100
+                else:
+                    trailing_pct = abs((trailing_price - entry_price) / entry_price) * 100
+
+            if trailing_pct > 0:
+                tr_pct_item = QTableWidgetItem(f"{trailing_pct:.2f}")
+                tr_pct_item.setForeground(QColor("#ff9800"))  # Orange for trailing
+            else:
+                tr_pct_item = QTableWidgetItem("-")
+            # Make editable for active positions
+            if is_active:
+                tr_pct_item.setFlags(tr_pct_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.signals_table.setItem(row, 7, tr_pct_item)
+
+            # TR Kurs column (8) - Current Trailing Stop Price
+            if trailing_price > 0:
+                tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
+                tr_price_item.setForeground(QColor("#ff9800"))  # Orange for trailing
+                self.signals_table.setItem(row, 8, tr_price_item)
+            else:
+                self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
+
+            # TRA% column (9) - Trailing Distance to current price
+            # Calculate how far the trailing stop is from current price
+            current_price_for_tra = signal.get("current_price", signal["price"])
+            if trailing_price > 0 and current_price_for_tra > 0:
+                tra_pct = abs((current_price_for_tra - trailing_price) / current_price_for_tra) * 100
+                tra_item = QTableWidgetItem(f"{tra_pct:.2f}")
+                tra_item.setForeground(QColor("#ff9800"))  # Orange for trailing
+                self.signals_table.setItem(row, 9, tra_item)
+            else:
+                self.signals_table.setItem(row, 9, QTableWidgetItem("-"))
+
+            # Lock column (10) - TR% Lock checkbox for active positions
+            if is_active and trailing_price > 0:
+                lock_checkbox = QCheckBox()
+                # Block signals during initialization to prevent false triggers
+                lock_checkbox.blockSignals(True)
+                lock_checkbox.setChecked(signal.get("tr_lock_active", False))
+                lock_checkbox.setToolTip(
+                    "TR% Lock: Sperrt den TRA% Abstand.\n"
+                    "Bei neuer Kerze wird TR nachgezogen wenn Kurs steigt (LONG) bzw. fällt (SHORT)."
+                )
+                # Calculate index in original signal_history list
+                # recent_signals is reversed, so row 0 = last signal in history
+                signal_index = len(self._signal_history) - 1 - row
+                lock_checkbox.stateChanged.connect(
+                    lambda state, idx=signal_index: self._on_row_tr_lock_changed(idx, state)
+                )
+                lock_checkbox.blockSignals(False)
+                # Create widget container for centering
+                lock_widget = QWidget()
+                lock_layout = QHBoxLayout(lock_widget)
+                lock_layout.addWidget(lock_checkbox)
+                lock_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lock_layout.setContentsMargins(0, 0, 0, 0)
+                self.signals_table.setCellWidget(row, 10, lock_widget)
+            else:
+                self.signals_table.setItem(row, 10, QTableWidgetItem("-"))
+
+            # Status column (11)
+            self.signals_table.setItem(row, 11, QTableWidgetItem(signal["status"]))
 
             # P&L columns - show for positions that have quantity (active OR closed)
             has_position = signal.get("quantity", 0) > 0
@@ -1687,14 +1835,14 @@ class BotPanelsMixin:
                 pnl_currency = signal.get("pnl_currency", 0.0)
                 pnl_percent = signal.get("pnl_percent", 0.0)
 
-                # Current price (show exit price for closed, current for active)
+                # Current price (12) - show exit price for closed, current for active
                 if is_closed:
                     current_item = QTableWidgetItem(f"{current_price:.2f} (Exit)")
                 else:
                     current_item = QTableWidgetItem(f"{current_price:.2f}")
-                self.signals_table.setItem(row, 6, current_item)
+                self.signals_table.setItem(row, 12, current_item)
 
-                # Price change % (Δ%) - how much the price changed since entry
+                # Price change % (Δ%) (13) - how much the price changed since entry
                 if entry_price > 0:
                     price_change_pct = ((current_price - entry_price) / entry_price) * 100
                 else:
@@ -1703,26 +1851,29 @@ class BotPanelsMixin:
                 price_color = "#26a69a" if price_change_pct >= 0 else "#ef5350"
                 price_item = QTableWidgetItem(f"{price_sign}{price_change_pct:.2f}%")
                 price_item.setForeground(QColor(price_color))
-                self.signals_table.setItem(row, 7, price_item)
+                self.signals_table.setItem(row, 13, price_item)
 
-                # P&L in currency (colored)
+                # P&L in currency (14) - colored
                 pnl_sign = "+" if pnl_currency >= 0 else ""
                 pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f} €")
                 pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
                 pnl_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 8, pnl_item)
+                self.signals_table.setItem(row, 14, pnl_item)
 
-                # P&L in percent (colored)
+                # P&L in percent (15) - colored
                 pct_sign = "+" if pnl_percent >= 0 else ""
                 pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
                 pct_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 9, pct_item)
+                self.signals_table.setItem(row, 15, pct_item)
             else:
                 # Empty cells for positions without quantity (candidates, pending)
-                self.signals_table.setItem(row, 6, QTableWidgetItem("-"))
-                self.signals_table.setItem(row, 7, QTableWidgetItem("-"))
-                self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
-                self.signals_table.setItem(row, 9, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 12, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 13, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
+
+        # Reset flag after table update
+        self._signals_table_updating = False
 
     def _add_ki_log_entry(self, entry_type: str, message: str) -> None:
         """Add entry to KI log (uses local time)."""
@@ -1894,15 +2045,233 @@ class BotPanelsMixin:
                 if hasattr(self, 'signals_table'):
                     self._update_signals_table()
 
-                # Check for active positions and start P&L updates
+                # Check for active positions and schedule restoration
                 active_positions = [s for s in self._signal_history
                                    if s.get("status") == "ENTERED" and s.get("is_open", False)]
                 if active_positions:
-                    logger.info(f"Found {len(active_positions)} active positions, starting P&L updates")
-                    self._start_pnl_update_timer()
+                    logger.info(f"Found {len(active_positions)} active positions, scheduling restoration")
+                    # Store active positions for later restoration when chart is ready
+                    # P&L timer will be started in _restore_persisted_position after chart data loads
+                    self._pending_position_restore = active_positions
+                    # Connect to chart data_loaded signal if available
+                    if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'data_loaded'):
+                        self.chart_widget.data_loaded.connect(self._on_chart_data_loaded_restore_position)
+                    else:
+                        # Fallback: try after longer delay
+                        QTimer.singleShot(2000, lambda: self._restore_persisted_position(active_positions))
 
         except Exception as e:
             logger.error(f"Failed to load signal history: {e}")
+
+    def _on_chart_data_loaded_restore_position(self) -> None:
+        """Called when chart data is loaded - restore persisted positions."""
+        if hasattr(self, '_pending_position_restore') and self._pending_position_restore:
+            logger.info("Chart data loaded - restoring persisted positions")
+            # Small delay to ensure chart is fully rendered
+            QTimer.singleShot(500, lambda: self._restore_persisted_position(self._pending_position_restore))
+            # Disconnect signal to avoid multiple calls
+            try:
+                self.chart_widget.data_loaded.disconnect(self._on_chart_data_loaded_restore_position)
+            except:
+                pass
+
+    def _restore_persisted_position(self, active_positions: list) -> None:
+        """Restore chart elements and Current Position display for persisted positions."""
+        if not active_positions:
+            logger.warning("_restore_persisted_position called with no active positions")
+            return
+
+        # Use the most recent active position
+        position = active_positions[-1]
+        logger.info(f"Restoring persisted position: {position}")
+
+        try:
+            # 1. Update Current Position display
+            side = position.get("side", "long")
+            entry_price = position.get("price", 0)
+            quantity = position.get("quantity", 0)
+            stop_price = position.get("stop_price", 0)
+
+            # If no stop_price saved, calculate from Initial SL % setting
+            if stop_price == 0 and entry_price > 0:
+                initial_sl_pct = self.initial_sl_spin.value() if hasattr(self, 'initial_sl_spin') else 2.0
+                if side == "long":
+                    stop_price = entry_price * (1 - initial_sl_pct / 100)
+                else:  # short
+                    stop_price = entry_price * (1 + initial_sl_pct / 100)
+                logger.info(f"Calculated fallback stop_price: {stop_price:.2f} (entry={entry_price:.2f}, SL%={initial_sl_pct}%, side={side})")
+                # Save the calculated stop_price to signal history
+                position["stop_price"] = stop_price
+                self._save_signal_history()
+
+            logger.info(f"Position details: side={side}, entry={entry_price}, qty={quantity}, stop={stop_price}")
+
+            self.position_side_label.setText(side.upper())
+            self.position_side_label.setStyleSheet(
+                f"font-weight: bold; color: {'#26a69a' if side == 'long' else '#ef5350'};"
+            )
+            self.position_entry_label.setText(f"{entry_price:.4f}")
+            self.position_size_label.setText(f"{quantity:.4f}")
+
+            # Calculate and display invested amount
+            initial_cap = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000.0
+            risk_pct = self.risk_per_trade_spin.value() if hasattr(self, 'risk_per_trade_spin') else 10.0
+            invested = initial_cap * (risk_pct / 100)
+            self.position_invested_label.setText(f"{invested:.2f} €")
+
+            if stop_price > 0:
+                self.position_stop_label.setText(f"{stop_price:.4f}")
+            else:
+                self.position_stop_label.setText("-")
+                logger.warning("No stop_price found in persisted position!")
+
+            # Bars held - estimate from signal time if possible
+            self.position_bars_held_label.setText("N/A (restored)")
+
+            # 2. Draw stop line on chart
+            if stop_price > 0:
+                if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_stop_line'):
+                    # Get SL% from position or calculate
+                    initial_sl_pct = position.get("initial_sl_pct", 0.0)
+                    if initial_sl_pct <= 0 and entry_price > 0:
+                        initial_sl_pct = abs((stop_price - entry_price) / entry_price) * 100
+                    sl_label = f"SL @ {stop_price:.2f} ({initial_sl_pct:.2f}%)" if initial_sl_pct > 0 else f"SL @ {stop_price:.2f}"
+
+                    logger.info(f"Drawing stop line @ {stop_price:.2f} ({initial_sl_pct:.2f}%)")
+                    self.chart_widget.add_stop_line(
+                        "initial_stop",
+                        stop_price,
+                        line_type="initial",
+                        color="#ef5350",  # Red for initial stop loss
+                        label=sl_label
+                    )
+                    logger.info(f"Restored stop line @ {stop_price:.2f}")
+                    self._add_ki_log_entry("RESTORE", f"Stop-Line wiederhergestellt @ {stop_price:.2f} ({initial_sl_pct:.2f}%)")
+                else:
+                    logger.warning(f"Cannot draw stop line: chart_widget={hasattr(self, 'chart_widget')}, add_stop_line={hasattr(self.chart_widget, 'add_stop_line') if hasattr(self, 'chart_widget') else 'N/A'}")
+            else:
+                logger.warning(f"stop_price is {stop_price}, not drawing stop line")
+
+            # 2b. Draw entry marker or line on chart
+            entry_timestamp = position.get("entry_timestamp")
+            if hasattr(self, 'chart_widget'):
+                if entry_timestamp and hasattr(self.chart_widget, 'add_entry_confirmed'):
+                    # Use marker if timestamp available
+                    score = position.get("score", 0)
+                    self.chart_widget.add_entry_confirmed(
+                        timestamp=entry_timestamp,
+                        price=entry_price,
+                        side=side,
+                        score=score * 100 if score <= 1 else score  # Normalize score
+                    )
+                    logger.info(f"Restored entry marker @ {entry_price:.2f} at timestamp {entry_timestamp}")
+                    self._add_ki_log_entry("RESTORE", f"Entry-Marker wiederhergestellt @ {entry_price:.2f}")
+                elif hasattr(self.chart_widget, 'add_stop_line'):
+                    # Fallback: use horizontal line for entry (green, dashed)
+                    entry_color = "#26a69a" if side == "long" else "#ef5350"
+                    self.chart_widget.add_stop_line(
+                        "entry_line",
+                        entry_price,
+                        line_type="target",  # Will use green color by default
+                        color=entry_color,
+                        label=f"Entry @ {entry_price:.2f}"
+                    )
+                    logger.info(f"Restored entry line @ {entry_price:.2f}")
+                    self._add_ki_log_entry("RESTORE", f"Entry-Line wiederhergestellt @ {entry_price:.2f}")
+
+            # 2c. Draw trailing stop line if available (separate from initial stop)
+            trailing_stop_price = position.get("trailing_stop_price", 0.0)
+            logger.info(f"[RESTORE DEBUG] trailing_stop_price from position: {trailing_stop_price}")
+
+            # Fallback: Calculate trailing stop if not saved but profit exceeds trigger
+            if trailing_stop_price == 0 and entry_price > 0 and hasattr(self, 'chart_widget'):
+                # Get current price from chart data
+                current_price = None
+                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                    if len(self.chart_widget.data) > 0:
+                        try:
+                            current_price = float(self.chart_widget.data.iloc[-1]['close'])
+                        except (KeyError, IndexError, TypeError):
+                            pass
+
+                if current_price:
+                    # Calculate current profit %
+                    if side == "long":
+                        profit_pct = ((current_price - entry_price) / entry_price) * 100
+                    else:  # short
+                        profit_pct = ((entry_price - current_price) / entry_price) * 100
+
+                    # Get trailing stop settings
+                    trailing_trigger = self.trailing_trigger_spin.value() if hasattr(self, 'trailing_trigger_spin') else 0.2
+                    trailing_pct = self.trailing_distance_spin.value() if hasattr(self, 'trailing_distance_spin') else 0.35
+
+                    logger.info(f"Trailing stop fallback check: profit={profit_pct:.2f}%, trigger={trailing_trigger}%, trailing_pct={trailing_pct}%")
+
+                    # If profit exceeds trigger, calculate and set trailing stop
+                    if profit_pct >= trailing_trigger:
+                        if side == "long":
+                            trailing_stop_price = current_price * (1 - trailing_pct / 100)
+                        else:  # short
+                            trailing_stop_price = current_price * (1 + trailing_pct / 100)
+
+                        # Save to signal history
+                        position["trailing_stop_price"] = trailing_stop_price
+                        position["trailing_stop_pct"] = trailing_pct
+                        self._save_signal_history()
+
+                        logger.info(f"Calculated fallback trailing stop: {trailing_stop_price:.2f} (profit={profit_pct:.2f}% >= trigger={trailing_trigger}%)")
+                        self._add_ki_log_entry("RESTORE", f"Trailing Stop berechnet @ {trailing_stop_price:.2f} (Gewinn {profit_pct:.2f}% >= {trailing_trigger}%)")
+
+            if trailing_stop_price > 0 and hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'add_stop_line'):
+                # Get TR% from position or calculate
+                trailing_stop_pct = position.get("trailing_stop_pct", 0.0)
+                if trailing_stop_pct <= 0 and entry_price > 0:
+                    trailing_stop_pct = abs((trailing_stop_price - entry_price) / entry_price) * 100
+
+                # Get current_price for TRA% calculation
+                tr_current_price = position.get("current_price", 0.0)
+                if tr_current_price == 0 and hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                    if len(self.chart_widget.data) > 0:
+                        try:
+                            tr_current_price = float(self.chart_widget.data.iloc[-1]['close'])
+                        except (KeyError, IndexError, TypeError):
+                            tr_current_price = 0.0
+
+                # Calculate TRA% (distance from current price)
+                tra_pct = 0.0
+                if tr_current_price > 0:
+                    tra_pct = abs((tr_current_price - trailing_stop_price) / tr_current_price) * 100
+                tr_label = f"TSL @ {trailing_stop_price:.2f} ({trailing_stop_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+
+                self.chart_widget.add_stop_line(
+                    "trailing_stop",
+                    trailing_stop_price,
+                    line_type="trailing",
+                    color="#ff9800",  # Orange for trailing stop
+                    label=tr_label
+                )
+                logger.info(f"Restored trailing stop line @ {trailing_stop_price:.2f} ({trailing_stop_pct:.2f}% / TRA: {tra_pct:.2f}%)")
+                self._add_ki_log_entry("RESTORE", f"Trailing Stop-Line wiederhergestellt @ {trailing_stop_price:.2f} ({trailing_stop_pct:.2f}% / TRA: {tra_pct:.2f}%)")
+
+            # 3. Log the restoration
+            self._add_ki_log_entry(
+                "RESTORE",
+                f"Position wiederhergestellt: {side.upper()} {quantity:.4f} @ {entry_price:.4f}, Stop: {stop_price:.2f}"
+            )
+
+            # 4. Update signals table to show current data
+            self._update_signals_table()
+            logger.info("Signals table updated after restoration")
+
+            # 5. Start P&L update timer (now that chart data is available)
+            self._start_pnl_update_timer()
+            logger.info("P&L update timer started for restored position")
+
+            # Clear pending restore
+            self._pending_position_restore = None
+
+        except Exception as e:
+            logger.error(f"Failed to restore persisted position: {e}", exc_info=True)
 
     def _start_pnl_update_timer(self) -> None:
         """Start timer for live P&L updates on restored positions."""
@@ -1913,10 +2282,15 @@ class BotPanelsMixin:
 
     def _update_restored_positions_pnl(self) -> None:
         """Update P&L for restored positions using current price."""
-        # Get current price from chart widget
+        # Get current price from chart widget's data DataFrame
         current_price = None
-        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, '_last_price'):
-            current_price = self.chart_widget._last_price
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'data'):
+            chart_data = self.chart_widget.data
+            if chart_data is not None and len(chart_data) > 0:
+                try:
+                    current_price = float(chart_data.iloc[-1]['close'])
+                except (KeyError, IndexError, TypeError):
+                    pass
 
         if current_price is None:
             return
@@ -1952,6 +2326,13 @@ class BotPanelsMixin:
                     signal["pnl_currency"] = pnl_currency
                     signal["pnl_percent"] = pnl_percent
                     updated = True
+
+                    # Also update Current Position display
+                    self.position_current_label.setText(f"{current_price:.4f}")
+                    pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
+                    pnl_sign = "+" if pnl_currency >= 0 else ""
+                    self.position_pnl_label.setText(f"{pnl_sign}{pnl_currency:.2f} € ({pnl_sign}{pnl_percent:.2f}%)")
+                    self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {pnl_color}; font-size: 14px;")
 
         if updated:
             self._update_signals_table()
@@ -2102,5 +2483,435 @@ class BotPanelsMixin:
         if 0 <= actual_index < len(self._signal_history):
             removed = self._signal_history.pop(actual_index)
             logger.info(f"Deleted signal: {removed}")
+            self._update_signals_table()
+            self._save_signal_history()
+
+    # ==================== CHART TRADING (BIDIRECTIONAL) ====================
+
+    def _connect_chart_line_signals(self) -> None:
+        """Connect chart line drag signals for bidirectional chart trading."""
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'stop_line_moved'):
+            self.chart_widget.stop_line_moved.connect(self._on_chart_stop_line_moved)
+            logger.info("Connected chart stop_line_moved signal for chart trading")
+        # Connect candle closed signal for TR% lock feature
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'candle_closed'):
+            self.chart_widget.candle_closed.connect(self._on_candle_closed)
+            logger.info("Connected candle_closed signal for TR% lock feature")
+
+    def _on_chart_stop_line_moved(self, line_id: str, new_price: float) -> None:
+        """Handle stop line being dragged in the chart.
+
+        Updates the signal history, table, and recalculates dependent values.
+
+        Args:
+            line_id: ID of the line ("initial_stop", "trailing_stop", "entry_line")
+            new_price: New price after drag
+        """
+        logger.info(f"Chart line moved: {line_id} -> {new_price:.4f}")
+
+        # Find the active position in signal history
+        for sig in reversed(self._signal_history):
+            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                entry_price = sig.get("price", 0)
+                side = sig.get("side", "long")
+
+                if line_id == "initial_stop":
+                    # Update stop price and recalculate SL%
+                    sig["stop_price"] = new_price
+                    new_sl_pct = 0.0
+                    if entry_price > 0:
+                        new_sl_pct = abs((new_price - entry_price) / entry_price) * 100
+                        sig["initial_sl_pct"] = new_sl_pct
+                    self._add_ki_log_entry("CHART", f"Stop Loss verschoben → {new_price:.2f} ({new_sl_pct:.2f}%)")
+                    logger.info(f"Updated initial_stop to {new_price:.2f}")
+
+                    # Redraw line with correct label including %
+                    if hasattr(self, "chart_widget") and self.chart_widget:
+                        label = f"SL @ {new_price:.2f} ({new_sl_pct:.2f}%)"
+                        self.chart_widget.add_stop_line(
+                            line_id="initial_stop",
+                            price=new_price,
+                            line_type="initial",
+                            label=label
+                        )
+
+                elif line_id == "trailing_stop":
+                    # Update trailing stop price (NOT stop_price - that's the initial SL!)
+                    sig["trailing_stop_price"] = new_price
+                    # Recalculate TR% from entry price
+                    new_tr_pct = 0.0
+                    if entry_price > 0:
+                        if side == "long":
+                            new_tr_pct = abs((entry_price - new_price) / entry_price) * 100
+                        else:
+                            new_tr_pct = abs((new_price - entry_price) / entry_price) * 100
+                        sig["trailing_stop_pct"] = new_tr_pct
+                    # Calculate TRA% from current price
+                    current_price = sig.get("current_price", entry_price)
+                    tra_pct = abs((current_price - new_price) / current_price) * 100 if current_price > 0 else 0.0
+                    self._add_ki_log_entry("CHART", f"Trailing Stop verschoben → {new_price:.2f} ({new_tr_pct:.2f}% / TRA: {tra_pct:.2f}%)")
+                    logger.info(f"Updated trailing_stop to {new_price:.2f}")
+
+                    # Redraw line with correct label including % and TRA%
+                    if hasattr(self, "chart_widget") and self.chart_widget:
+                        label = f"TSL @ {new_price:.2f} ({new_tr_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+                        self.chart_widget.add_stop_line(
+                            line_id="trailing_stop",
+                            price=new_price,
+                            line_type="trailing",
+                            label=label
+                        )
+
+                elif line_id == "entry_line":
+                    # Update entry price and recalculate SL%
+                    old_entry = entry_price
+                    sig["price"] = new_price
+                    # Recalculate SL% based on new entry
+                    stop_price = sig.get("stop_price", 0)
+                    if new_price > 0 and stop_price > 0:
+                        sig["initial_sl_pct"] = abs((stop_price - new_price) / new_price) * 100
+                    self._add_ki_log_entry("CHART", f"Entry verschoben → {new_price:.2f} (war {old_entry:.2f})")
+                    logger.info(f"Updated entry_line to {new_price:.2f}")
+
+                # CRITICAL: Sync stop changes to bot controller for stop-hit detection
+                if line_id in ("initial_stop", "trailing_stop"):
+                    self._sync_stop_to_bot_controller(new_price)
+
+                # Save and update UI
+                self._save_signal_history()
+                self._update_signals_table()
+                break
+
+    def _on_signals_table_cell_changed(self, row: int, column: int) -> None:
+        """Handle table cell editing - update chart lines when SL% or TR% changes.
+
+        This enables bidirectional editing: Table → Chart
+        Column 6 = SL%, Column 7 = TR%
+
+        Args:
+            row: Row index that was edited
+            column: Column index that was edited (6=SL%, 7=TR%)
+        """
+        # Skip if we're programmatically updating the table
+        if self._signals_table_updating:
+            return
+
+        # Only handle SL% (col 6) and TR% (col 7) columns
+        if column not in (6, 7):
+            return
+
+        # Get the edited cell
+        item = self.signals_table.item(row, column)
+        if not item:
+            return
+
+        # Parse the new percentage value
+        try:
+            new_pct = float(item.text().replace(",", ".").replace("%", "").strip())
+        except (ValueError, AttributeError):
+            logger.warning(f"Invalid percentage value in row {row}, column {column}")
+            return
+
+        if new_pct <= 0:
+            logger.warning(f"Percentage must be positive: {new_pct}")
+            return
+
+        # Find the corresponding signal in history
+        # Table rows are in reverse order of signal_history
+        visible_signals = [s for s in self._signal_history if s.get("status") in ("ENTERED", "EXITED")]
+        signal_idx = len(visible_signals) - 1 - row
+
+        if signal_idx < 0 or signal_idx >= len(visible_signals):
+            logger.warning(f"Could not find signal for row {row}")
+            return
+
+        sig = visible_signals[signal_idx]
+
+        # Only allow editing active positions
+        if not (sig.get("status") == "ENTERED" and sig.get("is_open", False)):
+            logger.info(f"Signal at row {row} is not an active position")
+            return
+
+        entry_price = sig.get("price", 0)
+        side = sig.get("side", "long")
+
+        if entry_price <= 0:
+            logger.warning(f"Invalid entry price: {entry_price}")
+            return
+
+        # Calculate new stop price based on side
+        if side == "long":
+            new_stop_price = entry_price * (1 - new_pct / 100)
+        else:
+            new_stop_price = entry_price * (1 + new_pct / 100)
+
+        logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%, new_stop={new_stop_price:.2f}")
+
+        if column == 6:  # SL% - Update Initial Stop Loss
+            sig["stop_price"] = new_stop_price
+            sig["initial_sl_pct"] = new_pct
+
+            # Update chart line
+            if hasattr(self, "chart_widget") and self.chart_widget:
+                label = f"SL @ {new_stop_price:.2f} ({new_pct:.2f}%)"
+                self.chart_widget.add_stop_line(
+                    line_id="initial_stop",
+                    price=new_stop_price,
+                    line_type="initial",
+                    label=label
+                )
+
+            self._add_ki_log_entry("TABLE", f"Stop Loss geändert → {new_stop_price:.2f} ({new_pct:.2f}%)")
+            logger.info(f"Updated initial_stop from table to {new_stop_price:.2f}")
+
+        elif column == 7:  # TR% - Update Trailing Stop
+            sig["trailing_stop_price"] = new_stop_price
+            sig["trailing_stop_pct"] = new_pct
+            # NOTE: Do NOT update sig["stop_price"] - that's for initial SL only!
+
+            # Calculate TRA% from current price
+            current_price = sig.get("current_price", entry_price)
+            tra_pct = abs((current_price - new_stop_price) / current_price) * 100 if current_price > 0 else 0.0
+
+            # Update chart line with TRA%
+            if hasattr(self, "chart_widget") and self.chart_widget:
+                label = f"TSL @ {new_stop_price:.2f} ({new_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+                self.chart_widget.add_stop_line(
+                    line_id="trailing_stop",
+                    price=new_stop_price,
+                    line_type="trailing",
+                    label=label
+                )
+
+            self._add_ki_log_entry("TABLE", f"Trailing Stop geändert → {new_stop_price:.2f} ({new_pct:.2f}% / TRA: {tra_pct:.2f}%)")
+            logger.info(f"Updated trailing_stop from table to {new_stop_price:.2f}")
+
+        # CRITICAL: Sync stop changes to bot controller for stop-hit detection
+        self._sync_stop_to_bot_controller(new_stop_price)
+
+        # Save changes
+        self._save_signal_history()
+
+        # Update the table to show calculated values (e.g., TR Kurs)
+        # Set flag to prevent recursive cellChanged
+        self._signals_table_updating = True
+        try:
+            self._update_signals_table()
+        finally:
+            self._signals_table_updating = False
+
+    def _sync_stop_to_bot_controller(self, new_stop_price: float) -> None:
+        """Sync stop price to bot controller's internal position.
+
+        CRITICAL: The bot controller's position.trailing.current_stop_price
+        must be updated for stop-hit detection to work correctly.
+        Without this sync, the visual stop line and the actual bot stop are different!
+
+        Args:
+            new_stop_price: New stop price to sync
+        """
+        if not hasattr(self, '_bot_controller') or not self._bot_controller:
+            logger.debug("No bot controller to sync stop to")
+            return
+
+        position = getattr(self._bot_controller, '_position', None)
+        if not position:
+            logger.debug("Bot controller has no active position")
+            return
+
+        trailing = getattr(position, 'trailing', None)
+        if not trailing:
+            logger.debug("Position has no trailing state")
+            return
+
+        old_stop = trailing.current_stop_price
+        trailing.current_stop_price = new_stop_price
+
+        # Also update initial_stop_price if this is lower (for initial SL drag)
+        if new_stop_price < trailing.initial_stop_price:
+            trailing.initial_stop_price = new_stop_price
+
+        logger.info(
+            f"[BOT SYNC] Stop synced to bot controller: {old_stop:.4f} → {new_stop_price:.4f}"
+        )
+        self._add_ki_log_entry(
+            "SYNC",
+            f"Bot-Stop synchronisiert: {old_stop:.2f} → {new_stop_price:.2f}"
+        )
+
+    # ==================== TR% LOCK FEATURE (Per-Signal) ====================
+
+    def _on_row_tr_lock_changed(self, signal_index: int, state: int) -> None:
+        """Handle TR% lock checkbox change for a specific signal row.
+
+        When activated, stores the current TRA% (trailing distance from current price)
+        in the signal so it can be maintained as the price moves.
+
+        Args:
+            signal_index: Index of the signal in _signal_history
+            state: Checkbox state
+        """
+        is_locked = state == Qt.CheckState.Checked.value
+
+        # Get signal by index
+        if signal_index < 0 or signal_index >= len(self._signal_history):
+            logger.warning(f"TR% Lock: Signal-Index {signal_index} ungültig")
+            return
+
+        signal = self._signal_history[signal_index]
+
+        if is_locked:
+            # Calculate current TRA% (distance from current price to trailing stop)
+            current_price = signal.get("current_price", signal.get("price", 0))
+            trailing_price = signal.get("trailing_stop_price", 0)
+
+            if current_price <= 0 or trailing_price <= 0:
+                logger.warning(f"TR% Lock: Ungültige Preise für Signal #{signal_index}")
+                return
+
+            # Calculate TRA% - distance from current price
+            tra_pct = abs((current_price - trailing_price) / current_price) * 100
+
+            # Store lock state in signal
+            signal["tr_lock_active"] = True
+            signal["tr_lock_tra_pct"] = tra_pct
+            signal["tr_lock_last_close"] = current_price
+
+            logger.info(
+                f"TR% Lock aktiviert für Signal #{signal_index}: TRA%={tra_pct:.2f}%, "
+                f"Side={signal.get('side', 'LONG')}, Price={current_price:.2f}, TR={trailing_price:.2f}"
+            )
+            self._add_ki_log_entry(
+                "TR_LOCK",
+                f"TR% Lock aktiviert: TRA%={tra_pct:.2f}% bei Kurs {current_price:.2f}"
+            )
+        else:
+            # Clear lock state in signal
+            signal["tr_lock_active"] = False
+            signal.pop("tr_lock_tra_pct", None)
+            signal.pop("tr_lock_last_close", None)
+
+            logger.info(f"TR% Lock deaktiviert für Signal #{signal_index}")
+            self._add_ki_log_entry("TR_LOCK", "TR% Lock deaktiviert")
+
+        self._save_signal_history()
+
+    def _get_signals_with_active_lock(self) -> list[dict]:
+        """Get all signals that have TR% lock active."""
+        locked_signals = []
+        for signal in self._signal_history:
+            if signal.get("tr_lock_active", False):
+                status = signal.get("status", "")
+                # Only include active positions
+                if status == "ENTERED" and signal.get("is_open", False):
+                    locked_signals.append(signal)
+        return locked_signals
+
+    def _on_candle_closed(self, previous_close: float, new_open: float) -> None:
+        """Handle candle close event for TR% lock feature.
+
+        When TR% lock is active on any signal, adjusts the trailing stop
+        to maintain the locked TRA% distance from the new price.
+
+        Args:
+            previous_close: Close price of the closed candle
+            new_open: Open price of the new candle (current price)
+        """
+        # Get all signals with active TR% lock
+        locked_signals = self._get_signals_with_active_lock()
+        if not locked_signals:
+            return
+
+        current_price = previous_close  # Use the just-closed candle's close
+        any_updated = False
+
+        for signal in locked_signals:
+            # Get lock parameters from signal
+            locked_tra_pct = signal.get("tr_lock_tra_pct", 0)
+            if locked_tra_pct <= 0:
+                continue
+
+            locked_side = signal.get("side", "LONG").upper()
+            last_close = signal.get("tr_lock_last_close", current_price)
+            signal_time = signal.get("time", "?")
+
+            # Check direction condition
+            # LONG: Only adjust if price rose (new close > previous close)
+            # SHORT: Only adjust if price fell (new close < previous close)
+            if locked_side == "LONG":
+                if current_price <= last_close:
+                    logger.debug(
+                        f"TR% Lock (LONG, {signal_time}): Kurs nicht gestiegen "
+                        f"({last_close:.2f} → {current_price:.2f}), TR-Linie bleibt"
+                    )
+                    signal["tr_lock_last_close"] = current_price
+                    continue
+            else:  # SHORT
+                if current_price >= last_close:
+                    logger.debug(
+                        f"TR% Lock (SHORT, {signal_time}): Kurs nicht gefallen "
+                        f"({last_close:.2f} → {current_price:.2f}), TR-Linie bleibt"
+                    )
+                    signal["tr_lock_last_close"] = current_price
+                    continue
+
+            # Calculate new trailing stop price based on locked TRA%
+            if locked_side == "LONG":
+                new_trailing_price = current_price * (1 - locked_tra_pct / 100)
+            else:
+                new_trailing_price = current_price * (1 + locked_tra_pct / 100)
+
+            old_trailing = signal.get("trailing_stop_price", 0)
+
+            # Only move trailing stop in the favorable direction
+            if locked_side == "LONG":
+                if new_trailing_price <= old_trailing:
+                    logger.debug(
+                        f"TR% Lock (LONG, {signal_time}): Neuer TR ({new_trailing_price:.2f}) "
+                        f"nicht höher als alter TR ({old_trailing:.2f}), übersprungen"
+                    )
+                    signal["tr_lock_last_close"] = current_price
+                    continue
+            else:
+                if new_trailing_price >= old_trailing:
+                    logger.debug(
+                        f"TR% Lock (SHORT, {signal_time}): Neuer TR ({new_trailing_price:.2f}) "
+                        f"nicht niedriger als alter TR ({old_trailing:.2f}), übersprungen"
+                    )
+                    signal["tr_lock_last_close"] = current_price
+                    continue
+
+            # Update signal
+            signal["trailing_stop_price"] = new_trailing_price
+            entry_price = signal.get("price", current_price)
+            new_tr_pct = abs((entry_price - new_trailing_price) / entry_price) * 100
+            signal["trailing_stop_pct"] = new_tr_pct
+            signal["current_price"] = current_price
+            signal["tr_lock_last_close"] = current_price
+
+            # Update chart line (using standard trailing_stop line_id)
+            if hasattr(self, 'chart_widget'):
+                new_tra_pct = abs((current_price - new_trailing_price) / current_price) * 100
+                label_text = f"TSL @ {new_trailing_price:.2f} ({new_tr_pct:.2f}% / TRA: {new_tra_pct:.2f}%)"
+                self.chart_widget.update_stop_line(
+                    line_id="trailing_stop",
+                    new_price=new_trailing_price,
+                    label=label_text
+                )
+
+            # Sync to bot controller
+            self._sync_stop_to_bot_controller(new_trailing_price)
+
+            logger.info(
+                f"TR% Lock ({signal_time}): TR nachgezogen {old_trailing:.2f} → {new_trailing_price:.2f} "
+                f"(TRA%={locked_tra_pct:.2f}%, Kurs={current_price:.2f})"
+            )
+            self._add_ki_log_entry(
+                "TR_LOCK",
+                f"TR nachgezogen: {old_trailing:.2f} → {new_trailing_price:.2f}"
+            )
+            any_updated = True
+
+        if any_updated:
             self._update_signals_table()
             self._save_signal_history()

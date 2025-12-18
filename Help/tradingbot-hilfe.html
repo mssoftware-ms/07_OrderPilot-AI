@@ -1193,6 +1193,84 @@ Beispiel:
                 <div class="alert-title">💡 Signal-Bestätigung</div>
                 <p>Ein <span class="badge badge-warning">CANDIDATE</span> Signal wird zu <span class="badge badge-success">CONFIRMED</span>, wenn es auf der nächsten Kerze bestätigt wird. Dies verhindert Fehlsignale.</p>
             </div>
+
+            <h4>Score-Berechnung im Detail</h4>
+            <p>Der <strong>Entry-Score (0-100)</strong> ist ein gewichteter Durchschnitt mehrerer technischer Indikatoren:</p>
+
+            <table>
+                <tr>
+                    <th>Komponente</th>
+                    <th>Gewicht</th>
+                    <th>Was wird bewertet?</th>
+                </tr>
+                <tr>
+                    <td>Trend Alignment</td>
+                    <td>25%</td>
+                    <td>MA-Ausrichtung (SMA 20/50/200). Bestätigt der Trend die Trade-Richtung?</td>
+                </tr>
+                <tr>
+                    <td>RSI Momentum</td>
+                    <td>20%</td>
+                    <td>RSI-Position. Long: RSI 30-50 gut, Short: RSI 50-70 gut</td>
+                </tr>
+                <tr>
+                    <td>MACD Momentum</td>
+                    <td>15%</td>
+                    <td>MACD-Histogram & Signal-Line Crossover</td>
+                </tr>
+                <tr>
+                    <td>Trend Strength</td>
+                    <td>15%</td>
+                    <td>ADX-Stärke. ADX > 25 = starker Trend</td>
+                </tr>
+                <tr>
+                    <td>Mean Reversion</td>
+                    <td>10%</td>
+                    <td>Bollinger Band Position. Ist Preis nahe Support/Resistance?</td>
+                </tr>
+                <tr>
+                    <td>Volume</td>
+                    <td>10%</td>
+                    <td>Volumen-Ratio vs. Durchschnitt. Höher = besser</td>
+                </tr>
+                <tr>
+                    <td>Regime Match</td>
+                    <td>5%</td>
+                    <td>Passt der Trade zur aktuellen Marktphase?</td>
+                </tr>
+            </table>
+
+            <div class="card">
+                <div class="card-title">📊 Score-Interpretation</div>
+                <table>
+                    <tr>
+                        <th>Score</th>
+                        <th>Bedeutung</th>
+                        <th>Aktion</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-success">80-100</span></td>
+                        <td>Sehr starkes Signal</td>
+                        <td>Idealer Entry, alle Indikatoren bestätigen</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-info">60-79</span></td>
+                        <td>Gutes Signal</td>
+                        <td>Trade möglich (Minimum für Entry)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-warning">40-59</span></td>
+                        <td>Schwaches Signal</td>
+                        <td>Kein Trade - zu wenig Bestätigung</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-danger">0-39</span></td>
+                        <td>Kein Signal</td>
+                        <td>Definitiv kein Trade</td>
+                    </tr>
+                </table>
+                <p style="margin-top: 15px;">Der Bot tradet nur wenn <code>Score ≥ 60</code> (konfigurierbar via <code>min_score_threshold</code>).</p>
+            </div>
         </section>
 
         <section id="stop-historie">
@@ -1311,7 +1389,7 @@ Beispiel:
                     <dd>Volatilitäts-Kanäle um einen gleitenden Durchschnitt. Nützlich für Mean-Reversion.</dd>
 
                     <dt><strong>Entry Score</strong></dt>
-                    <dd>Punktzahl 0-100, die die Qualität eines Entry-Signals bewertet.</dd>
+                    <dd>Gewichteter Durchschnitt (0-100) aus mehreren Indikatoren: Trend Alignment (25%), RSI Momentum (20%), MACD (15%), ADX Trendstärke (15%), Mean Reversion (10%), Volumen (10%), Regime Match (5%). Score ≥ 60 = Trade möglich.</dd>
 
                     <dt><strong>Guardrails</strong></dt>
                     <dd>Sicherheitsmechanismen, die KI-Empfehlungen validieren und unsichere Aktionen verhindern.</dd>

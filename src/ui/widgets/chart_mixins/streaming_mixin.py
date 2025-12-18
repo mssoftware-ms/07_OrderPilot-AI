@@ -95,6 +95,11 @@ class StreamingMixin:
 
             # Check if we need a new candle (new minute)
             if current_minute_start > self._current_candle_time:
+                # Previous candle closed - emit signal with previous close and new open
+                previous_close = getattr(self, '_current_candle_close', price)
+                if hasattr(self, 'candle_closed'):
+                    self.candle_closed.emit(previous_close, price)
+                    logger.debug(f"Candle closed: prev_close={previous_close:.2f}, new_open={price:.2f}")
                 # New candle - reset
                 self._current_candle_time = current_minute_start
                 self._current_candle_open = price
@@ -109,6 +114,9 @@ class StreamingMixin:
             # Accumulate volume
             if volume:
                 self._current_candle_volume += volume
+
+            # Store current close for candle_closed signal
+            self._current_candle_close = price
 
             # Create candle update
             candle = {

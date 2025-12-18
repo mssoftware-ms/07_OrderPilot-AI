@@ -26,6 +26,8 @@ from PyQt6.QtWidgets import (
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWebChannel import QWebChannel
+    from PyQt6.QtCore import QObject
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False
@@ -129,8 +131,27 @@ CHART_HTML_TEMPLATE = """
             <div id="status">Initializing chart...</div>
         </div>
     </div>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
         const { createChart, CrosshairMode, LineStyle, LineSeries, HistogramSeries, CandlestickSeries, createSeriesMarkers } = LightweightCharts;
+
+        // Global reference to Python bridge (set up after QWebChannel connects)
+        let pyBridge = null;
+
+        // Initialize QWebChannel for Python communication
+        function initQtBridge() {
+            if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    pyBridge = channel.objects.pyBridge;
+                    console.log('QWebChannel connected, pyBridge available:', !!pyBridge);
+                });
+            } else {
+                console.log('QWebChannel not available (running outside Qt?)');
+            }
+        }
+
+        // Initialize bridge on load
+        setTimeout(initQtBridge, 100);
 
         function initializeChart() {
             try {
@@ -1033,12 +1054,19 @@ CHART_HTML_TEMPLATE = """
                     } else if (e.button === 0) {
                         // Left click without drawing target - enable Y-panning
                         // First disable autoScale to allow manual Y control
-                        rightScale.applyOptions({ autoScale: false });
-                        const range = rightScale.getVisiblePriceRange();
-                        if (range) {
-                            isYPanning = true;
-                            yPanStartY = y;
-                            yPanStartRange = { from: range.from, to: range.to };
+                        try {
+                            rightScale.applyOptions({ autoScale: false });
+                            // Try to get visible price range (may not exist in all versions)
+                            const range = typeof rightScale.getVisiblePriceRange === 'function'
+                                ? rightScale.getVisiblePriceRange()
+                                : null;
+                            if (range) {
+                                isYPanning = true;
+                                yPanStartY = y;
+                                yPanStartRange = { from: range.from, to: range.to };
+                            }
+                        } catch (err) {
+                            console.warn('Y-panning not available:', err.message);
                         }
                     }
                 }, true);
@@ -1059,7 +1087,13 @@ CHART_HTML_TEMPLATE = """
                         // Apply new range (move in same direction as mouse)
                         const newFrom = yPanStartRange.from + priceDelta;
                         const newTo = yPanStartRange.to + priceDelta;
-                        rightScale.setVisiblePriceRange({ from: newFrom, to: newTo });
+                        try {
+                            if (typeof rightScale.setVisiblePriceRange === 'function') {
+                                rightScale.setVisiblePriceRange({ from: newFrom, to: newTo });
+                            }
+                        } catch (err) {
+                            console.warn('setVisiblePriceRange failed:', err.message);
+                        }
                         return;
                     }
 
@@ -1181,7 +1215,18 @@ CHART_HTML_TEMPLATE = """
                         yPanStartRange = null;
                     }
 
-                    if (isDragging) {
+                    if (isDragging && dragTarget) {
+                        const d = dragTarget.drawing;
+                        // Notify Python if a horizontal stop line was moved
+                        if (d.type === 'hline' && d.id && pyBridge) {
+                            console.log('Line drag ended:', d.id, 'new price:', d.price);
+                            // Call Python bridge to notify about the move
+                            pyBridge.onStopLineMoved(d.id, d.price);
+                            // Update label with new price
+                            d.label = d.label.replace(/@\s*[\d.]+/, '@ ' + d.price.toFixed(2));
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({}); // Force redraw
+                        }
                         isDragging = false;
                         dragTarget = null;
                         container.style.cursor = currentTool === 'pointer' ? 'default' : 'crosshair';
@@ -1344,11 +1389,21 @@ CHART_HTML_TEMPLATE = """
                     ...(d.type === 'hline' ? { price: d.price, color: d.color } : { p1: d.p1, p2: d.p2, color: d.color })
                 }));
                 window.chartAPI.clearDrawings = clearAllDrawings;
-                window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid') => {
-                    const line = new HorizontalLinePrimitive(price, color || '#26a69a', genId(), label, lineStyle);
+                window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid', customId = null) => {
+                    // Use custom ID if provided, otherwise generate one
+                    const lineId = customId || genId();
+                    // Remove existing line with same ID if updating
+                    const existingIdx = drawings.findIndex(x => x.id === lineId);
+                    if (existingIdx !== -1) {
+                        const existing = drawings[existingIdx];
+                        priceSeries.detachPrimitive(existing);
+                        drawings.splice(existingIdx, 1);
+                        console.log('Removed existing line with ID:', lineId);
+                    }
+                    const line = new HorizontalLinePrimitive(price, color || '#26a69a', lineId, label, lineStyle);
                     priceSeries.attachPrimitive(line);
                     drawings.push(line);
-                    console.log('Added horizontal line at', price, 'with label:', label);
+                    console.log('Added horizontal line at', price, 'with label:', label, 'ID:', lineId);
                     return line.id;
                 };
                 window.chartAPI.addTrendLine = (p1, p2, color) => {
@@ -1379,6 +1434,31 @@ CHART_HTML_TEMPLATE = """
 """
 
 
+class ChartBridge(QObject):
+    """Bridge object for JavaScript to Python communication.
+
+    Allows JavaScript in the chart to call Python methods, e.g., when
+    a stop line is dragged to a new position.
+    """
+
+    # Signal emitted when a stop line is moved
+    stop_line_moved = pyqtSignal(str, float)  # (line_id, new_price)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    @pyqtSlot(str, float)
+    def onStopLineMoved(self, line_id: str, new_price: float):
+        """Called from JavaScript when a stop line is dragged.
+
+        Args:
+            line_id: ID of the line ("initial_stop", "trailing_stop", "entry_line")
+            new_price: New price level after drag
+        """
+        logger.info(f"[ChartBridge] Stop line moved: {line_id} -> {new_price:.2f}")
+        self.stop_line_moved.emit(line_id, new_price)
+
+
 class EmbeddedTradingViewChart(
     BotOverlayMixin,
     ToolbarMixin,
@@ -1406,6 +1486,10 @@ class EmbeddedTradingViewChart(
     # Thread-safe signals for streaming updates (called from background threads)
     _tick_received = pyqtSignal(object)
     _bar_received = pyqtSignal(object)
+    # Chart trading signals - emitted when user drags lines in chart
+    stop_line_moved = pyqtSignal(str, float)  # (line_id, new_price)
+    # Candle closed signal - emitted when a new candle starts (previous candle closed)
+    candle_closed = pyqtSignal(float, float)  # (previous_close, new_open)
 
     def __init__(self, history_manager=None):
         """Initialize embedded chart widget.
@@ -1519,6 +1603,13 @@ class EmbeddedTradingViewChart(
         self.web_view.setHtml(CHART_HTML_TEMPLATE)
         layout.addWidget(self.web_view, stretch=1)
 
+        # Setup WebChannel for JavaScript to Python communication
+        self._chart_bridge = ChartBridge(self)
+        self._chart_bridge.stop_line_moved.connect(self._on_bridge_stop_line_moved)
+        self._web_channel = QWebChannel(self.web_view.page())
+        self._web_channel.registerObject("pyBridge", self._chart_bridge)
+        self.web_view.page().setWebChannel(self._web_channel)
+
         # Info panel
         info_layout = QHBoxLayout()
         self.info_label = QLabel("Select a symbol to begin")
@@ -1596,3 +1687,11 @@ class EmbeddedTradingViewChart(
             logger.info("Updating pending indicators after chart initialization")
             self._pending_indicator_update = False
             self._update_indicators()
+
+    def _on_bridge_stop_line_moved(self, line_id: str, new_price: float):
+        """Handle stop line moved event from JavaScript bridge.
+
+        Re-emits the signal so it can be caught by the chart window.
+        """
+        logger.info(f"Chart line moved: {line_id} -> {new_price:.4f}")
+        self.stop_line_moved.emit(line_id, new_price)
