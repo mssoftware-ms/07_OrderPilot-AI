@@ -9,6 +9,12 @@ Provides controlled AI integration with:
 - Audit trail
 
 Uses OpenAI Structured Outputs for guaranteed valid responses.
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- llm_types.py: LLMCallType, LLMCallRecord, LLMBudgetState
+- llm_prompts.py: LLMPromptBuilder
+- llm_validators.py: LLMResponseValidator
+- llm_integration.py: Main LLMIntegration class (this file)
 """
 
 from __future__ import annotations
@@ -16,340 +22,28 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from datetime import datetime
+from typing import Any, Callable
 
-from pydantic import BaseModel, Field, ValidationError
+from .config import LLMPolicyConfig
+from .models import FeatureVector, LLMBotResponse, RegimeState
 
-from .config import KIMode, LLMPolicyConfig
-from .models import (
-    BotAction,
-    BotDecision,
-    FeatureVector,
-    LLMBotResponse,
-    RegimeState,
-    TradeSide,
-)
+# Import from split modules
+from .llm_types import LLMBudgetState, LLMCallRecord, LLMCallType
+from .llm_prompts import LLMPromptBuilder
+from .llm_validators import LLMResponseValidator
 
-if TYPE_CHECKING:
-    from .strategy_catalog import StrategyDefinition
+# Re-export for backward compatibility
+__all__ = [
+    "LLMCallType",
+    "LLMCallRecord",
+    "LLMBudgetState",
+    "LLMPromptBuilder",
+    "LLMResponseValidator",
+    "LLMIntegration",
+]
 
 logger = logging.getLogger(__name__)
-
-
-class LLMCallType(str, Enum):
-    """Types of LLM calls."""
-    DAILY_STRATEGY = "daily_strategy"
-    REGIME_FLIP = "regime_flip"
-    EXIT_CANDIDATE = "exit_candidate"
-    SIGNAL_CHANGE = "signal_change"
-    MANUAL = "manual"
-
-
-@dataclass
-class LLMCallRecord:
-    """Record of an LLM call for audit trail."""
-    call_id: str
-    call_type: LLMCallType
-    timestamp: datetime
-    prompt_hash: str
-    response_hash: str | None = None
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cost_usd: float = 0.0
-    latency_ms: int = 0
-    success: bool = True
-    error_message: str | None = None
-    fallback_used: bool = False
-
-
-@dataclass
-class LLMBudgetState:
-    """Budget tracking state."""
-    date: datetime = field(default_factory=datetime.utcnow)
-    calls_today: int = 0
-    tokens_today: int = 0
-    cost_today_usd: float = 0.0
-    daily_calls_by_type: dict[str, int] = field(default_factory=dict)
-    last_call_time: datetime | None = None
-    consecutive_errors: int = 0
-
-
-class LLMPromptBuilder:
-    """Builds structured prompts for LLM calls.
-
-    Formats features, state, and constraints into a consistent
-    prompt format that the LLM can process reliably.
-    """
-
-    # Prompt templates
-    DAILY_STRATEGY_TEMPLATE = """# Daily Strategy Selection
-
-## Current Market State
-{market_state}
-
-## Available Strategies
-{strategies}
-
-## Constraints
-- Must select a strategy that matches the current regime
-- Consider walk-forward validation results
-- Optimize for risk-adjusted returns
-
-## Task
-Select the best strategy for today and provide reasoning.
-Return a JSON response with the following structure:
-- strategy_id: string (ID of selected strategy)
-- confidence: float (0.0-1.0)
-- reason_codes: array of strings (max 3)
-- adjustments: object with optional parameter tweaks
-"""
-
-    TRADE_DECISION_TEMPLATE = """# Trade Decision Request
-
-## Current State
-{state}
-
-## Features
-{features}
-
-## Position
-{position}
-
-## Regime
-{regime}
-
-## Constraints
-{constraints}
-
-## Task
-Analyze the current situation and recommend an action.
-Return a JSON response with:
-- action: HOLD | EXIT | ADJUST_STOP
-- confidence: float (0.0-1.0)
-- reason_codes: array of strings (max 3)
-- stop_adjustment: float | null (new stop price if adjusting)
-"""
-
-    @staticmethod
-    def build_daily_strategy_prompt(
-        features: FeatureVector,
-        regime: RegimeState,
-        strategies: list[dict],
-        constraints: dict | None = None
-    ) -> str:
-        """Build prompt for daily strategy selection.
-
-        Args:
-            features: Current feature vector
-            regime: Current regime state
-            strategies: List of available strategies with scores
-            constraints: Optional constraints dict
-
-        Returns:
-            Formatted prompt string
-        """
-        market_state = f"""- Symbol: {features.symbol}
-- Timestamp: {features.timestamp}
-- Price: {features.close:.4f}
-- Regime: {regime.regime.value}
-- Volatility: {regime.volatility.value}
-- Regime Confidence: {regime.regime_confidence:.2f}
-- RSI(14): {features.rsi_14:.2f}
-- ADX(14): {features.adx_14:.2f}
-- ATR%: {(features.atr_14 / features.close * 100):.2f}%"""
-
-        strategies_text = ""
-        for s in strategies:
-            strategies_text += f"""
-### {s['name']} (ID: {s['id']})
-- Type: {s['type']}
-- Applicable Regimes: {', '.join(s.get('regimes', []))}
-- Walk-Forward PF: {s.get('oos_pf', 0):.2f}
-- Win Rate: {s.get('win_rate', 0):.1%}
-- Score: {s.get('score', 0):.2f}
-"""
-
-        prompt = LLMPromptBuilder.DAILY_STRATEGY_TEMPLATE.format(
-            market_state=market_state,
-            strategies=strategies_text
-        )
-        return prompt
-
-    @staticmethod
-    def build_trade_decision_prompt(
-        features: FeatureVector,
-        regime: RegimeState,
-        position: dict | None,
-        state: str,
-        strategy: dict | None,
-        constraints: dict | None = None
-    ) -> str:
-        """Build prompt for trade decision.
-
-        Args:
-            features: Current feature vector
-            regime: Current regime state
-            position: Current position dict or None
-            state: Bot state (FLAT, SIGNAL, MANAGE, etc.)
-            strategy: Active strategy dict
-            constraints: Risk constraints
-
-        Returns:
-            Formatted prompt string
-        """
-        # Format features (normalized)
-        features_dict = features.to_dict_normalized()
-        features_text = "\n".join([
-            f"- {k}: {v:.4f}" if isinstance(v, float) else f"- {k}: {v}"
-            for k, v in features_dict.items()
-        ])
-
-        # Format position
-        if position:
-            position_text = f"""- Side: {position.get('side', 'N/A')}
-- Entry Price: {position.get('entry_price', 0):.4f}
-- Current Stop: {position.get('current_stop', 0):.4f}
-- Bars Held: {position.get('bars_held', 0)}
-- Unrealized P&L: {position.get('unrealized_pnl', 0):.2f}"""
-        else:
-            position_text = "No open position"
-
-        # Format regime
-        regime_text = f"""- Type: {regime.regime.value}
-- Volatility: {regime.volatility.value}
-- Confidence: {regime.regime_confidence:.2f}"""
-
-        # Format constraints
-        if constraints:
-            constraints_text = "\n".join([
-                f"- {k}: {v}" for k, v in constraints.items()
-            ])
-        else:
-            constraints_text = "- Standard risk limits apply"
-
-        prompt = LLMPromptBuilder.TRADE_DECISION_TEMPLATE.format(
-            state=state,
-            features=features_text,
-            position=position_text,
-            regime=regime_text,
-            constraints=constraints_text
-        )
-        return prompt
-
-
-class LLMResponseValidator:
-    """Validates LLM responses against expected schema.
-
-    Provides strict validation with repair attempts and
-    fallback to rule-based defaults.
-    """
-
-    @staticmethod
-    def validate_trade_decision(
-        response: dict | str,
-        allow_repair: bool = True
-    ) -> tuple[LLMBotResponse | None, list[str]]:
-        """Validate trade decision response.
-
-        Args:
-            response: Raw response dict or JSON string
-            allow_repair: Attempt to repair invalid responses
-
-        Returns:
-            (Validated response or None, list of validation errors)
-        """
-        errors = []
-
-        # Parse if string
-        if isinstance(response, str):
-            try:
-                response = json.loads(response)
-            except json.JSONDecodeError as e:
-                errors.append(f"JSON parse error: {e}")
-                return None, errors
-
-        if not isinstance(response, dict):
-            errors.append(f"Expected dict, got {type(response)}")
-            return None, errors
-
-        # Attempt Pydantic validation
-        try:
-            validated = LLMBotResponse(**response)
-            return validated, []
-        except ValidationError as e:
-            for err in e.errors():
-                errors.append(f"{err['loc']}: {err['msg']}")
-
-        # Attempt repair if allowed
-        if allow_repair and errors:
-            repaired = LLMResponseValidator._attempt_repair(response)
-            if repaired:
-                try:
-                    validated = LLMBotResponse(**repaired)
-                    errors.append("REPAIRED: Response was auto-corrected")
-                    return validated, errors
-                except ValidationError:
-                    pass
-
-        return None, errors
-
-    @staticmethod
-    def _attempt_repair(response: dict) -> dict | None:
-        """Attempt to repair an invalid response.
-
-        Args:
-            response: Invalid response dict
-
-        Returns:
-            Repaired dict or None
-        """
-        repaired = response.copy()
-
-        # Fix action if invalid
-        action = repaired.get("action", "").upper()
-        valid_actions = {"HOLD", "EXIT", "ADJUST_STOP", "ENTRY", "SKIP"}
-        if action not in valid_actions:
-            repaired["action"] = "HOLD"
-
-        # Fix confidence range
-        confidence = repaired.get("confidence", 0.5)
-        if not isinstance(confidence, (int, float)):
-            confidence = 0.5
-        repaired["confidence"] = max(0.0, min(1.0, float(confidence)))
-
-        # Fix reason_codes
-        reason_codes = repaired.get("reason_codes", [])
-        if not isinstance(reason_codes, list):
-            reason_codes = []
-        repaired["reason_codes"] = reason_codes[:3]
-
-        return repaired
-
-    @staticmethod
-    def get_fallback_response(
-        state: str,
-        features: FeatureVector | None = None
-    ) -> LLMBotResponse:
-        """Get rule-based fallback response.
-
-        Args:
-            state: Current bot state
-            features: Optional features for context
-
-        Returns:
-            Safe fallback response
-        """
-        # Default to HOLD with low confidence
-        return LLMBotResponse(
-            action=BotAction.HOLD,
-            confidence=0.3,
-            reason_codes=["LLM_FALLBACK", "RULE_BASED"],
-            side=None,
-            stop_adjustment=None
-        )
 
 
 class LLMIntegration:

@@ -3,7 +3,7 @@ Die "§" unter "# Anweisungen an die KI" sind dringend zu befolgen und handele d
 Dateityp = Markdown (.md)
 
 # Projekttitel: Orderpilot-ai
-Erstellt am: 2025-12-18 08:34:28
+Erstellt am: 2025-12-18 16:12:25
 Analyse Methode: Kommentare im Code.
 
 ## Verwendete Dateien:
@@ -13,21 +13,29 @@ Analyse Methode: Kommentare im Code.
 - /src/ai/ai_provider_factory.py
 - /src/ai/anthropic_service.py
 - /src/ai/gemini_service.py
+- /src/ai/openai_models.py
 - /src/ai/openai_service.py
+- /src/ai/openai_utils.py
 - /src/ai/prompts.py
 - /src/common/__init__.py
 - /src/common/event_bus.py
 - /src/common/logging_setup.py
 - /src/common/security_core.py
 - /src/config/__init__.py
+- /src/config/config_types.py
 - /src/config/loader.py
+- /src/config/profile_config.py
 - /src/core/__init__.py
 - /src/core/backtesting/__init__.py
 - /src/core/backtesting/backtrader_integration.py
+- /src/core/backtesting/backtrader_strategy.py
+- /src/core/backtesting/backtrader_types.py
 - /src/core/backtesting/optimization.py
+- /src/core/backtesting/optimization_types.py
 - /src/core/backtesting/result_converter.py
 - /src/core/broker/__init__.py
 - /src/core/broker/base.py
+- /src/core/broker/broker_types.py
 - /src/core/broker/ibkr_adapter.py
 - /src/core/broker/mock_broker.py
 - /src/core/broker/trade_republic_adapter.py
@@ -80,26 +88,46 @@ Analyse Methode: Kommentare im Code.
 - /src/core/strategy/strategies/trend_following.py
 - /src/core/tradingbot/__init__.py
 - /src/core/tradingbot/backtest_harness.py
+- /src/core/tradingbot/backtest_metrics_helpers.py
+- /src/core/tradingbot/backtest_simulator.py
+- /src/core/tradingbot/backtest_types.py
 - /src/core/tradingbot/bot_controller.py
+- /src/core/tradingbot/bot_helpers.py
 - /src/core/tradingbot/bot_settings_manager.py
+- /src/core/tradingbot/bot_signal_logic.py
+- /src/core/tradingbot/bot_state_handlers.py
+- /src/core/tradingbot/bot_trailing_stops.py
+- /src/core/tradingbot/candle_preprocessing.py
 - /src/core/tradingbot/config.py
 - /src/core/tradingbot/entry_exit_engine.py
+- /src/core/tradingbot/entry_scorer.py
+- /src/core/tradingbot/evaluator_types.py
 - /src/core/tradingbot/execution.py
+- /src/core/tradingbot/execution_types.py
+- /src/core/tradingbot/exit_checker.py
 - /src/core/tradingbot/feature_engine.py
 - /src/core/tradingbot/llm_integration.py
+- /src/core/tradingbot/llm_prompts.py
+- /src/core/tradingbot/llm_types.py
+- /src/core/tradingbot/llm_validators.py
 - /src/core/tradingbot/models.py
 - /src/core/tradingbot/no_trade_filter.py
+- /src/core/tradingbot/position_sizer.py
 - /src/core/tradingbot/regime_engine.py
+- /src/core/tradingbot/risk_manager.py
 - /src/core/tradingbot/state_machine.py
 - /src/core/tradingbot/strategy_catalog.py
+- /src/core/tradingbot/strategy_definitions.py
 - /src/core/tradingbot/strategy_evaluator.py
 - /src/core/tradingbot/strategy_selector.py
+- /src/core/tradingbot/strategy_templates.py
 - /src/database/__init__.py
 - /src/database/database.py
 - /src/database/models.py
 - /src/ui/__init__.py
 - /src/ui/app.py
 - /src/ui/app_components/__init__.py
+- /src/ui/app_components/actions_mixin.py
 - /src/ui/app_components/broker_mixin.py
 - /src/ui/app_components/menu_mixin.py
 - /src/ui/app_components/toolbar_mixin.py
@@ -110,17 +138,23 @@ Analyse Methode: Kommentare im Code.
 - /src/ui/dialogs/__init__.py
 - /src/ui/dialogs/ai_backtest_dialog.py
 - /src/ui/dialogs/backtest_dialog.py
+- /src/ui/dialogs/optimization_tabs_mixin.py
 - /src/ui/dialogs/order_dialog.py
 - /src/ui/dialogs/parameter_optimization_dialog.py
 - /src/ui/dialogs/pattern_db_dialog.py
+- /src/ui/dialogs/pattern_db_tabs_mixin.py
+- /src/ui/dialogs/pattern_db_worker.py
 - /src/ui/dialogs/settings_dialog.py
+- /src/ui/dialogs/settings_tabs_mixin.py
 - /src/ui/icons.py
 - /src/ui/themes.py
 - /src/ui/widgets/__init__.py
 - /src/ui/widgets/alerts.py
 - /src/ui/widgets/backtest_chart_widget.py
+- /src/ui/widgets/chart_js_template.py
 - /src/ui/widgets/chart_mixins/__init__.py
 - /src/ui/widgets/chart_mixins/bot_overlay_mixin.py
+- /src/ui/widgets/chart_mixins/bot_overlay_types.py
 - /src/ui/widgets/chart_mixins/data_loading_mixin.py
 - /src/ui/widgets/chart_mixins/indicator_mixin.py
 - /src/ui/widgets/chart_mixins/state_mixin.py
@@ -128,17 +162,26 @@ Analyse Methode: Kommentare im Code.
 - /src/ui/widgets/chart_mixins/toolbar_mixin.py
 - /src/ui/widgets/chart_window.py
 - /src/ui/widgets/chart_window_mixins/__init__.py
+- /src/ui/widgets/chart_window_mixins/bot_callbacks.py
+- /src/ui/widgets/chart_window_mixins/bot_display_manager.py
+- /src/ui/widgets/chart_window_mixins/bot_event_handlers.py
 - /src/ui/widgets/chart_window_mixins/bot_panels_mixin.py
+- /src/ui/widgets/chart_window_mixins/bot_position_persistence.py
+- /src/ui/widgets/chart_window_mixins/bot_tr_lock_mixin.py
+- /src/ui/widgets/chart_window_mixins/bot_ui_panels.py
 - /src/ui/widgets/chart_window_mixins/event_bus_mixin.py
 - /src/ui/widgets/chart_window_mixins/panels_mixin.py
 - /src/ui/widgets/chart_window_mixins/state_mixin.py
 - /src/ui/widgets/dashboard.py
+- /src/ui/widgets/dashboard_metrics.py
+- /src/ui/widgets/dashboard_tabs_mixin.py
 - /src/ui/widgets/embedded_tradingview_chart.py
 - /src/ui/widgets/indicators.py
 - /src/ui/widgets/orders.py
 - /src/ui/widgets/performance_dashboard.py
 - /src/ui/widgets/positions.py
 - /src/ui/widgets/watchlist.py
+- /src/ui/widgets/watchlist_presets.py
 - /src/ui/widgets/widget_helpers.py
 - /start_orderpilot.py
 - /requirements.txt
@@ -146,13 +189,13 @@ Analyse Methode: Kommentare im Code.
 # Projektstatistik
 <!--STATS
 {
-    "total_files": 135,
-    "num_py_files": 134,
+    "total_files": 178,
+    "num_py_files": 177,
     "num_other_files": 1,
-    "total_classes": 299,
-    "total_functions": 55,
-    "total_lines": 46590,
-    "token_count": 344599
+    "total_classes": 316,
+    "total_functions": 62,
+    "total_lines": 48179,
+    "token_count": 355291
 }
 -->
 <!-- STATS -->
@@ -163,7 +206,7 @@ Analyse Methode: Kommentare im Code.
 # Bekannte Probleme
 
 # To-Do Liste
-Keine offenen Aufgaben.
+- Keine offenen Aufgaben.
 
 # Anweisungen an die KI
 # System-Prompt: KI für Sichere Python-Code-Bearbeitung
@@ -460,7 +503,7 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Clear the response cache.
     - Kommentar: Import shared models from OpenAI service
     - Kommentar: Reuse as GeminiError
-  - openai_service.py
+  - openai_models.py
     - Class: OpenAIError
       - Kommentar: Base exception for OpenAI service errors.
     - Class: RateLimitError
@@ -479,6 +522,70 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - Kommentar: Structured output for strategy signal post-analysis.
     - Class: StrategyTradeAnalysis
       - Kommentar: Structured output for strategy trade analysis after Apply Strategy.
+  - openai_service.py
+    - Class: OpenAIService
+      - Kommentar: Main OpenAI service for structured outputs.
+      - def __init__(.)
+        - Kommentar: Initialize OpenAI service.
+        - 
+        - Args:
+        -     config: AI configuration
+        -     api_key: OpenAI API key
+        -     telemetry_callback: Optional callback for telemetry
+      - def __aenter__(.)
+        - Kommentar: Async context manager entry.
+      - def __aexit__(.)
+        - Kommentar: Async context manager exit.
+      - def initialize(.)
+        - Kommentar: Initialize the service.
+      - def close(.)
+        - Kommentar: Close the service.
+      - def structured_completion(.)
+        - Kommentar: Get structured completion from OpenAI.
+        - 
+        - Args:
+        -     prompt: The prompt
+        -     response_model: Pydantic model for response structure
+        -     model: Model to use (defaults to config)
+        -     temperature: Temperature for generation
+        -     use_cache: Whether to use caching
+        -     context: Additional context for telemetry
+        - 
+        - Returns:
+        -     Parsed response as Pydantic model instance
+        - 
+        - Raises:
+        -     Various OpenAI errors
+      - def analyze_order(.)
+        - Kommentar: Analyze an order before placement.
+      - def triage_alert(.)
+        - Kommentar: Triage an alert for priority and action.
+      - def review_backtest(.)
+        - Kommentar: Review backtest results with AI analysis.
+      - def analyze_signal(.)
+        - Kommentar: Analyze a strategy signal.
+      - def analyze_strategy_trades(.)
+        - Kommentar: Analyze strategy trades and provide improvement suggestions.
+      - def _build_order_analysis_prompt(.)
+        - Kommentar: Build prompt for order analysis.
+      - def _build_alert_triage_prompt(.)
+        - Kommentar: Build prompt for alert triage.
+      - def _build_signal_analysis_prompt(.)
+        - Kommentar: Build prompt for signal analysis.
+      - def _build_strategy_trade_analysis_prompt(.)
+        - Kommentar: Build prompt for strategy trade analysis.
+    - def get_openai_service(.)
+      - Kommentar: Get or create OpenAI service instance.
+      - 
+      - Args:
+      -     config: AI configuration
+      -     api_key: OpenAI API key
+      - 
+      - Returns:
+      -     OpenAI service instance
+    - Kommentar: Re-export models for backward compatibility
+    - Kommentar: ==================== Singleton Instance ====================
+  - openai_utils.py
     - Class: CostTracker
       - Kommentar: Tracks AI API costs and enforces budget limits.
       - def __init__(.)
@@ -529,104 +636,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     response: The response to cache
       - def _cleanup_expired(.)
         - Kommentar: Remove expired entries from memory cache.
-    - Class: OpenAIService
-      - Kommentar: Main OpenAI service for structured outputs.
-      - def __init__(.)
-        - Kommentar: Initialize OpenAI service.
-        - 
-        - Args:
-        -     config: AI configuration
-        -     api_key: OpenAI API key
-        -     telemetry_callback: Optional callback for telemetry
-      - def __aenter__(.)
-        - Kommentar: Async context manager entry.
-      - def __aexit__(.)
-        - Kommentar: Async context manager exit.
-      - def initialize(.)
-        - Kommentar: Initialize the service.
-      - def close(.)
-        - Kommentar: Close the service.
-      - def structured_completion(.)
-        - Kommentar: Get structured completion from OpenAI.
-        - 
-        - Args:
-        -     prompt: The prompt
-        -     response_model: Pydantic model for response structure
-        -     model: Model to use (defaults to config)
-        -     temperature: Temperature for generation
-        -     use_cache: Whether to use caching
-        -     context: Additional context for telemetry
-        - 
-        - Returns:
-        -     Parsed response as Pydantic model instance
-        - 
-        - Raises:
-        -     Various OpenAI errors
-      - def analyze_order(.)
-        - Kommentar: Analyze an order before placement.
-        - 
-        - Args:
-        -     order_details: Order information
-        -     market_context: Current market context
-        - 
-        - Returns:
-        -     Structured order analysis
-      - def triage_alert(.)
-        - Kommentar: Triage an alert for priority and action.
-        - 
-        - Args:
-        -     alert: Alert information
-        -     portfolio_context: Current portfolio context
-        - 
-        - Returns:
-        -     Structured triage result
-      - def review_backtest(.)
-        - Kommentar: Review backtest results with AI analysis.
-        - 
-        - Args:
-        -     result: Complete BacktestResult from backtest run
-        - 
-        - Returns:
-        -     Structured backtest review with insights and recommendations
-      - def analyze_signal(.)
-        - Kommentar: Analyze a strategy signal.
-        - 
-        - Args:
-        -     signal: Signal information
-        -     indicators: Current indicator values
-        - 
-        - Returns:
-        -     Structured signal analysis
-      - def analyze_strategy_trades(.)
-        - Kommentar: Analyze strategy trades and provide improvement suggestions.
-        - 
-        - Args:
-        -     strategy_name: Name of the strategy
-        -     symbol: Trading symbol
-        -     trades: List of trade dictionaries with entry/exit info
-        -     stats: Statistics dict with wins, losses, win_rate, etc.
-        -     strategy_params: Current strategy parameters (SL, TP, etc.)
-        - 
-        - Returns:
-        -     Structured analysis with improvements and optimized strategy
-      - def _build_order_analysis_prompt(.)
-        - Kommentar: Build prompt for order analysis.
-      - def _build_alert_triage_prompt(.)
-        - Kommentar: Build prompt for alert triage.
-      - def _build_signal_analysis_prompt(.)
-        - Kommentar: Build prompt for signal analysis.
-      - def _build_strategy_trade_analysis_prompt(.)
-        - Kommentar: Build prompt for strategy trade analysis.
-    - def get_openai_service(.)
-      - Kommentar: Get or create OpenAI service instance.
-      - 
-      - Args:
-      -     config: AI configuration
-      -     api_key: OpenAI API key
-      - 
-      - Returns:
-      -     OpenAI service instance
-    - Kommentar: ==================== Singleton Instance ====================
   - prompts.py
     - Class: PromptTemplates
       - Kommentar: Collection of prompt templates for different AI tasks.
@@ -866,7 +875,7 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
     - Kommentar: Enums
     - Kommentar: Config classes
     - Kommentar: Manager
-  - loader.py
+  - config_types.py
     - Class: TradingEnvironment
       - Kommentar: Trading environment modes.
     - Class: TradingMode
@@ -897,61 +906,10 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - Kommentar: Performance monitoring and metrics.
     - Class: ExecutionConfig
       - Kommentar: Order execution settings.
-    - Class: ProfileConfig
-      - Kommentar: Complete trading profile configuration.
-      - def validate_environment(.)
-        - Kommentar: Ensure production environment has proper safeguards.
-      - def validate_trading_mode_field(.)
-        - Kommentar: Convert string to enum if needed.
-      - def validate_trading_mode_config(.)
-        - Kommentar: Ensure trading mode has appropriate safety settings.
-      - def is_safe_for_mode(.)
-        - Kommentar: Check if current configuration is safe for specified mode.
-        - 
-        - Args:
-        -     mode: Trading mode to validate
-        - 
-        - Returns:
-        -     Tuple of (is_safe, list of warnings/errors)
-      - def switch_to_mode(.)
-        - Kommentar: Switch to specified trading mode with safety checks.
-        - 
-        - Args:
-        -     mode: Trading mode to switch to
-        -     validate: Whether to validate the switch (default: True)
-        - 
-        - Raises:
-        -     ValueError: If validation fails and validate=True
-      - def create_backtest_profile(.)
-        - Kommentar: Create a profile optimized for backtesting.
-        - 
-        - Args:
-        -     name: Profile name
-        -     initial_capital: Initial capital for backtest
-        - 
-        - Returns:
-        -     ProfileConfig configured for backtesting
-      - def create_paper_profile(.)
-        - Kommentar: Create a profile for paper trading.
-        - 
-        - Args:
-        -     name: Profile name
-        -     broker_type: Broker to use for paper trading
-        - 
-        - Returns:
-        -     ProfileConfig configured for paper trading
-      - def create_live_profile(.)
-        - Kommentar: Create a profile for live trading with maximum safety.
-        - 
-        - Args:
-        -     name: Profile name
-        -     broker_type: Broker to use for live trading
-        - 
-        - Returns:
-        -     ProfileConfig configured for live trading
-        - 
-        - Warning:
-        -     Live trading involves real money. Ensure all settings are correct.
+    - Kommentar: Import datetime for forward reference resolution
+    - Kommentar: noqa: E402
+    - Kommentar: Update forward references
+  - loader.py
     - Class: AppSettings
       - Kommentar: Application-wide settings from environment variables.
     - Class: ConfigManager
@@ -1014,7 +972,68 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     List of symbols in watchlist
       - def profile(.)
         - Kommentar: Get the current profile configuration.
+    - Kommentar: Re-export all types for backward compatibility
+    - Kommentar: Re-export all for backward compatibility
+    - Kommentar: Enums
+    - Kommentar: Config models
+    - Kommentar: Settings and manager
     - Kommentar: Global configuration instance
+  - profile_config.py
+    - Class: ProfileConfig
+      - Kommentar: Complete trading profile configuration.
+      - def validate_environment(.)
+        - Kommentar: Ensure production environment has proper safeguards.
+      - def validate_trading_mode_field(.)
+        - Kommentar: Convert string to enum if needed.
+      - def validate_trading_mode_config(.)
+        - Kommentar: Ensure trading mode has appropriate safety settings.
+      - def is_safe_for_mode(.)
+        - Kommentar: Check if current configuration is safe for specified mode.
+        - 
+        - Args:
+        -     mode: Trading mode to validate
+        - 
+        - Returns:
+        -     Tuple of (is_safe, list of warnings/errors)
+      - def switch_to_mode(.)
+        - Kommentar: Switch to specified trading mode with safety checks.
+        - 
+        - Args:
+        -     mode: Trading mode to switch to
+        -     validate: Whether to validate the switch (default: True)
+        - 
+        - Raises:
+        -     ValueError: If validation fails and validate=True
+      - def create_backtest_profile(.)
+        - Kommentar: Create a profile optimized for backtesting.
+        - 
+        - Args:
+        -     name: Profile name
+        -     initial_capital: Initial capital for backtest
+        - 
+        - Returns:
+        -     ProfileConfig configured for backtesting
+      - def create_paper_profile(.)
+        - Kommentar: Create a profile for paper trading.
+        - 
+        - Args:
+        -     name: Profile name
+        -     broker_type: Broker to use for paper trading
+        - 
+        - Returns:
+        -     ProfileConfig configured for paper trading
+      - def create_live_profile(.)
+        - Kommentar: Create a profile for live trading with maximum safety.
+        - 
+        - Args:
+        -     name: Profile name
+        -     broker_type: Broker to use for live trading
+        - 
+        - Returns:
+        -     ProfileConfig configured for live trading
+        - 
+        - Warning:
+        -     Live trading involves real money. Ensure all settings are correct.
   - __init__.py
   - __init__.py
     - Kommentar: Import new comprehensive BacktestResult from models
@@ -1023,32 +1042,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
     - Kommentar: New comprehensive models (preferred)
     - Kommentar: Legacy model (deprecated)
   - backtrader_integration.py
-    - Class: BacktestConfig
-      - Kommentar: Configuration for backtesting.
-      - def __post_init__(.)
-    - Class: BacktestResultLegacy
-      - Kommentar: Legacy results from backtesting (deprecated, use BacktestResult from models).
-      - 
-      - Kept for backward compatibility only. New code should use
-      - src.core.models.backtest_models.BacktestResult instead.
-    - Class: OrderPilotStrategy
-      - Kommentar: Backtrader strategy wrapper for OrderPilot strategies.
-      - def __init__(.)
-        - Kommentar: Initialize strategy.
-      - def notify_order(.)
-        - Kommentar: Handle order notifications.
-      - def notify_trade(.)
-        - Kommentar: Handle trade notifications.
-      - def next(.)
-        - Kommentar: Process next bar - async version.
-      - def _get_dataframe(.)
-        - Kommentar: Convert Backtrader data to DataFrame.
-      - def _execute_signal(.)
-        - Kommentar: Execute trading signal.
-      - def _calculate_size(.)
-        - Kommentar: Calculate position size.
-      - def log(.)
-        - Kommentar: Logging function.
     - Class: BacktestEngine
       - Kommentar: Engine for running backtests with Backtrader.
       - def __init__(.)
@@ -1066,91 +1059,46 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     Backtest results
       - def _get_data_feed(.)
         - Kommentar: Get data feed for symbol.
-        - 
-        - Args:
-        -     symbol: Trading symbol
-        -     start_date: Start date
-        -     end_date: End date
-        -     timeframe: Data timeframe
-        - 
-        - Returns:
-        -     Backtrader data feed or None
       - def _process_results(.)
         - Kommentar: Process backtest results using comprehensive BacktestResult model.
-        - 
-        - Args:
-        -     strategy: Backtrader strategy instance
-        -     initial_value: Initial portfolio value
-        -     final_value: Final portfolio value
-        -     config: Backtest configuration
-        -     cerebro: Optional Backtrader Cerebro instance
-        - 
-        - Returns:
-        -     Comprehensive BacktestResult
       - def run_backtest_with_definition(.)
         - Kommentar: Run backtest with StrategyDefinition (YAML/JSON strategy).
-        - 
-        - This method compiles a declarative strategy definition into a Backtrader
-        - strategy and runs a backtest with it.
-        - 
-        - Args:
-        -     strategy_def: Strategy definition (loaded from YAML/JSON)
-        -     symbol: Trading symbol
-        -     start_date: Backtest start date
-        -     end_date: Backtest end date
-        -     initial_cash: Starting capital
-        -     commission: Commission rate (default 0.1%)
-        -     timeframe: Data timeframe
-        -     data_feed: Optional custom data feed (if None, fetches from history manager)
-        - 
-        - Returns:
-        -     Comprehensive backtest results
-        - 
-        - Example:
-        -     >>> from src.core.strategy.definition import StrategyDefinition
-        -     >>> strategy_def = StrategyDefinition.from_yaml(yaml_content)
-        -     >>> result = await engine.run_backtest_with_definition(
-        -     ...     strategy_def=strategy_def,
-        -     ...     symbol="AAPL",
-        -     ...     start_date=datetime(2023, 1, 1),
-        -     ...     end_date=datetime(2023, 12, 31)
-        -     ... )
       - def optimize_strategy(.)
         - Kommentar: Optimize strategy parameters.
-        - 
-        - Args:
-        -     config: Backtest configuration with optimize_params
-        - 
-        - Returns:
-        -     List of (params, results) tuples sorted by Sharpe ratio
       - def _generate_param_combinations(.)
         - Kommentar: Generate parameter combinations for optimization.
-        - 
-        - Args:
-        -     optimize_params: Parameter ranges
-        - 
-        - Returns:
-        -     List of parameter combinations
       - def plot_results(.)
         - Kommentar: Plot backtest results.
-        - 
-        - Args:
-        -     result: Backtest results (new comprehensive model)
-        -     show: Whether to show plot
     - Kommentar: Try importing backtrader
+    - Kommentar: Re-export for backward compatibility
+  - backtrader_strategy.py
+    - Kommentar: Try importing backtrader
+    - Kommentar: Initialize our strategy
+    - Kommentar: Track orders and positions
+    - Kommentar: Performance tracking
+    - Kommentar: Sell
+    - Kommentar: Calculate profit
+    - Kommentar: Convert Backtrader data to DataFrame for our strategy
+    - Kommentar: Evaluate our strategy
+    - Kommentar: Get historical data
+    - Kommentar: Check for pending orders
+    - Kommentar: Get current position
+    - Kommentar: Calculate position size
+    - Kommentar: Get available cash
+    - Kommentar: Risk management - limit position to percentage of portfolio
+    - Kommentar: Max 20% per position
+    - Kommentar: Use signal confidence for sizing
+    - Kommentar: Stub class when backtrader is not available
+  - backtrader_types.py
+    - Class: BacktestConfig
+      - Kommentar: Configuration for backtesting.
+      - def __post_init__(.)
+    - Class: BacktestResultLegacy
+      - Kommentar: Legacy results from backtesting (deprecated, use BacktestResult from models).
+      - 
+      - Kept for backward compatibility only. New code should use
+      - src.core.models.backtest_models.BacktestResult instead.
   - optimization.py
-    - Class: ParameterRange
-      - Kommentar: Parameter range for optimization.
-    - Class: OptimizationMetric
-      - Kommentar: Metric for optimization.
-    - Class: ParameterTest
-      - Kommentar: Single parameter test result.
-    - Class: OptimizationResult
-      - Kommentar: Complete optimization result.
-    - Class: AIOptimizationInsight
-      - Kommentar: AI-generated optimization insights.
-    - Class: OptimizerConfig
-      - Kommentar: Configuration for parameter optimizer.
     - Class: ParameterOptimizer
       - Kommentar: AI-guided parameter optimizer for trading strategies.
       - def __init__(.)
@@ -1260,7 +1208,21 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       -     ...     {"fast_period": [10, 15, 20], "slow_period": [40, 50, 60]},
       -     ...     primary_metric="sharpe_ratio"
       -     ... )
-    - Kommentar: ==================== Optimizer ====================
+    - Kommentar: Import types from optimization_types
+    - Kommentar: Re-export for backward compatibility
+  - optimization_types.py
+    - Class: ParameterRange
+      - Kommentar: Parameter range for optimization.
+    - Class: OptimizationMetric
+      - Kommentar: Metric for optimization.
+    - Class: ParameterTest
+      - Kommentar: Single parameter test result.
+    - Class: OptimizationResult
+      - Kommentar: Complete optimization result.
+    - Class: AIOptimizationInsight
+      - Kommentar: AI-generated optimization insights.
+    - Class: OptimizerConfig
+      - Kommentar: Configuration for parameter optimizer.
   - result_converter.py
     - def backtrader_to_backtest_result(.)
       - Kommentar: Convert Backtrader results to comprehensive BacktestResult.
@@ -1348,51 +1310,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
     - Kommentar: Rate limiting
     - Kommentar: Implementations
   - base.py
-    - Class: BrokerError
-      - Kommentar: Base exception for broker-related errors.
-      - def __init__(.)
-    - Class: BrokerConnectionError
-      - Kommentar: Raised when broker connection fails.
-    - Class: OrderValidationError
-      - Kommentar: Raised when order validation fails.
-    - Class: InsufficientFundsError
-      - Kommentar: Raised when account has insufficient funds.
-    - Class: RateLimitError
-      - Kommentar: Raised when rate limit is exceeded.
-    - Class: OrderRequest
-      - Kommentar: Standardized order request.
-      - def validate_limit_price(.)
-        - Kommentar: Ensure limit price is set for limit orders.
-      - def validate_stop_price(.)
-        - Kommentar: Ensure stop price is set for stop orders.
-    - Class: OrderResponse
-      - Kommentar: Standardized order response.
-    - Class: Position
-      - Kommentar: Current position information.
-      - def is_long(.)
-      - def is_short(.)
-    - Class: Balance
-      - Kommentar: Account balance information.
-    - Class: FeeModel
-      - Kommentar: Fee calculation model.
-      - def calculate(.)
-        - Kommentar: Calculate total fee for an order.
-    - Class: AIAnalysisRequest
-      - Kommentar: Request for AI analysis before order placement.
-    - Class: AIAnalysisResult
-      - Kommentar: Result from AI analysis.
-    - Class: TokenBucketRateLimiter
-      - Kommentar: Token bucket rate limiter for API calls.
-      - def __init__(.)
-        - Kommentar: Initialize rate limiter.
-        - 
-        - Args:
-        -     rate: Tokens per second
-        -     burst: Maximum burst size
-      - def acquire(.)
-        - Kommentar: Acquire tokens, blocking if necessary.
-      - def try_acquire(.)
-        - Kommentar: Try to acquire tokens without blocking.
     - Class: BrokerAdapter
       - Kommentar: Abstract base class for broker integrations with template methods.
       - def __init__(.)
@@ -1525,6 +1442,54 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Activate the kill switch to halt all trading.
       - def deactivate_kill_switch(.)
         - Kommentar: Deactivate the kill switch.
+    - Kommentar: Import types from broker_types
+    - Kommentar: Re-export for backward compatibility
+  - broker_types.py
+    - Class: BrokerError
+      - Kommentar: Base exception for broker-related errors.
+      - def __init__(.)
+    - Class: BrokerConnectionError
+      - Kommentar: Raised when broker connection fails.
+    - Class: OrderValidationError
+      - Kommentar: Raised when order validation fails.
+    - Class: InsufficientFundsError
+      - Kommentar: Raised when account has insufficient funds.
+    - Class: RateLimitError
+      - Kommentar: Raised when rate limit is exceeded.
+    - Class: OrderRequest
+      - Kommentar: Standardized order request.
+      - def validate_limit_price(.)
+        - Kommentar: Ensure limit price is set for limit orders.
+      - def validate_stop_price(.)
+        - Kommentar: Ensure stop price is set for stop orders.
+    - Class: OrderResponse
+      - Kommentar: Standardized order response.
+    - Class: Position
+      - Kommentar: Current position information.
+      - def is_long(.)
+      - def is_short(.)
+    - Class: Balance
+      - Kommentar: Account balance information.
+    - Class: FeeModel
+      - Kommentar: Fee calculation model.
+      - def calculate(.)
+        - Kommentar: Calculate total fee for an order.
+    - Class: AIAnalysisRequest
+      - Kommentar: Request for AI analysis before order placement.
+    - Class: AIAnalysisResult
+      - Kommentar: Result from AI analysis.
+    - Class: TokenBucketRateLimiter
+      - Kommentar: Token bucket rate limiter for API calls.
+      - def __init__(.)
+        - Kommentar: Initialize rate limiter.
+        - 
+        - Args:
+        -     rate: Tokens per second
+        -     burst: Maximum burst size
+      - def acquire(.)
+        - Kommentar: Acquire tokens, blocking if necessary.
+      - def try_acquire(.)
+        - Kommentar: Try to acquire tokens without blocking.
   - ibkr_adapter.py
     - Class: IBKRWrapper
       - Kommentar: IB API Wrapper for handling callbacks.
@@ -3521,6 +3486,9 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def evaluate(.)
         - Kommentar: Evaluate trend following strategy.
   - __init__.py
+    - Kommentar: Backtest types from backtest_types.py
+    - Kommentar: Backtest simulator from backtest_simulator.py
+    - Kommentar: Backtest harness from backtest_harness.py
     - Kommentar: Config
     - Kommentar: Engines
     - Kommentar: Filters
@@ -3534,49 +3502,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
     - Kommentar: LLM Integration
     - Kommentar: Backtest & QA
   - backtest_harness.py
-    - Class: BacktestMode
-      - Kommentar: Backtest execution modes.
-    - Class: BacktestConfig
-      - Kommentar: Configuration for backtest run.
-      - def get_seed(.)
-        - Kommentar: Get deterministic seed based on config.
-    - Class: BacktestTrade
-      - Kommentar: Record of a completed trade.
-      - def to_dict(.)
-        - Kommentar: Convert to dict for serialization.
-    - Class: BacktestState
-      - Kommentar: State tracking during backtest.
-    - Class: BacktestResult
-      - Kommentar: Result of a backtest run.
-      - def to_dict(.)
-        - Kommentar: Convert to dict for serialization.
-      - def save(.)
-        - Kommentar: Save result to JSON file.
-    - Class: BacktestSimulator
-      - Kommentar: Simulates order execution during backtest.
-      - 
-      - Provides deterministic slippage and fill simulation.
-      - def __init__(.)
-        - Kommentar: Initialize simulator.
-        - 
-        - Args:
-        -     slippage_pct: Slippage percentage
-        -     commission_pct: Commission per side
-        -     seed: Random seed
-      - def simulate_fill(.)
-        - Kommentar: Simulate order fill with slippage.
-        - 
-        - Args:
-        -     side: Order side
-        -     quantity: Order quantity
-        -     price: Expected price
-        -     bar_high: Bar high price
-        -     bar_low: Bar low price
-        - 
-        - Returns:
-        -     (fill_price, slippage_amount, commission)
-      - def generate_order_id(.)
-        - Kommentar: Generate unique order ID.
     - Class: BacktestHarness
       - Kommentar: Main backtest harness for tradingbot.
       - 
@@ -3640,9 +3565,49 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     Current equity value
       - def _calculate_metrics(.)
         - Kommentar: Calculate performance metrics from trades.
+  - backtest_metrics_helpers.py
+    - def convert_trades_to_results(.)
+      - Kommentar: Convert BacktestTrade objects to TradeResult objects.
+      - 
+      - Args:
+      -     trades: List of backtest trades
+      - 
+      - Returns:
+      -     List of TradeResult objects
+    - def calculate_backtest_metrics(.)
+      - Kommentar: Calculate performance metrics from backtest trades.
+      - 
+      - Args:
+      -     trades: List of backtest trades
+      - 
+      - Returns:
+      -     PerformanceMetrics calculated from trades
+  - backtest_simulator.py
+    - Class: BacktestSimulator
+      - Kommentar: Simulates order execution during backtest.
+      - 
+      - Provides deterministic slippage and fill simulation.
+      - def __init__(.)
+        - Kommentar: Initialize simulator.
+        - 
+        - Args:
+        -     slippage_pct: Slippage percentage
+        -     commission_pct: Commission per side
+        -     seed: Random seed
+      - def simulate_fill(.)
+        - Kommentar: Simulate order fill with slippage.
+        - 
+        - Args:
+        -     side: Order side
+        -     quantity: Order quantity
+        -     price: Expected price
+        -     bar_high: Bar high price
+        -     bar_low: Bar low price
         - 
         - Returns:
-        -     PerformanceMetrics
+        -     (fill_price, slippage_amount, commission)
+      - def generate_order_id(.)
+        - Kommentar: Generate unique order ID.
     - Class: ReleaseGate
       - Kommentar: Release gate checker for Paper → Live transition.
       - 
@@ -3674,12 +3639,37 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     Maximum consecutive loss count
+  - backtest_types.py
+    - Class: BacktestMode
+      - Kommentar: Backtest execution modes.
+    - Class: BacktestConfig
+      - Kommentar: Configuration for backtest run.
+      - def get_seed(.)
+        - Kommentar: Get deterministic seed based on config.
+    - Class: BacktestTrade
+      - Kommentar: Record of a completed trade.
+      - def to_dict(.)
+        - Kommentar: Convert to dict for serialization.
+    - Class: BacktestState
+      - Kommentar: State tracking during backtest.
+    - Class: BacktestResult
+      - Kommentar: Result of a backtest run.
+      - def to_dict(.)
+        - Kommentar: Convert to dict for serialization.
+      - def save(.)
+        - Kommentar: Save result to JSON file.
   - bot_controller.py
     - Class: BotController
       - Kommentar: Main trading bot controller.
       - 
       - Orchestrates all bot operations for a single symbol/timeframe.
       - Single source of truth for bot state and decisions.
+      - 
+      - Functionality is distributed across mixins:
+      - - BotStateHandlersMixin: State processing methods
+      - - BotSignalLogicMixin: Entry scoring and signal creation
+      - - BotTrailingStopsMixin: Trailing stop calculations
+      - - BotHelpersMixin: Feature/regime calculation, order creation
       - 
       - Attributes:
       -     config: Full bot configuration
@@ -3767,146 +3757,30 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     BotDecision if any action taken, None otherwise
-      - def _process_state(.)
-        - Kommentar: Process current state and generate decision.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     bar: Current bar data
-        - 
-        - Returns:
-        -     BotDecision or None
-      - def _check_strategy_selection(.)
-        - Kommentar: Check if strategy selection is needed (daily or forced).
-        - 
-        - Args:
-        -     features: Current feature vector
-      - def _process_flat(.)
-        - Kommentar: Process FLAT state - look for entry signals.
-        - 
-        - Args:
-        -     features: Current feature vector
-        - 
-        - Returns:
-        -     BotDecision or None
-      - def _process_signal(.)
-        - Kommentar: Process SIGNAL state - confirm or expire signal.
-        - 
-        - Args:
-        -     features: Current feature vector
-        - 
-        - Returns:
-        -     BotDecision or None
-      - def _process_manage(.)
-        - Kommentar: Process MANAGE state - manage open position.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     bar: Current bar data
-        - 
-        - Returns:
-        -     BotDecision or None
-      - def _handle_stop_hit(.)
-        - Kommentar: Handle stop-loss hit.
-        - 
-        - Args:
-        -     features: Current feature vector
-        - 
-        - Returns:
-        -     BotDecision
-      - def _handle_exit_signal(.)
-        - Kommentar: Handle exit signal.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     reason: Exit reason
-        - 
-        - Returns:
-        -     BotDecision
-      - def _calculate_entry_score(.)
-        - Kommentar: Calculate entry score for given side.
-        - 
-        - Rule-based scoring using indicators.
-        - 
-        - Args:
-        -     features: Current features
-        -     side: Trade side
-        - 
-        - Returns:
-        -     Score between 0 and 1
-      - def _get_entry_threshold(.)
-        - Kommentar: Get entry threshold based on active strategy and regime.
-      - def _create_signal(.)
-        - Kommentar: Create a trading signal.
-        - 
-        - Args:
-        -     features: Current features
-        -     side: Trade side
-        -     score: Entry score
-        - 
-        - Returns:
-        -     Signal instance
-      - def _get_signal_reasons(.)
-        - Kommentar: Get reason codes for signal.
-        - 
-        - Args:
-        -     features: Current features
-        -     side: Trade side
-        - 
-        - Returns:
-        -     List of reason codes
-      - def _calculate_trailing_stop(.)
-        - Kommentar: Calculate new trailing stop price.
-        - 
-        - Trailing stop is only activated when position is in profit.
-        - Until then, the initial stop loss remains active.
-        - 
-        - Args:
-        -     features: Current features
-        -     position: Current position
-        - 
-        - Returns:
-        -     New stop price or None if no update needed
-      - def _trailing_pct(.)
-        - Kommentar: Percentage-based trailing stop.
-        - 
-        - Distance is calculated from CURRENT price, not highest/lowest.
-        - The stop only moves in favorable direction (up for long, down for short).
-        - 
-        - Args:
-        -     features: Current features
-        -     position: Current position
-        - 
-        - Returns:
-        -     New stop price or None
-      - def _trailing_atr(.)
-        - Kommentar: ATR-based trailing stop with regime-adaptive multiplier.
-        - 
-        - Args:
-        -     features: Current features
-        -     position: Current position
-        - 
-        - Returns:
-        -     New stop price or None
-      - def _trailing_swing(.)
-        - Kommentar: Swing/structure-based trailing stop.
-        - 
-        - Simplified: uses Bollinger bands as structure levels.
-        - 
-        - Args:
-        -     features: Current features
-        -     position: Current position
-        - 
-        - Returns:
-        -     New stop price or None
-      - def _check_exit_signals(.)
-        - Kommentar: Check for exit signals.
-        - 
-        - Args:
-        -     features: Current features
-        - 
-        - Returns:
-        -     Exit reason or None
+  - bot_helpers.py
+    - Class: BotHelpersMixin
+      - Kommentar: Mixin providing helper methods for feature/regime/order operations.
+      - 
+      - Expected attributes from BotController:
+      -     config: FullBotConfig
+      -     symbol: str
+      -     timeframe: str
+      -     _regime: RegimeState
+      -     _active_strategy: StrategyProfile | None
+      -     _event_bus: EventBus | None
+      -     _feature_engine: FeatureEngine
+      -     _bar_buffer: list[dict]
+      -     _max_buffer_size: int
+      -     _current_signal: Signal | None
+      -     _position: PositionState | None
+      -     _state_machine: BotStateMachine
+      -     _run_id: str
+      -     _running: bool
+      -     _trades_today: int
+      -     _daily_pnl: float
+      -     _consecutive_losses: int
+      -     _bar_count: int
+      -     _log_activity: Callable[[str, str], None]
       - def _calculate_features(.)
         - Kommentar: Calculate feature vector from bar data using FeatureEngine.
         - 
@@ -4012,6 +3886,226 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       -     BotSettingsManager instance
     - Kommentar: Default settings file location
     - Kommentar: Singleton instance
+  - bot_signal_logic.py
+    - Class: BotSignalLogicMixin
+      - Kommentar: Mixin providing signal scoring and creation methods.
+      - 
+      - Expected attributes from BotController:
+      -     config: FullBotConfig
+      -     symbol: str
+      -     _regime: RegimeState
+      -     _active_strategy: StrategyProfile | None
+      - def _calculate_entry_score(.)
+        - Kommentar: Calculate entry score for given side.
+        - 
+        - Rule-based scoring using indicators.
+        - 
+        - Args:
+        -     features: Current features
+        -     side: Trade side
+        - 
+        - Returns:
+        -     Score between 0 and 1
+      - def _get_entry_threshold(.)
+        - Kommentar: Get entry threshold based on active strategy and regime.
+      - def _create_signal(.)
+        - Kommentar: Create a trading signal.
+        - 
+        - Args:
+        -     features: Current features
+        -     side: Trade side
+        -     score: Entry score
+        - 
+        - Returns:
+        -     Signal instance
+      - def _get_signal_reasons(.)
+        - Kommentar: Get reason codes for signal.
+        - 
+        - Args:
+        -     features: Current features
+        -     side: Trade side
+        - 
+        - Returns:
+        -     List of reason codes
+  - bot_state_handlers.py
+    - Class: BotStateHandlersMixin
+      - Kommentar: Mixin providing state processing methods.
+      - 
+      - Expected attributes from BotController:
+      -     config: FullBotConfig
+      -     symbol: str
+      -     _running: bool
+      -     _state_machine: BotStateMachine
+      -     _regime: RegimeState
+      -     _active_strategy: StrategyProfile | None
+      -     _current_signal: Signal | None
+      -     _position: PositionState | None
+      -     _trades_today: int
+      -     _daily_pnl: float
+      -     _consecutive_losses: int
+      -     _bar_count: int
+      -     _trading_blocked: bool
+      -     _last_block_reasons: list[str]
+      -     _last_strategy_selection_date: datetime | None
+      -     _strategy_selector: StrategySelector
+      -     _strategy_catalog: StrategyCatalog
+      -     _log_activity: Callable[[str, str], None]
+      -     _on_signal: Callable[[Signal], None] | None
+      -     _on_order: Callable[[OrderIntent], None] | None
+      -     _on_trading_blocked: Callable[[list[str]], None] | None
+      -     _on_macd_signal: Callable[[str, float], None] | None
+      -     can_trade: property
+      - def _process_state(.)
+        - Kommentar: Process current state and generate decision.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     bar: Current bar data
+        - 
+        - Returns:
+        -     BotDecision or None
+      - def _check_strategy_selection(.)
+        - Kommentar: Check if strategy selection is needed (daily or forced).
+        - 
+        - Args:
+        -     features: Current feature vector
+      - def _process_flat(.)
+        - Kommentar: Process FLAT state - look for entry signals.
+        - 
+        - Args:
+        -     features: Current feature vector
+        - 
+        - Returns:
+        -     BotDecision or None
+      - def _process_signal(.)
+        - Kommentar: Process SIGNAL state - confirm or expire signal.
+        - 
+        - Args:
+        -     features: Current feature vector
+        - 
+        - Returns:
+        -     BotDecision or None
+      - def _process_manage(.)
+        - Kommentar: Process MANAGE state - manage open position.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     bar: Current bar data
+        - 
+        - Returns:
+        -     BotDecision or None
+      - def _handle_stop_hit(.)
+        - Kommentar: Handle stop-loss hit.
+        - 
+        - Args:
+        -     features: Current feature vector
+        - 
+        - Returns:
+        -     BotDecision
+      - def _handle_exit_signal(.)
+        - Kommentar: Handle exit signal.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     reason: Exit reason
+        - 
+        - Returns:
+        -     BotDecision
+      - def _check_exit_signals(.)
+        - Kommentar: Check for exit signals.
+        - 
+        - Args:
+        -     features: Current features
+        - 
+        - Returns:
+        -     Exit reason or None
+  - bot_trailing_stops.py
+    - Class: BotTrailingStopsMixin
+      - Kommentar: Mixin providing trailing stop calculation methods.
+      - 
+      - Expected attributes from BotController:
+      -     config: FullBotConfig
+      -     _log_activity: Callable[[str, str], None]
+      - def _calculate_trailing_stop(.)
+        - Kommentar: Calculate new trailing stop price.
+        - 
+        - Trailing stop is only activated when position is in profit.
+        - Until then, the initial stop loss remains active.
+        - 
+        - Args:
+        -     features: Current features
+        -     position: Current position
+        - 
+        - Returns:
+        -     New stop price or None if no update needed
+      - def _trailing_pct(.)
+        - Kommentar: Percentage-based trailing stop.
+        - 
+        - Distance is calculated from CURRENT price, not highest/lowest.
+        - The stop only moves in favorable direction (up for long, down for short).
+        - 
+        - Args:
+        -     features: Current features
+        -     position: Current position
+        - 
+        - Returns:
+        -     New stop price or None
+      - def _trailing_atr(.)
+        - Kommentar: ATR-based trailing stop with regime-adaptive multiplier.
+        - 
+        - Args:
+        -     features: Current features
+        -     position: Current position
+        - 
+        - Returns:
+        -     New stop price or None
+      - def _trailing_swing(.)
+        - Kommentar: Swing/structure-based trailing stop.
+        - 
+        - Simplified: uses Bollinger bands as structure levels.
+        - 
+        - Args:
+        -     features: Current features
+        -     position: Current position
+        - 
+        - Returns:
+        -     New stop price or None
+  - candle_preprocessing.py
+    - def preprocess_candles(.)
+      - Kommentar: Preprocess candles for feature calculation.
+      - 
+      - Handles:
+      - - Timezone normalization
+      - - Missing candle detection and forward-fill
+      - - Session filtering (RTH for stocks, 24/7 for crypto)
+      - - Invalid price detection
+      - 
+      - Args:
+      -     data: DataFrame with OHLCV columns and datetime index
+      -     market_type: "STOCK" or "CRYPTO"
+      -     target_tz: Target timezone for normalization
+      -     fill_missing: Whether to forward-fill missing candles
+      -     filter_sessions: Whether to filter to valid trading sessions
+      - 
+      - Returns:
+      -     Preprocessed DataFrame
+    - def detect_missing_candles(.)
+      - Kommentar: Detect timestamps where candles are missing.
+      - 
+      - Args:
+      -     data: DataFrame with datetime index
+      -     expected_freq: Expected candle frequency (e.g., "1T", "5T", "1H")
+      - 
+      - Returns:
+      -     List of missing timestamps
+    - def validate_candles(.)
+      - Kommentar: Validate candle data quality.
+      - 
+      - Returns dict with validation results:
+      - - is_valid: Overall validity
+      - - issues: List of detected issues
+      - - stats: Data quality statistics
+    - Kommentar: Trading session definitions
   - config.py
     - Class: MarketType
       - Kommentar: Supported market types.
@@ -4056,93 +4150,8 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Returns:
         -     FullBotConfig with market-appropriate defaults
   - entry_exit_engine.py
-    - Class: ExitReason
-      - Kommentar: Exit signal reasons.
-    - Class: EntryScoreResult
-      - Kommentar: Result of entry score calculation.
-    - Class: ExitSignalResult
-      - Kommentar: Result of exit signal check.
     - Class: TrailingStopResult
       - Kommentar: Result of trailing stop calculation.
-    - Class: EntryScorer
-      - Kommentar: Calculates entry scores based on strategy rules and indicators.
-      - 
-      - Supports both generic scoring and strategy-specific rule evaluation.
-      - def __init__(.)
-        - Kommentar: Initialize entry scorer.
-        - 
-        - Args:
-        -     weights: Custom indicator weights
-      - def calculate_score(.)
-        - Kommentar: Calculate entry score for a side.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     side: Trade direction
-        -     regime: Current market regime
-        -     strategy: Optional strategy with custom rules
-        - 
-        - Returns:
-        -     EntryScoreResult with score and breakdown
-      - def _score_generic(.)
-        - Kommentar: Generic scoring without strategy-specific rules.
-      - def _score_with_rules(.)
-        - Kommentar: Score using strategy-specific entry rules.
-      - def _evaluate_entry_rule(.)
-        - Kommentar: Evaluate a single entry rule.
-      - def _get_indicator_value(.)
-        - Kommentar: Get indicator value from features.
-      - def _check_direction_match(.)
-        - Kommentar: Check if indicator direction matches trade side.
-      - def _score_trend_alignment(.)
-        - Kommentar: Score trend alignment (MA alignment).
-      - def _score_rsi_momentum(.)
-        - Kommentar: Score RSI momentum.
-      - def _score_macd_momentum(.)
-        - Kommentar: Score MACD momentum.
-      - def _score_trend_strength(.)
-        - Kommentar: Score trend strength via ADX.
-      - def _score_mean_reversion(.)
-        - Kommentar: Score mean reversion setup (BB position).
-      - def _score_volume(.)
-        - Kommentar: Score volume confirmation.
-      - def _score_regime_match(.)
-        - Kommentar: Score regime appropriateness.
-    - Class: ExitSignalChecker
-      - Kommentar: Checks for exit signals based on multiple criteria.
-      - def __init__(.)
-        - Kommentar: Initialize exit signal checker.
-        - 
-        - Args:
-        -     max_bars_held: Maximum bars before time stop
-        -     rsi_extreme_threshold: RSI level for extreme exit
-        -     enable_time_stop: Enable time-based exit
-      - def check_exit(.)
-        - Kommentar: Check all exit conditions.
-        - 
-        - Args:
-        -     features: Current features
-        -     position: Current position
-        -     regime: Current regime
-        -     previous_regime: Previous regime for flip detection
-        -     strategy: Optional strategy with custom exit rules
-        - 
-        - Returns:
-        -     ExitSignalResult
-      - def _check_rsi_extreme(.)
-        - Kommentar: Check RSI extreme exit.
-      - def _check_macd_cross(.)
-        - Kommentar: Check MACD cross against position.
-      - def _check_bb_reversal(.)
-        - Kommentar: Check Bollinger Band reversal.
-      - def _check_trend_break(.)
-        - Kommentar: Check trend break (MA cross).
-      - def _check_volatility_spike(.)
-        - Kommentar: Check for volatility spike exit.
-      - def _check_regime_flip(.)
-        - Kommentar: Check for significant regime change.
-      - def _check_time_stop(.)
-        - Kommentar: Check time-based exit.
     - Class: TrailingStopManager
       - Kommentar: Manages trailing stop updates for positions.
       - def __init__(.)
@@ -4217,103 +4226,76 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     TrailingStopResult
+  - entry_scorer.py
+    - Class: EntryScoreResult
+      - Kommentar: Result of entry score calculation.
+    - Class: EntryScorer
+      - Kommentar: Calculates entry scores based on strategy rules and indicators.
+      - 
+      - Supports both generic scoring and strategy-specific rule evaluation.
+      - def __init__(.)
+        - Kommentar: Initialize entry scorer.
+        - 
+        - Args:
+        -     weights: Custom indicator weights
+      - def calculate_score(.)
+        - Kommentar: Calculate entry score for a side.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     side: Trade direction
+        -     regime: Current market regime
+        -     strategy: Optional strategy with custom rules
+        - 
+        - Returns:
+        -     EntryScoreResult with score and breakdown
+      - def _score_generic(.)
+        - Kommentar: Generic scoring without strategy-specific rules.
+      - def _score_with_rules(.)
+        - Kommentar: Score using strategy-specific entry rules.
+      - def _evaluate_entry_rule(.)
+        - Kommentar: Evaluate a single entry rule.
+      - def _get_indicator_value(.)
+        - Kommentar: Get indicator value from features.
+      - def _check_direction_match(.)
+        - Kommentar: Check if indicator direction matches trade side.
+      - def _score_trend_alignment(.)
+        - Kommentar: Score trend alignment (MA alignment).
+      - def _score_rsi_momentum(.)
+        - Kommentar: Score RSI momentum.
+      - def _score_macd_momentum(.)
+        - Kommentar: Score MACD momentum.
+      - def _score_trend_strength(.)
+        - Kommentar: Score trend strength via ADX.
+      - def _score_mean_reversion(.)
+        - Kommentar: Score mean reversion setup (BB position).
+      - def _score_volume(.)
+        - Kommentar: Score volume confirmation.
+      - def _score_regime_match(.)
+        - Kommentar: Score regime appropriateness.
+  - evaluator_types.py
+    - Class: TradeResult
+      - Kommentar: Result of a single trade.
+    - Class: PerformanceMetrics
+      - Kommentar: Performance metrics for a strategy evaluation period.
+      - def is_robust(.)
+        - Kommentar: Check if metrics meet robustness criteria.
+        - 
+        - Args:
+        -     min_trades: Minimum number of trades
+        -     min_profit_factor: Minimum profit factor
+        -     max_drawdown_pct: Maximum allowed drawdown %
+        -     min_win_rate: Minimum win rate
+        - 
+        - Returns:
+        -     True if all criteria met
+    - Class: RobustnessGate
+      - Kommentar: Configuration for robustness validation.
+    - Class: WalkForwardConfig
+      - Kommentar: Configuration for walk-forward analysis.
+    - Class: WalkForwardResult
+      - Kommentar: Result of walk-forward analysis.
   - execution.py
-    - Class: OrderStatus
-      - Kommentar: Order status.
-    - Class: OrderType
-      - Kommentar: Order types.
-    - Class: OrderResult
-      - Kommentar: Result of order execution.
-      - def is_filled(.)
-      - def is_rejected(.)
-    - Class: PositionSizeResult
-      - Kommentar: Result of position size calculation.
-    - Class: RiskLimits
-      - Kommentar: Risk limit configuration.
-    - Class: RiskState
-      - Kommentar: Current risk tracking state.
-    - Class: PositionSizer
-      - Kommentar: Calculates position sizes based on risk parameters.
-      - 
-      - Supports multiple sizing methods:
-      - - Fixed fractional (% of account)
-      - - ATR-based (volatility-adjusted)
-      - - Fixed quantity
-      - def __init__(.)
-        - Kommentar: Initialize position sizer.
-        - 
-        - Args:
-        -     account_value: Current account value
-        -     risk_limits: Risk limit configuration
-        -     default_risk_pct: Default risk per trade
-        -     include_fees: Include fees in calculations
-        -     fee_pct: Fee percentage (round-trip)
-      - def calculate_size(.)
-        - Kommentar: Calculate position size for a signal.
-        - 
-        - Args:
-        -     signal: Entry signal with stop-loss
-        -     current_price: Current market price
-        -     atr: Average True Range (for ATR-based sizing)
-        -     risk_pct: Override risk percentage
-        - 
-        - Returns:
-        -     PositionSizeResult with calculated size
-      - def calculate_size_atr(.)
-        - Kommentar: Calculate position size using ATR-based stop distance.
-        - 
-        - Args:
-        -     signal: Entry signal
-        -     current_price: Current price
-        -     atr: Average True Range
-        -     atr_multiple: ATR multiple for stop distance
-        -     risk_pct: Risk percentage
-        - 
-        - Returns:
-        -     PositionSizeResult
-      - def update_account_value(.)
-        - Kommentar: Update account value.
-        - 
-        - Args:
-        -     value: New account value
-    - Class: RiskManager
-      - Kommentar: Manages trading risk limits and tracking.
-      - 
-      - Tracks daily P&L, position count, loss streaks,
-      - and enforces risk limits.
-      - def __init__(.)
-        - Kommentar: Initialize risk manager.
-        - 
-        - Args:
-        -     limits: Risk limit configuration
-        -     account_value: Account value for calculations
-      - def state(.)
-        - Kommentar: Current risk state.
-      - def can_trade(.)
-        - Kommentar: Check if trading is allowed.
-        - 
-        - Returns:
-        -     (can_trade, list of blocking reasons)
-      - def record_trade_start(.)
-        - Kommentar: Record start of a new trade.
-      - def record_trade_end(.)
-        - Kommentar: Record end of a trade.
-        - 
-        - Args:
-        -     pnl: Trade P&L
-      - def _check_day_rollover(.)
-        - Kommentar: Check if we've rolled into a new trading day.
-      - def _check_cooldown_expired(.)
-        - Kommentar: Check if cooldown has expired.
-      - def _enter_cooldown(.)
-        - Kommentar: Enter cooldown mode.
-      - def update_account_value(.)
-        - Kommentar: Update account value.
-      - def get_stats(.)
-        - Kommentar: Get current risk stats.
-        - 
-        - Returns:
-        -     Dict with risk metrics
     - Class: PaperExecutor
       - Kommentar: Paper trading executor with slippage simulation.
       - 
@@ -4444,6 +4426,62 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     True if trading allowed
+    - Kommentar: Re-export types for backward compatibility
+  - execution_types.py
+    - Class: OrderStatus
+      - Kommentar: Order status.
+    - Class: OrderType
+      - Kommentar: Order types.
+    - Class: OrderResult
+      - Kommentar: Result of order execution.
+      - def is_filled(.)
+      - def is_rejected(.)
+    - Class: PositionSizeResult
+      - Kommentar: Result of position size calculation.
+    - Class: RiskLimits
+      - Kommentar: Risk limit configuration.
+    - Class: RiskState
+      - Kommentar: Current risk tracking state.
+  - exit_checker.py
+    - Class: ExitReason
+      - Kommentar: Exit signal reasons.
+    - Class: ExitSignalResult
+      - Kommentar: Result of exit signal check.
+    - Class: ExitSignalChecker
+      - Kommentar: Checks for exit signals based on multiple criteria.
+      - def __init__(.)
+        - Kommentar: Initialize exit signal checker.
+        - 
+        - Args:
+        -     max_bars_held: Maximum bars before time stop
+        -     rsi_extreme_threshold: RSI level for extreme exit
+        -     enable_time_stop: Enable time-based exit
+      - def check_exit(.)
+        - Kommentar: Check all exit conditions.
+        - 
+        - Args:
+        -     features: Current features
+        -     position: Current position
+        -     regime: Current regime
+        -     previous_regime: Previous regime for flip detection
+        -     strategy: Optional strategy with custom exit rules
+        - 
+        - Returns:
+        -     ExitSignalResult
+      - def _check_rsi_extreme(.)
+        - Kommentar: Check RSI extreme exit.
+      - def _check_macd_cross(.)
+        - Kommentar: Check MACD cross against position.
+      - def _check_bb_reversal(.)
+        - Kommentar: Check Bollinger Band reversal.
+      - def _check_trend_break(.)
+        - Kommentar: Check trend break (MA cross).
+      - def _check_volatility_spike(.)
+        - Kommentar: Check for volatility spike exit.
+      - def _check_regime_flip(.)
+        - Kommentar: Check for significant regime change.
+      - def _check_time_stop(.)
+        - Kommentar: Check time-based exit.
   - feature_engine.py
     - Class: FeatureEngine
       - Kommentar: Engine for calculating features from market data.
@@ -4474,39 +4512,11 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def _normalize_columns(.)
         - Kommentar: Normalize column names to lowercase.
       - def preprocess_candles(.)
-        - Kommentar: Preprocess candles for feature calculation.
-        - 
-        - Handles:
-        - - Timezone normalization
-        - - Missing candle detection and forward-fill
-        - - Session filtering (RTH for stocks, 24/7 for crypto)
-        - - Invalid price detection
-        - 
-        - Args:
-        -     data: DataFrame with OHLCV columns and datetime index
-        -     market_type: "STOCK" or "CRYPTO"
-        -     target_tz: Target timezone for normalization
-        -     fill_missing: Whether to forward-fill missing candles
-        -     filter_sessions: Whether to filter to valid trading sessions
-        - 
-        - Returns:
-        -     Preprocessed DataFrame
+        - Kommentar: Preprocess candles for feature calculation. Delegates to module function.
       - def detect_missing_candles(.)
-        - Kommentar: Detect timestamps where candles are missing.
-        - 
-        - Args:
-        -     data: DataFrame with datetime index
-        -     expected_freq: Expected candle frequency (e.g., "1T", "5T", "1H")
-        - 
-        - Returns:
-        -     List of missing timestamps
+        - Kommentar: Detect missing candles. Delegates to module function.
       - def validate_candles(.)
-        - Kommentar: Validate candle data quality.
-        - 
-        - Returns dict with validation results:
-        - - is_valid: Overall validity
-        - - issues: List of detected issues
-        - - stats: Data quality statistics
+        - Kommentar: Validate candle data. Delegates to module function.
       - def _calculate_all_indicators(.)
         - Kommentar: Calculate all configured indicators.
         - 
@@ -4525,74 +4535,7 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Get minimum bars required for feature calculation.
       - def clear_cache(.)
         - Kommentar: Clear indicator cache.
-    - Kommentar: Trading session definitions
   - llm_integration.py
-    - Class: LLMCallType
-      - Kommentar: Types of LLM calls.
-    - Class: LLMCallRecord
-      - Kommentar: Record of an LLM call for audit trail.
-    - Class: LLMBudgetState
-      - Kommentar: Budget tracking state.
-    - Class: LLMPromptBuilder
-      - Kommentar: Builds structured prompts for LLM calls.
-      - 
-      - Formats features, state, and constraints into a consistent
-      - prompt format that the LLM can process reliably.
-      - def build_daily_strategy_prompt(.)
-        - Kommentar: Build prompt for daily strategy selection.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     regime: Current regime state
-        -     strategies: List of available strategies with scores
-        -     constraints: Optional constraints dict
-        - 
-        - Returns:
-        -     Formatted prompt string
-      - def build_trade_decision_prompt(.)
-        - Kommentar: Build prompt for trade decision.
-        - 
-        - Args:
-        -     features: Current feature vector
-        -     regime: Current regime state
-        -     position: Current position dict or None
-        -     state: Bot state (FLAT, SIGNAL, MANAGE, etc.)
-        -     strategy: Active strategy dict
-        -     constraints: Risk constraints
-        - 
-        - Returns:
-        -     Formatted prompt string
-    - Class: LLMResponseValidator
-      - Kommentar: Validates LLM responses against expected schema.
-      - 
-      - Provides strict validation with repair attempts and
-      - fallback to rule-based defaults.
-      - def validate_trade_decision(.)
-        - Kommentar: Validate trade decision response.
-        - 
-        - Args:
-        -     response: Raw response dict or JSON string
-        -     allow_repair: Attempt to repair invalid responses
-        - 
-        - Returns:
-        -     (Validated response or None, list of validation errors)
-      - def _attempt_repair(.)
-        - Kommentar: Attempt to repair an invalid response.
-        - 
-        - Args:
-        -     response: Invalid response dict
-        - 
-        - Returns:
-        -     Repaired dict or None
-      - def get_fallback_response(.)
-        - Kommentar: Get rule-based fallback response.
-        - 
-        - Args:
-        -     state: Current bot state
-        -     features: Optional features for context
-        - 
-        - Returns:
-        -     Safe fallback response
     - Class: LLMIntegration
       - Kommentar: Main LLM integration class for tradingbot.
       - 
@@ -4676,6 +4619,77 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     List of call records as dicts
+    - Kommentar: Import from split modules
+    - Kommentar: Re-export for backward compatibility
+  - llm_prompts.py
+    - Class: LLMPromptBuilder
+      - Kommentar: Builds structured prompts for LLM calls.
+      - 
+      - Formats features, state, and constraints into a consistent
+      - prompt format that the LLM can process reliably.
+      - def build_daily_strategy_prompt(.)
+        - Kommentar: Build prompt for daily strategy selection.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     regime: Current regime state
+        -     strategies: List of available strategies with scores
+        -     constraints: Optional constraints dict
+        - 
+        - Returns:
+        -     Formatted prompt string
+      - def build_trade_decision_prompt(.)
+        - Kommentar: Build prompt for trade decision.
+        - 
+        - Args:
+        -     features: Current feature vector
+        -     regime: Current regime state
+        -     position: Current position dict or None
+        -     state: Bot state (FLAT, SIGNAL, MANAGE, etc.)
+        -     strategy: Active strategy dict
+        -     constraints: Risk constraints
+        - 
+        - Returns:
+        -     Formatted prompt string
+  - llm_types.py
+    - Class: LLMCallType
+      - Kommentar: Types of LLM calls.
+    - Class: LLMCallRecord
+      - Kommentar: Record of an LLM call for audit trail.
+    - Class: LLMBudgetState
+      - Kommentar: Budget tracking state.
+  - llm_validators.py
+    - Class: LLMResponseValidator
+      - Kommentar: Validates LLM responses against expected schema.
+      - 
+      - Provides strict validation with repair attempts and
+      - fallback to rule-based defaults.
+      - def validate_trade_decision(.)
+        - Kommentar: Validate trade decision response.
+        - 
+        - Args:
+        -     response: Raw response dict or JSON string
+        -     allow_repair: Attempt to repair invalid responses
+        - 
+        - Returns:
+        -     (Validated response or None, list of validation errors)
+      - def _attempt_repair(.)
+        - Kommentar: Attempt to repair an invalid response.
+        - 
+        - Args:
+        -     response: Invalid response dict
+        - 
+        - Returns:
+        -     Repaired dict or None
+      - def get_fallback_response(.)
+        - Kommentar: Get rule-based fallback response.
+        - 
+        - Args:
+        -     state: Current bot state
+        -     features: Optional features for context
+        - 
+        - Returns:
+        -     Safe fallback response
   - models.py
     - Class: TradeSide
       - Kommentar: Trade direction.
@@ -4853,6 +4867,51 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     Copy of filter config
+  - position_sizer.py
+    - Class: PositionSizer
+      - Kommentar: Calculates position sizes based on risk parameters.
+      - 
+      - Supports multiple sizing methods:
+      - - Fixed fractional (% of account)
+      - - ATR-based (volatility-adjusted)
+      - - Fixed quantity
+      - def __init__(.)
+        - Kommentar: Initialize position sizer.
+        - 
+        - Args:
+        -     account_value: Current account value
+        -     risk_limits: Risk limit configuration
+        -     default_risk_pct: Default risk per trade
+        -     include_fees: Include fees in calculations
+        -     fee_pct: Fee percentage (round-trip)
+      - def calculate_size(.)
+        - Kommentar: Calculate position size for a signal.
+        - 
+        - Args:
+        -     signal: Entry signal with stop-loss
+        -     current_price: Current market price
+        -     atr: Average True Range (for ATR-based sizing)
+        -     risk_pct: Override risk percentage
+        - 
+        - Returns:
+        -     PositionSizeResult with calculated size
+      - def calculate_size_atr(.)
+        - Kommentar: Calculate position size using ATR-based stop distance.
+        - 
+        - Args:
+        -     signal: Entry signal
+        -     current_price: Current price
+        -     atr: Average True Range
+        -     atr_multiple: ATR multiple for stop distance
+        -     risk_pct: Risk percentage
+        - 
+        - Returns:
+        -     PositionSizeResult
+      - def update_account_value(.)
+        - Kommentar: Update account value.
+        - 
+        - Args:
+        -     value: New account value
   - regime_engine.py
     - Class: RegimeEngine
       - Kommentar: Engine for market regime classification.
@@ -4935,6 +4994,45 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     Dict with change flags
+  - risk_manager.py
+    - Class: RiskManager
+      - Kommentar: Manages trading risk limits and tracking.
+      - 
+      - Tracks daily P&L, position count, loss streaks,
+      - and enforces risk limits.
+      - def __init__(.)
+        - Kommentar: Initialize risk manager.
+        - 
+        - Args:
+        -     limits: Risk limit configuration
+        -     account_value: Account value for calculations
+      - def state(.)
+        - Kommentar: Current risk state.
+      - def can_trade(.)
+        - Kommentar: Check if trading is allowed.
+        - 
+        - Returns:
+        -     (can_trade, list of blocking reasons)
+      - def record_trade_start(.)
+        - Kommentar: Record start of a new trade.
+      - def record_trade_end(.)
+        - Kommentar: Record end of a trade.
+        - 
+        - Args:
+        -     pnl: Trade P&L
+      - def _check_day_rollover(.)
+        - Kommentar: Check if we've rolled into a new trading day.
+      - def _check_cooldown_expired(.)
+        - Kommentar: Check if cooldown has expired.
+      - def _enter_cooldown(.)
+        - Kommentar: Enter cooldown mode.
+      - def update_account_value(.)
+        - Kommentar: Update account value.
+      - def get_stats(.)
+        - Kommentar: Get current risk stats.
+        - 
+        - Returns:
+        -     Dict with risk metrics
   - state_machine.py
     - Class: BotState
       - Kommentar: Bot operation states.
@@ -5108,16 +5206,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Returns:
         -     BotStateMachine instance
   - strategy_catalog.py
-    - Class: StrategyType
-      - Kommentar: Built-in strategy types.
-    - Class: EntryRule
-      - Kommentar: Entry rule configuration.
-    - Class: ExitRule
-      - Kommentar: Exit rule configuration.
-    - Class: StrategyDefinition
-      - Kommentar: Complete strategy definition with rules.
-      - def is_applicable(.)
-        - Kommentar: Check if strategy is applicable for current regime.
     - Class: StrategyCatalog
       - Kommentar: Catalog of pre-built trading strategies.
       - 
@@ -5127,22 +5215,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Initialize strategy catalog with built-in strategies.
       - def _register_builtin_strategies(.)
         - Kommentar: Register all built-in strategy definitions.
-      - def _create_trend_following_conservative(.)
-        - Kommentar: Conservative trend following strategy.
-      - def _create_trend_following_aggressive(.)
-        - Kommentar: Aggressive trend following for strong trends.
-      - def _create_mean_reversion_bb(.)
-        - Kommentar: Mean reversion using Bollinger Bands.
-      - def _create_mean_reversion_rsi(.)
-        - Kommentar: Mean reversion using RSI extremes.
-      - def _create_breakout_volatility(.)
-        - Kommentar: Breakout strategy for volatility expansion.
-      - def _create_breakout_momentum(.)
-        - Kommentar: Momentum breakout strategy.
-      - def _create_momentum_macd(.)
-        - Kommentar: MACD-based momentum strategy.
-      - def _create_scalping_range(.)
-        - Kommentar: Scalping strategy for tight ranges.
       - def get_strategy(.)
         - Kommentar: Get strategy by name.
         - 
@@ -5183,28 +5255,19 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     List of strategy names
+    - Kommentar: Re-export types for backward compatibility
+  - strategy_definitions.py
+    - Class: StrategyType
+      - Kommentar: Built-in strategy types.
+    - Class: EntryRule
+      - Kommentar: Entry rule configuration.
+    - Class: ExitRule
+      - Kommentar: Exit rule configuration.
+    - Class: StrategyDefinition
+      - Kommentar: Complete strategy definition with rules.
+      - def is_applicable(.)
+        - Kommentar: Check if strategy is applicable for current regime.
   - strategy_evaluator.py
-    - Class: TradeResult
-      - Kommentar: Result of a single trade.
-    - Class: PerformanceMetrics
-      - Kommentar: Performance metrics for a strategy evaluation period.
-      - def is_robust(.)
-        - Kommentar: Check if metrics meet robustness criteria.
-        - 
-        - Args:
-        -     min_trades: Minimum number of trades
-        -     min_profit_factor: Minimum profit factor
-        -     max_drawdown_pct: Maximum allowed drawdown %
-        -     min_win_rate: Minimum win rate
-        - 
-        - Returns:
-        -     True if all criteria met
-    - Class: RobustnessGate
-      - Kommentar: Configuration for robustness validation.
-    - Class: WalkForwardConfig
-      - Kommentar: Configuration for walk-forward analysis.
-    - Class: WalkForwardResult
-      - Kommentar: Result of walk-forward analysis.
     - Class: StrategyEvaluator
       - Kommentar: Evaluator for strategy performance.
       - 
@@ -5272,6 +5335,8 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     List of (strategy_name, score) sorted by score descending
+    - Kommentar: Import types from evaluator_types
+    - Kommentar: Re-export for backward compatibility
   - strategy_selector.py
     - Class: SelectionResult
       - Kommentar: Result of strategy selection.
@@ -5373,6 +5438,25 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Returns:
         -     Suggested strategy name or None
+  - strategy_templates.py
+    - Class: StrategyTemplatesMixin
+      - Kommentar: Mixin providing strategy template creation methods.
+      - def _create_trend_following_conservative(.)
+        - Kommentar: Conservative trend following strategy.
+      - def _create_trend_following_aggressive(.)
+        - Kommentar: Aggressive trend following for strong trends.
+      - def _create_mean_reversion_bb(.)
+        - Kommentar: Mean reversion using Bollinger Bands.
+      - def _create_mean_reversion_rsi(.)
+        - Kommentar: Mean reversion using RSI extremes.
+      - def _create_breakout_volatility(.)
+        - Kommentar: Breakout strategy for volatility expansion.
+      - def _create_breakout_momentum(.)
+        - Kommentar: Momentum breakout strategy.
+      - def _create_momentum_macd(.)
+        - Kommentar: MACD-based momentum strategy.
+      - def _create_scalping_range(.)
+        - Kommentar: Scalping strategy for tight ranges.
   - __init__.py
     - Kommentar: Models
     - Kommentar: Database Manager
@@ -5517,24 +5601,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Load application settings.
       - def save_settings(.)
         - Kommentar: Save application settings.
-      - def show_order_dialog(.)
-        - Kommentar: Show the order placement dialog.
-      - def show_settings_dialog(.)
-        - Kommentar: Show the settings dialog.
-      - def show_backtest_dialog(.)
-        - Kommentar: Show the backtest dialog.
-      - def show_ai_backtest_dialog(.)
-        - Kommentar: Show the AI-powered backtest analysis dialog.
-      - def show_parameter_optimization_dialog(.)
-        - Kommentar: Show the parameter optimization dialog.
-      - def show_ai_monitor(.)
-        - Kommentar: Show AI usage monitor.
-      - def show_pattern_db_dialog(.)
-        - Kommentar: Show the pattern database management dialog.
-      - def reset_toolbars_and_docks(.)
-        - Kommentar: Reset all toolbars and dock widgets to their default positions.
-      - def show_about(.)
-        - Kommentar: Show about dialog.
       - def open_chart_popup(.)
         - Kommentar: Open a popup chart window for the symbol.
       - def on_watchlist_symbol_added(.)
@@ -5568,6 +5634,27 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
     - Kommentar: Application imports
     - Kommentar: UI component imports
   - __init__.py
+  - actions_mixin.py
+    - Class: ActionsMixin
+      - Kommentar: Mixin providing dialog and action methods for TradingApplication.
+      - def show_order_dialog(.)
+        - Kommentar: Show the order placement dialog.
+      - def show_settings_dialog(.)
+        - Kommentar: Show the settings dialog.
+      - def show_backtest_dialog(.)
+        - Kommentar: Show the backtest dialog.
+      - def show_ai_backtest_dialog(.)
+        - Kommentar: Show the AI-powered backtest analysis dialog.
+      - def show_parameter_optimization_dialog(.)
+        - Kommentar: Show the parameter optimization dialog.
+      - def show_ai_monitor(.)
+        - Kommentar: Show AI usage monitor.
+      - def show_pattern_db_dialog(.)
+        - Kommentar: Show the pattern database management dialog.
+      - def reset_toolbars_and_docks(.)
+        - Kommentar: Reset all toolbars and dock widgets to their default positions.
+      - def show_about(.)
+        - Kommentar: Show about dialog.
   - broker_mixin.py
     - Class: BrokerMixin
       - Kommentar: Mixin providing broker connection functionality for TradingApplication.
@@ -6014,6 +6101,21 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Simulate backtest execution.
       - def export_results(.)
         - Kommentar: Export backtest results.
+  - optimization_tabs_mixin.py
+    - Class: OptimizationTabsMixin
+      - Kommentar: Mixin providing tab creation methods for ParameterOptimizationDialog.
+      - def _create_config_tab(.)
+        - Kommentar: Create configuration tab.
+      - def _update_combination_count(.)
+        - Kommentar: Update total combination count label.
+      - def _create_progress_tab(.)
+        - Kommentar: Create progress monitoring tab.
+      - def _create_results_tab(.)
+        - Kommentar: Create results display tab.
+      - def _create_ai_tab(.)
+        - Kommentar: Create AI insights tab.
+      - def _create_chart_tab(.)
+        - Kommentar: Create chart visualization tab for best result.
   - order_dialog.py
     - Class: OrderDialog
       - Kommentar: Dialog for placing orders with AI analysis.
@@ -6039,18 +6141,6 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     current_symbol: Currently selected symbol from chart (optional)
       - def init_ui(.)
         - Kommentar: Initialize UI.
-      - def _create_config_tab(.)
-        - Kommentar: Create configuration tab.
-      - def _update_combination_count(.)
-        - Kommentar: Update total combination count label.
-      - def _create_progress_tab(.)
-        - Kommentar: Create progress monitoring tab.
-      - def _create_results_tab(.)
-        - Kommentar: Create results display tab.
-      - def _create_ai_tab(.)
-        - Kommentar: Create AI insights tab.
-      - def _create_chart_tab(.)
-        - Kommentar: Create chart visualization tab for best result.
       - def start_optimization(.)
         - Kommentar: Start parameter optimization.
       - def _run_real_backtest(.)
@@ -6075,26 +6165,11 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def stop_optimization(.)
         - Kommentar: Stop optimization.
   - pattern_db_dialog.py
-    - Class: DatabaseBuildWorker
-      - Kommentar: Worker thread for building the pattern database.
-      - def __init__(.)
-      - def cancel(.)
-        - Kommentar: Cancel the build process.
-      - def run(.)
-        - Kommentar: Run the database build in a separate thread.
-      - def _build_async(.)
-        - Kommentar: Async build process.
     - Class: PatternDatabaseDialog
       - Kommentar: Dialog for managing the pattern database.
       - def __init__(.)
       - def _setup_ui(.)
         - Kommentar: Set up the dialog UI.
-      - def _create_status_tab(.)
-        - Kommentar: Create the status tab.
-      - def _create_build_tab(.)
-        - Kommentar: Create the build database tab.
-      - def _create_search_tab(.)
-        - Kommentar: Create the search test tab.
       - def _select_all(.)
         - Kommentar: Select or deselect all items in a list.
       - def _add_custom_crypto(.)
@@ -6131,6 +6206,26 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Handle dialog close.
     - Kommentar: Docker configuration - uses existing Qdrant from RAG system
     - Kommentar: Existing container
+  - pattern_db_tabs_mixin.py
+    - Class: PatternDbTabsMixin
+      - Kommentar: Mixin providing tab creation methods for PatternDatabaseDialog.
+      - def _create_status_tab(.)
+        - Kommentar: Create the status tab.
+      - def _create_build_tab(.)
+        - Kommentar: Create the build database tab.
+      - def _create_search_tab(.)
+        - Kommentar: Create the search test tab.
+    - Kommentar: Constants (must match pattern_db_dialog.py)
+  - pattern_db_worker.py
+    - Class: DatabaseBuildWorker
+      - Kommentar: Worker thread for building the pattern database.
+      - def __init__(.)
+      - def cancel(.)
+        - Kommentar: Cancel the build process.
+      - def run(.)
+        - Kommentar: Run the database build in a separate thread.
+      - def _build_async(.)
+        - Kommentar: Async build process.
   - settings_dialog.py
     - Class: SettingsDialog
       - Kommentar: Application settings dialog.
@@ -6141,6 +6236,25 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Load current settings from QSettings.
       - def save_settings(.)
         - Kommentar: Save settings to QSettings and configuration.
+      - def _save_api_keys(.)
+        - Kommentar: Save API keys to secure keyring.
+      - def _save_market_data_settings(.)
+        - Kommentar: Save market data provider settings.
+  - settings_tabs_mixin.py
+    - Class: SettingsTabsMixin
+      - Kommentar: Mixin providing tab creation methods for SettingsDialog.
+      - def _create_general_tab(.)
+        - Kommentar: Create general settings tab.
+      - def _create_trading_tab(.)
+        - Kommentar: Create trading settings tab.
+      - def _create_broker_tab(.)
+        - Kommentar: Create broker settings tab.
+      - def _create_market_data_tab(.)
+        - Kommentar: Create market data settings tab.
+      - def _create_ai_tab(.)
+        - Kommentar: Create AI settings tab.
+      - def _create_notifications_tab(.)
+        - Kommentar: Create notifications settings tab.
   - icons.py
     - Class: IconProvider
       - Kommentar: Provides themed icons for the application.
@@ -6303,18 +6417,17 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Args:
         -     event: Close event
+  - chart_js_template.py
+    - Kommentar: HTML template for TradingView Lightweight Charts
+    - Kommentar: This is extracted from embedded_tradingview_chart.py to reduce file size.
+    - Kommentar: The template provides:
+    - Kommentar: - Professional chart appearance
+    - Kommentar: - Drawing toolbar with multiple tools
+    - Kommentar: - Price panels for indicators
+    - Kommentar: - Drag support for stop lines (with Python callback)
+    - Kommentar: - Chart state management (visible range, pane layout)
   - __init__.py
   - bot_overlay_mixin.py
-    - Class: MarkerType
-      - Kommentar: Marker types for chart display.
-    - Class: BotMarker
-      - Kommentar: Marker data for chart display.
-      - def to_chart_marker(.)
-        - Kommentar: Convert to Lightweight Charts marker format.
-    - Class: StopLine
-      - Kommentar: Stop-loss line data.
-    - Class: BotOverlayState
-      - Kommentar: State tracking for bot overlay elements.
     - Class: BotOverlayMixin
       - Kommentar: Mixin providing bot overlay functionality for chart widgets.
       - 
@@ -6390,6 +6503,7 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Args:
         -     line_id: Line identifier
         -     new_price: New price level
+        -     label: Optional custom label (if None, uses default format)
         - 
         - Returns:
         -     True if updated, False if line not found
@@ -6442,6 +6556,21 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         -     signal_id: Specific signal to clear, or None for all
       - def clear_bot_overlay(.)
         - Kommentar: Clear all bot overlay elements.
+    - Kommentar: Re-export for backward compatibility
+  - bot_overlay_types.py
+    - Class: MarkerType
+      - Kommentar: Marker types for chart display.
+    - Class: BotMarker
+      - Kommentar: Marker data for chart display.
+      - def to_chart_marker(.)
+        - Kommentar: Convert to Lightweight Charts marker format.
+    - Class: StopLine
+      - Kommentar: Stop-loss line data.
+    - Class: BotOverlayState
+      - Kommentar: State tracking for bot overlay elements.
+    - def build_hud_content(.)
+      - Kommentar: Build HTML content for debug HUD.
+    - Kommentar: Color mappings for HUD display
   - data_loading_mixin.py
     - Class: DataLoadingMixin
       - Kommentar: Mixin providing data loading functionality for EmbeddedTradingViewChart.
@@ -6658,21 +6787,76 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def _open_trailing_stop_help(.)
         - Kommentar: Open the trailing stop help documentation in browser.
   - __init__.py
-  - bot_panels_mixin.py
-    - Class: BotPanelsMixin
-      - Kommentar: Mixin providing bot control and monitoring panels.
-      - def _init_bot_panels(.)
-        - Kommentar: Initialize bot panel state.
-      - def _create_bot_control_tab(.)
-        - Kommentar: Create bot control tab with start/stop and settings.
-      - def _on_open_help_clicked(.)
-        - Kommentar: Open the trading bot help documentation.
-      - def _create_strategy_selection_tab(.)
-        - Kommentar: Create daily strategy selection tab.
-      - def _create_signals_tab(.)
-        - Kommentar: Create signals & trade management tab.
-      - def _create_ki_logs_tab(.)
-        - Kommentar: Create KI logs tab for monitoring AI decisions.
+  - bot_callbacks.py
+    - Class: BotCallbacksMixin
+      - Kommentar: Mixin providing bot controller callbacks and control methods.
+      - def _start_bot_with_config(.)
+        - Kommentar: Start bot with current UI configuration.
+      - def _stop_bot(.)
+        - Kommentar: Stop the running bot.
+      - def _on_bot_signal(.)
+        - Kommentar: Handle bot signal event.
+      - def _on_bot_decision(.)
+        - Kommentar: Handle bot decision event.
+      - def _on_bot_log(.)
+        - Kommentar: Handle bot log event.
+      - def _on_bot_order(.)
+        - Kommentar: Handle bot order event.
+      - def _on_macd_signal(.)
+        - Kommentar: Handle MACD signal from bot controller.
+      - def _on_trading_blocked(.)
+        - Kommentar: Handle trading blocked event.
+      - def _on_bot_state_change(.)
+        - Kommentar: Handle bot state change.
+      - def _on_chart_candle_closed(.)
+        - Kommentar: Handle candle close event from chart - feed bar to bot.
+        - 
+        - This is the main entry point for bot bar processing when using
+        - tick-based streaming (not event-bus MARKET_BAR).
+        - 
+        - Args:
+        -     previous_close: The close price of the completed candle
+        -     new_open: The open price of the new candle
+  - bot_display_manager.py
+    - Class: BotDisplayManagerMixin
+      - Kommentar: Mixin providing bot display update methods.
+      - def _update_bot_status(.)
+        - Kommentar: Update bot status indicator.
+      - def _update_bot_display(.)
+        - Kommentar: Update bot display with current state.
+      - def _update_signals_pnl(.)
+        - Kommentar: Update P&L for all open signals in history.
+      - def _check_tr_activation(.)
+        - Kommentar: Check if trailing stop should be activated based on activation threshold.
+        - 
+        - Trailing stop only activates when price moves TRA% into profit:
+        - - LONG: current_price >= entry_price * (1 + trailing_activation_pct / 100)
+        - - SHORT: current_price <= entry_price * (1 - trailing_activation_pct / 100)
+      - def _update_signals_table(.)
+        - Kommentar: Update signals table with recent entries.
+      - def _add_ki_log_entry(.)
+        - Kommentar: Add entry to KI log (uses local time).
+      - def _log_bot_diagnostics(.)
+        - Kommentar: Log periodic bot diagnostics for debugging.
+      - def update_strategy_scores(.)
+        - Kommentar: Update strategy scores table.
+        - 
+        - Args:
+        -     scores: List of strategy score dicts
+      - def update_walk_forward_results(.)
+        - Kommentar: Update walk-forward results display.
+        - 
+        - Args:
+        -     results: Walk-forward results dict
+      - def log_ki_request(.)
+        - Kommentar: Log a KI request/response pair.
+        - 
+        - Args:
+        -     request: Request data sent to KI
+        -     response: Response received (if any)
+  - bot_event_handlers.py
+    - Class: BotEventHandlersMixin
+      - Kommentar: Mixin providing bot event handlers and settings management.
       - def _on_bot_start_clicked(.)
         - Kommentar: Handle bot start button click.
       - def _on_bot_stop_clicked(.)
@@ -6708,67 +6892,46 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Args:
         -     symbol: Symbol to save settings for
-      - def _start_bot_with_config(.)
-        - Kommentar: Start bot with current UI configuration.
-      - def _stop_bot(.)
-        - Kommentar: Stop the running bot.
-      - def _on_bot_signal(.)
-        - Kommentar: Handle bot signal event.
-      - def _on_bot_decision(.)
-        - Kommentar: Handle bot decision event.
-      - def _on_bot_log(.)
-        - Kommentar: Handle bot activity log event.
+  - bot_panels_mixin.py
+    - Class: BotPanelsMixin
+      - Kommentar: Mixin providing bot control and monitoring panels.
+      - 
+      - This class combines all bot-related functionality through multiple inheritance
+      - from specialized sub-mixins. Each sub-mixin handles a specific concern:
+      - 
+      - - BotUIPanelsMixin: Creates the UI tabs and widgets
+      - - BotEventHandlersMixin: Handles UI events and settings persistence
+      - - BotCallbacksMixin: Manages bot controller lifecycle and callbacks
+      - - BotDisplayManagerMixin: Updates displays (status, tables, P&L)
+      - - BotPositionPersistenceMixin: Manages position persistence and chart integration
+      - 
+      - Usage:
+      -     class ChartWindow(QMainWindow, BotPanelsMixin, ...):
+      -         def __init__(self):
+      -             super().__init__()
+      -             self._init_bot_panels()
+      -             # Add tabs using:
+      -             # - self._create_bot_control_tab()
+      -             # - self._create_strategy_selection_tab()
+      -             # - self._create_signals_tab()
+      -             # - self._create_ki_logs_tab()
+      - def _init_bot_panels(.)
+        - Kommentar: Initialize bot panel state.
         - 
-        - Args:
-        -     log_type: Type of log entry (BAR, FEATURE, REGIME, SIGNAL, etc.)
-        -     message: Log message
-      - def _on_bot_order(.)
-        - Kommentar: Handle bot order intent event - simulate fill for paper trading.
+        - Must be called during ChartWindow initialization to set up:
+        - - Bot controller reference
+        - - Update timer
+        - - Signal/trade history
+        - - Settings manager
+      - def _connect_candle_closed_signal(.)
+        - Kommentar: Connect the chart's candle_closed signal to feed bars to the bot.
         - 
-        - Args:
-        -     order: OrderIntent from BotController
-      - def _on_macd_signal(.)
-        - Kommentar: Handle MACD cross signal - add marker to chart.
-        - 
-        - Args:
-        -     signal_type: "MACD_BEARISH_CROSS" or "MACD_BULLISH_CROSS"
-        -     price: Current price where signal occurred
-      - def _on_trading_blocked(.)
-        - Kommentar: Handle trading blocked notification - show popup.
-        - 
-        - Args:
-        -     reasons: List of reasons why trading is blocked
-      - def _on_bot_state_change(.)
-        - Kommentar: Handle bot state change.
-      - def _update_bot_status(.)
-        - Kommentar: Update bot status label.
-      - def _update_bot_display(.)
-        - Kommentar: Update all bot display elements.
-      - def _update_signals_pnl(.)
-        - Kommentar: Update P&L values for all open positions in signal history.
-      - def _update_signals_table(.)
-        - Kommentar: Update signals table with recent entries.
-      - def _add_ki_log_entry(.)
-        - Kommentar: Add entry to KI log (uses local time).
-      - def _log_bot_diagnostics(.)
-        - Kommentar: Log periodic bot diagnostics for debugging.
-      - def update_strategy_scores(.)
-        - Kommentar: Update strategy scores table.
-        - 
-        - Args:
-        -     scores: List of strategy score dicts with keys:
-        -             name, score, profit_factor, win_rate, max_drawdown
-      - def update_walk_forward_results(.)
-        - Kommentar: Update walk-forward results display.
-        - 
-        - Args:
-        -     results: Walk-forward results dict
-      - def log_ki_request(.)
-        - Kommentar: Log a KI request/response pair.
-        - 
-        - Args:
-        -     request: Request data sent to KI
-        -     response: Response received (if any)
+        - This is critical for the trading bot to receive candle data when
+        - using tick-based streaming (Live button).
+    - Kommentar: Import sub-mixins
+  - bot_position_persistence.py
+    - Class: BotPositionPersistenceMixin
+      - Kommentar: Mixin providing position persistence and chart integration.
       - def _get_signal_history_key(.)
         - Kommentar: Get settings key for signal history based on current symbol.
       - def _save_signal_history(.)
@@ -6780,15 +6943,45 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def _restore_persisted_position(.)
         - Kommentar: Restore chart elements and Current Position display for persisted positions.
       - def _start_pnl_update_timer(.)
-        - Kommentar: Start timer for live P&L updates on restored positions.
+        - Kommentar: Start timer to update P&L for restored positions.
       - def _update_restored_positions_pnl(.)
-        - Kommentar: Update P&L for restored positions using current price.
+        - Kommentar: Update P&L for restored positions from chart's current price.
       - def _show_signals_context_menu(.)
         - Kommentar: Show context menu for signals table.
       - def _sell_signal(.)
-        - Kommentar: Sell/close the position for the given signal.
+        - Kommentar: Manually close/sell a signal's position.
       - def _delete_signal(.)
-        - Kommentar: Delete a signal from history (only non-ENTERED signals).
+        - Kommentar: Delete a signal from history.
+      - def _connect_chart_line_signals(.)
+        - Kommentar: Connect chart line drag signals for bidirectional editing.
+      - def _on_chart_stop_line_moved(.)
+        - Kommentar: Handle stop line being dragged in the chart.
+      - def _on_signals_table_cell_changed(.)
+        - Kommentar: Handle table cell editing - update chart lines when SL% or TR% changes.
+      - def _sync_stop_to_bot_controller(.)
+        - Kommentar: Sync stop price to bot controller's internal position.
+  - bot_tr_lock_mixin.py
+    - Class: BotTRLockMixin
+      - Kommentar: Mixin providing TR% lock feature for trailing stop management.
+      - def _on_row_tr_lock_changed(.)
+        - Kommentar: Handle TR% lock checkbox change for a specific signal row.
+      - def _get_signals_with_active_lock(.)
+        - Kommentar: Get all signals that have TR% lock active.
+      - def _on_candle_closed(.)
+        - Kommentar: Handle candle close event for TR% lock feature.
+  - bot_ui_panels.py
+    - Class: BotUIPanelsMixin
+      - Kommentar: Mixin providing bot panel tab creation methods.
+      - def _create_bot_control_tab(.)
+        - Kommentar: Create bot control tab with start/stop and settings.
+      - def _on_open_help_clicked(.)
+        - Kommentar: Open the trading bot help documentation.
+      - def _create_strategy_selection_tab(.)
+        - Kommentar: Create daily strategy selection tab.
+      - def _create_signals_tab(.)
+        - Kommentar: Create signals & trade management tab.
+      - def _create_ki_logs_tab(.)
+        - Kommentar: Create KI logs tab for monitoring AI decisions.
   - event_bus_mixin.py
     - Class: EventBusMixin
       - Kommentar: Mixin providing event bus integration for ChartWindow.
@@ -6892,7 +7085,53 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Update open positions count.
       - def refresh_stats(.)
         - Kommentar: Refresh dashboard statistics from database or broker.
+  - dashboard_metrics.py
+    - Class: PerformanceMetrics
+      - Kommentar: Performance metrics data.
+    - Class: MetricCard
+      - Kommentar: Widget for displaying a single metric.
+      - def __init__(.)
+        - Kommentar: Initialize metric card.
+        - 
+        - Args:
+        -     title: Metric title
+        -     value: Metric value
+        -     suffix: Value suffix (%, $, etc.)
+        -     color: Text color
+      - def update_value(.)
+        - Kommentar: Update the metric value.
+        - 
+        - Args:
+        -     value: New value
+        -     suffix: Value suffix
+  - dashboard_tabs_mixin.py
+    - Class: DashboardTabsMixin
+      - Kommentar: Mixin providing tab creation methods for PerformanceDashboard.
+      - def _create_overview_tab(.)
+        - Kommentar: Create overview tab.
+      - def _create_returns_tab(.)
+        - Kommentar: Create returns analysis tab.
+      - def _create_trades_tab(.)
+        - Kommentar: Create trades analysis tab.
+      - def _create_positions_tab(.)
+        - Kommentar: Create positions tab.
+      - def _create_ai_tab(.)
+        - Kommentar: Create AI analytics tab.
+      - def _create_reports_tab(.)
+        - Kommentar: Create reports tab.
   - embedded_tradingview_chart.py
+    - Class: ChartBridge
+      - Kommentar: Bridge object for JavaScript to Python communication.
+      - 
+      - Allows JavaScript in the chart to call Python methods, e.g., when
+      - a stop line is dragged to a new position.
+      - def __init__(.)
+      - def onStopLineMoved(.)
+        - Kommentar: Called from JavaScript when a stop line is dragged.
+        - 
+        - Args:
+        -     line_id: ID of the line ("initial_stop", "trailing_stop", "entry_line")
+        -     new_price: New price level after drag
     - Class: EmbeddedTradingViewChart
       - Kommentar: Embedded TradingView Lightweight Charts widget.
       - 
@@ -6929,7 +7168,10 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Poll inside the WebEngine until window.chartAPI exists.
       - def _poll_chart_ready(.)
       - def _on_chart_ready_result(.)
-    - Kommentar: HTML template for TradingView Lightweight Charts
+      - def _on_bridge_stop_line_moved(.)
+        - Kommentar: Handle stop line moved event from JavaScript bridge.
+        - 
+        - Re-emits the signal so it can be caught by the chart window.
   - indicators.py
     - Class: IndicatorsWidget
       - Kommentar: Widget for managing technical indicators.
@@ -6960,89 +7202,37 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
       - def update_order(.)
         - Kommentar: Update an existing order in the table.
   - performance_dashboard.py
-    - Class: PerformanceMetrics
-      - Kommentar: Performance metrics data.
-    - Class: MetricCard
-      - Kommentar: Widget for displaying a single metric.
-      - def __init__(.)
-        - Kommentar: Initialize metric card.
-        - 
-        - Args:
-        -     title: Metric title
-        -     value: Metric value
-        -     suffix: Value suffix (%, $, etc.)
-        -     color: Text color
-      - def update_value(.)
-        - Kommentar: Update the metric value.
-        - 
-        - Args:
-        -     value: New value
-        -     suffix: Value suffix
     - Class: PerformanceDashboard
       - Kommentar: Performance dashboard widget.
       - def __init__(.)
         - Kommentar: Initialize performance dashboard.
       - def _setup_ui(.)
         - Kommentar: Setup the UI components.
-      - def _create_overview_tab(.)
-        - Kommentar: Create overview tab.
-      - def _create_returns_tab(.)
-        - Kommentar: Create returns analysis tab.
-      - def _create_trades_tab(.)
-        - Kommentar: Create trades analysis tab.
-      - def _create_positions_tab(.)
-        - Kommentar: Create positions tab.
-      - def _create_ai_tab(.)
-        - Kommentar: Create AI analytics tab.
-      - def _create_reports_tab(.)
-        - Kommentar: Create reports tab.
       - def _setup_timers(.)
         - Kommentar: Setup update timers.
       - def _load_performance_data(.)
         - Kommentar: Load performance data from database.
       - def _get_date_range(.)
         - Kommentar: Get date range based on selected period.
-        - 
-        - Returns:
-        -     Tuple of (start_date, end_date)
       - def _calculate_metrics(.)
         - Kommentar: Calculate performance metrics.
-        - 
-        - Args:
-        -     orders: List of orders
-        -     positions: List of positions
-        -     ai_data: List of AI telemetry records
       - def _update_ui(.)
         - Kommentar: Update UI with current metrics.
       - def _update_metrics(.)
         - Kommentar: Update metrics (called by timer).
       - def _on_period_changed(.)
         - Kommentar: Handle period change.
-        - 
-        - Args:
-        -     period: Selected period
       - def _apply_custom_dates(.)
         - Kommentar: Apply custom date range.
       - def _generate_report(.)
         - Kommentar: Generate performance report.
       - def _create_report_content(.)
         - Kommentar: Create report content.
-        - 
-        - Args:
-        -     report_type: Type of report
-        - 
-        - Returns:
-        -     Report content as text
       - def _on_order_filled(.)
         - Kommentar: Handle order filled event.
-        - 
-        - Args:
-        -     event: Order filled event
       - def _on_position_closed(.)
         - Kommentar: Handle position closed event.
-        - 
-        - Args:
-        -     event: Position closed event
+    - Kommentar: Re-export for backward compatibility
   - positions.py
     - Class: PositionsWidget
       - Kommentar: Widget for displaying current positions.
@@ -7076,24 +7266,12 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - Kommentar: Setup event bus handlers.
       - def on_market_tick(.)
         - Kommentar: Handle market tick events.
-        - 
-        - Args:
-        -     event: Market tick event
       - def on_market_bar(.)
         - Kommentar: Handle market bar events.
-        - 
-        - Args:
-        -     event: Market bar event
       - def update_prices(.)
         - Kommentar: Update prices in the table.
       - def format_volume(.)
-        - Kommentar: Format volume for display.
-        - 
-        - Args:
-        -     volume: Volume value
-        - 
-        - Returns:
-        -     Formatted string
+        - Kommentar: Format volume for display. Delegates to module function.
       - def add_symbol_from_input(.)
         - Kommentar: Add symbol from input field.
       - def add_symbol(.)
@@ -7148,6 +7326,16 @@ Nutze diese Anweisungen für alle Python-Code-Bearbeitungen, um maximale Sicherh
         - 
         - Args:
         -     event: Close event
+  - watchlist_presets.py
+    - Class: SymbolInfo
+      - Kommentar: Type definition for symbol information.
+    - def format_volume(.)
+      - Kommentar: Format volume for display.
+    - Kommentar: Market indices ETFs
+    - Kommentar: Major tech stocks
+    - Kommentar: Major cryptocurrency trading pairs
+    - Kommentar: Default watchlist symbols
+    - Kommentar: Market status display configuration
   - widget_helpers.py
     - Class: EventBusWidget
       - Kommentar: Base widget with event bus integration.

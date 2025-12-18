@@ -103,16 +103,21 @@ from .llm_integration import (
     LLMPromptBuilder,
     LLMResponseValidator,
 )
-from .backtest_harness import (
+# Backtest types from backtest_types.py
+from .backtest_types import (
     BacktestConfig,
-    BacktestHarness,
     BacktestMode,
     BacktestResult,
-    BacktestSimulator,
     BacktestState,
     BacktestTrade,
+)
+# Backtest simulator from backtest_simulator.py
+from .backtest_simulator import (
+    BacktestSimulator,
     ReleaseGate,
 )
+# Backtest harness from backtest_harness.py
+from .backtest_harness import BacktestHarness
 
 __all__ = [
     # Config

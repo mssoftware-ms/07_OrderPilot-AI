@@ -1,11 +1,12 @@
 """Watchlist Widget for OrderPilot-AI.
 
 Displays a list of watched symbols with real-time updates.
+
+REFACTORED: Presets extracted to watchlist_presets.py
 """
 
 import logging
 from datetime import datetime
-from decimal import Decimal
 
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSettings
 from PyQt6.QtWidgets import (
@@ -24,6 +25,17 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor, QAction
 
 from src.common.event_bus import Event, EventType, event_bus
+
+from .watchlist_presets import (
+    CRYPTO_PRESETS,
+    DEFAULT_WATCHLIST,
+    INDICES_PRESETS,
+    MARKET_STATUS_AFTER_HOURS,
+    MARKET_STATUS_OPEN,
+    MARKET_STATUS_WEEKEND,
+    TECH_STOCKS_PRESETS,
+    format_volume,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,84 +195,48 @@ class WatchlistWidget(QWidget):
         event_bus.subscribe(EventType.MARKET_BAR, self.on_market_bar)
 
     async def on_market_tick(self, event: Event):
-        """Handle market tick events.
-
-        Args:
-            event: Market tick event
-        """
-        data = event.data
-        symbol = data.get('symbol')
-
-        if symbol in self.symbols:
-            # Update symbol data
-            if symbol not in self.symbol_data:
-                self.symbol_data[symbol] = {}
-
-            self.symbol_data[symbol]['price'] = data.get('price')
-            self.symbol_data[symbol]['volume'] = data.get('volume')
-
-            # Calculate change if we have previous price
-            if 'prev_price' in self.symbol_data[symbol]:
-                prev = self.symbol_data[symbol]['prev_price']
-                current = data.get('price')
-                if prev and current:
-                    change = current - prev
-                    change_pct = (change / prev) * 100
-                    self.symbol_data[symbol]['change'] = change
-                    self.symbol_data[symbol]['change_pct'] = change_pct
-
-            # Will be updated on next timer tick
-            self.update_timer.start(100)  # Update soon
+        """Handle market tick events."""
+        data, symbol = event.data, event.data.get('symbol')
+        if symbol not in self.symbols:
+            return
+        if symbol not in self.symbol_data:
+            self.symbol_data[symbol] = {}
+        self.symbol_data[symbol]['price'] = data.get('price')
+        self.symbol_data[symbol]['volume'] = data.get('volume')
+        if 'prev_price' in self.symbol_data[symbol]:
+            prev, current = self.symbol_data[symbol]['prev_price'], data.get('price')
+            if prev and current:
+                self.symbol_data[symbol]['change'] = current - prev
+                self.symbol_data[symbol]['change_pct'] = ((current - prev) / prev) * 100
+        self.update_timer.start(100)
 
     async def on_market_bar(self, event: Event):
-        """Handle market bar events.
-
-        Args:
-            event: Market bar event
-        """
-        data = event.data
-        symbol = data.get('symbol')
-
-        if symbol in self.symbols:
-            if symbol not in self.symbol_data:
-                self.symbol_data[symbol] = {}
-
-            # Store previous close for change calculation
-            if 'price' in self.symbol_data[symbol]:
-                self.symbol_data[symbol]['prev_price'] = self.symbol_data[symbol]['price']
-
-            self.symbol_data[symbol]['price'] = data.get('close')
-            self.symbol_data[symbol]['volume'] = data.get('volume')
+        """Handle market bar events."""
+        data, symbol = event.data, event.data.get('symbol')
+        if symbol not in self.symbols:
+            return
+        if symbol not in self.symbol_data:
+            self.symbol_data[symbol] = {}
+        if 'price' in self.symbol_data[symbol]:
+            self.symbol_data[symbol]['prev_price'] = self.symbol_data[symbol]['price']
+        self.symbol_data[symbol]['price'] = data.get('close')
+        self.symbol_data[symbol]['volume'] = data.get('volume')
 
     def update_prices(self):
         """Update prices in the table."""
-        # Check if we have any recent data to determine market status
-        from datetime import datetime, time
+        from datetime import time
         now = datetime.now()
-
-        # Simple market hours check (NYSE: 9:30 AM - 4:00 PM ET, Mon-Fri)
-        # This is a simplified check - real implementation would need to handle holidays
-        is_weekend = now.weekday() >= 5  # Saturday=5, Sunday=6
+        is_weekend = now.weekday() >= 5
         is_market_hours = time(9, 30) <= now.time() <= time(16, 0)
 
         if is_weekend:
-            self.market_status_label.setText("⚠ Market Closed (Weekend) - Showing last available data")
-            self.market_status_label.setStyleSheet(
-                "background-color: #4A3000; color: #FFA500; padding: 5px; "
-                "border-radius: 3px; font-weight: bold;"
-            )
+            status = MARKET_STATUS_WEEKEND
         elif not is_market_hours:
-            self.market_status_label.setText("⚠ After Hours - Data may be delayed")
-            self.market_status_label.setStyleSheet(
-                "background-color: #3A3000; color: #FFD700; padding: 5px; "
-                "border-radius: 3px; font-weight: bold;"
-            )
+            status = MARKET_STATUS_AFTER_HOURS
         else:
-            self.market_status_label.setText("✓ Market Open - Live Data")
-            self.market_status_label.setStyleSheet(
-                "background-color: #003A00; color: #00FF00; padding: 5px; "
-                "border-radius: 3px; font-weight: bold;"
-            )
+            status = MARKET_STATUS_OPEN
+        self.market_status_label.setText(status["text"])
+        self.market_status_label.setStyleSheet(status["style"])
 
         for row in range(self.table.rowCount()):
             symbol_item = self.table.item(row, 0)
@@ -320,20 +296,8 @@ class WatchlistWidget(QWidget):
                 self.table.setItem(row, 6, volume_item)
 
     def format_volume(self, volume: int) -> str:
-        """Format volume for display.
-
-        Args:
-            volume: Volume value
-
-        Returns:
-            Formatted string
-        """
-        if volume >= 1_000_000:
-            return f"{volume / 1_000_000:.1f}M"
-        elif volume >= 1_000:
-            return f"{volume / 1_000:.1f}K"
-        else:
-            return str(volume)
+        """Format volume for display. Delegates to module function."""
+        return format_volume(volume)
 
     def add_symbol_from_input(self):
         """Add symbol from input field."""
@@ -458,49 +422,20 @@ class WatchlistWidget(QWidget):
 
     def add_indices(self):
         """Add major market indices."""
-        indices = [
-            {"symbol": "QQQ", "name": "NASDAQ 100 ETF"},
-            {"symbol": "DIA", "name": "Dow Jones ETF"},
-            {"symbol": "SPY", "name": "S&P 500 ETF"},
-            {"symbol": "IWM", "name": "Russell 2000 ETF"},
-            {"symbol": "VTI", "name": "Total Stock Market ETF"}
-        ]
-        # Batch add: disable save for each symbol
-        for index in indices:
+        for index in INDICES_PRESETS:
             self.add_symbol(index, save=False)
-        # Save once at the end
         self.save_watchlist()
 
     def add_tech_stocks(self):
         """Add major tech stocks."""
-        tech_stocks = [
-            {"symbol": "AAPL", "name": "Apple Inc."},
-            {"symbol": "MSFT", "name": "Microsoft Corp."},
-            {"symbol": "GOOGL", "name": "Alphabet Inc."},
-            {"symbol": "AMZN", "name": "Amazon.com Inc."},
-            {"symbol": "META", "name": "Meta Platforms Inc."},
-            {"symbol": "NVDA", "name": "NVIDIA Corp."},
-            {"symbol": "TSLA", "name": "Tesla Inc."}
-        ]
-        # Batch add: disable save for each symbol
-        for stock in tech_stocks:
+        for stock in TECH_STOCKS_PRESETS:
             self.add_symbol(stock, save=False)
-        # Save once at the end
         self.save_watchlist()
 
     def add_crypto_pairs(self):
         """Add major cryptocurrency trading pairs."""
-        crypto_pairs = [
-            {"symbol": "BTC/USD", "name": "Bitcoin", "wkn": ""},
-            {"symbol": "ETH/USD", "name": "Ethereum", "wkn": ""},
-            {"symbol": "SOL/USD", "name": "Solana", "wkn": ""},
-            {"symbol": "AVAX/USD", "name": "Avalanche", "wkn": ""},
-            {"symbol": "MATIC/USD", "name": "Polygon", "wkn": ""},
-        ]
-        # Batch add: disable save for each symbol
-        for crypto in crypto_pairs:
+        for crypto in CRYPTO_PRESETS:
             self.add_symbol(crypto, save=False)
-        # Save once at the end
         self.save_watchlist()
 
     def on_symbol_double_clicked(self, item):
@@ -569,13 +504,11 @@ class WatchlistWidget(QWidget):
 
     def load_default_watchlist(self):
         """Load default watchlist on startup."""
-        # Try to load saved watchlist
         from src.config.loader import config_manager
 
         try:
             watchlist = config_manager.load_watchlist()
             if watchlist:
-                # Batch load: disable save for each symbol
                 for symbol in watchlist:
                     self.add_symbol(symbol, save=False)
                 logger.info(f"Loaded {len(watchlist)} symbols from saved watchlist")
@@ -583,18 +516,9 @@ class WatchlistWidget(QWidget):
         except Exception as e:
             logger.warning(f"Failed to load saved watchlist: {e}")
 
-        # Load default symbols if no saved watchlist
-        default_symbols = [
-            {"symbol": "AAPL", "name": "Apple Inc.", "wkn": "865985"},
-            {"symbol": "MSFT", "name": "Microsoft Corp.", "wkn": "870747"},
-            {"symbol": "GOOGL", "name": "Alphabet Inc.", "wkn": "A14Y6F"},
-            {"symbol": "QQQ", "name": "NASDAQ 100 ETF", "wkn": "A0AE1X"},
-            {"symbol": "SPY", "name": "S&P 500 ETF", "wkn": "A1JULM"}
-        ]
-        # Batch load: disable save for each symbol
-        for symbol_data in default_symbols:
+        # Load default symbols from presets
+        for symbol_data in DEFAULT_WATCHLIST:
             self.add_symbol(symbol_data, save=False)
-        # Save once at the end
         self.save_watchlist()
         logger.info("Loaded default watchlist")
 

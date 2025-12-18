@@ -4,8 +4,11 @@ Provides AI-powered backtest review and recommendations.
 """
 
 import asyncio
+import logging
 import os
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 import qasync
 from PyQt6.QtCore import QDate, Qt, pyqtSlot
@@ -336,44 +339,20 @@ class AIBacktestDialog(QDialog):
 
     def _display_results(self, result: BacktestResult):
         """Display backtest results."""
-        text = f"{'='*70}\n"
-        text += f"BACKTEST RESULTS: {result.strategy_name} on {result.symbol}\n"
-        text += f"{'='*70}\n\n"
-
-        text += f"Test Period: {result.start.date()} to {result.end.date()}\n"
-        text += f"Duration: {result.duration_days:.0f} days\n"
-        text += f"Initial Capital: €{result.initial_capital:,.2f}\n"
-        text += f"Final Capital: €{result.final_capital:,.2f}\n"
-        text += f"Total Return: {result.metrics.total_return_pct:+.2f}%\n"
-        text += f"Total P&L: €{result.total_pnl:+,.2f}\n\n"
-
-        text += f"{'─'*70}\n"
-        text += "PERFORMANCE METRICS\n"
-        text += f"{'─'*70}\n\n"
-
-        text += f"Total Trades: {result.metrics.total_trades}\n"
-        text += f"Winning Trades: {result.metrics.winning_trades} ({result.metrics.win_rate*100:.1f}%)\n"
-        text += f"Losing Trades: {result.metrics.losing_trades}\n"
-        text += f"Profit Factor: {result.metrics.profit_factor:.2f}\n"
-        text += f"Expectancy: €{result.metrics.expectancy:.2f}\n\n"
-
-        text += f"Average Win: €{result.metrics.avg_win:.2f}\n"
-        text += f"Average Loss: €{result.metrics.avg_loss:.2f}\n"
-        text += f"Largest Win: €{result.metrics.largest_win:.2f}\n"
-        text += f"Largest Loss: €{result.metrics.largest_loss:.2f}\n\n"
-
-        text += f"{'─'*70}\n"
-        text += "RISK METRICS\n"
-        text += f"{'─'*70}\n\n"
-
-        text += f"Sharpe Ratio: {result.metrics.sharpe_ratio:.2f}\n"
-        text += f"Sortino Ratio: {result.metrics.sortino_ratio:.2f}\n"
-        text += f"Max Drawdown: {result.metrics.max_drawdown_pct:.2f}%\n"
-        text += f"Avg R-Multiple: {result.metrics.avg_r_multiple:.2f}\n\n"
-
-        text += f"Max Consecutive Wins: {result.metrics.max_consecutive_wins}\n"
-        text += f"Max Consecutive Losses: {result.metrics.max_consecutive_losses}\n"
-
+        m = result.metrics
+        text = (f"{'='*70}\nBACKTEST RESULTS: {result.strategy_name} on {result.symbol}\n{'='*70}\n\n"
+                f"Test Period: {result.start.date()} to {result.end.date()}\nDuration: {result.duration_days:.0f} days\n"
+                f"Initial Capital: €{result.initial_capital:,.2f}\nFinal Capital: €{result.final_capital:,.2f}\n"
+                f"Total Return: {m.total_return_pct:+.2f}%\nTotal P&L: €{result.total_pnl:+,.2f}\n\n"
+                f"{'─'*70}\nPERFORMANCE METRICS\n{'─'*70}\n\n"
+                f"Total Trades: {m.total_trades}\nWinning Trades: {m.winning_trades} ({m.win_rate*100:.1f}%)\n"
+                f"Losing Trades: {m.losing_trades}\nProfit Factor: {m.profit_factor:.2f}\nExpectancy: €{m.expectancy:.2f}\n\n"
+                f"Average Win: €{m.avg_win:.2f}\nAverage Loss: €{m.avg_loss:.2f}\n"
+                f"Largest Win: €{m.largest_win:.2f}\nLargest Loss: €{m.largest_loss:.2f}\n\n"
+                f"{'─'*70}\nRISK METRICS\n{'─'*70}\n\n"
+                f"Sharpe Ratio: {m.sharpe_ratio:.2f}\nSortino Ratio: {m.sortino_ratio:.2f}\n"
+                f"Max Drawdown: {m.max_drawdown_pct:.2f}%\nAvg R-Multiple: {m.avg_r_multiple:.2f}\n\n"
+                f"Max Consecutive Wins: {m.max_consecutive_wins}\nMax Consecutive Losses: {m.max_consecutive_losses}\n")
         self.results_text.setPlainText(text)
 
         # ✨ NEW: Display results in embedded chart tab

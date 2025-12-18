@@ -2,109 +2,39 @@
 
 Provides methods to display tradingbot signals, stop-loss lines,
 and debug information on the chart.
+
+REFACTORED: Data types extracted to bot_overlay_types.py
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from .bot_overlay_types import (
+    BotMarker,
+    BotOverlayState,
+    MarkerType,
+    StopLine,
+    build_hud_content,
+)
 from .data_loading_mixin import get_local_timezone_offset_seconds
+
+# Re-export for backward compatibility
+__all__ = [
+    "MarkerType",
+    "BotMarker",
+    "StopLine",
+    "BotOverlayState",
+    "BotOverlayMixin",
+]
 
 if TYPE_CHECKING:
     from src.core.tradingbot.models import PositionState, Signal
 
 logger = logging.getLogger(__name__)
-
-
-class MarkerType(str, Enum):
-    """Marker types for chart display."""
-    ENTRY_CANDIDATE = "entry_candidate"
-    ENTRY_CONFIRMED = "entry_confirmed"
-    EXIT_SIGNAL = "exit_signal"
-    STOP_TRIGGERED = "stop_triggered"
-    TRAILING_UPDATE = "trailing_update"
-    MACD_BEARISH = "macd_bearish"
-    MACD_BULLISH = "macd_bullish"
-
-
-@dataclass
-class BotMarker:
-    """Marker data for chart display."""
-    timestamp: int  # Unix timestamp
-    price: float
-    marker_type: MarkerType
-    side: str  # "long" or "short"
-    text: str = ""
-    score: float = 0.0
-
-    def to_chart_marker(self) -> dict[str, Any]:
-        """Convert to Lightweight Charts marker format."""
-        # Marker shapes: arrowUp, arrowDown, circle, square
-        # Colors based on type and side
-        if self.marker_type == MarkerType.ENTRY_CANDIDATE:
-            shape = "circle"
-            color = "#ffeb3b" if self.side == "long" else "#ff9800"  # Yellow/orange
-            position = "belowBar" if self.side == "long" else "aboveBar"
-        elif self.marker_type == MarkerType.ENTRY_CONFIRMED:
-            shape = "arrowUp" if self.side == "long" else "arrowDown"
-            color = "#26a69a" if self.side == "long" else "#ef5350"  # Green/red
-            position = "belowBar" if self.side == "long" else "aboveBar"
-        elif self.marker_type == MarkerType.EXIT_SIGNAL:
-            shape = "square"
-            color = "#9c27b0"  # Purple
-            position = "aboveBar" if self.side == "long" else "belowBar"
-        elif self.marker_type == MarkerType.STOP_TRIGGERED:
-            shape = "circle"
-            color = "#f44336"  # Red
-            position = "aboveBar" if self.side == "long" else "belowBar"
-        elif self.marker_type == MarkerType.MACD_BEARISH:
-            shape = "arrowDown"
-            color = "#e91e63"  # Pink/Magenta for bearish MACD
-            position = "aboveBar"
-        elif self.marker_type == MarkerType.MACD_BULLISH:
-            shape = "arrowUp"
-            color = "#00bcd4"  # Cyan for bullish MACD
-            position = "belowBar"
-        else:
-            shape = "circle"
-            color = "#607d8b"  # Grey
-            position = "belowBar"
-
-        return {
-            "time": self.timestamp,
-            "position": position,
-            "color": color,
-            "shape": shape,
-            "text": self.text or f"{self.marker_type.value}",
-            "size": 2
-        }
-
-
-@dataclass
-class StopLine:
-    """Stop-loss line data."""
-    line_id: str
-    price: float
-    color: str
-    line_type: str  # "initial", "trailing", "target"
-    is_active: bool = True
-    label: str = ""
-
-
-@dataclass
-class BotOverlayState:
-    """State tracking for bot overlay elements."""
-    markers: list[BotMarker] = field(default_factory=list)
-    stop_lines: dict[str, StopLine] = field(default_factory=dict)
-    debug_hud_visible: bool = False
-    last_regime: str = ""
-    last_strategy: str = ""
-    last_ki_mode: str = ""
 
 
 class BotOverlayMixin:
@@ -476,48 +406,7 @@ class BotOverlayMixin:
         extra: dict[str, Any] | None = None
     ) -> None:
         """Update the debug HUD on chart."""
-        # Build HUD content
-        lines = []
-        if state:
-            state_color = {
-                "FLAT": "#607d8b",
-                "SIGNAL": "#ffeb3b",
-                "ENTERED": "#26a69a",
-                "MANAGE": "#2196f3",
-                "EXITED": "#9c27b0",
-                "PAUSED": "#ff9800",
-                "ERROR": "#f44336"
-            }.get(state, "#ffffff")
-            lines.append(f"<span style='color:{state_color}'>{state}</span>")
-
-        if regime:
-            regime_color = "#26a69a" if "UP" in regime else (
-                "#ef5350" if "DOWN" in regime else "#9e9e9e"
-            )
-            lines.append(f"R:<span style='color:{regime_color}'>{regime}</span>")
-
-        if strategy:
-            lines.append(f"S:{strategy[:15]}")
-
-        if trailing_mode:
-            lines.append(f"T:{trailing_mode}")
-
-        if ki_mode:
-            ki_color = "#4caf50" if ki_mode == "NO_KI" else (
-                "#ff9800" if ki_mode == "LOW_KI" else "#f44336"
-            )
-            lines.append(f"KI:<span style='color:{ki_color}'>{ki_mode}</span>")
-
-        if confidence > 0:
-            conf_pct = int(confidence * 100)
-            lines.append(f"C:{conf_pct}%")
-
-        if extra:
-            for key, value in extra.items():
-                lines.append(f"{key}:{value}")
-
-        content = " | ".join(lines)
-
+        content = build_hud_content(state, regime, strategy, trailing_mode, ki_mode, confidence, extra)
         # Create/update HUD element via JavaScript
         hud_js = f"""
         (function() {{

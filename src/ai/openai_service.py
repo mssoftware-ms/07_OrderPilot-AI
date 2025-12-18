@@ -2,22 +2,24 @@
 
 Implements OpenAI API integration with Structured Outputs,
 Assistants API (optional), and Realtime API (stub).
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- openai_models.py: Exception classes and response models
+- openai_utils.py: CostTracker and CacheManager
+- openai_service.py: Main service class (this file)
 """
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timedelta
 from typing import Any, TypeVar
 
 import aiohttp
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from tenacity import (
     before_sleep_log,
     retry,
@@ -29,304 +31,40 @@ from tenacity import (
 from src.common.logging_setup import log_ai_request
 from src.config.loader import AIConfig
 
+from .openai_models import (
+    AlertTriageResult,
+    BacktestReview,
+    OpenAIError,
+    OrderAnalysis,
+    QuotaExceededError,
+    RateLimitError,
+    SchemaValidationError,
+    StrategySignalAnalysis,
+    StrategyTradeAnalysis,
+)
+from .openai_utils import CacheManager, CostTracker
+
+# Re-export models for backward compatibility
+__all__ = [
+    "OpenAIError",
+    "RateLimitError",
+    "QuotaExceededError",
+    "SchemaValidationError",
+    "OrderAnalysis",
+    "AlertTriageResult",
+    "BacktestReview",
+    "StrategySignalAnalysis",
+    "StrategyTradeAnalysis",
+    "CostTracker",
+    "CacheManager",
+    "OpenAIService",
+    "get_openai_service",
+]
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
 
-
-# ==================== Exception Classes ====================
-
-class OpenAIError(Exception):
-    """Base exception for OpenAI service errors."""
-    pass
-
-
-class RateLimitError(OpenAIError):
-    """Raised when rate limit is exceeded."""
-    pass
-
-
-class QuotaExceededError(OpenAIError):
-    """Raised when monthly budget is exceeded."""
-    pass
-
-
-class SchemaValidationError(OpenAIError):
-    """Raised when response doesn't match schema."""
-    pass
-
-
-# ==================== Response Models ====================
-
-class OrderAnalysis(BaseModel):
-    """Structured output for order analysis."""
-    approved: bool
-    confidence: float = Field(ge=0.0, le=1.0)
-    reasoning: str
-
-    # Risk assessment
-    risks: list[str] = Field(default_factory=list)
-    opportunities: list[str] = Field(default_factory=list)
-
-    # Suggestions
-    suggested_adjustments: dict[str, Any] = Field(default_factory=dict)
-
-    # Fees and costs
-    fee_impact: str
-    estimated_total_cost: float
-
-    # Metadata
-    analysis_version: str = "1.0"
-
-
-class AlertTriageResult(BaseModel):
-    """Structured output for alert triage."""
-    priority_score: float = Field(ge=0.0, le=1.0)
-    action_required: bool
-
-    # Reasoning
-    reasoning: str
-    key_factors: list[str]
-
-    # Suggested actions
-    suggested_actions: list[str]
-    estimated_urgency: str  # immediate, high, medium, low
-
-    # Context
-    related_positions: list[str] = Field(default_factory=list)
-    market_context: dict[str, Any] = Field(default_factory=dict)
-
-
-class BacktestReview(BaseModel):
-    """Structured output for backtest review."""
-    overall_assessment: str
-    performance_rating: float = Field(ge=0.0, le=10.0)
-
-    # Key insights
-    strengths: list[str]
-    weaknesses: list[str]
-
-    # Improvements
-    suggested_improvements: list[dict[str, Any]]
-    parameter_recommendations: dict[str, Any]
-
-    # Risk analysis
-    risk_assessment: str
-    max_drawdown_analysis: str
-
-    # Market conditions
-    market_conditions_analysis: str
-    adaptability_score: float = Field(ge=0.0, le=1.0)
-
-
-class StrategySignalAnalysis(BaseModel):
-    """Structured output for strategy signal post-analysis."""
-    signal_quality: float = Field(ge=0.0, le=1.0)
-    proceed: bool
-
-    # Analysis
-    technical_analysis: str
-    market_conditions: str
-
-    # Contra indicators
-    warning_signals: list[str]
-    confirming_signals: list[str]
-
-    # Timing
-    timing_assessment: str  # excellent, good, neutral, poor
-    suggested_delay_minutes: int | None = None
-
-
-class StrategyTradeAnalysis(BaseModel):
-    """Structured output for strategy trade analysis after Apply Strategy."""
-    # Overall assessment
-    overall_assessment: str
-    strategy_rating: float = Field(ge=0.0, le=10.0)
-    win_rate_assessment: str
-
-    # Trade analysis
-    winning_patterns: list[str]  # What made winning trades successful
-    losing_patterns: list[str]   # Why losing trades failed
-    best_entry_conditions: str
-    worst_entry_conditions: str
-
-    # Improvements
-    parameter_suggestions: dict[str, Any]  # e.g., {"stop_loss": 3.0, "take_profit": 6.0}
-    timing_improvements: list[str]
-    risk_management_tips: list[str]
-
-    # Optimized strategy suggestion
-    optimized_strategy: dict[str, Any]  # Complete suggested strategy params
-    expected_improvement: str  # e.g., "Could improve win rate by ~10-15%"
-
-    # Market fit
-    market_conditions_fit: str  # trending, ranging, volatile
-    recommended_timeframes: list[str]
-    avoid_conditions: list[str]
-
-
-# ==================== Cost Tracking ====================
-
-class CostTracker:
-    """Tracks AI API costs and enforces budget limits."""
-
-    # Pricing per 1M tokens (as of 2024)
-    PRICING = {
-        "gpt-4o": {"input": 2.50, "output": 10.00},
-        "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-        "gpt-4-turbo": {"input": 10.00, "output": 30.00}
-    }
-
-    def __init__(self, monthly_budget: float, warn_threshold: float):
-        """Initialize cost tracker.
-
-        Args:
-            monthly_budget: Monthly budget in EUR
-            warn_threshold: Warning threshold in EUR
-        """
-        self.monthly_budget = monthly_budget
-        self.warn_threshold = warn_threshold
-        self.current_month_cost = 0.0
-        self.current_month = datetime.utcnow().month
-        self._lock = asyncio.Lock()
-
-    async def track_usage(
-        self,
-        model: str,
-        input_tokens: int,
-        output_tokens: int
-    ) -> float:
-        """Track API usage and calculate cost.
-
-        Args:
-            model: Model name
-            input_tokens: Number of input tokens
-            output_tokens: Number of output tokens
-
-        Returns:
-            Cost in EUR
-
-        Raises:
-            QuotaExceededError: If budget exceeded
-        """
-        async with self._lock:
-            # Reset monthly tracking if new month
-            current_month = datetime.utcnow().month
-            if current_month != self.current_month:
-                self.current_month = current_month
-                self.current_month_cost = 0.0
-
-            # Calculate cost
-            model_base = model.split("-2024")[0]  # Remove date suffix
-            pricing = self.PRICING.get(model_base, self.PRICING["gpt-4o-mini"])
-
-            input_cost = (input_tokens / 1_000_000) * pricing["input"]
-            output_cost = (output_tokens / 1_000_000) * pricing["output"]
-            total_cost = input_cost + output_cost
-
-            # Check budget
-            if self.current_month_cost + total_cost > self.monthly_budget:
-                raise QuotaExceededError(
-                    f"Monthly budget of €{self.monthly_budget} would be exceeded"
-                )
-
-            # Update tracking
-            self.current_month_cost += total_cost
-
-            # Log warning if threshold reached
-            if self.current_month_cost > self.warn_threshold:
-                logger.warning(
-                    f"AI cost warning: €{self.current_month_cost:.2f} "
-                    f"of €{self.monthly_budget:.2f} budget used"
-                )
-
-            return total_cost
-
-
-# ==================== Cache Manager ====================
-
-class CacheManager:
-    """Manages caching of AI responses."""
-
-    def __init__(self, ttl_seconds: int = 3600):
-        """Initialize cache manager.
-
-        Args:
-            ttl_seconds: Cache TTL in seconds
-        """
-        self.ttl_seconds = ttl_seconds
-        self._memory_cache: dict[str, Any] = {}
-
-    def _generate_key(self, prompt: str, model: str, schema: dict[str, Any]) -> str:
-        """Generate cache key from request parameters."""
-        content = f"{prompt}:{model}:{json.dumps(schema, sort_keys=True)}"
-        return hashlib.sha256(content.encode()).hexdigest()
-
-    async def get(
-        self,
-        prompt: str,
-        model: str,
-        schema: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        """Get cached response if available.
-
-        Args:
-            prompt: The prompt
-            model: Model name
-            schema: Response schema
-
-        Returns:
-            Cached response or None
-        """
-        key = self._generate_key(prompt, model, schema)
-
-        # Check memory cache first
-        if key in self._memory_cache:
-            entry = self._memory_cache[key]
-            if datetime.utcnow() < entry['expires_at']:
-                logger.debug(f"Cache hit for key {key[:8]}...")
-                return entry['response']
-
-        return None
-
-    async def set(
-        self,
-        prompt: str,
-        model: str,
-        schema: dict[str, Any],
-        response: dict[str, Any]
-    ) -> None:
-        """Cache a response.
-
-        Args:
-            prompt: The prompt
-            model: Model name
-            schema: Response schema
-            response: The response to cache
-        """
-        key = self._generate_key(prompt, model, schema)
-        expires_at = datetime.utcnow() + timedelta(seconds=self.ttl_seconds)
-
-        self._memory_cache[key] = {
-            'response': response,
-            'expires_at': expires_at
-        }
-
-        # Clean up expired entries
-        await self._cleanup_expired()
-
-    async def _cleanup_expired(self) -> None:
-        """Remove expired entries from memory cache."""
-        now = datetime.utcnow()
-        expired_keys = [
-            k for k, v in self._memory_cache.items()
-            if now >= v['expires_at']
-        ]
-        for key in expired_keys:
-            del self._memory_cache[key]
-
-
-# ==================== OpenAI Service ====================
 
 class OpenAIService:
     """Main OpenAI service for structured outputs."""
@@ -353,7 +91,9 @@ class OpenAIService:
             monthly_budget=config.cost_limit_monthly,
             warn_threshold=config.cost_limit_monthly * 0.8  # Warn at 80%
         )
-        self.cache_manager = CacheManager(ttl_seconds=config.cache_ttl if hasattr(config, 'cache_ttl') else 3600)
+        self.cache_manager = CacheManager(
+            ttl_seconds=config.cache_ttl if hasattr(config, 'cache_ttl') else 3600
+        )
 
         # API settings
         self.base_url = "https://api.openai.com/v1"
@@ -534,15 +274,7 @@ class OpenAIService:
         order_details: dict[str, Any],
         market_context: dict[str, Any]
     ) -> OrderAnalysis:
-        """Analyze an order before placement.
-
-        Args:
-            order_details: Order information
-            market_context: Current market context
-
-        Returns:
-            Structured order analysis
-        """
+        """Analyze an order before placement."""
         prompt = self._build_order_analysis_prompt(order_details, market_context)
 
         return await self.structured_completion(
@@ -557,15 +289,7 @@ class OpenAIService:
         alert: dict[str, Any],
         portfolio_context: dict[str, Any]
     ) -> AlertTriageResult:
-        """Triage an alert for priority and action.
-
-        Args:
-            alert: Alert information
-            portfolio_context: Current portfolio context
-
-        Returns:
-            Structured triage result
-        """
+        """Triage an alert for priority and action."""
         prompt = self._build_alert_triage_prompt(alert, portfolio_context)
 
         return await self.structured_completion(
@@ -579,14 +303,7 @@ class OpenAIService:
         self,
         result: "BacktestResult"
     ) -> BacktestReview:
-        """Review backtest results with AI analysis.
-
-        Args:
-            result: Complete BacktestResult from backtest run
-
-        Returns:
-            Structured backtest review with insights and recommendations
-        """
+        """Review backtest results with AI analysis."""
         from src.ai.prompts import PromptBuilder
 
         # Extract strategy info
@@ -651,15 +368,7 @@ class OpenAIService:
         signal: dict[str, Any],
         indicators: dict[str, Any]
     ) -> StrategySignalAnalysis:
-        """Analyze a strategy signal.
-
-        Args:
-            signal: Signal information
-            indicators: Current indicator values
-
-        Returns:
-            Structured signal analysis
-        """
+        """Analyze a strategy signal."""
         prompt = self._build_signal_analysis_prompt(signal, indicators)
 
         return await self.structured_completion(
@@ -677,18 +386,7 @@ class OpenAIService:
         stats: dict[str, Any],
         strategy_params: dict[str, Any]
     ) -> StrategyTradeAnalysis:
-        """Analyze strategy trades and provide improvement suggestions.
-
-        Args:
-            strategy_name: Name of the strategy
-            symbol: Trading symbol
-            trades: List of trade dictionaries with entry/exit info
-            stats: Statistics dict with wins, losses, win_rate, etc.
-            strategy_params: Current strategy parameters (SL, TP, etc.)
-
-        Returns:
-            Structured analysis with improvements and optimized strategy
-        """
+        """Analyze strategy trades and provide improvement suggestions."""
         prompt = self._build_strategy_trade_analysis_prompt(
             strategy_name, symbol, trades, stats, strategy_params
         )
@@ -755,7 +453,6 @@ Portfolio Context:
 
 Assess the priority (0-1), determine if action is required, provide reasoning,
 and suggest specific actions. Consider the portfolio context and market conditions."""
-
 
     def _build_signal_analysis_prompt(
         self,

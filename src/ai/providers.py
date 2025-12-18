@@ -3,112 +3,54 @@
 Supports:
 - OpenAI (GPT-5.1, GPT-5.1 Thinking)
 - Anthropic (Claude Sonnet 4.5)
+- Gemini (2.0 Flash, 1.5 Pro)
 
 Handles streaming, reasoning modes, and structured outputs across providers.
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- provider_base.py: Base types and abstract base class
+- provider_gemini.py: Gemini provider implementation
+- providers.py: OpenAI, Anthropic providers + factory functions (this file)
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
-from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Any, AsyncIterator, TypeVar
+from typing import AsyncIterator, TypeVar
 
-import aiohttp
 from pydantic import BaseModel
+
+# Re-export base types for backward compatibility
+from .provider_base import (
+    AIProvider,
+    AIProviderBase,
+    ProviderConfig,
+    ReasoningMode,
+)
+from .provider_gemini import GeminiProvider
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
 
-
-class AIProvider(str, Enum):
-    """Supported AI providers."""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    GEMINI = "gemini"
-
-
-class ReasoningMode(str, Enum):
-    """Reasoning modes for AI models."""
-    NONE = "none"
-    MINIMAL = "minimal"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
-class ProviderConfig(BaseModel):
-    """Configuration for an AI provider."""
-    provider: AIProvider
-    model: str
-    api_key: str | None = None
-    base_url: str | None = None
-    max_tokens: int = 4096
-    temperature: float = 0.2
-    reasoning_mode: ReasoningMode = ReasoningMode.MEDIUM
-    streaming: bool = False
-
-
-class AIProviderBase(ABC):
-    """Abstract base class for AI providers."""
-
-    def __init__(self, config: ProviderConfig):
-        """Initialize provider.
-
-        Args:
-            config: Provider configuration
-        """
-        self.config = config
-        self._session: aiohttp.ClientSession | None = None
-
-    async def initialize(self) -> None:
-        """Initialize the provider."""
-        if not self._session:
-            timeout = aiohttp.ClientTimeout(total=60, connect=10)
-            self._session = aiohttp.ClientSession(timeout=timeout)
-
-    async def close(self) -> None:
-        """Close the provider."""
-        if self._session:
-            await self._session.close()
-            self._session = None
-
-    @abstractmethod
-    async def structured_completion(
-        self,
-        prompt: str,
-        response_model: type[T],
-        **kwargs
-    ) -> T:
-        """Get structured completion from the AI model.
-
-        Args:
-            prompt: Input prompt
-            response_model: Pydantic model for response structure
-            **kwargs: Additional provider-specific parameters
-
-        Returns:
-            Parsed response as Pydantic model instance
-        """
-        pass
-
-    @abstractmethod
-    async def stream_completion(
-        self,
-        prompt: str,
-        **kwargs
-    ) -> AsyncIterator[str]:
-        """Stream completion from the AI model.
-
-        Args:
-            prompt: Input prompt
-            **kwargs: Additional provider-specific parameters
-
-        Yields:
-            Text chunks from the streaming response
-        """
-        pass
+# Re-export all for backward compatibility
+__all__ = [
+    "AIProvider",
+    "ReasoningMode",
+    "ProviderConfig",
+    "AIProviderBase",
+    "OpenAIProvider",
+    "AnthropicProvider",
+    "GeminiProvider",
+    "create_provider",
+    "get_openai_gpt51_thinking",
+    "get_openai_gpt51_instant",
+    "get_anthropic_sonnet45",
+    "get_gemini_flash",
+    "get_gemini_pro",
+]
 
 
 class OpenAIProvider(AIProviderBase):
@@ -393,157 +335,6 @@ Do not include any explanation, only the JSON object."""
                         continue
 
 
-# ==================== Gemini Provider ====================
-
-class GeminiProvider(AIProviderBase):
-    """Google Gemini AI provider.
-
-    Supports:
-    - gemini-2.0-flash-exp (Latest, fast)
-    - gemini-1.5-pro (Most capable)
-    - gemini-1.5-flash (Fast and efficient)
-    """
-
-    def __init__(self, config: ProviderConfig):
-        """Initialize Gemini provider.
-
-        Args:
-            config: Provider configuration
-        """
-        super().__init__(config)
-
-        # Set defaults
-        if not config.api_key:
-            config.api_key = os.getenv("GEMINI_API_KEY")
-        if not config.base_url:
-            config.base_url = "https://generativelanguage.googleapis.com/v1beta"
-
-        if not config.api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment variables")
-
-        self.headers = {
-            "Content-Type": "application/json"
-        }
-
-    async def structured_completion(
-        self,
-        prompt: str,
-        response_model: type[T],
-        **kwargs
-    ) -> T:
-        """Get structured completion from Gemini.
-
-        Args:
-            prompt: Input prompt
-            response_model: Pydantic model for response structure
-            **kwargs: Additional parameters
-
-        Returns:
-            Parsed response as Pydantic model instance
-        """
-        if not self._session:
-            await self.initialize()
-
-        # Gemini uses JSON mode via response_mime_type
-        schema = response_model.model_json_schema()
-        schema_str = json.dumps(schema, indent=2)
-
-        enhanced_prompt = f"""{prompt}
-
-Please respond with ONLY a valid JSON object matching this schema:
-
-{schema_str}
-
-Do not include any explanation, markdown formatting, or code blocks. Only output the raw JSON object."""
-
-        request_data = {
-            "contents": [{"parts": [{"text": enhanced_prompt}]}],
-            "generationConfig": {
-                "temperature": kwargs.get("temperature", self.config.temperature),
-                "maxOutputTokens": kwargs.get("max_tokens", self.config.max_tokens),
-                "responseMimeType": "application/json"
-            }
-        }
-
-        url = f"{self.config.base_url}/models/{self.config.model}:generateContent?key={self.config.api_key}"
-
-        logger.debug(f"Gemini request: model={self.config.model}")
-
-        async with self._session.post(url, json=request_data, headers=self.headers) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise RuntimeError(f"Gemini API error ({response.status}): {error_text}")
-
-            data = await response.json()
-
-            # Extract content from Gemini response
-            try:
-                content = data["candidates"][0]["content"]["parts"][0]["text"]
-            except (KeyError, IndexError) as e:
-                raise RuntimeError(f"Unexpected Gemini response format: {data}") from e
-
-            # Clean up response (remove any markdown if present)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-
-            # Parse JSON and create model
-            parsed = json.loads(content)
-            return response_model(**parsed)
-
-    async def stream_completion(
-        self,
-        prompt: str,
-        **kwargs
-    ) -> AsyncIterator[str]:
-        """Stream completion from Gemini.
-
-        Args:
-            prompt: Input prompt
-            **kwargs: Additional parameters
-
-        Yields:
-            Text chunks from the streaming response
-        """
-        if not self._session:
-            await self.initialize()
-
-        request_data = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": kwargs.get("temperature", self.config.temperature),
-                "maxOutputTokens": kwargs.get("max_tokens", self.config.max_tokens)
-            }
-        }
-
-        url = f"{self.config.base_url}/models/{self.config.model}:streamGenerateContent?key={self.config.api_key}&alt=sse"
-
-        async with self._session.post(url, json=request_data, headers=self.headers) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise RuntimeError(f"Gemini streaming error ({response.status}): {error_text}")
-
-            async for line in response.content:
-                line_str = line.decode('utf-8').strip()
-                if not line_str or not line_str.startswith("data: "):
-                    continue
-
-                data_str = line_str[6:]  # Remove "data: " prefix
-                if data_str == "[DONE]":
-                    break
-
-                try:
-                    data = json.loads(data_str)
-                    if candidates := data.get("candidates", []):
-                        if content := candidates[0].get("content", {}):
-                            if parts := content.get("parts", []):
-                                if text := parts[0].get("text"):
-                                    yield text
-                except json.JSONDecodeError:
-                    continue
-
-
 # ==================== Provider Factory ====================
 
 def create_provider(
@@ -567,13 +358,6 @@ def create_provider(
         ...     AIProvider.OPENAI,
         ...     "gpt-5.1",
         ...     reasoning_mode=ReasoningMode.HIGH
-        ... )
-        >>>
-        >>> # OpenAI GPT-5.1 Instant (no thinking)
-        >>> provider = create_provider(
-        ...     AIProvider.OPENAI,
-        ...     "gpt-5.1-chat-latest",
-        ...     reasoning_mode=ReasoningMode.NONE
         ... )
         >>>
         >>> # Anthropic Claude Sonnet 4.5
@@ -601,14 +385,7 @@ def create_provider(
 # ==================== Convenience Functions ====================
 
 async def get_openai_gpt51_thinking(**kwargs) -> OpenAIProvider:
-    """Get OpenAI GPT-5.1 with thinking mode.
-
-    Args:
-        **kwargs: Additional configuration
-
-    Returns:
-        Configured OpenAI provider
-    """
+    """Get OpenAI GPT-5.1 with thinking mode."""
     return create_provider(
         AIProvider.OPENAI,
         "gpt-5.1",
@@ -618,14 +395,7 @@ async def get_openai_gpt51_thinking(**kwargs) -> OpenAIProvider:
 
 
 async def get_openai_gpt51_instant(**kwargs) -> OpenAIProvider:
-    """Get OpenAI GPT-5.1 Instant (no thinking).
-
-    Args:
-        **kwargs: Additional configuration
-
-    Returns:
-        Configured OpenAI provider
-    """
+    """Get OpenAI GPT-5.1 Instant (no thinking)."""
     return create_provider(
         AIProvider.OPENAI,
         "gpt-5.1-chat-latest",
@@ -635,14 +405,7 @@ async def get_openai_gpt51_instant(**kwargs) -> OpenAIProvider:
 
 
 async def get_anthropic_sonnet45(**kwargs) -> AnthropicProvider:
-    """Get Anthropic Claude Sonnet 4.5.
-
-    Args:
-        **kwargs: Additional configuration
-
-    Returns:
-        Configured Anthropic provider
-    """
+    """Get Anthropic Claude Sonnet 4.5."""
     return create_provider(
         AIProvider.ANTHROPIC,
         "claude-sonnet-4-5-20250929",
@@ -651,14 +414,7 @@ async def get_anthropic_sonnet45(**kwargs) -> AnthropicProvider:
 
 
 async def get_gemini_flash(**kwargs) -> GeminiProvider:
-    """Get Google Gemini 2.0 Flash (experimental).
-
-    Args:
-        **kwargs: Additional configuration
-
-    Returns:
-        Configured Gemini provider
-    """
+    """Get Google Gemini 2.0 Flash (experimental)."""
     return create_provider(
         AIProvider.GEMINI,
         "gemini-2.0-flash-exp",
@@ -667,14 +423,7 @@ async def get_gemini_flash(**kwargs) -> GeminiProvider:
 
 
 async def get_gemini_pro(**kwargs) -> GeminiProvider:
-    """Get Google Gemini 1.5 Pro.
-
-    Args:
-        **kwargs: Additional configuration
-
-    Returns:
-        Configured Gemini provider
-    """
+    """Get Google Gemini 1.5 Pro."""
     return create_provider(
         AIProvider.GEMINI,
         "gemini-1.5-pro",

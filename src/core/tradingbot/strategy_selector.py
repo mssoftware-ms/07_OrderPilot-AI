@@ -10,7 +10,6 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -24,9 +23,6 @@ from .strategy_evaluator import (
     WalkForwardConfig,
     WalkForwardResult,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

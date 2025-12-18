@@ -1,453 +1,51 @@
 """Execution Layer for Tradingbot.
 
-Handles position sizing, risk management, order execution,
-and paper trading simulation.
+Handles order execution and paper trading simulation.
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- execution_types.py: Enums and dataclasses
+- position_sizer.py: PositionSizer class
+- risk_manager.py: RiskManager class
+- execution.py: PaperExecutor, ExecutionGuardrails, OrderExecutor (this file)
 """
 
 from __future__ import annotations
 
 import logging
 import random
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
-
-from .config import MarketType, TradingEnvironment
+from .config import TradingEnvironment
+from .execution_types import (
+    OrderResult,
+    OrderStatus,
+    OrderType,
+    PositionSizeResult,
+    RiskLimits,
+    RiskState,
+)
 from .models import OrderIntent, Signal, TradeSide
+from .position_sizer import PositionSizer
+from .risk_manager import RiskManager
 
-if TYPE_CHECKING:
-    pass
+# Re-export types for backward compatibility
+__all__ = [
+    "OrderStatus",
+    "OrderType",
+    "OrderResult",
+    "PositionSizeResult",
+    "RiskLimits",
+    "RiskState",
+    "PositionSizer",
+    "RiskManager",
+    "PaperExecutor",
+    "ExecutionGuardrails",
+    "OrderExecutor",
+]
 
 logger = logging.getLogger(__name__)
-
-
-class OrderStatus(str, Enum):
-    """Order status."""
-    PENDING = "pending"
-    SUBMITTED = "submitted"
-    PARTIAL = "partial"
-    FILLED = "filled"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-
-
-class OrderType(str, Enum):
-    """Order types."""
-    MARKET = "market"
-    LIMIT = "limit"
-    STOP = "stop"
-    STOP_LIMIT = "stop_limit"
-
-
-@dataclass
-class OrderResult:
-    """Result of order execution."""
-    order_id: str
-    status: OrderStatus
-    filled_qty: float = 0.0
-    filled_price: float = 0.0
-    fees: float = 0.0
-    slippage: float = 0.0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    error_message: str | None = None
-
-    @property
-    def is_filled(self) -> bool:
-        return self.status == OrderStatus.FILLED
-
-    @property
-    def is_rejected(self) -> bool:
-        return self.status in (OrderStatus.REJECTED, OrderStatus.CANCELLED)
-
-
-@dataclass
-class PositionSizeResult:
-    """Result of position size calculation."""
-    quantity: float
-    risk_amount: float
-    position_value: float
-    risk_pct_actual: float
-    sizing_method: str
-    constraints_applied: list[str] = field(default_factory=list)
-
-
-class RiskLimits(BaseModel):
-    """Risk limit configuration."""
-    # Daily limits
-    max_trades_per_day: int = Field(default=10, ge=1, le=100)
-    max_daily_loss_pct: float = Field(default=3.0, ge=0.5, le=20.0)
-    max_daily_loss_amount: float | None = Field(default=None, ge=0)
-
-    # Position limits
-    max_position_size_pct: float = Field(default=10.0, ge=1, le=100)
-    max_position_value: float | None = Field(default=None, ge=0)
-    max_concurrent_positions: int = Field(default=3, ge=1, le=20)
-
-    # Loss streak
-    loss_streak_cooldown: int = Field(default=3, ge=1, le=10)
-    cooldown_duration_minutes: int = Field(default=60, ge=5)
-
-    # Per-trade limits
-    max_risk_per_trade_pct: float = Field(default=2.0, ge=0.1, le=100.0)
-    min_risk_reward_ratio: float = Field(default=1.5, ge=1.0, le=5.0)
-
-
-class RiskState(BaseModel):
-    """Current risk tracking state."""
-    date: datetime = Field(default_factory=datetime.utcnow)
-    trades_today: int = 0
-    daily_pnl: float = 0.0
-    open_positions: int = 0
-    consecutive_losses: int = 0
-    last_loss_time: datetime | None = None
-    in_cooldown: bool = False
-    cooldown_until: datetime | None = None
-
-
-class PositionSizer:
-    """Calculates position sizes based on risk parameters.
-
-    Supports multiple sizing methods:
-    - Fixed fractional (% of account)
-    - ATR-based (volatility-adjusted)
-    - Fixed quantity
-    """
-
-    def __init__(
-        self,
-        account_value: float,
-        risk_limits: RiskLimits | None = None,
-        default_risk_pct: float = 1.0,
-        include_fees: bool = True,
-        fee_pct: float = 0.1
-    ):
-        """Initialize position sizer.
-
-        Args:
-            account_value: Current account value
-            risk_limits: Risk limit configuration
-            default_risk_pct: Default risk per trade
-            include_fees: Include fees in calculations
-            fee_pct: Fee percentage (round-trip)
-        """
-        self.account_value = account_value
-        self.risk_limits = risk_limits or RiskLimits()
-        self.default_risk_pct = default_risk_pct
-        self.include_fees = include_fees
-        self.fee_pct = fee_pct
-
-        logger.info(
-            f"PositionSizer initialized: account=${account_value:.2f}, "
-            f"default_risk={default_risk_pct}%"
-        )
-
-    def calculate_size(
-        self,
-        signal: Signal,
-        current_price: float,
-        atr: float | None = None,
-        risk_pct: float | None = None
-    ) -> PositionSizeResult:
-        """Calculate position size for a signal.
-
-        Args:
-            signal: Entry signal with stop-loss
-            current_price: Current market price
-            atr: Average True Range (for ATR-based sizing)
-            risk_pct: Override risk percentage
-
-        Returns:
-            PositionSizeResult with calculated size
-        """
-        risk_pct = risk_pct or self.default_risk_pct
-        constraints = []
-
-        # Calculate stop distance
-        stop_distance = abs(current_price - signal.stop_loss_price)
-        if stop_distance <= 0:
-            return PositionSizeResult(
-                quantity=0,
-                risk_amount=0,
-                position_value=0,
-                risk_pct_actual=0,
-                sizing_method="rejected",
-                constraints_applied=["ZERO_STOP_DISTANCE"]
-            )
-
-        # Calculate base risk amount
-        risk_amount = self.account_value * (risk_pct / 100)
-
-        # Apply max risk per trade limit
-        max_risk = self.account_value * (self.risk_limits.max_risk_per_trade_pct / 100)
-        if risk_amount > max_risk:
-            risk_amount = max_risk
-            constraints.append("MAX_RISK_PER_TRADE")
-
-        # Calculate quantity based on risk
-        quantity = risk_amount / stop_distance
-
-        # Calculate position value
-        position_value = quantity * current_price
-
-        # Apply max position size limits
-        max_position_pct = self.risk_limits.max_position_size_pct
-        max_position_value = self.account_value * (max_position_pct / 100)
-
-        if self.risk_limits.max_position_value:
-            max_position_value = min(max_position_value, self.risk_limits.max_position_value)
-
-        if position_value > max_position_value:
-            quantity = max_position_value / current_price
-            position_value = max_position_value
-            risk_amount = quantity * stop_distance
-            constraints.append("MAX_POSITION_SIZE")
-
-        # Account for fees
-        if self.include_fees:
-            fee_amount = position_value * (self.fee_pct / 100)
-            # Reduce quantity slightly to account for fees
-            quantity = quantity * (1 - self.fee_pct / 100 / 2)
-            position_value = quantity * current_price
-
-        # Calculate actual risk percentage
-        risk_pct_actual = (risk_amount / self.account_value) * 100
-
-        return PositionSizeResult(
-            quantity=round(quantity, 8),  # Crypto precision
-            risk_amount=risk_amount,
-            position_value=position_value,
-            risk_pct_actual=risk_pct_actual,
-            sizing_method="fixed_fractional",
-            constraints_applied=constraints
-        )
-
-    def calculate_size_atr(
-        self,
-        signal: Signal,
-        current_price: float,
-        atr: float,
-        atr_multiple: float = 2.0,
-        risk_pct: float | None = None
-    ) -> PositionSizeResult:
-        """Calculate position size using ATR-based stop distance.
-
-        Args:
-            signal: Entry signal
-            current_price: Current price
-            atr: Average True Range
-            atr_multiple: ATR multiple for stop distance
-            risk_pct: Risk percentage
-
-        Returns:
-            PositionSizeResult
-        """
-        risk_pct = risk_pct or self.default_risk_pct
-        constraints = []
-
-        # ATR-based stop distance
-        stop_distance = atr * atr_multiple
-
-        if stop_distance <= 0:
-            return PositionSizeResult(
-                quantity=0,
-                risk_amount=0,
-                position_value=0,
-                risk_pct_actual=0,
-                sizing_method="atr_rejected",
-                constraints_applied=["ZERO_ATR"]
-            )
-
-        # Risk amount
-        risk_amount = self.account_value * (risk_pct / 100)
-        max_risk = self.account_value * (self.risk_limits.max_risk_per_trade_pct / 100)
-        if risk_amount > max_risk:
-            risk_amount = max_risk
-            constraints.append("MAX_RISK_PER_TRADE")
-
-        # Quantity
-        quantity = risk_amount / stop_distance
-        position_value = quantity * current_price
-
-        # Position size limits
-        max_position_value = self.account_value * (self.risk_limits.max_position_size_pct / 100)
-        if position_value > max_position_value:
-            quantity = max_position_value / current_price
-            position_value = max_position_value
-            risk_amount = quantity * stop_distance
-            constraints.append("MAX_POSITION_SIZE")
-
-        risk_pct_actual = (risk_amount / self.account_value) * 100
-
-        return PositionSizeResult(
-            quantity=round(quantity, 8),
-            risk_amount=risk_amount,
-            position_value=position_value,
-            risk_pct_actual=risk_pct_actual,
-            sizing_method="atr_based",
-            constraints_applied=constraints
-        )
-
-    def update_account_value(self, value: float) -> None:
-        """Update account value.
-
-        Args:
-            value: New account value
-        """
-        self.account_value = value
-        logger.debug(f"Account value updated: ${value:.2f}")
-
-
-class RiskManager:
-    """Manages trading risk limits and tracking.
-
-    Tracks daily P&L, position count, loss streaks,
-    and enforces risk limits.
-    """
-
-    def __init__(
-        self,
-        limits: RiskLimits | None = None,
-        account_value: float = 10000.0
-    ):
-        """Initialize risk manager.
-
-        Args:
-            limits: Risk limit configuration
-            account_value: Account value for calculations
-        """
-        self.limits = limits or RiskLimits()
-        self.account_value = account_value
-        self._state = RiskState()
-
-        logger.info(
-            f"RiskManager initialized: max_trades={self.limits.max_trades_per_day}, "
-            f"max_daily_loss={self.limits.max_daily_loss_pct}%"
-        )
-
-    @property
-    def state(self) -> RiskState:
-        """Current risk state."""
-        self._check_day_rollover()
-        self._check_cooldown_expired()
-        return self._state
-
-    def can_trade(self) -> tuple[bool, list[str]]:
-        """Check if trading is allowed.
-
-        Returns:
-            (can_trade, list of blocking reasons)
-        """
-        self._check_day_rollover()
-        self._check_cooldown_expired()
-
-        blocks = []
-
-        # Daily trade limit
-        if self._state.trades_today >= self.limits.max_trades_per_day:
-            blocks.append(f"MAX_TRADES: {self._state.trades_today}/{self.limits.max_trades_per_day}")
-
-        # Daily loss limit
-        daily_loss_pct = (-self._state.daily_pnl / self.account_value) * 100
-        if self._state.daily_pnl < 0 and daily_loss_pct >= self.limits.max_daily_loss_pct:
-            blocks.append(f"DAILY_LOSS: {daily_loss_pct:.1f}%")
-
-        if self.limits.max_daily_loss_amount:
-            if self._state.daily_pnl < 0 and abs(self._state.daily_pnl) >= self.limits.max_daily_loss_amount:
-                blocks.append(f"DAILY_LOSS_AMOUNT: ${abs(self._state.daily_pnl):.2f}")
-
-        # Position count
-        if self._state.open_positions >= self.limits.max_concurrent_positions:
-            blocks.append(f"MAX_POSITIONS: {self._state.open_positions}")
-
-        # Loss streak cooldown
-        if self._state.in_cooldown:
-            blocks.append(f"COOLDOWN: until {self._state.cooldown_until}")
-
-        return len(blocks) == 0, blocks
-
-    def record_trade_start(self) -> None:
-        """Record start of a new trade."""
-        self._state.trades_today += 1
-        self._state.open_positions += 1
-        logger.debug(f"Trade started: count={self._state.trades_today}")
-
-    def record_trade_end(self, pnl: float) -> None:
-        """Record end of a trade.
-
-        Args:
-            pnl: Trade P&L
-        """
-        self._state.daily_pnl += pnl
-        self._state.open_positions = max(0, self._state.open_positions - 1)
-
-        if pnl < 0:
-            self._state.consecutive_losses += 1
-            self._state.last_loss_time = datetime.utcnow()
-
-            # Check for cooldown trigger
-            if self._state.consecutive_losses >= self.limits.loss_streak_cooldown:
-                self._enter_cooldown()
-        else:
-            self._state.consecutive_losses = 0
-
-        logger.debug(
-            f"Trade ended: PnL=${pnl:.2f}, daily=${self._state.daily_pnl:.2f}, "
-            f"losses={self._state.consecutive_losses}"
-        )
-
-    def _check_day_rollover(self) -> None:
-        """Check if we've rolled into a new trading day."""
-        now = datetime.utcnow()
-        if self._state.date.date() != now.date():
-            self._state = RiskState(date=now)
-            logger.info("New trading day - risk state reset")
-
-    def _check_cooldown_expired(self) -> None:
-        """Check if cooldown has expired."""
-        if self._state.in_cooldown and self._state.cooldown_until:
-            if datetime.utcnow() >= self._state.cooldown_until:
-                self._state.in_cooldown = False
-                self._state.cooldown_until = None
-                self._state.consecutive_losses = 0
-                logger.info("Cooldown expired - trading resumed")
-
-    def _enter_cooldown(self) -> None:
-        """Enter cooldown mode."""
-        self._state.in_cooldown = True
-        self._state.cooldown_until = (
-            datetime.utcnow() +
-            timedelta(minutes=self.limits.cooldown_duration_minutes)
-        )
-        logger.warning(
-            f"Entering cooldown: {self._state.consecutive_losses} consecutive losses, "
-            f"until {self._state.cooldown_until}"
-        )
-
-    def update_account_value(self, value: float) -> None:
-        """Update account value."""
-        self.account_value = value
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get current risk stats.
-
-        Returns:
-            Dict with risk metrics
-        """
-        return {
-            "date": self._state.date.isoformat(),
-            "trades_today": self._state.trades_today,
-            "daily_pnl": self._state.daily_pnl,
-            "daily_pnl_pct": (self._state.daily_pnl / self.account_value) * 100 if self.account_value > 0 else 0,
-            "open_positions": self._state.open_positions,
-            "consecutive_losses": self._state.consecutive_losses,
-            "in_cooldown": self._state.in_cooldown,
-            "cooldown_until": self._state.cooldown_until.isoformat() if self._state.cooldown_until else None,
-        }
 
 
 class PaperExecutor:

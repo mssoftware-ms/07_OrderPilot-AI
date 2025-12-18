@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from .models import (
     FeatureVector,
@@ -16,9 +15,6 @@ from .models import (
     RegimeType,
     VolatilityLevel,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

@@ -10,13 +10,9 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING
 
 from .config import MarketType
 from .models import FeatureVector, RegimeState, VolatilityLevel
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

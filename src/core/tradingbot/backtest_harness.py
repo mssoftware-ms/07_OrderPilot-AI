@@ -1,11 +1,15 @@
 """Backtest Harness for Tradingbot.
 
-Provides reproducible backtesting with:
-- Deterministic random seeds
-- Slippage/fees simulation
+Main backtesting class that provides:
+- Deterministic backtesting
 - Multi-timeframe data support
 - Event-by-event simulation
 - Comprehensive metrics collection
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- backtest_types.py: Data types (BacktestMode, BacktestConfig, etc.)
+- backtest_simulator.py: BacktestSimulator + ReleaseGate
+- backtest_harness.py: BacktestHarness main class (this file)
 """
 
 from __future__ import annotations
@@ -13,16 +17,20 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import random
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import pandas as pd
-from pydantic import BaseModel, Field
 
+from .backtest_simulator import BacktestSimulator
+from .backtest_types import (
+    BacktestMode,
+    BacktestConfig,
+    BacktestTrade,
+    BacktestState,
+    BacktestResult,
+)
 from .config import FullBotConfig, MarketType, TrailingMode, KIMode
 from .execution import OrderResult, OrderStatus, PositionSizeResult
 from .models import (
@@ -33,250 +41,13 @@ from .models import (
     Signal,
     TradeSide,
 )
-from .strategy_evaluator import PerformanceMetrics, TradeResult
+from .backtest_metrics_helpers import calculate_backtest_metrics
+from .strategy_evaluator import PerformanceMetrics
 
 if TYPE_CHECKING:
     from .bot_controller import BotController
 
 logger = logging.getLogger(__name__)
-
-
-class BacktestMode(str, Enum):
-    """Backtest execution modes."""
-    FAST = "fast"  # Skip some calculations for speed
-    FULL = "full"  # Full simulation with all features
-    DEBUG = "debug"  # Extra logging and validation
-
-
-@dataclass
-class BacktestConfig:
-    """Configuration for backtest run."""
-    # Data range
-    start_date: datetime
-    end_date: datetime
-    symbol: str
-    timeframe: str = "1T"  # 1 minute default
-
-    # Simulation parameters
-    initial_capital: float = 10000.0
-    slippage_pct: float = 0.05
-    commission_pct: float = 0.1  # Per side
-    seed: int | None = None  # Random seed for reproducibility
-
-    # Execution
-    mode: BacktestMode = BacktestMode.FULL
-    warmup_bars: int = 50  # Bars needed for indicators
-
-    # Output
-    save_trades: bool = True
-    save_equity_curve: bool = True
-    save_decisions: bool = False  # Can be large
-    output_dir: Path | None = None
-
-    def get_seed(self) -> int:
-        """Get deterministic seed based on config."""
-        if self.seed is not None:
-            return self.seed
-        # Generate seed from config hash
-        config_str = f"{self.symbol}{self.start_date}{self.end_date}{self.timeframe}"
-        return int(hashlib.sha256(config_str.encode()).hexdigest()[:8], 16)
-
-
-@dataclass
-class BacktestTrade:
-    """Record of a completed trade."""
-    trade_id: str
-    symbol: str
-    side: TradeSide
-    entry_time: datetime
-    entry_price: float
-    entry_size: float
-    exit_time: datetime
-    exit_price: float
-    exit_reason: str
-    pnl: float
-    pnl_pct: float
-    bars_held: int
-    max_favorable_excursion: float
-    max_adverse_excursion: float
-    fees: float
-    slippage: float
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for serialization."""
-        return {
-            "trade_id": self.trade_id,
-            "symbol": self.symbol,
-            "side": self.side.value,
-            "entry_time": self.entry_time.isoformat(),
-            "entry_price": self.entry_price,
-            "entry_size": self.entry_size,
-            "exit_time": self.exit_time.isoformat(),
-            "exit_price": self.exit_price,
-            "exit_reason": self.exit_reason,
-            "pnl": self.pnl,
-            "pnl_pct": self.pnl_pct,
-            "bars_held": self.bars_held,
-            "mfe": self.max_favorable_excursion,
-            "mae": self.max_adverse_excursion,
-            "fees": self.fees,
-            "slippage": self.slippage,
-        }
-
-
-@dataclass
-class BacktestState:
-    """State tracking during backtest."""
-    bar_index: int = 0
-    current_time: datetime | None = None
-    capital: float = 10000.0
-    position: PositionState | None = None
-    pending_signal: Signal | None = None
-
-    # Tracking
-    equity_curve: list[tuple[datetime, float]] = field(default_factory=list)
-    trades: list[BacktestTrade] = field(default_factory=list)
-    decisions: list[BotDecision] = field(default_factory=list)
-    signals_generated: int = 0
-    signals_confirmed: int = 0
-    orders_executed: int = 0
-
-    # Current bar data
-    current_bar: dict | None = None
-    features: FeatureVector | None = None
-    regime: RegimeState | None = None
-
-
-@dataclass
-class BacktestResult:
-    """Result of a backtest run."""
-    config: BacktestConfig
-    metrics: PerformanceMetrics
-    trades: list[BacktestTrade]
-    equity_curve: list[tuple[datetime, float]]
-    run_time_seconds: float
-    total_bars: int
-    seed_used: int
-
-    # Summary stats
-    total_trades: int = 0
-    winning_trades: int = 0
-    losing_trades: int = 0
-    total_pnl: float = 0.0
-    total_fees: float = 0.0
-    max_drawdown_pct: float = 0.0
-    final_capital: float = 0.0
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for serialization."""
-        return {
-            "config": {
-                "symbol": self.config.symbol,
-                "start_date": self.config.start_date.isoformat(),
-                "end_date": self.config.end_date.isoformat(),
-                "timeframe": self.config.timeframe,
-                "initial_capital": self.config.initial_capital,
-                "slippage_pct": self.config.slippage_pct,
-                "commission_pct": self.config.commission_pct,
-                "seed": self.seed_used,
-            },
-            "metrics": {
-                "profit_factor": self.metrics.profit_factor,
-                "max_drawdown_pct": self.metrics.max_drawdown_pct,
-                "win_rate": self.metrics.win_rate,
-                "expectancy": self.metrics.expectancy,
-                "sharpe_ratio": self.metrics.sharpe_ratio,
-                "sortino_ratio": self.metrics.sortino_ratio,
-                "calmar_ratio": self.metrics.calmar_ratio,
-            },
-            "summary": {
-                "total_trades": self.total_trades,
-                "winning_trades": self.winning_trades,
-                "losing_trades": self.losing_trades,
-                "total_pnl": self.total_pnl,
-                "total_fees": self.total_fees,
-                "max_drawdown_pct": self.max_drawdown_pct,
-                "final_capital": self.final_capital,
-                "run_time_seconds": self.run_time_seconds,
-                "total_bars": self.total_bars,
-            },
-            "trades": [t.to_dict() for t in self.trades],
-        }
-
-    def save(self, path: Path) -> None:
-        """Save result to JSON file."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
-        logger.info(f"Backtest result saved to {path}")
-
-
-class BacktestSimulator:
-    """Simulates order execution during backtest.
-
-    Provides deterministic slippage and fill simulation.
-    """
-
-    def __init__(
-        self,
-        slippage_pct: float = 0.05,
-        commission_pct: float = 0.1,
-        seed: int = 42
-    ):
-        """Initialize simulator.
-
-        Args:
-            slippage_pct: Slippage percentage
-            commission_pct: Commission per side
-            seed: Random seed
-        """
-        self.slippage_pct = slippage_pct
-        self.commission_pct = commission_pct
-        self._rng = random.Random(seed)
-        self._order_counter = 0
-
-    def simulate_fill(
-        self,
-        side: TradeSide,
-        quantity: float,
-        price: float,
-        bar_high: float,
-        bar_low: float
-    ) -> tuple[float, float, float]:
-        """Simulate order fill with slippage.
-
-        Args:
-            side: Order side
-            quantity: Order quantity
-            price: Expected price
-            bar_high: Bar high price
-            bar_low: Bar low price
-
-        Returns:
-            (fill_price, slippage_amount, commission)
-        """
-        # Calculate slippage (adverse direction)
-        slippage_factor = self._rng.uniform(0, self.slippage_pct / 100)
-
-        if side == TradeSide.LONG:
-            # Buy: slippage increases price
-            slippage = price * slippage_factor
-            fill_price = min(price + slippage, bar_high)
-        else:
-            # Sell: slippage decreases price
-            slippage = price * slippage_factor
-            fill_price = max(price - slippage, bar_low)
-
-        slippage_amount = abs(fill_price - price) * quantity
-        commission = fill_price * quantity * (self.commission_pct / 100)
-
-        return fill_price, slippage_amount, commission
-
-    def generate_order_id(self) -> str:
-        """Generate unique order ID."""
-        self._order_counter += 1
-        return f"bt_order_{self._order_counter:06d}"
-
 
 class BacktestHarness:
     """Main backtest harness for tradingbot.
@@ -801,151 +572,7 @@ class BacktestHarness:
         return equity
 
     def _calculate_metrics(self) -> PerformanceMetrics:
-        """Calculate performance metrics from trades.
-
-        Returns:
-            PerformanceMetrics
-        """
-        trades = self._state.trades
-
-        if not trades:
-            return PerformanceMetrics(
-                profit_factor=0,
-                max_drawdown_pct=0,
-                win_rate=0,
-                expectancy=0,
-                total_trades=0
-            )
-
-        # Convert to TradeResult format
-        trade_results = [
-            TradeResult(
-                entry_time=t.entry_time,
-                exit_time=t.exit_time,
-                side=t.side,
-                entry_price=t.entry_price,
-                exit_price=t.exit_price,
-                pnl=t.pnl,
-                pnl_pct=t.pnl_pct,
-                bars_held=t.bars_held
-            )
-            for t in trades
-        ]
-
-        # Use strategy evaluator for consistent metrics
-        from .strategy_evaluator import StrategyEvaluator
-
-        evaluator = StrategyEvaluator()
-        return evaluator.calculate_metrics(trade_results)
+        """Calculate performance metrics from trades."""
+        return calculate_backtest_metrics(self._state.trades)
 
 
-class ReleaseGate:
-    """Release gate checker for Paper → Live transition.
-
-    Validates that backtest/paper results meet minimum criteria.
-    """
-
-    def __init__(
-        self,
-        min_trades: int = 20,
-        min_win_rate: float = 0.4,
-        min_profit_factor: float = 1.2,
-        max_drawdown_pct: float = 15.0,
-        min_sharpe: float = 0.5,
-        min_paper_days: int = 7,
-        max_consecutive_losses: int = 5
-    ):
-        """Initialize release gate.
-
-        Args:
-            min_trades: Minimum number of trades
-            min_win_rate: Minimum win rate
-            min_profit_factor: Minimum profit factor
-            max_drawdown_pct: Maximum drawdown percentage
-            min_sharpe: Minimum Sharpe ratio
-            min_paper_days: Minimum days of paper trading
-            max_consecutive_losses: Maximum consecutive losses
-        """
-        self.min_trades = min_trades
-        self.min_win_rate = min_win_rate
-        self.min_profit_factor = min_profit_factor
-        self.max_drawdown_pct = max_drawdown_pct
-        self.min_sharpe = min_sharpe
-        self.min_paper_days = min_paper_days
-        self.max_consecutive_losses = max_consecutive_losses
-
-    def check(self, result: BacktestResult) -> tuple[bool, list[str]]:
-        """Check if result passes release gate.
-
-        Args:
-            result: Backtest or paper trading result
-
-        Returns:
-            (passed, list of failure reasons)
-        """
-        failures = []
-
-        if result.total_trades < self.min_trades:
-            failures.append(
-                f"MIN_TRADES: {result.total_trades} < {self.min_trades}"
-            )
-
-        if result.metrics.win_rate < self.min_win_rate:
-            failures.append(
-                f"MIN_WIN_RATE: {result.metrics.win_rate:.1%} < {self.min_win_rate:.1%}"
-            )
-
-        if result.metrics.profit_factor < self.min_profit_factor:
-            failures.append(
-                f"MIN_PROFIT_FACTOR: {result.metrics.profit_factor:.2f} < {self.min_profit_factor:.2f}"
-            )
-
-        if result.metrics.max_drawdown_pct > self.max_drawdown_pct:
-            failures.append(
-                f"MAX_DRAWDOWN: {result.metrics.max_drawdown_pct:.1f}% > {self.max_drawdown_pct:.1f}%"
-            )
-
-        if result.metrics.sharpe_ratio < self.min_sharpe:
-            failures.append(
-                f"MIN_SHARPE: {result.metrics.sharpe_ratio:.2f} < {self.min_sharpe:.2f}"
-            )
-
-        # Check consecutive losses
-        max_consec = self._calculate_max_consecutive_losses(result.trades)
-        if max_consec > self.max_consecutive_losses:
-            failures.append(
-                f"MAX_CONSECUTIVE_LOSSES: {max_consec} > {self.max_consecutive_losses}"
-            )
-
-        passed = len(failures) == 0
-
-        if passed:
-            logger.info("Release gate PASSED")
-        else:
-            logger.warning(f"Release gate FAILED: {failures}")
-
-        return passed, failures
-
-    def _calculate_max_consecutive_losses(
-        self,
-        trades: list[BacktestTrade]
-    ) -> int:
-        """Calculate maximum consecutive losses.
-
-        Args:
-            trades: List of trades
-
-        Returns:
-            Maximum consecutive loss count
-        """
-        max_consec = 0
-        current_consec = 0
-
-        for trade in trades:
-            if trade.pnl <= 0:
-                current_consec += 1
-                max_consec = max(max_consec, current_consec)
-            else:
-                current_consec = 0
-
-        return max_consec

@@ -29,7 +29,7 @@ if sys.platform == "win32":
 else:
     KEYRING_AVAILABLE = False
 
-from .security_config import SecurityContext, SecurityLevel
+from .security_core import SecurityContext, SecurityLevel
 
 logger = logging.getLogger(__name__)
 
