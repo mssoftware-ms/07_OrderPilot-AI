@@ -159,7 +159,11 @@ class BayesianOptimizer:
 
                 # Report progress
                 if progress_callback:
-                    best = self._study.best_value if self._study.best_trial else score
+                    try:
+                        best = self._study.best_value if self._study.best_trial else score
+                    except ValueError:
+                        # "No trials are completed yet" - use current score
+                        best = score
                     progress_callback(trial.number + 1, self.config.n_trials, best)
 
                 return score

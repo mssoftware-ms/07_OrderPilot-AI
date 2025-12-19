@@ -276,6 +276,13 @@ class ChartWindow(
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event with async state saving."""
+        # Stop any running simulator worker to avoid QThread warnings on shutdown
+        if hasattr(self, "_cleanup_simulation_worker"):
+            try:
+                self._cleanup_simulation_worker(cancel=True, wait_ms=500)
+            except Exception as e:
+                logger.debug("Failed to stop simulation worker during close: %s", e)
+
         if self._ready_to_close:
             logger.info(f"Closing ChartWindow for {self.symbol}...")
 

@@ -66,10 +66,16 @@ class SimulationWorker(QThread):
         self.mode = mode  # "manual", "grid", "bayesian"
         self.opt_trials = opt_trials
         self._cancelled = False
+        self._optimizer = None  # type: ignore[var-annotated]
 
     def cancel(self):
         """Cancel running simulation."""
         self._cancelled = True
+        if self._optimizer and hasattr(self._optimizer, "cancel"):
+            try:
+                self._optimizer.cancel()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("Optimizer cancel failed: %s", exc)
 
     def run(self):
         """Run simulation in separate thread."""
@@ -117,6 +123,9 @@ class SimulationWorker(QThread):
                 else:
                     optimizer = GridSearchOptimizer(self.data, self.symbol, config)
 
+                # Keep reference so we can cancel from UI thread
+                self._optimizer = optimizer
+
                 # Optimizers are now synchronous
                 result = optimizer.optimize(progress_callback=progress_cb)
                 self.finished.emit(result)
@@ -124,6 +133,8 @@ class SimulationWorker(QThread):
         except Exception as e:
             logger.error("Simulation failed: %s", e, exc_info=True)
             self.error.emit(str(e))
+        finally:
+            self._optimizer = None
 
 
 class StrategySimulatorMixin:
@@ -131,6 +142,7 @@ class StrategySimulatorMixin:
 
     # Storage for simulation results
     _simulation_results: list = []
+    _table_row_results: list = []  # Maps table row index to SimulationResult or None
     _last_optimization_run: object = None
     _current_worker: SimulationWorker | None = None
 
@@ -158,6 +170,7 @@ class StrategySimulatorMixin:
 
         # Initialize
         self._simulation_results = []
+        self._table_row_results = []
         self._last_optimization_run = None
         self._on_simulator_strategy_changed(0)
 
@@ -197,8 +210,32 @@ class StrategySimulatorMixin:
 
         # Parameters Group (dynamic based on strategy)
         self.simulator_params_group = QGroupBox("Parameters")
-        self.simulator_params_layout = QFormLayout(self.simulator_params_group)
+        params_main_layout = QVBoxLayout(self.simulator_params_group)
+        self.simulator_params_layout = QFormLayout()
         self._simulator_param_widgets: dict[str, QWidget] = {}
+        params_main_layout.addLayout(self.simulator_params_layout)
+
+        # Parameter action buttons (two rows for better fit)
+        params_btn_row1 = QHBoxLayout()
+        params_btn_row1.setSpacing(4)
+
+        self.simulator_reset_params_btn = QPushButton("Reset")
+        self.simulator_reset_params_btn.setToolTip("Parameter auf Standardwerte zurücksetzen")
+        self.simulator_reset_params_btn.clicked.connect(self._on_reset_simulator_params)
+        params_btn_row1.addWidget(self.simulator_reset_params_btn)
+
+        self.simulator_save_to_bot_btn = QPushButton("Save")
+        self.simulator_save_to_bot_btn.setToolTip("Parameter für produktiven Bot speichern")
+        self.simulator_save_to_bot_btn.clicked.connect(self._on_save_params_to_bot)
+        params_btn_row1.addWidget(self.simulator_save_to_bot_btn)
+
+        self.simulator_load_from_bot_btn = QPushButton("Load")
+        self.simulator_load_from_bot_btn.setToolTip("Gespeicherte Parameter laden")
+        self.simulator_load_from_bot_btn.clicked.connect(self._on_load_params_from_bot)
+        params_btn_row1.addWidget(self.simulator_load_from_bot_btn)
+
+        params_main_layout.addLayout(params_btn_row1)
+
         layout.addWidget(self.simulator_params_group)
 
         # Optimization Mode Group
@@ -391,6 +428,93 @@ class StrategySimulatorMixin:
                 params[name] = widget.value()
         return params
 
+    def _on_reset_simulator_params(self) -> None:
+        """Reset all parameter widgets to their default values."""
+        from src.core.simulator import StrategyName, get_strategy_parameters
+
+        strategy_map = {
+            0: StrategyName.BREAKOUT,
+            1: StrategyName.MOMENTUM,
+            2: StrategyName.MEAN_REVERSION,
+            3: StrategyName.TREND_FOLLOWING,
+            4: StrategyName.SCALPING,
+        }
+        strategy = strategy_map.get(
+            self.simulator_strategy_combo.currentIndex(), StrategyName.BREAKOUT
+        )
+        param_config = get_strategy_parameters(strategy)
+
+        for param_def in param_config.parameters:
+            widget = self._simulator_param_widgets.get(param_def.name)
+            if widget and isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                widget.setValue(param_def.default)
+
+        self.simulator_status_label.setText("Parameters reset to default")
+
+    def _on_save_params_to_bot(self) -> None:
+        """Save current parameters for production bot use."""
+        from src.core.simulator import save_strategy_params
+
+        strategy_name = self._get_simulator_strategy_name()
+        params = self._get_simulator_parameters()
+
+        # Get symbol from current chart if available
+        symbol = None
+        if hasattr(self, "current_symbol"):
+            symbol = self.current_symbol
+
+        try:
+            filepath = save_strategy_params(
+                strategy_name=strategy_name,
+                params=params,
+                symbol=symbol,
+            )
+            self.simulator_status_label.setText(f"Parameters saved: {strategy_name}")
+            QMessageBox.information(
+                self,
+                "Parameters Saved",
+                f"Strategy parameters saved for production bot.\n\n"
+                f"Strategy: {strategy_name}\n"
+                f"File: {filepath}",
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save parameters: {e}")
+
+    def _on_load_params_from_bot(self) -> None:
+        """Load saved parameters from production bot config."""
+        from src.core.simulator import load_strategy_params, get_params_metadata
+
+        strategy_name = self._get_simulator_strategy_name()
+
+        params = load_strategy_params(strategy_name)
+
+        if params is None:
+            QMessageBox.warning(
+                self,
+                "No Saved Parameters",
+                f"No saved parameters found for strategy: {strategy_name}\n\n"
+                "Use 'Save to Bot' to save optimized parameters first.",
+            )
+            return
+
+        # Apply loaded parameters to widgets
+        for param_name, value in params.items():
+            widget = self._simulator_param_widgets.get(param_name)
+            if widget and isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                widget.setValue(value)
+
+        # Show metadata info
+        metadata = get_params_metadata(strategy_name)
+        info_text = f"Loaded parameters for {strategy_name}"
+        if metadata:
+            if metadata.get("saved_at"):
+                info_text += f"\nSaved: {metadata['saved_at'][:19]}"
+            if metadata.get("symbol"):
+                info_text += f"\nOptimized for: {metadata['symbol']}"
+
+        self.simulator_status_label.setText(f"Parameters loaded: {strategy_name}")
+        QMessageBox.information(self, "Parameters Loaded", info_text)
+
     def _get_simulator_strategy_name(self) -> str:
         """Get currently selected strategy name."""
         strategy_map = {
@@ -476,6 +600,7 @@ class StrategySimulatorMixin:
     def _on_stop_simulation(self) -> None:
         """Stop running simulation."""
         if self._current_worker:
+            # Signal cancellation; keep reference so thread can exit cleanly
             self._current_worker.cancel()
             self.simulator_status_label.setText("Stopping...")
 
@@ -549,7 +674,8 @@ class StrategySimulatorMixin:
                 self._log_simulator_to_ki("OK", status_msg)
 
         self.simulator_export_btn.setEnabled(bool(self._simulation_results))
-        self._current_worker = None
+        # Ensure thread is fully stopped before dropping reference
+        self._cleanup_simulation_worker(wait_ms=200)
 
     def _on_simulation_error(self, error_msg: str) -> None:
         """Handle simulation error."""
@@ -562,7 +688,31 @@ class StrategySimulatorMixin:
         self._log_simulator_to_ki("ERROR", f"Simulation failed: {error_msg}")
 
         QMessageBox.critical(self, "Simulation Error", error_msg)
-        self._current_worker = None
+        self._cleanup_simulation_worker(wait_ms=200)
+
+    def _cleanup_simulation_worker(self, wait_ms: int = 0, cancel: bool = False) -> None:
+        """Safely stop and dispose the simulation worker thread.
+
+        Args:
+            wait_ms: How long to wait for the thread to finish. 0 = no wait.
+            cancel: Whether to request cancellation first.
+        """
+        worker = self._current_worker
+        if not worker:
+            return
+
+        if cancel:
+            worker.cancel()
+
+        finished = not worker.isRunning()
+        if wait_ms and not finished:
+            finished = worker.wait(wait_ms)
+
+        if finished:
+            worker.deleteLater()
+            self._current_worker = None
+        else:
+            logger.warning("Simulation worker still running after %d ms", wait_ms)
 
     def _log_simulator_to_ki(self, entry_type: str, message: str) -> None:
         """Log simulator messages to KI Logs tab.
@@ -592,6 +742,9 @@ class StrategySimulatorMixin:
         """Add simulation result to results table."""
         row = self.simulator_results_table.rowCount()
         self.simulator_results_table.insertRow(row)
+
+        # Track result for this row (for Show Entry/Exit)
+        self._table_row_results.append(result)
 
         # Format parameters (ALL parameters)
         params_full = ", ".join(
@@ -641,9 +794,12 @@ class StrategySimulatorMixin:
                     pass
 
     def _add_trial_to_table(self, trial, strategy_name: str) -> None:
-        """Add optimization trial to results table."""
+        """Add optimization trial to results table (no detailed trade data)."""
         row = self.simulator_results_table.rowCount()
         self.simulator_results_table.insertRow(row)
+
+        # No detailed result for trials (only metrics summary)
+        self._table_row_results.append(None)
 
         # Format ALL parameters
         params_full = ", ".join(
@@ -710,13 +866,16 @@ class StrategySimulatorMixin:
             return
 
         row = selected[0].row()
-        if row >= len(self._simulation_results):
+        if row >= len(self._table_row_results) or self._table_row_results[row] is None:
             QMessageBox.warning(
-                self, "Warning", "No detailed result available for this row."
+                self, "Warning",
+                "Keine Detail-Daten für diese Zeile verfügbar.\n\n"
+                "Optimization-Trials haben nur Metriken, keine Trade-Details.\n"
+                "Nur die 'Best Result'-Zeile hat vollständige Trade-Daten."
             )
             return
 
-        result = self._simulation_results[row]
+        result = self._table_row_results[row]
 
         # Get chart and clear existing markers
         if hasattr(self, "chart_widget"):
@@ -760,7 +919,9 @@ class StrategySimulatorMixin:
 
     def _on_export_simulation_xlsx(self) -> None:
         """Export results to Excel file."""
-        if not self._simulation_results:
+        # Check if table has data (even if _simulation_results is empty)
+        table_row_count = self.simulator_results_table.rowCount()
+        if table_row_count == 0 and not self._simulation_results:
             QMessageBox.warning(self, "Warning", "No results to export")
             return
 
@@ -777,10 +938,14 @@ class StrategySimulatorMixin:
         try:
             from src.core.simulator import export_simulation_results
 
+            # Extract table data from UI
+            ui_table_data = self._extract_table_data()
+
             saved_path = export_simulation_results(
                 results=self._simulation_results,
                 filepath=filepath,
                 optimization_run=self._last_optimization_run,
+                ui_table_data=ui_table_data,
             )
             QMessageBox.information(
                 self,
@@ -796,9 +961,31 @@ class StrategySimulatorMixin:
         except Exception as e:
             QMessageBox.critical(self, "Export Error", str(e))
 
+    def _extract_table_data(self) -> list[list[str]]:
+        """Extract all data from the results table.
+
+        Returns:
+            List of rows, each row is a list of cell values.
+        """
+        table = self.simulator_results_table
+        row_count = table.rowCount()
+        col_count = table.columnCount()
+
+        table_data = []
+        for row in range(row_count):
+            row_data = []
+            for col in range(col_count):
+                item = table.item(row, col)
+                value = item.text() if item else ""
+                row_data.append(value)
+            table_data.append(row_data)
+
+        return table_data
+
     def _on_clear_simulation_results(self) -> None:
         """Clear all simulation results."""
         self._simulation_results.clear()
+        self._table_row_results.clear()
         self._last_optimization_run = None
         self.simulator_results_table.setRowCount(0)
         self.simulator_export_btn.setEnabled(False)
