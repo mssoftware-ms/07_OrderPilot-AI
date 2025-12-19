@@ -196,6 +196,20 @@ class BotUIPanelsMixin:
         )
         settings_layout.addRow("Stop-Loss Only:", self.disable_macd_exit_cb)
 
+        # Derivathandel checkbox
+        self.enable_derivathandel_cb = QCheckBox("Derivathandel aktivieren")
+        self.enable_derivathandel_cb.setChecked(False)
+        self.enable_derivathandel_cb.setToolTip(
+            "Bei aktiviert: Automatische KO-Produkt-Suche bei Signal-Bestaetigung.\n"
+            "Das beste Derivat wird basierend auf Score ausgewaehlt.\n"
+            "ACHTUNG: KO-Produkte haben hoeheres Risiko (Hebel, Totalverlust)!"
+        )
+        self.enable_derivathandel_cb.setStyleSheet(
+            "color: #ff5722; font-weight: bold;"
+        )
+        self.enable_derivathandel_cb.stateChanged.connect(self._on_derivathandel_changed)
+        settings_layout.addRow("Derivathandel:", self.enable_derivathandel_cb)
+
         settings_group.setLayout(settings_layout)
 
         # ==================== TRAILING STOP SETTINGS ====================
@@ -470,39 +484,81 @@ class BotUIPanelsMixin:
         position_layout.setContentsMargins(0, 0, 0, 0)
 
         position_group = QGroupBox("Current Position")
-        position_form = QFormLayout()
-        position_form.setVerticalSpacing(2)
-        position_form.setContentsMargins(8, 8, 8, 8)
+        position_h_layout = QHBoxLayout()
+        position_h_layout.setContentsMargins(8, 8, 8, 8)
+        position_h_layout.setSpacing(20)
+
+        # ---- Left column: Position info ----
+        left_form = QFormLayout()
+        left_form.setVerticalSpacing(2)
 
         self.position_side_label = QLabel("FLAT")
         self.position_side_label.setStyleSheet("font-weight: bold;")
-        position_form.addRow("Side:", self.position_side_label)
+        left_form.addRow("Side:", self.position_side_label)
 
         self.position_entry_label = QLabel("-")
-        position_form.addRow("Entry:", self.position_entry_label)
+        left_form.addRow("Entry:", self.position_entry_label)
 
         self.position_size_label = QLabel("-")
-        position_form.addRow("Size:", self.position_size_label)
+        left_form.addRow("Size:", self.position_size_label)
 
         self.position_invested_label = QLabel("-")
         self.position_invested_label.setStyleSheet("font-weight: bold;")
-        position_form.addRow("Invested:", self.position_invested_label)
+        left_form.addRow("Invested:", self.position_invested_label)
 
         self.position_stop_label = QLabel("-")
-        position_form.addRow("Stop:", self.position_stop_label)
+        left_form.addRow("Stop:", self.position_stop_label)
 
         self.position_current_label = QLabel("-")
         self.position_current_label.setStyleSheet("font-weight: bold;")
-        position_form.addRow("Current:", self.position_current_label)
+        left_form.addRow("Current:", self.position_current_label)
 
         self.position_pnl_label = QLabel("-")
-        position_form.addRow("P&L:", self.position_pnl_label)
+        left_form.addRow("P&L:", self.position_pnl_label)
 
         self.position_bars_held_label = QLabel("-")
-        position_form.addRow("Bars Held:", self.position_bars_held_label)
+        left_form.addRow("Bars Held:", self.position_bars_held_label)
 
-        position_group.setLayout(position_form)
-        position_group.setMaximumHeight(160)
+        position_h_layout.addLayout(left_form)
+
+        # ---- Right column: Score, TR, Derivative ----
+        right_form = QFormLayout()
+        right_form.setVerticalSpacing(2)
+
+        self.position_score_label = QLabel("-")
+        self.position_score_label.setStyleSheet("font-weight: bold; color: #26a69a;")
+        right_form.addRow("Score:", self.position_score_label)
+
+        self.position_tr_price_label = QLabel("-")
+        right_form.addRow("TR Kurs:", self.position_tr_price_label)
+
+        # Derivat-Sektion (nur sichtbar wenn Derivathandel aktiv)
+        self.deriv_separator = QLabel("── Derivat ──")
+        self.deriv_separator.setStyleSheet("color: #ff5722; font-weight: bold;")
+        right_form.addRow(self.deriv_separator)
+
+        self.deriv_wkn_label = QLabel("-")
+        self.deriv_wkn_label.setStyleSheet("font-weight: bold;")
+        right_form.addRow("WKN:", self.deriv_wkn_label)
+
+        self.deriv_leverage_label = QLabel("-")
+        right_form.addRow("Hebel:", self.deriv_leverage_label)
+
+        self.deriv_spread_label = QLabel("-")
+        right_form.addRow("Spread:", self.deriv_spread_label)
+
+        self.deriv_ask_label = QLabel("-")
+        right_form.addRow("Ask:", self.deriv_ask_label)
+
+        self.deriv_pnl_label = QLabel("-")
+        self.deriv_pnl_label.setStyleSheet("font-weight: bold;")
+        right_form.addRow("D P&L:", self.deriv_pnl_label)
+
+        position_h_layout.addLayout(right_form)
+        position_h_layout.addStretch()
+
+        position_group.setLayout(position_h_layout)
+        position_group.setMaximumHeight(180)
         position_layout.addWidget(position_group)
         splitter.addWidget(position_widget)
 
@@ -515,11 +571,18 @@ class BotUIPanelsMixin:
         signals_inner = QVBoxLayout()
 
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(15)
+        self.signals_table.setColumnCount(19)
         self.signals_table.setHorizontalHeaderLabels([
-            "Time", "Type", "Side", "Score", "Entry", "Stop", "SL%", "TR%",
-            "TR Kurs", "TRA%", "TR Lock", "Status", "Current", "P&L EUR", "P&L %"
+            "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
+            "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
+            "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Kurs"
         ])
+        # Derivat-Spalten initial verstecken (13-16)
+        for col in [13, 14, 15, 16]:
+            self.signals_table.setColumnHidden(col, True)
+        # Score und TR Kurs auch verstecken (in GroupBox angezeigt)
+        self.signals_table.setColumnHidden(17, True)  # Score
+        self.signals_table.setColumnHidden(18, True)  # TR Kurs
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )

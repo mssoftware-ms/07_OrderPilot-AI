@@ -9,6 +9,7 @@
     "max_daily_loss_pct": 3.0,
     "disable_restrictions": true,
     "disable_macd_exit": true,
+    "enable_derivathandel": true,
     "regime_adaptive": true,
     "atr_multiplier": 2.5,
     "atr_trending": 2.0,

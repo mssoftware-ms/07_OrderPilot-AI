@@ -111,6 +111,9 @@ class BotDisplayManagerMixin:
             bars = position.bars_held
             self.position_bars_held_label.setText(str(bars))
 
+            # Update right column (Score, TR Kurs, Derivative)
+            self._update_position_right_column()
+
         else:
             # No position in bot_controller - check signal_history for open positions
             open_signal = None
@@ -175,6 +178,9 @@ class BotDisplayManagerMixin:
                     self.position_pnl_label.setText("-")
 
                 self.position_bars_held_label.setText("-")  # Not tracked without bot position
+
+                # Update right column for signal from history
+                self._update_position_right_column()
             else:
                 # Truly flat - no position anywhere
                 self.position_side_label.setText("FLAT")
@@ -187,8 +193,98 @@ class BotDisplayManagerMixin:
                 self.position_pnl_label.setText("-")
                 self.position_bars_held_label.setText("-")
 
+                # Reset right column
+                self._reset_position_right_column()
+
         # Update signals P&L
         self._update_signals_pnl()
+
+    def _update_position_right_column(self) -> None:
+        """Update the right column of Current Position groupbox (Score, TR, Derivative)."""
+        # Find the active signal
+        open_signal = None
+        for sig in reversed(self._signal_history):
+            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                open_signal = sig
+                break
+
+        if not open_signal:
+            self._reset_position_right_column()
+            return
+
+        # Update Score
+        score = open_signal.get("score", 0)
+        if hasattr(self, "position_score_label"):
+            self.position_score_label.setText(f"{score * 100:.0f}")
+
+        # Update TR Kurs
+        tr_price = open_signal.get("trailing_stop_price", 0)
+        tr_active = open_signal.get("tr_active", False)
+        if hasattr(self, "position_tr_price_label"):
+            if tr_price > 0:
+                if tr_active:
+                    self.position_tr_price_label.setText(f"{tr_price:.2f}")
+                    self.position_tr_price_label.setStyleSheet("color: #ff9800;")
+                else:
+                    self.position_tr_price_label.setText(f"{tr_price:.2f} (inaktiv)")
+                    self.position_tr_price_label.setStyleSheet("color: #888888;")
+            else:
+                self.position_tr_price_label.setText("-")
+                self.position_tr_price_label.setStyleSheet("")
+
+        # Update Derivative section
+        deriv = open_signal.get("derivative")
+        if deriv:
+            if hasattr(self, "deriv_wkn_label"):
+                self.deriv_wkn_label.setText(deriv.get("wkn", "-"))
+            if hasattr(self, "deriv_leverage_label"):
+                lev = deriv.get("leverage", 0)
+                self.deriv_leverage_label.setText(f"{lev:.1f}x" if lev else "-")
+            if hasattr(self, "deriv_spread_label"):
+                spread = deriv.get("spread_pct", 0)
+                self.deriv_spread_label.setText(f"{spread:.2f}%" if spread else "-")
+            if hasattr(self, "deriv_ask_label"):
+                ask = deriv.get("ask", 0)
+                self.deriv_ask_label.setText(f"{ask:.2f}" if ask else "-")
+
+            # Calculate derivative P&L
+            current_price = open_signal.get("current_price", 0)
+            if current_price > 0 and hasattr(self, "_calculate_derivative_pnl_for_signal"):
+                deriv_pnl = self._calculate_derivative_pnl_for_signal(open_signal, current_price)
+                if deriv_pnl and hasattr(self, "deriv_pnl_label"):
+                    sign = "+" if deriv_pnl["pnl_pct"] >= 0 else ""
+                    color = "#26a69a" if deriv_pnl["pnl_pct"] >= 0 else "#ef5350"
+                    self.deriv_pnl_label.setText(
+                        f"{sign}{deriv_pnl['pnl_pct']:.2f}% ({sign}{deriv_pnl['pnl_eur']:.2f})"
+                    )
+                    self.deriv_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
+                elif hasattr(self, "deriv_pnl_label"):
+                    self.deriv_pnl_label.setText("-")
+                    self.deriv_pnl_label.setStyleSheet("")
+            elif hasattr(self, "deriv_pnl_label"):
+                self.deriv_pnl_label.setText("-")
+                self.deriv_pnl_label.setStyleSheet("")
+        else:
+            self._reset_derivative_labels()
+
+    def _reset_position_right_column(self) -> None:
+        """Reset all labels in the right column of Current Position groupbox."""
+        if hasattr(self, "position_score_label"):
+            self.position_score_label.setText("-")
+        if hasattr(self, "position_tr_price_label"):
+            self.position_tr_price_label.setText("-")
+            self.position_tr_price_label.setStyleSheet("")
+        self._reset_derivative_labels()
+
+    def _reset_derivative_labels(self) -> None:
+        """Reset derivative labels to default state."""
+        deriv_labels = ["deriv_wkn_label", "deriv_leverage_label", "deriv_spread_label",
+                        "deriv_ask_label", "deriv_pnl_label"]
+        for label_name in deriv_labels:
+            label = getattr(self, label_name, None)
+            if label:
+                label.setText("-")
+                label.setStyleSheet("")
 
     def _update_signals_pnl(self) -> None:
         """Update P&L for all open signals in history."""
@@ -303,17 +399,23 @@ class BotDisplayManagerMixin:
             self._save_signal_history()
 
     def _update_signals_table(self) -> None:
-        """Update signals table with recent entries."""
+        """Update signals table with recent entries.
+
+        Column layout (19 columns):
+        0: Time, 1: Type, 2: Side, 3: Entry, 4: Stop, 5: SL%, 6: TR%,
+        7: TRA%, 8: TR Lock, 9: Status, 10: Current, 11: P&L €, 12: P&L %,
+        13: D P&L €, 14: D P&L %, 15: Heb, 16: WKN, 17: Score (hidden), 18: TR Kurs (hidden)
+        """
         self._signals_table_updating = True
 
         recent_signals = list(reversed(self._signal_history[-20:]))
         self.signals_table.setRowCount(len(recent_signals))
 
         for row, signal in enumerate(recent_signals):
-            # Basic columns
+            # Column 0: Time
             self.signals_table.setItem(row, 0, QTableWidgetItem(signal["time"]))
 
-            # Type column
+            # Column 1: Type
             signal_type = signal["type"]
             label = signal.get("label", "")
             if label and signal_type == "confirmed":
@@ -323,19 +425,21 @@ class BotDisplayManagerMixin:
                 type_item = QTableWidgetItem(signal_type)
             self.signals_table.setItem(row, 1, type_item)
 
+            # Column 2: Side
             self.signals_table.setItem(row, 2, QTableWidgetItem(signal["side"]))
-            self.signals_table.setItem(row, 3, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
-            self.signals_table.setItem(row, 4, QTableWidgetItem(f"{signal['price']:.4f}"))
 
-            # Stop Loss column (5)
+            # Column 3: Entry
+            self.signals_table.setItem(row, 3, QTableWidgetItem(f"{signal['price']:.4f}"))
+
+            # Column 4: Stop
             stop_price = signal.get("stop_price", 0.0)
             entry_price = signal.get("price", 0)
             if stop_price > 0:
-                self.signals_table.setItem(row, 5, QTableWidgetItem(f"{stop_price:.2f}"))
+                self.signals_table.setItem(row, 4, QTableWidgetItem(f"{stop_price:.2f}"))
             else:
-                self.signals_table.setItem(row, 5, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 4, QTableWidgetItem("-"))
 
-            # SL% column (6)
+            # Column 5: SL%
             initial_sl_pct = signal.get("initial_sl_pct", 0.0)
             is_active = signal.get("status") == "ENTERED" and signal.get("is_open", False)
             if initial_sl_pct > 0:
@@ -350,9 +454,9 @@ class BotDisplayManagerMixin:
                     sl_pct_item = QTableWidgetItem("-")
             if is_active:
                 sl_pct_item.setFlags(sl_pct_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            self.signals_table.setItem(row, 6, sl_pct_item)
+            self.signals_table.setItem(row, 5, sl_pct_item)
 
-            # TR% column (7)
+            # Column 6: TR%
             trailing_pct = signal.get("trailing_stop_pct", 0.0)
             trailing_price = signal.get("trailing_stop_price", 0.0)
 
@@ -370,22 +474,10 @@ class BotDisplayManagerMixin:
                 tr_pct_item = QTableWidgetItem("-")
             if is_active:
                 tr_pct_item.setFlags(tr_pct_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            self.signals_table.setItem(row, 7, tr_pct_item)
+            self.signals_table.setItem(row, 6, tr_pct_item)
 
-            # TR Kurs column (8) - show "(inaktiv)" if TR not yet active
+            # Column 7: TRA% - distance from current price to TR line
             tr_is_active = signal.get("tr_active", False)
-            if trailing_price > 0:
-                if tr_is_active:
-                    tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
-                    tr_price_item.setForeground(QColor("#ff9800"))
-                else:
-                    tr_price_item = QTableWidgetItem(f"{trailing_price:.2f} (inaktiv)")
-                    tr_price_item.setForeground(QColor("#888888"))  # Grayed out
-                self.signals_table.setItem(row, 8, tr_price_item)
-            else:
-                self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
-
-            # TRA% column (9) - distance from current price to TR line
             current_price_for_tra = signal.get("current_price", signal["price"])
             if trailing_price > 0 and current_price_for_tra > 0:
                 tra_pct = abs((current_price_for_tra - trailing_price) / current_price_for_tra) * 100
@@ -393,21 +485,17 @@ class BotDisplayManagerMixin:
                 if tr_is_active:
                     tra_item.setForeground(QColor("#ff9800"))
                 else:
-                    tra_item.setForeground(QColor("#888888"))  # Grayed out when inactive
-                self.signals_table.setItem(row, 9, tra_item)
+                    tra_item.setForeground(QColor("#888888"))
+                self.signals_table.setItem(row, 7, tra_item)
             else:
-                self.signals_table.setItem(row, 9, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 7, QTableWidgetItem("-"))
 
-            # Lock column (10) - show checkbox for active positions
-            # TR Lock only available when TR is active (price crossed activation threshold)
+            # Column 8: TR Lock - checkbox for active positions
             if is_active:
                 lock_checkbox = QCheckBox()
                 lock_checkbox.blockSignals(True)
                 lock_checkbox.setChecked(signal.get("tr_lock_active", False))
 
-                # Disable checkbox if:
-                # 1. No trailing stop configured
-                # 2. TR not yet active (price hasn't crossed activation threshold)
                 if trailing_price <= 0:
                     lock_checkbox.setEnabled(False)
                     lock_checkbox.setToolTip("TR Lock nicht verfügbar - kein Trailing Stop konfiguriert")
@@ -434,50 +522,97 @@ class BotDisplayManagerMixin:
                 lock_layout.addWidget(lock_checkbox)
                 lock_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 lock_layout.setContentsMargins(0, 0, 0, 0)
-                self.signals_table.setCellWidget(row, 10, lock_widget)
+                self.signals_table.setCellWidget(row, 8, lock_widget)
             else:
-                self.signals_table.setItem(row, 10, QTableWidgetItem("-"))
+                self.signals_table.setItem(row, 8, QTableWidgetItem("-"))
 
-            # Status column (11)
-            self.signals_table.setItem(row, 11, QTableWidgetItem(signal["status"]))
+            # Column 9: Status
+            self.signals_table.setItem(row, 9, QTableWidgetItem(signal["status"]))
 
-            # P&L columns - show if quantity > 0 OR invested > 0 OR status is ENTERED
+            # P&L columns
             has_quantity = signal.get("quantity", 0) > 0
             has_invested = signal.get("invested", 0) > 0
             status = signal["status"]
-            is_closed = status.startswith("CLOSED")
+            is_closed = status.startswith("CLOSED") or status in ("SL", "TR Stop", "MACD", "RSI", "Time", "Sold")
             is_entered = status == "ENTERED" and signal.get("is_open", False)
 
-            # Show P&L columns if we have position data (quantity, invested, entered, or closed)
             if has_quantity or has_invested or is_entered or is_closed:
                 current_price = signal.get("current_price", signal["price"])
                 pnl_currency = signal.get("pnl_currency", 0.0)
                 pnl_percent = signal.get("pnl_percent", 0.0)
 
-                # Current price (12)
+                # Column 10: Current
                 if is_closed:
                     exit_price = signal.get("exit_price", current_price)
-                    current_item = QTableWidgetItem(f"{exit_price:.2f} (Exit)")
+                    current_item = QTableWidgetItem(f"{exit_price:.2f}")
                 else:
                     current_item = QTableWidgetItem(f"{current_price:.2f}")
-                self.signals_table.setItem(row, 12, current_item)
+                self.signals_table.setItem(row, 10, current_item)
 
-                # P&L in currency (13) - was column 14
+                # Column 11: P&L €
                 pnl_sign = "+" if pnl_currency >= 0 else ""
                 pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f}")
                 pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
                 pnl_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 13, pnl_item)
+                self.signals_table.setItem(row, 11, pnl_item)
 
-                # P&L in percent (14) - was column 15
+                # Column 12: P&L %
                 pct_sign = "+" if pnl_percent >= 0 else ""
                 pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
                 pct_item.setForeground(QColor(pnl_color))
-                self.signals_table.setItem(row, 14, pct_item)
+                self.signals_table.setItem(row, 12, pct_item)
+
+                # Columns 13-16: Derivative P&L (only if derivative exists)
+                deriv = signal.get("derivative")
+                if deriv and current_price > 0 and hasattr(self, "_calculate_derivative_pnl_for_signal"):
+                    deriv_pnl = self._calculate_derivative_pnl_for_signal(signal, current_price)
+                    if deriv_pnl:
+                        # Column 13: D P&L €
+                        d_pnl_sign = "+" if deriv_pnl["pnl_eur"] >= 0 else ""
+                        d_pnl_item = QTableWidgetItem(f"{d_pnl_sign}{deriv_pnl['pnl_eur']:.2f}")
+                        d_pnl_color = "#26a69a" if deriv_pnl["pnl_eur"] >= 0 else "#ef5350"
+                        d_pnl_item.setForeground(QColor(d_pnl_color))
+                        self.signals_table.setItem(row, 13, d_pnl_item)
+
+                        # Column 14: D P&L %
+                        d_pct_sign = "+" if deriv_pnl["pnl_pct"] >= 0 else ""
+                        d_pct_item = QTableWidgetItem(f"{d_pct_sign}{deriv_pnl['pnl_pct']:.2f}%")
+                        d_pct_item.setForeground(QColor(d_pnl_color))
+                        self.signals_table.setItem(row, 14, d_pct_item)
+
+                        # Column 15: Hebel
+                        self.signals_table.setItem(row, 15, QTableWidgetItem(f"{deriv['leverage']:.1f}"))
+
+                        # Column 16: WKN
+                        self.signals_table.setItem(row, 16, QTableWidgetItem(deriv["wkn"]))
+                    else:
+                        for col in [13, 14, 15, 16]:
+                            self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+                elif deriv:
+                    # Derivative exists but no P&L calculation possible
+                    self.signals_table.setItem(row, 13, QTableWidgetItem("-"))
+                    self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
+                    self.signals_table.setItem(row, 15, QTableWidgetItem(f"{deriv.get('leverage', 0):.1f}"))
+                    self.signals_table.setItem(row, 16, QTableWidgetItem(deriv.get("wkn", "-")))
+                else:
+                    for col in [13, 14, 15, 16]:
+                        self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+
+                # Column 17: Score (hidden)
+                self.signals_table.setItem(row, 17, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+
+                # Column 18: TR Kurs (hidden)
+                if trailing_price > 0:
+                    if tr_is_active:
+                        tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
+                    else:
+                        tr_price_item = QTableWidgetItem(f"{trailing_price:.2f} (inaktiv)")
+                    self.signals_table.setItem(row, 18, tr_price_item)
+                else:
+                    self.signals_table.setItem(row, 18, QTableWidgetItem("-"))
             else:
-                self.signals_table.setItem(row, 12, QTableWidgetItem("-"))
-                self.signals_table.setItem(row, 13, QTableWidgetItem("-"))
-                self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
+                for col in range(10, 19):
+                    self.signals_table.setItem(row, col, QTableWidgetItem("-"))
 
         self._signals_table_updating = False
 

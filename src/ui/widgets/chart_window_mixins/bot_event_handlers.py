@@ -147,6 +147,26 @@ class BotEventHandlersMixin:
         if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'set_debug_hud_visible'):
             self.chart_widget.set_debug_hud_visible(state == Qt.CheckState.Checked.value)
 
+    def _on_derivathandel_changed(self, state: int) -> None:
+        """Handle Derivathandel checkbox change - toggle derivative columns visibility."""
+        is_enabled = self.enable_derivathandel_cb.isChecked()
+        logger.info(f"Derivathandel: {'enabled' if is_enabled else 'disabled'}")
+
+        # Toggle derivative columns visibility in signals table (Spalten 13-16)
+        if hasattr(self, 'signals_table'):
+            for col in [13, 14, 15, 16]:  # D P&L €, D P&L %, Heb, WKN
+                self.signals_table.setColumnHidden(col, not is_enabled)
+
+        # Toggle derivative labels visibility in Current Position GroupBox
+        deriv_labels = [
+            'deriv_separator', 'deriv_wkn_label', 'deriv_leverage_label',
+            'deriv_spread_label', 'deriv_ask_label', 'deriv_pnl_label'
+        ]
+        for label_name in deriv_labels:
+            label = getattr(self, label_name, None)
+            if label:
+                label.setVisible(is_enabled)
+
     def _on_force_reselect(self) -> None:
         """Handle force re-selection button click."""
         logger.info("Forcing strategy re-selection")
@@ -229,6 +249,10 @@ class BotEventHandlersMixin:
             if "disable_macd_exit" in settings:
                 self.disable_macd_exit_cb.setChecked(settings["disable_macd_exit"])
 
+            if "enable_derivathandel" in settings:
+                self.enable_derivathandel_cb.setChecked(settings["enable_derivathandel"])
+                self._on_derivathandel_changed(0)  # Update visibility
+
             # Trailing stop settings
             if "regime_adaptive" in settings:
                 self.regime_adaptive_cb.setChecked(settings["regime_adaptive"])
@@ -280,6 +304,7 @@ class BotEventHandlersMixin:
             "max_daily_loss_pct": self.max_daily_loss_spin.value(),
             "disable_restrictions": self.disable_restrictions_cb.isChecked(),
             "disable_macd_exit": self.disable_macd_exit_cb.isChecked(),
+            "enable_derivathandel": self.enable_derivathandel_cb.isChecked(),
 
             # Trailing stop settings
             "regime_adaptive": self.regime_adaptive_cb.isChecked(),

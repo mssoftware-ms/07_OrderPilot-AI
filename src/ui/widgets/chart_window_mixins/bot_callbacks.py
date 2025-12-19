@@ -241,7 +241,7 @@ class BotCallbacksMixin:
                 })
         else:
             # Candidate signal - add new entry
-            self._signal_history.append({
+            new_signal = {
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "type": signal_type,
                 "side": side,
@@ -254,7 +254,17 @@ class BotCallbacksMixin:
                 "pnl_percent": 0.0,
                 "is_open": False,
                 "label": ""
-            })
+            }
+            self._signal_history.append(new_signal)
+
+            # Pre-fetch derivative for candidate (saves time if confirmed later)
+            if (
+                hasattr(self, "enable_derivathandel_cb")
+                and self.enable_derivathandel_cb.isChecked()
+                and hasattr(self, "_fetch_derivative_for_signal")
+            ):
+                self._add_ki_log_entry("DERIV", f"KO-Suche gestartet (Kandidat {side.upper()})")
+                self._fetch_derivative_for_signal(new_signal)
 
         self._update_signals_table()
 
@@ -288,6 +298,21 @@ class BotCallbacksMixin:
 
                 # Save signal history with chart elements
                 self._save_signal_history()
+
+                # Fetch derivative if Derivathandel is enabled (fallback if not pre-fetched)
+                if (
+                    hasattr(self, "enable_derivathandel_cb")
+                    and self.enable_derivathandel_cb.isChecked()
+                    and hasattr(self, "_fetch_derivative_for_signal")
+                ):
+                    # Find the signal we just updated
+                    for sig in reversed(self._signal_history):
+                        if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                            # Only fetch if not already pre-fetched during candidate phase
+                            if not sig.get("derivative"):
+                                self._add_ki_log_entry("DERIV", "KO-Suche (Fallback bei Bestätigung)")
+                                self._fetch_derivative_for_signal(sig)
+                            break
 
             except Exception as e:
                 logger.error(f"Error drawing chart elements in _on_bot_signal: {e}")

@@ -205,6 +205,10 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
             # Start P&L update timer
             self._start_pnl_update_timer()
 
+            # Restore right column (Score, TR Kurs, Derivative info)
+            if hasattr(self, '_update_position_right_column'):
+                self._update_position_right_column(position)
+
             logger.info(f"Position restored: {side} @ {entry_price:.2f}")
 
         except Exception as e:
@@ -275,6 +279,21 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
                     sign = "+" if pnl_pct >= 0 else ""
                     self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
                     self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
+
+                # Update derivative P&L if enabled
+                if (hasattr(self, 'enable_derivathandel_cb')
+                    and self.enable_derivathandel_cb.isChecked()
+                    and hasattr(self, '_calculate_derivative_pnl_for_signal')):
+                    deriv_pnl = self._calculate_derivative_pnl_for_signal(sig, current_price)
+                    if deriv_pnl and hasattr(self, 'deriv_pnl_label'):
+                        d_pnl_eur = deriv_pnl.get("pnl_eur", 0)
+                        d_pnl_pct = deriv_pnl.get("pnl_pct", 0)
+                        d_color = "#26a69a" if d_pnl_eur >= 0 else "#ef5350"
+                        d_sign = "+" if d_pnl_eur >= 0 else ""
+                        self.deriv_pnl_label.setText(
+                            f"{d_sign}{d_pnl_pct:.2f}% ({d_sign}{d_pnl_eur:.2f} €)"
+                        )
+                        self.deriv_pnl_label.setStyleSheet(f"font-weight: bold; color: {d_color};")
 
         if table_updated:
             self._update_signals_table()
@@ -352,6 +371,10 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
             self.position_entry_label.setText("-")
         if hasattr(self, 'position_stop_label'):
             self.position_stop_label.setText("-")
+
+        # Reset right column (Score, TR Kurs, Derivative labels)
+        if hasattr(self, '_reset_position_right_column'):
+            self._reset_position_right_column()
 
         # Save and update
         self._save_signal_history()

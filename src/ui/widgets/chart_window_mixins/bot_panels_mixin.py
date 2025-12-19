@@ -23,6 +23,7 @@ from PyQt6.QtCore import QSettings, QTimer, pyqtSignal
 
 # Import sub-mixins
 from .bot_callbacks import BotCallbacksMixin
+from .bot_derivative_mixin import BotDerivativeMixin
 from .bot_display_manager import BotDisplayManagerMixin
 from .bot_event_handlers import BotEventHandlersMixin
 from .bot_position_persistence import BotPositionPersistenceMixin
@@ -40,6 +41,7 @@ class BotPanelsMixin(
     BotCallbacksMixin,
     BotDisplayManagerMixin,
     BotPositionPersistenceMixin,
+    BotDerivativeMixin,
 ):
     """Mixin providing bot control and monitoring panels.
 
@@ -87,6 +89,9 @@ class BotPanelsMixin(
         self._current_bot_symbol: str = ""
         self._bot_settings = QSettings("OrderPilot", "TradingApp")
         self._pending_position_restore: list[dict] | None = None
+
+        # Initialize derivative state
+        self._init_derivative_state()
 
         # Initialize settings manager
         from src.core.tradingbot.bot_settings_manager import get_bot_settings_manager
