@@ -88,6 +88,17 @@ class BotDerivativeMixin:
             response: SearchResponse from KO-Finder
             direction: "LONG" or "SHORT"
         """
+        # Always show results in KO-Finder tab (if available)
+        if hasattr(self, "ko_result_panel"):
+            logger.info("Updating KO-Finder panel with %d long, %d short products",
+                       len(response.long), len(response.short))
+            self.ko_result_panel.set_response(response)
+            # Switch to correct tab based on direction
+            if hasattr(self.ko_result_panel, "tabs"):
+                self.ko_result_panel.tabs.setCurrentIndex(0 if direction == "LONG" else 1)
+        else:
+            logger.warning("ko_result_panel not found - KO-Finder tab may not be initialized")
+
         # Select products based on direction
         products = response.long if direction == "LONG" else response.short
 
@@ -102,6 +113,10 @@ class BotDerivativeMixin:
                 f"Kein KO-Produkt gefunden für {direction}",
                 is_error=True,
             )
+            if hasattr(self, "ko_result_panel"):
+                self.ko_result_panel.set_status(
+                    f"Bot: Keine {direction}-Produkte gefunden", "warning"
+                )
             return
 
         # Best product is already first (sorted by score)
@@ -114,10 +129,28 @@ class BotDerivativeMixin:
                 best.wkn,
                 best.score or 0,
             )
+            self._log_derivative_event(
+                signal,
+                f"Bestes Produkt {best.wkn} Score zu niedrig ({best.score or 0:.0f})",
+                is_error=True,
+            )
+            if hasattr(self, "ko_result_panel"):
+                self.ko_result_panel.set_status(
+                    f"Bot: Score zu niedrig ({best.wkn}: {best.score or 0:.0f})", "warning"
+                )
             return
 
         if not best.quote.is_valid:
             logger.warning("Best product has invalid quote: %s", best.wkn)
+            self._log_derivative_event(
+                signal,
+                f"Produkt {best.wkn} hat ungültigen Kurs",
+                is_error=True,
+            )
+            if hasattr(self, "ko_result_panel"):
+                self.ko_result_panel.set_status(
+                    f"Bot: Ungültiger Kurs ({best.wkn})", "warning"
+                )
             return
 
         # Store derivative info in signal
@@ -150,6 +183,21 @@ class BotDerivativeMixin:
             f"KO-Produkt ausgewählt: {best.wkn} (Hebel {best.leverage:.1f}x, "
             f"Score {best.score:.0f})",
         )
+
+        # Show results in KO-Finder tab (if available)
+        if hasattr(self, "ko_result_panel"):
+            logger.info("Updating KO-Finder panel with %d long, %d short products",
+                       len(response.long), len(response.short))
+            self.ko_result_panel.set_response(response)
+            self.ko_result_panel.set_status(
+                f"Bot: {direction} → {best.wkn} (Score {best.score:.0f})",
+                "success"
+            )
+            # Highlight the selected product
+            if hasattr(self.ko_result_panel, "highlight_product"):
+                self.ko_result_panel.highlight_product(best.wkn)
+        else:
+            logger.warning("ko_result_panel not found - KO-Finder tab may not be initialized")
 
         # Update displays
         self._update_signals_table()

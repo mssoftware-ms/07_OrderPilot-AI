@@ -324,3 +324,34 @@ class KOResultPanel(QWidget):
                 updated,
                 underlying_price,
             )
+
+    def highlight_product(self, wkn: str) -> bool:
+        """
+        Highlight a product by WKN in the tables.
+
+        Args:
+            wkn: WKN of product to highlight
+
+        Returns:
+            True if product found and highlighted
+        """
+        # Search in Long table
+        for row, product in enumerate(self.long_model._products):
+            if product.wkn == wkn:
+                self.tabs.setCurrentIndex(0)  # Switch to Long tab
+                self.long_table.selectRow(row)
+                self.long_table.scrollTo(self.long_model.index(row, 0))
+                logger.info("Highlighted product %s in Long table (row %d)", wkn, row)
+                return True
+
+        # Search in Short table
+        for row, product in enumerate(self.short_model._products):
+            if product.wkn == wkn:
+                self.tabs.setCurrentIndex(1)  # Switch to Short tab
+                self.short_table.selectRow(row)
+                self.short_table.scrollTo(self.short_model.index(row, 0))
+                logger.info("Highlighted product %s in Short table (row %d)", wkn, row)
+                return True
+
+        logger.warning("Product %s not found for highlighting", wkn)
+        return False

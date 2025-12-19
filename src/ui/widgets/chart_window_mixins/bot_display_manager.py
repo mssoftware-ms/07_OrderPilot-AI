@@ -404,7 +404,8 @@ class BotDisplayManagerMixin:
         Column layout (19 columns):
         0: Time, 1: Type, 2: Side, 3: Entry, 4: Stop, 5: SL%, 6: TR%,
         7: TRA%, 8: TR Lock, 9: Status, 10: Current, 11: P&L €, 12: P&L %,
-        13: D P&L €, 14: D P&L %, 15: Heb, 16: WKN, 17: Score (hidden), 18: TR Kurs (hidden)
+        13: D P&L € (hidden), 14: D P&L % (hidden), 15: Heb (hidden), 16: WKN (hidden),
+        17: Score (hidden), 18: TR Stop (visible - orange when active, gray when inactive)
         """
         self._signals_table_updating = True
 
@@ -533,10 +534,11 @@ class BotDisplayManagerMixin:
             has_quantity = signal.get("quantity", 0) > 0
             has_invested = signal.get("invested", 0) > 0
             status = signal["status"]
-            is_closed = status.startswith("CLOSED") or status in ("SL", "TR Stop", "MACD", "RSI", "Time", "Sold")
+            is_closed = status.startswith("CLOSED") or status in ("SL", "TR", "MACD", "RSI", "Sell")
             is_entered = status == "ENTERED" and signal.get("is_open", False)
+            has_derivative = signal.get("derivative") is not None
 
-            if has_quantity or has_invested or is_entered or is_closed:
+            if has_quantity or has_invested or is_entered or is_closed or has_derivative:
                 current_price = signal.get("current_price", signal["price"])
                 pnl_currency = signal.get("pnl_currency", 0.0)
                 pnl_percent = signal.get("pnl_percent", 0.0)
@@ -601,12 +603,14 @@ class BotDisplayManagerMixin:
                 # Column 17: Score (hidden)
                 self.signals_table.setItem(row, 17, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
 
-                # Column 18: TR Kurs (hidden)
+                # Column 18: TR Stop (visible for stop monitoring)
                 if trailing_price > 0:
                     if tr_is_active:
                         tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
+                        tr_price_item.setForeground(QColor("#ff9800"))  # Orange when active
                     else:
                         tr_price_item = QTableWidgetItem(f"{trailing_price:.2f} (inaktiv)")
+                        tr_price_item.setForeground(QColor("#888888"))  # Gray when inactive
                     self.signals_table.setItem(row, 18, tr_price_item)
                 else:
                     self.signals_table.setItem(row, 18, QTableWidgetItem("-"))

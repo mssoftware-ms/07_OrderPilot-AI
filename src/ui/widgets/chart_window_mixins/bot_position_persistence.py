@@ -343,17 +343,18 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
         # Get current price for P&L calculation
         current_price = signal.get("current_price", signal.get("price", 0))
 
-        # Update signal - use "Sold" for manual close
-        signal["status"] = "Sold"
+        # Update signal - use "Sell" for manual close
+        signal["status"] = "Sell"
         signal["is_open"] = False
         signal["exit_timestamp"] = int(datetime.now().timestamp())
         signal["exit_price"] = current_price
 
-        # Remove chart elements
+        # Remove all chart elements
         if hasattr(self, 'chart_widget'):
             try:
                 self.chart_widget.remove_stop_line("initial_stop")
                 self.chart_widget.remove_stop_line("trailing_stop")
+                self.chart_widget.remove_stop_line("entry_line")
             except:
                 pass
 
@@ -375,6 +376,18 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
         # Reset right column (Score, TR Kurs, Derivative labels)
         if hasattr(self, '_reset_position_right_column'):
             self._reset_position_right_column()
+
+        # Reset bot controller for new trades
+        if hasattr(self, '_bot_controller') and self._bot_controller:
+            self._bot_controller._position = None
+            self._bot_controller._current_signal = None
+            if hasattr(self._bot_controller, '_state_machine'):
+                from src.core.tradingbot.state_machine import BotTrigger
+                try:
+                    self._bot_controller._state_machine.trigger(BotTrigger.RESET, force=True)
+                    self._add_ki_log_entry("BOT", "State Machine zurückgesetzt -> FLAT")
+                except Exception as e:
+                    logger.error(f"Failed to reset state machine: {e}")
 
         # Save and update
         self._save_signal_history()
@@ -403,6 +416,7 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
                 try:
                     self.chart_widget.remove_stop_line("initial_stop")
                     self.chart_widget.remove_stop_line("trailing_stop")
+                    self.chart_widget.remove_stop_line("entry_line")
                 except:
                     pass
 

@@ -77,6 +77,13 @@ class BotStateHandlersMixin:
         """
         state = self._state_machine.state
 
+        # Log state for debugging
+        self._log_activity(
+            "STATE",
+            f"Processing state: {state.value} | Position: {self._position is not None} | "
+            f"Bar: O={bar.get('open', 0):.2f} H={bar.get('high', 0):.2f} L={bar.get('low', 0):.2f} C={bar.get('close', 0):.2f}"
+        )
+
         if state == BotState.FLAT:
             return await self._process_flat(features)
 
@@ -85,6 +92,7 @@ class BotStateHandlersMixin:
 
         elif state == BotState.ENTERED:
             # Waiting for fill - check timeout
+            self._log_activity("DEBUG", "State ENTERED - waiting for fill, no stop check!")
             return None
 
         elif state == BotState.MANAGE:
@@ -334,12 +342,48 @@ class BotStateHandlersMixin:
             self._state_machine.error("No position in MANAGE state")
             return None
 
-        price = bar.get("close", features.close)
-        self._position.update_price(price)
+        close_price = bar.get("close", features.close)
+        low_price = bar.get("low", close_price)
+        high_price = bar.get("high", close_price)
+
+        # Update position with close price for P&L calculation
+        self._position.update_price(close_price)
         self._position.bars_held += 1
 
-        # Check stop hit
-        if self._position.is_stopped_out():
+        # Check stop hit using the EXTREME price of the candle (LOW for LONG, HIGH for SHORT)
+        # This is critical: a candle's low might breach the stop even if close doesn't
+        stop_price = self._position.trailing.current_stop_price
+        initial_stop = self._position.trailing.initial_stop_price
+        stop_hit = False
+
+        # Log stop check details
+        side_str = self._position.side.value.upper()
+        self._log_activity(
+            "STOP_CHECK",
+            f"Side={side_str} | Stop={stop_price:.2f} (Initial={initial_stop:.2f}) | "
+            f"Candle: H={high_price:.2f} L={low_price:.2f} C={close_price:.2f}"
+        )
+
+        if self._position.side == TradeSide.LONG:
+            # For LONG: check if LOW breached stop
+            if low_price <= stop_price:
+                stop_hit = True
+                self._log_activity(
+                    "STOP",
+                    f"🛑 Stop-Loss getroffen! LOW={low_price:.2f} <= Stop={stop_price:.2f} "
+                    f"(Close={close_price:.2f})"
+                )
+        else:
+            # For SHORT: check if HIGH breached stop
+            if high_price >= stop_price:
+                stop_hit = True
+                self._log_activity(
+                    "STOP",
+                    f"🛑 Stop-Loss getroffen! HIGH={high_price:.2f} >= Stop={stop_price:.2f} "
+                    f"(Close={close_price:.2f})"
+                )
+
+        if stop_hit:
             return await self._handle_stop_hit(features)
 
         # Check exit signals
@@ -405,14 +449,28 @@ class BotStateHandlersMixin:
 
         self._trades_today += 1
         side = self._position.side if self._position else TradeSide.NONE
+
+        # Determine if this was initial stop (SL) or trailing stop (TS)
+        # Trailing stop is active if the stop was moved from initial position
+        is_trailing_stop = False
+        if self._position and self._position.trailing:
+            initial_stop = self._position.trailing.initial_stop_price
+            current_stop = self._position.trailing.current_stop_price
+            # If stop was moved (trailing activated), it's a TS exit
+            if abs(current_stop - initial_stop) > 0.0001:
+                is_trailing_stop = True
+
         self._position = None
+
+        reason_codes = ["TRAILING_STOP_HIT", "POSITION_CLOSED"] if is_trailing_stop else ["STOP_HIT", "POSITION_CLOSED"]
+        stop_type = "Trailing Stop" if is_trailing_stop else "Stop Loss"
 
         return self._create_decision(
             BotAction.EXIT,
             side,
             features,
-            ["STOP_HIT", "POSITION_CLOSED"],
-            notes=f"P&L: {pnl:.2f}"
+            reason_codes,
+            notes=f"{stop_type} hit, P&L: {pnl:.2f}"
         )
 
     async def _handle_exit_signal(

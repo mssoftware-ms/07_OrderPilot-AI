@@ -178,6 +178,17 @@ class BotCallbacksMixin:
             f"SL%={initial_sl_pct}, TR%={trailing_pct}, TRA_threshold={trailing_activation}"
         )
 
+        # Calculate stop_price from UI if bot didn't provide one
+        if signal_stop_price <= 0 and entry_price > 0 and initial_sl_pct > 0:
+            if side.lower() == "long":
+                signal_stop_price = entry_price * (1 - initial_sl_pct / 100)
+            else:  # short
+                signal_stop_price = entry_price * (1 + initial_sl_pct / 100)
+            self._add_ki_log_entry(
+                "DEBUG",
+                f"Stop-Preis aus UI berechnet: {side.upper()} entry={entry_price:.2f} SL%={initial_sl_pct:.2f} -> SL={signal_stop_price:.2f}"
+            )
+
         # For confirmed signals, update existing candidate instead of adding new
         if signal_type == "confirmed":
             for sig in reversed(self._signal_history):
@@ -189,9 +200,8 @@ class BotCallbacksMixin:
                     sig["is_open"] = True
                     sig["label"] = f"E:{int(score * 100)}"
                     sig["entry_timestamp"] = int(datetime.now().timestamp())
-                    # Set stop_price from signal (calculated by bot)
-                    if signal_stop_price > 0:
-                        sig["stop_price"] = signal_stop_price
+                    # Set stop_price (from bot or calculated from UI)
+                    sig["stop_price"] = signal_stop_price
                     # Set initial invested, TR% values from UI
                     sig["invested"] = invested
                     sig["initial_sl_pct"] = initial_sl_pct
@@ -223,7 +233,7 @@ class BotCallbacksMixin:
                     "side": side,
                     "score": score,
                     "price": entry_price,
-                    "stop_price": signal_stop_price if signal_stop_price > 0 else 0,
+                    "stop_price": signal_stop_price,  # Already calculated from UI if bot didn't provide
                     "status": "ENTERED",
                     "quantity": 0.0,
                     "invested": invested,
@@ -240,37 +250,64 @@ class BotCallbacksMixin:
                     "tr_active": False,  # Will activate when price > entry + TRA%
                 })
         else:
-            # Candidate signal - add new entry
-            new_signal = {
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "type": signal_type,
-                "side": side,
-                "score": score,
-                "price": entry_price,
-                "status": status,
-                "quantity": 0.0,
-                "current_price": entry_price,
-                "pnl_currency": 0.0,
-                "pnl_percent": 0.0,
-                "is_open": False,
-                "label": ""
-            }
-            self._signal_history.append(new_signal)
+            # Candidate signal - check if candidate already exists for this side
+            existing_candidate = None
+            for sig in reversed(self._signal_history):
+                if sig["type"] == "candidate" and sig["side"] == side and sig["status"] == "PENDING":
+                    existing_candidate = sig
+                    break
 
-            # Pre-fetch derivative for candidate (saves time if confirmed later)
-            if (
-                hasattr(self, "enable_derivathandel_cb")
-                and self.enable_derivathandel_cb.isChecked()
-                and hasattr(self, "_fetch_derivative_for_signal")
-            ):
-                self._add_ki_log_entry("DERIV", f"KO-Suche gestartet (Kandidat {side.upper()})")
-                self._fetch_derivative_for_signal(new_signal)
+            if existing_candidate:
+                # Update existing candidate instead of adding new
+                existing_candidate["time"] = datetime.now().strftime("%H:%M:%S")
+                existing_candidate["score"] = score
+                existing_candidate["price"] = entry_price
+                existing_candidate["current_price"] = entry_price
+                logger.info(f"Updated existing candidate: {side} @ {entry_price:.4f} (Score: {score:.2f})")
+                self._add_ki_log_entry("SIGNAL", f"Kandidat aktualisiert: {side} @ {entry_price:.4f}")
+
+                # Re-fetch derivative if needed (price changed)
+                if (
+                    hasattr(self, "enable_derivathandel_cb")
+                    and self.enable_derivathandel_cb.isChecked()
+                    and hasattr(self, "_fetch_derivative_for_signal")
+                    and not existing_candidate.get("derivative")
+                ):
+                    self._add_ki_log_entry("DERIV", f"KO-Suche gestartet (Kandidat {side.upper()} aktualisiert)")
+                    self._fetch_derivative_for_signal(existing_candidate)
+            else:
+                # No existing candidate - add new entry
+                new_signal = {
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "type": signal_type,
+                    "side": side,
+                    "score": score,
+                    "price": entry_price,
+                    "status": status,
+                    "quantity": 0.0,
+                    "current_price": entry_price,
+                    "pnl_currency": 0.0,
+                    "pnl_percent": 0.0,
+                    "is_open": False,
+                    "label": ""
+                }
+                self._signal_history.append(new_signal)
+
+                # Pre-fetch derivative for candidate (saves time if confirmed later)
+                if (
+                    hasattr(self, "enable_derivathandel_cb")
+                    and self.enable_derivathandel_cb.isChecked()
+                    and hasattr(self, "_fetch_derivative_for_signal")
+                ):
+                    self._add_ki_log_entry("DERIV", f"KO-Suche gestartet (Kandidat {side.upper()})")
+                    self._fetch_derivative_for_signal(new_signal)
 
         self._update_signals_table()
 
         # For confirmed signals, draw chart elements directly as backup
         # (in case _on_bot_decision doesn't fire or has issues)
         if signal_type == "confirmed" and hasattr(self, 'chart_widget'):
+            self._add_ki_log_entry("DEBUG", f"Chart-Elemente zeichnen: entry={entry_price:.2f}, SL={signal_stop_price:.2f}")
             try:
                 # Draw Entry Marker
                 entry_ts = int(datetime.now().timestamp())
@@ -284,6 +321,18 @@ class BotCallbacksMixin:
                 )
                 self._add_ki_log_entry("CHART", f"Entry-Marker gezeichnet: {label} @ {entry_price:.2f}")
 
+                # Draw Entry Line (horizontal line at entry price for visibility)
+                entry_label = f"Entry @ {entry_price:.2f}"
+                entry_color = "#26a69a" if side.lower() == "long" else "#ef5350"
+                self.chart_widget.add_stop_line(
+                    "entry_line",
+                    entry_price,
+                    line_type="target",  # Use target type for green styling
+                    color=entry_color,
+                    label=entry_label
+                )
+                self._add_ki_log_entry("CHART", f"Entry-Linie gezeichnet @ {entry_price:.2f}")
+
                 # Draw Stop Loss Line
                 if signal_stop_price > 0:
                     sl_label = f"SL @ {signal_stop_price:.2f} ({initial_sl_pct:.2f}%)"
@@ -295,6 +344,8 @@ class BotCallbacksMixin:
                         label=sl_label
                     )
                     self._add_ki_log_entry("CHART", f"Stop-Loss-Linie gezeichnet @ {signal_stop_price:.2f}")
+                else:
+                    self._add_ki_log_entry("WARN", f"Kein Stop-Preis! signal_stop_price={signal_stop_price}")
 
                 # Save signal history with chart elements
                 self._save_signal_history()
@@ -316,6 +367,7 @@ class BotCallbacksMixin:
 
             except Exception as e:
                 logger.error(f"Error drawing chart elements in _on_bot_signal: {e}")
+                self._add_ki_log_entry("ERROR", f"Chart-Fehler: {e}")
 
     def _on_bot_decision(self, decision: Any) -> None:
         """Handle bot decision event."""
@@ -399,20 +451,62 @@ class BotCallbacksMixin:
                     # Determine exit reason from decision
                     reason_codes = getattr(decision, 'reason_codes', [])
                     exit_status = "CLOSED"  # Default
+                    is_trailing_stop_exit = False
 
                     # Map reason codes to display status
+                    is_rsi_exit = False
                     if "STOP_HIT" in reason_codes:
                         exit_status = "SL"
                     elif "TRAILING_STOP" in reason_codes or "TRAILING_STOP_HIT" in reason_codes:
-                        exit_status = "TR Stop"
+                        exit_status = "TR"  # Trailing Stop
+                        is_trailing_stop_exit = True
                     elif "MACD_CROSS" in reason_codes:
                         exit_status = "MACD"
                     elif "RSI_EXTREME" in reason_codes or "RSI_EXTREME_OVERBOUGHT" in reason_codes or "RSI_EXTREME_OVERSOLD" in reason_codes:
                         exit_status = "RSI"
-                    elif "TIME_STOP" in reason_codes:
-                        exit_status = "Time"
+                        is_rsi_exit = True
                     elif "MANUAL" in reason_codes:
-                        exit_status = "Sold"
+                        exit_status = "Sell"
+                    # TIME_STOP entfernt
+
+                    # WICHTIG: RSI Exit blockieren wenn Checkbox aktiv (aber Marker zeichnen)
+                    if is_rsi_exit and hasattr(self, 'disable_rsi_exit_cb') and self.disable_rsi_exit_cb.isChecked():
+                        # RSI Marker zeichnen aber Exit blockieren
+                        current_price = 0.0
+                        if self._bot_controller and self._bot_controller._last_features:
+                            current_price = self._bot_controller._last_features.close
+                        if hasattr(self, 'chart_widget') and current_price > 0:
+                            # Bestimme ob overbought oder oversold
+                            is_overbought = "RSI_EXTREME_OVERBOUGHT" in reason_codes
+                            rsi_text = "RSI↓" if is_overbought else "RSI↑"
+                            self.chart_widget.add_bot_marker(
+                                timestamp=int(datetime.now().timestamp()),
+                                price=current_price,
+                                marker_type=MarkerType.EXIT_SIGNAL,
+                                side="rsi",
+                                text=rsi_text
+                            )
+                        self._add_ki_log_entry(
+                            "BLOCK",
+                            f"RSI Exit BLOCKIERT (Checkbox aktiv) - Marker gezeichnet @ {current_price:.2f}"
+                        )
+                        return  # Exit blockiert, aber Marker gezeichnet
+
+                    # WICHTIG: TR Exit nur wenn tr_active=True in signal_history!
+                    if is_trailing_stop_exit:
+                        active_sig = None
+                        for sig in reversed(self._signal_history):
+                            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                                active_sig = sig
+                                break
+
+                        if active_sig and not active_sig.get("tr_active", False):
+                            self._add_ki_log_entry(
+                                "BLOCK",
+                                f"TR Exit BLOCKIERT! tr_active=False (Aktivierungsschwelle nicht erreicht)"
+                            )
+                            logger.warning("Blocked TR exit because tr_active=False")
+                            return  # Exit blockiert!
 
                     # Get current price for P&L
                     current_price = 0.0
@@ -431,10 +525,20 @@ class BotCallbacksMixin:
                             self._add_ki_log_entry("EXIT", f"Position geschlossen: {exit_status} @ {current_price:.2f}")
                             break
 
-                    # Remove stop lines
+                    # Remove all position lines
                     self.chart_widget.remove_stop_line("initial_stop")
                     self.chart_widget.remove_stop_line("trailing_stop")
-                    self._add_ki_log_entry("CHART", "Stop-Linien entfernt (Position geschlossen)")
+                    self.chart_widget.remove_stop_line("entry_line")
+                    self._add_ki_log_entry("CHART", "Alle Linien entfernt (Position geschlossen)")
+
+                    # Ensure state machine is reset for new trades
+                    if self._bot_controller and hasattr(self._bot_controller, '_state_machine'):
+                        from src.core.tradingbot.state_machine import BotTrigger
+                        try:
+                            self._bot_controller._state_machine.trigger(BotTrigger.RESET, force=True)
+                            self._add_ki_log_entry("BOT", "State Machine zurückgesetzt -> FLAT (bereit für neue Signale)")
+                        except Exception as reset_e:
+                            logger.error(f"Failed to reset state machine: {reset_e}")
 
             except Exception as e:
                 logger.error(f"Error updating chart for decision: {e}")
@@ -579,24 +683,39 @@ class BotCallbacksMixin:
             color, status = state_colors[new_state.lower()]
             self._update_bot_status(status, color)
 
-    def _on_chart_candle_closed(self, previous_close: float, new_open: float) -> None:
+    def _on_chart_candle_closed(
+        self,
+        prev_open: float,
+        prev_high: float,
+        prev_low: float,
+        prev_close: float,
+        new_open: float
+    ) -> None:
         """Handle candle close event from chart - feed bar to bot.
 
         This is the main entry point for bot bar processing when using
         tick-based streaming (not event-bus MARKET_BAR).
 
         Args:
-            previous_close: The close price of the completed candle
-            new_open: The open price of the new candle
+            prev_open: Open price of the completed candle
+            prev_high: High price of the completed candle
+            prev_low: Low price of the completed candle
+            prev_close: Close price of the completed candle
+            new_open: Open price of the new candle
         """
         import asyncio
 
         # First, call the TR% lock handler if it exists
         if hasattr(self, '_on_candle_closed'):
             try:
-                self._on_candle_closed(previous_close, new_open)
+                self._on_candle_closed(prev_close, new_open)
             except Exception as e:
                 logger.error(f"Error in TR% lock handler: {e}")
+
+        # =============================================================
+        # SIMPLE STOP CHECK - directly against UI signal_history values
+        # =============================================================
+        self._check_stops_on_candle_close(prev_high, prev_low, prev_close)
 
         # Feed the closed candle to the bot if running
         if not hasattr(self, '_bot_controller') or self._bot_controller is None:
@@ -605,58 +724,186 @@ class BotCallbacksMixin:
         if not self._bot_controller._running:
             return
 
-        # Build bar data from chart's last closed candle
-        if not hasattr(self, 'chart_widget'):
-            return
-
+        # Build bar data from signal parameters (already have OHLC from signal)
         try:
-            # Get the last closed candle data from chart widget
-            bar_data = None
-
-            # Try to get candle data from streaming mixin attributes
-            if hasattr(self.chart_widget, '_current_candle_time'):
-                # The streaming mixin tracks the current candle
-                # When candle_closed fires, the previous candle data is:
+            # Get candle time from chart widget
+            candle_time = 0
+            candle_volume = 0
+            if hasattr(self, 'chart_widget'):
                 chart = self.chart_widget
-                candle_time = getattr(chart, '_current_candle_time', 0) - 60  # Previous minute
-                candle_open = getattr(chart, '_current_candle_open', previous_close)
-                candle_high = getattr(chart, '_current_candle_high', previous_close)
-                candle_low = getattr(chart, '_current_candle_low', previous_close)
-                candle_volume = getattr(chart, '_current_candle_volume', 0)
+                # The current time is for the NEW candle, so subtract 60 for previous
+                candle_time = getattr(chart, '_current_candle_time', int(datetime.now().timestamp())) - 60
+                candle_volume = getattr(chart, '_prev_candle_volume', 0)
 
-                bar_data = {
-                    'timestamp': datetime.fromtimestamp(candle_time),
-                    'time': candle_time,
-                    'open': float(candle_open),
-                    'high': float(candle_high),
-                    'low': float(candle_low),
-                    'close': float(previous_close),
-                    'volume': float(candle_volume),
-                }
+            bar_data = {
+                'timestamp': datetime.fromtimestamp(candle_time) if candle_time > 0 else datetime.now(),
+                'time': candle_time,
+                'open': float(prev_open),
+                'high': float(prev_high),
+                'low': float(prev_low),
+                'close': float(prev_close),
+                'volume': float(candle_volume),
+            }
 
-            # Fallback: get from chart's DataFrame if available
-            if bar_data is None and hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                try:
-                    df = self.chart_widget.data
-                    if len(df) > 0:
-                        last_row = df.iloc[-1]
-                        bar_data = {
-                            'timestamp': df.index[-1] if hasattr(df.index[-1], 'timestamp') else datetime.now(),
-                            'open': float(last_row.get('open', previous_close)),
-                            'high': float(last_row.get('high', previous_close)),
-                            'low': float(last_row.get('low', previous_close)),
-                            'close': float(previous_close),
-                            'volume': float(last_row.get('volume', 0)),
-                        }
-                except Exception as e:
-                    logger.warning(f"Could not get bar data from chart DataFrame: {e}")
-
-            if bar_data:
-                logger.info(f"Feeding candle to bot: O:{bar_data['open']:.2f} H:{bar_data['high']:.2f} L:{bar_data['low']:.2f} C:{bar_data['close']:.2f}")
-                # Use asyncio.ensure_future for qasync compatibility
-                asyncio.ensure_future(self._bot_controller.on_bar(bar_data))
-            else:
-                logger.warning("Could not build bar data for bot - no candle data available")
+            logger.info(
+                f"Feeding candle to bot: O:{bar_data['open']:.2f} H:{bar_data['high']:.2f} "
+                f"L:{bar_data['low']:.2f} C:{bar_data['close']:.2f}"
+            )
+            # Use asyncio.ensure_future for qasync compatibility
+            asyncio.ensure_future(self._bot_controller.on_bar(bar_data))
 
         except Exception as e:
             logger.error(f"Error feeding candle to bot: {e}")
+
+    def _check_stops_on_candle_close(
+        self,
+        candle_high: float,
+        candle_low: float,
+        candle_close: float
+    ) -> None:
+        """Check if any stops were hit by this candle.
+
+        SIMPLE LOGIC:
+        - SHORT: if candle_high >= stop_price → SELL (price went above stop)
+        - LONG: if candle_low <= stop_price → SELL (price went below stop)
+
+        Checks both initial stop (Stop column) and trailing stop (TR Stop).
+
+        Args:
+            candle_high: High price of the closed candle
+            candle_low: Low price of the closed candle
+            candle_close: Close price of the closed candle
+        """
+        # Find active position in signal history
+        active_signal = None
+        for sig in self._signal_history:
+            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                active_signal = sig
+                break
+
+        if not active_signal:
+            return
+
+        side = active_signal.get("side", "").lower()
+        stop_price = active_signal.get("stop_price", 0)  # Initial SL (column "Stop")
+        tr_stop_price = active_signal.get("trailing_stop_price", 0)  # Trailing Stop
+        tr_active = active_signal.get("tr_active", False)  # TR only active after threshold crossed
+
+        # Log the check
+        self._add_ki_log_entry(
+            "STOP_CHECK",
+            f"Kerze H={candle_high:.2f} L={candle_low:.2f} | "
+            f"Side={side.upper()} | SL={stop_price:.2f} | TR-Stop={tr_stop_price:.2f} (aktiv={tr_active})"
+        )
+
+        if stop_price <= 0 and tr_stop_price <= 0:
+            self._add_ki_log_entry("DEBUG", "Kein Stop gesetzt!")
+            return
+
+        stop_hit = False
+        exit_reason = ""
+
+        if side == "short":
+            # SHORT: sell if candle HIGH >= stop (price went UP above our stop)
+            # Check initial SL first
+            if stop_price > 0 and candle_high >= stop_price:
+                stop_hit = True
+                exit_reason = "SL"
+                self._add_ki_log_entry(
+                    "STOP",
+                    f"🛑 SL getroffen! HIGH={candle_high:.2f} >= SL={stop_price:.2f}"
+                )
+            # Check TR stop ONLY if tr_active (threshold crossed)
+            elif tr_active and tr_stop_price > 0 and candle_high >= tr_stop_price:
+                stop_hit = True
+                exit_reason = "TR"
+                self._add_ki_log_entry(
+                    "STOP",
+                    f"🛑 TR getroffen! HIGH={candle_high:.2f} >= TR-Stop={tr_stop_price:.2f}"
+                )
+
+        elif side == "long":
+            # LONG: sell if candle LOW <= stop (price went DOWN below our stop)
+            # Check initial SL first
+            if stop_price > 0 and candle_low <= stop_price:
+                stop_hit = True
+                exit_reason = "SL"
+                self._add_ki_log_entry(
+                    "STOP",
+                    f"🛑 SL getroffen! LOW={candle_low:.2f} <= SL={stop_price:.2f}"
+                )
+            # Check TR stop ONLY if tr_active (threshold crossed)
+            elif tr_active and tr_stop_price > 0 and candle_low <= tr_stop_price:
+                stop_hit = True
+                exit_reason = "TR"
+                self._add_ki_log_entry(
+                    "STOP",
+                    f"🛑 TR getroffen! LOW={candle_low:.2f} <= TR-Stop={tr_stop_price:.2f}"
+                )
+
+        if stop_hit:
+            self._execute_stop_exit(active_signal, exit_reason, candle_close)
+
+    def _execute_stop_exit(self, signal: dict, exit_reason: str, exit_price: float) -> None:
+        """Execute stop exit - close the position.
+
+        Args:
+            signal: The signal dict from signal_history
+            exit_reason: "SL" or "TR"
+            exit_price: Price at which to exit (candle close)
+        """
+        self._add_ki_log_entry("EXIT", f"Position wird geschlossen: {exit_reason} @ {exit_price:.2f}")
+
+        # Update signal in history
+        signal["status"] = exit_reason
+        signal["is_open"] = False
+        signal["exit_price"] = exit_price
+        signal["exit_timestamp"] = int(datetime.now().timestamp())
+
+        # Calculate final P&L
+        entry_price = signal.get("price", 0)
+        invested = signal.get("invested", 0)
+        side = signal.get("side", "long").lower()
+
+        if entry_price > 0:
+            if side == "long":
+                pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+            else:
+                pnl_pct = ((entry_price - exit_price) / entry_price) * 100
+
+            pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
+            signal["pnl_percent"] = pnl_pct
+            signal["pnl_currency"] = pnl_currency
+
+            self._add_ki_log_entry(
+                "EXIT",
+                f"P&L: {pnl_pct:+.2f}% ({pnl_currency:+.2f} EUR)"
+            )
+
+        # Remove all position lines from chart
+        if hasattr(self, 'chart_widget'):
+            try:
+                self.chart_widget.remove_stop_line("initial_stop")
+                self.chart_widget.remove_stop_line("trailing_stop")
+                self.chart_widget.remove_stop_line("entry_line")
+                self._add_ki_log_entry("CHART", "Alle Linien entfernt (Position geschlossen)")
+            except Exception as e:
+                logger.error(f"Error removing lines: {e}")
+
+        # Save and update UI
+        self._save_signal_history()
+        self._update_signals_table()
+        self._update_bot_display()
+
+        # Reset bot controller position and state machine for new trades
+        if self._bot_controller:
+            self._bot_controller._position = None
+            self._bot_controller._current_signal = None
+            # Reset state machine to FLAT so bot can look for new entries
+            if hasattr(self._bot_controller, '_state_machine'):
+                from src.core.tradingbot.state_machine import BotTrigger
+                try:
+                    self._bot_controller._state_machine.trigger(BotTrigger.RESET, force=True)
+                    self._add_ki_log_entry("BOT", "State Machine zurückgesetzt -> FLAT (bereit für neue Signale)")
+                except Exception as e:
+                    logger.error(f"Failed to reset state machine: {e}")

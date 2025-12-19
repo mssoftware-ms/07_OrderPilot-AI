@@ -249,6 +249,9 @@ class BotEventHandlersMixin:
             if "disable_macd_exit" in settings:
                 self.disable_macd_exit_cb.setChecked(settings["disable_macd_exit"])
 
+            if "disable_rsi_exit" in settings:
+                self.disable_rsi_exit_cb.setChecked(settings["disable_rsi_exit"])
+
             if "enable_derivathandel" in settings:
                 self.enable_derivathandel_cb.setChecked(settings["enable_derivathandel"])
                 self._on_derivathandel_changed(0)  # Update visibility
@@ -304,6 +307,7 @@ class BotEventHandlersMixin:
             "max_daily_loss_pct": self.max_daily_loss_spin.value(),
             "disable_restrictions": self.disable_restrictions_cb.isChecked(),
             "disable_macd_exit": self.disable_macd_exit_cb.isChecked(),
+            "disable_rsi_exit": self.disable_rsi_exit_cb.isChecked(),
             "enable_derivathandel": self.enable_derivathandel_cb.isChecked(),
 
             # Trailing stop settings

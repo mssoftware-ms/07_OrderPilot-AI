@@ -194,7 +194,17 @@ class BotUIPanelsMixin:
             "Position wird nur durch Stop-Loss geschlossen.\n"
             "MACD-Signale werden trotzdem im Chart angezeigt."
         )
-        settings_layout.addRow("Stop-Loss Only:", self.disable_macd_exit_cb)
+        settings_layout.addRow("MACD-Exit:", self.disable_macd_exit_cb)
+
+        # Disable RSI Extreme exit checkbox
+        self.disable_rsi_exit_cb = QCheckBox("RSI-Extrem-Exit deaktivieren")
+        self.disable_rsi_exit_cb.setChecked(False)
+        self.disable_rsi_exit_cb.setToolTip(
+            "Deaktiviert den automatischen Verkauf bei RSI-Extremwerten.\n"
+            "Position wird nur durch Stop-Loss geschlossen.\n"
+            "RSI-Extrem-Signale werden trotzdem im Chart angezeigt."
+        )
+        settings_layout.addRow("RSI-Exit:", self.disable_rsi_exit_cb)
 
         # Derivathandel checkbox
         self.enable_derivathandel_cb = QCheckBox("Derivathandel aktivieren")
@@ -489,8 +499,12 @@ class BotUIPanelsMixin:
         position_h_layout.setSpacing(20)
 
         # ---- Left column: Position info ----
-        left_form = QFormLayout()
+        left_widget = QWidget()
+        left_widget.setMinimumWidth(180)
+        left_widget.setMaximumWidth(220)
+        left_form = QFormLayout(left_widget)
         left_form.setVerticalSpacing(2)
+        left_form.setContentsMargins(0, 0, 0, 0)
 
         self.position_side_label = QLabel("FLAT")
         self.position_side_label.setStyleSheet("font-weight: bold;")
@@ -519,11 +533,14 @@ class BotUIPanelsMixin:
         self.position_bars_held_label = QLabel("-")
         left_form.addRow("Bars Held:", self.position_bars_held_label)
 
-        position_h_layout.addLayout(left_form)
+        position_h_layout.addWidget(left_widget)
 
         # ---- Right column: Score, TR, Derivative ----
-        right_form = QFormLayout()
+        right_widget = QWidget()
+        right_widget.setMinimumWidth(160)
+        right_form = QFormLayout(right_widget)
         right_form.setVerticalSpacing(2)
+        right_form.setContentsMargins(0, 0, 0, 0)
 
         self.position_score_label = QLabel("-")
         self.position_score_label.setStyleSheet("font-weight: bold; color: #26a69a;")
@@ -554,7 +571,7 @@ class BotUIPanelsMixin:
         self.deriv_pnl_label.setStyleSheet("font-weight: bold;")
         right_form.addRow("D P&L:", self.deriv_pnl_label)
 
-        position_h_layout.addLayout(right_form)
+        position_h_layout.addWidget(right_widget)
         position_h_layout.addStretch()
 
         position_group.setLayout(position_h_layout)
@@ -575,14 +592,14 @@ class BotUIPanelsMixin:
         self.signals_table.setHorizontalHeaderLabels([
             "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
             "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
-            "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Kurs"
+            "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop"
         ])
         # Derivat-Spalten initial verstecken (13-16)
         for col in [13, 14, 15, 16]:
             self.signals_table.setColumnHidden(col, True)
-        # Score und TR Kurs auch verstecken (in GroupBox angezeigt)
+        # Score verstecken (in GroupBox angezeigt)
         self.signals_table.setColumnHidden(17, True)  # Score
-        self.signals_table.setColumnHidden(18, True)  # TR Kurs
+        # TR Kurs (column 18) bleibt sichtbar fuer Stop-Ueberwachung
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )

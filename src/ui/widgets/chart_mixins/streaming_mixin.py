@@ -147,12 +147,25 @@ class StreamingMixin:
 
             # Check if we need a new candle (new minute)
             if current_minute_start > self._current_candle_time:
-                # Previous candle closed - emit signal with previous close and new open
-                previous_close = getattr(self, '_current_candle_close', price)
+                # Previous candle closed - capture OHLC BEFORE reset!
+                prev_open = getattr(self, '_current_candle_open', price)
+                prev_high = getattr(self, '_current_candle_high', price)
+                prev_low = getattr(self, '_current_candle_low', price)
+                prev_close = getattr(self, '_current_candle_close', price)
+                prev_volume = getattr(self, '_current_candle_volume', 0)
+
+                # Store previous candle volume for bot access
+                self._prev_candle_volume = prev_volume
+
+                # Emit signal with previous candle's OHLC and new candle's open
                 if hasattr(self, 'candle_closed'):
-                    self.candle_closed.emit(previous_close, price)
-                    logger.debug(f"Candle closed: prev_close={previous_close:.2f}, new_open={price:.2f}")
-                # New candle - reset
+                    self.candle_closed.emit(prev_open, prev_high, prev_low, prev_close, price)
+                    logger.info(
+                        f"🕯️ Candle closed: O={prev_open:.2f} H={prev_high:.2f} "
+                        f"L={prev_low:.2f} C={prev_close:.2f} V={prev_volume:.0f} -> new_open={price:.2f}"
+                    )
+
+                # New candle - reset AFTER emitting signal
                 self._current_candle_time = current_minute_start
                 self._current_candle_open = price
                 self._current_candle_high = price
@@ -194,6 +207,16 @@ class StreamingMixin:
 
             # Update indicators in real-time
             self._update_indicators_realtime(candle)
+
+            # Emit tick price for real-time P&L updates in bot panels
+            if hasattr(self, 'tick_price_updated'):
+                self.tick_price_updated.emit(price)
+                # Debug: Log occasionally to verify signal is emitting
+                if not hasattr(self, '_tick_emit_count'):
+                    self._tick_emit_count = 0
+                self._tick_emit_count += 1
+                if self._tick_emit_count % 100 == 1:
+                    logger.info(f"📡 tick_price_updated emitted #{self._tick_emit_count}: {price:.2f}")
 
         except Exception as e:
             logger.error(f"Error handling market tick: {e}", exc_info=True)

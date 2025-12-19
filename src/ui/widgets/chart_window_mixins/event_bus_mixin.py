@@ -185,9 +185,10 @@ class EventBusMixin:
 
             self._update_chart_bar(bar_data)
 
-            # Feed bar to trading bot if active (with timestamp for bot)
-            bot_bar_data = {**bar_data, "timestamp": event.timestamp}
-            self._feed_bar_to_bot(bot_bar_data)
+            # NOTE: Do NOT feed bars to bot here!
+            # The bot should only receive completed candles via candle_closed signal
+            # (handled in bot_callbacks.py -> _on_chart_candle_closed)
+            # Feeding on every MARKET_BAR would trigger SL checks on intrabar ticks
 
         except Exception as e:
             logger.error(f"Error handling MARKET_BAR event: {e}", exc_info=True)

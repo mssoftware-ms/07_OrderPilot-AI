@@ -104,7 +104,9 @@ class EmbeddedTradingViewChart(
     # Chart trading signals - emitted when user drags lines in chart
     stop_line_moved = pyqtSignal(str, float)  # (line_id, new_price)
     # Candle closed signal - emitted when a new candle starts (previous candle closed)
-    candle_closed = pyqtSignal(float, float)  # (previous_close, new_open)
+    candle_closed = pyqtSignal(float, float, float, float, float)  # (prev_open, prev_high, prev_low, prev_close, new_open)
+    # Tick price signal - emitted on every valid tick for real-time P&L updates
+    tick_price_updated = pyqtSignal(float)  # (current_price)
 
     def __init__(self, history_manager=None):
         """Initialize embedded chart widget.
