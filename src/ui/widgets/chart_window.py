@@ -28,6 +28,7 @@ from .chart_window_mixins import (
     StateMixin,
     BotPanelsMixin,
     KOFinderMixin,
+    StrategySimulatorMixin,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,7 @@ class DockTitleBar(QWidget):
 class ChartWindow(
     BotPanelsMixin,
     KOFinderMixin,
+    StrategySimulatorMixin,
     PanelsMixin,
     EventBusMixin,
     StateMixin,
@@ -212,7 +214,7 @@ class ChartWindow(
         # State for dock maximize/minimize
         self._dock_maximized = False
         self._dock_minimized = False
-        self._saved_dock_height = 175  # Reduced from 250 (-30%)
+        self._saved_dock_height = 200  # Increased by 15% for Strategy Simulator
 
         # Create panel content (from PanelsMixin)
         self.bottom_panel = self._create_bottom_panel()
@@ -404,7 +406,7 @@ class ChartWindow(
         else:
             # Minimize
             self._dock_minimized = True
-            self._saved_dock_height = max(self.bottom_panel.height(), 105)  # Reduced from 150
+            self._saved_dock_height = max(self.bottom_panel.height(), 120)  # Minimum height
             self.bottom_panel.setVisible(False)
             logger.debug("Dock minimized")
 

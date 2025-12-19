@@ -8,6 +8,7 @@ from .event_bus_mixin import EventBusMixin
 from .state_mixin import StateMixin
 from .bot_panels_mixin import BotPanelsMixin
 from .ko_finder_mixin import KOFinderMixin
+from .strategy_simulator_mixin import StrategySimulatorMixin
 
 __all__ = [
     "PanelsMixin",
@@ -15,4 +16,5 @@ __all__ = [
     "StateMixin",
     "BotPanelsMixin",
     "KOFinderMixin",
+    "StrategySimulatorMixin",
 ]

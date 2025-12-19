@@ -36,3 +36,7 @@ qdrant-client>=1.7.0
 
 # KO-Finder (Headless Browser für Onvista)
 playwright>=1.40.0
+
+# Strategy Simulator
+openpyxl>=3.1.0
+optuna>=3.5.0

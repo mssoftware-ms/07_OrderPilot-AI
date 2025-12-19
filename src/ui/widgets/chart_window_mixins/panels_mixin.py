@@ -53,6 +53,11 @@ class PanelsMixin:
             self.ko_finder_tab = self._create_ko_finder_tab()
             self.panel_tabs.addTab(self.ko_finder_tab, "KO-Finder")
 
+        # Tab 6: Strategy Simulator (from StrategySimulatorMixin)
+        if hasattr(self, '_create_strategy_simulator_tab'):
+            self.strategy_simulator_tab = self._create_strategy_simulator_tab()
+            self.panel_tabs.addTab(self.strategy_simulator_tab, "Strategy Simulator")
+
         panel_layout.addWidget(self.panel_tabs)
         return panel_container
 
