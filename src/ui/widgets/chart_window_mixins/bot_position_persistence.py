@@ -262,6 +262,10 @@ class BotPositionPersistenceMixin(BotTRLockMixin):
                 sig["pnl_percent"] = pnl_pct
                 table_updated = True
 
+                # Check trailing stop activation (from BotDisplayManagerMixin)
+                if hasattr(self, '_check_tr_activation'):
+                    self._check_tr_activation(sig, current_price)
+
                 # Update Current Position display
                 if hasattr(self, 'position_current_label'):
                     self.position_current_label.setText(f"{current_price:.4f}")

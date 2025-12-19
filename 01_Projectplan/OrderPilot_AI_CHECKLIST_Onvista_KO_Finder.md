@@ -1,8 +1,8 @@
 # ✅ Checkliste: OrderPilot‑AI – Onvista‑only KO‑Finder (Long/Short) + UI‑Tabelle
 
-**Start:** 2025-12-18  
-**Letzte Aktualisierung:** 2025-12-18  
-**Gesamtfortschritt:** 0% ⬜ (nicht begonnen)
+**Start:** 2025-12-18
+**Letzte Aktualisierung:** 2025-12-18
+**Gesamtfortschritt:** 85% 🔄 (Phase 0-6 abgeschlossen, Phase 7-8 pending)
 
 ---
 
@@ -72,51 +72,56 @@
 
 # Phase 0: Projekt‑Alignment & Nicht‑Verhandelbares (Pflicht)
 
-- [ ] **0.1 Onvista‑only Contract festnageln (Hard Rule)**
-  Status: ⬜ Offen → *Regelwerk im Repo dokumentieren + Code‑Guards*
-  - Wenn Feld nicht über Onvista beschaffbar ⇒ **Flag** oder **Exclude**, niemals andere Quellen.
-  - Kein API‑Fallback, kein „quick fix“ über andere Webseiten.
+- [x] **0.1 Onvista‑only Contract festnageln (Hard Rule)**
+  Status: ✅ Abgeschlossen (2025-12-18) → *Regelwerk dokumentiert + Code-Guards implementiert*
+  Code: `docs/ONVISTA_SCRAPING_NOTES.md`, `src/derivatives/ko_finder/constants.py:DATA_SOURCE`
+  - Alle Modelle haben `source="onvista"` Feld
+  - Assertions und Flags bei fehlenden Feldern
 
-- [ ] **0.2 ToS/Robots/Legal‑Notiz erstellen (Risiko dokumentieren)**
-  Status: ⬜ Offen → *Dokument „ONVISTA_SCRAPING_NOTES.md“*
-  - Nutzungsbedingungen/Robots prüfen, Abfragefrequenz begrenzen.
-  - Quellenhinweis in UI & Logs.
+- [x] **0.2 ToS/Robots/Legal‑Notiz erstellen (Risiko dokumentieren)**
+  Status: ✅ Abgeschlossen (2025-12-18) → *ONVISTA_SCRAPING_NOTES.md erstellt*
+  Code: `docs/ONVISTA_SCRAPING_NOTES.md`
+  - Rate-Limiting dokumentiert (1 req/sec)
+  - Disclaimer in UI integriert
 
-- [ ] **0.3 Integrationspunkte im aktuellen Codebase‑Stand identifizieren**
-  Status: ⬜ Offen → *Ist‑Analyse anhand Projektstruktur*
-  - UI‑Ort: ChartWindow Tabs / Dashboard Dock / eigener Dialog?
-  - Event‑Bus Nutzung ja/nein (für UI‑Update, Logging, Telemetrie)
-  - Konfig‑Quelle: `src/config/loader.py` + QSettings (Parameter persistieren)
+- [x] **0.3 Integrationspunkte im aktuellen Codebase‑Stand identifizieren**
+  Status: ✅ Abgeschlossen (2025-12-18) → *UI-Ort: ChartWindow "Analysis & Strategy" Dock*
+  Code: `src/ui/widgets/chart_window_mixins/ko_finder_mixin.py`
+  - Neuer Tab "KO-Finder" in PanelsMixin integriert
+  - QSettings für Filter-Persistenz
 
-- [ ] **0.4 Definition‑of‑Done (DoD) für „KO‑Finder v1“**
-  Status: ⬜ Offen → *Klares MVP‑Ziel in 10 Bulletpoints*
-  - Top‑N Long/Short für Underlying, Filter min Hebel/max Spread, UI‑Tabelle, Refresh‑Button, Meta‑Infos, Fehlerhandling, Tests.
+- [x] **0.4 Definition‑of‑Done (DoD) für „KO‑Finder v1"**
+  Status: ✅ Abgeschlossen (2025-12-18) → *MVP definiert in Technischem Umsetzungsplan*
+  Code: `01_Projectplan/Technischer_Umsetzungsplan_Onvista_KO_Finder.md:336-346`
 
 ---
 
 # Phase 1: Domain‑Modelle + Konfiguration (Onvista‑only)
 
 ## 1.1 Datenmodelle (Pydantic/Dataclasses)
-- [ ] **1.1.1 KOFilterConfig (User‑Parameter)**
-  Status: ⬜ Offen → *min_leverage, max_spread_pct, issuers, top_n, broker_id*
-  - Validierung: min/max Ranges, Defaultwerte, Persistenz via QSettings
+- [x] **1.1.1 KOFilterConfig (User‑Parameter)**
+  Status: ✅ Abgeschlossen (2025-12-18) → *Dataclass mit Validierung + QSettings*
+  Code: `src/derivatives/ko_finder/config.py:1-150`
+  Tests: `tests/derivatives/ko_finder/test_models.py::TestKOFilterConfig`
 
-- [ ] **1.1.2 KnockoutProduct + Quote + UnderlyingSnapshot**
-  Status: ⬜ Offen → *Felder inkl. Qualitätsflags & Source="onvista"*
-  - Flags: `stale_quote`, `missing_fields`, `parser_confidence`, `inactive_candidate`
-  - Meta: `fetched_at`, `source_url`, `parse_schema_version`
+- [x] **1.1.2 KnockoutProduct + Quote + UnderlyingSnapshot**
+  Status: ✅ Abgeschlossen (2025-12-18) → *Vollständige Modelle mit Flags*
+  Code: `src/derivatives/ko_finder/models.py:1-200`
+  Tests: `tests/derivatives/ko_finder/test_models.py::TestKnockoutProduct`
 
-- [ ] **1.1.3 Ergebnis‑Schema für UI/API (SearchResponse)**
-  Status: ⬜ Offen → *long[], short[], meta (asOf, fetch_time_ms, errors)*
+- [x] **1.1.3 Ergebnis‑Schema für UI/API (SearchResponse)**
+  Status: ✅ Abgeschlossen (2025-12-18) → *SearchResponse + SearchMeta*
+  Code: `src/derivatives/ko_finder/models.py:150-220`
+  Tests: `tests/derivatives/ko_finder/test_models.py::TestSearchResponse`
 
 ## 1.2 Konfig & Defaults
-- [ ] **1.2.1 Default‑Filterwerte definieren**
-  Status: ⬜ Offen → *sinnvolle Defaults ohne Anlageberatung*
-  - Beispiel: top_n=10, max_spread_pct=2.0, min_leverage=5.0
+- [x] **1.2.1 Default‑Filterwerte definieren**
+  Status: ✅ Abgeschlossen (2025-12-18) → *DEFAULT_* Konstanten*
+  Code: `src/derivatives/ko_finder/constants.py:60-75`
 
-- [ ] **1.2.2 Issuer‑Mapping (Name → Onvista ID)**
-  Status: ⬜ Offen → *Konstanten zentral*
-  - HSBC=53159, Société Générale=54101, UBS=53882, Vontobel=53163
+- [x] **1.2.2 Issuer‑Mapping (Name → Onvista ID)**
+  Status: ✅ Abgeschlossen (2025-12-18) → *Issuer Enum mit IDs*
+  Code: `src/derivatives/ko_finder/constants.py:20-40`
 
 ---
 

@@ -7,10 +7,12 @@ from .panels_mixin import PanelsMixin
 from .event_bus_mixin import EventBusMixin
 from .state_mixin import StateMixin
 from .bot_panels_mixin import BotPanelsMixin
+from .ko_finder_mixin import KOFinderMixin
 
 __all__ = [
     "PanelsMixin",
     "EventBusMixin",
     "StateMixin",
     "BotPanelsMixin",
+    "KOFinderMixin",
 ]

@@ -27,6 +27,7 @@ from .chart_window_mixins import (
     EventBusMixin,
     StateMixin,
     BotPanelsMixin,
+    KOFinderMixin,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,7 @@ class DockTitleBar(QWidget):
 
 class ChartWindow(
     BotPanelsMixin,
+    KOFinderMixin,
     PanelsMixin,
     EventBusMixin,
     StateMixin,
@@ -275,12 +277,21 @@ class ChartWindow(
         if self._ready_to_close:
             logger.info(f"Closing ChartWindow for {self.symbol}...")
 
-            # Stop live stream if running
+            # Stop live stream if running - MUST disconnect WebSocket
             if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
                 try:
+                    # First disable flag to stop event processing
                     self.chart_widget.live_streaming_enabled = False
-                    if hasattr(self.chart_widget, 'live_stream_action'):
-                        self.chart_widget.live_stream_action.setChecked(False)
+
+                    # Update UI
+                    if hasattr(self.chart_widget, 'live_stream_button'):
+                        self.chart_widget.live_stream_button.setChecked(False)
+
+                    # Actually disconnect the WebSocket stream
+                    if hasattr(self.chart_widget, '_stop_live_stream_async'):
+                        import asyncio
+                        asyncio.ensure_future(self.chart_widget._stop_live_stream_async())
+                        logger.info(f"Disconnecting live stream for {self.symbol}")
                 except Exception as e:
                     logger.debug(f"Error stopping live stream: {e}")
 

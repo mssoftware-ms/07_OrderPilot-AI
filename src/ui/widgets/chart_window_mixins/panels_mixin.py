@@ -48,6 +48,11 @@ class PanelsMixin:
             if hasattr(self, '_init_bot_panels'):
                 self._init_bot_panels()
 
+        # Tab 5: KO-Finder (from KOFinderMixin)
+        if hasattr(self, '_create_ko_finder_tab'):
+            self.ko_finder_tab = self._create_ko_finder_tab()
+            self.panel_tabs.addTab(self.ko_finder_tab, "KO-Finder")
+
         panel_layout.addWidget(self.panel_tabs)
         return panel_container
 
@@ -73,6 +78,6 @@ class PanelsMixin:
         if hasattr(self.chart_widget, 'toggle_panel_button'):
             button = self.chart_widget.toggle_panel_button
             if button.isChecked():
-                button.setText("Panel")
+                button.setText("▼ Trading Bot")
             else:
-                button.setText("Panel")
+                button.setText("▶ Trading Bot")

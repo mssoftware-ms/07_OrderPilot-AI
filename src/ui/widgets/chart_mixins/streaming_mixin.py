@@ -24,6 +24,10 @@ class StreamingMixin:
     def _on_market_bar(self, event: Event):
         """Handle market bar event."""
         try:
+            # WICHTIG: Ignoriere Events wenn Streaming deaktiviert ist
+            if not getattr(self, 'live_streaming_enabled', False):
+                return
+
             bar_data = event.data
             if bar_data.get('symbol') != self.current_symbol:
                 return
@@ -34,10 +38,48 @@ class StreamingMixin:
         except Exception as e:
             logger.error(f"Error handling market bar: {e}")
 
+    def _is_valid_tick(self, price: float, reference_price: float | None) -> bool:
+        """
+        Prüfe ob Tick-Preis plausibel ist (Bad Tick Filter).
+
+        Filtert extreme Ausreißer die durch fehlerhafte Daten entstehen.
+
+        Args:
+            price: Neuer Tick-Preis
+            reference_price: Referenzpreis (letzter bekannter gültiger Preis)
+
+        Returns:
+            True wenn Tick plausibel, False wenn Bad Tick
+        """
+        if price <= 0:
+            return False
+
+        if reference_price is None or reference_price <= 0:
+            return True  # Kein Referenzpreis - akzeptiere
+
+        # Maximale erlaubte Abweichung vom Referenzpreis (5%)
+        # Bei sehr volatilen Assets könnte man das erhöhen
+        max_deviation_pct = 5.0
+
+        deviation_pct = abs((price - reference_price) / reference_price) * 100
+
+        if deviation_pct > max_deviation_pct:
+            logger.warning(
+                f"Bad tick filtered: {self.current_symbol} price={price:.2f} "
+                f"deviates {deviation_pct:.1f}% from reference={reference_price:.2f}"
+            )
+            return False
+
+        return True
+
     @pyqtSlot(object)
     def _on_market_tick(self, event: Event):
         """Handle market tick event - update current candle in real-time."""
         try:
+            # WICHTIG: Ignoriere Events wenn Streaming deaktiviert ist
+            if not getattr(self, 'live_streaming_enabled', False):
+                return
+
             tick_data = event.data
             if tick_data.get('symbol') != self.current_symbol:
                 return
@@ -50,8 +92,18 @@ class StreamingMixin:
                 logger.warning(f"Received tick for {self.current_symbol} but no price data")
                 return
 
+            # Bad Tick Filter: Prüfe ob Preis plausibel ist
+            reference_price = getattr(self, '_current_candle_close', None)
+            if reference_price is None and hasattr(self, 'data') and self.data is not None:
+                # Fallback: Letzter Close aus DataFrame
+                if len(self.data) > 0 and 'close' in self.data.columns:
+                    reference_price = float(self.data['close'].iloc[-1])
+
+            if not self._is_valid_tick(price, reference_price):
+                return  # Bad Tick ignorieren
+
             self.info_label.setText(f"Last: ${price:.2f}")
-            # Print to console for debugging (always visible)
+            # Print to console for debugging (only when streaming enabled)
             print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
             logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
 

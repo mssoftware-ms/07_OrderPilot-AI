@@ -106,6 +106,100 @@ HistoricalDataProvider (Abstract Base)
 └── DatabaseProvider       - Lokale SQLite DB
 ```
 
+## Derivatives Module (KO-Finder)
+
+Das Derivatives-Modul ermöglicht die Suche nach Knock-Out Produkten.
+**Einzige Datenquelle: Onvista** (keine Alternativen erlaubt).
+
+### Architektur (Ports & Adapters)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       UI Layer                               │
+│  KOFilterPanel ── Filter-Controls (Hebel, Spread, etc.)     │
+│  KOResultPanel ── Ergebnis-Tabellen (Long/Short Tabs)       │
+│  KOFinderMixin ── ChartWindow Integration                    │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ ruft auf
+┌─────────────────────────▼───────────────────────────────────┐
+│                   KOFinderService                            │
+│  Orchestrierung: Fetch → Parse → Filter → Rank → Cache      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ verwendet
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Engine Components                           │
+│  HardFilters ── Ausschluss (Hebel, Spread, KO-Abstand)      │
+│  RankingEngine ── Score-Berechnung (deterministisch)        │
+│  CacheManager ── Stale-While-Revalidate                     │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ ruft auf
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Onvista Adapter                             │
+│  OnvistaURLBuilder ── URL-Generierung                       │
+│  OnvistaFetcher ── HTTP + Rate-Limit + Circuit-Breaker      │
+│  OnvistaParser ── HTML → Models (Header-basiert)            │
+│  OnvistaNormalizer ── Zahlen, Plausibilität, Flags          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Datenfluss: KO-Finder Refresh
+
+```
+1. User klickt "Aktualisieren"
+   │
+2. KOFinderMixin._on_ko_refresh()
+   │
+3. KOFinderService.search(underlying, config)
+   │
+4. Parallel: OnvistaFetcher.fetch(long_url), fetch(short_url)
+   │
+5. OnvistaParser.parse(html, direction)
+   │
+6. OnvistaNormalizer.normalize_products(products)
+   │
+7. HardFilters.apply(products) → Ausschluss
+   │
+8. RankingEngine.rank(products, top_n) → Score + Sort
+   │
+9. SearchResponse → UI Update
+```
+
+### Modulstruktur (max 600 LOC/Datei)
+
+```
+src/derivatives/ko_finder/
+├── __init__.py              # Public API
+├── models.py                # KnockoutProduct, Quote, SearchResponse
+├── config.py                # KOFilterConfig + QSettings
+├── constants.py             # Issuer-IDs, URLs, Defaults
+├── service.py               # KOFinderService (Orchestrierung)
+├── adapter/
+│   ├── url_builder.py       # URL-Generierung
+│   ├── fetcher.py           # HTTP-Client + Rate-Limit
+│   ├── parser.py            # HTML → Models
+│   └── normalizer.py        # Daten-Bereinigung
+└── engine/
+    ├── filters.py           # HardFilters
+    ├── ranking.py           # RankingEngine + Score
+    └── cache.py             # CacheManager + SWR
+```
+
+### UI Integration
+
+```
+ChartWindow
+├── BotPanelsMixin
+├── KOFinderMixin      [NEU] ← KO-Finder Tab
+├── PanelsMixin        ← Registriert Tab
+├── EventBusMixin
+└── StateMixin
+
+src/ui/widgets/ko_finder/
+├── table_model.py     # QAbstractTableModel
+├── filter_panel.py    # Filter-Controls
+└── result_panel.py    # Tabellen + Meta-Info
+```
+
 ## Verzeichnisstruktur
 
 ```
@@ -143,6 +237,21 @@ src/
 │       ├── llm_integration.py    # OpenAI Integration mit Guardrails
 │       ├── backtest_harness.py   # Reproduzierbarer Backtest + Release Gate
 │       └── bot_tests.py          # Unit/Integration/Chaos Tests
+├── derivatives/          # Derivate-Module [NEU]
+│   └── ko_finder/        # KO-Finder (Onvista-only)
+│       ├── models.py     # KnockoutProduct, Quote, SearchResponse
+│       ├── config.py     # KOFilterConfig
+│       ├── constants.py  # Issuer-IDs, URLs
+│       ├── service.py    # KOFinderService
+│       ├── adapter/      # Onvista-Adapter
+│       │   ├── url_builder.py
+│       │   ├── fetcher.py
+│       │   ├── parser.py
+│       │   └── normalizer.py
+│       └── engine/       # Filter, Ranking, Cache
+│           ├── filters.py
+│           ├── ranking.py
+│           └── cache.py
 ├── ai/                   # AI Services
 │   ├── openai_service.py # OpenAI Integration
 │   └── anthropic_service.py

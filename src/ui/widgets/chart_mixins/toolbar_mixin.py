@@ -183,11 +183,11 @@ class ToolbarMixin:
         """)
         toolbar.addWidget(self.live_stream_button)
 
-        # ===== PANEL TOGGLE BUTTON (right after Live button) =====
-        self.toggle_panel_button = QPushButton("▼ Panel")
+        # ===== TRADING BOT TOGGLE BUTTON (right after Live button) =====
+        self.toggle_panel_button = QPushButton("▼ Trading Bot")
         self.toggle_panel_button.setCheckable(True)
         self.toggle_panel_button.setChecked(True)  # Panel initially visible
-        self.toggle_panel_button.setToolTip("Show/Hide bottom panel (Strategy, Backtest, Optimize)")
+        self.toggle_panel_button.setToolTip("Trading Bot Panel ein-/ausblenden")
         self.toggle_panel_button.setStyleSheet("""
             QPushButton {
                 background-color: #2a2a2a;
