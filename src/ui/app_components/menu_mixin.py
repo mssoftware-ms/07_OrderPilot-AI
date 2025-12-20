@@ -91,6 +91,11 @@ class MenuMixin:
 
         tools_menu.addSeparator()
 
+        show_console_action = QAction("Show &Console Window", self)
+        show_console_action.setToolTip("Show the hidden console output window")
+        show_console_action.triggered.connect(self.show_console_window)
+        tools_menu.addAction(show_console_action)
+
         reset_layout_action = QAction("&Reset Toolbars && Docks", self)
         reset_layout_action.setToolTip("Reset all toolbars and dock widgets to default positions")
         reset_layout_action.triggered.connect(self.reset_toolbars_and_docks)

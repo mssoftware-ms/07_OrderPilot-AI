@@ -13,14 +13,19 @@ REFACTORED: Extracted mixins to meet 600 LOC limit.
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import logging
 import sys
+import traceback
+from collections import deque
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 # qasync for asyncio integration
 import qasync
-from PyQt6.QtCore import QSettings, Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QSettings, Qt, QTimer, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtGui import QFont, QIcon, QPixmap
 
 # PyQt6 imports
 from PyQt6.QtWidgets import (
@@ -29,6 +34,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QStatusBar,
     QTabWidget,
     QVBoxLayout,
@@ -60,6 +66,167 @@ from .widgets.positions import PositionsWidget
 from .widgets.watchlist import WatchlistWidget
 
 logger = logging.getLogger(__name__)
+
+
+def _is_windows() -> bool:
+    return sys.platform.startswith("win")
+
+
+def _get_console_hwnd() -> int:
+    if not _is_windows():
+        return 0
+    return ctypes.windll.kernel32.GetConsoleWindow()
+
+
+def _hide_console_window() -> None:
+    if not _is_windows():
+        return
+    hwnd = _get_console_hwnd()
+    if hwnd:
+        ctypes.windll.user32.ShowWindow(hwnd, 0)
+
+
+def _show_console_window() -> None:
+    if not _is_windows():
+        return
+    hwnd = _get_console_hwnd()
+    if not hwnd:
+        ctypes.windll.kernel32.AllocConsole()
+        hwnd = _get_console_hwnd()
+    if hwnd:
+        ctypes.windll.user32.ShowWindow(hwnd, 5)
+
+
+class ConsoleOnErrorHandler(logging.Handler):
+    """Show console window on errors."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno >= logging.ERROR:
+            _show_console_window()
+
+
+class LogStream(QObject):
+    """Redirect stdout/stderr to Qt signal (optional mirror)."""
+
+    text_written = pyqtSignal(str)
+
+    def __init__(self, mirror: Any | None = None) -> None:
+        super().__init__()
+        self._buffer = ""
+        self._mirror = mirror
+
+    def write(self, text: str) -> None:
+        if not text:
+            return
+        if self._mirror is not None:
+            try:
+                self._mirror.write(text)
+                self._mirror.flush()
+            except Exception:
+                pass
+        self._buffer += text
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self.text_written.emit(line)
+
+    def flush(self) -> None:
+        if self._mirror is not None:
+            try:
+                self._mirror.flush()
+            except Exception:
+                pass
+        if self._buffer:
+            self.text_written.emit(self._buffer)
+            self._buffer = ""
+
+
+class StartupLogWindow(QWidget):
+    """Frameless startup log window."""
+
+    def __init__(self, icon_path: Path):
+        super().__init__()
+        self._queue: deque[str] = deque()
+        self._timer = QTimer(self)
+        self._timer.setInterval(500)
+        self._timer.timeout.connect(self._drain_queue)
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setFixedSize(520, 420)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("background: transparent;")
+
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+        outer_layout.setSpacing(0)
+
+        self._container = QWidget(self)
+        self._container.setObjectName("startupContainer")
+        self._container.setStyleSheet(
+            "QWidget#startupContainer { background-color: white; border-radius: 18px; }"
+        )
+        outer_layout.addWidget(self._container)
+
+        layout = QVBoxLayout(self._container)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        self._icon_label = QLabel()
+        self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pixmap = QPixmap(str(icon_path))
+        if not pixmap.isNull():
+            pixmap = pixmap.scaledToWidth(200, Qt.TransformationMode.SmoothTransformation)
+            self._icon_label.setPixmap(pixmap)
+        layout.addWidget(self._icon_label)
+
+        self._log_view = QPlainTextEdit()
+        self._log_view.setReadOnly(True)
+        self._log_view.setMaximumBlockCount(1000)
+        self._log_view.setFrameStyle(QPlainTextEdit.Shape.NoFrame)
+        self._log_view.setStyleSheet(
+            "QPlainTextEdit { background-color: white; color: black; border: none; }"
+        )
+        self._log_view.setFont(QFont("Aptos", 10))
+        layout.addWidget(self._log_view)
+
+    def enqueue_line(self, line: str) -> None:
+        if line is None:
+            return
+        self._queue.append(line)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def _drain_queue(self) -> None:
+        if not self._queue:
+            self._timer.stop()
+            return
+        line = self._queue.popleft()
+        if line != "":
+            self._log_view.appendPlainText(line)
+
+
+def _load_app_icon() -> QIcon:
+    """Load application icon from marketing assets."""
+    root_dir = Path(__file__).resolve().parents[2]
+    icon_dir = root_dir / "02_Marketing" / "Icons"
+    png_icon = icon_dir / "Icon-Orderpilot-AI-Arrow2-256x256.png"
+    ico_icon = icon_dir / "Icon-Orderpilot-AI-256x256.ico"
+
+    if png_icon.exists():
+        return QIcon(str(png_icon))
+    if ico_icon.exists():
+        return QIcon(str(ico_icon))
+
+    logger.warning("Application icon not found in %s", icon_dir)
+    return QIcon()
+
+
+def _get_startup_icon_path() -> Path:
+    root_dir = Path(__file__).resolve().parents[2]
+    return root_dir / "02_Marketing" / "Icons" / "Icon-Orderpilot-AI-Arrow2.png"
 
 
 class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMainWindow):
@@ -112,6 +279,7 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
         """Initialize the user interface."""
         self.setWindowTitle("OrderPilot-AI Trading Application")
         self.setGeometry(100, 100, 1400, 900)
+        self.setWindowIcon(_load_app_icon())
 
         # Create menu bar (from MenuMixin)
         self.create_menu_bar()
@@ -130,6 +298,11 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
 
         # Apply initial theme
         self.apply_theme("dark")
+
+    def show_console_window(self) -> None:
+        """Show the hidden console window."""
+        _show_console_window()
+        self.status_bar.showMessage("Console window shown", 3000)
 
     def create_central_widget(self):
         """Create the central widget with tabs."""
@@ -565,19 +738,46 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
 
 async def main():
     """Main application entry point."""
-    configure_logging()
-    logger.info("Starting OrderPilot-AI Trading Application")
+    _hide_console_window()
 
     app = QApplication(sys.argv)
     app.setApplicationName("OrderPilot-AI")
     app.setOrganizationName("OrderPilot")
     app.setStyle("Fusion")
+    app.setWindowIcon(_load_app_icon())
+
+    startup_icon_path = _get_startup_icon_path()
+    startup_window = StartupLogWindow(startup_icon_path)
+    startup_window.show()
+
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    stdout_stream = LogStream(mirror=original_stdout)
+    stderr_stream = LogStream(mirror=original_stderr)
+    stdout_stream.text_written.connect(startup_window.enqueue_line, Qt.ConnectionType.QueuedConnection)
+    stderr_stream.text_written.connect(startup_window.enqueue_line, Qt.ConnectionType.QueuedConnection)
+    sys.stdout = stdout_stream
+    sys.stderr = stderr_stream
+
+    configure_logging()
+    logger.info("Starting OrderPilot-AI Trading Application")
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(ConsoleOnErrorHandler())
+
+    def _excepthook(exc_type, exc_value, exc_tb):
+        _show_console_window()
+        traceback.print_exception(exc_type, exc_value, exc_tb)
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
 
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
     window = TradingApplication()
     window.show()
+    QTimer.singleShot(0, startup_window.close)
 
     with loop:
         loop.run_forever()

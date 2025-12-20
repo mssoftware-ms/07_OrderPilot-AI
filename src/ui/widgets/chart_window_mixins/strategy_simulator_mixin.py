@@ -313,7 +313,7 @@ class StrategySimulatorMixin:
         trials_layout = QHBoxLayout()
         trials_layout.addWidget(QLabel("Trials:"))
         self.simulator_opt_trials_spin = QSpinBox()
-        self.simulator_opt_trials_spin.setRange(10, 500)
+        self.simulator_opt_trials_spin.setRange(10, 2_147_483_647)
         self.simulator_opt_trials_spin.setValue(50)
         trials_layout.addWidget(self.simulator_opt_trials_spin)
         opt_layout.addLayout(trials_layout)

@@ -13,8 +13,12 @@ broker:
   account_id: null
 
 database:
-  engine: sqlite
-  path: ./data/backtest.db
+  engine: postgresql
+  host: localhost
+  port: 5432
+  database: orderpilot
+  username: orderpilot
+  password: orderpilot
   echo: false
 
 backtest:

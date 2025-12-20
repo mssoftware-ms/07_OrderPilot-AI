@@ -54,17 +54,16 @@ broker:
 created_at: '2025-10-31T15:03:10.603344'
 database:
   auto_vacuum: true
-  database: null
+  database: orderpilot
   echo: false
-  engine: sqlite
-  host: null
+  engine: postgresql
+  host: localhost
   max_overflow: 20
-  password: null
-  path: ./data/orderpilot.db
+  password: orderpilot
   pool_size: 10
   pool_timeout_seconds: 30
-  port: null
-  username: null
+  port: 5432
+  username: orderpilot
 description: Default trading profile
 environment: paper
 execution:
