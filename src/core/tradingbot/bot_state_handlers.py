@@ -238,6 +238,12 @@ class BotStateHandlersMixin:
                 ["SCORE_BELOW_THRESHOLD"]
             )
 
+        # Optional pattern validation BEFORE signal creation (warn-only)
+        if self.config.bot.use_pattern_check:
+            pattern_ok, pattern_reason = await self._pattern_gate(features, side)
+            if not pattern_ok and pattern_reason:
+                self._log_activity("PATTERN_WARN", pattern_reason)
+
         # Create signal
         signal = self._create_signal(features, side, score)
         self._current_signal = signal

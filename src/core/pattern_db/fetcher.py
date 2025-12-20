@@ -28,6 +28,19 @@ NASDAQ_100_TOP = [
 # Crypto symbols for Alpaca
 CRYPTO_SYMBOLS = ["BTC/USD", "ETH/USD"]
 
+# Index proxies (Alpaca does not provide index bars; use ETF proxies)
+INDEX_PROXY_MAP = {
+    "NDX": "QQQ",   # Nasdaq-100 proxy
+    "^NDX": "QQQ",
+}
+
+
+def resolve_symbol(symbol: str, asset_class: AssetClass) -> str:
+    """Resolve symbol to a provider-supported proxy when needed."""
+    if asset_class == AssetClass.STOCK:
+        return INDEX_PROXY_MAP.get(symbol.upper(), symbol)
+    return symbol
+
 # Daytrading timeframes
 DAYTRADING_TIMEFRAMES = [
     Timeframe.MINUTE_1,

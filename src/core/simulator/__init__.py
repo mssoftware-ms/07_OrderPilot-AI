@@ -34,6 +34,7 @@ from .excel_export import (
 )
 from .strategy_persistence import (
     save_strategy_params,
+    save_strategy_params_to_path,
     load_strategy_params,
     get_all_saved_strategies,
     delete_strategy_params,
@@ -65,6 +66,7 @@ __all__ = [
     "export_simulation_results",
     # Persistence
     "save_strategy_params",
+    "save_strategy_params_to_path",
     "load_strategy_params",
     "get_all_saved_strategies",
     "delete_strategy_params",

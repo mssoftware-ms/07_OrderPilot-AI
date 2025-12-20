@@ -70,7 +70,14 @@ indicators:
       period: 14
     plot: true
 
-# Entry Long: Preis berührt untere BB + RSI < 30
+  # ADX für Regime Filter (Range Detection)
+  - type: ADX
+    alias: adx
+    params:
+      period: 14
+    plot: true
+
+# Entry Long: Preis berührt untere BB + RSI < 25 + ADX < 25
 entry_long:
   type: composite
   operator: AND
@@ -84,8 +91,15 @@ entry_long:
     - type: condition
       left: rsi
       operator: "<"
-      right: 30
-      description: "RSI zeigt Oversold (< 30)"
+      right: 25
+      description: "RSI zeigt Oversold (< 25) - Stricter"
+
+    # Regime Filter: Range Market Only
+    - type: condition
+      left: adx
+      operator: "<"
+      right: 25
+      description: "Market in Range (ADX < 25)"
 
     # Volatility Filter: Nur Entry wenn ATR hoch genug ist
     - type: condition
@@ -166,6 +180,9 @@ risk_management:
 
   # Position Size: 15% des Kapitals (da Mean Reversion oft hohe Win-Rate hat)
   position_size_pct: 15.0
+
+  # Max Trades per Day (to avoid overtrading in wrong regime)
+  max_trades_per_day: 5
 
   # Trailing Stop deaktiviert (Mean Reversion hat definierte Ziele)
   trailing_stop_enabled: false

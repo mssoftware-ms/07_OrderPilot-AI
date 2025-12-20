@@ -95,9 +95,18 @@ class ActionsMixin:
 
     def show_pattern_db_dialog(self):
         """Show the pattern database management dialog."""
-        from src.ui.dialogs import PatternDatabaseDialog
-        dialog = PatternDatabaseDialog(self)
-        dialog.exec()
+        try:
+            # Import directly to avoid pulling all dialogs (and their deps)
+            from src.ui.dialogs.pattern_db_dialog import PatternDatabaseDialog
+            dialog = PatternDatabaseDialog(self)
+            dialog.exec()
+        except Exception as e:
+            logger.error("Pattern DB dialog failed: %s", e, exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Pattern Database",
+                f"Dialog konnte nicht geöffnet werden:\n{e}"
+            )
 
     def reset_toolbars_and_docks(self):
         """Reset all toolbars and dock widgets to their default positions."""

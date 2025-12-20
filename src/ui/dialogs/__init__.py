@@ -1,11 +1,45 @@
-"""UI Dialogs Package for OrderPilot-AI Trading Application."""
+"""UI Dialogs Package for OrderPilot-AI Trading Application.
 
-from .ai_backtest_dialog import AIBacktestDialog
-from .backtest_dialog import BacktestDialog
-from .order_dialog import OrderDialog
-from .parameter_optimization_dialog import ParameterOptimizationDialog
-from .pattern_db_dialog import PatternDatabaseDialog
-from .settings_dialog import SettingsDialog
+Imports are guarded so that optional dependencies (e.g. qasync) do not
+break unrelated dialogs like the Pattern Database manager.
+"""
+
+AIBacktestDialog = None
+BacktestDialog = None
+OrderDialog = None
+ParameterOptimizationDialog = None
+PatternDatabaseDialog = None
+SettingsDialog = None
+
+try:
+    from .ai_backtest_dialog import AIBacktestDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .backtest_dialog import BacktestDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .order_dialog import OrderDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .parameter_optimization_dialog import ParameterOptimizationDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .pattern_db_dialog import PatternDatabaseDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .settings_dialog import SettingsDialog  # noqa: F401
+except Exception:
+    pass
 
 __all__ = [
     "AIBacktestDialog",

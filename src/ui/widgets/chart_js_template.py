@@ -206,6 +206,7 @@ CHART_HTML_TEMPLATE = """
                 if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(4);
 
                 const rightScale = chart.priceScale('right');
+                let lastViewState = null; // Stores previous visible range + pane layout for undo
 
                 function refitPriceScale() {
                     rightScale.applyOptions({ autoScale: true, scaleMargins });
@@ -213,6 +214,51 @@ CHART_HTML_TEMPLATE = """
                     setTimeout(() => {
                         rightScale.applyOptions({ autoScale: false, scaleMargins });
                     }, 0);
+                }
+
+                function snapshotViewState() {
+                    try {
+                        return {
+                            visibleRange: chart.timeScale().getVisibleLogicalRange(),
+                            paneLayout: window.chartAPI.getPaneLayout()
+                        };
+                    } catch (e) { console.error(e); return null; }
+                }
+
+                function rememberViewState() {
+                    lastViewState = snapshotViewState();
+                }
+
+                function scalePaneLayout(zoomIn) {
+                    try {
+                        const layout = window.chartAPI.getPaneLayout();
+                        const indicatorIds = Object.keys(layout || {}).filter(k => k !== 'price');
+                        const priceFactor = layout?.price || 5;
+                        const factor = zoomIn ? 1.1 : 0.9;
+                        const indicatorFactor = zoomIn ? 1.05 : 0.95;
+                        const newLayout = {};
+                        newLayout['price'] = Math.max(2, priceFactor * factor);
+                        indicatorIds.forEach(id => {
+                            const current = layout[id] || 1;
+                            newLayout[id] = Math.max(0.5, current * indicatorFactor);
+                        });
+                        window.chartAPI.setPaneLayout(newLayout);
+                    } catch(e) { console.error(e); }
+                }
+
+                function normalizePaneHeights() {
+                    try {
+                        const layout = window.chartAPI.getPaneLayout();
+                        const indicatorIds = Object.keys(layout || {}).filter(k => k !== 'price');
+                        const newLayout = {};
+                        if (indicatorIds.length) {
+                            newLayout['price'] = 5;
+                            indicatorIds.forEach(id => newLayout[id] = 1);
+                        } else {
+                            newLayout['price'] = 5;
+                        }
+                        window.chartAPI.setPaneLayout(newLayout);
+                    } catch(e) { console.error(e); }
                 }
 
                 const priceSeries = chart.addSeries(CandlestickSeries, {
@@ -408,6 +454,7 @@ CHART_HTML_TEMPLATE = """
 
                     fitContent: () => {
                         try {
+                            rememberViewState();
                             if (!suppressFitContent) {
                                 refitPriceScale();
                             } else {
@@ -568,6 +615,21 @@ CHART_HTML_TEMPLATE = """
                             }
                             return restored > 0;
                         } catch(e) { console.error(e); return false; }
+                    },
+
+                    rememberViewState: () => { rememberViewState(); return true; },
+
+                    restoreLastView: () => {
+                        try {
+                            if (!lastViewState || !lastViewState.visibleRange) return false;
+                            window.chartAPI.setPaneLayout(lastViewState.paneLayout || {});
+                            window.chartAPI.setVisibleRange(lastViewState.visibleRange);
+                            return true;
+                        } catch(e) { console.error(e); return false; }
+                    },
+
+                    normalizePaneHeights: () => {
+                        normalizePaneHeights();
                     },
 
                     clear: () => {
@@ -1331,6 +1393,18 @@ CHART_HTML_TEMPLATE = """
                         priceSeries.attachPrimitive(previewPrimitive);
                     }
                 });
+
+                // Ctrl+MouseWheel zoom: remember view + normalize panes
+                container.addEventListener('wheel', e => {
+                    if (e.ctrlKey) {
+                        rememberViewState();
+                        if (typeof e.deltaY === 'number') {
+                            scalePaneLayout(e.deltaY < 0); // zoom in if deltaY negative
+                        } else {
+                            normalizePaneHeights();
+                        }
+                    }
+                }, { passive: true });
 
                 // Helper: distance from point to line segment
                 function pointToSegmentDist(px, py, x1, y1, x2, y2) {

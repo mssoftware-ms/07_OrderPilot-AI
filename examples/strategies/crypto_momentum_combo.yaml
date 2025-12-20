@@ -71,6 +71,14 @@ indicators:
     source: close
     plot: true
 
+  # Volume SMA for Volume Spike
+  - type: SMA
+    alias: vol_sma
+    params:
+      period: 20
+    source: volume
+    plot: false
+
   # ATR für Volatility-basierte Stops
   - type: ATR
     alias: atr
@@ -78,7 +86,7 @@ indicators:
       period: 14
     plot: true
 
-# Entry Long: MACD bullish crossover + RSI 50-70 + Preis über EMA50
+# Entry Long: MACD bullish crossover + RSI 55-65 + Preis über EMA50 + Volume
 entry_long:
   type: composite
   operator: AND
@@ -90,18 +98,18 @@ entry_long:
       right: 0
       description: "MACD bullish crossover (Histogram crosses above 0)"
 
-    # RSI ist positiv aber nicht overbought
+    # RSI ist positiv (Engerer Threshold)
     - type: condition
       left: rsi
       operator: ">"
-      right: 50
-      description: "RSI zeigt Momentum (> 50)"
+      right: 55
+      description: "RSI zeigt starkes Momentum (> 55)"
 
     - type: condition
       left: rsi
       operator: "<"
-      right: 70
-      description: "RSI ist nicht overbought (< 70)"
+      right: 65
+      description: "RSI ist nicht overbought (< 65) - Sweet Spot"
 
     # Trendfilter: Preis über EMA 50
     - type: condition
@@ -109,6 +117,13 @@ entry_long:
       operator: ">"
       right: ema_50
       description: "Preis ist über EMA 50 (Uptrend)"
+
+    # Volume Filter
+    - type: condition
+      left: volume
+      operator: ">"
+      right: vol_sma
+      description: "Volume über Durchschnitt"
 
     # Optional: Langfristiger Trend positiv
     - type: condition

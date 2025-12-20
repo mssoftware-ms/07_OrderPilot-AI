@@ -23,6 +23,11 @@ class StrategyName(str, Enum):
     MEAN_REVERSION = "mean_reversion"
     TREND_FOLLOWING = "trend_following"
     SCALPING = "scalping"
+    # New Strategies
+    BOLLINGER_SQUEEZE = "bollinger_squeeze"
+    TREND_PULLBACK = "trend_pullback"
+    OPENING_RANGE = "opening_range"
+    REGIME_HYBRID = "regime_hybrid"
 
     @classmethod
     def display_names(cls) -> dict[str, str]:
@@ -33,6 +38,10 @@ class StrategyName(str, Enum):
             cls.MEAN_REVERSION.value: "Mean Reversion",
             cls.TREND_FOLLOWING.value: "Trend Following",
             cls.SCALPING.value: "Scalping",
+            cls.BOLLINGER_SQUEEZE.value: "Bollinger Squeeze",
+            cls.TREND_PULLBACK.value: "Trend Pullback",
+            cls.OPENING_RANGE.value: "Opening Range",
+            cls.REGIME_HYBRID.value: "Regime Hybrid",
         }
 
 
@@ -543,6 +552,64 @@ STRATEGY_PARAMETER_REGISTRY: dict[StrategyName, StrategyParameterConfig] = {
                 step=30,
                 description="Minimum holding time in seconds",
             ),
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # BOLLINGER SQUEEZE BREAKOUT
+    # -------------------------------------------------------------------------
+    StrategyName.BOLLINGER_SQUEEZE: StrategyParameterConfig(
+        strategy_name=StrategyName.BOLLINGER_SQUEEZE,
+        display_name="Bollinger Squeeze",
+        description="Explosive breakout strategy after low volatility squeeze.",
+        parameters=[
+            ParameterDefinition("bb_period", "BB Period", "int", 20, 10, 50, 5, "Period for Bollinger Bands"),
+            ParameterDefinition("bb_std", "BB Std", "float", 2.0, 1.5, 3.0, 0.1, "Standard deviation for BB"),
+            ParameterDefinition("kc_atr_period", "KC ATR Period", "int", 10, 5, 20, 1, "ATR Period for Keltner Channels"),
+            ParameterDefinition("kc_multiplier", "KC Multiplier", "float", 1.5, 1.0, 2.5, 0.1, "Multiplier for Keltner Channels"),
+            ParameterDefinition("vol_period", "Vol Period", "int", 20, 10, 50, 5, "Volume MA Period"),
+            ParameterDefinition("vol_factor", "Vol Factor", "float", 1.5, 1.1, 3.0, 0.1, "Volume Spike Factor"),
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # TREND PULLBACK
+    # -------------------------------------------------------------------------
+    StrategyName.TREND_PULLBACK: StrategyParameterConfig(
+        strategy_name=StrategyName.TREND_PULLBACK,
+        display_name="Trend Pullback",
+        description="Classic trend following: Buy dips in uptrends.",
+        parameters=[
+            ParameterDefinition("ema_trend", "EMA Trend", "int", 200, 50, 200, 10, "Trend Filter EMA"),
+            ParameterDefinition("rsi_period", "RSI Period", "int", 14, 7, 21, 1, "RSI Period"),
+            ParameterDefinition("rsi_pullback", "RSI Pullback", "int", 40, 20, 50, 5, "RSI Level for Pullback Entry"),
+            ParameterDefinition("rsi_exit", "RSI Exit", "int", 70, 60, 80, 5, "RSI Level for Exit"),
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # OPENING RANGE BREAKOUT
+    # -------------------------------------------------------------------------
+    StrategyName.OPENING_RANGE: StrategyParameterConfig(
+        strategy_name=StrategyName.OPENING_RANGE,
+        display_name="Opening Range",
+        description="Trades the breakout of the opening range.",
+        parameters=[
+            ParameterDefinition("range_minutes", "Range (min)", "int", 15, 5, 60, 5, "Minutes to define opening range"),
+            ParameterDefinition("vol_factor", "Vol Factor", "float", 1.5, 1.1, 3.0, 0.1, "Volume Spike Factor"),
+            ParameterDefinition("atr_period", "ATR Period", "int", 14, 5, 30, 1, "ATR Period"),
+        ],
+    ),
+    # -------------------------------------------------------------------------
+    # REGIME SWITCHING HYBRID
+    # -------------------------------------------------------------------------
+    StrategyName.REGIME_HYBRID: StrategyParameterConfig(
+        strategy_name=StrategyName.REGIME_HYBRID,
+        display_name="Regime Hybrid",
+        description="Switches strategies based on market regime (Trend/Range/Vol).",
+        parameters=[
+            ParameterDefinition("adx_period", "ADX Period", "int", 14, 7, 21, 1, "ADX Period"),
+            ParameterDefinition("trend_threshold", "Trend Thresh", "int", 25, 15, 35, 5, "ADX Threshold for Trend"),
+            ParameterDefinition("range_threshold", "Range Thresh", "int", 20, 10, 30, 5, "ADX Threshold for Range"),
+            ParameterDefinition("bb_period", "BB Period", "int", 20, 10, 50, 5, "Bollinger Period"),
+            ParameterDefinition("bb_std", "BB Std", "float", 2.0, 1.5, 2.5, 0.1, "Bollinger Std Dev"),
         ],
     ),
 }

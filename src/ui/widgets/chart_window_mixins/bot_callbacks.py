@@ -57,6 +57,13 @@ class BotCallbacksMixin:
         config.bot.trailing_mode = trailing_mode
         config.bot.disable_restrictions = self.disable_restrictions_cb.isChecked()
         config.bot.disable_macd_exit = self.disable_macd_exit_cb.isChecked()
+        # Min score: UI is percent, config expects 0-1
+        config.bot.entry_score_threshold = self.min_score_spin.value() / 100.0
+        # Pattern settings
+        config.bot.use_pattern_check = self.use_pattern_cb.isChecked()
+        config.bot.pattern_similarity_threshold = self.pattern_similarity_spin.value()
+        config.bot.pattern_min_matches = self.pattern_matches_spin.value()
+        config.bot.pattern_min_win_rate = self.pattern_winrate_spin.value() / 100.0
         config.risk.initial_stop_loss_pct = self.initial_sl_spin.value()
         config.risk.risk_per_trade_pct = self.risk_per_trade_spin.value()
         config.risk.max_trades_per_day = self.max_trades_spin.value()
@@ -143,6 +150,7 @@ class BotCallbacksMixin:
         side = signal.side.value if hasattr(signal, 'side') else "unknown"
         entry_price = getattr(signal, 'entry_price', 0)
         score = getattr(signal, 'score', 0)
+        strategy_name = getattr(signal, 'strategy_name', "Manual")
         # Get stop_loss_price from signal (this is calculated by the bot based on initial_stop_loss_pct)
         signal_stop_price = getattr(signal, 'stop_loss_price', 0)
 
@@ -156,12 +164,13 @@ class BotCallbacksMixin:
 
         self._add_ki_log_entry(
             "SIGNAL",
-            f"Signal empfangen: type={signal_type} side={side} @ {entry_price:.4f} SL={signal_stop_price:.4f} -> status={status}"
+            f"Signal empfangen: type={signal_type} strategy={strategy_name} side={side} @ {entry_price:.4f} SL={signal_stop_price:.4f} -> status={status}"
         )
 
         logger.info(
-            f"Bot signal received: {signal_type} {side} @ {entry_price:.4f} (Score: {score:.2f}, SL: {signal_stop_price:.4f})"
+            f"Bot signal received: {signal_type} ({strategy_name}) {side} @ {entry_price:.4f} (Score: {score:.2f}, SL: {signal_stop_price:.4f})"
         )
+
 
         # Get initial values from UI for new signals
         capital = self.bot_capital_spin.value() if hasattr(self, 'bot_capital_spin') else 10000
@@ -169,13 +178,14 @@ class BotCallbacksMixin:
         invested = capital * (risk_pct / 100)
         initial_sl_pct = self.initial_sl_spin.value() if hasattr(self, 'initial_sl_spin') else 2.0
         trailing_pct = self.trailing_distance_spin.value() if hasattr(self, 'trailing_distance_spin') else 1.5
-        trailing_activation = self.trailing_activation_spin.value() if hasattr(self, 'trailing_activation_spin') else 0.0
+        # Use TRA% spinbox for activation pct
+        trailing_activation = self.tra_percent_spin.value() if hasattr(self, 'tra_percent_spin') else 0.0
 
         # Debug: log the values we're setting
         self._add_ki_log_entry(
             "DEBUG",
             f"Signal UI values: capital={capital}, risk%={risk_pct}, invested={invested}, "
-            f"SL%={initial_sl_pct}, TR%={trailing_pct}, TRA_threshold={trailing_activation}"
+            f"SL%={initial_sl_pct}, TR%={trailing_pct}, TRA%={trailing_activation}"
         )
 
         # Calculate stop_price from UI if bot didn't provide one
@@ -196,6 +206,7 @@ class BotCallbacksMixin:
                     sig["type"] = "confirmed"
                     sig["status"] = "ENTERED"
                     sig["score"] = score
+                    sig["strategy"] = strategy_name
                     sig["price"] = entry_price
                     sig["is_open"] = True
                     sig["label"] = f"E:{int(score * 100)}"
@@ -207,6 +218,9 @@ class BotCallbacksMixin:
                     sig["initial_sl_pct"] = initial_sl_pct
                     sig["trailing_stop_pct"] = trailing_pct
                     sig["trailing_activation_pct"] = trailing_activation
+                    # Enable TR Lock by default on entry
+                    sig["tr_lock_active"] = True
+                    
                     # Calculate initial trailing_stop_price from entry +/- TR%
                     # TR is NOT active until price moves past activation threshold
                     sig["tr_active"] = False  # Will activate when price > entry + TRA%
@@ -215,7 +229,7 @@ class BotCallbacksMixin:
                             sig["trailing_stop_price"] = entry_price * (1 - trailing_pct / 100)
                         else:
                             sig["trailing_stop_price"] = entry_price * (1 + trailing_pct / 100)
-                    logger.info(f"Updated candidate to confirmed: {side} @ {entry_price:.4f}, SL={signal_stop_price:.4f}, invested={invested}, TR%={trailing_pct}")
+                    logger.info(f"Updated candidate to confirmed: {side} @ {entry_price:.4f}, SL={signal_stop_price:.4f}, invested={invested}, TR%={trailing_pct}, TRA%={trailing_activation}")
                     break
             else:
                 # No candidate found - add new confirmed entry
@@ -232,6 +246,7 @@ class BotCallbacksMixin:
                     "type": signal_type,
                     "side": side,
                     "score": score,
+                    "strategy": strategy_name,
                     "price": entry_price,
                     "stop_price": signal_stop_price,  # Already calculated from UI if bot didn't provide
                     "status": "ENTERED",
@@ -248,6 +263,7 @@ class BotCallbacksMixin:
                     "trailing_stop_price": trailing_stop_price,
                     "trailing_activation_pct": trailing_activation,
                     "tr_active": False,  # Will activate when price > entry + TRA%
+                    "tr_lock_active": True, # Enable TR Lock by default
                 })
         else:
             # Candidate signal - check if candidate already exists for this side
@@ -261,10 +277,11 @@ class BotCallbacksMixin:
                 # Update existing candidate instead of adding new
                 existing_candidate["time"] = datetime.now().strftime("%H:%M:%S")
                 existing_candidate["score"] = score
+                existing_candidate["strategy"] = strategy_name
                 existing_candidate["price"] = entry_price
                 existing_candidate["current_price"] = entry_price
-                logger.info(f"Updated existing candidate: {side} @ {entry_price:.4f} (Score: {score:.2f})")
-                self._add_ki_log_entry("SIGNAL", f"Kandidat aktualisiert: {side} @ {entry_price:.4f}")
+                logger.info(f"Updated existing candidate: {side} @ {entry_price:.4f} (Score: {score:.2f}, Strategy: {strategy_name})")
+                self._add_ki_log_entry("SIGNAL", f"Kandidat aktualisiert: {side} @ {entry_price:.4f} ({strategy_name})")
 
                 # Re-fetch derivative if needed (price changed)
                 if (
@@ -282,6 +299,7 @@ class BotCallbacksMixin:
                     "type": signal_type,
                     "side": side,
                     "score": score,
+                    "strategy": strategy_name,
                     "price": entry_price,
                     "status": status,
                     "quantity": 0.0,

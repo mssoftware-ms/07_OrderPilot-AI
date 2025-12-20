@@ -13,12 +13,13 @@ REFACTORED: Split into multiple files to meet 600 LOC limit.
 """
 
 import asyncio
+import json
 import logging
 import subprocess
 from datetime import datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QSettings
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -26,6 +27,7 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QMessageBox,
     QListWidget,
+    QListWidgetItem,
 )
 
 from .pattern_db_tabs_mixin import PatternDbTabsMixin
@@ -49,7 +51,14 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
         self.setMinimumSize(800, 600)
         self.resize(900, 700)
 
+        self._settings = QSettings("OrderPilot", "TradingApp")
         self._build_worker: Optional[DatabaseBuildWorker] = None
+        self._pending_crypto_symbols: list[str] = []
+        self._pending_timeframes: list[str] = []
+        self._pending_days_back: int = 0
+        self._progress_total_tasks: int = 0
+        self._progress_offset: int = 0
+        self._current_worker_total: int = 0
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self._update_docker_status)
 
@@ -103,10 +112,168 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
             self.crypto_list.addItem(item)
             self.custom_crypto_input.clear()
 
+    def _add_custom_stock(self):
+        """Add a custom stock or index symbol."""
+        symbol = self.custom_stock_input.text().strip().upper()
+        if not symbol:
+            return
+        for i in range(self.stock_list.count()):
+            if self.stock_list.item(i).text() == symbol:
+                return
+        from PyQt6.QtWidgets import QListWidgetItem
+        item = QListWidgetItem(symbol)
+        item.setSelected(True)
+        self.stock_list.addItem(item)
+        self.custom_stock_input.clear()
+
+    def _remove_selected_stocks(self):
+        """Remove selected stock symbols from list."""
+        for item in self.stock_list.selectedItems():
+            row = self.stock_list.row(item)
+            self.stock_list.takeItem(row)
+
+    def _clear_stock_list(self):
+        """Clear all stock symbols."""
+        self.stock_list.clear()
+
+    def _remove_selected_crypto(self):
+        """Remove selected crypto symbols from list."""
+        for item in self.crypto_list.selectedItems():
+            row = self.crypto_list.row(item)
+            self.crypto_list.takeItem(row)
+
+    def _clear_crypto_list(self):
+        """Clear all crypto symbols."""
+        self.crypto_list.clear()
+
     def _load_initial_state(self):
         """Load initial state on dialog open."""
         self._update_docker_status()
         self._refresh_stats()
+        self._load_ui_settings()
+
+    def _load_ui_settings(self) -> None:
+        """Load saved UI settings for the Pattern DB dialog."""
+        try:
+            stock_symbols_json = self._settings.value("pattern_db/stock_symbols")
+            crypto_symbols_json = self._settings.value("pattern_db/crypto_symbols")
+            stock_selected_json = self._settings.value("pattern_db/stock_selected")
+            crypto_selected_json = self._settings.value("pattern_db/crypto_selected")
+
+            if stock_symbols_json:
+                symbols = json.loads(stock_symbols_json)
+                self.stock_list.clear()
+                for s in symbols:
+                    item = QListWidgetItem(s)
+                    self.stock_list.addItem(item)
+
+            if crypto_symbols_json:
+                symbols = json.loads(crypto_symbols_json)
+                self.crypto_list.clear()
+                for s in symbols:
+                    item = QListWidgetItem(s)
+                    self.crypto_list.addItem(item)
+
+            if stock_selected_json:
+                selected = set(json.loads(stock_selected_json))
+                for i in range(self.stock_list.count()):
+                    item = self.stock_list.item(i)
+                    item.setSelected(item.text() in selected)
+
+            if crypto_selected_json:
+                selected = set(json.loads(crypto_selected_json))
+                for i in range(self.crypto_list.count()):
+                    item = self.crypto_list.item(i)
+                    item.setSelected(item.text() in selected)
+
+            self.stock_radio.setChecked(
+                self._settings.value("pattern_db/stock_enabled", True, type=bool)
+            )
+            self.crypto_radio.setChecked(
+                self._settings.value("pattern_db/crypto_enabled", True, type=bool)
+            )
+
+            # Timeframes
+            self.tf_1min.setChecked(self._settings.value("pattern_db/tf_1min", True, type=bool))
+            self.tf_5min.setChecked(self._settings.value("pattern_db/tf_5min", True, type=bool))
+            self.tf_15min.setChecked(self._settings.value("pattern_db/tf_15min", True, type=bool))
+            self.tf_30min.setChecked(self._settings.value("pattern_db/tf_30min", False, type=bool))
+            self.tf_1hour.setChecked(self._settings.value("pattern_db/tf_1hour", False, type=bool))
+
+            # Numeric inputs
+            days = self._settings.value("pattern_db/days_back", None)
+            if days is not None:
+                self.days_spin.setValue(int(days))
+            window = self._settings.value("pattern_db/window_size", None)
+            if window is not None:
+                self.window_spin.setValue(int(window))
+            step = self._settings.value("pattern_db/step_size", None)
+            if step is not None:
+                self.step_spin.setValue(int(step))
+
+            # Search tab settings
+            search_symbol = self._settings.value("pattern_db/search_symbol")
+            if search_symbol:
+                idx = self.search_symbol.findText(search_symbol)
+                if idx >= 0:
+                    self.search_symbol.setCurrentIndex(idx)
+                else:
+                    self.search_symbol.addItem(search_symbol)
+                    self.search_symbol.setCurrentText(search_symbol)
+
+            search_timeframe = self._settings.value("pattern_db/search_timeframe")
+            if search_timeframe:
+                idx = self.search_timeframe.findText(search_timeframe)
+                if idx >= 0:
+                    self.search_timeframe.setCurrentIndex(idx)
+
+            threshold = self._settings.value("pattern_db/search_threshold", None)
+            if threshold is not None:
+                self.search_threshold.setValue(float(threshold))
+
+        except Exception as e:
+            logger.error(f"Failed to load Pattern DB settings: {e}")
+
+    def _save_ui_settings(self) -> None:
+        """Persist UI settings for the Pattern DB dialog."""
+        try:
+            stock_symbols = [self.stock_list.item(i).text() for i in range(self.stock_list.count())]
+            crypto_symbols = [self.crypto_list.item(i).text() for i in range(self.crypto_list.count())]
+            stock_selected = [item.text() for item in self.stock_list.selectedItems()]
+            crypto_selected = [item.text() for item in self.crypto_list.selectedItems()]
+
+            self._settings.setValue("pattern_db/stock_symbols", json.dumps(stock_symbols))
+            self._settings.setValue("pattern_db/crypto_symbols", json.dumps(crypto_symbols))
+            self._settings.setValue("pattern_db/stock_selected", json.dumps(stock_selected))
+            self._settings.setValue("pattern_db/crypto_selected", json.dumps(crypto_selected))
+
+            self._settings.setValue("pattern_db/stock_enabled", self.stock_radio.isChecked())
+            self._settings.setValue("pattern_db/crypto_enabled", self.crypto_radio.isChecked())
+
+            # Timeframes
+            self._settings.setValue("pattern_db/tf_1min", self.tf_1min.isChecked())
+            self._settings.setValue("pattern_db/tf_5min", self.tf_5min.isChecked())
+            self._settings.setValue("pattern_db/tf_15min", self.tf_15min.isChecked())
+            self._settings.setValue("pattern_db/tf_30min", self.tf_30min.isChecked())
+            self._settings.setValue("pattern_db/tf_1hour", self.tf_1hour.isChecked())
+
+            # Numeric inputs
+            self._settings.setValue("pattern_db/days_back", self.days_spin.value())
+            self._settings.setValue("pattern_db/window_size", self.window_spin.value())
+            self._settings.setValue("pattern_db/step_size", self.step_spin.value())
+
+            # Search tab
+            self._settings.setValue("pattern_db/search_symbol", self.search_symbol.currentText())
+            self._settings.setValue("pattern_db/search_timeframe", self.search_timeframe.currentText())
+            self._settings.setValue("pattern_db/search_threshold", self.search_threshold.value())
+
+        except Exception as e:
+            logger.error(f"Failed to save Pattern DB settings: {e}")
+
+    def closeEvent(self, event):
+        """Persist settings on close."""
+        self._save_ui_settings()
+        super().closeEvent(event)
 
     def _update_docker_status(self):
         """Update Docker status display."""
@@ -229,12 +396,17 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
                 item = self.stock_list.item(i)
                 if item.isSelected():
                     stock_symbols.append(item.text())
+            # If no explicit selection but checkbox is on, include all by default
+            if not stock_symbols:
+                stock_symbols = [self.stock_list.item(i).text() for i in range(self.stock_list.count())]
 
         if self.crypto_radio.isChecked():
             for i in range(self.crypto_list.count()):
                 item = self.crypto_list.item(i)
                 if item.isSelected():
                     crypto_symbols.append(item.text())
+            if not crypto_symbols:
+                crypto_symbols = [self.crypto_list.item(i).text() for i in range(self.crypto_list.count())]
 
         if not stock_symbols and not crypto_symbols:
             QMessageBox.warning(self, "No Symbols", "Please select at least one symbol.")
@@ -258,10 +430,15 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
             return
 
         # Confirm
+        # Prepare preview of selections
+        stock_preview = ", ".join(stock_symbols[:8]) + (" ..." if len(stock_symbols) > 8 else "")
+        crypto_preview = ", ".join(crypto_symbols[:8]) + (" ..." if len(crypto_symbols) > 8 else "")
         msg = (
             f"Build database with:\n"
-            f"- {len(stock_symbols)} stock symbols\n"
-            f"- {len(crypto_symbols)} crypto symbols\n"
+            f"- {len(stock_symbols)} stock symbols"
+            f"{' (' + stock_preview + ')' if stock_symbols else ''}\n"
+            f"- {len(crypto_symbols)} crypto symbols"
+            f"{' (' + crypto_preview + ')' if crypto_symbols else ''}\n"
             f"- {len(timeframes)} timeframes\n"
             f"- {self.days_spin.value()} days of history\n\n"
             f"This may take a while. Continue?"
@@ -272,6 +449,11 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
         # Clear log
         self.log_text.clear()
         self.progress_bar.setValue(0)
+        self._progress_offset = 0
+        self._current_worker_total = 0
+        self._progress_total_tasks = (
+            len(stock_symbols) * len(timeframes) + len(crypto_symbols) * len(timeframes)
+        )
 
         # Disable build button, enable cancel
         self.build_btn.setEnabled(False)
@@ -279,12 +461,17 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
 
         # Build stocks first, then crypto
         if stock_symbols:
+            if crypto_symbols:
+                self._pending_crypto_symbols = crypto_symbols
+                self._pending_timeframes = timeframes
+                self._pending_days_back = self.days_spin.value()
             self._run_build(stock_symbols, timeframes, False)
         elif crypto_symbols:
             self._run_build(crypto_symbols, timeframes, True)
 
     def _run_build(self, symbols: list[str], timeframes: list[str], is_crypto: bool):
         """Run the build worker."""
+        self._current_worker_total = len(symbols) * len(timeframes)
         self._build_worker = DatabaseBuildWorker(
             symbols=symbols,
             timeframes=timeframes,
@@ -313,15 +500,32 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
         if success:
             self._log(f"SUCCESS: {message}")
             self._refresh_stats()
+            self._progress_offset += self._current_worker_total
         else:
             self._log(f"FAILED: {message}")
 
         self._build_worker = None
 
+        # If stocks completed successfully and crypto is pending, run crypto build next
+        if success and self._pending_crypto_symbols:
+            symbols = self._pending_crypto_symbols
+            timeframes = self._pending_timeframes
+            days_back = self._pending_days_back
+            # Clear pending before starting
+            self._pending_crypto_symbols = []
+            self._pending_timeframes = []
+            self._pending_days_back = 0
+
+            self._log(f"Starting crypto build: {len(symbols)} symbols")
+            self._run_build(symbols, timeframes, True)
+
     def _update_progress(self, current: int, total: int):
         """Update progress bar."""
-        if total > 0:
-            self.progress_bar.setValue(int(current / total * 100))
+        worker_total = self._current_worker_total or total
+        global_total = self._progress_total_tasks or worker_total
+        if global_total > 0:
+            global_current = min(self._progress_offset + current, global_total)
+            self.progress_bar.setValue(int(global_current / global_total * 100))
 
     def _log(self, message: str):
         """Add message to log."""
@@ -384,10 +588,12 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
                 from src.core.market_data.types import DataRequest, Timeframe, AssetClass
                 from src.core.market_data.history_provider import HistoryManager
                 from src.core.pattern_db import get_pattern_service
+                from src.core.pattern_db.fetcher import resolve_symbol
 
                 # Determine asset class
                 is_crypto = "/" in symbol
                 asset_class = AssetClass.CRYPTO if is_crypto else AssetClass.STOCK
+                fetch_symbol = resolve_symbol(symbol, asset_class)
 
                 # Fetch recent bars
                 tf_map = {
@@ -401,7 +607,7 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
                 start = end - timedelta(hours=2)
 
                 request = DataRequest(
-                    symbol=symbol,
+                    symbol=fetch_symbol,
                     start_date=start,
                     end_date=end,
                     timeframe=tf_map.get(timeframe, Timeframe.MINUTE_1),
@@ -429,6 +635,8 @@ class PatternDatabaseDialog(PatternDbTabsMixin, QDialog):
 
                 # Format results
                 result = f"Symbol: {symbol} | Timeframe: {timeframe}\n"
+                if fetch_symbol != symbol:
+                    result += f"Data proxy used: {fetch_symbol}\n"
                 result += f"Bars analyzed: {len(bars)}\n"
                 result += "=" * 50 + "\n\n"
                 result += f"Similar Patterns Found: {analysis.similar_patterns_count}\n"

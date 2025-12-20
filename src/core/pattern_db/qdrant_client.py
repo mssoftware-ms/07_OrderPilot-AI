@@ -5,6 +5,7 @@ Stores and retrieves trading patterns for similarity search.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -17,9 +18,9 @@ from .embedder import PatternEmbedder
 
 logger = logging.getLogger(__name__)
 
-# Qdrant configuration for Docker
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+# Qdrant configuration for Docker (override via env)
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 COLLECTION_NAME = "trading_patterns"
 
 
@@ -69,6 +70,7 @@ class TradingPatternDB:
 
         self._client = None
         self._initialized = False
+        self._last_error: str | None = None
 
     def _get_client(self):
         """Get or create Qdrant client."""
@@ -85,6 +87,39 @@ class TradingPatternDB:
                 raise
         return self._client
 
+    def _candidate_hosts(self) -> list[str]:
+        """Return candidate hosts for Qdrant connection."""
+        hosts: list[str] = []
+        env_host = os.getenv("QDRANT_HOST")
+        if env_host:
+            hosts.append(env_host)
+        hosts.append(self.host)
+        hosts.append("127.0.0.1")
+        hosts.append("host.docker.internal")
+        # Try Windows host IP when running in WSL
+        try:
+            with open("/etc/resolv.conf", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("nameserver"):
+                        ip = line.split()[1].strip()
+                        if ip:
+                            hosts.append(ip)
+                        break
+        except Exception:
+            pass
+        # Deduplicate while preserving order
+        seen = set()
+        uniq = []
+        for h in hosts:
+            if h and h not in seen:
+                uniq.append(h)
+                seen.add(h)
+        return uniq
+
+    def get_last_error(self) -> str | None:
+        """Return last connection error (if any)."""
+        return self._last_error
+
     async def initialize(self) -> bool:
         """Initialize the collection if it doesn't exist.
 
@@ -93,8 +128,28 @@ class TradingPatternDB:
         """
         try:
             from qdrant_client.models import Distance, VectorParams, PayloadSchemaType
+            from qdrant_client import QdrantClient
 
-            client = self._get_client()
+            # Try to connect (with fallback hosts)
+            client = None
+            last_exc: Exception | None = None
+            for host in self._candidate_hosts():
+                try:
+                    probe_client = QdrantClient(host=host, port=self.port)
+                    _ = probe_client.get_collections()
+                    client = probe_client
+                    self.host = host
+                    self._client = client
+                    logger.info(f"Connected to Qdrant at {host}:{self.port}")
+                    break
+                except Exception as e:
+                    last_exc = e
+                    continue
+
+            if client is None:
+                self._last_error = str(last_exc) if last_exc else "Unknown connection error"
+                logger.error(f"Failed to connect to Qdrant: {self._last_error}")
+                return False
 
             # Check if collection exists
             collections = client.get_collections().collections
@@ -140,6 +195,7 @@ class TradingPatternDB:
             return True
 
         except Exception as e:
+            self._last_error = str(e)
             logger.error(f"Failed to initialize collection: {e}")
             return False
 

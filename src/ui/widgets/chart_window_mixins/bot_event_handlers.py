@@ -281,6 +281,21 @@ class BotEventHandlersMixin:
             if "trailing_pct_distance" in settings:
                 self.trailing_distance_spin.setValue(settings["trailing_pct_distance"])
 
+            if "min_score_pct" in settings:
+                self.min_score_spin.setValue(settings["min_score_pct"])
+
+            if "use_pattern_check" in settings:
+                self.use_pattern_cb.setChecked(settings["use_pattern_check"])
+
+            if "pattern_similarity" in settings:
+                self.pattern_similarity_spin.setValue(settings["pattern_similarity"])
+
+            if "pattern_min_matches" in settings:
+                self.pattern_matches_spin.setValue(settings["pattern_min_matches"])
+
+            if "pattern_min_winrate_pct" in settings:
+                self.pattern_winrate_spin.setValue(settings["pattern_min_winrate_pct"])
+
             # Update UI state
             self._on_trailing_mode_changed()
             self._on_regime_adaptive_changed()
@@ -319,6 +334,11 @@ class BotEventHandlersMixin:
             "min_step_pct": self.min_step_spin.value(),
             "trailing_activation_pct": self.trailing_activation_spin.value(),
             "trailing_pct_distance": self.trailing_distance_spin.value(),
+            "min_score_pct": self.min_score_spin.value(),
+            "use_pattern_check": self.use_pattern_cb.isChecked(),
+            "pattern_similarity": self.pattern_similarity_spin.value(),
+            "pattern_min_matches": self.pattern_matches_spin.value(),
+            "pattern_min_winrate_pct": self.pattern_winrate_spin.value(),
         }
 
         self._bot_settings_manager.save_settings(symbol, settings)

@@ -357,6 +357,31 @@ class BotController(
         """Get current active strategy."""
         return self._active_strategy
 
+    def get_strategy_selection(self):
+        """Get current strategy selection result (if any)."""
+        return self._strategy_selector.get_current_selection()
+
+    def get_strategy_score_rows(self) -> list[dict]:
+        """Get strategy score rows for UI display."""
+        selection = self._strategy_selector.get_current_selection()
+        scores = selection.strategy_scores if selection else {}
+        rows: list[dict] = []
+        for name, score in sorted(scores.items(), key=lambda item: item[1], reverse=True):
+            info = self._strategy_selector.get_strategy_info(name)
+            metrics = info.get("metrics") if info else None
+            rows.append({
+                "name": name,
+                "score": float(score) if score is not None else 0.0,
+                "profit_factor": float(metrics.get("profit_factor")) if metrics and metrics.get("profit_factor") is not None else 0.0,
+                "win_rate": float(metrics.get("win_rate")) if metrics and metrics.get("win_rate") is not None else 0.0,
+                "max_drawdown": float(metrics.get("max_drawdown_pct")) if metrics and metrics.get("max_drawdown_pct") is not None else 0.0,
+            })
+        return rows
+
+    def get_walk_forward_config(self):
+        """Get walk-forward configuration for UI display."""
+        return self._strategy_selector.evaluator.walk_forward_config
+
     @property
     def last_regime(self) -> RegimeState:
         """Get last detected regime."""

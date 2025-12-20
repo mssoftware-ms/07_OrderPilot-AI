@@ -46,7 +46,9 @@ class SimulationWorker(QThread):
     """Worker thread for running simulations."""
 
     finished = pyqtSignal(object)  # SimulationResult or OptimizationRun
+    partial_result = pyqtSignal(object)  # Intermediate result for batch runs
     progress = pyqtSignal(int, int, float)  # current, total, best_score
+    strategy_started = pyqtSignal(int, int, str)  # index, total, strategy_name
     error = pyqtSignal(str)
 
     def __init__(
@@ -86,49 +88,88 @@ class SimulationWorker(QThread):
                 OptimizationConfig,
                 BayesianOptimizer,
                 GridSearchOptimizer,
+                get_default_parameters,
             )
 
-            strategy = StrategyName(self.strategy_name)
+            is_all = self.strategy_name == "all"
+            strategies = list(StrategyName) if is_all else [StrategyName(self.strategy_name)]
 
             if self.mode == "manual":
-                # Single simulation - needs event loop for async run_simulation
+                # Single or batch simulation - needs event loop for async run_simulation
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                results: list[object] = []
                 try:
                     simulator = StrategySimulator(self.data, self.symbol)
-                    result = loop.run_until_complete(
-                        simulator.run_simulation(
-                            strategy_name=strategy,
-                            parameters=self.parameters,
+                    for idx, strategy in enumerate(strategies, start=1):
+                        if self._cancelled:
+                            break
+                        self.strategy_started.emit(idx, len(strategies), strategy.value)
+                        params = (
+                            get_default_parameters(strategy)
+                            if is_all
+                            else self.parameters
                         )
-                    )
-                    self.finished.emit(result)
+                        result = loop.run_until_complete(
+                            simulator.run_simulation(
+                                strategy_name=strategy,
+                                parameters=params,
+                            )
+                        )
+                        results.append(result)
+                        if is_all:
+                            self.partial_result.emit(result)
                 finally:
                     loop.close()
 
+                if is_all:
+                    self.finished.emit({"batch_done": True, "count": len(results)})
+                else:
+                    self.finished.emit(results[0] if results else [])
+
             elif self.mode in ("grid", "bayesian"):
                 # Optimization - optimizers are synchronous and manage their own event loops
-                config = OptimizationConfig(
-                    strategy_name=strategy,
-                    objective_metric="sharpe_ratio",
-                    direction="maximize",
-                    n_trials=self.opt_trials,
-                )
+                results: list[object] = []
 
                 def progress_cb(current, total, best):
                     self.progress.emit(current, total, best)
 
-                if self.mode == "bayesian":
-                    optimizer = BayesianOptimizer(self.data, self.symbol, config)
+                for idx, strategy in enumerate(strategies, start=1):
+                    if self._cancelled:
+                        break
+
+                    self.strategy_started.emit(idx, len(strategies), strategy.value)
+                    config = OptimizationConfig(
+                        strategy_name=strategy,
+                        objective_metric="sharpe_ratio",
+                        direction="maximize",
+                        n_trials=self.opt_trials,
+                    )
+
+                    if self.mode == "bayesian":
+                        optimizer = BayesianOptimizer(self.data, self.symbol, config)
+                    else:
+                        optimizer = GridSearchOptimizer(self.data, self.symbol, config)
+
+                    # Keep reference so we can cancel from UI thread
+                    self._optimizer = optimizer
+
+                    # Optimizers are now synchronous
+                    if self.mode == "grid":
+                        result = optimizer.optimize(
+                            progress_callback=progress_cb,
+                            max_combinations=self.opt_trials,
+                        )
+                    else:
+                        result = optimizer.optimize(progress_callback=progress_cb)
+                    results.append(result)
+                    if is_all:
+                        self.partial_result.emit(result)
+
+                if is_all:
+                    self.finished.emit({"batch_done": True, "count": len(results)})
                 else:
-                    optimizer = GridSearchOptimizer(self.data, self.symbol, config)
-
-                # Keep reference so we can cancel from UI thread
-                self._optimizer = optimizer
-
-                # Optimizers are now synchronous
-                result = optimizer.optimize(progress_callback=progress_cb)
-                self.finished.emit(result)
+                    self.finished.emit(results[0] if results else [])
 
         except Exception as e:
             logger.error("Simulation failed: %s", e, exc_info=True)
@@ -142,9 +183,12 @@ class StrategySimulatorMixin:
 
     # Storage for simulation results
     _simulation_results: list = []
-    _table_row_results: list = []  # Maps table row index to SimulationResult or None
     _last_optimization_run: object = None
     _current_worker: SimulationWorker | None = None
+    _current_sim_strategy_name: str | None = None
+    _current_sim_strategy_index: int | None = None
+    _current_sim_strategy_total: int | None = None
+    _current_simulation_mode: str | None = None
 
     def _create_strategy_simulator_tab(self) -> QWidget:
         """Create the Strategy Simulator tab widget."""
@@ -170,8 +214,11 @@ class StrategySimulatorMixin:
 
         # Initialize
         self._simulation_results = []
-        self._table_row_results = []
         self._last_optimization_run = None
+        self._current_sim_strategy_name = None
+        self._current_sim_strategy_index = None
+        self._current_sim_strategy_total = None
+        self._current_simulation_mode = None
         self._on_simulator_strategy_changed(0)
 
         return widget
@@ -201,12 +248,18 @@ class StrategySimulatorMixin:
             "Mean Reversion",
             "Trend Following",
             "Scalping",
+            "Bollinger Squeeze",
+            "Trend Pullback",
+            "Opening Range",
+            "Regime Hybrid",
+            "ALL",
         ])
         self.simulator_strategy_combo.currentIndexChanged.connect(
             self._on_simulator_strategy_changed
         )
         strategy_layout.addWidget(self.simulator_strategy_combo)
         layout.addWidget(strategy_group)
+
 
         # Parameters Group (dynamic based on strategy)
         self.simulator_params_group = QGroupBox("Parameters")
@@ -336,6 +389,8 @@ class StrategySimulatorMixin:
         self.simulator_results_table.itemSelectionChanged.connect(
             self._on_simulator_result_selected
         )
+        self.simulator_results_table.setSortingEnabled(True)
+        header.setSortIndicatorShown(True)
         layout.addWidget(self.simulator_results_table)
 
         # Buttons row
@@ -365,14 +420,23 @@ class StrategySimulatorMixin:
 
     def _on_simulator_strategy_changed(self, index: int) -> None:
         """Update parameter widgets when strategy changes."""
-        from src.core.simulator import StrategyName, get_strategy_parameters
+        from src.core.simulator import StrategyName
 
+        if self._is_all_strategy_selected():
+            self.simulator_params_group.setEnabled(False)
+            return
+
+        self.simulator_params_group.setEnabled(True)
         strategy_map = {
             0: StrategyName.BREAKOUT,
             1: StrategyName.MOMENTUM,
             2: StrategyName.MEAN_REVERSION,
             3: StrategyName.TREND_FOLLOWING,
             4: StrategyName.SCALPING,
+            5: StrategyName.BOLLINGER_SQUEEZE,
+            6: StrategyName.TREND_PULLBACK,
+            7: StrategyName.OPENING_RANGE,
+            8: StrategyName.REGIME_HYBRID,
         }
         strategy = strategy_map.get(index, StrategyName.BREAKOUT)
         self._populate_simulator_parameter_widgets(strategy)
@@ -432,12 +496,22 @@ class StrategySimulatorMixin:
         """Reset all parameter widgets to their default values."""
         from src.core.simulator import StrategyName, get_strategy_parameters
 
+        if self._is_all_strategy_selected():
+            self.simulator_status_label.setText(
+                "ALL selected: parameters are not used for batch runs"
+            )
+            return
+
         strategy_map = {
             0: StrategyName.BREAKOUT,
             1: StrategyName.MOMENTUM,
             2: StrategyName.MEAN_REVERSION,
             3: StrategyName.TREND_FOLLOWING,
             4: StrategyName.SCALPING,
+            5: StrategyName.BOLLINGER_SQUEEZE,
+            6: StrategyName.TREND_PULLBACK,
+            7: StrategyName.OPENING_RANGE,
+            8: StrategyName.REGIME_HYBRID,
         }
         strategy = strategy_map.get(
             self.simulator_strategy_combo.currentIndex(), StrategyName.BREAKOUT
@@ -453,7 +527,7 @@ class StrategySimulatorMixin:
 
     def _on_save_params_to_bot(self) -> None:
         """Save current parameters for production bot use."""
-        from src.core.simulator import save_strategy_params
+        from src.core.simulator import save_strategy_params_to_path
 
         strategy_name = self._get_simulator_strategy_name()
         params = self._get_simulator_parameters()
@@ -463,8 +537,25 @@ class StrategySimulatorMixin:
         if hasattr(self, "current_symbol"):
             symbol = self.current_symbol
 
+        default_dir = Path("config/strategy_params")
+        default_name = f"{strategy_name}_params.json"
+        default_path = default_dir / default_name
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Strategy Parameters",
+            str(default_path),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        path = Path(filepath)
+        if path.suffix.lower() != ".json":
+            path = path.with_suffix(".json")
+
         try:
-            filepath = save_strategy_params(
+            saved_path = save_strategy_params_to_path(
+                filepath=path,
                 strategy_name=strategy_name,
                 params=params,
                 symbol=symbol,
@@ -475,7 +566,7 @@ class StrategySimulatorMixin:
                 "Parameters Saved",
                 f"Strategy parameters saved for production bot.\n\n"
                 f"Strategy: {strategy_name}\n"
-                f"File: {filepath}",
+                f"File: {saved_path}",
             )
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save parameters: {e}")
@@ -517,16 +608,27 @@ class StrategySimulatorMixin:
 
     def _get_simulator_strategy_name(self) -> str:
         """Get currently selected strategy name."""
+        if self._is_all_strategy_selected():
+            return "all"
+
         strategy_map = {
             0: "breakout",
             1: "momentum",
             2: "mean_reversion",
             3: "trend_following",
             4: "scalping",
+            5: "bollinger_squeeze",
+            6: "trend_pullback",
+            7: "opening_range",
+            8: "regime_hybrid",
         }
         return strategy_map.get(
             self.simulator_strategy_combo.currentIndex(), "breakout"
         )
+
+    def _is_all_strategy_selected(self) -> bool:
+        """Check if ALL is selected in strategy dropdown."""
+        return self.simulator_strategy_combo.currentText().strip().upper() == "ALL"
 
     def _on_run_simulation(self) -> None:
         """Run simulation with current settings."""
@@ -568,6 +670,7 @@ class StrategySimulatorMixin:
         mode_id = self.simulator_opt_mode_group.checkedId()
         mode_map = {0: "manual", 1: "grid", 2: "bayesian"}
         mode = mode_map.get(mode_id, "manual")
+        self._current_simulation_mode = mode
 
         # Disable UI
         self.simulator_run_btn.setEnabled(False)
@@ -593,7 +696,9 @@ class StrategySimulatorMixin:
             opt_trials=self.simulator_opt_trials_spin.value(),
         )
         self._current_worker.finished.connect(self._on_simulation_finished)
+        self._current_worker.partial_result.connect(self._on_simulation_partial_result)
         self._current_worker.progress.connect(self._on_simulation_progress)
+        self._current_worker.strategy_started.connect(self._on_simulation_strategy_started)
         self._current_worker.error.connect(self._on_simulation_error)
         self._current_worker.start()
 
@@ -608,17 +713,44 @@ class StrategySimulatorMixin:
         """Update progress bar."""
         pct = int((current / total) * 100) if total > 0 else 0
         self.simulator_progress.setValue(pct)
+        strategy_prefix = ""
+        if self._current_sim_strategy_name:
+            index = self._current_sim_strategy_index or 1
+            total_strategies = self._current_sim_strategy_total or 1
+            display_name = self._get_strategy_display_name(self._current_sim_strategy_name)
+            strategy_prefix = f"{index}/{total_strategies} {display_name} | "
         self.simulator_status_label.setText(
-            f"Trial {current}/{total} | Best: {best:.4f}"
+            f"{strategy_prefix}Trial {current}/{total} | Best: {best:.4f}"
         )
 
     def _on_simulation_finished(self, result) -> None:
         """Handle simulation completion."""
-        from src.core.simulator import SimulationResult, OptimizationRun
-
         self.simulator_run_btn.setEnabled(True)
         self.simulator_stop_btn.setEnabled(False)
         self.simulator_progress.setVisible(False)
+
+        if isinstance(result, dict) and result.get("batch_done"):
+            count = result.get("count", 0)
+            status_msg = f"Completed batch run: {count} strategies"
+            self.simulator_status_label.setText(status_msg)
+            self._log_simulator_to_ki("OK", status_msg)
+        elif isinstance(result, list):
+            for item in result:
+                self._handle_simulation_result(item)
+
+            status_msg = f"Completed batch run: {len(result)} strategies"
+            self.simulator_status_label.setText(status_msg)
+            self._log_simulator_to_ki("OK", status_msg)
+        else:
+            self._handle_simulation_result(result)
+
+        self.simulator_export_btn.setEnabled(bool(self._simulation_results))
+        # Ensure thread is fully stopped before dropping reference
+        self._cleanup_simulation_worker(wait_ms=200)
+
+    def _handle_simulation_result(self, result) -> None:
+        """Handle a single simulation or optimization result."""
+        from src.core.simulator import SimulationResult, OptimizationRun
 
         if isinstance(result, SimulationResult):
             self._simulation_results.append(result)
@@ -673,10 +805,6 @@ class StrategySimulatorMixin:
                 self.simulator_status_label.setText(status_msg)
                 self._log_simulator_to_ki("OK", status_msg)
 
-        self.simulator_export_btn.setEnabled(bool(self._simulation_results))
-        # Ensure thread is fully stopped before dropping reference
-        self._cleanup_simulation_worker(wait_ms=200)
-
     def _on_simulation_error(self, error_msg: str) -> None:
         """Handle simulation error."""
         self.simulator_run_btn.setEnabled(True)
@@ -689,6 +817,21 @@ class StrategySimulatorMixin:
 
         QMessageBox.critical(self, "Simulation Error", error_msg)
         self._cleanup_simulation_worker(wait_ms=200)
+
+    def _on_simulation_partial_result(self, result) -> None:
+        """Handle partial results for batch runs."""
+        self._handle_simulation_result(result)
+
+    def _on_simulation_strategy_started(self, index: int, total: int, strategy_name: str) -> None:
+        """Update UI when a strategy run starts."""
+        self._current_sim_strategy_name = strategy_name
+        self._current_sim_strategy_index = index
+        self._current_sim_strategy_total = total
+        display_name = self._get_strategy_display_name(strategy_name)
+        mode = self._current_simulation_mode or "manual"
+        status_msg = f"Running {index}/{total}: {display_name} ({mode})"
+        self.simulator_status_label.setText(status_msg)
+        self._log_simulator_to_ki("INFO", status_msg)
 
     def _cleanup_simulation_worker(self, wait_ms: int = 0, cancel: bool = False) -> None:
         """Safely stop and dispose the simulation worker thread.
@@ -740,11 +883,13 @@ class StrategySimulatorMixin:
 
     def _add_result_to_table(self, result) -> None:
         """Add simulation result to results table."""
-        row = self.simulator_results_table.rowCount()
-        self.simulator_results_table.insertRow(row)
+        table = self.simulator_results_table
+        was_sorting = table.isSortingEnabled()
+        if was_sorting:
+            table.setSortingEnabled(False)
 
-        # Track result for this row (for Show Entry/Exit)
-        self._table_row_results.append(result)
+        row = table.rowCount()
+        table.insertRow(row)
 
         # Format parameters (ALL parameters)
         params_full = ", ".join(
@@ -768,8 +913,10 @@ class StrategySimulatorMixin:
 
         for col, value in enumerate(items):
             item = QTableWidgetItem(str(value))
+            if col == 0:
+                item.setData(Qt.ItemDataRole.UserRole, result)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.simulator_results_table.setItem(row, col, item)
+            table.setItem(row, col, item)
 
             # Color P&L column
             if col == 4:  # P&L € column
@@ -781,6 +928,9 @@ class StrategySimulatorMixin:
                         item.setBackground(Qt.GlobalColor.red)
                 except ValueError:
                     pass
+
+        if was_sorting:
+            table.setSortingEnabled(True)
 
             # Color Score column
             if col == 7:  # Score column
@@ -795,11 +945,13 @@ class StrategySimulatorMixin:
 
     def _add_trial_to_table(self, trial, strategy_name: str) -> None:
         """Add optimization trial to results table (no detailed trade data)."""
-        row = self.simulator_results_table.rowCount()
-        self.simulator_results_table.insertRow(row)
+        table = self.simulator_results_table
+        was_sorting = table.isSortingEnabled()
+        if was_sorting:
+            table.setSortingEnabled(False)
 
-        # No detailed result for trials (only metrics summary)
-        self._table_row_results.append(None)
+        row = table.rowCount()
+        table.insertRow(row)
 
         # Format ALL parameters
         params_full = ", ".join(
@@ -829,8 +981,10 @@ class StrategySimulatorMixin:
 
         for col, value in enumerate(items):
             item = QTableWidgetItem(str(value))
+            if col == 0:
+                item.setData(Qt.ItemDataRole.UserRole, None)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.simulator_results_table.setItem(row, col, item)
+            table.setItem(row, col, item)
 
             # Color P&L column
             if col == 4:
@@ -842,6 +996,9 @@ class StrategySimulatorMixin:
                         item.setBackground(Qt.GlobalColor.red)
                 except ValueError:
                     pass
+
+        if was_sorting:
+            table.setSortingEnabled(True)
 
             # Color Score column
             if col == 7:
@@ -857,7 +1014,13 @@ class StrategySimulatorMixin:
     def _on_simulator_result_selected(self) -> None:
         """Handle result selection in table."""
         selected = self.simulator_results_table.selectedItems()
-        self.simulator_show_markers_btn.setEnabled(bool(selected))
+        if not selected:
+            self.simulator_show_markers_btn.setEnabled(False)
+            return
+
+        row = selected[0].row()
+        result = self._get_result_from_row(row)
+        self.simulator_show_markers_btn.setEnabled(result is not None)
 
     def _on_show_simulation_markers(self) -> None:
         """Show entry/exit markers on chart for selected result."""
@@ -866,7 +1029,8 @@ class StrategySimulatorMixin:
             return
 
         row = selected[0].row()
-        if row >= len(self._table_row_results) or self._table_row_results[row] is None:
+        result = self._get_result_from_row(row)
+        if result is None:
             QMessageBox.warning(
                 self, "Warning",
                 "Keine Detail-Daten für diese Zeile verfügbar.\n\n"
@@ -874,8 +1038,6 @@ class StrategySimulatorMixin:
                 "Nur die 'Best Result'-Zeile hat vollständige Trade-Daten."
             )
             return
-
-        result = self._table_row_results[row]
 
         # Get chart and clear existing markers
         if hasattr(self, "chart_widget"):
@@ -985,9 +1147,24 @@ class StrategySimulatorMixin:
     def _on_clear_simulation_results(self) -> None:
         """Clear all simulation results."""
         self._simulation_results.clear()
-        self._table_row_results.clear()
         self._last_optimization_run = None
         self.simulator_results_table.setRowCount(0)
         self.simulator_export_btn.setEnabled(False)
         self.simulator_show_markers_btn.setEnabled(False)
         self.simulator_status_label.setText("Results cleared")
+
+    def _get_result_from_row(self, row: int) -> object | None:
+        """Get the SimulationResult stored on the row, if any."""
+        item = self.simulator_results_table.item(row, 0)
+        if not item:
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
+    def _get_strategy_display_name(self, strategy_name: str) -> str:
+        """Get display name for a strategy."""
+        from src.core.simulator import StrategyName
+
+        try:
+            return StrategyName.display_names().get(strategy_name, strategy_name)
+        except Exception:
+            return strategy_name

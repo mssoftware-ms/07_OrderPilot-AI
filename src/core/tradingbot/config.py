@@ -103,6 +103,34 @@ class BotConfig(BaseModel):
         default=False,
         description="Disable automatic exit on MACD cross (use stop-loss only)"
     )
+    entry_score_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Minimum normalized score (0-1) required to enter a trade"
+    )
+    use_pattern_check: bool = Field(
+        default=False,
+        description="Enable pattern-database validation before signals"
+    )
+    pattern_similarity_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity for pattern matches"
+    )
+    pattern_min_matches: int = Field(
+        default=5,
+        ge=1,
+        le=200,
+        description="Minimum number of similar patterns required"
+    )
+    pattern_min_win_rate: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        description="Minimum historical win-rate of matched patterns"
+    )
 
     @field_validator('symbol')
     @classmethod

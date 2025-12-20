@@ -160,6 +160,18 @@ class ToolbarMixin:
         self.refresh_button.clicked.connect(self._on_refresh)
         toolbar.addWidget(self.refresh_button)
 
+        # Zoom-to-fit button
+        self.zoom_all_button = QPushButton("🔍 Alles zoomen")
+        self.zoom_all_button.setToolTip("Gesamten Chart einpassen und Pane-Höhen sinnvoll setzen")
+        self.zoom_all_button.clicked.connect(self._on_zoom_all)
+        toolbar.addWidget(self.zoom_all_button)
+
+        # Zoom-back button
+        self.zoom_back_button = QPushButton("⤺ Zurück")
+        self.zoom_back_button.setToolTip("Zur vorherigen Ansicht zurückkehren")
+        self.zoom_back_button.clicked.connect(self._on_zoom_back)
+        toolbar.addWidget(self.zoom_back_button)
+
         toolbar.addSeparator()
 
         # Live streaming toggle
@@ -216,3 +228,25 @@ class ToolbarMixin:
         toolbar.addWidget(self.market_status_label)
 
         return toolbar
+
+    def _on_zoom_all(self):
+        """Zoom chart to show all data with sane pane heights."""
+        try:
+            if hasattr(self, "zoom_to_fit_all"):
+                self.zoom_to_fit_all()
+            else:
+                logger.warning("zoom_to_fit_all not available on chart widget")
+        except Exception as e:
+            logger.error("Zoom-All failed: %s", e, exc_info=True)
+
+    def _on_zoom_back(self):
+        """Restore previous view (visible range + pane heights)."""
+        try:
+            if hasattr(self, "zoom_back_to_previous_view"):
+                restored = self.zoom_back_to_previous_view()
+                if not restored:
+                    logger.info("No previous view state to restore")
+            else:
+                logger.warning("zoom_back_to_previous_view not available on chart widget")
+        except Exception as e:
+            logger.error("Zoom-Back failed: %s", e, exc_info=True)

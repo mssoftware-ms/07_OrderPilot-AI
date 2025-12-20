@@ -293,15 +293,6 @@ Wenn du erkennst, dass du wiederholt denselben Fehler machst (z. B. einen bestim
 
 ## 12. Projektplan & Dokumentation
 
-### .kipj-Datei (Projekt-Snapshot)
-
-Die Datei `01_Projectplan/orderpilot-ai.kipj` (sowie `docs/ai/07_orderpilot-ai.kipj`) enthält einen vollständigen Snapshot der aktuellen Softwarestruktur inkl. aller Klassen, Funktionen und Kommentare.
-
-**Regeln:**
-1. **Nach jeder strukturellen Änderung** (neue Module, Klassen, Funktionen hinzugefügt/entfernt) soll die `.kipj`-Datei aktualisiert werden.
-2. Die `.kipj`-Datei dient als Referenz für den aktuellen Softwarestand und sollte immer synchron mit dem Code gehalten werden.
-3. Bei der Analyse neuer Anforderungen sollte diese Datei als Ausgangspunkt verwendet werden.
-
 ### Tradingbot-Integration Checkliste
 
 Die Datei `01_Projectplan/3_CHECKLIST_OrderPilot_AI_Tradingbot.md` enthält die vollständige Implementierungs-Checkliste für die Tradingbot-Integration.

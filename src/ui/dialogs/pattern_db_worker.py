@@ -5,6 +5,7 @@ QThread worker for building the pattern database in the background.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -51,7 +52,7 @@ class DatabaseBuildWorker(QThread):
     async def _build_async(self):
         """Async build process."""
         from src.core.market_data.types import Timeframe, AssetClass
-        from src.core.pattern_db.fetcher import PatternDataFetcher
+        from src.core.pattern_db.fetcher import PatternDataFetcher, resolve_symbol
         from src.core.pattern_db.extractor import PatternExtractor
         from src.core.pattern_db.qdrant_client import TradingPatternDB
 
@@ -68,7 +69,13 @@ class DatabaseBuildWorker(QThread):
             # Initialize Qdrant
             self.progress.emit("Connecting to Qdrant...")
             if not await db.initialize():
-                self.finished.emit(False, "Failed to connect to Qdrant. Is Docker running?")
+                details = db.get_last_error() if hasattr(db, "get_last_error") else None
+                msg = "Failed to connect to Qdrant."
+                if details:
+                    msg = f"{msg} {details}"
+                    if "qdrant_client" in details.lower():
+                        msg += " (Install: pip install qdrant-client)"
+                self.finished.emit(False, msg)
                 return
 
             # Map timeframe strings to enum
@@ -99,11 +106,15 @@ class DatabaseBuildWorker(QThread):
                         self.finished.emit(False, "Build cancelled by user")
                         return
 
-                    self.progress.emit(f"Fetching {symbol} ({tf_enum.value})...")
+                    fetch_symbol = resolve_symbol(symbol, asset_class)
+                    if fetch_symbol != symbol:
+                        self.progress.emit(f"Using proxy for {symbol}: {fetch_symbol}")
+
+                    self.progress.emit(f"Fetching {fetch_symbol} ({tf_enum.value})...")
 
                     # Fetch bars
                     bars = await fetcher.fetch_symbol_data(
-                        symbol=symbol,
+                        symbol=fetch_symbol,
                         timeframe=tf_enum,
                         days_back=self.days_back,
                         asset_class=asset_class,
@@ -118,6 +129,9 @@ class DatabaseBuildWorker(QThread):
                             symbol=symbol,
                             timeframe=tf_enum.value,
                         ))
+                        if fetch_symbol != symbol:
+                            for p in patterns:
+                                p.metadata["proxy_symbol"] = fetch_symbol
 
                         if patterns:
                             self.progress.emit(f"  Inserting {len(patterns)} patterns...")
@@ -141,4 +155,3 @@ class DatabaseBuildWorker(QThread):
         except Exception as e:
             logger.error(f"Build error: {e}", exc_info=True)
             self.finished.emit(False, str(e))
-

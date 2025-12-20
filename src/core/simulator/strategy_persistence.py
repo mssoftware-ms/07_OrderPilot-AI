@@ -70,6 +70,45 @@ def save_strategy_params(
     return filepath
 
 
+def save_strategy_params_to_path(
+    filepath: Path,
+    strategy_name: str,
+    params: dict[str, Any],
+    symbol: str | None = None,
+    score: float | None = None,
+) -> Path:
+    """Save optimized strategy parameters to a specific file path.
+
+    Args:
+        filepath: Full path to the JSON file
+        strategy_name: Name of the strategy (e.g., "breakout", "momentum")
+        params: Dictionary of parameter values
+        symbol: Optional symbol the parameters were optimized for
+        score: Optional optimization score achieved
+
+    Returns:
+        Path to saved file
+    """
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {
+        "strategy": strategy_name,
+        "parameters": params,
+        "metadata": {
+            "saved_at": datetime.now().isoformat(),
+            "symbol": symbol,
+            "optimization_score": score,
+        }
+    }
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    logger.info(f"Saved strategy parameters to {filepath}")
+    return filepath
+
+
 def load_strategy_params(
     strategy_name: str,
     params_dir: Path | None = None,

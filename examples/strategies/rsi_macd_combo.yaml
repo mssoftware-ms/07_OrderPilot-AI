@@ -47,6 +47,12 @@ indicators:
     source: close
     plot: false
 
+  - type: ADX
+    params:
+      period: 14
+    alias: adx
+    plot: true
+
 # Entry Logic (LONG)
 entry_long:
   type: group
@@ -76,6 +82,13 @@ entry_long:
       operator: ">"
       right: sma_200
       description: Price above 200-day SMA (uptrend)
+
+    # Regime Filter
+    - type: condition
+      left: adx
+      operator: ">"
+      right: 20.0
+      description: Trend Strength > 20
 
 # Exit Logic (LONG)
 exit_long:
@@ -124,6 +137,13 @@ entry_short:
       operator: "<"
       right: sma_200
       description: Price below 200-day SMA (downtrend)
+
+    # Regime Filter
+    - type: condition
+      left: adx
+      operator: ">"
+      right: 20.0
+      description: Trend Strength > 20
 
 # Exit Logic (SHORT)
 exit_short:

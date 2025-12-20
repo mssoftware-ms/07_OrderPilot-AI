@@ -9,8 +9,11 @@ Provides entry scoring and signal creation methods:
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from decimal import Decimal
 
 from .models import FeatureVector, Signal, TradeSide
+from src.core.market_data.types import HistoricalBar
+from src.core.pattern_db import get_pattern_service
 
 if TYPE_CHECKING:
     pass
@@ -121,6 +124,10 @@ class BotSignalLogicMixin:
 
     def _get_entry_threshold(self) -> float:
         """Get entry threshold based on active strategy and regime."""
+        # User-configured override (UI: min score)
+        if self.config and self.config.bot.entry_score_threshold is not None:
+            return self.config.bot.entry_score_threshold
+
         if self._active_strategy:
             return self._active_strategy.entry_threshold
 
@@ -200,3 +207,63 @@ class BotSignalLogicMixin:
         reasons.append(f"REGIME_{self._regime.regime.value.upper()}")
 
         return reasons
+
+    # ==================== Pattern Validation ====================
+
+    async def _pattern_gate(self, features: FeatureVector, side: TradeSide) -> tuple[bool, str | None]:
+        """Validate current context against pattern DB before creating a signal.
+
+        Returns:
+            (ok, reason) where ok=False blocks entry.
+        """
+        try:
+            window = max(25,  self._feature_engine.MIN_BARS if hasattr(self, "_feature_engine") else 25)
+            if len(self._bar_buffer) < window:
+                return False, "PATTERN_TOO_FEW_BARS"
+
+            bars = self._bar_buffer[-window:]
+            hist_bars: list[HistoricalBar] = []
+            for b in bars:
+                hist_bars.append(
+                    HistoricalBar(
+                        timestamp=b.get("timestamp"),
+                        open=Decimal(str(b.get("open", 0))),
+                        high=Decimal(str(b.get("high", 0))),
+                        low=Decimal(str(b.get("low", 0))),
+                        close=Decimal(str(b.get("close", 0))),
+                        volume=int(b.get("volume", 0)),
+                    )
+                )
+
+            service = await get_pattern_service()
+            analysis = await service.analyze_signal(
+                bars=hist_bars,
+                symbol=self.symbol,
+                timeframe=self.timeframe,
+                signal_direction=side.value,
+                cross_symbol_search=True,
+            )
+
+            if not analysis:
+                return False, "PATTERN_NO_MATCHES"
+
+            # Checks
+            if analysis.similar_patterns_count < self.config.bot.pattern_min_matches:
+                return False, "PATTERN_TOO_FEW_MATCHES"
+
+            if analysis.win_rate < self.config.bot.pattern_min_win_rate:
+                return False, "PATTERN_LOW_WINRATE"
+
+            if analysis.avg_similarity_score < self.config.bot.pattern_similarity_threshold:
+                return False, "PATTERN_LOW_SIMILARITY"
+
+            # Optional: boost score or log
+            self._log_activity(
+                "PATTERN_OK",
+                f"Matches={analysis.similar_patterns_count}, win_rate={analysis.win_rate:.2f}, sim={analysis.avg_similarity_score:.2f}"
+            )
+            return True, None
+
+        except Exception as e:
+            self._log_activity("PATTERN_ERR", f"{e}")
+            return False, "PATTERN_ERROR"

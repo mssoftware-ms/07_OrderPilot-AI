@@ -51,6 +51,14 @@ indicators:
       period: 14
     plot: true
 
+  # Volume SMA for Confirmation
+  - type: SMA
+    alias: vol_sma
+    params:
+      period: 20
+    source: volume
+    plot: false
+
   # Obere Volatility Band (SMA + 2*ATR)
   - type: SMA
     alias: sma_temp
@@ -68,10 +76,11 @@ indicators:
     plot: true
 
 # Entry-Bedingungen
-# Long: Preis > SMA + (2 * ATR) UND RSI > 50
+# Long: Preis > SMA + (2 * ATR) UND RSI > 50 UND Vol > Avg
 entry_long:
   type: composite
   operator: AND
+  cooldown_candles: 5 # Prevent immediate re-entry after fakeout
   conditions:
     - type: condition
       left: close
@@ -84,6 +93,13 @@ entry_long:
       operator: ">"
       right: 50
       description: "Momentum ist positiv (RSI > 50)"
+
+    # Volume Confirmation
+    - type: condition
+      left: volume
+      operator: ">"
+      right: vol_sma
+      description: "Volume bestätigt Ausbruch"
 
 # Exit-Bedingungen
 # Exit Long: Preis < SMA - (1.5 * ATR)

@@ -254,6 +254,20 @@ class BotUIPanelsMixin:
         )
         trailing_layout.addRow("Aktivierung ab:", self.trailing_activation_spin)
 
+        # TRA% (New field requested)
+        self.tra_percent_spin = QDoubleSpinBox()
+        self.tra_percent_spin.setRange(0.0, 10.0)
+        self.tra_percent_spin.setValue(0.5)
+        self.tra_percent_spin.setSingleStep(0.1)
+        self.tra_percent_spin.setDecimals(2)
+        self.tra_percent_spin.setSuffix(" %")
+        self.tra_percent_spin.setToolTip(
+            "Trailing Activation Percent.\n"
+            "Wird in die Signals-Tabelle übernommen und steuert,\n"
+            "wann der Trailing Stop aktiv wird."
+        )
+        trailing_layout.addRow("TRA%:", self.tra_percent_spin)
+
         # Trailing Stop Distance (PCT mode)
         self.trailing_distance_spin = QDoubleSpinBox()
         self.trailing_distance_spin.setRange(0.1, 10.0)
@@ -344,6 +358,49 @@ class BotUIPanelsMixin:
         settings_row.addWidget(settings_group)
         settings_row.addWidget(trailing_group)
         layout.addLayout(settings_row)
+
+        # ==================== PATTERN VALIDATION (own group, full width) ====================
+        pattern_group = QGroupBox("Pattern Validation")
+        pattern_layout = QFormLayout(pattern_group)
+
+        self.min_score_spin = QSpinBox()
+        self.min_score_spin.setRange(0, 100)
+        self.min_score_spin.setValue(60)  # 0-100 integer
+        self.min_score_spin.setSingleStep(1)
+        self.min_score_spin.setToolTip(
+            "Minimaler Score (Ganzzahl 0-100) für Trade-Einstieg.\n"
+            "0 = immer erlaubt, 100 = nur perfekte Signale.\n"
+            "Empfohlen: 55-65.\n"
+            "Wird intern auf 0-1 skaliert (z.B. 60 -> 0.60)."
+        )
+        pattern_layout.addRow("Min Score:", self.min_score_spin)
+
+        self.use_pattern_cb = QCheckBox("Pattern-Check aktivieren")
+        self.use_pattern_cb.setChecked(False)
+        self.use_pattern_cb.setToolTip("Validiert Signale mit der Pattern-Datenbank (Qdrant) vor Entry")
+        pattern_layout.addRow("Pattern:", self.use_pattern_cb)
+
+        self.pattern_similarity_spin = QDoubleSpinBox()
+        self.pattern_similarity_spin.setRange(0.1, 1.0)
+        self.pattern_similarity_spin.setSingleStep(0.05)
+        self.pattern_similarity_spin.setValue(0.70)
+        self.pattern_similarity_spin.setDecimals(2)
+        self.pattern_similarity_spin.setToolTip("Mindest-Similarity (0-1) damit ein Treffer berücksichtigt wird")
+        pattern_layout.addRow("Min Similarity:", self.pattern_similarity_spin)
+
+        self.pattern_matches_spin = QSpinBox()
+        self.pattern_matches_spin.setRange(1, 200)
+        self.pattern_matches_spin.setValue(5)
+        self.pattern_matches_spin.setToolTip("Mindestens benötigte Treffer (ähnliche Muster)")
+        pattern_layout.addRow("Min Matches:", self.pattern_matches_spin)
+
+        self.pattern_winrate_spin = QSpinBox()
+        self.pattern_winrate_spin.setRange(0, 100)
+        self.pattern_winrate_spin.setValue(55)
+        self.pattern_winrate_spin.setToolTip("Minimale historische Win-Rate der Treffer (0-100)")
+        pattern_layout.addRow("Min Win-Rate:", self.pattern_winrate_spin)
+
+        layout.addWidget(pattern_group)
 
         # Update visibility based on trailing mode and regime_adaptive
         self._on_trailing_mode_changed()
@@ -510,6 +567,9 @@ class BotUIPanelsMixin:
         self.position_side_label.setStyleSheet("font-weight: bold;")
         left_form.addRow("Side:", self.position_side_label)
 
+        self.position_strategy_label = QLabel("-")
+        left_form.addRow("Strategy:", self.position_strategy_label)
+
         self.position_entry_label = QLabel("-")
         left_form.addRow("Entry:", self.position_entry_label)
 
@@ -613,6 +673,8 @@ class BotUIPanelsMixin:
 
         # Connect cell editing for bidirectional chart trading
         self.signals_table.cellChanged.connect(self._on_signals_table_cell_changed)
+        # Selection -> reflect in Current Position panel
+        self.signals_table.itemSelectionChanged.connect(self._on_signals_table_selection_changed)
         self._signals_table_updating = False
 
         signals_inner.addWidget(self.signals_table)
