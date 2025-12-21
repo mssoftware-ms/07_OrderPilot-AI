@@ -292,6 +292,9 @@ class BrokerMixin:
                         if source and source not in ["database", None] and not source.endswith("_disabled"):
                             self.data_provider_combo.setCurrentIndex(i)
                             break
+
+                # Start streaming when live data is enabled
+                asyncio.create_task(self.initialize_realtime_streaming())
             else:
                 self.live_data_toggle.setText("Live Data: OFF")
                 self.live_data_toggle.setStyleSheet("")
@@ -304,10 +307,47 @@ class BrokerMixin:
                         self.data_provider_combo.setCurrentIndex(i)
                         break
 
+                # Stop all live streams when disabled
+                asyncio.create_task(self._stop_live_data_streams())
+
             self.settings.setValue("live_data_enabled", is_live)
 
         except Exception as e:
             logger.error(f"Failed to toggle live data: {e}")
+
+    async def _stop_live_data_streams(self) -> None:
+        """Stop all real-time streaming clients and sync open charts."""
+        tasks = []
+
+        if getattr(self, "history_manager", None):
+            if hasattr(self.history_manager, "stop_realtime_stream"):
+                tasks.append(self.history_manager.stop_realtime_stream())
+            if hasattr(self.history_manager, "stop_crypto_realtime_stream"):
+                tasks.append(self.history_manager.stop_crypto_realtime_stream())
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error("Error stopping live stream: %s", result)
+
+        if hasattr(self, "crypto_status"):
+            self.crypto_status.setText("Live Data: OFF")
+            self.crypto_status.setStyleSheet("color: #888;")
+
+        # Update any open chart windows to reflect stopped streams
+        if hasattr(self, "chart_window_manager"):
+            for window in list(self.chart_window_manager.windows.values()):
+                try:
+                    chart = window.chart_widget
+                    if getattr(chart, "live_streaming_enabled", False):
+                        chart.live_streaming_enabled = False
+                        if hasattr(chart, "live_stream_button"):
+                            chart.live_stream_button.setChecked(False)
+                        if hasattr(chart, "_stop_live_stream_async"):
+                            asyncio.create_task(chart._stop_live_stream_async())
+                except Exception as e:
+                    logger.debug("Failed to stop chart stream: %s", e)
 
     def analyze_order_with_ai(self, analysis_request):
         """AI hook for order analysis."""

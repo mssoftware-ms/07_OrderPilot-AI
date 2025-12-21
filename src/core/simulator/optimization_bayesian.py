@@ -16,11 +16,31 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from .result_types import OptimizationRun, OptimizationTrial, SimulationResult
+from .result_types import OptimizationRun, OptimizationTrial, SimulationResult, EntryPoint
 from .simulation_engine import StrategySimulator
-from .strategy_params import StrategyName, get_strategy_parameters, ParameterDefinition
+from .strategy_params import (
+    StrategyName,
+    get_default_parameters,
+    get_strategy_parameters,
+    ParameterDefinition,
+    filter_entry_only_param_config,
+)
+from .strategy_persistence import load_strategy_params
 
 logger = logging.getLogger(__name__)
+
+
+def _format_entry_points(points: list[EntryPoint] | None) -> str:
+    if not points:
+        return ""
+    parts = []
+    for item in points:
+        if len(item) == 3:
+            price, ts, _score = item
+        else:
+            price, ts = item
+        parts.append(f"{float(price):.3f}/{ts.strftime('%H:%M:%S')}")
+    return ";".join(parts)
 
 
 @dataclass
@@ -28,7 +48,7 @@ class OptimizationConfig:
     """Configuration for optimization run."""
 
     strategy_name: StrategyName
-    objective_metric: str = "total_pnl_pct"  # Optimize for P&L% (maps to Score)
+    objective_metric: str = "score"  # Optimize for Score (P&L-based)
     direction: str = "maximize"  # or "minimize"
     n_trials: int = 50  # For Bayesian
     n_jobs: int = 1  # Parallel jobs (1 = sequential)
@@ -41,6 +61,10 @@ class OptimizationConfig:
     commission_pct: float = 0.001
     stop_loss_pct: float = 0.02
     take_profit_pct: float = 0.05
+    entry_only: bool = False
+    entry_side: str = "long"
+    entry_lookahead_mode: str = "session_end"
+    entry_lookahead_bars: int | None = None
 
 
 class BayesianOptimizer:
@@ -103,6 +127,8 @@ class BayesianOptimizer:
         start_time = time.time()
 
         param_config = get_strategy_parameters(self.config.strategy_name)
+        if self.config.entry_only:
+            param_config = filter_entry_only_param_config(param_config)
         simulator = StrategySimulator(self.data, self.symbol)
 
         # Create a single event loop for all simulations in this thread
@@ -150,6 +176,10 @@ class BayesianOptimizer:
                         commission_pct=self.config.commission_pct,
                         stop_loss_pct=self.config.stop_loss_pct,
                         take_profit_pct=self.config.take_profit_pct,
+                        entry_only=self.config.entry_only,
+                        entry_side=self.config.entry_side,
+                        entry_lookahead_mode=self.config.entry_lookahead_mode,
+                        entry_lookahead_bars=self.config.entry_lookahead_bars,
                     )
                 )
                 self._all_results.append(result)
@@ -180,6 +210,9 @@ class BayesianOptimizer:
             direction=direction,
             sampler=TPESampler(seed=42),
         )
+        seed_params = _build_seed_params(self.config.strategy_name, param_config)
+        if seed_params:
+            self._study.enqueue_trial(seed_params)
 
         # Run optimization
         try:
@@ -214,12 +247,31 @@ class BayesianOptimizer:
                         "max_drawdown_pct": result.max_drawdown_pct,
                         "sharpe_ratio": result.sharpe_ratio or 0.0,
                     }
+                    if result.entry_only:
+                        entry_time = (
+                            result.entry_best_time.strftime("%H:%M:%S")
+                            if result.entry_best_time
+                            else None
+                        )
+                        entry_points = _format_entry_points(result.entry_points)
+                        metrics.update(
+                            {
+                                "entry_score": result.entry_score or 0.0,
+                                "entry_avg_offset_pct": result.entry_avg_offset_pct or 0.0,
+                                "entry_count": result.entry_count,
+                                "entry_best_price": result.entry_best_price or 0.0,
+                                "entry_best_time": entry_time,
+                                "entry_points": entry_points,
+                            }
+                        )
                 trials.append(
                     OptimizationTrial(
                         trial_number=i + 1,
                         parameters=trial.params,
                         score=trial.value,
                         metrics=metrics,
+                        entry_points=result.entry_points if result and result.entry_only else [],
+                        entry_side=self.config.entry_side,
                     )
                 )
 
@@ -260,10 +312,16 @@ class BayesianOptimizer:
             elapsed_seconds=elapsed,
             best_result=best_result,
             errors=self._trial_errors if self._trial_errors else None,
+            entry_only=self.config.entry_only,
+            entry_side=self.config.entry_side,
         )
 
     def _get_metric(self, result: SimulationResult, metric_name: str) -> float:
         """Extract metric value from simulation result."""
+        if metric_name == "score":
+            return _score_from_pnl_pct(result.total_pnl_pct)
+        if metric_name == "entry_score":
+            return result.entry_score or 0.0
         if metric_name == "sharpe_ratio":
             return result.sharpe_ratio or 0.0
         elif metric_name == "profit_factor":
@@ -329,6 +387,8 @@ class GridSearchOptimizer:
         start_time = time.time()
 
         param_config = get_strategy_parameters(self.config.strategy_name)
+        if self.config.entry_only:
+            param_config = filter_entry_only_param_config(param_config)
         simulator = StrategySimulator(self.data, self.symbol)
 
         # Create event loop for this thread
@@ -346,11 +406,22 @@ class GridSearchOptimizer:
         param_values = list(param_grid.values())
         all_combinations = list(itertools.product(*param_values))
 
+        # Ensure a seed combination (saved params or defaults) is included first
+        seed_params = _build_seed_params(self.config.strategy_name, param_config)
+        if seed_params:
+            seed_tuple = tuple(seed_params.get(name) for name in param_names)
+            if seed_tuple not in all_combinations:
+                all_combinations.insert(0, seed_tuple)
+
         # Limit combinations
         if len(all_combinations) > max_combinations:
             # Sample evenly
             step = len(all_combinations) // max_combinations
             all_combinations = all_combinations[::step][:max_combinations]
+            if seed_params and seed_tuple not in all_combinations:
+                all_combinations.insert(0, seed_tuple)
+                if len(all_combinations) > max_combinations:
+                    all_combinations.pop()
             logger.info(
                 f"Grid search limited to {len(all_combinations)} combinations "
                 f"(from {len(list(itertools.product(*param_values)))} total)"
@@ -381,6 +452,10 @@ class GridSearchOptimizer:
                             commission_pct=self.config.commission_pct,
                             stop_loss_pct=self.config.stop_loss_pct,
                             take_profit_pct=self.config.take_profit_pct,
+                            entry_only=self.config.entry_only,
+                            entry_side=self.config.entry_side,
+                            entry_lookahead_mode=self.config.entry_lookahead_mode,
+                            entry_lookahead_bars=self.config.entry_lookahead_bars,
                         )
                     )
                     self._all_results.append(result)
@@ -407,12 +482,31 @@ class GridSearchOptimizer:
                         "max_drawdown_pct": result.max_drawdown_pct,
                         "sharpe_ratio": result.sharpe_ratio or 0.0,
                     }
+                    if result.entry_only:
+                        entry_time = (
+                            result.entry_best_time.strftime("%H:%M:%S")
+                            if result.entry_best_time
+                            else None
+                        )
+                        entry_points = _format_entry_points(result.entry_points)
+                        metrics.update(
+                            {
+                                "entry_score": result.entry_score or 0.0,
+                                "entry_avg_offset_pct": result.entry_avg_offset_pct or 0.0,
+                                "entry_count": result.entry_count,
+                                "entry_best_price": result.entry_best_price or 0.0,
+                                "entry_best_time": entry_time,
+                                "entry_points": entry_points,
+                            }
+                        )
                     trials.append(
                         OptimizationTrial(
                             trial_number=i + 1,
                             parameters=params,
                             score=score,
                             metrics=metrics,
+                            entry_points=result.entry_points if result.entry_only else [],
+                            entry_side=self.config.entry_side,
                         )
                     )
 
@@ -445,6 +539,8 @@ class GridSearchOptimizer:
             elapsed_seconds=elapsed,
             best_result=best_result,
             errors=self._trial_errors if self._trial_errors else None,
+            entry_only=self.config.entry_only,
+            entry_side=self.config.entry_side,
         )
 
     def _get_grid_values(self, param_def: ParameterDefinition) -> list[Any]:
@@ -471,15 +567,23 @@ class GridSearchOptimizer:
                 values.append(round(current, 4))
             current += grid_step
 
-        # Always include default if not present
-        if param_def.default not in values:
-            values.append(param_def.default)
-            values.sort()
+        # Always include min, max, and default if not present
+        for value in (param_def.min_value, param_def.max_value, param_def.default):
+            if value not in values:
+                values.append(value)
+        if param_def.param_type == "int":
+            values = sorted({int(v) for v in values})
+        else:
+            values = sorted({round(float(v), 4) for v in values})
 
         return values
 
     def _get_metric(self, result: SimulationResult, metric_name: str) -> float:
         """Extract metric value from simulation result."""
+        if metric_name == "score":
+            return _score_from_pnl_pct(result.total_pnl_pct)
+        if metric_name == "entry_score":
+            return result.entry_score or 0.0
         if metric_name == "sharpe_ratio":
             return result.sharpe_ratio or 0.0
         elif metric_name == "profit_factor":
@@ -503,3 +607,24 @@ class GridSearchOptimizer:
             values = self._get_grid_values(param_def)
             total *= len(values)
         return total
+
+
+def _build_seed_params(
+    strategy_name: StrategyName,
+    param_config,
+) -> dict[str, Any]:
+    saved_params = load_strategy_params(strategy_name.value)
+    defaults = get_default_parameters(strategy_name)
+    seed_params = {}
+    for param_def in param_config.parameters:
+        if saved_params and param_def.name in saved_params:
+            candidate = saved_params.get(param_def.name)
+            if param_def.validate(candidate):
+                seed_params[param_def.name] = candidate
+                continue
+        seed_params[param_def.name] = defaults.get(param_def.name, param_def.default)
+    return seed_params
+
+
+def _score_from_pnl_pct(pnl_pct: float) -> float:
+    return float(int(max(-1000, min(1000, pnl_pct * 10))))

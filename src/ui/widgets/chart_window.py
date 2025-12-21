@@ -268,6 +268,12 @@ class ChartWindow(
     def _activate_live_stream(self):
         """Activate live streaming when chart data is loaded."""
         if hasattr(self.chart_widget, 'live_stream_button'):
+            live_data_enabled = self.settings.value("live_data_enabled", False, type=bool)
+            if not live_data_enabled:
+                logger.info("Live data disabled - skipping auto-activate stream")
+                if self.chart_widget.live_stream_button.isChecked():
+                    self.chart_widget.live_stream_button.setChecked(False)
+                return
             # Only activate if not already streaming
             if not self.chart_widget.live_stream_button.isChecked():
                 logger.info(f"Auto-activating live stream for {self.symbol}")

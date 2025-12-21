@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+EntryPoint = tuple[float, datetime] | tuple[float, datetime, float]
+
 
 @dataclass
 class TradeRecord:
@@ -87,6 +89,16 @@ class SimulationResult:
     data_end: datetime | None = None
     bars_processed: int = 0
 
+    # Entry-only simulation metadata
+    entry_only: bool = False
+    entry_side: str = "long"
+    entry_count: int = 0
+    entry_score: float | None = None
+    entry_avg_offset_pct: float | None = None
+    entry_best_price: float | None = None
+    entry_best_time: datetime | None = None
+    entry_points: list[EntryPoint] = field(default_factory=list)
+
     @property
     def expectancy(self) -> float | None:
         """Calculate expectancy (avg P&L per trade)."""
@@ -123,7 +135,9 @@ class OptimizationTrial:
     trial_number: int
     parameters: dict[str, Any]
     score: float
-    metrics: dict[str, float]
+    metrics: dict[str, Any]
+    entry_points: list[EntryPoint] = field(default_factory=list)
+    entry_side: str = "long"
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -146,6 +160,10 @@ class OptimizationRun:
 
     # Error tracking (for failed trials)
     errors: list[str] | None = None
+
+    # Entry-only metadata
+    entry_only: bool = False
+    entry_side: str = "long"
 
     def get_top_n_trials(self, n: int = 10) -> list[OptimizationTrial]:
         """Get top N trials sorted by score (descending)."""
