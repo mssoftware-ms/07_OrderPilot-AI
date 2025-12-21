@@ -87,3 +87,4 @@ SESSION_SUMMARY_*.md
 
 # WSL Virtual Environment
 .wsl_venv/
+.wsl_env/

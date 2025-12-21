@@ -164,7 +164,16 @@ class StrategySimulator:
             signals = self._trend_following_signals(df, parameters)
         elif strategy_name == StrategyName.SCALPING:
             signals = self._scalping_signals(df, parameters)
+        elif strategy_name == StrategyName.BOLLINGER_SQUEEZE:
+            signals = self._bollinger_squeeze_signals(df, parameters)
+        elif strategy_name == StrategyName.TREND_PULLBACK:
+            signals = self._trend_pullback_signals(df, parameters)
+        elif strategy_name == StrategyName.OPENING_RANGE:
+            signals = self._opening_range_signals(df, parameters)
+        elif strategy_name == StrategyName.REGIME_HYBRID:
+            signals = self._regime_hybrid_signals(df, parameters)
         else:
+            logger.warning(f"Unknown strategy: {strategy_name}, no signals generated")
             signals = pd.Series(0, index=df.index)
 
         df["signal"] = signals
@@ -448,6 +457,245 @@ class StrategySimulator:
 
         # Sell: EMA crossdown OR stochastic overbought
         sell_condition = ema_cross_down | (stoch_k_val > stoch_upper)
+
+        signals[buy_condition] = 1
+        signals[sell_condition] = -1
+
+        return signals
+
+    def _bollinger_squeeze_signals(
+        self, df: pd.DataFrame, params: dict[str, Any]
+    ) -> pd.Series:
+        """Generate Bollinger Squeeze Breakout signals.
+
+        The squeeze occurs when Bollinger Bands contract inside Keltner Channels,
+        indicating low volatility. A breakout from the squeeze often leads to
+        explosive moves.
+        """
+        bb_period = params.get("bb_period", 20)
+        bb_std = params.get("bb_std", 2.0)
+        kc_atr_period = params.get("kc_atr_period", 10)
+        kc_multiplier = params.get("kc_multiplier", 1.5)
+        vol_period = params.get("vol_period", 20)
+        vol_factor = params.get("vol_factor", 1.5)
+
+        # Bollinger Bands
+        bb_middle = df["close"].rolling(bb_period).mean()
+        bb_std_val = df["close"].rolling(bb_period).std().fillna(0)
+        bb_upper = bb_middle + bb_std * bb_std_val
+        bb_lower = bb_middle - bb_std * bb_std_val
+
+        # Keltner Channels (using ATR)
+        tr = self._true_range(df)
+        atr = tr.rolling(kc_atr_period).mean()
+        kc_middle = df["close"].rolling(kc_atr_period).mean()
+        kc_upper = kc_middle + kc_multiplier * atr
+        kc_lower = kc_middle - kc_multiplier * atr
+
+        # Squeeze detection: BB inside KC
+        squeeze_on = (bb_lower > kc_lower) & (bb_upper < kc_upper)
+        squeeze_off = ~squeeze_on
+
+        # Momentum (using close - midline)
+        momentum = df["close"] - bb_middle
+
+        # Volume confirmation
+        avg_volume = df["volume"].rolling(vol_period).mean()
+        has_volume_data = avg_volume.iloc[-1] > 0 if len(avg_volume) > 0 else False
+        if has_volume_data:
+            volume_spike = df["volume"] > avg_volume * vol_factor
+        else:
+            volume_spike = pd.Series(True, index=df.index)
+
+        # Squeeze release detection (was squeezed, now released)
+        squeeze_release = squeeze_off & squeeze_on.shift(1).fillna(False)
+
+        signals = pd.Series(0, index=df.index)
+
+        # Buy: Squeeze releases with positive momentum and volume
+        buy_condition = squeeze_release & (momentum > 0) & volume_spike
+
+        # Alternative: No squeeze but strong upward momentum with volume
+        strong_momentum_up = (momentum > momentum.shift(1)) & (momentum > 0) & volume_spike
+        buy_condition = buy_condition | (squeeze_off & strong_momentum_up)
+
+        # Sell: Momentum turns negative or squeeze releases downward
+        sell_condition = (squeeze_release & (momentum < 0)) | (momentum < -atr)
+
+        signals[buy_condition] = 1
+        signals[sell_condition] = -1
+
+        return signals
+
+    def _trend_pullback_signals(
+        self, df: pd.DataFrame, params: dict[str, Any]
+    ) -> pd.Series:
+        """Generate Trend Pullback signals.
+
+        Classic trend following: Buy dips in uptrends when RSI shows oversold
+        conditions while price remains above the trend EMA.
+        """
+        ema_trend = params.get("ema_trend", 200)
+        rsi_period = params.get("rsi_period", 14)
+        rsi_pullback = params.get("rsi_pullback", 40)
+        rsi_exit = params.get("rsi_exit", 70)
+
+        # Adjust EMA period for short data
+        data_len = len(df)
+        effective_ema = min(ema_trend, max(20, data_len // 4))
+
+        # Trend EMA
+        ema_vals = df["close"].ewm(span=effective_ema, adjust=False).mean()
+
+        # RSI
+        rsi = self._calculate_rsi(df["close"], rsi_period)
+
+        # Trend detection
+        uptrend = df["close"] > ema_vals
+        price_above_ema = df["close"] > ema_vals
+
+        # Pullback detection: RSI dips while still in uptrend
+        pullback = (rsi < rsi_pullback) & uptrend
+
+        # Additional: Price approaching EMA (within 1%)
+        near_ema = (df["close"] - ema_vals).abs() / ema_vals < 0.01
+
+        signals = pd.Series(0, index=df.index)
+
+        # Buy: Pullback in uptrend OR price bouncing off EMA
+        buy_condition = pullback | (uptrend & near_ema & (rsi < 50))
+
+        # Sell: RSI overbought OR price breaks below EMA
+        sell_condition = (rsi > rsi_exit) | (~uptrend & uptrend.shift(1).fillna(False))
+
+        signals[buy_condition] = 1
+        signals[sell_condition] = -1
+
+        return signals
+
+    def _opening_range_signals(
+        self, df: pd.DataFrame, params: dict[str, Any]
+    ) -> pd.Series:
+        """Generate Opening Range Breakout signals.
+
+        Trades breakouts from the high/low range established in the first
+        N minutes of the trading session.
+        """
+        range_minutes = params.get("range_minutes", 15)
+        vol_factor = params.get("vol_factor", 1.5)
+        atr_period = params.get("atr_period", 14)
+
+        # Calculate ATR for dynamic thresholds
+        tr = self._true_range(df)
+        atr = tr.rolling(atr_period).mean()
+
+        # Volume analysis
+        avg_volume = df["volume"].rolling(20).mean()
+        has_volume_data = avg_volume.iloc[-1] > 0 if len(avg_volume) > 0 else False
+        if has_volume_data:
+            volume_spike = df["volume"] > avg_volume * vol_factor
+        else:
+            volume_spike = pd.Series(True, index=df.index)
+
+        # For intraday data, detect session opens
+        # For daily/longer timeframes, use rolling high/low as "range"
+        range_bars = max(1, range_minutes // 5)  # Assume 5-min bars
+
+        # Opening range: rolling high/low over range_bars
+        range_high = df["high"].rolling(range_bars).max().shift(1)
+        range_low = df["low"].rolling(range_bars).min().shift(1)
+
+        # Breakout detection
+        breakout_up = (df["close"] > range_high) & (df["close"].shift(1) <= range_high.shift(1))
+        breakout_down = (df["close"] < range_low) & (df["close"].shift(1) >= range_low.shift(1))
+
+        # Price momentum confirmation
+        price_momentum = df["close"].pct_change().fillna(0)
+
+        signals = pd.Series(0, index=df.index)
+
+        # Buy: Breakout above range with volume
+        buy_condition = breakout_up & volume_spike & (price_momentum > 0)
+
+        # Alternative: Strong move above range high even without perfect breakout timing
+        above_range = (df["close"] > range_high) & (price_momentum > 0.001)
+        buy_condition = buy_condition | (above_range & volume_spike)
+
+        # Sell: Breakout below range OR price drops below range after breakout
+        sell_condition = breakout_down | (df["close"] < range_low)
+
+        signals[buy_condition] = 1
+        signals[sell_condition] = -1
+
+        return signals
+
+    def _regime_hybrid_signals(
+        self, df: pd.DataFrame, params: dict[str, Any]
+    ) -> pd.Series:
+        """Generate Regime Switching Hybrid signals.
+
+        Detects market regime (Trending, Ranging, High Volatility) and applies
+        the appropriate sub-strategy:
+        - Trending: Trend following (buy dips in uptrend)
+        - Ranging: Mean reversion (buy oversold, sell overbought)
+        - High Vol: Reduced position sizing / stay out
+        """
+        adx_period = params.get("adx_period", 14)
+        trend_threshold = params.get("trend_threshold", 25)
+        range_threshold = params.get("range_threshold", 20)
+        bb_period = params.get("bb_period", 20)
+        bb_std = params.get("bb_std", 2.0)
+
+        # Calculate ADX for regime detection
+        tr = self._true_range(df)
+        atr = tr.rolling(adx_period).mean()
+        dm_plus = (df["high"].diff()).clip(lower=0)
+        dm_minus = (-df["low"].diff()).clip(lower=0)
+        di_plus = 100 * (dm_plus.rolling(adx_period).mean() / atr.replace(0, np.nan))
+        di_minus = 100 * (dm_minus.rolling(adx_period).mean() / atr.replace(0, np.nan))
+        di_sum = di_plus + di_minus
+        dx = 100 * abs(di_plus - di_minus) / di_sum.replace(0, np.nan)
+        adx = dx.rolling(adx_period).mean().fillna(0)
+
+        # Regime detection
+        trending = adx > trend_threshold
+        ranging = adx < range_threshold
+        # High volatility: ATR expanding
+        atr_expanding = atr > atr.rolling(20).mean() * 1.5
+
+        # Bollinger Bands for mean reversion in ranging markets
+        bb_middle = df["close"].rolling(bb_period).mean()
+        bb_std_val = df["close"].rolling(bb_period).std().fillna(0)
+        bb_upper = bb_middle + bb_std * bb_std_val
+        bb_lower = bb_middle - bb_std * bb_std_val
+        bb_pct = (df["close"] - bb_lower) / (bb_upper - bb_lower).replace(0, np.nan)
+        bb_pct = bb_pct.fillna(0.5)
+
+        # RSI
+        rsi = self._calculate_rsi(df["close"], 14)
+
+        # Trend direction
+        ema_fast = df["close"].ewm(span=12, adjust=False).mean()
+        ema_slow = df["close"].ewm(span=26, adjust=False).mean()
+        uptrend = ema_fast > ema_slow
+
+        signals = pd.Series(0, index=df.index)
+
+        # TRENDING REGIME: Buy pullbacks in uptrend
+        trend_buy = trending & uptrend & (rsi < 50) & (rsi > 30)
+        trend_sell = trending & ~uptrend
+
+        # RANGING REGIME: Mean reversion
+        range_buy = ranging & (bb_pct < 0.2) & (rsi < 35)
+        range_sell = ranging & (bb_pct > 0.8) & (rsi > 65)
+
+        # HIGH VOLATILITY: Stay cautious, only trade with strong signals
+        vol_buy = atr_expanding & uptrend & (rsi < 40)
+        vol_sell = atr_expanding & (rsi > 75)
+
+        # Combine signals
+        buy_condition = trend_buy | range_buy | vol_buy
+        sell_condition = trend_sell | range_sell | vol_sell
 
         signals[buy_condition] = 1
         signals[sell_condition] = -1
