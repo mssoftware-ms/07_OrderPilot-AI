@@ -38,6 +38,9 @@ tmp/
 *.tmp
 *.log
 
+# Log directory
+logs/
+
 # Test files in root (temporäre Tests)
 test_*.py
 !tests/test_*.py  # Aber tests/ erlauben
