@@ -235,6 +235,7 @@ class StrategySimulatorMixin:
     _all_run_active: bool = False
     _all_run_restore_index: int | None = None
     _entry_marker_min_score: float = 50.0
+    _simulator_splitter: QSplitter | None = None  # Splitter for save/restore
 
     def _create_strategy_simulator_tab(self) -> QWidget:
         """Create the Strategy Simulator tab widget."""
@@ -243,19 +244,40 @@ class StrategySimulatorMixin:
         layout.setContentsMargins(5, 5, 5, 5)
 
         # Splitter for controls and results
-        splitter = QSplitter()
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)  # Prevent collapse
+        splitter.setHandleWidth(6)  # Make handle visible and draggable
+        splitter.setStyleSheet("""
+            QSplitter::handle {
+                background-color: #555;
+            }
+            QSplitter::handle:hover {
+                background-color: #777;
+            }
+            QSplitter::handle:pressed {
+                background-color: #999;
+            }
+        """)
 
-        # Left: Controls
+        # Left: Controls (20% wider: 336*1.2=403, 264*1.2=317)
         controls = self._create_simulator_controls()
-        controls.setMaximumWidth(280)
-        controls.setMinimumWidth(220)
+        controls.setMaximumWidth(600)  # Allow wider for drag
+        controls.setMinimumWidth(320)  # 20% wider minimum
         splitter.addWidget(controls)
 
         # Right: Results
         results = self._create_simulator_results()
         splitter.addWidget(results)
 
-        splitter.setSizes([280, 600])
+        # Store reference for state save/restore
+        self._simulator_splitter = splitter
+
+        # Set initial sizes (20% wider: 403px for controls)
+        splitter.setSizes([403, 600])
+
+        # Restore saved splitter state if available
+        self._restore_simulator_splitter_state()
+
         layout.addWidget(splitter)
 
         # Initialize
@@ -1772,3 +1794,30 @@ class StrategySimulatorMixin:
             return StrategyName.display_names().get(strategy_name, strategy_name)
         except Exception:
             return strategy_name
+
+    def _restore_simulator_splitter_state(self) -> None:
+        """Restore the Strategy Simulator splitter state from settings."""
+        if not hasattr(self, 'settings') or not hasattr(self, '_simulator_splitter'):
+            return
+
+        try:
+            splitter_state = self.settings.value("StrategySimulator/splitterState")
+            if splitter_state:
+                self._simulator_splitter.restoreState(splitter_state)
+                logger.debug("Restored Strategy Simulator splitter state")
+        except Exception as e:
+            logger.debug(f"Could not restore splitter state: {e}")
+
+    def _save_simulator_splitter_state(self) -> None:
+        """Save the Strategy Simulator splitter state to settings."""
+        if not hasattr(self, 'settings') or not hasattr(self, '_simulator_splitter'):
+            return
+
+        try:
+            self.settings.setValue(
+                "StrategySimulator/splitterState",
+                self._simulator_splitter.saveState()
+            )
+            logger.debug("Saved Strategy Simulator splitter state")
+        except Exception as e:
+            logger.debug(f"Could not save splitter state: {e}")

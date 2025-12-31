@@ -95,6 +95,16 @@ CHART_HTML_TEMPLATE = """
             <button class="tool-btn" id="tool-percent-rect" title="Prozent-Rechteck (% Differenz)">
                 <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="rgba(38,166,154,0.3)" stroke="#26a69a" stroke-width="1.5"/><text x="12" y="14" text-anchor="middle" fill="#26a69a" font-size="8" font-weight="bold">%</text></svg>
             </button>
+            <button class="tool-btn" id="tool-fibonacci" title="Fibonacci Retracement">
+                <svg viewBox="0 0 24 24">
+                    <line x1="3" y1="4" x2="21" y2="4" stroke="#4CAF50" stroke-width="1.5"/>
+                    <line x1="3" y1="8" x2="21" y2="8" stroke="#8BC34A" stroke-width="1"/>
+                    <line x1="3" y1="12" x2="21" y2="12" stroke="#FFC107" stroke-width="1"/>
+                    <line x1="3" y1="16" x2="21" y2="16" stroke="#FF9800" stroke-width="1"/>
+                    <line x1="3" y1="20" x2="21" y2="20" stroke="#F44336" stroke-width="1.5"/>
+                    <text x="12" y="14" text-anchor="middle" fill="#FFC107" font-size="6" font-weight="bold">FIB</text>
+                </svg>
+            </button>
             <div class="tool-separator"></div>
             <button class="tool-btn" id="tool-delete" title="Löschen (Del)">
                 <svg viewBox="0 0 24 24" fill="#ef5350"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12z"/></svg>
@@ -203,7 +213,7 @@ CHART_HTML_TEMPLATE = """
                 const panelExtraSeries = {};
 
                 const pricePaneApi = chart.panes()[0];
-                if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(4);
+                if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(10);
 
                 const rightScale = chart.priceScale('right');
                 let lastViewState = null; // Stores previous visible range + pane layout for undo
@@ -252,10 +262,11 @@ CHART_HTML_TEMPLATE = """
                         const indicatorIds = Object.keys(layout || {}).filter(k => k !== 'price');
                         const newLayout = {};
                         if (indicatorIds.length) {
-                            newLayout['price'] = 5;
-                            indicatorIds.forEach(id => newLayout[id] = 1);
+                            newLayout['price'] = 10;
+                            // Each indicator gets stretchFactor 10 for 50% height (large panels)
+                            indicatorIds.forEach(id => newLayout[id] = 10);
                         } else {
-                            newLayout['price'] = 5;
+                            newLayout['price'] = 10;
                         }
                         window.chartAPI.setPaneLayout(newLayout);
                     } catch(e) { console.error(e); }
@@ -268,8 +279,24 @@ CHART_HTML_TEMPLATE = """
                 function addPane(panelId) {
                     if (panelMap[panelId] !== undefined) return panelMap[panelId];
                     const paneApi = chart.addPane();
-                    if (paneApi.setStretchFactor) paneApi.setStretchFactor(1);
+                    // Set indicator pane height: stretchFactor 10 vs price pane 10 = 50%
+                    // Large panels for better readability of RSI, MACD etc.
+                    if (paneApi.setStretchFactor) {
+                        paneApi.setStretchFactor(10);
+                        console.log('Set stretchFactor 10 for pane:', panelId);
+                    }
                     panelMap[panelId] = paneApi;
+
+                    // Force layout update after adding pane
+                    setTimeout(() => {
+                        try {
+                            const container = document.getElementById('chart-container');
+                            if (container) {
+                                chart.resize(container.clientWidth, container.clientHeight);
+                            }
+                        } catch(e) { console.error('Resize error:', e); }
+                    }, 50);
+
                     return paneApi;
                 }
 
@@ -942,6 +969,169 @@ CHART_HTML_TEMPLATE = """
                     }
                 }
 
+                // ==================== FIBONACCI RETRACEMENT TOOL ====================
+                // Fibonacci levels with colors based on probability/strength
+                const FIB_LEVELS = [
+                    { ratio: 0.000, label: '0%',    color: '#4CAF50', alpha: 0.15 },  // Start - Green
+                    { ratio: 0.236, label: '23.6%', color: '#8BC34A', alpha: 0.12 },  // Light green
+                    { ratio: 0.382, label: '38.2%', color: '#CDDC39', alpha: 0.18 },  // Strong level
+                    { ratio: 0.500, label: '50%',   color: '#FFC107', alpha: 0.15 },  // Yellow - medium
+                    { ratio: 0.618, label: '61.8%', color: '#FF9800', alpha: 0.20 },  // Golden ratio - strongest
+                    { ratio: 0.786, label: '78.6%', color: '#FF5722', alpha: 0.12 },  // Deep retracement
+                    { ratio: 1.000, label: '100%',  color: '#F44336', alpha: 0.15 },  // End - Red
+                ];
+
+                class FibonacciRetracementPrimitive {
+                    constructor(p1, p2, id) {
+                        this.p1 = p1;  // First point (e.g., swing low)
+                        this.p2 = p2;  // Second point (e.g., swing high)
+                        this.id = id;
+                        this.type = 'fibonacci';
+                        this.levels = this.calculateLevels();
+                        this._paneViews = [new FibonacciPaneView(this)];
+                    }
+                    calculateLevels() {
+                        const priceDiff = this.p2.price - this.p1.price;
+                        return FIB_LEVELS.map(fib => ({
+                            ...fib,
+                            price: this.p2.price - (priceDiff * fib.ratio)
+                        }));
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class FibonacciPaneView {
+                    constructor(source) {
+                        this._source = source;
+                        this._p1 = {x:null, y:null};
+                        this._p2 = {x:null, y:null};
+                        this._levelYs = [];
+                    }
+                    update() {
+                        const ts = chart.timeScale();
+                        this._p1 = {
+                            x: ts.timeToCoordinate(this._source.p1.time),
+                            y: priceSeries.priceToCoordinate(this._source.p1.price)
+                        };
+                        this._p2 = {
+                            x: ts.timeToCoordinate(this._source.p2.time),
+                            y: priceSeries.priceToCoordinate(this._source.p2.price)
+                        };
+                        // Calculate Y coordinates for each level
+                        this._levelYs = this._source.levels.map(level => ({
+                            ...level,
+                            y: priceSeries.priceToCoordinate(level.price)
+                        }));
+                    }
+                    renderer() {
+                        return new FibonacciRenderer(
+                            this._p1, this._p2, this._levelYs, this._source.p1.time, this._source.p2.time
+                        );
+                    }
+                }
+
+                class FibonacciRenderer {
+                    constructor(p1, p2, levels, time1, time2) {
+                        this._p1 = p1;
+                        this._p2 = p2;
+                        this._levels = levels;
+                        this._time1 = time1;
+                        this._time2 = time2;
+                    }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._p1.x === null || this._p1.y === null ||
+                                this._p2.x === null || this._p2.y === null) return;
+                            const ctx = scope.context;
+                            const hRatio = scope.horizontalPixelRatio;
+                            const vRatio = scope.verticalPixelRatio;
+
+                            // Anchor point coordinates for vertical lines and labels
+                            const anchorX1 = Math.round(Math.min(this._p1.x, this._p2.x) * hRatio);
+                            const anchorX2 = Math.round(Math.max(this._p1.x, this._p2.x) * hRatio);
+
+                            // Draw zones between levels (colored rectangles) - FULL CHART WIDTH
+                            for (let i = 0; i < this._levels.length - 1; i++) {
+                                const level = this._levels[i];
+                                const nextLevel = this._levels[i + 1];
+                                if (level.y === null || nextLevel.y === null) continue;
+
+                                const ly1 = Math.round(level.y * vRatio);
+                                const ly2 = Math.round(nextLevel.y * vRatio);
+                                const height = Math.abs(ly2 - ly1);
+
+                                // Fill zone with semi-transparent color across FULL chart width
+                                ctx.fillStyle = level.color + Math.round(level.alpha * 255).toString(16).padStart(2, '0');
+                                ctx.fillRect(0, Math.min(ly1, ly2), scope.bitmapSize.width, height);
+                            }
+
+                            // Draw horizontal lines at each level
+                            const fontSize = 11 * vRatio;
+                            ctx.font = `bold ${fontSize}px Arial`;
+
+                            for (const level of this._levels) {
+                                if (level.y === null) continue;
+                                const y = Math.round(level.y * vRatio);
+
+                                // Draw line across full chart width
+                                ctx.strokeStyle = level.color;
+                                ctx.lineWidth = level.ratio === 0.618 || level.ratio === 0.382 ? 2 : 1;
+                                ctx.setLineDash(level.ratio === 0.5 ? [5, 3] : []);
+                                ctx.beginPath();
+                                ctx.moveTo(0, y);
+                                ctx.lineTo(scope.bitmapSize.width, y);
+                                ctx.stroke();
+                                ctx.setLineDash([]);
+
+                                // Draw label (level % and price)
+                                const priceText = `${level.label} (${level.price.toFixed(2)})`;
+                                const textWidth = ctx.measureText(priceText).width;
+                                const padding = 4 * vRatio;
+
+                                // Background for label
+                                ctx.fillStyle = level.color;
+                                ctx.fillRect(anchorX2 + 10, y - fontSize/2 - padding/2, textWidth + padding*2, fontSize + padding);
+
+                                // Label text
+                                ctx.fillStyle = '#000000';
+                                ctx.textAlign = 'left';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText(priceText, anchorX2 + 10 + padding, y);
+                            }
+
+                            // Draw vertical dashed lines at start/end points
+                            ctx.strokeStyle = '#888888';
+                            ctx.lineWidth = 1;
+                            ctx.setLineDash([4, 4]);
+
+                            // Left vertical line
+                            ctx.beginPath();
+                            ctx.moveTo(anchorX1, 0);
+                            ctx.lineTo(anchorX1, scope.bitmapSize.height);
+                            ctx.stroke();
+
+                            // Right vertical line
+                            ctx.beginPath();
+                            ctx.moveTo(anchorX2, 0);
+                            ctx.lineTo(anchorX2, scope.bitmapSize.height);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+
+                            // Draw anchor points
+                            const py1 = Math.round(this._p1.y * vRatio);
+                            const py2 = Math.round(this._p2.y * vRatio);
+                            const px1 = Math.round(this._p1.x * hRatio);
+                            const px2 = Math.round(this._p2.x * hRatio);
+
+                            ctx.fillStyle = '#4CAF50';
+                            ctx.beginPath(); ctx.arc(px1, py1, 5, 0, 2*Math.PI); ctx.fill();
+                            ctx.fillStyle = '#F44336';
+                            ctx.beginPath(); ctx.arc(px2, py2, 5, 0, 2*Math.PI); ctx.fill();
+                        });
+                    }
+                }
+
                 // Generate unique ID
                 let drawingIdCounter = 0;
                 const genId = () => 'drawing_' + (++drawingIdCounter);
@@ -1059,6 +1249,35 @@ CHART_HTML_TEMPLATE = """
                                 }
                             }
                             // Check if inside rectangle for whole-rect drag
+                            if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                const minX = Math.min(x1, x2);
+                                const maxX = Math.max(x1, x2);
+                                const minY = Math.min(y1, y2);
+                                const maxY = Math.max(y1, y2);
+                                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                                    return { drawing: d, handle: 'rect' };
+                                }
+                            }
+                        } else if (d.type === 'fibonacci') {
+                            // Hit detection for fibonacci retracement
+                            const ts = chart.timeScale();
+                            const x1 = ts.timeToCoordinate(d.p1.time);
+                            const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                            const x2 = ts.timeToCoordinate(d.p2.time);
+                            const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                            if (x1 !== null && y1 !== null) {
+                                // Check P1 handle (start point)
+                                if (Math.sqrt((x-x1)*(x-x1) + (y-y1)*(y-y1)) < threshold) {
+                                    return { drawing: d, handle: 'p1' };
+                                }
+                            }
+                            if (x2 !== null && y2 !== null) {
+                                // Check P2 handle (end point)
+                                if (Math.sqrt((x-x2)*(x-x2) + (y-y2)*(y-y2)) < threshold) {
+                                    return { drawing: d, handle: 'p2' };
+                                }
+                            }
+                            // Check if inside fibonacci zone for whole-fib drag
                             if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
                                 const minX = Math.min(x1, x2);
                                 const maxX = Math.max(x1, x2);
@@ -1241,6 +1460,43 @@ CHART_HTML_TEMPLATE = """
                             d.updateAllViews();
                             chart.timeScale().applyOptions({}); // Force redraw
                         }
+                    } else if (d.type === 'fibonacci') {
+                        // Drag handling for fibonacci retracement
+                        const newPrice = priceSeries.coordinateToPrice(y);
+                        const newTime = ts.coordinateToTime(x);
+                        if (newPrice !== null && newTime !== null) {
+                            if (dragTarget.handle === 'p1') {
+                                // Move P1 point
+                                d.p1 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'p2') {
+                                // Move P2 point
+                                d.p2 = { time: newTime, price: newPrice };
+                            } else if (dragTarget.handle === 'rect') {
+                                // Move whole fibonacci
+                                const dx = x - dragStartX;
+                                const dy = y - dragStartY;
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const newTime1 = ts.coordinateToTime(x1 + dx);
+                                    const newPrice1 = priceSeries.coordinateToPrice(y1 + dy);
+                                    const newTime2 = ts.coordinateToTime(x2 + dx);
+                                    const newPrice2 = priceSeries.coordinateToPrice(y2 + dy);
+                                    if (newTime1 && newPrice1 && newTime2 && newPrice2) {
+                                        d.p1 = { time: newTime1, price: newPrice1 };
+                                        d.p2 = { time: newTime2, price: newPrice2 };
+                                        dragStartX = x;
+                                        dragStartY = y;
+                                    }
+                                }
+                            }
+                            // Recalculate fibonacci levels after move
+                            d.levels = d.calculateLevels();
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({}); // Force redraw
+                        }
                     }
                     e.preventDefault();
                     e.stopPropagation();
@@ -1284,12 +1540,53 @@ CHART_HTML_TEMPLATE = """
                     }
                 });
 
-                // Click handler for drawing
-                chart.subscribeClick(param => {
+                // Helper: Get time from x-coordinate - works even in empty space
+                // Uses coordinateToLogical which works outside data range
+                function getTimeFromPixelX(pixelX) {
+                    const ts = chart.timeScale();
+
+                    try {
+                        // Get the logical index at this x position (works outside data range!)
+                        const logicalIndex = ts.coordinateToLogical(pixelX);
+                        if (logicalIndex === null) return null;
+
+                        // Get the data to find bar duration
+                        const data = priceSeries.data();
+                        if (!data || data.length < 2) {
+                            // Fallback: try direct coordinateToTime
+                            return ts.coordinateToTime(pixelX);
+                        }
+
+                        // Calculate bar duration from data
+                        const barDuration = data[1].time - data[0].time;
+                        const firstBarTime = data[0].time;
+                        const firstBarLogical = 0; // First bar is at logical index 0
+
+                        // Calculate time: firstTime + (logicalIndex - firstLogical) * barDuration
+                        const calculatedTime = Math.round(firstBarTime + logicalIndex * barDuration);
+
+                        return calculatedTime;
+                    } catch (e) {
+                        console.warn('getTimeFromPixelX failed:', e);
+                        // Last resort fallback
+                        return ts.coordinateToTime(pixelX);
+                    }
+                }
+
+                // Click handler for drawing tools - using container event for full coverage
+                container.addEventListener('click', e => {
                     if (isDragging) return; // Ignore clicks during drag
-                    if (!param.time || !param.point) return;
-                    const price = priceSeries.coordinateToPrice(param.point.y);
+                    if (currentTool === 'pointer') return; // No drawing in pointer mode
+
+                    const rect = container.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    const price = priceSeries.coordinateToPrice(y);
                     if (price === null) return;
+
+                    // Get time using our robust function that works everywhere
+                    const time = getTimeFromPixelX(x);
 
                     if (currentTool === 'hline-green') {
                         const line = new HorizontalLinePrimitive(price, '#26a69a', genId());
@@ -1304,7 +1601,8 @@ CHART_HTML_TEMPLATE = """
                         selectTool('pointer');
                     }
                     else if (currentTool === 'trendline' || currentTool === 'ray') {
-                        drawingPoints.push({ time: param.time, price });
+                        if (!time) return; // Need time for these tools
+                        drawingPoints.push({ time, price });
                         if (drawingPoints.length === 2) {
                             removePreview();
                             const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
@@ -1312,17 +1610,31 @@ CHART_HTML_TEMPLATE = """
                             const line = new PrimitiveClass(drawingPoints[0], drawingPoints[1], color, genId());
                             priceSeries.attachPrimitive(line);
                             drawings.push(line);
-                            selectTool('pointer');
+                            // Stay in drawing mode - reset points for next line (ESC to exit)
+                            drawingPoints = [];
                         }
                     }
                     else if (currentTool === 'percent-rect') {
-                        drawingPoints.push({ time: param.time, price });
+                        if (!time) return; // Need time for these tools
+                        drawingPoints.push({ time, price });
                         if (drawingPoints.length === 2) {
                             removePreview();
                             const rect = new PercentRectPrimitive(drawingPoints[0], drawingPoints[1], genId());
                             priceSeries.attachPrimitive(rect);
                             drawings.push(rect);
                             selectTool('pointer');
+                        }
+                    }
+                    else if (currentTool === 'fibonacci') {
+                        if (!time) return; // Need time for these tools
+                        drawingPoints.push({ time, price });
+                        if (drawingPoints.length === 2) {
+                            removePreview();
+                            const fib = new FibonacciRetracementPrimitive(drawingPoints[0], drawingPoints[1], genId());
+                            priceSeries.attachPrimitive(fib);
+                            drawings.push(fib);
+                            // Stay in drawing mode - reset points for next fibonacci (ESC to exit)
+                            drawingPoints = [];
                         }
                     }
                     else if (currentTool === 'delete') {
@@ -1332,31 +1644,40 @@ CHART_HTML_TEMPLATE = """
                             if (d.type === 'hline') {
                                 const lineY = priceSeries.priceToCoordinate(d.price);
                                 if (lineY !== null) {
-                                    const dist = Math.abs(param.point.y - lineY);
+                                    const dist = Math.abs(y - lineY);
                                     if (dist < minDist) { minDist = dist; nearest = d; }
                                 }
                             } else if (d.type === 'trendline' || d.type === 'ray') {
                                 const ts = chart.timeScale();
-                                const x1 = ts.timeToCoordinate(d.p1.time);
-                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
-                                const x2 = ts.timeToCoordinate(d.p2.time);
-                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
-                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
-                                    const dist = pointToSegmentDist(param.point.x, param.point.y, x1, y1, x2, y2);
+                                const dx1 = ts.timeToCoordinate(d.p1.time);
+                                const dy1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const dx2 = ts.timeToCoordinate(d.p2.time);
+                                const dy2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (dx1 !== null && dy1 !== null && dx2 !== null && dy2 !== null) {
+                                    const dist = pointToSegmentDist(x, y, dx1, dy1, dx2, dy2);
                                     if (dist < minDist) { minDist = dist; nearest = d; }
                                 }
                             } else if (d.type === 'percent-rect') {
-                                // Check if click is inside the rectangle
                                 const ts = chart.timeScale();
-                                const x1 = ts.timeToCoordinate(d.p1.time);
-                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
-                                const x2 = ts.timeToCoordinate(d.p2.time);
-                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
-                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
-                                    const px = param.point.x, py = param.point.y;
-                                    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
-                                    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
-                                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+                                const dx1 = ts.timeToCoordinate(d.p1.time);
+                                const dy1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const dx2 = ts.timeToCoordinate(d.p2.time);
+                                const dy2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (dx1 !== null && dy1 !== null && dx2 !== null && dy2 !== null) {
+                                    const minX = Math.min(dx1, dx2), maxX = Math.max(dx1, dx2);
+                                    const minY = Math.min(dy1, dy2), maxY = Math.max(dy1, dy2);
+                                    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                                        nearest = d; minDist = 0;
+                                    }
+                                }
+                            } else if (d.type === 'fibonacci') {
+                                // Fibonacci zones span full chart width, so only check Y bounds
+                                const dy1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const dy2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (dy1 !== null && dy2 !== null) {
+                                    const minY = Math.min(dy1, dy2), maxY = Math.max(dy1, dy2);
+                                    // Hit-detection across full chart width (consistent with rendering)
+                                    if (y >= minY && y <= maxY) {
                                         nearest = d; minDist = 0;
                                     }
                                 }
@@ -1366,14 +1687,14 @@ CHART_HTML_TEMPLATE = """
                     }
                 });
 
-                // Mouse move for preview (using raw coordinates, not snapped)
+                // Mouse move for preview - uses getTimeFromPixelX for snap-free positioning
                 container.addEventListener('mousemove', e => {
                     if ((currentTool === 'trendline' || currentTool === 'ray') && drawingPoints.length === 1 && !isDragging) {
                         const rect = container.getBoundingClientRect();
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
-                        const time = chart.timeScale().coordinateToTime(x);
+                        const time = getTimeFromPixelX(x);
                         if (price === null || time === null) return;
                         removePreview();
                         const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
@@ -1386,10 +1707,21 @@ CHART_HTML_TEMPLATE = """
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
-                        const time = chart.timeScale().coordinateToTime(x);
+                        const time = getTimeFromPixelX(x);
                         if (price === null || time === null) return;
                         removePreview();
                         previewPrimitive = new PercentRectPrimitive(drawingPoints[0], { time, price }, 'preview');
+                        priceSeries.attachPrimitive(previewPrimitive);
+                    }
+                    else if (currentTool === 'fibonacci' && drawingPoints.length === 1 && !isDragging) {
+                        const rect = container.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const price = priceSeries.coordinateToPrice(y);
+                        const time = getTimeFromPixelX(x);
+                        if (price === null || time === null) return;
+                        removePreview();
+                        previewPrimitive = new FibonacciRetracementPrimitive(drawingPoints[0], { time, price }, 'preview');
                         priceSeries.attachPrimitive(previewPrimitive);
                     }
                 });
@@ -1424,6 +1756,7 @@ CHART_HTML_TEMPLATE = """
                 document.getElementById('tool-trendline').onclick = () => selectTool('trendline');
                 document.getElementById('tool-ray').onclick = () => selectTool('ray');
                 document.getElementById('tool-percent-rect').onclick = () => selectTool('percent-rect');
+                document.getElementById('tool-fibonacci').onclick = () => selectTool('fibonacci');
                 document.getElementById('tool-delete').onclick = () => selectTool('delete');
                 document.getElementById('tool-clear-all').onclick = () => { clearAllDrawings(); selectTool('pointer'); };
 

@@ -320,6 +320,13 @@ class ChartWindow(
                 except Exception as e:
                     logger.debug(f"Error saving signal history: {e}")
 
+            # Save Strategy Simulator splitter state (from StrategySimulatorMixin)
+            if hasattr(self, '_save_simulator_splitter_state'):
+                try:
+                    self._save_simulator_splitter_state()
+                except Exception as e:
+                    logger.debug(f"Error saving simulator splitter state: {e}")
+
             # Save sync state (from StateMixin)
             self._save_window_state()
 
