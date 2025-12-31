@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Exit Signal Checker for Tradingbot.
 
 Checks for exit signals based on multiple criteria including
@@ -44,6 +45,54 @@ class ExitSignalResult:
     urgency: int = 1  # 1-3, higher = more urgent
     details: str = ""
 
+=======
+"""Exit Signal Checker for Tradingbot.
+
+Checks for exit signals based on multiple criteria including
+RSI extremes, MACD crosses, BB reversals, trend breaks, and more.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from enum import Enum
+
+from .models import (
+    FeatureVector,
+    PositionState,
+    RegimeState,
+    RegimeType,
+    TradeSide,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ExitReason(str, Enum):
+    """Exit signal reasons."""
+    STOP_HIT = "stop_hit"
+    TRAILING_STOP = "trailing_stop"
+    TIME_STOP = "time_stop"
+    MOMENTUM_REVERSAL = "momentum_reversal"
+    TREND_BREAK = "trend_break"
+    VOLATILITY_SPIKE = "volatility_spike"
+    RSI_EXTREME = "rsi_extreme"
+    MACD_CROSS = "macd_cross"
+    BB_REVERSAL = "bb_reversal"
+    REGIME_FLIP = "regime_flip"
+    MANUAL = "manual"
+
+
+@dataclass
+class ExitSignalResult:
+    """Result of exit signal check."""
+    should_exit: bool
+    reason: ExitReason | None = None
+    urgency: int = 1  # 1-3, higher = more urgent
+    details: str = ""
+
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class ExitSignalChecker:
     """Checks for exit signals based on multiple criteria."""
 

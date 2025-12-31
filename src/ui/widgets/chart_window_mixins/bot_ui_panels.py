@@ -671,11 +671,19 @@ class BotUIPanelsMixin:
         self.signals_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.signals_table.customContextMenuRequested.connect(self._show_signals_context_menu)
 
+<<<<<<< HEAD
         # Connect cell editing for bidirectional chart trading
         self.signals_table.cellChanged.connect(self._on_signals_table_cell_changed)
         # Selection -> reflect in Current Position panel
         self.signals_table.itemSelectionChanged.connect(self._on_signals_table_selection_changed)
         self._signals_table_updating = False
+=======
+        # Connect cell editing for bidirectional chart trading
+        self.signals_table.cellChanged.connect(self._on_signals_table_cell_changed)
+        # Selection -> reflect in Current Position panel
+        self.signals_table.itemSelectionChanged.connect(self._on_signals_table_selection_changed)
+        self._signals_table_updating = False
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
         signals_inner.addWidget(self.signals_table)
 

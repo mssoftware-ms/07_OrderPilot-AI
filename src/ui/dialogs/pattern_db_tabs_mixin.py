@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+<<<<<<< HEAD
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -32,6 +33,30 @@ from PyQt6.QtWidgets import (
 from src.core.pattern_db.fetcher import CRYPTO_SYMBOLS
 
 DEFAULT_STOCK_SYMBOLS = ["QQQ"]
+=======
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QProgressBar,
+    QPushButton,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.core.pattern_db.fetcher import CRYPTO_SYMBOLS
+
+DEFAULT_STOCK_SYMBOLS = ["QQQ"]
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
 # Constants (must match pattern_db_dialog.py)
 QDRANT_PORT = 6333
@@ -129,7 +154,11 @@ class PatternDbTabsMixin:
 
         # Asset type selection
         type_layout = QHBoxLayout()
+<<<<<<< HEAD
         self.stock_radio = QCheckBox("Stocks / ETFs")
+=======
+        self.stock_radio = QCheckBox("Stocks / ETFs")
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
         self.stock_radio.setChecked(True)
         type_layout.addWidget(self.stock_radio)
 
@@ -147,12 +176,17 @@ class PatternDbTabsMixin:
         stock_box.addWidget(QLabel("Stock Symbols:"))
         self.stock_list = QListWidget()
         self.stock_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+<<<<<<< HEAD
         for symbol in DEFAULT_STOCK_SYMBOLS:
+=======
+        for symbol in DEFAULT_STOCK_SYMBOLS:
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
             item = QListWidgetItem(symbol)
             item.setSelected(True)
             self.stock_list.addItem(item)
         stock_box.addWidget(self.stock_list)
 
+<<<<<<< HEAD
         # Stock quick actions
         stock_btns = QHBoxLayout()
         select_all_stocks = QPushButton("All")
@@ -180,6 +214,35 @@ class PatternDbTabsMixin:
             item = QListWidgetItem(symbol)
             item.setSelected(True)
             self.crypto_list.addItem(item)
+=======
+        # Stock quick actions
+        stock_btns = QHBoxLayout()
+        select_all_stocks = QPushButton("All")
+        select_all_stocks.clicked.connect(lambda: self._select_all(self.stock_list, True))
+        stock_btns.addWidget(select_all_stocks)
+        select_none_stocks = QPushButton("None")
+        select_none_stocks.clicked.connect(lambda: self._select_all(self.stock_list, False))
+        stock_btns.addWidget(select_none_stocks)
+        remove_selected_stocks = QPushButton("Remove Selected")
+        remove_selected_stocks.clicked.connect(self._remove_selected_stocks)
+        stock_btns.addWidget(remove_selected_stocks)
+        clear_stocks = QPushButton("Clear List")
+        clear_stocks.clicked.connect(self._clear_stock_list)
+        stock_btns.addWidget(clear_stocks)
+        stock_box.addLayout(stock_btns)
+
+        lists_layout.addLayout(stock_box)
+
+        # Crypto symbols
+        crypto_box = QVBoxLayout()
+        crypto_box.addWidget(QLabel("Crypto Symbols:"))
+        self.crypto_list = QListWidget()
+        self.crypto_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        for symbol in CRYPTO_SYMBOLS:
+            item = QListWidgetItem(symbol)
+            item.setSelected(True)
+            self.crypto_list.addItem(item)
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
         # Add more crypto options
         for symbol in ["SOL/USD", "DOGE/USD", "AVAX/USD", "LINK/USD"]:
             item = QListWidgetItem(symbol)
@@ -188,6 +251,7 @@ class PatternDbTabsMixin:
         crypto_box.addWidget(self.crypto_list)
 
         # Add custom crypto
+<<<<<<< HEAD
         add_crypto_layout = QHBoxLayout()
         self.custom_crypto_input = QLineEdit()
         self.custom_crypto_input.setPlaceholderText("Add custom (e.g., ADA/USD)")
@@ -227,6 +291,47 @@ class PatternDbTabsMixin:
 
         lists_layout.addLayout(crypto_box)
         asset_layout.addLayout(lists_layout)
+=======
+        add_crypto_layout = QHBoxLayout()
+        self.custom_crypto_input = QLineEdit()
+        self.custom_crypto_input.setPlaceholderText("Add custom (e.g., ADA/USD)")
+        add_crypto_layout.addWidget(self.custom_crypto_input)
+        add_crypto_btn = QPushButton("+")
+        add_crypto_btn.setMaximumWidth(30)
+        add_crypto_btn.clicked.connect(self._add_custom_crypto)
+        add_crypto_layout.addWidget(add_crypto_btn)
+        crypto_box.addLayout(add_crypto_layout)
+
+        # Crypto quick actions
+        crypto_btns = QHBoxLayout()
+        select_all_crypto = QPushButton("All")
+        select_all_crypto.clicked.connect(lambda: self._select_all(self.crypto_list, True))
+        crypto_btns.addWidget(select_all_crypto)
+        select_none_crypto = QPushButton("None")
+        select_none_crypto.clicked.connect(lambda: self._select_all(self.crypto_list, False))
+        crypto_btns.addWidget(select_none_crypto)
+        remove_selected_crypto = QPushButton("Remove Selected")
+        remove_selected_crypto.clicked.connect(self._remove_selected_crypto)
+        crypto_btns.addWidget(remove_selected_crypto)
+        clear_crypto = QPushButton("Clear List")
+        clear_crypto.clicked.connect(self._clear_crypto_list)
+        crypto_btns.addWidget(clear_crypto)
+        crypto_box.addLayout(crypto_btns)
+
+        # Add custom stocks / indices
+        add_stock_layout = QHBoxLayout()
+        self.custom_stock_input = QLineEdit()
+        self.custom_stock_input.setPlaceholderText("Add stock/index (e.g., AAPL, SPY, QQQ, ^NDX)")
+        add_stock_layout.addWidget(self.custom_stock_input)
+        add_stock_btn = QPushButton("+")
+        add_stock_btn.setMaximumWidth(30)
+        add_stock_btn.clicked.connect(self._add_custom_stock)
+        add_stock_layout.addWidget(add_stock_btn)
+        stock_box.addLayout(add_stock_layout)
+
+        lists_layout.addLayout(crypto_box)
+        asset_layout.addLayout(lists_layout)
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
         layout.addWidget(asset_group)
 

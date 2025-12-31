@@ -1,0 +1,260 @@
+Chart-Markierung in OrderPilo-AI
+Diese Dokumentation beschreibt die technische Umsetzung verschiedener Chart-Markierungsfunktionen in der Python-basierten Tradingsoftware OrderPilo-AI unter Verwendung von Lightweight-Charts(tm) (Front-End) und geplanter Multimonitor-Unterstützung.
+1. Automatisches Einzeichnen von Einstiegspfeilen (Long/Short)
+Technische Funktionserklärung
+Einstiegspfeile markieren automatisch Kauf- (Long) oder Verkaufs- (Short) Signale im Chart. Technisch werden hierzu Marker an den entsprechenden Kerzenpositionen gesetzt. Jeder Marker enthält Zeit, Preis und einen Typ (Long/Short). Das Backend (Python) ermittelt das Signal und sendet die Marker-Information an das Frontend, wo die Pfeile gezeichnet werden. In Lightweight-Charts(tm) erfolgt dies über Series Marker-Objekte.
+UI/UX-Anforderungen
+* Symbol: Pfeil nach oben für Long (z.B. "arrowUp"), Pfeil nach unten für Short (z.B. "arrowDown").
+* Farbe: Typische Konventionen: Grün für Long-Einstieg, Rot für Short-Einstieg. Alternativ konfigurierbar.
+* Position: Long-Pfeil oberhalb der Kerze (z.B. position='aboveBar'), Short-Pfeil unterhalb der Kerze (position='belowBar'), damit der Pfeil nicht über die Kerze selbst zeichnet.
+* Beschriftung: Optional kann der Pfeil-Text z.B. "Long Entry" bzw. "Short Entry" anzeigen. Textfarbe und -größe sollte zum Chart-Layout passen.
+* Interaktivität: Auf Hover könnte ein Tooltip oder Label Details zum Signal zeigen (z.B. Uhrzeit, Preis).
+* Implementierung: Nutzung der Lightweight-Charts-API createSeriesMarkers, die Marker-Objekte mit Zeit, Farbe, Form und Text akzeptiert[1].
+Pseudocode-Logik in Python
+# Beispielhafter Pseudocode für das Zeichnen eines Einstiegspfeils
+def zeichne_einstiegspfeil(chart, zeit, preis, typ):
+    """
+    typ: "long" oder "short"
+    chart: Instanz des Lightweight-Charts-Series-Objekts
+    zeit: Zeitpunkt als Zeiteinheit (Timestamp)
+    preis: Preis zum Zeichnen des Pfeils
+    """
+    if typ == "long":
+        position = "aboveBar"
+        shape = "arrowUp"
+        farbe = "#00B050"  # Grün
+        label = "Long Entry"
+    else:
+        position = "belowBar"
+        shape = "arrowDown"
+        farbe = "#FF0000"  # Rot
+        label = "Short Entry"
+    marker = {
+        "time": zeit,
+        "position": position,
+        "color": farbe,
+        "shape": shape,
+        "text": label
+    }
+    # Marker an die Serie anhängen
+    chart.create_series_markers([marker])  # ggf. Übersetzung in tatsächliche API-Aufrufe
+Hinweis: In Lightweight-Charts(tm) verwendet man createSeriesMarkers(series, markers), um Marker zu zeichnen[1].
+JSON/State-Datenmodell
+Eine mögliche interne Datenstruktur im Python-Backend könnte so aussehen:
+{
+  "entry_markers": [
+    {"time": "2025-12-30T14:10:00Z", "price": 1.2345, "type": "long"},
+    {"time": "2025-12-30T14:15:00Z", "price": 1.2330, "type": "short"}
+  ]
+}
+Jeder Eintrag enthält Zeit, Preis und Typ. Das Frontend wandelt diese Einträge dann in Chart-Marker um. Dieses JSON-Format lässt sich erweitern (z.B. mit Identifier oder Notizen).
+Hinweise zur Erweiterbarkeit
+* Parameterisierung: Farben, Pfeilgrößen und Text können als Parameter konfiguriert werden (z.B. in einer Settings-Datei oder über UI-Controls).
+* Modularität: Implementierung als wiederverwendbare Funktion oder Klasse, die Signal-Events entgegennimmt und Marker zeichnet.
+* Batch-Zeichnen: Bei vielen Markern sollten diese gebündelt über createSeriesMarkers in einem Aufruf gezeichnet werden, um Performance-Einbußen zu vermeiden.
+* Ausschaltbarkeit: Option einbauen, Markierungen ein- oder auszuschalten (z.B. über UI-Checkbox oder Shortcut).
+2. Zeichnen von Support- und Resistance-Zonen (halbtransparente Rechtecke)
+Technische Funktionserklärung
+Support-/Resistance-Zonen werden als Rechtecke (Bereiche) dargestellt. Ein Rechteck wird durch zwei Ecken definiert (linke obere Ecke = Startzeit/Preis, rechte untere Ecke = Endzeit/Preis oder umgekehrt). Technisch wird hierfür am besten ein Zeichen-Plugin ("Drawing Primitive") verwendet, das es ermöglicht, programmgesteuert Rechtecke zu zeichnen. In Lightweight-Charts(tm) kann man ein benutzerdefiniertes Rechteck-Primitive verwenden (z.B. via npm create lwc-plugin im Entwicklermodus).
+UI/UX-Anforderungen
+* Form: Halbtransparente gefüllte Rechtecke (kein reines Liniensegment). Die Füllung hebt die Zone hervor, aber das Chart bleibt sichtbar (z.B. fillColor="rgba(255, 165, 0, 0.3)" für ein orangenes Rechteck bei 30 % Transparenz).
+* Ränder: Optional ein dünner Rand (evt. gleiche Farbe oder Kontrastfarbe).
+* Platzierung: Statisch fixierte Price-Level über einen Zeitraum. Der Nutzer definiert Start- und Endpunkte (Zeit/Preis) der Zone.
+* Farbe: Unterschiedliche Farben für Support- (z.B. Grün-Töne) und Resistance-Zonen (z.B. Rot/Orange). Auch hier konfigurierbar.
+* Interaktivität: Beim Klick auf die Ecke könnte man Größe oder Farbe ändern. Ein Label könnte Beschreibung (z.B. "Demand Zone") anzeigen.
+* Implementation: Verwendung des Rechteck-Primitivs eines LWC-Plugins. Nach Erstellung eines Rectangle-Objekts wird dieses an eine Serie angehängt (z.B. mit attachPrimitive)[2].
+Pseudocode-Logik in Python
+# Pseudocode für das Zeichnen einer Support/Resistance-Zone
+def zeichne_zone(chart, start_zeit, end_zeit, top_preis, bottom_preis, typ):
+    """
+    Zeichnet ein Rechteck zwischen (start_zeit, top_preis) und (end_zeit, bottom_preis).
+    typ: "support" oder "resistance"
+    """
+    if typ == "support":
+        farbe = "rgba(39, 245, 80, 0.4)"  # Grün mit Transparenz
+    else:
+        farbe = "rgba(245, 39, 39, 0.4)"  # Rot mit Transparenz
+    # Rectangle-Konstruktor (Plugin)
+    zone = Rectangle(
+        {"time": start_zeit, "price": top_preis},
+        {"time": end_zeit,   "price": bottom_preis},
+        {"fillColor": farbe}
+    )
+    # Rechteck an die Serie anhängen
+    chart.attach_primitive(zone)
+Hinweis: Ein Beispielcode zeigt, wie neue Rectangle-Primitive erstellt und mit Füllfarbe definiert werden[2]. Danach muss das Rechteck meist an ein LineSeries-Objekt angehängt werden (attachPrimitive).
+JSON/State-Datenmodell
+Eine mögliche Datenstruktur:
+{
+  "zones": [
+    {
+      "type": "support",
+      "start": "2025-12-30T10:00:00Z",
+      "end": "2025-12-30T14:00:00Z",
+      "top_price": 1.2200,
+      "bottom_price": 1.2000
+    },
+    {
+      "type": "resistance",
+      "start": "2025-12-29T15:00:00Z",
+      "end": "2025-12-30T09:00:00Z",
+      "top_price": 1.2500,
+      "bottom_price": 1.2400
+    }
+  ]
+}
+Jede Zone definiert Start/End-Zeit und obere/untere Preisgrenzen sowie Typ. Dieses Modell erlaubt, Zonen programmgesteuert im Chart zu erzeugen.
+Hinweise zur Erweiterbarkeit
+* Variable Größe: Zonen können mehrere Candles umfassen; Datenmodell kann daher flexible Zeitspanne und Preisbereich erlauben.
+* Parametrisierung: Füllfarben und Transparenz könnten über Einstellungen änderbar sein.
+* Anpassung: Erlaubt dynamisches Verschieben/Skalieren der Zonen (für manuelle Adjustierung im UI).
+* Modularität: Die Zeichnungslogik kann in eine eigene Modulklasse (z.B. ZoneDrawer) ausgelagert werden, die beliebig viele Zonen verwaltet.
+* Zusätzlich: Automatische Erkennung möglicher Zonen (nicht gewünscht laut Vorgabe), deshalb Implementation fokussiert rein auf Rendering. Weitere Features (z.B. Drag&Drop im Chart) können später ergänzt werden.
+3. Kennzeichnung von Strukturbrüchen mit BoS- und CHoCH-Symbolen
+Technische Funktionserklärung
+Break of Structure (BoS) und Change of Character (CHoCH) sind Begriffe aus der Markttechnik, die bestimmte Trendwechsel signalisieren. Die Software soll diese Ereignisse visuell markieren. Technisch hält das System eine Logik vor, die Wendepunkte (z.B. Swing High/Low) erkennt. Bei einer bestätigten Strukturänderung wird im Chart ein Symbol gesetzt.
+UI/UX-Anforderungen
+* Symbolik: Oft verwendet man Pfeile oder Marker mit Text. Zum Beispiel:
+* BoS (Break of Structure): Pfeil oder Marker in Farbe (z.B. Blau) mit Text "BoS".
+* CHoCH (Change of Character): Ähnlich, aber z.B. ein anderes Symbol oder Farbe (z.B. Gelb).
+* Position: Symbol am Swingpunkt platzieren - typischerweise am Tief (bei bullischem Bruch) oder am Hoch (bei bärischem Bruch). Möglich sind Series-Marker entweder direkt am Preis (z.B. position='belowBar' oder aboveBar') oder als SeriesMarkerPrice, falls genauer Plazierung am Chartrand nötig.
+* Text/Tooltip: Der Marker kann eine Bezeichnung tragen ("BoS" bzw. "CHOCH"). Tooltip kann Details liefern ("Bullish BoS um 12:34 Uhr").
+* Farbe/Form: Deutlicher Kontrast zum Kerzenchart, z.B. flaggendes Dreieck oder Stern. Wichtig ist, die Symbole klar unterscheidbar zu machen.
+* Implementierung: Auch hierfür kommen Series-Marker zum Einsatz. Shape-Optionen ("triangleUp", "triangleDown", "flag" usw.) sind möglich. Farbe/Text wie oben.
+Pseudocode-Logik in Python
+# Pseudocode zum Setzen von BoS/CHoCH-Markern
+def markiere_strukturbruch(chart, zeit, preis, typ):
+    """
+    typ: "BoS" oder "CHoCH"
+    """
+    if typ == "BoS":
+        symbol = "triangleUp"    # Beispiel für bullisches BoS
+        farbe = "#0000FF"        # Blau
+        label = "BoS"
+        position = "belowBar"    # Pfeil unterhalb der Kerze
+    else:  # "CHoCH"
+        symbol = "triangleDown"  # Beispiel für bärisches CHoCH
+        farbe = "#FFA500"        # Orange
+        label = "CHoCH"
+        position = "aboveBar"
+    marker = {
+        "time": zeit,
+        "position": position,
+        "color": farbe,
+        "shape": symbol,
+        "text": label
+    }
+    chart.create_series_markers([marker])
+Hinweis: Die Shapes und Positionen sind beispielhaft. Man kann abhängig vom Kontext auch Pfeile verwenden. Wichtig ist, dass der Marker den Bruch symbolisiert und sich optisch abhebt[1].
+JSON/State-Datenmodell
+Beispielhaft könnte man ein Array von Strukturdaten halten:
+{
+  "structure_breaks": [
+    {"type": "BoS",   "time": "2025-12-30T11:20:00Z", "price": 1.2100, "direction": "bullish"},
+    {"type": "CHoCH", "time": "2025-12-30T13:45:00Z", "price": 1.2050, "direction": "bearish"}
+  ]
+}
+Jeder Eintrag enthält Typ, Zeitpunkt, Preis und ggf. Richtungsinfo. Das Frontend wandelt dies in Marker um (Farbe/Symbol je nach Typ). Diese Struktur lässt sich erweitern (z.B. Swing-High/Low-Punkte).
+Hinweise zur Erweiterbarkeit
+* Typen erweiterbar: Weitere Marktstruktur-Ereignisse (z.B. "MSB", "LB" etc.) können analog hinzugefügt werden.
+* Kustomisierung: Marker-Icons und Farben lassen sich durch Themes oder Nutzerwahl austauschen.
+* Modularer Aufbau: Ein Modul "MarketStructureMarker" könnte sämtliche Struktursignale behandeln und konfigurierbar sein.
+* Anpassbare Trigger: In Zukunft könnten Kriterien für BoS/CHoCH als Parameter angepasst werden (z.B. minimale Swing-Höhe), doch das ist hier nicht primär vorgesehen.
+4. Anzeige einer Stop-Loss-Linie mit Label und optionaler Risiko-Markierung
+Technische Funktionserklärung
+Eine Stop-Loss-Linie visualisiert den Stop-Preis der aktuellen Position. Das Chart zeigt eine durchgezogene oder gestrichelte Linie auf Preisniveau des Stop-Loss. Zusätzlich ein Text-Label ("Stop-Loss") und ggf. eine Markierung zur Anzeige des Risikos (z.B. als Prozent oder R:R). In Lightweight-Charts(tm) bietet sich dafür das Price Line-Feature an (erstellt horizontale Linien über das ganze Chart).
+UI/UX-Anforderungen
+* Linie: Durchgehende oder gestrichelte Linie (z.B. dünne rote Linie). Beispiel-Styles: lineStyle: Dashed, lineWidth: 2.
+* Farbe: Typischerweise Rot für Stop-Loss. Eventuell Transparenz, damit Chart-Daten noch sichtbar bleiben.
+* Label: Text an der Linie wie "Stop-Loss" oder "SL". Im API-Objekt als title oder label einstellbar (z.B. title: 'Stop-Loss'). Die Beschriftung kann am linken Rand oder am Linienende angezeigt werden.
+* Risiko-Markierung: Optional könnte der Abstand zwischen Entry-Preis und SL als Risikowert angezeigt werden (z.B. "Risk: 0.8 %"). Dies könnte als kleines Textlabel beim Entry oder als weiteres PriceLine-Label erfolgen. Alternativ ein Schatten/balken zwischen Entry- und SL-Preis.
+* Implementierung: Verwenden von series.createPriceLine(options)[3]. Der PriceLine wird an eine bestehende Serie (z.B. Preisserie) angehängt.
+Pseudocode-Logik in Python
+# Pseudocode für Stop-Loss-Linie
+def zeichne_stop_loss_linie(series, stop_price):
+    """
+    series: die Price-Serie des Charts
+    stop_price: Preislevel des Stop-Loss
+    """
+    options = {
+        "price": stop_price,
+        "color": "#FF0000",         # Rot
+        "lineWidth": 1,
+        "lineStyle": 2,            # 0=solid,1=dashed,2=dotted (je nach API-Version)
+        "axisLabelVisible": True,
+        "title": "Stop-Loss"
+    }
+    series.create_price_line(options)
+Hinweis: Nach Aufruf von createPriceLine wird die Linie sofort gezeichnet[3]. Es kann nützlich sein, die Standard-PriceLine der letzten Kerze zu deaktivieren (priceLineVisible: false), damit diese Anzeige nicht stört.
+JSON/State-Datenmodell
+Beispiel für Stop-Loss-Konfiguration:
+{
+  "stop_loss": {
+    "price": 1.2180,
+    "label": "Stop-Loss",
+    "show_risk": true
+  }
+}
+- price: Level der Stop-Loss-Linie.
+- label: Text für die Linie.
+- show_risk: Boolean, ob das Risiko (z.B. in Prozent) angezeigt wird (diese Info könnte ggf. berechnet aus Entry-Preis und SL).
+Falls ein Risikowert angezeigt wird, könnte zusätzlich eine Datenstruktur existieren:
+{
+  "risk_info": {
+    "entry_price": 1.2300,
+    "stop_price": 1.2180,
+    "risk_percent": 1.0
+  }
+}
+Hinweise zur Erweiterbarkeit
+* Linienstile: Parameter für Farbe, Stil (solid/dash/dot), Breite können flexibel gemacht werden.
+* Labels: Titeltext kann erweitert werden (z.B. "SL", "Stop", oder mehrzeiliger Tooltip).
+* Zusätzliche Linien: Analog könnte auch eine Take-Profit-Linie hinzugefügt werden (parameterisiert).
+* Dynamische Updates: Beim Ändern des Stop-Levels muss die Linie ggf. aktualisiert (entfernen/neu zeichnen) werden. Daher sollte die Linie als eigenes Objekt verwaltbar sein.
+* Modularität: Zusammenfassen in eine StopLossOverlay-Klasse, die die Linie und Beschriftung behandelt.
+5. Multi-Chart- und Multimonitor-Unterstützung
+Technische Funktionserklärung
+Multi-Chart-Unterstützung bedeutet, dass mehrere Charts gleichzeitig angezeigt werden können, idealerweise auf verschiedenen Bildschirmen (Monitore) verteilt. Technisch erfordert dies, dass die Software mehrere Chart-Instanzen verwalten kann, jeweils mit eigenem Zeitskalenniveau (Timeframe). Die Charts sollten durch das Backend versorgt werden und ggf. synchronisiert arbeiten. Python-seitig könnte dies bedeuten, mehrere Fenster/Views zu erzeugen, in denen jeweils ein LightweightChart läuft.
+UI/UX-Anforderungen
+* Anordnung: Standardmäßig werden die Charts in separaten Fenstern oder Panes angezeigt. Der Benutzer kann Fenster auf verschiedene Monitore ziehen oder per Menü/Tastatur auswählen.
+* Zeitskalen: Jeder Chart kann einen anderen Timeframe zeigen (z.B. 5 Min, 1 Std, Tageschart). Dies sollte sowohl manuell als auch automatisch möglich sein (z.B. beim Auswahl eines Setups).
+* Synchronisation: Optional kann man Crosshair/Range-Synchronisation anbieten - wenn man mit dem Mauszeiger in einem Chart ist, folgen andere Charts (z.B. gleicher Zeitpunkt, gleicher Indikator). Die Lightweight-Charts-API bietet dafür z.B. setCrosshairPosition und gemeinsame visibleRange-Subscriber.
+* Steuerung: Eine übergeordnete GUI ermöglicht das Öffnen/Schließen von Chart-Fenstern. Vorlagen (Layouts) mit mehreren Charts können gespeichert und geladen werden.
+* Implementierung: Jeder Chart bekommt eine eindeutige ID/Window-Handle. Der Python-Code initialisiert für jede Instanz eine chart = create_chart(container, options) und legt die entsprechende Timeframe-Datenserie. Die Fensterverwaltung kann z.B. über ein GUI-Framework (Tkinter, PyQt, etc.) oder ein Webframework mit mehreren Tabs/Panels realisiert werden.
+Pseudocode-Logik in Python
+# Pseudocode zum Erstellen mehrerer Charts
+timeframes = ["1D", "1H", "5m"]  # Beispiel-Zeitskalen
+charts = []
+for tf in timeframes:
+    win = create_new_window(title=f"Chart {tf}", monitor="primary_or_specific")
+    chart = win.create_chart()   # Erzeugt ein Lightweight-Chart in diesem Fenster
+    chart.add_line_series(data_for_timeframe(tf))
+    charts.append(chart)
+# Optional: Synchronisation der Charts
+for chart in charts:
+    chart.on_crosshair_move(lambda pos: synchronize_crosshair(charts, pos))
+Dies ist schematisch. Wichtig ist, dass die Fenster auf unterschiedlichen Monitoren positioniert werden können. Je nach GUI-Toolkit kann man Fenster explizit auf Monitor-Indizes setzen.
+JSON/State-Datenmodell
+Konfigurationsbeispiel für Multi-Chart-Layouts:
+{
+  "multi_chart_layout": [
+    {"timeframe": "1D", "monitor": 0, "position": {"x": 0, "y": 0, "width": 800, "height": 600}},
+    {"timeframe": "1H", "monitor": 1, "position": {"x": 100, "y": 0, "width": 800, "height": 600}},
+    {"timeframe": "5m", "monitor": 1, "position": {"x": 900, "y": 0, "width": 800, "height": 600}}
+  ]
+}
+- Jedes Objekt repräsentiert ein Chart-Fenster mit timeframe, auf welchem monitor es standardmäßig erscheint, und der Fensterposition/-größe.
+- Diese Struktur erlaubt es, Layouts zu speichern und dynamisch Fenster zu erzeugen.
+Hinweise zur Erweiterbarkeit
+* Erweiterbare Layouts: Neue Timeframes oder Charts können hinzugefügt werden, indem einfach ein weiteres Layout-Objekt erstellt wird.
+* Automatisierung: Man könnte Skripte/Hotkeys anbieten, um z.B. auf Knopfdruck vordefinierte Chart-Sets zu öffnen (beispielsweise alle relevanten Zeitebenen eines Marktes).
+* Modularität: Die Multi-Chart-Logik sollte getrennt von Chart-Rendering sein. Ein ChartManager-Modul könnte Fensterverwaltung und Layouthandling übernehmen.
+* Synchronisationserweiterung: Optionale Verknüpfung der Charts (gemeinsamer TimeAxis-Versatz, Cursor-Synchronisierung) kann als Zusatzmodul implementiert werden. Leichte-Weight-Charts-API bietet dafür Funktionen wie setCrosshairPosition[3] und Events für visibleRange.
+Quellen: Die genannten Funktionen basieren auf der Lightweight-Charts(tm) API (z.B. createSeriesMarkers, createPriceLine)[1][3]. Für spezielle Formen (wie Rechtecke) werden Drawing-Plugins empfohlen[2].
+
+[1] Add Series Markers | Lightweight Charts
+https://tradingview.github.io/lightweight-charts/tutorials/how_to/series-markers
+[2] lightweight-charts draw rectangle, risk/reward tradingview - Stack Overflow
+https://stackoverflow.com/questions/78266794/lightweight-charts-draw-rectangle-risk-reward-tradingview
+[3] Add Price Line | Lightweight Charts
+https://tradingview.github.io/lightweight-charts/tutorials/how_to/price-line

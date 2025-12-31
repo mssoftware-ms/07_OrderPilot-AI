@@ -105,39 +105,8 @@ class StrategySimulatorExport:
 
     def _calculate_score(self, result) -> int:
         """Calculate performance score from -1000 to +1000."""
-        if getattr(result, "entry_only", False):
-            entry_score = result.entry_score or 0.0
-            return int(round(entry_score))
         pnl_pct = result.total_pnl_pct
         return int(max(-1000, min(1000, pnl_pct * 10)))
-
-    def _format_entry_points(self, points: list[tuple] | None) -> str:
-        if not points:
-            return ""
-        formatted = []
-        for item in points:
-            if len(item) == 3:
-                price, ts, _score = item
-            else:
-                price, ts = item
-            formatted.append(f"{price:.3f}/{ts.strftime('%H:%M:%S')}")
-        return ";".join(formatted)
-
-    def _format_params_with_entry(self, result: SimulationResult, params_str: str) -> str:
-        if not getattr(result, "entry_only", False):
-            return params_str
-        ls_value = getattr(result, "entry_side", None) or "long"
-        entry_display = self._format_entry_points(getattr(result, "entry_points", None))
-        if not entry_display:
-            entry_price = getattr(result, "entry_best_price", None)
-            entry_time = getattr(result, "entry_best_time", None)
-            if entry_price is not None and entry_time is not None:
-                entry_display = f"{entry_price:.3f}/{entry_time.strftime('%H:%M:%S')}"
-        parts = [f"LS={ls_value}"]
-        if entry_display:
-            parts.append(f"EP={entry_display}")
-        prefix = ", ".join(parts)
-        return f"{prefix}, {params_str}" if params_str else prefix
 
     def add_ui_table_sheet(self) -> None:
         """Add UI table as first sheet (exact copy of displayed table)."""
@@ -156,19 +125,8 @@ class StrategySimulatorExport:
             "P&L %",
             "DD %",
             "Score",
-            "Objective",
             "Parameters",
         ]
-
-        objective_by_key: dict[tuple[str, str], str] = {}
-        if self._ui_table_data:
-            for row in self._ui_table_data:
-                if len(row) >= 10:
-                    strategy = row[0]
-                    params = row[9]
-                    objective = row[8]
-                    if strategy and params and objective:
-                        objective_by_key[(strategy, params)] = objective
 
         # Write headers
         for col, header in enumerate(headers, 1):
@@ -215,8 +173,7 @@ class StrategySimulatorExport:
         ws.column_dimensions["F"].width = 10  # P&L %
         ws.column_dimensions["G"].width = 8   # DD %
         ws.column_dimensions["H"].width = 10  # Score
-        ws.column_dimensions["I"].width = 12  # Objective
-        ws.column_dimensions["J"].width = 100 # Parameters
+        ws.column_dimensions["I"].width = 100 # Parameters
 
         # Add parameter legend below data
         self._add_parameter_legend(ws, len(self._ui_table_data) + 4)
@@ -288,16 +245,6 @@ class StrategySimulatorExport:
             ws = self.workbook.active
             ws.title = "Summary"
 
-        objective_by_key: dict[tuple[str, str], str] = {}
-        if self._ui_table_data:
-            for row in self._ui_table_data:
-                if len(row) >= 10:
-                    strategy = row[0]
-                    params = row[9]
-                    objective = row[8]
-                    if strategy and params and objective:
-                        objective_by_key[(strategy, params)] = objective
-
         headers = [
             "Strategy",
             "Symbol",
@@ -308,19 +255,8 @@ class StrategySimulatorExport:
             "P&L %",
             "DD %",
             "Score",
-            "Objective",
             "Parameters",
         ]
-
-        objective_labels = {
-            "score": "Score",
-            "entry_score": "Entry Score",
-            "total_pnl_pct": "P&L %",
-            "profit_factor": "PF",
-            "sharpe_ratio": "Sharpe",
-            "win_rate": "Win %",
-            "max_drawdown_pct": "Max DD",
-        }
 
         # Write headers
         for col, header in enumerate(headers, 1):
@@ -343,15 +279,6 @@ class StrategySimulatorExport:
             params_str = ", ".join(
                 f"{k}={v}" for k, v in result.parameters.items()
             )
-            params_str = self._format_params_with_entry(result, params_str)
-
-            objective_label = objective_by_key.get((result.strategy_name, params_str))
-            if not objective_label:
-                if self._optimization_run:
-                    metric = self._optimization_run.objective_metric
-                    objective_label = objective_labels.get(metric, metric)
-                else:
-                    objective_label = "Manual"
 
             score = self._calculate_score(result)
 
@@ -365,7 +292,6 @@ class StrategySimulatorExport:
                 f"{result.total_pnl_pct:.2f}",
                 f"{result.max_drawdown_pct:.2f}",
                 score,
-                objective_label,
                 params_str,
             ]
 
@@ -405,8 +331,7 @@ class StrategySimulatorExport:
         ws.column_dimensions["G"].width = 10  # P&L %
         ws.column_dimensions["H"].width = 8   # DD %
         ws.column_dimensions["I"].width = 10  # Score
-        ws.column_dimensions["J"].width = 12  # Objective
-        ws.column_dimensions["K"].width = 100 # Parameters (wide for all params)
+        ws.column_dimensions["J"].width = 100 # Parameters (wide for all params)
 
     def add_optimization_sheet(self) -> None:
         """Add optimization results sheet."""

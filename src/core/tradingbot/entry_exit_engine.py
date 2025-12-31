@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Entry/Exit Engine for Tradingbot.
 
 Handles trailing stop management and coordinates entry scoring
@@ -37,6 +38,47 @@ class TrailingStopResult:
     reason: str = ""
     distance_pct: float = 0.0
 
+=======
+"""Entry/Exit Engine for Tradingbot.
+
+Handles trailing stop management and coordinates entry scoring
+and exit signal checking through specialized components.
+
+REFACTORED: Split into multiple files to meet 600 LOC limit.
+- entry_scorer.py: EntryScorer class
+- exit_checker.py: ExitSignalChecker class
+- entry_exit_engine.py: EntryExitEngine + TrailingStopManager (this file)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+
+from .config import TrailingMode
+from .entry_scorer import EntryScorer, EntryScoreResult
+from .exit_checker import ExitSignalChecker, ExitSignalResult, ExitReason
+from .models import (
+    FeatureVector,
+    PositionState,
+    RegimeState,
+    Signal,
+    TradeSide,
+    TrailingState,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TrailingStopResult:
+    """Result of trailing stop calculation."""
+    new_stop: float | None = None
+    reason: str = ""
+    distance_pct: float = 0.0
+
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class TrailingStopManager:
     """Manages trailing stop updates for positions."""
 

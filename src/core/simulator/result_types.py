@@ -3,11 +3,17 @@
 Contains dataclasses for simulation results, trades, and optimization runs.
 """
 
+<<<<<<< HEAD
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 EntryPoint = tuple[float, datetime] | tuple[float, datetime, float]
+=======
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
 
 @dataclass
@@ -49,6 +55,7 @@ class TradeRecord:
         return self.pnl / (self.size * risk)
 
 
+<<<<<<< HEAD
 @dataclass
 class SimulationResult:
     """Result of a single simulation run."""
@@ -57,6 +64,16 @@ class SimulationResult:
     parameters: dict[str, Any]
     symbol: str
     trades: list[TradeRecord]
+=======
+@dataclass
+class SimulationResult:
+    """Result of a single simulation run."""
+
+    strategy_name: str
+    parameters: dict[str, Any]
+    symbol: str
+    trades: list[TradeRecord]
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
     # Performance metrics
     total_pnl: float
@@ -83,6 +100,7 @@ class SimulationResult:
     initial_capital: float
     final_capital: float
 
+<<<<<<< HEAD
     # Metadata
     run_timestamp: datetime = field(default_factory=datetime.utcnow)
     data_start: datetime | None = None
@@ -98,6 +116,13 @@ class SimulationResult:
     entry_best_price: float | None = None
     entry_best_time: datetime | None = None
     entry_points: list[EntryPoint] = field(default_factory=list)
+=======
+    # Metadata
+    run_timestamp: datetime = field(default_factory=datetime.utcnow)
+    data_start: datetime | None = None
+    data_end: datetime | None = None
+    bars_processed: int = 0
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
     @property
     def expectancy(self) -> float | None:
@@ -128,6 +153,7 @@ class SimulationResult:
         }
 
 
+<<<<<<< HEAD
 @dataclass
 class OptimizationTrial:
     """Single trial in an optimization run."""
@@ -144,6 +170,22 @@ class OptimizationTrial:
 @dataclass
 class OptimizationRun:
     """Result of an optimization run (Grid Search or Bayesian)."""
+=======
+@dataclass
+class OptimizationTrial:
+    """Single trial in an optimization run."""
+
+    trial_number: int
+    parameters: dict[str, Any]
+    score: float
+    metrics: dict[str, float]
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class OptimizationRun:
+    """Result of an optimization run (Grid Search or Bayesian)."""
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
     strategy_name: str
     optimization_type: str  # "grid" or "bayesian"
@@ -153,6 +195,7 @@ class OptimizationRun:
     all_trials: list[OptimizationTrial]
     total_trials: int
     elapsed_seconds: float
+<<<<<<< HEAD
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
     # Best result details
@@ -164,6 +207,15 @@ class OptimizationRun:
     # Entry-only metadata
     entry_only: bool = False
     entry_side: str = "long"
+=======
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+
+    # Best result details
+    best_result: SimulationResult | None = None
+
+    # Error tracking (for failed trials)
+    errors: list[str] | None = None
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
     def get_top_n_trials(self, n: int = 10) -> list[OptimizationTrial]:
         """Get top N trials sorted by score (descending)."""

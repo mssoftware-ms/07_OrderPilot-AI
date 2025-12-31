@@ -260,7 +260,6 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
 
         # Async update lock to prevent concurrent updates
         self._updating = False
-        self._shutdown_in_progress = False
 
         # Setup UI
         self.init_ui()
@@ -455,11 +454,8 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
                     self.ai_status.setText("AI: No API Key")
                     self.ai_status.setStyleSheet("color: orange;")
 
-            # Initialize real-time streaming (from BrokerMixin) only if enabled
-            if self.live_data_toggle.isChecked():
-                await self.initialize_realtime_streaming()
-            else:
-                logger.info("Live data disabled on startup - skipping streaming init")
+            # Initialize real-time streaming (from BrokerMixin)
+            await self.initialize_realtime_streaming()
 
             self.status_bar.showMessage("Services initialized", 3000)
 
@@ -661,8 +657,8 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
             logger.error(f"Failed to refresh market data: {e}")
             self.status_bar.showMessage(f"Refresh failed: {e}", 5000)
 
-    async def _shutdown_async(self) -> None:
-        """Gracefully shutdown async resources before exiting."""
+    def closeEvent(self, event):
+        """Handle application close event."""
         logger.info("Application closing...")
 
         # Close all chart windows
@@ -690,31 +686,33 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
             logger.error(f"Error stopping timers: {e}")
 
         # Disconnect real-time streams
-        tasks: list[asyncio.Future] = []
         try:
             if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
                 logger.info("Disconnecting stock stream...")
-                if asyncio.iscoroutinefunction(self.history_manager.stop_realtime_stream):
-                    tasks.append(self.history_manager.stop_realtime_stream())
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_realtime_stream())
                 else:
-                    self.history_manager.stop_realtime_stream()
+                    loop.run_until_complete(self.history_manager.stop_realtime_stream())
 
             if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
                 logger.info("Disconnecting crypto stream...")
-                if asyncio.iscoroutinefunction(self.history_manager.stop_crypto_realtime_stream):
-                    tasks.append(self.history_manager.stop_crypto_realtime_stream())
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_crypto_realtime_stream())
                 else:
-                    self.history_manager.stop_crypto_realtime_stream()
+                    loop.run_until_complete(self.history_manager.stop_crypto_realtime_stream())
         except Exception as e:
             logger.error(f"Error disconnecting streams: {e}")
 
         # Disconnect broker
         if self.broker:
             try:
-                if asyncio.iscoroutinefunction(self.disconnect_broker):
-                    tasks.append(self.disconnect_broker())
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(self.disconnect_broker())
                 else:
-                    self.disconnect_broker()
+                    loop.run_until_complete(self.disconnect_broker())
             except Exception as e:
                 logger.error(f"Error disconnecting broker: {e}")
 
@@ -723,36 +721,19 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
             try:
                 if hasattr(self.ai_service, 'close'):
                     if asyncio.iscoroutinefunction(self.ai_service.close):
-                        tasks.append(self.ai_service.close())
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.ensure_future(self.ai_service.close())
+                        else:
+                            loop.run_until_complete(self.ai_service.close())
                     else:
                         self.ai_service.close()
                 logger.info("AI service closed")
             except Exception as e:
                 logger.error(f"Error closing AI service: {e}")
 
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Shutdown task error: {result}")
-
         logger.info("Application closed successfully")
-
-    async def _shutdown_and_quit(self) -> None:
-        await self._shutdown_async()
-        restore = getattr(self, "_restore_stdio", None)
-        if callable(restore):
-            restore()
-        QApplication.instance().quit()
-
-    def closeEvent(self, event):
-        """Handle application close event."""
-        if self._shutdown_in_progress:
-            event.accept()
-            return
-        self._shutdown_in_progress = True
-        event.ignore()
-        asyncio.create_task(self._shutdown_and_quit())
+        event.accept()
 
 
 async def main():
@@ -778,23 +759,6 @@ async def main():
     sys.stdout = stdout_stream
     sys.stderr = stderr_stream
 
-    def _restore_stdio() -> None:
-        try:
-            if sys.stdout is stdout_stream:
-                sys.stdout = original_stdout
-            if sys.stderr is stderr_stream:
-                sys.stderr = original_stderr
-        except Exception:
-            pass
-        try:
-            stdout_stream.text_written.disconnect()
-        except Exception:
-            pass
-        try:
-            stderr_stream.text_written.disconnect()
-        except Exception:
-            pass
-
     configure_logging()
     logger.info("Starting OrderPilot-AI Trading Application")
 
@@ -812,7 +776,6 @@ async def main():
     asyncio.set_event_loop(loop)
 
     window = TradingApplication()
-    window._restore_stdio = _restore_stdio
     window.show()
     QTimer.singleShot(0, startup_window.close)
 

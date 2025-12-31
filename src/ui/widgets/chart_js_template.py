@@ -95,6 +95,7 @@ CHART_HTML_TEMPLATE = """
             <button class="tool-btn" id="tool-percent-rect" title="Prozent-Rechteck (% Differenz)">
                 <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="rgba(38,166,154,0.3)" stroke="#26a69a" stroke-width="1.5"/><text x="12" y="14" text-anchor="middle" fill="#26a69a" font-size="8" font-weight="bold">%</text></svg>
             </button>
+<<<<<<< HEAD
             <button class="tool-btn" id="tool-fibonacci" title="Fibonacci Retracement">
                 <svg viewBox="0 0 24 24">
                     <line x1="3" y1="4" x2="21" y2="4" stroke="#4CAF50" stroke-width="1.5"/>
@@ -105,6 +106,8 @@ CHART_HTML_TEMPLATE = """
                     <text x="12" y="14" text-anchor="middle" fill="#FFC107" font-size="6" font-weight="bold">FIB</text>
                 </svg>
             </button>
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
             <div class="tool-separator"></div>
             <button class="tool-btn" id="tool-delete" title="Löschen (Del)">
                 <svg viewBox="0 0 24 24" fill="#ef5350"><path d="M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12z"/></svg>
@@ -213,7 +216,11 @@ CHART_HTML_TEMPLATE = """
                 const panelExtraSeries = {};
 
                 const pricePaneApi = chart.panes()[0];
+<<<<<<< HEAD
                 if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(10);
+=======
+                if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(4);
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
                 const rightScale = chart.priceScale('right');
                 let lastViewState = null; // Stores previous visible range + pane layout for undo
@@ -262,11 +269,18 @@ CHART_HTML_TEMPLATE = """
                         const indicatorIds = Object.keys(layout || {}).filter(k => k !== 'price');
                         const newLayout = {};
                         if (indicatorIds.length) {
+<<<<<<< HEAD
                             newLayout['price'] = 10;
                             // Each indicator gets stretchFactor 10 for 50% height (large panels)
                             indicatorIds.forEach(id => newLayout[id] = 10);
                         } else {
                             newLayout['price'] = 10;
+=======
+                            newLayout['price'] = 5;
+                            indicatorIds.forEach(id => newLayout[id] = 1);
+                        } else {
+                            newLayout['price'] = 5;
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         }
                         window.chartAPI.setPaneLayout(newLayout);
                     } catch(e) { console.error(e); }
@@ -279,6 +293,7 @@ CHART_HTML_TEMPLATE = """
                 function addPane(panelId) {
                     if (panelMap[panelId] !== undefined) return panelMap[panelId];
                     const paneApi = chart.addPane();
+<<<<<<< HEAD
                     // Set indicator pane height: stretchFactor 10 vs price pane 10 = 50%
                     // Large panels for better readability of RSI, MACD etc.
                     if (paneApi.setStretchFactor) {
@@ -297,6 +312,10 @@ CHART_HTML_TEMPLATE = """
                         } catch(e) { console.error('Resize error:', e); }
                     }, 50);
 
+=======
+                    if (paneApi.setStretchFactor) paneApi.setStretchFactor(1);
+                    panelMap[panelId] = paneApi;
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                     return paneApi;
                 }
 
@@ -969,6 +988,7 @@ CHART_HTML_TEMPLATE = """
                     }
                 }
 
+<<<<<<< HEAD
                 // ==================== FIBONACCI RETRACEMENT TOOL ====================
                 // Fibonacci levels with colors based on probability/strength
                 const FIB_LEVELS = [
@@ -1132,6 +1152,8 @@ CHART_HTML_TEMPLATE = """
                     }
                 }
 
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                 // Generate unique ID
                 let drawingIdCounter = 0;
                 const genId = () => 'drawing_' + (++drawingIdCounter);
@@ -1258,6 +1280,7 @@ CHART_HTML_TEMPLATE = """
                                     return { drawing: d, handle: 'rect' };
                                 }
                             }
+<<<<<<< HEAD
                         } else if (d.type === 'fibonacci') {
                             // Hit detection for fibonacci retracement
                             const ts = chart.timeScale();
@@ -1287,6 +1310,8 @@ CHART_HTML_TEMPLATE = """
                                     return { drawing: d, handle: 'rect' };
                                 }
                             }
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         }
                     }
                     return null;
@@ -1460,6 +1485,7 @@ CHART_HTML_TEMPLATE = """
                             d.updateAllViews();
                             chart.timeScale().applyOptions({}); // Force redraw
                         }
+<<<<<<< HEAD
                     } else if (d.type === 'fibonacci') {
                         // Drag handling for fibonacci retracement
                         const newPrice = priceSeries.coordinateToPrice(y);
@@ -1497,6 +1523,8 @@ CHART_HTML_TEMPLATE = """
                             d.updateAllViews();
                             chart.timeScale().applyOptions({}); // Force redraw
                         }
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                     }
                     e.preventDefault();
                     e.stopPropagation();
@@ -1540,6 +1568,7 @@ CHART_HTML_TEMPLATE = """
                     }
                 });
 
+<<<<<<< HEAD
                 // Helper: Get time from x-coordinate - works even in empty space
                 // Uses coordinateToLogical which works outside data range
                 function getTimeFromPixelX(pixelX) {
@@ -1588,6 +1617,15 @@ CHART_HTML_TEMPLATE = """
                     // Get time using our robust function that works everywhere
                     const time = getTimeFromPixelX(x);
 
+=======
+                // Click handler for drawing
+                chart.subscribeClick(param => {
+                    if (isDragging) return; // Ignore clicks during drag
+                    if (!param.time || !param.point) return;
+                    const price = priceSeries.coordinateToPrice(param.point.y);
+                    if (price === null) return;
+
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                     if (currentTool === 'hline-green') {
                         const line = new HorizontalLinePrimitive(price, '#26a69a', genId());
                         priceSeries.attachPrimitive(line);
@@ -1601,8 +1639,12 @@ CHART_HTML_TEMPLATE = """
                         selectTool('pointer');
                     }
                     else if (currentTool === 'trendline' || currentTool === 'ray') {
+<<<<<<< HEAD
                         if (!time) return; // Need time for these tools
                         drawingPoints.push({ time, price });
+=======
+                        drawingPoints.push({ time: param.time, price });
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         if (drawingPoints.length === 2) {
                             removePreview();
                             const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
@@ -1610,6 +1652,7 @@ CHART_HTML_TEMPLATE = """
                             const line = new PrimitiveClass(drawingPoints[0], drawingPoints[1], color, genId());
                             priceSeries.attachPrimitive(line);
                             drawings.push(line);
+<<<<<<< HEAD
                             // Stay in drawing mode - reset points for next line (ESC to exit)
                             drawingPoints = [];
                         }
@@ -1617,6 +1660,13 @@ CHART_HTML_TEMPLATE = """
                     else if (currentTool === 'percent-rect') {
                         if (!time) return; // Need time for these tools
                         drawingPoints.push({ time, price });
+=======
+                            selectTool('pointer');
+                        }
+                    }
+                    else if (currentTool === 'percent-rect') {
+                        drawingPoints.push({ time: param.time, price });
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         if (drawingPoints.length === 2) {
                             removePreview();
                             const rect = new PercentRectPrimitive(drawingPoints[0], drawingPoints[1], genId());
@@ -1625,6 +1675,7 @@ CHART_HTML_TEMPLATE = """
                             selectTool('pointer');
                         }
                     }
+<<<<<<< HEAD
                     else if (currentTool === 'fibonacci') {
                         if (!time) return; // Need time for these tools
                         drawingPoints.push({ time, price });
@@ -1637,6 +1688,8 @@ CHART_HTML_TEMPLATE = """
                             drawingPoints = [];
                         }
                     }
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                     else if (currentTool === 'delete') {
                         let nearest = null;
                         let minDist = 20;
@@ -1644,11 +1697,16 @@ CHART_HTML_TEMPLATE = """
                             if (d.type === 'hline') {
                                 const lineY = priceSeries.priceToCoordinate(d.price);
                                 if (lineY !== null) {
+<<<<<<< HEAD
                                     const dist = Math.abs(y - lineY);
+=======
+                                    const dist = Math.abs(param.point.y - lineY);
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                                     if (dist < minDist) { minDist = dist; nearest = d; }
                                 }
                             } else if (d.type === 'trendline' || d.type === 'ray') {
                                 const ts = chart.timeScale();
+<<<<<<< HEAD
                                 const dx1 = ts.timeToCoordinate(d.p1.time);
                                 const dy1 = priceSeries.priceToCoordinate(d.p1.price);
                                 const dx2 = ts.timeToCoordinate(d.p2.time);
@@ -1678,6 +1736,28 @@ CHART_HTML_TEMPLATE = """
                                     const minY = Math.min(dy1, dy2), maxY = Math.max(dy1, dy2);
                                     // Hit-detection across full chart width (consistent with rendering)
                                     if (y >= minY && y <= maxY) {
+=======
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const dist = pointToSegmentDist(param.point.x, param.point.y, x1, y1, x2, y2);
+                                    if (dist < minDist) { minDist = dist; nearest = d; }
+                                }
+                            } else if (d.type === 'percent-rect') {
+                                // Check if click is inside the rectangle
+                                const ts = chart.timeScale();
+                                const x1 = ts.timeToCoordinate(d.p1.time);
+                                const y1 = priceSeries.priceToCoordinate(d.p1.price);
+                                const x2 = ts.timeToCoordinate(d.p2.time);
+                                const y2 = priceSeries.priceToCoordinate(d.p2.price);
+                                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+                                    const px = param.point.x, py = param.point.y;
+                                    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+                                    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                                         nearest = d; minDist = 0;
                                     }
                                 }
@@ -1687,14 +1767,22 @@ CHART_HTML_TEMPLATE = """
                     }
                 });
 
+<<<<<<< HEAD
                 // Mouse move for preview - uses getTimeFromPixelX for snap-free positioning
+=======
+                // Mouse move for preview (using raw coordinates, not snapped)
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                 container.addEventListener('mousemove', e => {
                     if ((currentTool === 'trendline' || currentTool === 'ray') && drawingPoints.length === 1 && !isDragging) {
                         const rect = container.getBoundingClientRect();
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
+<<<<<<< HEAD
                         const time = getTimeFromPixelX(x);
+=======
+                        const time = chart.timeScale().coordinateToTime(x);
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         if (price === null || time === null) return;
                         removePreview();
                         const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
@@ -1707,12 +1795,17 @@ CHART_HTML_TEMPLATE = """
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
+<<<<<<< HEAD
                         const time = getTimeFromPixelX(x);
+=======
+                        const time = chart.timeScale().coordinateToTime(x);
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                         if (price === null || time === null) return;
                         removePreview();
                         previewPrimitive = new PercentRectPrimitive(drawingPoints[0], { time, price }, 'preview');
                         priceSeries.attachPrimitive(previewPrimitive);
                     }
+<<<<<<< HEAD
                     else if (currentTool === 'fibonacci' && drawingPoints.length === 1 && !isDragging) {
                         const rect = container.getBoundingClientRect();
                         const x = e.clientX - rect.left;
@@ -1724,6 +1817,8 @@ CHART_HTML_TEMPLATE = """
                         previewPrimitive = new FibonacciRetracementPrimitive(drawingPoints[0], { time, price }, 'preview');
                         priceSeries.attachPrimitive(previewPrimitive);
                     }
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                 });
 
                 // Ctrl+MouseWheel zoom: remember view + normalize panes
@@ -1756,7 +1851,10 @@ CHART_HTML_TEMPLATE = """
                 document.getElementById('tool-trendline').onclick = () => selectTool('trendline');
                 document.getElementById('tool-ray').onclick = () => selectTool('ray');
                 document.getElementById('tool-percent-rect').onclick = () => selectTool('percent-rect');
+<<<<<<< HEAD
                 document.getElementById('tool-fibonacci').onclick = () => selectTool('fibonacci');
+=======
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
                 document.getElementById('tool-delete').onclick = () => selectTool('delete');
                 document.getElementById('tool-clear-all').onclick = () => { clearAllDrawings(); selectTool('pointer'); };
 

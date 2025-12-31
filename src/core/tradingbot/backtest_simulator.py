@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Backtest Simulator and Release Gate.
 
 Contains:
@@ -15,6 +16,25 @@ from .models import TradeSide
 
 logger = logging.getLogger(__name__)
 
+=======
+"""Backtest Simulator and Release Gate.
+
+Contains:
+- BacktestSimulator: Simulates order execution during backtest
+- ReleaseGate: Validates backtest results before release
+"""
+
+from __future__ import annotations
+
+import logging
+import random
+
+from .backtest_types import BacktestResult
+from .models import TradeSide
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class BacktestSimulator:
     """Simulates order execution during backtest.
 
@@ -82,8 +102,13 @@ class BacktestSimulator:
         return f"bt_order_{self._order_counter:06d}"
 
 
+<<<<<<< HEAD
 
 
+=======
+
+
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class ReleaseGate:
     """Release gate checker for Paper → Live transition.
 

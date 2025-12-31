@@ -222,6 +222,7 @@ class BotStateHandlersMixin:
             f"Long: {long_score:.3f} | Short: {short_score:.3f} | Threshold: {threshold:.3f}"
         )
 
+<<<<<<< HEAD
         # Get best signal
         if long_score > short_score and long_score >= threshold:
             side = TradeSide.LONG
@@ -247,6 +248,33 @@ class BotStateHandlersMixin:
         # Create signal
         signal = self._create_signal(features, side, score)
         self._current_signal = signal
+=======
+        # Get best signal
+        if long_score > short_score and long_score >= threshold:
+            side = TradeSide.LONG
+            score = long_score
+        elif short_score > long_score and short_score >= threshold:
+            side = TradeSide.SHORT
+            score = short_score
+        else:
+            # No valid signal
+            return self._create_decision(
+                BotAction.NO_TRADE,
+                TradeSide.NONE,
+                features,
+                ["SCORE_BELOW_THRESHOLD"]
+            )
+
+        # Optional pattern validation BEFORE signal creation (warn-only)
+        if self.config.bot.use_pattern_check:
+            pattern_ok, pattern_reason = await self._pattern_gate(features, side)
+            if not pattern_ok and pattern_reason:
+                self._log_activity("PATTERN_WARN", pattern_reason)
+
+        # Create signal
+        signal = self._create_signal(features, side, score)
+        self._current_signal = signal
+>>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
         self._log_activity(
             "SIGNAL",
