@@ -150,7 +150,6 @@ class BotPanelsMixin(
     def _on_tick_price_updated(self, current_price: float) -> None:
         """Handle tick price update - update P&L displays in real-time.
 
-<<<<<<< HEAD
         Args:
             current_price: Current price from tick
         """
@@ -166,23 +165,6 @@ class BotPanelsMixin(
         # Debug: Log every 50th tick to KI Log for visibility
         if not hasattr(self, '_tick_count'):
             self._tick_count = 0
-=======
-        Args:
-            current_price: Current price from tick
-        """
-        if current_price <= 0:
-            return
-        selection_active = False
-        if hasattr(self, "_has_signals_table_selection"):
-            try:
-                selection_active = self._has_signals_table_selection()
-            except Exception:
-                selection_active = False
-
-        # Debug: Log every 50th tick to KI Log for visibility
-        if not hasattr(self, '_tick_count'):
-            self._tick_count = 0
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
         self._tick_count += 1
         if self._tick_count % 50 == 1:
             logger.debug(f"📊 Tick #{self._tick_count}: {current_price:.2f}")
@@ -216,7 +198,6 @@ class BotPanelsMixin(
                 sig["pnl_currency"] = pnl_currency
                 sig["pnl_percent"] = pnl_pct
 
-<<<<<<< HEAD
                 if not selection_active:
                     # Update ALL Current Position display fields (ensure none show "-")
                     # Side
@@ -308,99 +289,6 @@ class BotPanelsMixin(
 
         if selection_active and hasattr(self, "_update_current_position_from_selection"):
             self._update_current_position_from_selection()
-=======
-                if not selection_active:
-                    # Update ALL Current Position display fields (ensure none show "-")
-                    # Side
-                    if hasattr(self, 'position_side_label'):
-                        side_upper = side.upper()
-                        self.position_side_label.setText(side_upper)
-                        color = "#26a69a" if side_upper == "LONG" else "#ef5350"
-                        self.position_side_label.setStyleSheet(f"font-weight: bold; color: {color};")
-
-                    # Entry
-                    if hasattr(self, 'position_entry_label') and entry_price > 0:
-                        self.position_entry_label.setText(f"{entry_price:.4f}")
-
-                    # Size/Quantity
-                    quantity = sig.get("quantity", 0)
-                    if hasattr(self, 'position_size_label'):
-                        self.position_size_label.setText(f"{quantity:.4f}" if quantity > 0 else "-")
-
-                    # Invested
-                    if hasattr(self, 'position_invested_label') and invested > 0:
-                        self.position_invested_label.setText(f"{invested:.0f}")
-
-                    # Stop
-                    stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
-                    if hasattr(self, 'position_stop_label') and stop_price > 0:
-                        self.position_stop_label.setText(f"{stop_price:.4f}")
-
-                    # Current
-                    if hasattr(self, 'position_current_label'):
-                        self.position_current_label.setText(f"{current_price:.4f}")
-
-                    # P&L
-                    if hasattr(self, 'position_pnl_label'):
-                        color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
-                        sign = "+" if pnl_pct >= 0 else ""
-                        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
-                        self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
-
-                    # Score (right column)
-                    score = sig.get("score", 0)
-                    if hasattr(self, 'position_score_label') and score > 0:
-                        self.position_score_label.setText(f"{score * 100:.0f}")
-
-                    # TR Kurs (right column)
-                    tr_price = sig.get("trailing_stop_price", 0)
-                    tr_active = sig.get("tr_active", False)
-                    if hasattr(self, 'position_tr_price_label') and tr_price > 0:
-                        if tr_active:
-                            self.position_tr_price_label.setText(f"{tr_price:.2f}")
-                            self.position_tr_price_label.setStyleSheet("color: #ff9800;")
-                        else:
-                            self.position_tr_price_label.setText(f"{tr_price:.2f} (inaktiv)")
-                            self.position_tr_price_label.setStyleSheet("color: #888888;")
-
-                    # Update derivative info + P&L if enabled
-                    deriv = sig.get("derivative")
-                    if deriv:
-                        # Update derivative info labels
-                        if hasattr(self, 'deriv_wkn_label'):
-                            self.deriv_wkn_label.setText(deriv.get("wkn", "-"))
-                        if hasattr(self, 'deriv_leverage_label'):
-                            lev = deriv.get("leverage", 0)
-                            self.deriv_leverage_label.setText(f"{lev:.1f}x" if lev else "-")
-                        if hasattr(self, 'deriv_spread_label'):
-                            spread = deriv.get("spread_pct", 0)
-                            self.deriv_spread_label.setText(f"{spread:.2f}%" if spread else "-")
-                        if hasattr(self, 'deriv_ask_label'):
-                            ask = deriv.get("ask", 0)
-                            self.deriv_ask_label.setText(f"{ask:.2f}" if ask else "-")
-
-                        # Calculate and update derivative P&L
-                        if hasattr(self, '_calculate_derivative_pnl_for_signal'):
-                            deriv_pnl = self._calculate_derivative_pnl_for_signal(sig, current_price)
-                            if deriv_pnl and hasattr(self, 'deriv_pnl_label'):
-                                d_pnl_eur = deriv_pnl.get("pnl_eur", 0)
-                                d_pnl_pct = deriv_pnl.get("pnl_pct", 0)
-                                d_color = "#26a69a" if d_pnl_eur >= 0 else "#ef5350"
-                                d_sign = "+" if d_pnl_eur >= 0 else ""
-                                self.deriv_pnl_label.setText(
-                                    f"{d_sign}{d_pnl_pct:.2f}% ({d_sign}{d_pnl_eur:.2f} €)"
-                                )
-                                self.deriv_pnl_label.setStyleSheet(f"font-weight: bold; color: {d_color};")
-
-                # Check trailing stop activation
-                if hasattr(self, '_check_tr_activation'):
-                    self._check_tr_activation(sig, current_price)
-
-                break  # Only update first active position
-
-        if selection_active and hasattr(self, "_update_current_position_from_selection"):
-            self._update_current_position_from_selection()
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
         # Update signals table immediately (every tick)
         if has_active:

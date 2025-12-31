@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """Entry Score Calculator for Tradingbot.
 
 Calculates entry scores based on strategy rules and indicators.
@@ -30,39 +29,6 @@ class EntryScoreResult:
     reason_codes: list[str] = field(default_factory=list)
     meets_threshold: bool = False
 
-=======
-"""Entry Score Calculator for Tradingbot.
-
-Calculates entry scores based on strategy rules and indicators.
-Supports both generic scoring and strategy-specific rule evaluation.
-"""
-
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-from .models import (
-    FeatureVector,
-    RegimeState,
-    RegimeType,
-    TradeSide,
-)
-
-if TYPE_CHECKING:
-    from .strategy_catalog import EntryRule, StrategyDefinition
-
-
-@dataclass
-class EntryScoreResult:
-    """Result of entry score calculation."""
-    side: TradeSide
-    score: float
-    components: dict[str, float] = field(default_factory=dict)
-    reason_codes: list[str] = field(default_factory=list)
-    meets_threshold: bool = False
-
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class EntryScorer:
     """Calculates entry scores based on strategy rules and indicators.
 

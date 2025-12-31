@@ -268,15 +268,12 @@ class ChartWindow(
     def _activate_live_stream(self):
         """Activate live streaming when chart data is loaded."""
         if hasattr(self.chart_widget, 'live_stream_button'):
-<<<<<<< HEAD
             live_data_enabled = self.settings.value("live_data_enabled", False, type=bool)
             if not live_data_enabled:
                 logger.info("Live data disabled - skipping auto-activate stream")
                 if self.chart_widget.live_stream_button.isChecked():
                     self.chart_widget.live_stream_button.setChecked(False)
                 return
-=======
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
             # Only activate if not already streaming
             if not self.chart_widget.live_stream_button.isChecked():
                 logger.info(f"Auto-activating live stream for {self.symbol}")
@@ -323,7 +320,6 @@ class ChartWindow(
                 except Exception as e:
                     logger.debug(f"Error saving signal history: {e}")
 
-<<<<<<< HEAD
             # Save Strategy Simulator splitter state (from StrategySimulatorMixin)
             if hasattr(self, '_save_simulator_splitter_state'):
                 try:
@@ -331,8 +327,6 @@ class ChartWindow(
                 except Exception as e:
                     logger.debug(f"Error saving simulator splitter state: {e}")
 
-=======
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
             # Save sync state (from StateMixin)
             self._save_window_state()
 

@@ -632,11 +632,7 @@ def get_strategy_parameters(strategy: StrategyName | str) -> StrategyParameterCo
     return STRATEGY_PARAMETER_REGISTRY[strategy]
 
 
-<<<<<<< HEAD
 def get_default_parameters(strategy: StrategyName | str) -> dict[str, Any]:
-=======
-def get_default_parameters(strategy: StrategyName | str) -> dict[str, Any]:
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
     """Get default parameter values for a strategy.
 
     Args:
@@ -645,7 +641,6 @@ def get_default_parameters(strategy: StrategyName | str) -> dict[str, Any]:
     Returns:
         Dictionary of parameter names to default values
     """
-<<<<<<< HEAD
     config = get_strategy_parameters(strategy)
     return config.get_defaults()
 
@@ -678,7 +673,3 @@ def filter_entry_only_params(
         p.name for p in config.parameters if not _is_exit_parameter(p)
     }
     return {k: v for k, v in params.items() if k in entry_param_names}
-=======
-    config = get_strategy_parameters(strategy)
-    return config.get_defaults()
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268

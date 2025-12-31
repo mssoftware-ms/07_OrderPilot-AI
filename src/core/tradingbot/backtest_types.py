@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """Backtest Types for Tradingbot.
 
 Contains dataclasses and enums for backtesting:
@@ -19,28 +18,6 @@ from typing import Any
 from .config import TrailingMode
 from .models import TradeSide
 
-=======
-"""Backtest Types for Tradingbot.
-
-Contains dataclasses and enums for backtesting:
-- BacktestMode: Simulation mode enum
-- BacktestConfig: Configuration settings
-- BacktestTrade: Individual trade record
-- BacktestState: Backtest state tracking
-- BacktestResult: Complete backtest results
-"""
-
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
-from typing import Any
-
-from .config import TrailingMode
-from .models import TradeSide
-
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 class BacktestMode(str, Enum):
     """Backtest execution modes."""
     FAST = "fast"  # Skip some calculations for speed

@@ -272,7 +272,6 @@ class BrokerMixin:
         """Check if symbol is a cryptocurrency pair."""
         return "/" in symbol
 
-<<<<<<< HEAD
     def toggle_live_data(self):
         """Toggle live market data on/off."""
         try:
@@ -349,44 +348,6 @@ class BrokerMixin:
                             asyncio.create_task(chart._stop_live_stream_async())
                 except Exception as e:
                     logger.debug("Failed to stop chart stream: %s", e)
-=======
-    def toggle_live_data(self):
-        """Toggle live market data on/off."""
-        try:
-            is_live = self.live_data_toggle.isChecked()
-
-            if is_live:
-                self.live_data_toggle.setText("Live Data: ON")
-                self.live_data_toggle.setStyleSheet("background-color: #2ECC71; color: white; font-weight: bold;")
-                self.status_bar.showMessage("Live market data enabled", 3000)
-                logger.info("Live market data enabled")
-
-                current_index = self.data_provider_combo.currentIndex()
-                current_source = self.data_provider_combo.itemData(current_index)
-
-                if current_source == "database" or current_source is None:
-                    for i in range(self.data_provider_combo.count()):
-                        source = self.data_provider_combo.itemData(i)
-                        if source and source not in ["database", None] and not source.endswith("_disabled"):
-                            self.data_provider_combo.setCurrentIndex(i)
-                            break
-            else:
-                self.live_data_toggle.setText("Live Data: OFF")
-                self.live_data_toggle.setStyleSheet("")
-                self.status_bar.showMessage("Live market data disabled - using cached data", 3000)
-                logger.info("Live market data disabled")
-
-                for i in range(self.data_provider_combo.count()):
-                    source = self.data_provider_combo.itemData(i)
-                    if source == "database" or source is None:
-                        self.data_provider_combo.setCurrentIndex(i)
-                        break
-
-            self.settings.setValue("live_data_enabled", is_live)
-
-        except Exception as e:
-            logger.error(f"Failed to toggle live data: {e}")
->>>>>>> ccb6b2434020b7970fad355a264b322ac9e7b268
 
     def analyze_order_with_ai(self, analysis_request):
         """AI hook for order analysis."""

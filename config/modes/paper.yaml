@@ -14,14 +14,19 @@ broker:
   account_id: null  # Load from secrets
 
 database:
-  engine: postgresql
-  host: localhost
-  port: 5432
-  database: orderpilot
-  username: orderpilot
-  password: orderpilot
+  engine: sqlite
+  path: ./data/orderpilot.db
   echo: false
-  pool_size: 5
+  pool_timeout_seconds: 30
+  auto_vacuum: true
+  # PostgreSQL alternative (requires docker-compose -f docker-compose.db.yml up -d):
+  # engine: postgresql
+  # host: localhost
+  # port: 5432
+  # database: orderpilot
+  # username: orderpilot
+  # password: orderpilot
+  # pool_size: 5
 
 backtest:
   initial_capital: "100000"
