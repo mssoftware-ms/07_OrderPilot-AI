@@ -188,7 +188,11 @@ class ChartWindow(
 
         # Center: Chart Widget
         self.chart_widget = EmbeddedTradingViewChart(history_manager=history_manager)
-        self.setCentralWidget(self.chart_widget)
+        if isinstance(self.chart_widget, QWidget):
+            self.setCentralWidget(self.chart_widget)
+        else:
+            # Allow tests to inject mocks without crashing QMainWindow
+            self.setCentralWidget(QWidget())
 
         # Set symbol in chart
         self.chart_widget.current_symbol = symbol
@@ -305,6 +309,11 @@ class ChartWindow(
                 self._cleanup_simulation_worker(cancel=True, wait_ms=500)
             except Exception as e:
                 logger.debug("Failed to stop simulation worker during close: %s", e)
+
+        if not isinstance(self.chart_widget, QWidget):
+            self._ready_to_close = True
+            event.accept()
+            return
 
         if self._ready_to_close:
             logger.info(f"Closing ChartWindow for {self.symbol}...")

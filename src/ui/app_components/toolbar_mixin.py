@@ -278,3 +278,30 @@ class ToolbarMixin:
 
         except Exception as e:
             logger.error(f"Failed to update data provider list: {e}")
+
+    def on_data_provider_changed(self, provider_name: str):
+        """Handle data provider selection changes."""
+        try:
+            index = self.data_provider_combo.currentIndex()
+            provider_key = self.data_provider_combo.itemData(index)
+
+            # Disabled providers prompt user to configure keys
+            if isinstance(provider_key, str) and provider_key.endswith("_disabled"):
+                if hasattr(self, "status_bar"):
+                    self.status_bar.showMessage(
+                        "Provider requires API keys. Open Settings -> Market Data.",
+                        6000,
+                    )
+                logger.warning(f"Selected disabled provider: {provider_key}")
+                if hasattr(self, "show_settings_dialog"):
+                    self.show_settings_dialog()
+                return
+
+            # Persist selection for next start
+            if hasattr(self, "settings"):
+                self.settings.setValue("market_data_provider", self.data_provider_combo.currentText())
+
+            logger.info(f"Selected market data provider: {provider_key}")
+
+        except Exception as e:
+            logger.error(f"Failed to handle data provider change: {e}", exc_info=True)

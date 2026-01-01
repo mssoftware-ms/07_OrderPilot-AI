@@ -9,14 +9,14 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-class TradingEnvironment(Enum):
+class TradingEnvironment(str, Enum):
     """Trading environment modes."""
     DEVELOPMENT = "development"
     PAPER = "paper"  # Paper trading / simulation
     PRODUCTION = "production"  # Live trading with real money
 
 
-class TradingMode(Enum):
+class TradingMode(str, Enum):
     """Trading execution modes.
 
     BACKTEST: Historical backtesting with synthetic data
@@ -28,7 +28,7 @@ class TradingMode(Enum):
     LIVE = "live"
 
 
-class BrokerType(Enum):
+class BrokerType(str, Enum):
     """Supported broker types."""
     MOCK = "mock"
     IBKR = "ibkr"  # Interactive Brokers

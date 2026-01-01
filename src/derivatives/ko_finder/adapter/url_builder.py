@@ -54,8 +54,9 @@ class OnvistaURLBuilder:
         direction: Direction,
         config: KOFilterConfig,
         underlying_slug: str,
-        sort_column: SortColumn = SortColumn.LEVERAGE,
-        sort_order: SortOrder = SortOrder.DESC,
+        sort_column: SortColumn = SortColumn.SPREAD_PCT,
+        sort_order: SortOrder = SortOrder.ASC,
+        underlying_filter: str | None = None,
     ) -> str:
         """
         Erstelle URL für KO-Listen-Seite.
@@ -87,15 +88,17 @@ class OnvistaURLBuilder:
             params["feature"] = config.feature
 
         # Richtung: idExerciseRight
-        # Long = 2 (Call), Short = 1 (Put)
-        if direction == Direction.LONG:
-            params["idExerciseRight"] = "2"
-        else:
-            params["idExerciseRight"] = "1"
+        exercise_right = direction.exercise_right_param
+        if exercise_right:
+            params["idExerciseRight"] = exercise_right
 
         # Emittenten
         if config.issuers:
             params["idIssuer"] = config.issuer_ids_str
+
+        # Optionaler Underlying-Filter (Fallback-Suche)
+        if underlying_filter:
+            params["searchValue"] = underlying_filter
 
         # Sortierung
         params["sort"] = sort_column.value
@@ -121,7 +124,8 @@ class OnvistaURLBuilder:
     def build_long_url(
         self,
         config: KOFilterConfig,
-        underlying: str,
+        underlying: str = "DAX",
+        underlying_filter: str | None = None,
     ) -> str:
         """
         Erstelle Long-URL für Underlying.
@@ -138,12 +142,14 @@ class OnvistaURLBuilder:
             direction=Direction.LONG,
             config=config,
             underlying_slug=slug,
+            underlying_filter=underlying_filter,
         )
 
     def build_short_url(
         self,
         config: KOFilterConfig,
-        underlying: str,
+        underlying: str = "DAX",
+        underlying_filter: str | None = None,
     ) -> str:
         """
         Erstelle Short-URL für Underlying.
@@ -160,6 +166,7 @@ class OnvistaURLBuilder:
             direction=Direction.SHORT,
             config=config,
             underlying_slug=slug,
+            underlying_filter=underlying_filter,
         )
 
     @staticmethod

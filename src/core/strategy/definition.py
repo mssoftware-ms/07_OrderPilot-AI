@@ -27,6 +27,7 @@ Example:
 from __future__ import annotations
 
 from enum import Enum
+import re
 from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Discriminator, Field, Tag, field_validator, model_validator
@@ -162,12 +163,19 @@ class Condition(BaseModel):
     type: Literal["condition"] = "condition"
     left: str | float
     operator: ComparisonOperator
-    right: str | float | list[float]  # list for inside/outside operators
+    right: str | float | list[float] | None = None  # list for inside/outside operators
+    right_formula: str | None = None
     description: str | None = None
 
     @model_validator(mode="after")
     def validate_range_operators(self) -> Condition:
-        """Validate that range operators have list[float] as right operand."""
+        """Validate that conditions have a usable right operand."""
+        if self.right is None and self.right_formula:
+            self.right = self.right_formula
+
+        if self.right is None:
+            raise ValueError("Condition requires 'right' or 'right_formula'")
+
         if self.operator in (ComparisonOperator.INSIDE, ComparisonOperator.OUTSIDE):
             if not isinstance(self.right, list) or len(self.right) != 2:
                 raise ValueError(
@@ -186,7 +194,10 @@ class Condition(BaseModel):
 def _get_condition_type(v: Any) -> str:
     """Get discriminator value for Condition | LogicGroup union."""
     if isinstance(v, dict):
-        return v.get("type", "condition")
+        value = v.get("type", "condition")
+        if value == "composite":
+            return "group"
+        return value
     return getattr(v, "type", "condition")
 
 
@@ -213,7 +224,7 @@ class LogicGroup(BaseModel):
         ... )
     """
 
-    type: Literal["group"] = "group"
+    type: Literal["group", "composite"] = "group"
     operator: LogicOperator
     conditions: list[Annotated[
         Union[
@@ -230,6 +241,14 @@ class LogicGroup(BaseModel):
         """Validate that conditions list is not empty."""
         if not v:
             raise ValueError("LogicGroup must have at least one condition")
+        return v
+
+    @field_validator("type")
+    @classmethod
+    def normalize_group_type(cls, v: str) -> str:
+        """Normalize legacy 'composite' type to 'group'."""
+        if v == "composite":
+            return "group"
         return v
 
     @model_validator(mode="after")
@@ -285,8 +304,12 @@ class RiskManagement(BaseModel):
 
     # Trailing Stop
     trailing_stop_pct: float | None = Field(None, gt=0, le=100)
+    trailing_stop_enabled: bool = False
+    trailing_stop_trigger_pct: float | None = Field(None, gt=0, le=100)
+    trailing_stop_distance_pct: float | None = Field(None, gt=0, le=100)
 
     # Position Sizing
+    position_size_pct: float | None = Field(None, gt=0, le=100)
     max_position_size_pct: float = Field(100.0, gt=0, le=100)
     max_risk_per_trade_pct: float = Field(2.0, gt=0, le=100)
 
@@ -359,6 +382,12 @@ class StrategyDefinition(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     version: str = Field("1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     description: str | None = None
+    category: str | None = None
+    author: str | None = None
+    asset_class: str | None = None
+    recommended_symbols: list[str] = Field(default_factory=list)
+    recommended_timeframes: list[str] = Field(default_factory=list)
+    notes: str | None = None
 
     # Indicators
     indicators: list[IndicatorConfig] = Field(default_factory=list)
@@ -394,13 +423,27 @@ class StrategyDefinition(BaseModel):
         valid_refs = indicator_aliases | {"close", "open", "high", "low", "volume"}
 
         # Extract all condition references
+        def extract_refs(value: str) -> set[str]:
+            return set(re.findall(r"[A-Za-z_][A-Za-z0-9_\\.]*", value))
+
         def get_refs_from_condition(cond: Condition | LogicGroup) -> set[str]:
             refs = set()
             if isinstance(cond, Condition):
                 if isinstance(cond.left, str):
-                    refs.add(cond.left)
+                    if any(ch in cond.left for ch in "+-*/()"):
+                        refs.update(extract_refs(cond.left))
+                    else:
+                        refs.add(cond.left)
                 if isinstance(cond.right, str):
-                    refs.add(cond.right)
+                    if any(ch in cond.right for ch in "+-*/()"):
+                        refs.update(extract_refs(cond.right))
+                    else:
+                        refs.add(cond.right)
+                if isinstance(cond.right_formula, str):
+                    if any(ch in cond.right_formula for ch in "+-*/()"):
+                        refs.update(extract_refs(cond.right_formula))
+                    else:
+                        refs.add(cond.right_formula)
             elif isinstance(cond, LogicGroup):
                 for c in cond.conditions:
                     refs.update(get_refs_from_condition(c))
@@ -423,7 +466,11 @@ class StrategyDefinition(BaseModel):
         }
 
         # Check for invalid references
-        invalid_refs = non_numeric_refs - valid_refs
+        normalized_refs = {
+            ref.split(".", 1)[0] if isinstance(ref, str) else ref
+            for ref in non_numeric_refs
+        }
+        invalid_refs = normalized_refs - valid_refs
         if invalid_refs:
             raise ValueError(
                 f"Invalid indicator references in conditions: {invalid_refs}. "

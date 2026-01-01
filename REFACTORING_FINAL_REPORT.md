@@ -195,3 +195,23 @@ Die Anwendung sollte nach einem Test in der korrekten Python-Umgebung
 
 **Bearbeitet von:** Claude Code (Refactoring V2.0)
 **Backup-Tag:** pre-refactoring-v2-20251214_144736
+
+---
+
+## Revalidierung (aktuell)
+
+**Datum:** 2026-01-01
+
+| Metrik | Wert |
+|--------|------|
+| Dateien | 405 |
+| Gesamte Zeilen | 92,641 |
+| Code-Zeilen | 70,895 |
+| Funktionen | 2926 |
+| Klassen | 646 |
+| UI-Komponenten | 28 |
+| Event-Handler | 66 |
+| Imports | 2502 |
+
+**Tests:** pytest tests/ -v → 307 passed, 6 skipped, 308 warnings
+Skips: Alpaca-Credentials fehlen/ungültig; OpenAI-Key nicht gesetzt (Warnungen).

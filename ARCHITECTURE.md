@@ -556,17 +556,82 @@ src/
 │   ├── analyzer.py       # KI-Aufrufe
 │   ├── chat_service.py   # Orchestrierung
 │   ├── widget.py         # QDockWidget UI
+│   ├── chart_chat_worker.py
+│   ├── chart_chat_ui_mixin.py
+│   ├── chart_chat_history_mixin.py
+│   ├── chart_chat_actions_mixin.py
+│   ├── chart_chat_export_mixin.py
+│   ├── chart_chat_events_mixin.py
 │   └── mixin.py          # ChartChatMixin
 ├── ai/                   # AI Services
 │   ├── openai_service.py # OpenAI Integration
+│   ├── openai_service_client_mixin.py
+│   ├── openai_service_analysis_mixin.py
+│   └── openai_service_prompt_mixin.py
 │   └── anthropic_service.py
 └── ui/                   # User Interface
     ├── app.py            # Hauptfenster
     ├── app_components/   # App-Mixins
+    │   ├── app_ui_mixin.py
+    │   ├── app_events_mixin.py
+    │   ├── app_timers_mixin.py
+    │   ├── app_settings_mixin.py
+    │   ├── app_chart_mixin.py
+    │   ├── app_broker_events_mixin.py
+    │   ├── app_refresh_mixin.py
+    │   └── app_lifecycle_mixin.py
+    ├── app_console_utils.py
+    ├── app_logging.py
+    ├── app_resources.py
+    ├── app_startup_window.py
     ├── widgets/          # Wiederverwendbare Widgets
+    │   ├── embedded_tradingview_chart.py
+    │   ├── embedded_tradingview_bridge.py
+    │   ├── embedded_tradingview_chart_ui_mixin.py
+    │   ├── embedded_tradingview_chart_marking_mixin.py
+    │   ├── embedded_tradingview_chart_js_mixin.py
+    │   ├── embedded_tradingview_chart_view_mixin.py
+    │   ├── embedded_tradingview_chart_loading_mixin.py
+    │   ├── embedded_tradingview_chart_events_mixin.py
     │   ├── chart_mixins/ # Chart-Mixins
     │   └── chart_window_mixins/
+    │       ├── bot_display_manager.py
+    │       ├── bot_display_selection_mixin.py
+    │       ├── bot_display_position_mixin.py
+    │       ├── bot_display_signals_mixin.py
+    │       ├── bot_display_logging_mixin.py
+    │       ├── bot_display_metrics_mixin.py
+    │       ├── bot_ui_panels.py
+    │       ├── bot_ui_control_mixin.py
+    │       ├── bot_ui_strategy_mixin.py
+    │       ├── bot_ui_signals_mixin.py
+    │       ├── bot_ui_ki_logs_mixin.py
+    │       ├── bot_position_persistence.py
+    │       ├── bot_position_persistence_storage_mixin.py
+    │       ├── bot_position_persistence_restore_mixin.py
+    │       ├── bot_position_persistence_pnl_mixin.py
+    │       ├── bot_position_persistence_context_mixin.py
+    │       ├── bot_position_persistence_chart_mixin.py
+    │       ├── bot_callbacks.py
+    │       ├── bot_callbacks_lifecycle_mixin.py
+    │       ├── bot_callbacks_signal_mixin.py
+    │       ├── bot_callbacks_log_order_mixin.py
+    │       └── bot_callbacks_candle_mixin.py
+    │       ├── strategy_simulator_mixin.py
+    │       ├── strategy_simulator_ui_mixin.py
+    │       ├── strategy_simulator_params_mixin.py
+    │       ├── strategy_simulator_run_mixin.py
+    │       ├── strategy_simulator_results_mixin.py
+    │       └── strategy_simulator_worker.py
     └── dialogs/          # Modale Dialoge
+        ├── pattern_db_dialog.py
+        ├── pattern_db_ui_mixin.py
+        ├── pattern_db_settings_mixin.py
+        ├── pattern_db_docker_mixin.py
+        ├── pattern_db_build_mixin.py
+        ├── pattern_db_log_mixin.py
+        ├── pattern_db_search_mixin.py
+        └── pattern_db_lifecycle_mixin.py
 ```
 
 ## Tradingbot-Architektur [NEU]
@@ -863,6 +928,26 @@ LLM Response → JSON Schema Validation → Fallback auf Regelwerk
 │  check(result) → (passed: bool, failures: List[str])        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Simulator Strategy Parameters
+
+```
+src/core/simulator/
+├── strategy_params.py           # Public API (helpers + re-exports)
+├── strategy_params_base.py      # StrategyName, ParameterDefinition, StrategyParameterConfig
+├── strategy_params_registry.py  # STRATEGY_PARAMETER_REGISTRY (definitions)
+├── simulation_signals.py        # Signal generator + wrappers
+├── simulation_signal_utils.py   # Common indicators (RSI/OBV/ATR helpers)
+├── simulation_signals_breakout.py
+├── simulation_signals_momentum.py
+├── simulation_signals_mean_reversion.py
+├── simulation_signals_trend_following.py
+├── simulation_signals_scalping.py
+├── simulation_signals_bollinger_squeeze.py
+├── simulation_signals_trend_pullback.py
+├── simulation_signals_opening_range.py
+└── simulation_signals_regime_hybrid.py
 ```
 
 ### Test Suite

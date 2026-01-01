@@ -7,6 +7,7 @@ import json
 import logging
 
 from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QWidget
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +15,20 @@ logger = logging.getLogger(__name__)
 class StateMixin:
     """Mixin providing state save/restore for ChartWindow."""
 
+    def _safe_settings_value(self, key: str):
+        """Safely read QSettings value, returning None on conversion errors."""
+        try:
+            return self.settings.value(key)
+        except Exception as e:
+            logger.debug("Failed to read settings value %s: %s", key, e)
+            return None
+
     def _load_window_state(self):
         """Load window position and size from settings."""
         # IMPORTANT: Use sanitized key to match how state is saved
         settings_key = self._get_settings_key()
 
-        geometry = self.settings.value(f"{settings_key}/geometry")
+        geometry = self._safe_settings_value(f"{settings_key}/geometry")
         if geometry:
             self.restoreGeometry(geometry)
         else:
@@ -29,13 +38,13 @@ class StateMixin:
             y = (screen.height() - self.height()) // 2
             self.move(x, y)
 
-        window_state = self.settings.value(f"{settings_key}/windowState")
+        window_state = self._safe_settings_value(f"{settings_key}/windowState")
         if window_state:
             self.restoreState(window_state)
 
         # Check if we have saved chart state - if so, skip fitContent() on data load
-        chart_state_json = self.settings.value(f"{settings_key}/chartState")
-        visible_range_json = self.settings.value(f"{settings_key}/visibleRange")
+        chart_state_json = self._safe_settings_value(f"{settings_key}/chartState")
+        visible_range_json = self._safe_settings_value(f"{settings_key}/visibleRange")
 
         logger.info(f"🔍 Checking saved state for {self.symbol} (key: {settings_key})")
         logger.info(f"   chartState exists: {bool(chart_state_json)}")
@@ -50,7 +59,7 @@ class StateMixin:
             logger.info(f"ℹ️ No saved chart state for {self.symbol} - will use fitContent()")
 
         if hasattr(self.chart_widget, 'timeframe_combo'):
-            timeframe = self.settings.value(f"{settings_key}/timeframe")
+            timeframe = self._safe_settings_value(f"{settings_key}/timeframe")
             if timeframe:
                 self.chart_widget.current_timeframe = timeframe
                 index = self.chart_widget.timeframe_combo.findData(timeframe)
@@ -58,7 +67,7 @@ class StateMixin:
                     self.chart_widget.timeframe_combo.setCurrentIndex(index)
 
         if hasattr(self.chart_widget, 'period_combo'):
-            period = self.settings.value(f"{settings_key}/period")
+            period = self._safe_settings_value(f"{settings_key}/period")
             if period:
                 self.chart_widget.current_period = period
                 index = self.chart_widget.period_combo.findData(period)
@@ -66,7 +75,7 @@ class StateMixin:
                     self.chart_widget.period_combo.setCurrentIndex(index)
 
         if hasattr(self.chart_widget, 'indicator_actions'):
-            active_indicators = self.settings.value(f"{settings_key}/indicators")
+            active_indicators = self._safe_settings_value(f"{settings_key}/indicators")
             if active_indicators and isinstance(active_indicators, list):
                 logger.info(f"Pre-setting {len(active_indicators)} indicators as checked")
                 for indicator_id in active_indicators:
@@ -74,7 +83,7 @@ class StateMixin:
                         action = self.chart_widget.indicator_actions[indicator_id]
                         action.setChecked(True)
 
-        indicator_params = self.settings.value(f"{settings_key}/indicator_params")
+        indicator_params = self._safe_settings_value(f"{settings_key}/indicator_params")
         if indicator_params and isinstance(indicator_params, dict):
             if hasattr(self.chart_widget, 'active_indicator_params'):
                 self.chart_widget.active_indicator_params = indicator_params
@@ -88,6 +97,9 @@ class StateMixin:
 
     def _save_window_state(self):
         """Save window position, size, and chart settings."""
+        if not isinstance(self.chart_widget, QWidget):
+            logger.debug("Skipping window state save for non-widget chart")
+            return
         settings_key = self._get_settings_key()
 
         self.settings.setValue(f"{settings_key}/geometry", self.saveGeometry())
@@ -180,7 +192,10 @@ class StateMixin:
 
         # Delay of 300ms gives chart time to render data before restoring range
         # Too short and setVisibleLogicalRange might fail on empty/unrendered chart
-        QTimer.singleShot(300, _do_restore)
+        if getattr(self.chart_widget, "page_loaded", True) and getattr(self.chart_widget, "chart_initialized", True):
+            _do_restore()
+        else:
+            QTimer.singleShot(300, _do_restore)
 
     def _finalize_restoration(self):
         """Clean up after state restoration."""

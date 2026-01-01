@@ -42,6 +42,11 @@ class ScoringParams:
     m_good: float = 0.005  # 0.5% extra hinter Stop für volle KO-Safety
     EV_ref: float = -0.01  # EV-Referenz für S_ev
 
+    # Optimaler KO-Abstand (Band, linearer Abfall außerhalb)
+    ko_optimal_min: float = 0.05
+    ko_optimal_max: float = 0.15
+    ko_far_max: float = 0.30
+
     # Gewichte (müssen 1.0 ergeben)
     w_spread: float = 0.45
     w_lev: float = 0.30
@@ -202,8 +207,8 @@ class RankingEngine:
         breakdown.s_lev = math.log(1 + product.leverage) / math.log(1 + p.L_cap)
         breakdown.s_lev = min(1.0, breakdown.s_lev)  # Cap bei 1.0
 
-        # S_ko: KO-Safety-Score
-        breakdown.s_ko = self._clamp(margin / p.m_good, 0, 1)
+        # S_ko: KO-Distanz-Score (optimaler Abstand im Band)
+        breakdown.s_ko = self._calculate_ko_score(dko)
 
         # S_ev: EV-Score
         breakdown.s_ev = self._clamp(1 + ev / abs(p.EV_ref), 0, 1)
@@ -253,6 +258,21 @@ class RankingEngine:
         else:
             # SHORT: KO über Kurs
             return (ko - u0) / u0
+
+    def _calculate_ko_score(self, dko: float) -> float:
+        """Score KO-Distanz: optimal im Band, linearer Abfall außerhalb."""
+        p = self.params
+        if dko <= p.ko_optimal_min:
+            return self._clamp(dko / p.ko_optimal_min, 0, 1)
+        if dko >= p.ko_optimal_max:
+            if dko >= p.ko_far_max:
+                return 0.0
+            return self._clamp(
+                1 - (dko - p.ko_optimal_max) / (p.ko_far_max - p.ko_optimal_max),
+                0,
+                1,
+            )
+        return 1.0
 
     def _calculate_spread(
         self, product: KnockoutProduct

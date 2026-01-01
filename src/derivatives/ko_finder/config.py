@@ -52,8 +52,8 @@ class KOFilterConfig:
     # Broker-ID für Onvista-Filter (optional)
     broker_id: int | None = DEFAULT_BROKER_ID
 
-    # Feature-Filter (z.B. STOP_LOSS) - deaktiviert, da nicht in Standard-URLs
-    feature: str | None = None
+    # Feature-Filter (z.B. STOP_LOSS)
+    feature: str | None = "STOP_LOSS"
 
     def __post_init__(self) -> None:
         """Validiere alle Parameter nach Initialisierung."""

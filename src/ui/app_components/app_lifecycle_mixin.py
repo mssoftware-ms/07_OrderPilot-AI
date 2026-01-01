@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import qasync
+from PyQt6.QtCore import QSettings, Qt, QTimer, pyqtSignal, pyqtSlot, QObject
+from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QStatusBar,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.ai import get_openai_service
+from src.common.event_bus import Event, EventType, event_bus
+from src.common.logging_setup import configure_logging
+from src.config.loader import config_manager
+from src.core.broker import BrokerAdapter
+from src.core.market_data.history_provider import HistoryManager
+from src.database import initialize_database
+from src.chart_marking import MultiMonitorChartManager
+
+from ..chart_window_manager import ChartWindowManager
+from ..icons import set_icon_theme
+from ..themes import ThemeManager
+from ..widgets.alerts import AlertsWidget
+from ..widgets.dashboard import DashboardWidget
+from ..widgets.indicators import IndicatorsWidget
+from ..widgets.orders import OrdersWidget
+from ..widgets.performance_dashboard import PerformanceDashboard
+from ..widgets.positions import PositionsWidget
+from ..widgets.watchlist import WatchlistWidget
+
+from ..app_console_utils import _show_console_window
+
+logger = logging.getLogger(__name__)
+
+
+class AppLifecycleMixin:
+    """AppLifecycleMixin extracted from TradingApplication."""
+    async def initialize_services(self) -> None:
+        """Initialize background services (AI, etc.)."""
+        try:
+            self.ai_service = get_openai_service()
+            if self.ai_service:
+                if hasattr(self, "ai_status"):
+                    self.ai_status.setText("AI: Ready")
+            else:
+                if hasattr(self, "ai_status"):
+                    self.ai_status.setText("AI: Disabled")
+        except Exception as e:
+            logger.error(f"Failed to initialize AI service: {e}", exc_info=True)
+            if hasattr(self, "ai_status"):
+                self.ai_status.setText("AI: Error")
+    def show_console_window(self) -> None:
+        """Show the hidden console window."""
+        _show_console_window()
+        self.status_bar.showMessage("Console window shown", 3000)
+    def closeEvent(self, event):
+        """Handle application close event."""
+        logger.info("Application closing...")
+
+        # Close all chart windows
+        try:
+            if hasattr(self, 'chart_window_manager'):
+                self.chart_window_manager.close_all_windows()
+            if hasattr(self, 'backtest_chart_manager'):
+                self.backtest_chart_manager.close_all_windows()
+        except Exception as e:
+            logger.error(f"Error closing chart windows: {e}")
+
+        # Save settings
+        try:
+            self.save_settings()
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
+
+        # Stop timers
+        try:
+            if hasattr(self, 'time_timer'):
+                self.time_timer.stop()
+            if hasattr(self, 'dashboard_timer'):
+                self.dashboard_timer.stop()
+        except Exception as e:
+            logger.error(f"Error stopping timers: {e}")
+
+        # Disconnect real-time streams
+        try:
+            if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                logger.info("Disconnecting stock stream...")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_realtime_stream())
+                else:
+                    loop.run_until_complete(self.history_manager.stop_realtime_stream())
+
+            if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
+                logger.info("Disconnecting crypto stream...")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self.history_manager.stop_crypto_realtime_stream())
+                else:
+                    loop.run_until_complete(self.history_manager.stop_crypto_realtime_stream())
+        except Exception as e:
+            logger.error(f"Error disconnecting streams: {e}")
+
+        # Disconnect broker
+        if self.broker:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(self.disconnect_broker())
+                else:
+                    loop.run_until_complete(self.disconnect_broker())
+            except Exception as e:
+                logger.error(f"Error disconnecting broker: {e}")
+
+        # Close AI service
+        if self.ai_service:
+            try:
+                if hasattr(self.ai_service, 'close'):
+                    if asyncio.iscoroutinefunction(self.ai_service.close):
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.ensure_future(self.ai_service.close())
+                        else:
+                            loop.run_until_complete(self.ai_service.close())
+                    else:
+                        self.ai_service.close()
+                logger.info("AI service closed")
+            except Exception as e:
+                logger.error(f"Error closing AI service: {e}")
+
+        logger.info("Application closed successfully")
+        event.accept()

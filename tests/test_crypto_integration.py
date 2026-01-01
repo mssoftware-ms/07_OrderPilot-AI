@@ -5,6 +5,7 @@ Tests Alpaca cryptocurrency data provider and streaming functionality.
 
 import asyncio
 import os
+import tempfile
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -19,6 +20,8 @@ from src.core.market_data import (
     HistoryManager,
     Timeframe
 )
+from src.config import DatabaseConfig
+from src.database.database import initialize_database
 
 
 # Skip tests if Alpaca credentials not available
@@ -77,6 +80,9 @@ class TestAlpacaCryptoProvider:
             timeframe=Timeframe.HOUR_1
         )
 
+        if getattr(crypto_provider, "auth_failed", False):
+            pytest.skip("Alpaca credentials invalid or unauthorized")
+
         assert len(bars) > 0, "Should fetch at least some bars"
         assert all(bar.symbol == "BTC/USD" for bar in bars if hasattr(bar, 'symbol')), \
             "All bars should be for BTC/USD"
@@ -98,6 +104,9 @@ class TestAlpacaCryptoProvider:
             timeframe=Timeframe.MINUTE_15
         )
 
+        if getattr(crypto_provider, "auth_failed", False):
+            pytest.skip("Alpaca credentials invalid or unauthorized")
+
         assert len(bars) > 0, "Should fetch at least some bars"
         assert all(bar.volume >= 0 for bar in bars), "Volume should be non-negative"
 
@@ -116,6 +125,8 @@ class TestAlpacaCryptoProvider:
                 end_date=end_date,
                 timeframe=Timeframe.MINUTE_30
             )
+            if getattr(crypto_provider, "auth_failed", False):
+                pytest.skip("Alpaca credentials invalid or unauthorized")
             assert len(bars) > 0, f"Should fetch bars for {symbol}"
 
 
@@ -170,6 +181,8 @@ class TestHistoryManagerCrypto:
     @pytest.fixture
     def history_manager(self, alpaca_credentials):
         """Create history manager with crypto support."""
+        temp_dir = tempfile.mkdtemp()
+        initialize_database(DatabaseConfig(path=os.path.join(temp_dir, "orderpilot.db")))
         # Create manager (will auto-register Alpaca crypto provider if enabled)
         manager = HistoryManager()
         return manager
@@ -189,6 +202,12 @@ class TestHistoryManagerCrypto:
         )
 
         bars, source = await history_manager.fetch_data(request)
+
+        provider = history_manager.providers.get(DataSource.ALPACA_CRYPTO)
+        if not provider or not getattr(provider, "api_key", None) or not getattr(provider, "api_secret", None):
+            pytest.skip("Alpaca credentials not configured")
+        if getattr(provider, "auth_failed", False):
+            pytest.skip("Alpaca credentials invalid or unauthorized")
 
         assert len(bars) > 0, "Should fetch crypto bars"
         assert source in ["alpaca_crypto", "database"], \
@@ -210,6 +229,10 @@ class TestHistoryManagerCrypto:
         )
 
         bars, source = await history_manager.fetch_data(crypto_request)
+
+        provider = history_manager.providers.get(DataSource.ALPACA_CRYPTO)
+        if provider and getattr(provider, "auth_failed", False):
+            pytest.skip("Alpaca credentials invalid or unauthorized")
 
         # Should use crypto provider if available
         if bars:

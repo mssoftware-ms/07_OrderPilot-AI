@@ -73,6 +73,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests: Dict[str, deque] = defaultdict(lambda: deque())
+        self.limits: Dict[str, tuple[int, int]] = {}
 
     def is_allowed(self, key: str) -> bool:
         """Check if request is allowed.
@@ -93,6 +94,39 @@ class RateLimiter:
 
         # Check if under limit
         if len(request_times) < self.max_requests:
+            request_times.append(now)
+            return True
+
+        return False
+
+    def set_limit(self, name: str, max_requests: int, time_window: int) -> None:
+        """Set a named rate limit configuration.
+
+        Args:
+            name: Limit name (e.g. "api", "trading")
+            max_requests: Max requests allowed in window
+            time_window: Window size in seconds
+        """
+        self.limits[name] = (max_requests, time_window)
+
+    def check_limit(self, name: str, identifier: str) -> bool:
+        """Check a named rate limit for a specific identifier."""
+        max_requests, window_seconds = self.limits.get(
+            name, (self.max_requests, self.window_seconds)
+        )
+        key = f"{name}:{identifier}"
+        return self._is_allowed_with_limit(key, max_requests, window_seconds)
+
+    def _is_allowed_with_limit(self, key: str, max_requests: int, window_seconds: int) -> bool:
+        """Internal helper for named limits."""
+        now = time.time()
+        window_start = now - window_seconds
+
+        request_times = self.requests[key]
+        while request_times and request_times[0] < window_start:
+            request_times.popleft()
+
+        if len(request_times) < max_requests:
             request_times.append(now)
             return True
 

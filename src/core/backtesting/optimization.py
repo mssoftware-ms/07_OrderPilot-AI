@@ -14,6 +14,8 @@ import logging
 from itertools import product
 from typing import Any, Callable
 
+from src.core.models.backtest_models import BacktestResult
+
 # Import types from optimization_types
 from .optimization_types import (
     AIOptimizationInsight,

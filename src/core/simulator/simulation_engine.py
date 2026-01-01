@@ -6,19 +6,16 @@ This is a simplified simulator focused on the 5 base strategies.
 
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
 
-from .strategy_params import StrategyName, get_strategy_parameters
+from .strategy_params import StrategyName
+from .simulation_signals import StrategySignalGenerator
 from .result_types import SimulationResult, TradeRecord
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -54,6 +51,7 @@ class StrategySimulator:
         """
         self.data = self._prepare_data(data)
         self.symbol = symbol
+        self._signal_generator = StrategySignalGenerator(self.data)
         self._trades: list[TradeRecord] = []
         self._equity_curve: list[tuple[datetime, float]] = []
 
@@ -148,559 +146,53 @@ class StrategySimulator:
         strategy_name: StrategyName,
         parameters: dict[str, Any],
     ) -> pd.DataFrame:
-        """Generate trading signals based on strategy logic.
-
-        Returns DataFrame with 'signal' column: 1=buy, -1=sell, 0=hold
-        """
-        df = self.data.copy()
-
-        if strategy_name == StrategyName.BREAKOUT:
-            signals = self._breakout_signals(df, parameters)
-        elif strategy_name == StrategyName.MOMENTUM:
-            signals = self._momentum_signals(df, parameters)
-        elif strategy_name == StrategyName.MEAN_REVERSION:
-            signals = self._mean_reversion_signals(df, parameters)
-        elif strategy_name == StrategyName.TREND_FOLLOWING:
-            signals = self._trend_following_signals(df, parameters)
-        elif strategy_name == StrategyName.SCALPING:
-            signals = self._scalping_signals(df, parameters)
-        elif strategy_name == StrategyName.BOLLINGER_SQUEEZE:
-            signals = self._bollinger_squeeze_signals(df, parameters)
-        elif strategy_name == StrategyName.TREND_PULLBACK:
-            signals = self._trend_pullback_signals(df, parameters)
-        elif strategy_name == StrategyName.OPENING_RANGE:
-            signals = self._opening_range_signals(df, parameters)
-        elif strategy_name == StrategyName.REGIME_HYBRID:
-            signals = self._regime_hybrid_signals(df, parameters)
-        else:
-            logger.warning(f"Unknown strategy: {strategy_name}, no signals generated")
-            signals = pd.Series(0, index=df.index)
-
-        df["signal"] = signals
-        return df
+        """Generate trading signals based on strategy logic."""
+        return self._signal_generator.generate(strategy_name, parameters)
 
     def _breakout_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate breakout strategy signals."""
-        sr_window = params.get("sr_window", 20)
-        volume_ratio = params.get("volume_ratio", 1.5)
-        adx_threshold = params.get("adx_threshold", 25)
-        price_change_pct = params.get("price_change_pct", 0.01)
-
-        # Calculate ATR for dynamic thresholds
-        tr = self._true_range(df)
-        atr_period = params.get("atr_period", 14)
-        atr = tr.rolling(atr_period).mean()
-
-        # Calculate resistance/support with ATR buffer for more realistic breakouts
-        # Use percentile-based levels instead of absolute max/min for better sensitivity
-        resistance = df["high"].rolling(sr_window).quantile(0.95).shift(1)
-        support = df["low"].rolling(sr_window).quantile(0.05).shift(1)
-
-        # Volume analysis - handle missing volume data
-        avg_volume = df["volume"].rolling(20).mean()
-        # If volume is all zeros or missing, don't use volume filter
-        has_volume_data = avg_volume.iloc[-1] > 0 if len(avg_volume) > 0 else False
-        if has_volume_data:
-            volume_ratio_series = (df["volume"] / avg_volume.replace(0, np.nan)).fillna(1)
-        else:
-            volume_ratio_series = pd.Series(1.0, index=df.index)  # Neutral
-
-        # Price change (multi-bar momentum for short timeframes)
-        price_change_1 = df["close"].pct_change().fillna(0)
-        price_change_3 = df["close"].pct_change(3).fillna(0)  # 3-bar momentum
-
-        # ADX approximation (simplified)
-        adx_period = params.get("adx_period", 14)
-        dm_plus = (df["high"].diff()).clip(lower=0)
-        dm_minus = (-df["low"].diff()).clip(lower=0)
-        di_plus = 100 * (dm_plus.rolling(adx_period).mean() / atr.replace(0, np.nan))
-        di_minus = 100 * (dm_minus.rolling(adx_period).mean() / atr.replace(0, np.nan))
-        di_sum = di_plus + di_minus
-        dx = 100 * abs(di_plus - di_minus) / di_sum.replace(0, np.nan)
-        adx = dx.rolling(adx_period).mean().fillna(0)
-
-        # Generate signals
-        signals = pd.Series(0, index=df.index)
-
-        # Breakout conditions (more sensitive):
-        # 1. Classic breakout: Close > Resistance
-        classic_breakout = df["close"] > resistance
-        # 2. Near breakout: Close within 0.5 ATR of resistance and pushing higher
-        near_breakout = (df["close"] > resistance - 0.5 * atr) & (price_change_1 > 0)
-        # 3. High makes new high above resistance
-        high_breakout = df["high"] > resistance
-
-        # Any breakout type counts
-        breakout = classic_breakout | (near_breakout & high_breakout)
-
-        # Secondary filters (at least one should be true)
-        has_volume = volume_ratio_series > volume_ratio
-        has_momentum_1 = price_change_1 > price_change_pct
-        has_momentum_3 = price_change_3 > price_change_pct * 2  # Stronger 3-bar move
-        has_trend = adx > adx_threshold
-
-        # Buy conditions:
-        # Option A: Breakout with volume
-        # Option B: Breakout with momentum (single or multi-bar)
-        # Option C: Near breakout with strong trend and momentum
-        buy_condition = (
-            (breakout & (has_volume | has_momentum_1 | has_momentum_3)) |
-            (near_breakout & has_trend & has_momentum_3)
-        )
-
-        # Sell: Price breaks below support OR significant reversal
-        sell_condition = (
-            (df["close"] < support) |
-            (price_change_1 < -price_change_pct * 2) |
-            (price_change_3 < -price_change_pct * 3)
-        )
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._breakout_signals(df, params)
 
     def _momentum_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate momentum strategy signals."""
-        roc_period = params.get("roc_period", 10)
-        mom_period = params.get("mom_period", 10)
-        rsi_period = params.get("rsi_period", 14)
-        roc_threshold = params.get("roc_threshold", 5.0)
-        rsi_lower = params.get("rsi_lower", 50)
-        rsi_upper = params.get("rsi_upper", 80)
-        rsi_exit = params.get("rsi_exit_threshold", 85)
-
-        # Rate of Change (use lower threshold for practical trading)
-        close_shifted = df["close"].shift(roc_period)
-        roc = (100 * (df["close"] - close_shifted) / close_shifted.replace(0, np.nan)).fillna(0)
-
-        # Momentum
-        mom = (df["close"] - df["close"].shift(mom_period)).fillna(0)
-
-        # RSI
-        rsi = self._calculate_rsi(df["close"], rsi_period)
-
-        # OBV
-        obv = self._calculate_obv(df)
-        obv_change = (obv.pct_change(10) * 100).fillna(0)
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: Momentum signals (relaxed - use OR instead of all AND)
-        # Lower the ROC threshold significantly (was 5%, now dynamic based on param)
-        effective_roc_threshold = roc_threshold / 5  # e.g., 5% -> 1%
-
-        has_roc = roc > effective_roc_threshold
-        has_momentum = mom > 0
-        has_good_rsi = (rsi > rsi_lower) & (rsi < rsi_upper)
-        has_obv = obv_change > 0  # Just positive OBV change
-
-        # Buy when we have momentum AND RSI is in good range
-        buy_condition = has_momentum & has_good_rsi & (has_roc | has_obv)
-
-        # Sell: Momentum reversal (any of these)
-        sell_condition = (roc < -effective_roc_threshold) | (rsi > rsi_exit)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._momentum_signals(df, params)
 
     def _mean_reversion_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate mean reversion strategy signals."""
-        bb_period = params.get("bb_period", 20)
-        bb_std = params.get("bb_std", 2.0)
-        rsi_period = params.get("rsi_period", 14)
-        rsi_oversold = params.get("rsi_oversold", 30)
-        rsi_overbought = params.get("rsi_overbought", 70)
-        bb_pct_entry = params.get("bb_percent_entry", 0.1)
-        bb_pct_exit = params.get("bb_percent_exit", 0.9)
-
-        # Bollinger Bands
-        middle = df["close"].rolling(bb_period).mean()
-        std = df["close"].rolling(bb_period).std().fillna(0)
-        upper = middle + bb_std * std
-        lower = middle - bb_std * std
-
-        # BB%
-        bb_width = upper - lower
-        bb_pct = (df["close"] - lower) / bb_width.replace(0, np.nan)
-        bb_pct = bb_pct.fillna(0.5)  # Default to middle if no range
-
-        # RSI
-        rsi = self._calculate_rsi(df["close"], rsi_period)
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: Oversold - relaxed (price near lower band OR RSI oversold)
-        near_lower = df["close"] <= lower * 1.01  # Within 1% of lower band
-        rsi_low = rsi < rsi_oversold
-        bb_low = bb_pct < bb_pct_entry + 0.1  # More lenient
-
-        buy_condition = (near_lower | rsi_low) & (bb_pct < 0.3)
-
-        # Sell: Overbought - relaxed
-        near_upper = df["close"] >= upper * 0.99
-        rsi_high = rsi > rsi_overbought
-        bb_high = bb_pct > bb_pct_exit - 0.1
-
-        sell_condition = (near_upper | rsi_high) & (bb_pct > 0.7)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._mean_reversion_signals(df, params)
 
     def _trend_following_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate trend following strategy signals."""
-        sma_fast = params.get("sma_fast", 50)
-        sma_slow = params.get("sma_slow", 200)
-        rsi_period = params.get("rsi_period", 14)
-        rsi_upper_limit = params.get("rsi_upper_limit", 70)
-        rsi_lower_limit = params.get("rsi_lower_limit", 30)
-        macd_fast = params.get("macd_fast", 12)
-        macd_slow = params.get("macd_slow", 26)
-
-        # Use smaller SMA periods if data is limited
-        data_len = len(df)
-        effective_sma_fast = min(sma_fast, max(5, data_len // 10))
-        effective_sma_slow = min(sma_slow, max(20, data_len // 4))
-
-        # SMAs with fillna to handle NaN at start
-        sma_fast_vals = df["close"].rolling(effective_sma_fast, min_periods=1).mean()
-        sma_slow_vals = df["close"].rolling(effective_sma_slow, min_periods=1).mean()
-
-        # RSI
-        rsi = self._calculate_rsi(df["close"], rsi_period)
-
-        # MACD
-        ema_fast = df["close"].ewm(span=macd_fast, adjust=False).mean()
-        ema_slow = df["close"].ewm(span=macd_slow, adjust=False).mean()
-        macd = ema_fast - ema_slow
-        macd_signal = macd.ewm(span=9, adjust=False).mean()
-
-        signals = pd.Series(0, index=df.index)
-
-        # Trend detection
-        uptrend = sma_fast_vals > sma_slow_vals
-        price_above_fast = df["close"] > sma_fast_vals
-        macd_bullish = macd > macd_signal
-        rsi_not_overbought = rsi < rsi_upper_limit
-
-        # Buy: Uptrend confirmed (relaxed - need uptrend AND one of the others)
-        buy_condition = uptrend & (price_above_fast | macd_bullish) & rsi_not_overbought
-
-        # Downtrend
-        downtrend = sma_fast_vals < sma_slow_vals
-        price_below_fast = df["close"] < sma_fast_vals
-        macd_bearish = macd < macd_signal
-        rsi_not_oversold = rsi > rsi_lower_limit
-
-        # Sell: Downtrend confirmed
-        sell_condition = downtrend & (price_below_fast | macd_bearish)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._trend_following_signals(df, params)
 
     def _scalping_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate scalping strategy signals."""
-        ema_fast = params.get("ema_fast", 5)
-        ema_slow = params.get("ema_slow", 9)
-        stoch_k = params.get("stoch_k", 5)
-        stoch_d = params.get("stoch_d", 3)
-        stoch_upper = params.get("stoch_upper", 80)
-        stoch_lower = params.get("stoch_lower", 20)
-
-        # EMAs
-        ema_fast_vals = df["close"].ewm(span=ema_fast, adjust=False).mean()
-        ema_slow_vals = df["close"].ewm(span=ema_slow, adjust=False).mean()
-
-        # EMA crossover detection
-        ema_cross_up = (ema_fast_vals > ema_slow_vals) & (ema_fast_vals.shift(1) <= ema_slow_vals.shift(1))
-        ema_cross_down = (ema_fast_vals < ema_slow_vals) & (ema_fast_vals.shift(1) >= ema_slow_vals.shift(1))
-        ema_bullish = ema_fast_vals > ema_slow_vals
-
-        # VWAP (simplified - use rolling calculation)
-        typical_price = (df["high"] + df["low"] + df["close"]) / 3
-        volume_sum = df["volume"].rolling(20).sum()
-        vwap = (typical_price * df["volume"]).rolling(20).sum() / volume_sum.replace(0, np.nan)
-        vwap = vwap.fillna(df["close"])  # Use close price as fallback
-        above_vwap = df["close"] > vwap
-
-        # Stochastic
-        lowest_low = df["low"].rolling(stoch_k).min()
-        highest_high = df["high"].rolling(stoch_k).max()
-        stoch_range = highest_high - lowest_low
-        stoch_k_val = 100 * (df["close"] - lowest_low) / stoch_range.replace(0, np.nan)
-        stoch_k_val = stoch_k_val.fillna(50)  # Default to middle if no range
-        stoch_d_val = stoch_k_val.rolling(stoch_d).mean().fillna(50)
-
-        # Stochastic not overbought
-        stoch_ok = stoch_k_val < stoch_upper
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: EMA bullish AND (above VWAP OR stochastic OK)
-        buy_condition = ema_bullish & (above_vwap | stoch_ok)
-
-        # Sell: EMA crossdown OR stochastic overbought
-        sell_condition = ema_cross_down | (stoch_k_val > stoch_upper)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._scalping_signals(df, params)
 
     def _bollinger_squeeze_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate Bollinger Squeeze Breakout signals.
-
-        The squeeze occurs when Bollinger Bands contract inside Keltner Channels,
-        indicating low volatility. A breakout from the squeeze often leads to
-        explosive moves.
-        """
-        bb_period = params.get("bb_period", 20)
-        bb_std = params.get("bb_std", 2.0)
-        kc_atr_period = params.get("kc_atr_period", 10)
-        kc_multiplier = params.get("kc_multiplier", 1.5)
-        vol_period = params.get("vol_period", 20)
-        vol_factor = params.get("vol_factor", 1.5)
-
-        # Bollinger Bands
-        bb_middle = df["close"].rolling(bb_period).mean()
-        bb_std_val = df["close"].rolling(bb_period).std().fillna(0)
-        bb_upper = bb_middle + bb_std * bb_std_val
-        bb_lower = bb_middle - bb_std * bb_std_val
-
-        # Keltner Channels (using ATR)
-        tr = self._true_range(df)
-        atr = tr.rolling(kc_atr_period).mean()
-        kc_middle = df["close"].rolling(kc_atr_period).mean()
-        kc_upper = kc_middle + kc_multiplier * atr
-        kc_lower = kc_middle - kc_multiplier * atr
-
-        # Squeeze detection: BB inside KC
-        squeeze_on = (bb_lower > kc_lower) & (bb_upper < kc_upper)
-        squeeze_off = ~squeeze_on
-
-        # Momentum (using close - midline)
-        momentum = df["close"] - bb_middle
-
-        # Volume confirmation
-        avg_volume = df["volume"].rolling(vol_period).mean()
-        has_volume_data = avg_volume.iloc[-1] > 0 if len(avg_volume) > 0 else False
-        if has_volume_data:
-            volume_spike = df["volume"] > avg_volume * vol_factor
-        else:
-            volume_spike = pd.Series(True, index=df.index)
-
-        # Squeeze release detection (was squeezed, now released)
-        squeeze_release = squeeze_off & squeeze_on.shift(1).fillna(False)
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: Squeeze releases with positive momentum and volume
-        buy_condition = squeeze_release & (momentum > 0) & volume_spike
-
-        # Alternative: No squeeze but strong upward momentum with volume
-        strong_momentum_up = (momentum > momentum.shift(1)) & (momentum > 0) & volume_spike
-        buy_condition = buy_condition | (squeeze_off & strong_momentum_up)
-
-        # Sell: Momentum turns negative or squeeze releases downward
-        sell_condition = (squeeze_release & (momentum < 0)) | (momentum < -atr)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._bollinger_squeeze_signals(df, params)
 
     def _trend_pullback_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate Trend Pullback signals.
-
-        Classic trend following: Buy dips in uptrends when RSI shows oversold
-        conditions while price remains above the trend EMA.
-        """
-        ema_trend = params.get("ema_trend", 200)
-        rsi_period = params.get("rsi_period", 14)
-        rsi_pullback = params.get("rsi_pullback", 40)
-        rsi_exit = params.get("rsi_exit", 70)
-
-        # Adjust EMA period for short data
-        data_len = len(df)
-        effective_ema = min(ema_trend, max(20, data_len // 4))
-
-        # Trend EMA
-        ema_vals = df["close"].ewm(span=effective_ema, adjust=False).mean()
-
-        # RSI
-        rsi = self._calculate_rsi(df["close"], rsi_period)
-
-        # Trend detection
-        uptrend = df["close"] > ema_vals
-        price_above_ema = df["close"] > ema_vals
-
-        # Pullback detection: RSI dips while still in uptrend
-        pullback = (rsi < rsi_pullback) & uptrend
-
-        # Additional: Price approaching EMA (within 1%)
-        near_ema = (df["close"] - ema_vals).abs() / ema_vals < 0.01
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: Pullback in uptrend OR price bouncing off EMA
-        buy_condition = pullback | (uptrend & near_ema & (rsi < 50))
-
-        # Sell: RSI overbought OR price breaks below EMA
-        sell_condition = (rsi > rsi_exit) | (~uptrend & uptrend.shift(1).fillna(False))
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._trend_pullback_signals(df, params)
 
     def _opening_range_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate Opening Range Breakout signals.
-
-        Trades breakouts from the high/low range established in the first
-        N minutes of the trading session.
-        """
-        range_minutes = params.get("range_minutes", 15)
-        vol_factor = params.get("vol_factor", 1.5)
-        atr_period = params.get("atr_period", 14)
-
-        # Calculate ATR for dynamic thresholds
-        tr = self._true_range(df)
-        atr = tr.rolling(atr_period).mean()
-
-        # Volume analysis
-        avg_volume = df["volume"].rolling(20).mean()
-        has_volume_data = avg_volume.iloc[-1] > 0 if len(avg_volume) > 0 else False
-        if has_volume_data:
-            volume_spike = df["volume"] > avg_volume * vol_factor
-        else:
-            volume_spike = pd.Series(True, index=df.index)
-
-        # For intraday data, detect session opens
-        # For daily/longer timeframes, use rolling high/low as "range"
-        range_bars = max(1, range_minutes // 5)  # Assume 5-min bars
-
-        # Opening range: rolling high/low over range_bars
-        range_high = df["high"].rolling(range_bars).max().shift(1)
-        range_low = df["low"].rolling(range_bars).min().shift(1)
-
-        # Breakout detection
-        breakout_up = (df["close"] > range_high) & (df["close"].shift(1) <= range_high.shift(1))
-        breakout_down = (df["close"] < range_low) & (df["close"].shift(1) >= range_low.shift(1))
-
-        # Price momentum confirmation
-        price_momentum = df["close"].pct_change().fillna(0)
-
-        signals = pd.Series(0, index=df.index)
-
-        # Buy: Breakout above range with volume
-        buy_condition = breakout_up & volume_spike & (price_momentum > 0)
-
-        # Alternative: Strong move above range high even without perfect breakout timing
-        above_range = (df["close"] > range_high) & (price_momentum > 0.001)
-        buy_condition = buy_condition | (above_range & volume_spike)
-
-        # Sell: Breakout below range OR price drops below range after breakout
-        sell_condition = breakout_down | (df["close"] < range_low)
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._opening_range_signals(df, params)
 
     def _regime_hybrid_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
-        """Generate Regime Switching Hybrid signals.
-
-        Detects market regime (Trending, Ranging, High Volatility) and applies
-        the appropriate sub-strategy:
-        - Trending: Trend following (buy dips in uptrend)
-        - Ranging: Mean reversion (buy oversold, sell overbought)
-        - High Vol: Reduced position sizing / stay out
-        """
-        adx_period = params.get("adx_period", 14)
-        trend_threshold = params.get("trend_threshold", 25)
-        range_threshold = params.get("range_threshold", 20)
-        bb_period = params.get("bb_period", 20)
-        bb_std = params.get("bb_std", 2.0)
-
-        # Calculate ADX for regime detection
-        tr = self._true_range(df)
-        atr = tr.rolling(adx_period).mean()
-        dm_plus = (df["high"].diff()).clip(lower=0)
-        dm_minus = (-df["low"].diff()).clip(lower=0)
-        di_plus = 100 * (dm_plus.rolling(adx_period).mean() / atr.replace(0, np.nan))
-        di_minus = 100 * (dm_minus.rolling(adx_period).mean() / atr.replace(0, np.nan))
-        di_sum = di_plus + di_minus
-        dx = 100 * abs(di_plus - di_minus) / di_sum.replace(0, np.nan)
-        adx = dx.rolling(adx_period).mean().fillna(0)
-
-        # Regime detection
-        trending = adx > trend_threshold
-        ranging = adx < range_threshold
-        # High volatility: ATR expanding
-        atr_expanding = atr > atr.rolling(20).mean() * 1.5
-
-        # Bollinger Bands for mean reversion in ranging markets
-        bb_middle = df["close"].rolling(bb_period).mean()
-        bb_std_val = df["close"].rolling(bb_period).std().fillna(0)
-        bb_upper = bb_middle + bb_std * bb_std_val
-        bb_lower = bb_middle - bb_std * bb_std_val
-        bb_pct = (df["close"] - bb_lower) / (bb_upper - bb_lower).replace(0, np.nan)
-        bb_pct = bb_pct.fillna(0.5)
-
-        # RSI
-        rsi = self._calculate_rsi(df["close"], 14)
-
-        # Trend direction
-        ema_fast = df["close"].ewm(span=12, adjust=False).mean()
-        ema_slow = df["close"].ewm(span=26, adjust=False).mean()
-        uptrend = ema_fast > ema_slow
-
-        signals = pd.Series(0, index=df.index)
-
-        # TRENDING REGIME: Buy pullbacks in uptrend
-        trend_buy = trending & uptrend & (rsi < 50) & (rsi > 30)
-        trend_sell = trending & ~uptrend
-
-        # RANGING REGIME: Mean reversion
-        range_buy = ranging & (bb_pct < 0.2) & (rsi < 35)
-        range_sell = ranging & (bb_pct > 0.8) & (rsi > 65)
-
-        # HIGH VOLATILITY: Stay cautious, only trade with strong signals
-        vol_buy = atr_expanding & uptrend & (rsi < 40)
-        vol_sell = atr_expanding & (rsi > 75)
-
-        # Combine signals
-        buy_condition = trend_buy | range_buy | vol_buy
-        sell_condition = trend_sell | range_sell | vol_sell
-
-        signals[buy_condition] = 1
-        signals[sell_condition] = -1
-
-        return signals
+        return self._signal_generator._regime_hybrid_signals(df, params)
 
     def _simulate_trades(
         self,
@@ -937,32 +429,15 @@ class StrategySimulator:
     # Helper methods for indicator calculations
     def _true_range(self, df: pd.DataFrame) -> pd.Series:
         """Calculate True Range."""
-        high_low = df["high"] - df["low"]
-        high_close = abs(df["high"] - df["close"].shift(1))
-        low_close = abs(df["low"] - df["close"].shift(1))
-        return pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        return self._signal_generator._true_range(df)
 
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """Calculate RSI."""
-        delta = prices.diff()
-        gain = delta.where(delta > 0, 0).rolling(period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-        rs = gain / loss.replace(0, np.nan)
-        rsi = 100 - (100 / (1 + rs))
-        return rsi.fillna(50)  # Default to neutral if no data
+        return self._signal_generator._calculate_rsi(prices, period)
 
     def _calculate_obv(self, df: pd.DataFrame) -> pd.Series:
         """Calculate On-Balance Volume."""
-        obv = pd.Series(0.0, index=df.index)
-        obv.iloc[0] = df["volume"].iloc[0]
-        for i in range(1, len(df)):
-            if df["close"].iloc[i] > df["close"].iloc[i - 1]:
-                obv.iloc[i] = obv.iloc[i - 1] + df["volume"].iloc[i]
-            elif df["close"].iloc[i] < df["close"].iloc[i - 1]:
-                obv.iloc[i] = obv.iloc[i - 1] - df["volume"].iloc[i]
-            else:
-                obv.iloc[i] = obv.iloc[i - 1]
-        return obv
+        return self._signal_generator._calculate_obv(df)
 
     def get_entry_exit_points(
         self, result: SimulationResult

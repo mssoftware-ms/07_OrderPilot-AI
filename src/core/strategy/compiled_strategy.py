@@ -11,7 +11,7 @@ import backtrader as bt
 
 from .definition import StrategyDefinition
 from .evaluation import ConditionEvaluator
-from ..execution.events import CompilationError
+from .compiler import CompilationError
 
 logger = logging.getLogger(__name__)
 

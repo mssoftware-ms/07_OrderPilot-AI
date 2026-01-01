@@ -100,6 +100,35 @@ class StrategyLoader:
             logger.error(f"Failed to load strategy {name} from {yaml_file}: {e}", exc_info=True)
             return None
 
+    def load_strategy_from_file(self, file_path: str | Path) -> Optional[StrategyDefinition]:
+        """Load a strategy directly from a YAML file path.
+
+        Args:
+            file_path: Path to strategy YAML file
+
+        Returns:
+            StrategyDefinition if loaded, None otherwise
+        """
+        yaml_file = Path(file_path)
+        if not yaml_file.exists():
+            logger.error(f"Strategy file not found: {yaml_file}")
+            return None
+
+        try:
+            with open(yaml_file, 'r', encoding='utf-8') as f:
+                yaml_content = f.read()
+                strategy = StrategyDefinition.from_yaml(yaml_content)
+
+            strategy_name = yaml_file.stem
+            self._strategies[strategy_name] = strategy
+            self._strategy_files[strategy_name] = yaml_file
+            logger.info(f"✅ Loaded strategy from file: {strategy_name} ({yaml_file})")
+            return strategy
+
+        except Exception as e:
+            logger.error(f"Failed to load strategy from {yaml_file}: {e}", exc_info=True)
+            return None
+
     def load_all_strategies(self) -> Dict[str, StrategyDefinition]:
         """Load all discovered strategies.
 

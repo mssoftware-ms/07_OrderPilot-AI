@@ -40,6 +40,8 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         self.api_secret = api_secret
         self.rate_limit_delay = 0.3  # 200 calls/min = 3.33 calls/sec
         self._sdk_available = self._check_sdk()
+        self.auth_failed = False
+        self.last_error: str | None = None
 
         if not self._sdk_available:
             logger.warning("Alpaca SDK not available. Crypto provider will be disabled.")
@@ -130,6 +132,10 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             return bars
 
         except Exception as e:
+            error_str = str(e)
+            self.last_error = error_str
+            if "401" in error_str or "authorization" in error_str.lower():
+                self.auth_failed = True
             logger.error(f"Error fetching Alpaca crypto data: {e}")
             return []
 

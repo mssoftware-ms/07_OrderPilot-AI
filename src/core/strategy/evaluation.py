@@ -5,6 +5,7 @@ including logical operators and comparison operations.
 """
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 import backtrader as bt
@@ -13,7 +14,7 @@ from .definition import (
     Condition, LogicGroup,
     ComparisonOperator, LogicOperator
 )
-from ..execution.events import CompilationError
+from .compiler import CompilationError
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class ConditionEvaluator:
             CompilationError: If evaluation fails
         """
         try:
-            if isinstance(condition, ComparisonCondition):
+            if isinstance(condition, Condition):
                 return self._evaluate_comparison(condition)
             elif isinstance(condition, LogicGroup):
                 return self._evaluate_logic_group(condition)
@@ -53,7 +54,7 @@ class ConditionEvaluator:
         except Exception as e:
             raise CompilationError(f"Condition evaluation failed: {e}") from e
 
-    def _evaluate_comparison(self, cond: ComparisonCondition) -> bool:
+    def _evaluate_comparison(self, cond: Condition) -> bool:
         """Evaluate a comparison condition.
 
         Args:
@@ -140,6 +141,10 @@ class ConditionEvaluator:
             if self._is_numeric_string(operand):
                 return float(operand)
 
+            # Simple formula support (e.g., "sma_base + (2 * atr)")
+            if any(ch in operand for ch in "+-*/()"):
+                return self._evaluate_expression(operand)
+
             # Check data fields
             data_value = self._resolve_data_field(operand)
             if data_value is not None:
@@ -176,21 +181,53 @@ class ConditionEvaluator:
 
     def _resolve_indicator(self, operand: str) -> Optional[float]:
         """Resolve indicator value by alias."""
-        if hasattr(self.strategy, f"ind_{operand}"):
-            indicator = getattr(self.strategy, f"ind_{operand}")
+        alias = operand
+        attr = None
+        if "." in operand:
+            alias, attr = operand.split(".", 1)
+
+        if hasattr(self.strategy, f"ind_{alias}"):
+            indicator = getattr(self.strategy, f"ind_{alias}")
 
             # Handle multi-line indicators
             if isinstance(indicator, bt.indicators.MACD):
+                if attr == "histogram":
+                    return indicator.histo[0]
+                if attr == "signal":
+                    return indicator.signal[0]
                 return indicator.macd[0]  # Use MACD line by default
             elif isinstance(indicator, bt.indicators.BollingerBands):
+                if attr == "upper":
+                    return indicator.top[0]
+                if attr == "lower":
+                    return indicator.bot[0]
+                if attr == "middle":
+                    return indicator.mid[0]
                 return indicator.mid[0]  # Use middle band by default
             elif isinstance(indicator, bt.indicators.Stochastic):
                 return indicator.percK[0]  # Use %K by default
             else:
+                if attr and hasattr(indicator, attr):
+                    return getattr(indicator, attr)[0]
                 # Most indicators return single line
                 return indicator[0]
 
         return None
+
+    def _evaluate_expression(self, expr: str) -> float:
+        """Evaluate a simple indicator/math expression."""
+        tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_\\.]*", expr)
+        resolved = {}
+        for token in tokens:
+            if token in resolved:
+                continue
+            resolved[token] = self._resolve_operand(token)
+
+        safe_expr = expr
+        for token, value in resolved.items():
+            safe_expr = re.sub(rf"\\b{re.escape(token)}\\b", str(value), safe_expr)
+
+        return float(eval(safe_expr, {"__builtins__": {}}, {}))
 
     def _check_cross_above(self, operand: str, current_value: float, threshold: float) -> bool:
         """Check if operand crossed above threshold.
