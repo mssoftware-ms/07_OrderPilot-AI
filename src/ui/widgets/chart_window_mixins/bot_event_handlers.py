@@ -218,83 +218,51 @@ class BotEventHandlersMixin:
 
         try:
             # Bot settings
-            if "ki_mode" in settings:
-                idx = self.ki_mode_combo.findText(settings["ki_mode"])
-                if idx >= 0:
-                    self.ki_mode_combo.setCurrentIndex(idx)
-
-            if "trailing_mode" in settings:
-                idx = self.trailing_mode_combo.findText(settings["trailing_mode"])
-                if idx >= 0:
-                    self.trailing_mode_combo.setCurrentIndex(idx)
-
-            if "initial_sl_pct" in settings:
-                self.initial_sl_spin.setValue(settings["initial_sl_pct"])
-
-            if "bot_capital" in settings:
-                self.bot_capital_spin.setValue(settings["bot_capital"])
-
-            if "risk_per_trade_pct" in settings:
-                self.risk_per_trade_spin.setValue(settings["risk_per_trade_pct"])
-
-            if "max_trades_per_day" in settings:
-                self.max_trades_spin.setValue(settings["max_trades_per_day"])
-
-            if "max_daily_loss_pct" in settings:
-                self.max_daily_loss_spin.setValue(settings["max_daily_loss_pct"])
-
-            if "disable_restrictions" in settings:
-                self.disable_restrictions_cb.setChecked(settings["disable_restrictions"])
-
-            if "disable_macd_exit" in settings:
-                self.disable_macd_exit_cb.setChecked(settings["disable_macd_exit"])
-
-            if "disable_rsi_exit" in settings:
-                self.disable_rsi_exit_cb.setChecked(settings["disable_rsi_exit"])
-
-            if "enable_derivathandel" in settings:
-                self.enable_derivathandel_cb.setChecked(settings["enable_derivathandel"])
-                self._on_derivathandel_changed(0)  # Update visibility
+            self._apply_combo_setting(settings, "ki_mode", self.ki_mode_combo)
+            self._apply_combo_setting(settings, "trailing_mode", self.trailing_mode_combo)
+            self._apply_spin_setting(settings, "initial_sl_pct", self.initial_sl_spin)
+            self._apply_spin_setting(settings, "bot_capital", self.bot_capital_spin)
+            self._apply_spin_setting(settings, "risk_per_trade_pct", self.risk_per_trade_spin)
+            self._apply_spin_setting(settings, "max_trades_per_day", self.max_trades_spin)
+            self._apply_spin_setting(settings, "max_daily_loss_pct", self.max_daily_loss_spin)
+            self._apply_checkbox_setting(
+                settings, "disable_restrictions", self.disable_restrictions_cb
+            )
+            self._apply_checkbox_setting(
+                settings, "disable_macd_exit", self.disable_macd_exit_cb
+            )
+            self._apply_checkbox_setting(settings, "disable_rsi_exit", self.disable_rsi_exit_cb)
+            self._apply_checkbox_setting(
+                settings,
+                "enable_derivathandel",
+                self.enable_derivathandel_cb,
+                on_change=lambda: self._on_derivathandel_changed(0),
+            )
 
             # Trailing stop settings
-            if "regime_adaptive" in settings:
-                self.regime_adaptive_cb.setChecked(settings["regime_adaptive"])
-
-            if "atr_multiplier" in settings:
-                self.atr_multiplier_spin.setValue(settings["atr_multiplier"])
-
-            if "atr_trending" in settings:
-                self.atr_trending_spin.setValue(settings["atr_trending"])
-
-            if "atr_ranging" in settings:
-                self.atr_ranging_spin.setValue(settings["atr_ranging"])
-
-            if "volatility_bonus" in settings:
-                self.volatility_bonus_spin.setValue(settings["volatility_bonus"])
-
-            if "min_step_pct" in settings:
-                self.min_step_spin.setValue(settings["min_step_pct"])
-
-            if "trailing_activation_pct" in settings:
-                self.trailing_activation_spin.setValue(settings["trailing_activation_pct"])
-
-            if "trailing_pct_distance" in settings:
-                self.trailing_distance_spin.setValue(settings["trailing_pct_distance"])
-
-            if "min_score_pct" in settings:
-                self.min_score_spin.setValue(settings["min_score_pct"])
-
-            if "use_pattern_check" in settings:
-                self.use_pattern_cb.setChecked(settings["use_pattern_check"])
-
-            if "pattern_similarity" in settings:
-                self.pattern_similarity_spin.setValue(settings["pattern_similarity"])
-
-            if "pattern_min_matches" in settings:
-                self.pattern_matches_spin.setValue(settings["pattern_min_matches"])
-
-            if "pattern_min_winrate_pct" in settings:
-                self.pattern_winrate_spin.setValue(settings["pattern_min_winrate_pct"])
+            self._apply_checkbox_setting(settings, "regime_adaptive", self.regime_adaptive_cb)
+            self._apply_spin_setting(settings, "atr_multiplier", self.atr_multiplier_spin)
+            self._apply_spin_setting(settings, "atr_trending", self.atr_trending_spin)
+            self._apply_spin_setting(settings, "atr_ranging", self.atr_ranging_spin)
+            self._apply_spin_setting(settings, "volatility_bonus", self.volatility_bonus_spin)
+            self._apply_spin_setting(settings, "min_step_pct", self.min_step_spin)
+            self._apply_spin_setting(
+                settings, "trailing_activation_pct", self.trailing_activation_spin
+            )
+            self._apply_spin_setting(
+                settings, "trailing_pct_distance", self.trailing_distance_spin
+            )
+            self._apply_spin_setting(settings, "min_score_pct", self.min_score_spin)
+            self._apply_checkbox_setting(settings, "use_pattern_check", self.use_pattern_cb)
+            self._apply_spin_setting(
+                settings, "pattern_similarity", self.pattern_similarity_spin
+            )
+            self._apply_spin_setting(
+                settings, "pattern_min_matches", self.pattern_matches_spin
+            )
+            self._apply_spin_setting(
+                settings, "pattern_min_winrate_pct", self.pattern_winrate_spin
+            )
 
             # Update UI state
             self._on_trailing_mode_changed()
@@ -304,6 +272,23 @@ class BotEventHandlersMixin:
 
         except Exception as e:
             logger.error(f"Error loading settings for {symbol}: {e}")
+
+    def _apply_combo_setting(self, settings: dict, key: str, combo) -> None:
+        if key not in settings:
+            return
+        idx = combo.findText(settings[key])
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+
+    def _apply_spin_setting(self, settings: dict, key: str, spin) -> None:
+        if key in settings:
+            spin.setValue(settings[key])
+
+    def _apply_checkbox_setting(self, settings: dict, key: str, checkbox, on_change=None) -> None:
+        if key in settings:
+            checkbox.setChecked(settings[key])
+            if on_change:
+                on_change()
 
     def _save_bot_settings(self, symbol: str) -> None:
         """Save current UI settings for a symbol.

@@ -66,30 +66,10 @@ class DatabaseBuildWorker(QThread):
             )
             db = TradingPatternDB()
 
-            # Initialize Qdrant
-            self.progress.emit("Connecting to Qdrant...")
-            if not await db.initialize():
-                details = db.get_last_error() if hasattr(db, "get_last_error") else None
-                msg = "Failed to connect to Qdrant."
-                if details:
-                    msg = f"{msg} {details}"
-                    if "qdrant_client" in details.lower():
-                        msg += " (Install: pip install qdrant-client)"
-                self.finished.emit(False, msg)
+            if not await self._initialize_qdrant(db):
                 return
 
-            # Map timeframe strings to enum
-            tf_map = {
-                "1Min": Timeframe.MINUTE_1,
-                "5Min": Timeframe.MINUTE_5,
-                "15Min": Timeframe.MINUTE_15,
-                "30Min": Timeframe.MINUTE_30,
-                "1Hour": Timeframe.HOUR_1,
-                "4Hour": Timeframe.HOUR_4,
-                "1Day": Timeframe.DAY_1,
-            }
-
-            timeframe_enums = [tf_map.get(tf, Timeframe.MINUTE_1) for tf in self.timeframes]
+            timeframe_enums = self._map_timeframes(Timeframe)
             asset_class = AssetClass.CRYPTO if self.is_crypto else AssetClass.STOCK
 
             total_tasks = len(self.symbols) * len(timeframe_enums)
@@ -106,52 +86,101 @@ class DatabaseBuildWorker(QThread):
                         self.finished.emit(False, "Build cancelled by user")
                         return
 
-                    fetch_symbol = resolve_symbol(symbol, asset_class)
-                    if fetch_symbol != symbol:
-                        self.progress.emit(f"Using proxy for {symbol}: {fetch_symbol}")
-
-                    self.progress.emit(f"Fetching {fetch_symbol} ({tf_enum.value})...")
-
-                    # Fetch bars
-                    bars = await fetcher.fetch_symbol_data(
-                        symbol=fetch_symbol,
-                        timeframe=tf_enum,
-                        days_back=self.days_back,
-                        asset_class=asset_class,
+                    inserted = await self._process_symbol_timeframe(
+                        symbol,
+                        tf_enum,
+                        asset_class,
+                        fetcher,
+                        extractor,
+                        db,
+                        resolve_symbol,
                     )
-
-                    if bars:
-                        self.progress.emit(f"  Got {len(bars)} bars, extracting patterns...")
-
-                        # Extract patterns
-                        patterns = list(extractor.extract_patterns(
-                            bars=bars,
-                            symbol=symbol,
-                            timeframe=tf_enum.value,
-                        ))
-                        if fetch_symbol != symbol:
-                            for p in patterns:
-                                p.metadata["proxy_symbol"] = fetch_symbol
-
-                        if patterns:
-                            self.progress.emit(f"  Inserting {len(patterns)} patterns...")
-                            inserted = await db.insert_patterns_batch(patterns, batch_size=500)
-                            total_patterns += inserted
-                    else:
-                        self.progress.emit(f"  No data for {symbol}")
+                    total_patterns += inserted
 
                     completed += 1
                     self.progress_value.emit(completed, total_tasks)
 
-                    # Small delay to avoid rate limits
                     await asyncio.sleep(0.3)
 
-            # Get final stats
-            info = await db.get_collection_info()
-            msg = f"Build complete! Added {total_patterns:,} patterns. Total: {info.get('points_count', 0):,}"
+            msg = await self._build_completion_message(db, total_patterns)
             self.progress.emit(msg)
             self.finished.emit(True, msg)
 
         except Exception as e:
             logger.error(f"Build error: {e}", exc_info=True)
             self.finished.emit(False, str(e))
+
+    async def _initialize_qdrant(self, db) -> bool:
+        self.progress.emit("Connecting to Qdrant...")
+        if await db.initialize():
+            return True
+        details = db.get_last_error() if hasattr(db, "get_last_error") else None
+        msg = "Failed to connect to Qdrant."
+        if details:
+            msg = f"{msg} {details}"
+            if "qdrant_client" in details.lower():
+                msg += " (Install: pip install qdrant-client)"
+        self.finished.emit(False, msg)
+        return False
+
+    def _map_timeframes(self, Timeframe):
+        tf_map = {
+            "1Min": Timeframe.MINUTE_1,
+            "5Min": Timeframe.MINUTE_5,
+            "15Min": Timeframe.MINUTE_15,
+            "30Min": Timeframe.MINUTE_30,
+            "1Hour": Timeframe.HOUR_1,
+            "4Hour": Timeframe.HOUR_4,
+            "1Day": Timeframe.DAY_1,
+        }
+        return [tf_map.get(tf, Timeframe.MINUTE_1) for tf in self.timeframes]
+
+    async def _process_symbol_timeframe(
+        self,
+        symbol: str,
+        tf_enum,
+        asset_class,
+        fetcher,
+        extractor,
+        db,
+        resolve_symbol,
+    ) -> int:
+        fetch_symbol = resolve_symbol(symbol, asset_class)
+        if fetch_symbol != symbol:
+            self.progress.emit(f"Using proxy for {symbol}: {fetch_symbol}")
+
+        self.progress.emit(f"Fetching {fetch_symbol} ({tf_enum.value})...")
+        bars = await fetcher.fetch_symbol_data(
+            symbol=fetch_symbol,
+            timeframe=tf_enum,
+            days_back=self.days_back,
+            asset_class=asset_class,
+        )
+
+        if not bars:
+            self.progress.emit(f"  No data for {symbol}")
+            return 0
+
+        self.progress.emit(f"  Got {len(bars)} bars, extracting patterns...")
+        patterns = list(
+            extractor.extract_patterns(
+                bars=bars,
+                symbol=symbol,
+                timeframe=tf_enum.value,
+            )
+        )
+        if fetch_symbol != symbol:
+            for pattern in patterns:
+                pattern.metadata["proxy_symbol"] = fetch_symbol
+
+        if patterns:
+            self.progress.emit(f"  Inserting {len(patterns)} patterns...")
+            return await db.insert_patterns_batch(patterns, batch_size=500)
+        return 0
+
+    async def _build_completion_message(self, db, total_patterns: int) -> str:
+        info = await db.get_collection_info()
+        return (
+            f"Build complete! Added {total_patterns:,} patterns. "
+            f"Total: {info.get('points_count', 0):,}"
+        )

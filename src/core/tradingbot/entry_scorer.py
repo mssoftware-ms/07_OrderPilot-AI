@@ -210,31 +210,39 @@ class EntryScorer:
             return 0.5  # Neutral if indicator unavailable
 
         # Evaluate condition
+        return self._score_condition(condition, value, threshold, features, side, indicator)
+
+    def _score_condition(
+        self,
+        condition: str,
+        value: float,
+        threshold: float,
+        features: FeatureVector,
+        side: TradeSide,
+        indicator: str | None,
+    ) -> float:
         if condition == "above":
             return 1.0 if value > threshold else 0.0
-        elif condition == "below":
+        if condition == "below":
             return 1.0 if value < threshold else 0.0
-        elif condition == "between":
-            # threshold is upper bound, assume lower = 30 for RSI-like
+        if condition == "between":
             return 1.0 if 30 <= value <= threshold else 0.0
-        elif condition == "extreme":
-            # For RSI/Stoch - check if at extremes
-            if side == TradeSide.LONG:
-                return 1.0 if value <= threshold else 0.0
-            else:
-                return 1.0 if value >= (100 - threshold) else 0.0
-        elif condition == "aligned":
+        if condition == "extreme":
+            return self._score_extreme(value, threshold, side)
+        if condition == "aligned":
             return self._score_trend_alignment(features, side)
-        elif condition == "direction_match":
+        if condition == "direction_match":
             return self._check_direction_match(features, side, indicator)
-        elif condition == "growing":
-            # Would need historical data - use proxy
+        if condition == "growing":
             return 0.5
-        elif condition == "crosses":
-            # Would need previous bar - use current relationship
+        if condition == "crosses":
             return self._score_macd_momentum(features, side)
-
         return 0.5
+
+    def _score_extreme(self, value: float, threshold: float, side: TradeSide) -> float:
+        if side == TradeSide.LONG:
+            return 1.0 if value <= threshold else 0.0
+        return 1.0 if value >= (100 - threshold) else 0.0
 
     def _get_indicator_value(
         self,
@@ -450,4 +458,3 @@ class EntryScorer:
                 return 0.2
 
         return 0.5
-

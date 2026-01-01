@@ -153,32 +153,15 @@ class AnthropicService:
         if not self.cost_tracker.check_budget(estimated_cost=0.01):  # Estimate
             raise QuotaExceededError("Monthly AI budget exceeded")
 
-        # Cache key
-        cache_key = None
-        if use_cache:
-            cache_key = hashlib.md5(
-                f"{prompt}:{response_model.__name__}:{model or self.default_model}".encode()
-            ).hexdigest()
-            cached = self.cache_manager.get(cache_key)
-            if cached:
-                logger.debug(f"Cache hit for {response_model.__name__}")
-                return response_model.model_validate(cached)
+        cache_key = self._build_cache_key(prompt, response_model, model, use_cache)
+        cached = self._try_cache_hit(cache_key, response_model)
+        if cached is not None:
+            return cached
 
         # Build request
         model_to_use = model or self.default_model
 
-        # Anthropic Messages API format
-        request_body = {
-            "model": model_to_use,
-            "max_tokens": 4096,
-            "temperature": temperature,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"{prompt}\n\nIMPORTANT: Respond with valid JSON matching this schema:\n{response_model.model_json_schema()}"
-                }
-            ]
-        }
+        request_body = self._build_request_body(prompt, response_model, model_to_use, temperature)
 
         # Ensure session is initialized
         if not self._session:
@@ -207,57 +190,21 @@ class AnthropicService:
                 # Parse response
                 response_data = await response.json()
 
-                # Extract content from Anthropic's response format
-                # Anthropic returns: {"content": [{"type": "text", "text": "..."}], ...}
-                content_blocks = response_data.get("content", [])
-                if not content_blocks:
-                    raise SchemaValidationError("No content in Anthropic response")
-
-                # Get the text from the first content block
-                text_content = content_blocks[0].get("text", "")
-
-                # Try to parse as JSON
-                try:
-                    # Remove markdown code blocks if present
-                    if "```json" in text_content:
-                        text_content = text_content.split("```json")[1].split("```")[0].strip()
-                    elif "```" in text_content:
-                        text_content = text_content.split("```")[1].split("```")[0].strip()
-
-                    json_data = json.loads(text_content)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse Anthropic response as JSON: {e}")
-                    logger.debug(f"Raw content: {text_content[:500]}")
-                    raise SchemaValidationError(f"Invalid JSON in response: {e}")
-
-                # Validate against Pydantic model
-                try:
-                    result = response_model.model_validate(json_data)
-                except Exception as e:
-                    logger.error(f"Schema validation failed: {e}")
-                    raise SchemaValidationError(f"Response doesn't match schema: {e}")
+                text_content = self._extract_text_content(response_data)
+                json_data = self._parse_json_response(text_content)
+                result = self._validate_response(response_model, json_data)
 
                 # Track costs
                 usage = response_data.get("usage", {})
                 input_tokens = usage.get("input_tokens", 0)
                 output_tokens = usage.get("output_tokens", 0)
 
-                # Anthropic Claude 4.5 Sonnet pricing (approximate)
-                # Input: $3 per 1M tokens, Output: $15 per 1M tokens
-                cost = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
-
+                cost = self._calculate_cost(input_tokens, output_tokens)
                 self.cost_tracker.add_cost(cost)
 
                 # Log request
                 elapsed_ms = (time.time() - start_time) * 1000
-                log_ai_request(
-                    provider="Anthropic",
-                    model=model_to_use,
-                    tokens_used=input_tokens + output_tokens,
-                    cost_usd=cost,
-                    latency_ms=elapsed_ms,
-                    cache_hit=False
-                )
+                self._log_ai_request(model_to_use, input_tokens + output_tokens, cost, elapsed_ms)
 
                 # Cache result
                 if use_cache and cache_key:
@@ -268,6 +215,94 @@ class AnthropicService:
         except aiohttp.ClientError as e:
             logger.error(f"Anthropic API connection error: {e}")
             raise OpenAIError(f"Connection error: {e}")
+
+    def _build_cache_key(
+        self,
+        prompt: str,
+        response_model: type[T],
+        model: str | None,
+        use_cache: bool,
+    ) -> str | None:
+        if not use_cache:
+            return None
+        return hashlib.md5(
+            f"{prompt}:{response_model.__name__}:{model or self.default_model}".encode()
+        ).hexdigest()
+
+    def _try_cache_hit(self, cache_key: str | None, response_model: type[T]) -> T | None:
+        if not cache_key:
+            return None
+        cached = self.cache_manager.get(cache_key)
+        if cached:
+            logger.debug(f"Cache hit for {response_model.__name__}")
+            return response_model.model_validate(cached)
+        return None
+
+    def _build_request_body(
+        self,
+        prompt: str,
+        response_model: type[T],
+        model_to_use: str,
+        temperature: float,
+    ) -> dict[str, Any]:
+        return {
+            "model": model_to_use,
+            "max_tokens": 4096,
+            "temperature": temperature,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        f"{prompt}\n\nIMPORTANT: Respond with valid JSON matching this schema:\n"
+                        f"{response_model.model_json_schema()}"
+                    ),
+                }
+            ],
+        }
+
+    def _extract_text_content(self, response_data: dict[str, Any]) -> str:
+        content_blocks = response_data.get("content", [])
+        if not content_blocks:
+            raise SchemaValidationError("No content in Anthropic response")
+        return content_blocks[0].get("text", "")
+
+    def _parse_json_response(self, text_content: str) -> dict[str, Any]:
+        try:
+            if "```json" in text_content:
+                text_content = text_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in text_content:
+                text_content = text_content.split("```")[1].split("```")[0].strip()
+            return json.loads(text_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Anthropic response as JSON: {e}")
+            logger.debug(f"Raw content: {text_content[:500]}")
+            raise SchemaValidationError(f"Invalid JSON in response: {e}")
+
+    def _validate_response(self, response_model: type[T], json_data: dict[str, Any]) -> T:
+        try:
+            return response_model.model_validate(json_data)
+        except Exception as e:
+            logger.error(f"Schema validation failed: {e}")
+            raise SchemaValidationError(f"Response doesn't match schema: {e}")
+
+    def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        return (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+
+    def _log_ai_request(
+        self,
+        model: str,
+        tokens_used: int,
+        cost: float,
+        elapsed_ms: float,
+    ) -> None:
+        log_ai_request(
+            provider="Anthropic",
+            model=model,
+            tokens_used=tokens_used,
+            cost_usd=cost,
+            latency_ms=elapsed_ms,
+            cache_hit=False,
+        )
 
     # ==================== High-Level Task Methods ====================
 

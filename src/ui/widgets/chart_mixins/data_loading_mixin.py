@@ -3,6 +3,8 @@
 Contains data loading methods (load_data, load_symbol).
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -101,95 +103,82 @@ class DataLoadingMixin:
             return
 
         try:
-            # Bad Tick Filter für historische Daten
-            data = self._clean_bad_ticks(data)
-            self.data = data
-
-            # Set _last_price from last close for chart marking functions
-            if len(data) > 0 and 'close' in data.columns:
-                self._last_price = float(data['close'].iloc[-1])
-                logger.debug(f"Set _last_price from data: {self._last_price}")
-
-            # Prepare candlestick data
-            candle_data = []
-            volume_data = []
-
-            # Get local timezone offset to display local time on X-axis
-            # lightweight-charts displays UTC by default, so we shift timestamps
-            local_offset = get_local_timezone_offset_seconds()
-            logger.debug(f"Local timezone offset: {local_offset} seconds ({local_offset // 3600}h)")
-
-            for timestamp, row in data.iterrows():
-                # Skip invalid data
-                if any(pd.isna(x) for x in [row['open'], row['high'], row['low'], row['close']]):
-                    continue
-
-                # Add local offset so X-axis shows local time instead of UTC
-                unix_time = int(timestamp.timestamp()) + local_offset
-
-                candle_data.append({
-                    'time': unix_time,
-                    'open': float(row['open']),
-                    'high': float(row['high']),
-                    'low': float(row['low']),
-                    'close': float(row['close']),
-                })
-
-                volume_data.append({
-                    'time': unix_time,
-                    'value': float(row.get('volume', 0)),
-                    'color': '#26a69a' if row['close'] >= row['open'] else '#ef5350'
-                })
-
-            # Check if we should skip fitContent (state restoration pending)
-            skip_fit = getattr(self, '_skip_fit_content', False)
-
-            if skip_fit:
-                # Suppress ALL fitContent calls in JavaScript during state restoration
-                logger.info("📌 Setting suppressFitContent=true in JavaScript")
-                self._execute_js("window.chartAPI.setSuppressFitContent(true);")
-
-            # Send candlestick data to chart (with skipFit parameter)
-            candle_json = json.dumps(candle_data)
-            if skip_fit:
-                self._execute_js(f"window.chartAPI.setData({candle_json}, true);")
-                logger.info("Loaded data with skipFit=true - state restoration pending")
-            else:
-                self._execute_js(f"window.chartAPI.setData({candle_json});")
-
-            # Store volume data for external dock widgets
+            data = self._prepare_chart_data(data)
+            candle_data, volume_data = self._build_chart_series(data)
+            self._update_chart_series(candle_data)
             self.volume_data = volume_data
-
-            # Fit chart ONLY if no state restoration is pending
-            if not skip_fit:
-                self._execute_js("window.chartAPI.fitContent();")
-
-            # Update indicators (will be handled by dock widgets)
-            self._update_indicators()
-
-            # Update UI
-            first_date = data.index[0].strftime('%Y-%m-%d %H:%M')
-            last_date = data.index[-1].strftime('%Y-%m-%d %H:%M')
-            self.info_label.setText(
-                f"Loaded {len(candle_data)} bars | "
-                f"From: {first_date} | To: {last_date}"
-            )
-            self.market_status_label.setText("✓ Chart Loaded")
-            self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
-
-            # Start update timer for real-time data
-            if not self.update_timer.isActive():
-                self.update_timer.start()
-
-            logger.info(f"Loaded {len(candle_data)} bars into embedded chart")
-
-            # Emit signal that data was loaded (for dock widgets)
-            self.data_loaded.emit()
+            self._finalize_chart_load(data, candle_data)
 
         except Exception as e:
             logger.error(f"Error loading data: {e}", exc_info=True)
             self.market_status_label.setText(f"Error: {str(e)[:30]}")
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
+
+    def _prepare_chart_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        data = self._clean_bad_ticks(data)
+        self.data = data
+        if len(data) > 0 and 'close' in data.columns:
+            self._last_price = float(data['close'].iloc[-1])
+            logger.debug(f"Set _last_price from data: {self._last_price}")
+        return data
+
+    def _build_chart_series(self, data: pd.DataFrame) -> tuple[list[dict], list[dict]]:
+        candle_data = []
+        volume_data = []
+        local_offset = get_local_timezone_offset_seconds()
+        logger.debug(
+            f"Local timezone offset: {local_offset} seconds ({local_offset // 3600}h)"
+        )
+        for timestamp, row in data.iterrows():
+            if any(pd.isna(x) for x in [row['open'], row['high'], row['low'], row['close']]):
+                continue
+            unix_time = int(timestamp.timestamp()) + local_offset
+            candle_data.append({
+                'time': unix_time,
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+            })
+            volume_data.append({
+                'time': unix_time,
+                'value': float(row.get('volume', 0)),
+                'color': '#26a69a' if row['close'] >= row['open'] else '#ef5350',
+            })
+        return candle_data, volume_data
+
+    def _update_chart_series(self, candle_data: list[dict]) -> None:
+        skip_fit = getattr(self, '_skip_fit_content', False)
+        if skip_fit:
+            logger.info("📌 Setting suppressFitContent=true in JavaScript")
+            self._execute_js("window.chartAPI.setSuppressFitContent(true);")
+
+        candle_json = json.dumps(candle_data)
+        if skip_fit:
+            self._execute_js(f"window.chartAPI.setData({candle_json}, true);")
+            logger.info("Loaded data with skipFit=true - state restoration pending")
+        else:
+            self._execute_js(f"window.chartAPI.setData({candle_json});")
+
+        if not skip_fit:
+            self._execute_js("window.chartAPI.fitContent();")
+
+    def _finalize_chart_load(self, data: pd.DataFrame, candle_data: list[dict]) -> None:
+        self._update_indicators()
+        first_date = data.index[0].strftime('%Y-%m-%d %H:%M')
+        last_date = data.index[-1].strftime('%Y-%m-%d %H:%M')
+        self.info_label.setText(
+            f"Loaded {len(candle_data)} bars | "
+            f"From: {first_date} | To: {last_date}"
+        )
+        self.market_status_label.setText("✓ Chart Loaded")
+        self.market_status_label.setStyleSheet(
+            "color: #00FF00; font-weight: bold; padding: 5px;"
+        )
+        if not self.update_timer.isActive():
+            self.update_timer.start()
+        logger.info(f"Loaded {len(candle_data)} bars into embedded chart")
+        self.data_loaded.emit()
 
     async def load_symbol(self, symbol: str, data_provider: Optional[str] = None):
         """Load symbol data and display chart.
@@ -218,113 +207,21 @@ class DataLoadingMixin:
             # Detect asset class from symbol
             # Crypto symbols contain "/" (e.g., BTC/USD, ETH/USD)
             # Stock symbols don't (e.g., AAPL, MSFT)
-            asset_class = AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
+            asset_class = self._resolve_asset_class(symbol, AssetClass)
 
             # Map timeframe
-            timeframe_map = {
-                "1T": Timeframe.MINUTE_1,
-                "5T": Timeframe.MINUTE_5,
-                "15T": Timeframe.MINUTE_15,
-                "30T": Timeframe.MINUTE_30,
-                "1H": Timeframe.HOUR_1,
-                "4H": Timeframe.HOUR_4,
-                "1D": Timeframe.DAY_1,
-            }
-            timeframe = timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
+            timeframe = self._resolve_timeframe(Timeframe)
 
             # Map provider (single Alpaca option auto-selects crypto vs stocks)
-            provider_source = None
-            if data_provider:
-                if data_provider == "alpaca":
-                    provider_source = (
-                        DataSource.ALPACA_CRYPTO
-                        if asset_class == AssetClass.CRYPTO
-                        else DataSource.ALPACA
-                    )
-                else:
-                    provider_map = {
-                        "database": DataSource.DATABASE,
-                        "yahoo": DataSource.YAHOO,
-                        "alpha_vantage": DataSource.ALPHA_VANTAGE,
-                        "ibkr": DataSource.IBKR,
-                        "finnhub": DataSource.FINNHUB,
-                    }
-                    provider_source = provider_map.get(data_provider)
-            else:
-                # Default: Use appropriate Alpaca provider based on asset class
-                if asset_class == AssetClass.CRYPTO:
-                    provider_source = DataSource.ALPACA_CRYPTO
-                    logger.info("No provider specified, using Alpaca Crypto for live data")
-                else:
-                    provider_source = DataSource.ALPACA
-                    logger.info("No provider specified, using Alpaca for live data")
+            provider_source = self._resolve_provider_source(
+                data_provider, asset_class, DataSource, AssetClass
+            )
 
             # Determine lookback period based on selected time period
-            period_to_days = {
-                "1D": 1,      # Intraday (today)
-                "2D": 2,      # 2 days
-                "5D": 5,      # 5 days
-                "1W": 7,      # 1 week
-                "2W": 14,     # 2 weeks
-                "1M": 30,     # 1 month
-                "3M": 90,     # 3 months
-                "6M": 180,    # 6 months
-                "1Y": 365,    # 1 year
-            }
-            lookback_days = period_to_days.get(self.current_period, 30)  # Default: 1 month
-
-            # --- Timezone-aware date calculation ---
-            ny_tz = pytz.timezone('America/New_York')
-            now_ny = datetime.now(ny_tz)
-            end_date = now_ny
-
-            # CRITICAL: Crypto trades 24/7, stocks have market hours
-            use_previous_trading_day = False
-
-            if asset_class == AssetClass.CRYPTO:
-                # Crypto: Always use current time, no market hours restrictions
-                start_date = end_date - timedelta(days=lookback_days)
-                logger.info(f"Crypto asset: Using current time (24/7 trading)")
-            else:
-                # Stocks: Apply market hours logic
-                # Market hours: 9:30 AM - 4:00 PM EST
-                market_open_hour = 9
-                market_open_minute = 30
-
-                # Adjust end_date for weekends AND pre-market hours
-                weekday = end_date.weekday()  # Monday=0, Sunday=6
-                current_hour = end_date.hour
-                current_minute = end_date.minute
-                is_before_market_open = (current_hour < market_open_hour or
-                                        (current_hour == market_open_hour and current_minute < market_open_minute))
-
-                if weekday == 5:  # Saturday
-                    end_date = end_date - timedelta(days=1)
-                    use_previous_trading_day = True
-                    logger.info("Weekend detected (Saturday), using Friday's data")
-                elif weekday == 6:  # Sunday
-                    end_date = end_date - timedelta(days=2)
-                    use_previous_trading_day = True
-                    logger.info("Weekend detected (Sunday), using Friday's data")
-                elif weekday == 0 and is_before_market_open:  # Monday before market open
-                    end_date = end_date - timedelta(days=3)  # Go back to Friday
-                    use_previous_trading_day = True
-                    logger.info(f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data")
-                elif weekday < 5 and is_before_market_open:  # Tuesday-Friday before market open
-                    end_date = end_date - timedelta(days=1)  # Go back to previous day
-                    use_previous_trading_day = True
-                    logger.info(f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day")
-
-                # For intraday during non-trading periods, fetch the entire last trading day
-                if self.current_period == "1D" and use_previous_trading_day:
-                    # Set a specific window for the last trading day in New York time
-                    last_trading_day = end_date.date()
-                    start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(hour=4, minute=0)
-                    end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(hour=20, minute=0)
-                    logger.info(f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)")
-                else:
-                    # Standard lookback calculation
-                    start_date = end_date - timedelta(days=lookback_days)
+            lookback_days = self._resolve_lookback_days()
+            start_date, end_date = self._calculate_date_range(
+                asset_class, lookback_days, AssetClass
+            )
 
             logger.info(f"Loading {symbol} - Candles: {self.current_timeframe}, Period: {self.current_period} ({lookback_days} days)")
             logger.info(f"Date range: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} to {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
@@ -341,10 +238,7 @@ class DataLoadingMixin:
             )
 
             # CRITICAL DEBUG: Log the actual date range being requested
-            logger.info(f"📅 Requesting data: {symbol}")
-            logger.info(f"   Start: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            logger.info(f"   End:   {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            logger.info(f"   Asset: {asset_class.value}, Source: {provider_source.value if provider_source else 'auto'}")
+            self._log_request_details(symbol, start_date, end_date, asset_class, provider_source)
 
             bars, source_used = await self.history_manager.fetch_data(request)
 
@@ -362,42 +256,162 @@ class DataLoadingMixin:
                 return
 
             # Convert to DataFrame
-            data_dict = {
-                'timestamp': [bar.timestamp for bar in bars],
-                'open': [float(bar.open) for bar in bars],
-                'high': [float(bar.high) for bar in bars],
-                'low': [float(bar.low) for bar in bars],
-                'close': [float(bar.close) for bar in bars],
-                'volume': [bar.volume for bar in bars]
-            }
-
-            df = pd.DataFrame(data_dict)
-            df.set_index('timestamp', inplace=True)
+            df = self._bars_to_dataframe(bars)
 
             # Load into chart
             self.load_data(df)
 
             # Update status with data source info (only if not live streaming)
             if not self.live_streaming_enabled:
-                self.market_status_label.setText(f"✓ Loaded from {source_used}")
-                self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
+                self._set_loaded_status(source_used)
 
             logger.info(f"Loaded {len(bars)} bars for {symbol} from {source_used}")
 
             # Restart live stream if enabled (with proper cleanup)
             if self.live_streaming_enabled:
-                logger.info(f"Restarting live stream for symbol: {symbol}")
-                # CRITICAL: Stop existing stream first to prevent deadlock
-                await self._stop_live_stream()
-                # Small delay to ensure cleanup completes
-                await asyncio.sleep(0.5)
-                # Now start new stream
-                await self._start_live_stream()
+                await self._restart_live_stream(symbol)
 
         except Exception as e:
             logger.error(f"Error loading symbol: {e}", exc_info=True)
             self.market_status_label.setText(f"Error: {str(e)[:30]}")
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold;")
+
+    def _resolve_asset_class(self, symbol: str, AssetClass) -> AssetClass:
+        return AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
+
+    def _resolve_timeframe(self, Timeframe) -> Timeframe:
+        timeframe_map = {
+            "1T": Timeframe.MINUTE_1,
+            "5T": Timeframe.MINUTE_5,
+            "15T": Timeframe.MINUTE_15,
+            "30T": Timeframe.MINUTE_30,
+            "1H": Timeframe.HOUR_1,
+            "4H": Timeframe.HOUR_4,
+            "1D": Timeframe.DAY_1,
+        }
+        return timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
+
+    def _resolve_provider_source(self, data_provider, asset_class, DataSource, AssetClass):
+        if data_provider:
+            if data_provider == "alpaca":
+                return DataSource.ALPACA_CRYPTO if asset_class == AssetClass.CRYPTO else DataSource.ALPACA
+            provider_map = {
+                "database": DataSource.DATABASE,
+                "yahoo": DataSource.YAHOO,
+                "alpha_vantage": DataSource.ALPHA_VANTAGE,
+                "ibkr": DataSource.IBKR,
+                "finnhub": DataSource.FINNHUB,
+            }
+            return provider_map.get(data_provider)
+
+        if asset_class == AssetClass.CRYPTO:
+            logger.info("No provider specified, using Alpaca Crypto for live data")
+            return DataSource.ALPACA_CRYPTO
+        logger.info("No provider specified, using Alpaca for live data")
+        return DataSource.ALPACA
+
+    def _resolve_lookback_days(self) -> int:
+        period_to_days = {
+            "1D": 1,      # Intraday (today)
+            "2D": 2,      # 2 days
+            "5D": 5,      # 5 days
+            "1W": 7,      # 1 week
+            "2W": 14,     # 2 weeks
+            "1M": 30,     # 1 month
+            "3M": 90,     # 3 months
+            "6M": 180,    # 6 months
+            "1Y": 365,    # 1 year
+        }
+        return period_to_days.get(self.current_period, 30)
+
+    def _calculate_date_range(self, asset_class, lookback_days: int, AssetClass):
+        ny_tz = pytz.timezone('America/New_York')
+        now_ny = datetime.now(ny_tz)
+        end_date = now_ny
+
+        if asset_class == AssetClass.CRYPTO:
+            start_date = end_date - timedelta(days=lookback_days)
+            logger.info("Crypto asset: Using current time (24/7 trading)")
+            return start_date, end_date
+
+        market_open_hour = 9
+        market_open_minute = 30
+        use_previous_trading_day = False
+
+        weekday = end_date.weekday()
+        current_hour = end_date.hour
+        current_minute = end_date.minute
+        is_before_market_open = (
+            current_hour < market_open_hour
+            or (current_hour == market_open_hour and current_minute < market_open_minute)
+        )
+
+        if weekday == 5:  # Saturday
+            end_date = end_date - timedelta(days=1)
+            use_previous_trading_day = True
+            logger.info("Weekend detected (Saturday), using Friday's data")
+        elif weekday == 6:  # Sunday
+            end_date = end_date - timedelta(days=2)
+            use_previous_trading_day = True
+            logger.info("Weekend detected (Sunday), using Friday's data")
+        elif weekday == 0 and is_before_market_open:  # Monday before market open
+            end_date = end_date - timedelta(days=3)
+            use_previous_trading_day = True
+            logger.info(
+                f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data"
+            )
+        elif weekday < 5 and is_before_market_open:
+            end_date = end_date - timedelta(days=1)
+            use_previous_trading_day = True
+            logger.info(
+                f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day"
+            )
+
+        if self.current_period == "1D" and use_previous_trading_day:
+            last_trading_day = end_date.date()
+            start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(
+                hour=4, minute=0
+            )
+            end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(
+                hour=20, minute=0
+            )
+            logger.info(
+                f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)"
+            )
+        else:
+            start_date = end_date - timedelta(days=lookback_days)
+        return start_date, end_date
+
+    def _log_request_details(self, symbol: str, start_date, end_date, asset_class, provider_source) -> None:
+        logger.info(f"📅 Requesting data: {symbol}")
+        logger.info(f"   Start: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info(f"   End:   {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info(
+            f"   Asset: {asset_class.value}, Source: {provider_source.value if provider_source else 'auto'}"
+        )
+
+    def _bars_to_dataframe(self, bars) -> pd.DataFrame:
+        data_dict = {
+            'timestamp': [bar.timestamp for bar in bars],
+            'open': [float(bar.open) for bar in bars],
+            'high': [float(bar.high) for bar in bars],
+            'low': [float(bar.low) for bar in bars],
+            'close': [float(bar.close) for bar in bars],
+            'volume': [bar.volume for bar in bars]
+        }
+        df = pd.DataFrame(data_dict)
+        df.set_index('timestamp', inplace=True)
+        return df
+
+    def _set_loaded_status(self, source_used: str) -> None:
+        self.market_status_label.setText(f"✓ Loaded from {source_used}")
+        self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
+
+    async def _restart_live_stream(self, symbol: str) -> None:
+        logger.info(f"Restarting live stream for symbol: {symbol}")
+        await self._stop_live_stream()
+        await asyncio.sleep(0.5)
+        await self._start_live_stream()
 
     async def refresh_data(self):
         """Public method to refresh chart data (called by main app)."""

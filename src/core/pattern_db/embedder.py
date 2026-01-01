@@ -90,106 +90,110 @@ class PatternEmbedder:
         Returns:
             Feature vector of shape (num_features,)
         """
+        closes, opens, highs, lows, volumes = self._pattern_arrays(pattern)
+        features: list[float] = []
+
+        features.append(pattern.price_change_pct / 10)
+        features.append(pattern.volatility * 100)
+
+        ranges, bodies = self._ranges_and_bodies(highs, lows, closes, opens)
+        features.append(np.mean(np.where(ranges > 0, bodies / ranges, 0)))
+
+        upper_shadows, lower_shadows = self._shadows(highs, lows, closes, opens)
+        features.append(np.mean(np.where(ranges > 0, upper_shadows / ranges, 0)))
+        features.append(np.mean(np.where(ranges > 0, lower_shadows / ranges, 0)))
+
+        features.append(self._trend_consistency(pattern.trend_direction, closes, opens))
+
+        half = len(closes) // 2
+        features.append(self._momentum(closes, half) * 10)
+        features.append(self._range_expansion(highs, lows, half))
+
+        features.extend(self._volume_features(volumes, closes, half))
+
+        features.extend(self._shape_features(pattern.ohlc_normalized))
+        features.append(self._trend_linearity(closes))
+        features.append(self._trend_encoding(pattern.trend_direction))
+
+        while len(features) < self.num_features:
+            features.append(0)
+
+        return np.array(features[:self.num_features], dtype=np.float32)
+
+    def _pattern_arrays(self, pattern: Pattern):
         closes = np.array(pattern.close_prices)
         opens = np.array(pattern.open_prices)
         highs = np.array(pattern.high_prices)
         lows = np.array(pattern.low_prices)
         volumes = np.array(pattern.volumes)
+        return closes, opens, highs, lows, volumes
 
-        features = []
-
-        # 1. Price change (overall trend)
-        features.append(pattern.price_change_pct / 10)  # Scale down
-
-        # 2. Volatility
-        features.append(pattern.volatility * 100)  # Scale up
-
-        # 3. Body ratio (close-open vs high-low range)
+    def _ranges_and_bodies(self, highs, lows, closes, opens):
         ranges = highs - lows
         bodies = np.abs(closes - opens)
-        body_ratios = np.where(ranges > 0, bodies / ranges, 0)
-        features.append(np.mean(body_ratios))
+        return ranges, bodies
 
-        # 4. Upper/lower shadow ratios
+    def _shadows(self, highs, lows, closes, opens):
         upper_shadows = highs - np.maximum(closes, opens)
         lower_shadows = np.minimum(closes, opens) - lows
-        features.append(np.mean(np.where(ranges > 0, upper_shadows / ranges, 0)))
-        features.append(np.mean(np.where(ranges > 0, lower_shadows / ranges, 0)))
+        return upper_shadows, lower_shadows
 
-        # 5. Trend consistency (% of bars in trend direction)
-        if pattern.trend_direction == "up":
-            trend_consistent = np.sum(closes > opens) / len(closes)
-        elif pattern.trend_direction == "down":
-            trend_consistent = np.sum(closes < opens) / len(closes)
-        else:
-            trend_consistent = 0.5
-        features.append(trend_consistent)
+    def _trend_consistency(self, trend_direction: str, closes, opens) -> float:
+        if trend_direction == "up":
+            return np.sum(closes > opens) / len(closes)
+        if trend_direction == "down":
+            return np.sum(closes < opens) / len(closes)
+        return 0.5
 
-        # 6. Momentum (rate of change in second half vs first half)
-        half = len(closes) // 2
+    def _momentum(self, closes, half: int) -> float:
+        if half <= 0:
+            return 0
+        first_change = (closes[half] - closes[0]) / closes[0] if closes[0] > 0 else 0
+        second_change = (closes[-1] - closes[half]) / closes[half] if closes[half] > 0 else 0
+        return second_change - first_change
+
+    def _range_expansion(self, highs, lows, half: int) -> float:
+        if half <= 0:
+            return 0
+        range_first = np.mean(highs[:half] - lows[:half])
+        range_second = np.mean(highs[half:] - lows[half:])
+        return (range_second - range_first) / range_first if range_first > 0 else 0
+
+    def _volume_features(self, volumes, closes, half: int) -> list[float]:
+        if not self.include_volume or np.sum(volumes) <= 0:
+            return [0, 0]
         if half > 0:
-            first_change = (closes[half] - closes[0]) / closes[0] if closes[0] > 0 else 0
-            second_change = (closes[-1] - closes[half]) / closes[half] if closes[half] > 0 else 0
-            momentum = second_change - first_change
+            vol_first = np.mean(volumes[:half])
+            vol_second = np.mean(volumes[half:])
+            vol_change = (vol_second - vol_first) / vol_first if vol_first > 0 else 0
         else:
-            momentum = 0
-        features.append(momentum * 10)
+            vol_change = 0
+        vol_normalized = (volumes - np.mean(volumes)) / (np.std(volumes) + 1e-8)
+        price_normalized = (closes - np.mean(closes)) / (np.std(closes) + 1e-8)
+        vol_price_corr = np.corrcoef(vol_normalized, price_normalized)[0, 1]
+        return [vol_change, vol_price_corr if not np.isnan(vol_price_corr) else 0]
 
-        # 7. High-low range expansion (increasing volatility?)
-        if half > 0:
-            range_first = np.mean(highs[:half] - lows[:half])
-            range_second = np.mean(highs[half:] - lows[half:])
-            range_expansion = (range_second - range_first) / range_first if range_first > 0 else 0
-        else:
-            range_expansion = 0
-        features.append(range_expansion)
+    def _shape_features(self, ohlc_norm: np.ndarray) -> list[float]:
+        return [
+            np.mean(ohlc_norm),
+            np.std(ohlc_norm),
+            np.max(ohlc_norm) - np.min(ohlc_norm),
+        ]
 
-        # 8. Volume features
-        if self.include_volume and np.sum(volumes) > 0:
-            # Volume trend
-            if half > 0:
-                vol_first = np.mean(volumes[:half])
-                vol_second = np.mean(volumes[half:])
-                vol_change = (vol_second - vol_first) / vol_first if vol_first > 0 else 0
-            else:
-                vol_change = 0
-            features.append(vol_change)
-
-            # Volume-price correlation
-            vol_normalized = (volumes - np.mean(volumes)) / (np.std(volumes) + 1e-8)
-            price_normalized = (closes - np.mean(closes)) / (np.std(closes) + 1e-8)
-            vol_price_corr = np.corrcoef(vol_normalized, price_normalized)[0, 1]
-            features.append(vol_price_corr if not np.isnan(vol_price_corr) else 0)
-        else:
-            features.extend([0, 0])
-
-        # 9. Pattern shape features (using simple statistics on normalized data)
-        ohlc_norm = pattern.ohlc_normalized
-        features.append(np.mean(ohlc_norm))  # Mean level
-        features.append(np.std(ohlc_norm))  # Dispersion
-        features.append(np.max(ohlc_norm) - np.min(ohlc_norm))  # Range
-
-        # 10. Trend linearity (R² of linear fit)
+    def _trend_linearity(self, closes) -> float:
         x = np.arange(len(closes))
         try:
             coeffs = np.polyfit(x, closes, 1)
             predicted = np.polyval(coeffs, x)
             ss_res = np.sum((closes - predicted) ** 2)
             ss_tot = np.sum((closes - np.mean(closes)) ** 2)
-            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-        except:
-            r_squared = 0
-        features.append(r_squared)
+            return 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        except Exception:
+            return 0
 
-        # 11. Trend direction encoding
+    def _trend_encoding(self, trend_direction: str) -> float:
         trend_encoding = {"up": 1.0, "down": -1.0, "sideways": 0.0}
-        features.append(trend_encoding.get(pattern.trend_direction, 0))
-
-        # Ensure we have exactly num_features
-        while len(features) < self.num_features:
-            features.append(0)
-
-        return np.array(features[:self.num_features], dtype=np.float32)
+        return trend_encoding.get(trend_direction, 0)
 
     def embed_batch(self, patterns: list[Pattern]) -> np.ndarray:
         """Embed multiple patterns.

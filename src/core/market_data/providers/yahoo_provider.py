@@ -53,108 +53,29 @@ class YahooFinanceProvider(HistoricalDataProvider):
 
         interval = self._timeframe_to_yahoo(timeframe)
 
-        params = {
-            "period1": self._to_unix(effective_start),
-            "period2": self._to_unix(effective_end),
-            "interval": interval,
-            "includePrePost": "false",
-            "events": "div,splits"
-        }
-
+        params = self._build_params(effective_start, effective_end, interval)
         endpoint = f"{self.base_url}/{symbol}"
 
         try:
-            async with aiohttp.ClientSession(headers=self.headers) as session:
-                backoff = 1.5
-                last_error_status = None
-
-                for attempt in range(self.max_retries):
-                    async with session.get(endpoint, params=params) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            break
-
-                        last_error_status = response.status
-
-                        if response.status == 429 and attempt < self.max_retries - 1:
-                            retry_after_header = response.headers.get("Retry-After")
-                            try:
-                                retry_after = float(retry_after_header) if retry_after_header else backoff
-                            except ValueError:
-                                retry_after = backoff
-
-                            logger.warning(
-                                "Yahoo Finance rate limit for %s (attempt %s/%s). Retrying in %.1fs",
-                                symbol,
-                                attempt + 1,
-                                self.max_retries,
-                                retry_after
-                            )
-                            await asyncio.sleep(retry_after)
-                            backoff *= 2
-                            continue
-
-                        logger.error(f"Yahoo Finance API error ({response.status}) for {symbol}")
-                        return []
-                else:
-                    logger.error(f"Yahoo Finance API error ({last_error_status}) for {symbol}")
-                    return []
-
-            chart_data = data.get("chart", {})
-            results = chart_data.get("result", [])
-            if not results:
-                logger.error(f"Yahoo Finance returned no data for {symbol}")
+            data = await self._fetch_yahoo_data(endpoint, params, symbol)
+            if not data:
                 return []
 
-            result = results[0]
-            timestamps = result.get("timestamp", [])
-            indicators = result.get("indicators", {})
-            quote_data = indicators.get("quote", [])
-
-            if not timestamps or not quote_data:
-                logger.error(f"Incomplete Yahoo Finance data for {symbol}")
+            parsed = self._parse_chart_response(data, symbol)
+            if not parsed:
                 return []
 
-            quote = quote_data[0]
-            opens = quote.get("open", [])
-            highs = quote.get("high", [])
-            lows = quote.get("low", [])
-            closes = quote.get("close", [])
-            volumes = quote.get("volume", [])
-
-            bars: list[HistoricalBar] = []
-
-            for idx, ts in enumerate(timestamps):
-                try:
-                    bar_open = opens[idx]
-                    bar_high = highs[idx]
-                    bar_low = lows[idx]
-                    bar_close = closes[idx]
-                except IndexError:
-                    break
-
-                if None in (bar_open, bar_high, bar_low, bar_close):
-                    continue
-
-                bar_volume = 0
-                if idx < len(volumes) and volumes[idx] is not None:
-                    bar_volume = int(volumes[idx])
-
-                timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
-
-                if timestamp < effective_start or timestamp > effective_end:
-                    continue
-
-                bar = HistoricalBar(
-                    timestamp=timestamp,
-                    open=Decimal(str(bar_open)),
-                    high=Decimal(str(bar_high)),
-                    low=Decimal(str(bar_low)),
-                    close=Decimal(str(bar_close)),
-                    volume=bar_volume,
-                    source="yahoo"
-                )
-                bars.append(bar)
+            timestamps, opens, highs, lows, closes, volumes = parsed
+            bars = self._build_bars(
+                timestamps,
+                opens,
+                highs,
+                lows,
+                closes,
+                volumes,
+                effective_start,
+                effective_end,
+            )
 
             if not bars:
                 logger.warning(f"Yahoo Finance returned empty dataset for {symbol}")
@@ -166,6 +87,125 @@ class YahooFinanceProvider(HistoricalDataProvider):
         except Exception as e:
             logger.error(f"Error fetching Yahoo Finance data: {e}")
             return []
+
+    def _build_params(self, start: datetime, end: datetime, interval: str) -> dict[str, str | int]:
+        return {
+            "period1": self._to_unix(start),
+            "period2": self._to_unix(end),
+            "interval": interval,
+            "includePrePost": "false",
+            "events": "div,splits",
+        }
+
+    async def _fetch_yahoo_data(
+        self,
+        endpoint: str,
+        params: dict[str, str | int],
+        symbol: str,
+    ) -> dict | None:
+        async with aiohttp.ClientSession(headers=self.headers) as session:
+            backoff = 1.5
+            last_error_status = None
+
+            for attempt in range(self.max_retries):
+                async with session.get(endpoint, params=params) as response:
+                    if response.status == 200:
+                        return await response.json()
+
+                    last_error_status = response.status
+
+                    if response.status == 429 and attempt < self.max_retries - 1:
+                        retry_after_header = response.headers.get("Retry-After")
+                        try:
+                            retry_after = float(retry_after_header) if retry_after_header else backoff
+                        except ValueError:
+                            retry_after = backoff
+
+                        logger.warning(
+                            "Yahoo Finance rate limit for %s (attempt %s/%s). Retrying in %.1fs",
+                            symbol,
+                            attempt + 1,
+                            self.max_retries,
+                            retry_after,
+                        )
+                        await asyncio.sleep(retry_after)
+                        backoff *= 2
+                        continue
+
+                    logger.error(f"Yahoo Finance API error ({response.status}) for {symbol}")
+                    return None
+
+            logger.error(f"Yahoo Finance API error ({last_error_status}) for {symbol}")
+            return None
+
+    def _parse_chart_response(self, data: dict, symbol: str):
+        chart_data = data.get("chart", {})
+        results = chart_data.get("result", [])
+        if not results:
+            logger.error(f"Yahoo Finance returned no data for {symbol}")
+            return None
+
+        result = results[0]
+        timestamps = result.get("timestamp", [])
+        indicators = result.get("indicators", {})
+        quote_data = indicators.get("quote", [])
+
+        if not timestamps or not quote_data:
+            logger.error(f"Incomplete Yahoo Finance data for {symbol}")
+            return None
+
+        quote = quote_data[0]
+        opens = quote.get("open", [])
+        highs = quote.get("high", [])
+        lows = quote.get("low", [])
+        closes = quote.get("close", [])
+        volumes = quote.get("volume", [])
+        return timestamps, opens, highs, lows, closes, volumes
+
+    def _build_bars(
+        self,
+        timestamps: list,
+        opens: list,
+        highs: list,
+        lows: list,
+        closes: list,
+        volumes: list,
+        effective_start: datetime,
+        effective_end: datetime,
+    ) -> list[HistoricalBar]:
+        bars: list[HistoricalBar] = []
+        for idx, ts in enumerate(timestamps):
+            try:
+                bar_open = opens[idx]
+                bar_high = highs[idx]
+                bar_low = lows[idx]
+                bar_close = closes[idx]
+            except IndexError:
+                break
+
+            if None in (bar_open, bar_high, bar_low, bar_close):
+                continue
+
+            bar_volume = 0
+            if idx < len(volumes) and volumes[idx] is not None:
+                bar_volume = int(volumes[idx])
+
+            timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
+            if timestamp < effective_start or timestamp > effective_end:
+                continue
+
+            bars.append(
+                HistoricalBar(
+                    timestamp=timestamp,
+                    open=Decimal(str(bar_open)),
+                    high=Decimal(str(bar_high)),
+                    low=Decimal(str(bar_low)),
+                    close=Decimal(str(bar_close)),
+                    volume=bar_volume,
+                    source="yahoo",
+                )
+            )
+        return bars
 
     async def is_available(self) -> bool:
         """Yahoo Finance is always available (no API key required)."""

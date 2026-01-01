@@ -87,17 +87,7 @@ class BayesianOptimizer:
         Returns:
             OptimizationRun with best parameters and all trials
         """
-        try:
-            import optuna
-            from optuna.samplers import TPESampler
-
-            optuna.logging.set_verbosity(optuna.logging.WARNING)
-        except ImportError:
-            raise ImportError(
-                "optuna is required for Bayesian optimization. "
-                "Install with: pip install optuna"
-            )
-
+        optuna, TPESampler = self._load_optuna()
         self._cancelled = False
         self._all_results = []
         start_time = time.time()
@@ -105,12 +95,8 @@ class BayesianOptimizer:
         param_config = get_strategy_parameters(self.config.strategy_name)
         simulator = StrategySimulator(self.data, self.symbol)
 
-        # Create a single event loop for all simulations in this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Track errors for debugging
-        self._trial_errors: list[str] = []
+        loop = self._create_thread_event_loop()
+        self._trial_errors = []
 
         # Create objective function
         def objective(trial: optuna.Trial) -> float:
@@ -118,53 +104,15 @@ class BayesianOptimizer:
                 raise optuna.TrialPruned()
 
             try:
-                params = {}
-                for param_def in param_config.parameters:
-                    if param_def.param_type == "int":
-                        params[param_def.name] = trial.suggest_int(
-                            param_def.name,
-                            param_def.min_value,
-                            param_def.max_value,
-                            step=param_def.step or 1,
-                        )
-                    elif param_def.param_type == "float":
-                        params[param_def.name] = trial.suggest_float(
-                            param_def.name,
-                            param_def.min_value,
-                            param_def.max_value,
-                            step=param_def.step,
-                        )
-                    elif param_def.param_type == "bool":
-                        params[param_def.name] = trial.suggest_categorical(
-                            param_def.name, [True, False]
-                        )
-
-                # Run simulation using the thread's event loop
-                result = loop.run_until_complete(
-                    simulator.run_simulation(
-                        strategy_name=self.config.strategy_name,
-                        parameters=params,
-                        initial_capital=self.config.initial_capital,
-                        position_size_pct=self.config.position_size_pct,
-                        slippage_pct=self.config.slippage_pct,
-                        commission_pct=self.config.commission_pct,
-                        stop_loss_pct=self.config.stop_loss_pct,
-                        take_profit_pct=self.config.take_profit_pct,
-                    )
-                )
+                params = self._build_trial_params(trial, param_config.parameters)
+                result = self._run_simulation(loop, simulator, params)
                 self._all_results.append(result)
 
                 # Get objective value
                 score = self._get_metric(result, self.config.objective_metric)
 
                 # Report progress
-                if progress_callback:
-                    try:
-                        best = self._study.best_value if self._study.best_trial else score
-                    except ValueError:
-                        # "No trials are completed yet" - use current score
-                        best = score
-                    progress_callback(trial.number + 1, self.config.n_trials, best)
+                self._report_progress(progress_callback, trial.number, score)
 
                 return score
 
@@ -197,57 +145,8 @@ class BayesianOptimizer:
 
         elapsed = time.time() - start_time
 
-        # Build trials list
-        trials = []
-        result_idx = 0  # Track index into _all_results separately
-        for i, trial in enumerate(self._study.trials):
-            if trial.state == optuna.trial.TrialState.COMPLETE:
-                result = self._all_results[result_idx] if result_idx < len(self._all_results) else None
-                result_idx += 1
-                metrics = {}
-                if result:
-                    metrics = {
-                        "total_trades": result.total_trades,
-                        "win_rate": result.win_rate,
-                        "profit_factor": result.profit_factor,
-                        "total_pnl_pct": result.total_pnl_pct,
-                        "max_drawdown_pct": result.max_drawdown_pct,
-                        "sharpe_ratio": result.sharpe_ratio or 0.0,
-                    }
-                trials.append(
-                    OptimizationTrial(
-                        trial_number=i + 1,
-                        parameters=trial.params,
-                        score=trial.value,
-                        metrics=metrics,
-                    )
-                )
-
-        # Get best result
-        best_result = None
-        best_params = {}
-        best_score = 0.0
-
-        # Check if any trials completed
-        completed_trials = [t for t in self._study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-
-        if completed_trials:
-            best_trial = self._study.best_trial
-            if best_trial:
-                best_params = best_trial.params
-                best_score = best_trial.value
-                # Find corresponding result
-                completed_indices = [i for i, t in enumerate(self._study.trials) if t.state == optuna.trial.TrialState.COMPLETE]
-                if best_trial.number in [self._study.trials[i].number for i in completed_indices]:
-                    best_trial_result_idx = completed_indices.index(
-                        next(i for i in completed_indices if self._study.trials[i].number == best_trial.number)
-                    )
-                    if best_trial_result_idx < len(self._all_results):
-                        best_result = self._all_results[best_trial_result_idx]
-        else:
-            # No trials completed - log the errors
-            error_summary = "; ".join(self._trial_errors[:5]) if self._trial_errors else "Unknown error"
-            logger.error(f"Bayesian optimization failed: No trials completed. Errors: {error_summary}")
+        trials = self._build_trials(optuna)
+        best_params, best_score, best_result = self._select_best_result(optuna)
 
         return OptimizationRun(
             strategy_name=self.config.strategy_name.value,
@@ -323,116 +222,48 @@ class GridSearchOptimizer:
         Returns:
             OptimizationRun with best parameters and all trials
         """
-        self._cancelled = False
-        self._all_results = []
-        self._trial_errors: list[str] = []
+        self._reset_run_state()
         start_time = time.time()
 
         param_config = get_strategy_parameters(self.config.strategy_name)
         simulator = StrategySimulator(self.data, self.symbol)
-
-        # Create event loop for this thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # Generate parameter grid
-        param_grid = {}
-        for param_def in param_config.parameters:
-            values = self._get_grid_values(param_def)
-            param_grid[param_def.name] = values
-
-        # Generate all combinations
-        param_names = list(param_grid.keys())
-        param_values = list(param_grid.values())
-        all_combinations = list(itertools.product(*param_values))
-
-        # Limit combinations
-        if len(all_combinations) > max_combinations:
-            # Sample evenly
-            step = len(all_combinations) // max_combinations
-            all_combinations = all_combinations[::step][:max_combinations]
-            logger.info(
-                f"Grid search limited to {len(all_combinations)} combinations "
-                f"(from {len(list(itertools.product(*param_values)))} total)"
-            )
+        param_names, all_combinations = self._build_param_combinations(
+            param_config, max_combinations
+        )
 
         total = len(all_combinations)
-        trials = []
+        trials: list[OptimizationTrial] = []
         best_score = float("-inf") if self.config.direction == "maximize" else float("inf")
-        best_params = {}
+        best_params: dict[str, Any] = {}
         best_result = None
 
         try:
             for i, values in enumerate(all_combinations):
                 if self._cancelled:
                     break
-
                 params = dict(zip(param_names, values))
-
-                try:
-                    # Run simulation using thread's event loop
-                    result = loop.run_until_complete(
-                        simulator.run_simulation(
-                            strategy_name=self.config.strategy_name,
-                            parameters=params,
-                            initial_capital=self.config.initial_capital,
-                            position_size_pct=self.config.position_size_pct,
-                            slippage_pct=self.config.slippage_pct,
-                            commission_pct=self.config.commission_pct,
-                            stop_loss_pct=self.config.stop_loss_pct,
-                            take_profit_pct=self.config.take_profit_pct,
-                        )
-                    )
+                result, error_msg = self._run_single_grid_trial(loop, simulator, params, i + 1)
+                if result is None:
+                    self._record_trial_error(error_msg)
+                else:
                     self._all_results.append(result)
-
                     score = self._get_metric(result, self.config.objective_metric)
-
-                    # Check if best
-                    is_better = (
-                        score > best_score
-                        if self.config.direction == "maximize"
-                        else score < best_score
-                    )
-                    if is_better:
+                    if self._is_better(score, best_score):
                         best_score = score
                         best_params = params.copy()
                         best_result = result
+                    trials.append(self._build_trial(i + 1, params, score, result))
 
-                    # Create trial
-                    metrics = {
-                        "total_trades": result.total_trades,
-                        "win_rate": result.win_rate,
-                        "profit_factor": result.profit_factor,
-                        "total_pnl_pct": result.total_pnl_pct,
-                        "max_drawdown_pct": result.max_drawdown_pct,
-                        "sharpe_ratio": result.sharpe_ratio or 0.0,
-                    }
-                    trials.append(
-                        OptimizationTrial(
-                            trial_number=i + 1,
-                            parameters=params,
-                            score=score,
-                            metrics=metrics,
-                        )
-                    )
-
-                except Exception as e:
-                    error_msg = f"Grid trial {i + 1} failed: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
-                    self._trial_errors.append(error_msg)
-
-                # Progress callback
                 if progress_callback:
                     progress_callback(i + 1, total, best_score if trials else 0.0)
         finally:
             loop.close()
 
         elapsed = time.time() - start_time
-
-        # Log if all trials failed
-        if not trials and self._trial_errors:
-            error_summary = "; ".join(self._trial_errors[:5])
-            logger.error(f"Grid search failed: No trials completed. Errors: {error_summary}")
+        self._log_trial_failures(trials)
 
         return OptimizationRun(
             strategy_name=self.config.strategy_name.value,
@@ -446,6 +277,225 @@ class GridSearchOptimizer:
             best_result=best_result,
             errors=self._trial_errors if self._trial_errors else None,
         )
+
+    def _load_optuna(self):
+        try:
+            import optuna
+            from optuna.samplers import TPESampler
+
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+        except ImportError:
+            raise ImportError(
+                "optuna is required for Bayesian optimization. "
+                "Install with: pip install optuna"
+            )
+        return optuna, TPESampler
+
+    def _create_thread_event_loop(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+    def _build_trial_params(self, trial, parameters):
+        params = {}
+        for param_def in parameters:
+            if param_def.param_type == "int":
+                params[param_def.name] = trial.suggest_int(
+                    param_def.name,
+                    param_def.min_value,
+                    param_def.max_value,
+                    step=param_def.step or 1,
+                )
+            elif param_def.param_type == "float":
+                params[param_def.name] = trial.suggest_float(
+                    param_def.name,
+                    param_def.min_value,
+                    param_def.max_value,
+                    step=param_def.step,
+                )
+            elif param_def.param_type == "bool":
+                params[param_def.name] = trial.suggest_categorical(
+                    param_def.name, [True, False]
+                )
+        return params
+
+    def _run_simulation(self, loop, simulator, params: dict[str, Any]) -> SimulationResult:
+        return loop.run_until_complete(
+            simulator.run_simulation(
+                strategy_name=self.config.strategy_name,
+                parameters=params,
+                initial_capital=self.config.initial_capital,
+                position_size_pct=self.config.position_size_pct,
+                slippage_pct=self.config.slippage_pct,
+                commission_pct=self.config.commission_pct,
+                stop_loss_pct=self.config.stop_loss_pct,
+                take_profit_pct=self.config.take_profit_pct,
+            )
+        )
+
+    def _report_progress(
+        self,
+        progress_callback: Callable[[int, int, float], None] | None,
+        trial_number: int,
+        score: float,
+    ) -> None:
+        if not progress_callback:
+            return
+        try:
+            best = self._study.best_value if self._study.best_trial else score
+        except ValueError:
+            best = score
+        progress_callback(trial_number + 1, self.config.n_trials, best)
+
+    def _build_trials(self, optuna) -> list[OptimizationTrial]:
+        trials: list[OptimizationTrial] = []
+        result_idx = 0
+        for i, trial in enumerate(self._study.trials):
+            if trial.state != optuna.trial.TrialState.COMPLETE:
+                continue
+            result = self._all_results[result_idx] if result_idx < len(self._all_results) else None
+            result_idx += 1
+            metrics = {}
+            if result:
+                metrics = {
+                    "total_trades": result.total_trades,
+                    "win_rate": result.win_rate,
+                    "profit_factor": result.profit_factor,
+                    "total_pnl_pct": result.total_pnl_pct,
+                    "max_drawdown_pct": result.max_drawdown_pct,
+                    "sharpe_ratio": result.sharpe_ratio or 0.0,
+                }
+            trials.append(
+                OptimizationTrial(
+                    trial_number=i + 1,
+                    parameters=trial.params,
+                    score=trial.value,
+                    metrics=metrics,
+                )
+            )
+        return trials
+
+    def _select_best_result(self, optuna) -> tuple[dict[str, Any], float, SimulationResult | None]:
+        best_params: dict[str, Any] = {}
+        best_score = 0.0
+        best_result = None
+        completed_trials = [
+            t for t in self._study.trials if t.state == optuna.trial.TrialState.COMPLETE
+        ]
+        if completed_trials:
+            best_trial = self._study.best_trial
+            if best_trial:
+                best_params = best_trial.params
+                best_score = best_trial.value
+                completed_indices = [
+                    i for i, t in enumerate(self._study.trials)
+                    if t.state == optuna.trial.TrialState.COMPLETE
+                ]
+                if best_trial.number in [
+                    self._study.trials[i].number for i in completed_indices
+                ]:
+                    best_trial_result_idx = completed_indices.index(
+                        next(
+                            i for i in completed_indices
+                            if self._study.trials[i].number == best_trial.number
+                        )
+                    )
+                    if best_trial_result_idx < len(self._all_results):
+                        best_result = self._all_results[best_trial_result_idx]
+        else:
+            error_summary = (
+                "; ".join(self._trial_errors[:5]) if self._trial_errors else "Unknown error"
+            )
+            logger.error(
+                "Bayesian optimization failed: No trials completed. "
+                f"Errors: {error_summary}"
+            )
+        return best_params, best_score, best_result
+
+    def _reset_run_state(self) -> None:
+        self._cancelled = False
+        self._all_results = []
+        self._trial_errors = []
+
+    def _build_param_combinations(
+        self,
+        param_config,
+        max_combinations: int,
+    ) -> tuple[list[str], list[tuple[Any, ...]]]:
+        param_grid: dict[str, list[Any]] = {}
+        for param_def in param_config.parameters:
+            param_grid[param_def.name] = self._get_grid_values(param_def)
+
+        param_names = list(param_grid.keys())
+        param_values = list(param_grid.values())
+        all_combinations = list(itertools.product(*param_values))
+
+        if len(all_combinations) > max_combinations:
+            step = len(all_combinations) // max_combinations
+            all_combinations = all_combinations[::step][:max_combinations]
+            logger.info(
+                f"Grid search limited to {len(all_combinations)} combinations "
+                f"(from {len(list(itertools.product(*param_values)))} total)"
+            )
+        return param_names, all_combinations
+
+    def _run_single_grid_trial(self, loop, simulator, params: dict[str, Any], trial_number: int):
+        try:
+            return loop.run_until_complete(
+                simulator.run_simulation(
+                    strategy_name=self.config.strategy_name,
+                    parameters=params,
+                    initial_capital=self.config.initial_capital,
+                    position_size_pct=self.config.position_size_pct,
+                    slippage_pct=self.config.slippage_pct,
+                    commission_pct=self.config.commission_pct,
+                    stop_loss_pct=self.config.stop_loss_pct,
+                    take_profit_pct=self.config.take_profit_pct,
+                )
+            ), None
+        except Exception as e:
+            error_msg = f"Grid trial {trial_number} failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return None, error_msg
+
+    def _record_trial_error(self, error_msg: str) -> None:
+        self._trial_errors.append(error_msg)
+
+    def _is_better(self, score: float, best_score: float) -> bool:
+        return (
+            score > best_score
+            if self.config.direction == "maximize"
+            else score < best_score
+        )
+
+    def _build_trial(
+        self,
+        trial_number: int,
+        params: dict[str, Any],
+        score: float,
+        result: SimulationResult,
+    ) -> OptimizationTrial:
+        metrics = {
+            "total_trades": result.total_trades,
+            "win_rate": result.win_rate,
+            "profit_factor": result.profit_factor,
+            "total_pnl_pct": result.total_pnl_pct,
+            "max_drawdown_pct": result.max_drawdown_pct,
+            "sharpe_ratio": result.sharpe_ratio or 0.0,
+        }
+        return OptimizationTrial(
+            trial_number=trial_number,
+            parameters=params,
+            score=score,
+            metrics=metrics,
+        )
+
+    def _log_trial_failures(self, trials: list[OptimizationTrial]) -> None:
+        if not trials and self._trial_errors:
+            error_summary = "; ".join(self._trial_errors[:5])
+            logger.error(
+                f"Grid search failed: No trials completed. Errors: {error_summary}"
+            )
 
     def _get_grid_values(self, param_def: ParameterDefinition) -> list[Any]:
         """Get grid values for a parameter.

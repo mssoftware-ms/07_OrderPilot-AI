@@ -13,21 +13,10 @@ class StrategySimulatorRunMixin:
         """Run simulation with current settings."""
         # Get chart data
         if not hasattr(self, "chart_widget"):
-            QMessageBox.warning(
-                self, "Error", "No chart widget available"
-            )
+            QMessageBox.warning(self, "Error", "No chart widget available")
             return
 
-        # Try to get DataFrame from chart
-        # The DataLoadingMixin stores data as self.data on the chart_widget
-        data = None
-        if hasattr(self.chart_widget, "data") and self.chart_widget.data is not None:
-            data = self.chart_widget.data
-        elif hasattr(self.chart_widget, "get_dataframe"):
-            data = self.chart_widget.get_dataframe()
-        elif hasattr(self.chart_widget, "_df"):
-            data = self.chart_widget._df
-
+        data = self._get_chart_dataframe()
         if data is None or (hasattr(data, "empty") and data.empty):
             QMessageBox.warning(
                 self, "Error", "No chart data available. Load a chart first."
@@ -35,35 +24,21 @@ class StrategySimulatorRunMixin:
             return
 
         # Get symbol from chart_widget or ChartWindow
-        symbol = getattr(self, "symbol", "UNKNOWN")
-        if hasattr(self.chart_widget, "current_symbol") and self.chart_widget.current_symbol:
-            symbol = self.chart_widget.current_symbol
-        elif hasattr(self.chart_widget, "symbol"):
-            symbol = self.chart_widget.symbol
+        symbol = self._get_simulation_symbol()
 
         # Get current parameters
-        params = self._get_simulator_parameters()
-        strategy_name = self._get_simulator_strategy_name()
-        entry_only = self._is_entry_only_selected()
-        entry_lookahead_mode = self._get_entry_lookahead_mode()
-        entry_lookahead_bars = self._get_entry_lookahead_bars()
-        objective_metric = "entry_score" if entry_only else self._get_selected_objective_metric()
-        self._current_objective_metric = objective_metric
-        self._current_entry_only = entry_only
-
-        if hasattr(self, "simulator_log_view"):
-            self.simulator_log_view.clear()
-
-        if self._is_all_strategy_selected():
-            self._all_run_active = True
-            self._all_run_restore_index = self.simulator_strategy_combo.currentIndex()
-            self.simulator_params_group.setEnabled(False)
-            self.simulator_strategy_combo.setEnabled(False)
+        (
+            params,
+            strategy_name,
+            entry_only,
+            entry_lookahead_mode,
+            entry_lookahead_bars,
+            objective_metric,
+        ) = self._collect_simulation_params()
+        self._prepare_simulation_run(entry_only)
 
         # Determine mode
-        mode_id = self.simulator_opt_mode_group.checkedId()
-        mode_map = {0: "manual", 1: "grid", 2: "bayesian"}
-        mode = mode_map.get(mode_id, "manual")
+        mode = self._resolve_simulation_mode()
         self._current_simulation_mode = mode
         if entry_only and mode == "manual" and self.simulator_opt_trials_spin.value() > 1:
             self._append_simulator_log(
@@ -71,33 +46,20 @@ class StrategySimulatorRunMixin:
             )
 
         # Disable UI
-        self.simulator_run_btn.setEnabled(False)
-        self.simulator_stop_btn.setEnabled(True)
-        self.simulator_progress.setVisible(True)
-        self.simulator_progress.setValue(0)
-        self.simulator_status_label.setText("Running simulation...")
+        self._set_simulation_ui_state()
 
-        objective_label = self._get_objective_label(objective_metric)
-        entry_label = "entry-only" if entry_only else "full"
-        side_label = "long+short" if entry_only else "long"
-
-        # Log simulation start
-        self._log_simulator_to_ki(
-            "START",
-            f"Running {mode} simulation: {strategy_name}, "
-            f"mode: {entry_label} ({side_label}), objective: {objective_label}, "
-            f"lookahead: {entry_lookahead_mode}, "
-            f"trials: {self.simulator_opt_trials_spin.value()}, "
-            f"data rows: {len(data)}, symbol: {symbol}"
-        )
-        self._append_simulator_log(
-            f"START | {mode} | {strategy_name} | {entry_label} ({side_label}) | "
-            f"{objective_label} | lookahead={entry_lookahead_mode} | "
-            f"trials={self.simulator_opt_trials_spin.value()}"
+        self._log_simulation_start(
+            mode,
+            strategy_name,
+            entry_only,
+            objective_metric,
+            entry_lookahead_mode,
+            data,
+            symbol,
         )
 
         # Create worker
-        self._current_worker = SimulationWorker(
+        self._current_worker = self._create_simulation_worker(
             data=data,
             symbol=symbol,
             strategy_name=strategy_name,
@@ -109,12 +71,103 @@ class StrategySimulatorRunMixin:
             entry_lookahead_mode=entry_lookahead_mode,
             entry_lookahead_bars=entry_lookahead_bars,
         )
-        self._current_worker.finished.connect(self._on_simulation_finished)
-        self._current_worker.partial_result.connect(self._on_simulation_partial_result)
-        self._current_worker.progress.connect(self._on_simulation_progress)
-        self._current_worker.strategy_started.connect(self._on_simulation_strategy_started)
-        self._current_worker.error.connect(self._on_simulation_error)
+        self._wire_simulation_worker(self._current_worker)
         self._current_worker.start()
+
+    def _get_chart_dataframe(self):
+        if hasattr(self.chart_widget, "data") and self.chart_widget.data is not None:
+            return self.chart_widget.data
+        if hasattr(self.chart_widget, "get_dataframe"):
+            return self.chart_widget.get_dataframe()
+        if hasattr(self.chart_widget, "_df"):
+            return self.chart_widget._df
+        return None
+
+    def _get_simulation_symbol(self) -> str:
+        symbol = getattr(self, "symbol", "UNKNOWN")
+        if hasattr(self.chart_widget, "current_symbol") and self.chart_widget.current_symbol:
+            return self.chart_widget.current_symbol
+        if hasattr(self.chart_widget, "symbol"):
+            return self.chart_widget.symbol
+        return symbol
+
+    def _collect_simulation_params(self):
+        params = self._get_simulator_parameters()
+        strategy_name = self._get_simulator_strategy_name()
+        entry_only = self._is_entry_only_selected()
+        entry_lookahead_mode = self._get_entry_lookahead_mode()
+        entry_lookahead_bars = self._get_entry_lookahead_bars()
+        objective_metric = "entry_score" if entry_only else self._get_selected_objective_metric()
+        self._current_objective_metric = objective_metric
+        self._current_entry_only = entry_only
+        return (
+            params,
+            strategy_name,
+            entry_only,
+            entry_lookahead_mode,
+            entry_lookahead_bars,
+            objective_metric,
+        )
+
+    def _prepare_simulation_run(self, entry_only: bool) -> None:
+        if hasattr(self, "simulator_log_view"):
+            self.simulator_log_view.clear()
+        if self._is_all_strategy_selected():
+            self._all_run_active = True
+            self._all_run_restore_index = self.simulator_strategy_combo.currentIndex()
+            self.simulator_params_group.setEnabled(False)
+            self.simulator_strategy_combo.setEnabled(False)
+
+    def _resolve_simulation_mode(self) -> str:
+        mode_id = self.simulator_opt_mode_group.checkedId()
+        mode_map = {0: "manual", 1: "grid", 2: "bayesian"}
+        return mode_map.get(mode_id, "manual")
+
+    def _set_simulation_ui_state(self) -> None:
+        self.simulator_run_btn.setEnabled(False)
+        self.simulator_stop_btn.setEnabled(True)
+        self.simulator_progress.setVisible(True)
+        self.simulator_progress.setValue(0)
+        self.simulator_status_label.setText("Running simulation...")
+
+    def _log_simulation_start(
+        self,
+        mode: str,
+        strategy_name: str,
+        entry_only: bool,
+        objective_metric: str,
+        entry_lookahead_mode: str,
+        data,
+        symbol: str,
+    ) -> None:
+        objective_label = self._get_objective_label(objective_metric)
+        entry_label = "entry-only" if entry_only else "full"
+        side_label = "long+short" if entry_only else "long"
+        trials = self.simulator_opt_trials_spin.value()
+
+        self._log_simulator_to_ki(
+            "START",
+            f"Running {mode} simulation: {strategy_name}, "
+            f"mode: {entry_label} ({side_label}), objective: {objective_label}, "
+            f"lookahead: {entry_lookahead_mode}, "
+            f"trials: {trials}, "
+            f"data rows: {len(data)}, symbol: {symbol}"
+        )
+        self._append_simulator_log(
+            f"START | {mode} | {strategy_name} | {entry_label} ({side_label}) | "
+            f"{objective_label} | lookahead={entry_lookahead_mode} | "
+            f"trials={trials}"
+        )
+
+    def _create_simulation_worker(self, **kwargs) -> SimulationWorker:
+        return SimulationWorker(**kwargs)
+
+    def _wire_simulation_worker(self, worker: SimulationWorker) -> None:
+        worker.finished.connect(self._on_simulation_finished)
+        worker.partial_result.connect(self._on_simulation_partial_result)
+        worker.progress.connect(self._on_simulation_progress)
+        worker.strategy_started.connect(self._on_simulation_strategy_started)
+        worker.error.connect(self._on_simulation_error)
     def _on_stop_simulation(self) -> None:
         """Stop running simulation."""
         if self._current_worker:
@@ -177,104 +230,121 @@ class StrategySimulatorRunMixin:
         from src.core.simulator import SimulationResult, OptimizationRun
 
         if isinstance(result, SimulationResult):
-            self._simulation_results.append(result)
-            if result.entry_only:
-                objective_label = self._get_objective_label("entry_score")
-            elif self._current_simulation_mode == "manual":
-                objective_label = "Manual"
-            else:
-                objective_label = self._get_objective_label(self._current_objective_metric or "score")
-            self._add_result_to_table(result, objective_label=objective_label)
-            if result.entry_only:
-                entry_score = result.entry_score or 0.0
-                status_msg = (
-                    f"Entry-Only: {result.entry_count} entries, "
-                    f"Score: {entry_score:.1f}"
-                )
-            else:
-                status_msg = (
-                    f"Completed: {result.total_trades} trades, "
-                    f"P&L: {result.total_pnl:.2f}"
-                )
-            self.simulator_status_label.setText(status_msg)
-            self._log_simulator_to_ki("OK", status_msg)
+            self._handle_simulation_run_result(result)
 
         elif isinstance(result, OptimizationRun):
-            self._last_optimization_run = result
+            self._handle_optimization_result(result)
 
-            # Check for errors
-            if result.errors:
-                for error in result.errors[:5]:  # Log first 5 errors
-                    self._log_simulator_to_ki("ERROR", error)
-                if len(result.errors) > 5:
-                    self._log_simulator_to_ki(
-                        "ERROR", f"... and {len(result.errors) - 5} more errors"
-                    )
+    def _handle_simulation_run_result(self, result) -> None:
+        self._simulation_results.append(result)
+        objective_label = self._resolve_result_objective_label(result)
+        self._add_result_to_table(result, objective_label=objective_label)
+        status_msg = self._build_simulation_status(result)
+        self.simulator_status_label.setText(status_msg)
+        self._log_simulator_to_ki("OK", status_msg)
 
-            # Check if any trials completed
-            if result.total_trials == 0:
-                error_msg = "No optimization trials completed successfully."
-                if result.errors:
-                    error_msg += f" First error: {result.errors[0]}"
-                self.simulator_status_label.setText(f"Error: {error_msg}")
-                self._log_simulator_to_ki("ERROR", error_msg)
-                QMessageBox.warning(
-                    self, "Optimization Warning",
-                    f"No trials completed.\n\n"
-                    f"Check KI Logs for error details."
-                )
-            else:
-                # Add best result
-                seen_params: set[tuple] = set()
-                if result.best_result:
-                    self._simulation_results.append(result.best_result)
-                    objective_label = self._get_objective_label(result.objective_metric)
-                    self._add_result_to_table(
-                        result.best_result,
-                        objective_label=objective_label,
-                        entry_side=result.entry_side,
-                    )
-                    best_side = (
-                        result.best_result.entry_side
-                        if getattr(result.best_result, "entry_only", False)
-                        else None
-                    )
-                    seen_params.add(
-                        self._make_param_fingerprint(
-                            result.strategy_name,
-                            result.best_result.parameters,
-                            best_side,
-                        )
-                    )
-                # Add top trials
-                for trial in result.get_top_n_trials(10):
-                    # Create pseudo-result for table
-                    objective_label = self._get_objective_label(result.objective_metric)
-                    trial_side = trial.entry_side if result.entry_only else None
-                    fingerprint = self._make_param_fingerprint(
-                        result.strategy_name, trial.parameters, trial_side
-                    )
-                    if fingerprint in seen_params:
-                        continue
-                    seen_params.add(fingerprint)
-                    self._add_trial_to_table(
-                        trial,
-                        result.strategy_name,
-                        objective_label=objective_label,
-                        entry_side=result.entry_side,
-                    )
+    def _resolve_result_objective_label(self, result) -> str:
+        if result.entry_only:
+            return self._get_objective_label("entry_score")
+        if self._current_simulation_mode == "manual":
+            return "Manual"
+        return self._get_objective_label(self._current_objective_metric or "score")
 
-                status_msg = (
-                    f"Optimization complete: {result.total_trials} trials, "
-                    f"Best score: {result.best_score:.4f}"
-                )
-                if result.entry_only:
-                    status_msg += f" ({result.entry_side.upper()})"
-                if result.errors:
-                    status_msg += f" ({len(result.errors)} failed)"
-                self.simulator_status_label.setText(status_msg)
-                self._log_simulator_to_ki("OK", status_msg)
-                self._append_simulator_log(status_msg)
+    def _build_simulation_status(self, result) -> str:
+        if result.entry_only:
+            entry_score = result.entry_score or 0.0
+            return f"Entry-Only: {result.entry_count} entries, Score: {entry_score:.1f}"
+        return f"Completed: {result.total_trades} trades, P&L: {result.total_pnl:.2f}"
+
+    def _handle_optimization_result(self, result) -> None:
+        self._last_optimization_run = result
+        self._log_optimization_errors(result)
+
+        if result.total_trials == 0:
+            self._handle_no_trials(result)
+            return
+
+        seen_params = self._add_best_result(result)
+        self._add_top_trials(result, seen_params)
+        status_msg = self._build_optimization_status(result)
+        self.simulator_status_label.setText(status_msg)
+        self._log_simulator_to_ki("OK", status_msg)
+        self._append_simulator_log(status_msg)
+
+    def _log_optimization_errors(self, result) -> None:
+        if not result.errors:
+            return
+        for error in result.errors[:5]:
+            self._log_simulator_to_ki("ERROR", error)
+        if len(result.errors) > 5:
+            self._log_simulator_to_ki(
+                "ERROR", f"... and {len(result.errors) - 5} more errors"
+            )
+
+    def _handle_no_trials(self, result) -> None:
+        error_msg = "No optimization trials completed successfully."
+        if result.errors:
+            error_msg += f" First error: {result.errors[0]}"
+        self.simulator_status_label.setText(f"Error: {error_msg}")
+        self._log_simulator_to_ki("ERROR", error_msg)
+        QMessageBox.warning(
+            self,
+            "Optimization Warning",
+            "No trials completed.\n\nCheck KI Logs for error details.",
+        )
+
+    def _add_best_result(self, result) -> set[tuple]:
+        seen_params: set[tuple] = set()
+        if not result.best_result:
+            return seen_params
+        self._simulation_results.append(result.best_result)
+        objective_label = self._get_objective_label(result.objective_metric)
+        self._add_result_to_table(
+            result.best_result,
+            objective_label=objective_label,
+            entry_side=result.entry_side,
+        )
+        best_side = (
+            result.best_result.entry_side
+            if getattr(result.best_result, "entry_only", False)
+            else None
+        )
+        seen_params.add(
+            self._make_param_fingerprint(
+                result.strategy_name,
+                result.best_result.parameters,
+                best_side,
+            )
+        )
+        return seen_params
+
+    def _add_top_trials(self, result, seen_params: set[tuple]) -> None:
+        objective_label = self._get_objective_label(result.objective_metric)
+        for trial in result.get_top_n_trials(10):
+            trial_side = trial.entry_side if result.entry_only else None
+            fingerprint = self._make_param_fingerprint(
+                result.strategy_name, trial.parameters, trial_side
+            )
+            if fingerprint in seen_params:
+                continue
+            seen_params.add(fingerprint)
+            self._add_trial_to_table(
+                trial,
+                result.strategy_name,
+                objective_label=objective_label,
+                entry_side=result.entry_side,
+            )
+
+    def _build_optimization_status(self, result) -> str:
+        status_msg = (
+            f"Optimization complete: {result.total_trials} trials, "
+            f"Best score: {result.best_score:.4f}"
+        )
+        if result.entry_only:
+            status_msg += f" ({result.entry_side.upper()})"
+        if result.errors:
+            status_msg += f" ({len(result.errors)} failed)"
+        return status_msg
     def _on_simulation_error(self, error_msg: str) -> None:
         """Handle simulation error."""
         self.simulator_run_btn.setEnabled(True)

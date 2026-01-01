@@ -53,11 +53,15 @@ class KOSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
-        # === Trading-Plan ===
+        layout.addWidget(self._build_trading_group())
+        layout.addWidget(self._build_weights_group())
+        layout.addWidget(self._build_fetch_group())
+        layout.addWidget(self._build_button_box())
+
+    def _build_trading_group(self) -> QGroupBox:
         trading_group = QGroupBox("Trading-Plan")
         trading_layout = QFormLayout(trading_group)
 
-        # Stop-Loss
         self.sl_spin = QDoubleSpinBox()
         self.sl_spin.setRange(0.1, 10.0)
         self.sl_spin.setValue(1.0)
@@ -67,7 +71,6 @@ class KOSettingsDialog(QDialog):
         self.sl_spin.setToolTip("Stop-Loss Schwelle in % vom Underlying")
         trading_layout.addRow("Stop-Loss:", self.sl_spin)
 
-        # Take-Profit
         self.tp_spin = QDoubleSpinBox()
         self.tp_spin.setRange(0.1, 20.0)
         self.tp_spin.setValue(2.0)
@@ -77,7 +80,6 @@ class KOSettingsDialog(QDialog):
         self.tp_spin.setToolTip("Take-Profit Ziel in % vom Underlying")
         trading_layout.addRow("Take-Profit:", self.tp_spin)
 
-        # Gap-Puffer
         self.gap_spin = QDoubleSpinBox()
         self.gap_spin.setRange(0.1, 5.0)
         self.gap_spin.setValue(0.5)
@@ -89,19 +91,16 @@ class KOSettingsDialog(QDialog):
             "(Schutz vor Overnight-Gaps)"
         )
         trading_layout.addRow("Gap-Puffer:", self.gap_spin)
+        return trading_group
 
-        layout.addWidget(trading_group)
-
-        # === Score-Gewichtungen ===
+    def _build_weights_group(self) -> QGroupBox:
         weights_group = QGroupBox("Score-Gewichtungen")
         weights_layout = QFormLayout(weights_group)
 
-        # Info-Label
         info_label = QLabel("Gewichtungen müssen in Summe 100% ergeben.")
         info_label.setStyleSheet("color: gray; font-size: 10px;")
         weights_layout.addRow(info_label)
 
-        # Spread-Gewicht
         self.w_spread_spin = QSpinBox()
         self.w_spread_spin.setRange(0, 100)
         self.w_spread_spin.setValue(45)
@@ -113,7 +112,6 @@ class KOSettingsDialog(QDialog):
         self.w_spread_spin.valueChanged.connect(self._on_weight_changed)
         weights_layout.addRow("Spread-Effizienz:", self.w_spread_spin)
 
-        # Hebel-Gewicht
         self.w_lev_spin = QSpinBox()
         self.w_lev_spin.setRange(0, 100)
         self.w_lev_spin.setValue(30)
@@ -125,7 +123,6 @@ class KOSettingsDialog(QDialog):
         self.w_lev_spin.valueChanged.connect(self._on_weight_changed)
         weights_layout.addRow("Hebel:", self.w_lev_spin)
 
-        # KO-Safety-Gewicht
         self.w_ko_spin = QSpinBox()
         self.w_ko_spin.setRange(0, 100)
         self.w_ko_spin.setValue(20)
@@ -137,7 +134,6 @@ class KOSettingsDialog(QDialog):
         self.w_ko_spin.valueChanged.connect(self._on_weight_changed)
         weights_layout.addRow("KO-Sicherheit:", self.w_ko_spin)
 
-        # EV-Gewicht
         self.w_ev_spin = QSpinBox()
         self.w_ev_spin.setRange(0, 100)
         self.w_ev_spin.setValue(5)
@@ -149,18 +145,15 @@ class KOSettingsDialog(QDialog):
         self.w_ev_spin.valueChanged.connect(self._on_weight_changed)
         weights_layout.addRow("Expected Value:", self.w_ev_spin)
 
-        # Summe-Label
         self.sum_label = QLabel("Summe: 100%")
         self.sum_label.setStyleSheet("font-weight: bold;")
         weights_layout.addRow(self.sum_label)
+        return weights_group
 
-        layout.addWidget(weights_group)
-
-        # === Abruf-Einstellungen ===
+    def _build_fetch_group(self) -> QGroupBox:
         fetch_group = QGroupBox("Abruf-Einstellungen")
         fetch_layout = QFormLayout(fetch_group)
 
-        # Top-N
         self.top_n_spin = QSpinBox()
         self.top_n_spin.setRange(5, 100)
         self.top_n_spin.setValue(10)
@@ -168,10 +161,9 @@ class KOSettingsDialog(QDialog):
             "Anzahl der besten Produkte je Richtung (Long/Short)"
         )
         fetch_layout.addRow("Anzahl Derivate (je Richtung):", self.top_n_spin)
+        return fetch_group
 
-        layout.addWidget(fetch_group)
-
-        # === Buttons ===
+    def _build_button_box(self) -> QDialogButtonBox:
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
             | QDialogButtonBox.StandardButton.Cancel
@@ -180,12 +172,10 @@ class KOSettingsDialog(QDialog):
         button_box.accepted.connect(self._on_save)
         button_box.rejected.connect(self.reject)
 
-        # RestoreDefaults Button finden und verbinden
         restore_btn = button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults)
         if restore_btn:
             restore_btn.clicked.connect(self._on_restore_defaults)
-
-        layout.addWidget(button_box)
+        return button_box
 
     def _on_weight_changed(self) -> None:
         """Handler für Gewichtungs-Änderungen."""

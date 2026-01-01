@@ -74,56 +74,78 @@ class StrategySimulatorUIMixin:
         main_layout = QVBoxLayout(widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Scroll area for parameters
+        scroll, layout = self._build_simulator_scroll_container()
+        layout.addWidget(self._build_strategy_group())
+        layout.addWidget(self._build_params_group())
+        layout.addWidget(self._build_opt_group())
+        layout.addLayout(self._build_action_buttons())
+        layout.addWidget(self._build_progress_bar())
+        layout.addWidget(self._build_status_label())
+        layout.addWidget(self._build_log_view())
+        layout.addStretch()
+
+        main_layout.addWidget(scroll)
+        return widget
+
+    def _build_simulator_scroll_container(self) -> tuple[QScrollArea, QVBoxLayout]:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         scroll_content = QWidget()
         layout = QVBoxLayout(scroll_content)
+        scroll.setWidget(scroll_content)
+        return scroll, layout
 
-        # Strategy Selection Group
+    def _build_strategy_group(self) -> QGroupBox:
         strategy_group = QGroupBox("Strategy")
         strategy_layout = QVBoxLayout(strategy_group)
 
         self.simulator_strategy_combo = QComboBox()
-        self.simulator_strategy_combo.addItems([
-            "Breakout",
-            "Momentum",
-            "Mean Reversion",
-            "Trend Following",
-            "Scalping",
-            "Bollinger Squeeze",
-            "Trend Pullback",
-            "Opening Range",
-            "Regime Hybrid",
-            "ALL",
-        ])
+        self.simulator_strategy_combo.addItems(
+            [
+                "Breakout",
+                "Momentum",
+                "Mean Reversion",
+                "Trend Following",
+                "Scalping",
+                "Bollinger Squeeze",
+                "Trend Pullback",
+                "Opening Range",
+                "Regime Hybrid",
+                "ALL",
+            ]
+        )
         self.simulator_strategy_combo.currentIndexChanged.connect(
             self._on_simulator_strategy_changed
         )
         strategy_layout.addWidget(self.simulator_strategy_combo)
-        layout.addWidget(strategy_group)
+        return strategy_group
 
-
-        # Parameters Group (dynamic based on strategy)
+    def _build_params_group(self) -> QGroupBox:
         self.simulator_params_group = QGroupBox("Parameters")
         params_main_layout = QVBoxLayout(self.simulator_params_group)
         self.simulator_params_layout = QFormLayout()
-        self._simulator_param_widgets: dict[str, QWidget] = {}
+        self._simulator_param_widgets = {}
         params_main_layout.addLayout(self.simulator_params_layout)
+        params_main_layout.addLayout(self._build_params_buttons())
+        return self.simulator_params_group
 
-        # Parameter action buttons (two rows for better fit)
+    def _build_params_buttons(self) -> QHBoxLayout:
         params_btn_row1 = QHBoxLayout()
         params_btn_row1.setSpacing(4)
 
         self.simulator_reset_params_btn = QPushButton("Reset")
-        self.simulator_reset_params_btn.setToolTip("Parameter auf Standardwerte zurücksetzen")
+        self.simulator_reset_params_btn.setToolTip(
+            "Parameter auf Standardwerte zurücksetzen"
+        )
         self.simulator_reset_params_btn.clicked.connect(self._on_reset_simulator_params)
         params_btn_row1.addWidget(self.simulator_reset_params_btn)
 
         self.simulator_save_to_bot_btn = QPushButton("Save")
-        self.simulator_save_to_bot_btn.setToolTip("Parameter für produktiven Bot speichern")
+        self.simulator_save_to_bot_btn.setToolTip(
+            "Parameter für produktiven Bot speichern"
+        )
         self.simulator_save_to_bot_btn.clicked.connect(self._on_save_params_to_bot)
         params_btn_row1.addWidget(self.simulator_save_to_bot_btn)
 
@@ -131,12 +153,9 @@ class StrategySimulatorUIMixin:
         self.simulator_load_from_bot_btn.setToolTip("Gespeicherte Parameter laden")
         self.simulator_load_from_bot_btn.clicked.connect(self._on_load_params_from_bot)
         params_btn_row1.addWidget(self.simulator_load_from_bot_btn)
+        return params_btn_row1
 
-        params_main_layout.addLayout(params_btn_row1)
-
-        layout.addWidget(self.simulator_params_group)
-
-        # Optimization Mode Group
+    def _build_opt_group(self) -> QGroupBox:
         opt_group = QGroupBox("Mode")
         opt_layout = QVBoxLayout(opt_group)
 
@@ -154,7 +173,18 @@ class StrategySimulatorUIMixin:
         opt_layout.addWidget(self.simulator_opt_grid)
         opt_layout.addWidget(self.simulator_opt_bayesian)
 
-        # Optimization target
+        opt_layout.addLayout(self._build_objective_layout())
+        opt_layout.addWidget(self._build_entry_only_checkbox())
+        opt_layout.addLayout(self._build_entry_lookahead_layout())
+        opt_layout.addLayout(self._build_entry_lookahead_bars_layout())
+        opt_layout.addLayout(self._build_trials_layout())
+
+        self.simulator_trials_hint_label = QLabel("")
+        self.simulator_trials_hint_label.setWordWrap(True)
+        opt_layout.addWidget(self.simulator_trials_hint_label)
+        return opt_group
+
+    def _build_objective_layout(self) -> QHBoxLayout:
         objective_layout = QHBoxLayout()
         objective_layout.addWidget(QLabel("Optimize:"))
         self.simulator_opt_metric_combo = QComboBox()
@@ -166,15 +196,17 @@ class StrategySimulatorUIMixin:
         self.simulator_opt_metric_combo.addItem("Win Rate", "win_rate")
         self.simulator_opt_metric_combo.addItem("Max Drawdown", "max_drawdown_pct")
         objective_layout.addWidget(self.simulator_opt_metric_combo)
-        opt_layout.addLayout(objective_layout)
+        return objective_layout
 
+    def _build_entry_only_checkbox(self) -> QCheckBox:
         self.simulator_entry_only_checkbox = QCheckBox("Entry Only (Long+Short)")
         self.simulator_entry_only_checkbox.setToolTip(
             "Simuliert nur Einstiege (Lookahead über Einstellung unten)."
         )
         self.simulator_entry_only_checkbox.toggled.connect(self._on_entry_only_toggled)
-        opt_layout.addWidget(self.simulator_entry_only_checkbox)
+        return self.simulator_entry_only_checkbox
 
+    def _build_entry_lookahead_layout(self) -> QHBoxLayout:
         entry_lookahead_layout = QHBoxLayout()
         entry_lookahead_layout.addWidget(QLabel("Entry Lookahead:"))
         self.simulator_entry_lookahead_combo = QComboBox()
@@ -189,35 +221,28 @@ class StrategySimulatorUIMixin:
             self._on_entry_lookahead_changed
         )
         entry_lookahead_layout.addWidget(self.simulator_entry_lookahead_combo)
-        opt_layout.addLayout(entry_lookahead_layout)
+        return entry_lookahead_layout
 
+    def _build_entry_lookahead_bars_layout(self) -> QHBoxLayout:
         entry_lookahead_bars_layout = QHBoxLayout()
         entry_lookahead_bars_layout.addWidget(QLabel("Lookahead Bars:"))
         self.simulator_entry_lookahead_bars = QSpinBox()
         self.simulator_entry_lookahead_bars.setRange(1, 10000)
         self.simulator_entry_lookahead_bars.setValue(30)
-        self.simulator_entry_lookahead_bars.setToolTip(
-            "Nur aktiv bei Fixed Bars"
-        )
+        self.simulator_entry_lookahead_bars.setToolTip("Nur aktiv bei Fixed Bars")
         entry_lookahead_bars_layout.addWidget(self.simulator_entry_lookahead_bars)
-        opt_layout.addLayout(entry_lookahead_bars_layout)
+        return entry_lookahead_bars_layout
 
-        # Trials spinner
+    def _build_trials_layout(self) -> QHBoxLayout:
         trials_layout = QHBoxLayout()
         trials_layout.addWidget(QLabel("Trials:"))
         self.simulator_opt_trials_spin = QSpinBox()
         self.simulator_opt_trials_spin.setRange(10, 2_147_483_647)
         self.simulator_opt_trials_spin.setValue(50)
         trials_layout.addWidget(self.simulator_opt_trials_spin)
-        opt_layout.addLayout(trials_layout)
+        return trials_layout
 
-        self.simulator_trials_hint_label = QLabel("")
-        self.simulator_trials_hint_label.setWordWrap(True)
-        opt_layout.addWidget(self.simulator_trials_hint_label)
-
-        layout.addWidget(opt_group)
-
-        # Action Buttons
+    def _build_action_buttons(self) -> QHBoxLayout:
         buttons_layout = QHBoxLayout()
 
         self.simulator_run_btn = QPushButton("Run")
@@ -231,31 +256,24 @@ class StrategySimulatorUIMixin:
         self.simulator_stop_btn.setEnabled(False)
         self.simulator_stop_btn.clicked.connect(self._on_stop_simulation)
         buttons_layout.addWidget(self.simulator_stop_btn)
+        return buttons_layout
 
-        layout.addLayout(buttons_layout)
-
-        # Progress
+    def _build_progress_bar(self) -> QProgressBar:
         self.simulator_progress = QProgressBar()
         self.simulator_progress.setVisible(False)
-        layout.addWidget(self.simulator_progress)
+        return self.simulator_progress
 
-        # Status label
+    def _build_status_label(self) -> QLabel:
         self.simulator_status_label = QLabel("")
         self.simulator_status_label.setWordWrap(True)
-        layout.addWidget(self.simulator_status_label)
+        return self.simulator_status_label
 
+    def _build_log_view(self) -> QPlainTextEdit:
         self.simulator_log_view = QPlainTextEdit()
         self.simulator_log_view.setReadOnly(True)
         self.simulator_log_view.setMaximumBlockCount(500)
         self.simulator_log_view.setPlaceholderText("Simulation log...")
-        layout.addWidget(self.simulator_log_view)
-
-        layout.addStretch()
-
-        scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll)
-
-        return widget
+        return self.simulator_log_view
     def _create_simulator_results(self) -> QWidget:
         """Create results panel (table + export)."""
         widget = QWidget()

@@ -180,80 +180,124 @@ class KOFinderService:
         await asyncio.sleep(1.0)  # Pause zwischen Requests
         short_result = await self.fetcher.fetch(short_url, run_id)
 
-        # Long verarbeiten
-        long_products = []
-        if isinstance(long_result, Exception):
-            meta.long_status = f"ERROR: {long_result}"
-            meta.errors.append(f"Long fetch failed: {long_result}")
-            logger.error("[KO-Finder] LONG fetch exception: %s", long_result)
-        elif long_result.success:
-            logger.info(
-                "[KO-Finder] LONG fetch OK: %d bytes in %dms",
-                len(long_result.html) if long_result.html else 0,
-                long_result.fetch_time_ms,
-            )
-            long_products = self._process_fetch_result(
-                long_result,
-                Direction.LONG,
-                config,
-                underlying_price,
-            )
-            meta.long_found = len(long_products)
-            # Debug: Log wenn keine Produkte gefunden
-            if len(long_products) == 0:
-                logger.warning(
-                    "[KO-Finder] No LONG products parsed! HTML length: %d",
-                    len(long_result.html) if long_result.html else 0,
-                )
-                # Check for common issues
-                if long_result.html:
-                    html_lower = long_result.html.lower()
-                    has_table = "<table" in html_lower
-                    has_wkn = "wkn" in html_lower
-                    has_no_results = "keine treffer" in html_lower
-                    logger.warning(
-                        "[KO-Finder] HTML analysis: has_table=%s, has_wkn=%s, no_results=%s",
-                        has_table, has_wkn, has_no_results,
-                    )
-        else:
-            meta.long_status = f"ERROR: {long_result.error}"
-            meta.errors.append(f"Long fetch failed: {long_result.error}")
-            logger.error("[KO-Finder] LONG fetch failed: %s", long_result.error)
-
-        # Short verarbeiten
-        short_products = []
-        if isinstance(short_result, Exception):
-            meta.short_status = f"ERROR: {short_result}"
-            meta.errors.append(f"Short fetch failed: {short_result}")
-            logger.error("[KO-Finder] SHORT fetch exception: %s", short_result)
-        elif short_result.success:
-            logger.info(
-                "[KO-Finder] SHORT fetch OK: %d bytes in %dms",
-                len(short_result.html) if short_result.html else 0,
-                short_result.fetch_time_ms,
-            )
-            short_products = self._process_fetch_result(
-                short_result,
-                Direction.SHORT,
-                config,
-                underlying_price,
-            )
-            meta.short_found = len(short_products)
-            if len(short_products) == 0:
-                logger.warning(
-                    "[KO-Finder] No SHORT products parsed! HTML length: %d",
-                    len(short_result.html) if short_result.html else 0,
-                )
-        else:
-            meta.short_status = f"ERROR: {short_result.error}"
-            meta.errors.append(f"Short fetch failed: {short_result.error}")
-            logger.error("[KO-Finder] SHORT fetch failed: %s", short_result.error)
+        long_products = self._handle_fetch_result(
+            long_result,
+            Direction.LONG,
+            config,
+            underlying_price,
+            meta,
+        )
+        short_products = self._handle_fetch_result(
+            short_result,
+            Direction.SHORT,
+            config,
+            underlying_price,
+            meta,
+        )
 
         # Filter + Ranking
         filters = HardFilters(config)
 
         # Scoring-Parameter aus UI-Einstellungen laden (falls verfügbar)
-        scoring_params = None
+        scoring_params = self._load_scoring_params()
+
+        ranking = RankingEngine(
+            config,
+            params=scoring_params,
+            underlying_price=underlying_price,
+        )
+
+        # Long filtern und ranken
+        long_products = self._filter_and_rank(
+            long_products,
+            Direction.LONG,
+            filters,
+            ranking,
+            config.top_n,
+            meta,
+        )
+
+        # Short filtern und ranken
+        short_products = self._filter_and_rank(
+            short_products,
+            Direction.SHORT,
+            filters,
+            ranking,
+            config.top_n,
+            meta,
+        )
+
+        # Confidence berechnen
+        self._update_parser_confidence(meta, long_products, short_products)
+
+        return long_products, short_products, meta
+
+    def _handle_fetch_result(
+        self,
+        result,
+        direction: Direction,
+        config: KOFilterConfig,
+        underlying_price: float | None,
+        meta: SearchMeta,
+    ) -> list[KnockoutProduct]:
+        label = "LONG" if direction == Direction.LONG else "SHORT"
+        if isinstance(result, Exception):
+            status = f"ERROR: {result}"
+            if direction == Direction.LONG:
+                meta.long_status = status
+            else:
+                meta.short_status = status
+            meta.errors.append(f"{label.title()} fetch failed: {result}")
+            logger.error("[KO-Finder] %s fetch exception: %s", label, result)
+            return []
+
+        if not result.success:
+            status = f"ERROR: {result.error}"
+            if direction == Direction.LONG:
+                meta.long_status = status
+            else:
+                meta.short_status = status
+            meta.errors.append(f"{label.title()} fetch failed: {result.error}")
+            logger.error("[KO-Finder] %s fetch failed: %s", label, result.error)
+            return []
+
+        logger.info(
+            "[KO-Finder] %s fetch OK: %d bytes in %dms",
+            label,
+            len(result.html) if result.html else 0,
+            result.fetch_time_ms,
+        )
+        products = self._process_fetch_result(
+            result,
+            direction,
+            config,
+            underlying_price,
+        )
+        if direction == Direction.LONG:
+            meta.long_found = len(products)
+        else:
+            meta.short_found = len(products)
+
+        if len(products) == 0:
+            logger.warning(
+                "[KO-Finder] No %s products parsed! HTML length: %d",
+                label,
+                len(result.html) if result.html else 0,
+            )
+            if direction == Direction.LONG and result.html:
+                html_lower = result.html.lower()
+                has_table = "<table" in html_lower
+                has_wkn = "wkn" in html_lower
+                has_no_results = "keine treffer" in html_lower
+                logger.warning(
+                    "[KO-Finder] HTML analysis: has_table=%s, has_wkn=%s, no_results=%s",
+                    has_table,
+                    has_wkn,
+                    has_no_results,
+                )
+        return products
+
+    def _load_scoring_params(self):
         try:
             from src.ui.widgets.ko_finder.settings_dialog import KOSettingsDialog
             scoring_params = KOSettingsDialog.get_scoring_params()
@@ -267,55 +311,54 @@ class KOFinderService:
                 scoring_params.w_ko * 100,
                 scoring_params.w_ev * 100,
             )
+            return scoring_params
         except Exception as e:
             logger.debug("Could not load scoring params from settings: %s", e)
+            return None
 
-        ranking = RankingEngine(
-            config,
-            params=scoring_params,
-            underlying_price=underlying_price,
+    def _filter_and_rank(
+        self,
+        products: list[KnockoutProduct],
+        direction: Direction,
+        filters: HardFilters,
+        ranking: RankingEngine,
+        top_n: int,
+        meta: SearchMeta,
+    ) -> list[KnockoutProduct]:
+        if not products:
+            return products
+        label = "LONG" if direction == Direction.LONG else "SHORT"
+        logger.info(
+            "[KO-Finder] %s: %d products before filtering",
+            label,
+            len(products),
         )
+        filtered = filters.apply(products)
+        logger.info(
+            "[KO-Finder] %s: %d passed, %d filtered. Reasons: %s",
+            label,
+            len(filtered.passed),
+            filtered.filtered_out,
+            filtered.reasons,
+        )
+        if direction == Direction.LONG:
+            meta.long_filtered = filtered.filtered_out
+        else:
+            meta.short_filtered = filtered.filtered_out
+        return ranking.rank(filtered.passed, top_n)
 
-        # Long filtern und ranken
-        if long_products:
-            logger.info(
-                "[KO-Finder] LONG: %d products before filtering",
-                len(long_products),
-            )
-            long_filtered = filters.apply(long_products)
-            logger.info(
-                "[KO-Finder] LONG: %d passed, %d filtered. Reasons: %s",
-                len(long_filtered.passed),
-                long_filtered.filtered_out,
-                long_filtered.reasons,
-            )
-            meta.long_filtered = long_filtered.filtered_out
-            long_products = ranking.rank(long_filtered.passed, config.top_n)
-
-        # Short filtern und ranken
-        if short_products:
-            logger.info(
-                "[KO-Finder] SHORT: %d products before filtering",
-                len(short_products),
-            )
-            short_filtered = filters.apply(short_products)
-            logger.info(
-                "[KO-Finder] SHORT: %d passed, %d filtered. Reasons: %s",
-                len(short_filtered.passed),
-                short_filtered.filtered_out,
-                short_filtered.reasons,
-            )
-            meta.short_filtered = short_filtered.filtered_out
-            short_products = ranking.rank(short_filtered.passed, config.top_n)
-
-        # Confidence berechnen
+    def _update_parser_confidence(
+        self,
+        meta: SearchMeta,
+        long_products: list[KnockoutProduct],
+        short_products: list[KnockoutProduct],
+    ) -> None:
         all_products = long_products + short_products
-        if all_products:
-            confidences = [p.parser_confidence for p in all_products]
-            meta.parser_confidence_avg = sum(confidences) / len(confidences)
-            meta.parser_confidence_min = min(confidences)
-
-        return long_products, short_products, meta
+        if not all_products:
+            return
+        confidences = [p.parser_confidence for p in all_products]
+        meta.parser_confidence_avg = sum(confidences) / len(confidences)
+        meta.parser_confidence_min = min(confidences)
 
     def _process_fetch_result(
         self,

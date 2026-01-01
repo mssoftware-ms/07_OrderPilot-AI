@@ -154,33 +154,46 @@ class ConfigManager:
         Returns:
             Credential value or None if not found
         """
-        # Check cache first
-        if key in self._credentials:
-            return self._credentials[key]
+        cached = self._get_cached_credential(key)
+        if cached is not None:
+            return cached
 
-        # Try loading from .env file
+        env_value = self._get_env_credential(key)
+        if env_value is not None:
+            return env_value
+
+        return self._get_keyring_credential(key, service)
+
+    def _get_cached_credential(self, key: str) -> str | None:
+        return self._credentials.get(key)
+
+    def _get_env_credential(self, key: str) -> str | None:
         env_file = self.config_dir / "secrets" / ".env"
-        if env_file.exists():
-            try:
-                # Convert key to uppercase for .env format
-                env_key = key.upper()
-                with open(env_file, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            if "=" in line:
-                                k, v = line.split("=", 1)
-                                if k.strip() == env_key:
-                                    value = v.strip()
-                                    # Skip placeholder values
-                                    if value and not value.startswith("YOUR_") and not value.endswith("_HERE"):
-                                        self._credentials[key] = value
-                                        logger.debug(f"Credential {key} loaded from .env")
-                                        return value
-            except Exception as e:
-                logger.warning(f"Failed to read .env file: {e}")
+        if not env_file.exists():
+            return None
 
-        # Fall back to keyring
+        try:
+            env_key = key.upper()
+            with open(env_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    if k.strip() != env_key:
+                        continue
+                    value = v.strip()
+                    if value and not value.startswith("YOUR_") and not value.endswith("_HERE"):
+                        self._credentials[key] = value
+                        logger.debug(f"Credential {key} loaded from .env")
+                        return value
+        except Exception as e:
+            logger.warning(f"Failed to read .env file: {e}")
+        return None
+
+    def _get_keyring_credential(self, key: str, service: str) -> str | None:
         try:
             value = keyring.get_password(service, key)
             if value:

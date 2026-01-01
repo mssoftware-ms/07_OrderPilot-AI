@@ -80,75 +80,24 @@ class ParameterOptimizer:
         self._tests = []
 
         base_params = base_params or {}
-
-        # Generate all parameter combinations
-        param_names = [p.name for p in parameter_ranges]
-        param_values = [p.values for p in parameter_ranges]
-        combinations = list(product(*param_values))
-
+        param_names, combinations = self._generate_combinations(parameter_ranges)
         total_tests = len(combinations)
         logger.info(f"Starting grid search with {total_tests} parameter combinations")
 
-        # Run all tests
         for i, combination in enumerate(combinations, 1):
-            test_params = base_params.copy()
-            test_params.update(dict(zip(param_names, combination)))
-
+            test_params = self._build_test_params(base_params, param_names, combination)
             logger.info(f"[{i}/{total_tests}] Testing: {test_params}")
+            await self._run_single_test(i, total_tests, test_params)
 
-            try:
-                # Run backtest
-                result = await asyncio.wait_for(
-                    self.backtest_runner(test_params),
-                    timeout=self.config.timeout_per_test
-                )
-
-                # Calculate score
-                score = self._calculate_score(result)
-
-                # Extract key metrics
-                metrics = self._extract_metrics(result)
-
-                # Store test
-                test = ParameterTest(
-                    parameters=test_params,
-                    result=result,
-                    score=score,
-                    metrics=metrics
-                )
-
-                self._tests.append(test)
-                logger.info(f"  Score: {score:.4f} | {self.config.primary_metric}: {metrics.get(self.config.primary_metric, 'N/A')}")
-
-            except asyncio.TimeoutError:
-                logger.warning(f"  Test timed out after {self.config.timeout_per_test}s")
-                self._tests.append(ParameterTest(
-                    parameters=test_params,
-                    error="Timeout"
-                ))
-            except Exception as e:
-                logger.error(f"  Test failed: {e}")
-                self._tests.append(ParameterTest(
-                    parameters=test_params,
-                    error=str(e)
-                ))
-
-            # AI analysis at intervals
             if self.config.use_ai_guidance and i % self.config.ai_analysis_frequency == 0:
                 logger.info(f"  Running AI analysis after {i} tests...")
-                # AI analysis can be added here
 
-        # Find best result
         successful_tests = [t for t in self._tests if t.score is not None]
         if not successful_tests:
             raise ValueError("No successful tests completed")
 
         best_test = max(successful_tests, key=lambda t: t.score)
-
-        # Perform sensitivity analysis
         sensitivity = self._analyze_sensitivity(parameter_ranges)
-
-        # Build result
         result = OptimizationResult(
             best_parameters=best_test.parameters,
             best_score=best_test.score,
@@ -157,13 +106,62 @@ class ParameterOptimizer:
             total_tests=len(self._tests),
             successful_tests=len(successful_tests),
             optimization_time_seconds=time.time() - self._start_time,
-            sensitivity_analysis=sensitivity
+            sensitivity_analysis=sensitivity,
         )
 
         logger.info(f"Optimization complete: Best score = {best_test.score:.4f}")
         logger.info(f"Best parameters: {best_test.parameters}")
-
         return result
+
+    def _generate_combinations(
+        self,
+        parameter_ranges: list[ParameterRange],
+    ) -> tuple[list[str], list[tuple[Any, ...]]]:
+        param_names = [p.name for p in parameter_ranges]
+        param_values = [p.values for p in parameter_ranges]
+        return param_names, list(product(*param_values))
+
+    def _build_test_params(
+        self,
+        base_params: dict[str, Any],
+        param_names: list[str],
+        combination: tuple[Any, ...],
+    ) -> dict[str, Any]:
+        test_params = base_params.copy()
+        test_params.update(dict(zip(param_names, combination)))
+        return test_params
+
+    async def _run_single_test(
+        self,
+        index: int,
+        total: int,
+        test_params: dict[str, Any],
+    ) -> None:
+        try:
+            result = await asyncio.wait_for(
+                self.backtest_runner(test_params),
+                timeout=self.config.timeout_per_test,
+            )
+            score = self._calculate_score(result)
+            metrics = self._extract_metrics(result)
+            self._tests.append(
+                ParameterTest(
+                    parameters=test_params,
+                    result=result,
+                    score=score,
+                    metrics=metrics,
+                )
+            )
+            logger.info(
+                f"  Score: {score:.4f} | {self.config.primary_metric}: "
+                f"{metrics.get(self.config.primary_metric, 'N/A')}"
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"  Test timed out after {self.config.timeout_per_test}s")
+            self._tests.append(ParameterTest(parameters=test_params, error="Timeout"))
+        except Exception as e:
+            logger.error(f"  Test failed: {e}")
+            self._tests.append(ParameterTest(parameters=test_params, error=str(e)))
 
     async def optimize_with_ai(
         self,

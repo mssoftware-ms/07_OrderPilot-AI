@@ -247,41 +247,51 @@ class KOFinderMixin:
     def _get_current_price(self) -> float | None:
         """Hole aktuellen Preis aus Chart (wenn verfügbar)."""
         try:
-            if hasattr(self, 'chart_widget'):
-                # 1. Streaming: aktueller Tick-Preis
-                if hasattr(self.chart_widget, '_current_candle_close'):
-                    price = self.chart_widget._current_candle_close
-                    if price and price > 0:
-                        return float(price)
+            price = self._get_price_from_chart()
+            if price is not None:
+                return price
 
-                # 2. Explizite Methode
-                if hasattr(self.chart_widget, 'get_current_price'):
-                    price = self.chart_widget.get_current_price()
-                    if price and price > 0:
-                        return float(price)
-
-                # 3. Last price Attribut
-                if hasattr(self.chart_widget, 'last_price'):
-                    price = self.chart_widget.last_price
-                    if price and price > 0:
-                        return float(price)
-
-                # 4. Letzter Close aus DataFrame
-                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                    if len(self.chart_widget.data) > 0 and 'close' in self.chart_widget.data.columns:
-                        price = float(self.chart_widget.data['close'].iloc[-1])
-                        if price > 0:
-                            return price
-
-            # 5. Bot Controller Features
-            if hasattr(self, '_bot_controller') and self._bot_controller:
-                if hasattr(self._bot_controller, '_last_features'):
-                    features = self._bot_controller._last_features
-                    if features and hasattr(features, 'close') and features.close > 0:
-                        return float(features.close)
+            price = self._get_price_from_features()
+            if price is not None:
+                return price
 
         except Exception as e:
             logger.debug("Could not get current price: %s", e)
+        return None
+
+    def _get_price_from_chart(self) -> float | None:
+        if not hasattr(self, 'chart_widget'):
+            return None
+        chart = self.chart_widget
+        candidates = [
+            getattr(chart, '_current_candle_close', None),
+        ]
+        if hasattr(chart, 'get_current_price'):
+            candidates.append(chart.get_current_price())
+        candidates.append(getattr(chart, 'last_price', None))
+        for candidate in candidates:
+            price = self._extract_price(candidate)
+            if price is not None:
+                return price
+
+        if hasattr(chart, 'data') and chart.data is not None:
+            if len(chart.data) > 0 and 'close' in chart.data.columns:
+                price = float(chart.data['close'].iloc[-1])
+                if price > 0:
+                    return price
+        return None
+
+    def _get_price_from_features(self) -> float | None:
+        if hasattr(self, '_bot_controller') and self._bot_controller:
+            if hasattr(self._bot_controller, '_last_features'):
+                features = self._bot_controller._last_features
+                if features and hasattr(features, 'close') and features.close > 0:
+                    return float(features.close)
+        return None
+
+    def _extract_price(self, value) -> float | None:
+        if value and value > 0:
+            return float(value)
         return None
 
     def _load_ko_settings(self) -> None:

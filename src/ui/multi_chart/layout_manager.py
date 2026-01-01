@@ -364,8 +364,15 @@ class ChartLayoutManager(QObject):
         if list(self._layouts_dir.glob("*.json")):
             return  # Layouts already exist
 
-        # Multi-Timeframe Analysis Layout (Primary use case!)
-        mtf_layout = ChartLayoutConfig(
+        self.save_layout(self._build_mtf_layout())
+        self.save_layout(self._build_crypto_layout())
+        self.save_layout(self._build_scalping_layout())
+        self.save_layout(self._build_dual_monitor_layout())
+
+        logger.info("Created default chart layouts")
+
+    def _build_mtf_layout(self) -> ChartLayoutConfig:
+        return ChartLayoutConfig(
             name="Multi-Timeframe-Analyse",
             description="Übergeordneter Trend mit 3 Zeitebenen für Pre-Trade Analyse",
             windows=[
@@ -400,10 +407,9 @@ class ChartLayoutManager(QObject):
             ],
             sync_crosshair=True,
         )
-        self.save_layout(mtf_layout)
 
-        # Crypto Trading Layout
-        crypto_layout = ChartLayoutConfig(
+    def _build_crypto_layout(self) -> ChartLayoutConfig:
+        return ChartLayoutConfig(
             name="Crypto-Trading",
             description="BTC und ETH parallel mit Live-Stream",
             windows=[
@@ -427,10 +433,9 @@ class ChartLayoutManager(QObject):
                 ),
             ],
         )
-        self.save_layout(crypto_layout)
 
-        # Stock Scalping Layout
-        scalping_layout = ChartLayoutConfig(
+    def _build_scalping_layout(self) -> ChartLayoutConfig:
+        return ChartLayoutConfig(
             name="Aktien-Scalping",
             description="Schnelles Trading mit 1-Minuten Chart",
             windows=[
@@ -446,10 +451,9 @@ class ChartLayoutManager(QObject):
                 ),
             ],
         )
-        self.save_layout(scalping_layout)
 
-        # Dual Monitor Layout
-        dual_monitor = ChartLayoutConfig(
+    def _build_dual_monitor_layout(self) -> ChartLayoutConfig:
+        return ChartLayoutConfig(
             name="Dual-Monitor-Setup",
             description="Charts auf 2 Monitoren verteilt",
             windows=[
@@ -457,7 +461,7 @@ class ChartLayoutManager(QObject):
                     symbol="BTC/USD",
                     timeframe="1H",
                     period="1M",
-                    monitor=0,  # Primary monitor
+                    monitor=0,
                     x=0, y=0,
                     width=1920, height=1080,
                     indicators=["SMA", "BB"],
@@ -466,7 +470,7 @@ class ChartLayoutManager(QObject):
                     symbol="BTC/USD",
                     timeframe="5T",
                     period="5D",
-                    monitor=1,  # Secondary monitor
+                    monitor=1,
                     x=0, y=0,
                     width=1920, height=540,
                     auto_stream=True,
@@ -475,7 +479,7 @@ class ChartLayoutManager(QObject):
                     symbol="ETH/USD",
                     timeframe="5T",
                     period="5D",
-                    monitor=1,  # Secondary monitor
+                    monitor=1,
                     x=0, y=540,
                     width=1920, height=540,
                     auto_stream=True,
@@ -483,9 +487,6 @@ class ChartLayoutManager(QObject):
             ],
             sync_crosshair=True,
         )
-        self.save_layout(dual_monitor)
-
-        logger.info("Created default chart layouts")
 
     def open_pre_trade_analysis(self, symbol: str) -> list["ChartWindow"]:
         """Open pre-trade analysis charts for a symbol.

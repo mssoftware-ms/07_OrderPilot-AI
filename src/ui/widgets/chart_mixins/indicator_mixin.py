@@ -274,16 +274,7 @@ class IndicatorMixin:
             logger.warning("❌ Cannot update indicators: chart data not loaded yet")
             return
 
-        if not (self.page_loaded and self.chart_initialized):
-            logger.warning("❌ Cannot update indicators: chart not fully initialized yet (page_loaded=%s, chart_initialized=%s)",
-                          self.page_loaded, self.chart_initialized)
-            # Mark that we need to update indicators once chart is ready
-            self._pending_indicator_update = True
-            return
-
-        # Prevent concurrent execution with real-time updates
-        if self._updating_indicators:
-            logger.warning("⏸️ Indicator update already in progress, skipping...")
+        if self._should_skip_full_update():
             return
 
         logger.info("✓ Chart ready, processing indicators...")
@@ -294,80 +285,119 @@ class IndicatorMixin:
 
             # Process each indicator
             for ind_id, action in self.indicator_actions.items():
-                is_checked = action.isChecked()
-                if is_checked:
-                    logger.info(f"  → Processing checked indicator: {ind_id}")
-                indicator_data = action.data()
-                color = indicator_data["color"]
-
-                # Determine if overlay or oscillator
-                is_overlay = ind_id in overlay_configs
-                is_oscillator = ind_id in oscillator_configs
-
-                # Skip if not implemented
-                if not is_overlay and not is_oscillator:
-                    if is_checked and ind_id not in self.active_indicators:
-                        logger.warning(f"Indicator {ind_id} not yet implemented")
-                    continue
-
-                # Get configuration
-                if is_overlay:
-                    ind_type, params, display_name, _, _ = overlay_configs[ind_id]
-                else:
-                    ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
-
-                if is_checked:
-                    try:
-                        # Calculate indicator
-                        logger.info(f"  → Calculating {ind_id} with params: {params}")
-                        config = IndicatorConfig(indicator_type=ind_type, params=params)
-                        result = self.indicator_engine.calculate(self.data, config)
-                        logger.info(f"  ✓ Calculated {ind_id}, values shape: {result.values.shape if hasattr(result.values, 'shape') else len(result.values)}")
-
-                        # Convert to chart format based on data type
-                        if isinstance(result.values, pd.DataFrame) and ind_id == "MACD":
-                            ind_data = self._convert_macd_data_to_chart_format(result)
-                        elif isinstance(result.values, pd.DataFrame):
-                            ind_data = self._convert_multi_series_data_to_chart_format(result, ind_id)
-                        else:
-                            ind_data = self._convert_single_series_data_to_chart_format(result)
-                        logger.info(f"  ✓ Converted {ind_id} to chart format, {len(ind_data)} data points")
-
-                        # Create indicator/panel if not exists, or recreate if needed
-                        should_create = ind_id not in self.active_indicators
-
-                        if should_create:
-                            logger.info(f"  → Creating new {'overlay' if is_overlay else 'panel'} for {ind_id}")
-                            if is_overlay:
-                                self._create_overlay_indicator(display_name, color)
-                            else:
-                                self._create_oscillator_panel(ind_id, display_name, color, min_val, max_val)
-                            self.active_indicators[ind_id] = True
-                            logger.info(f"  ✓ Created and activated {ind_id}")
-                        else:
-                            logger.info(f"  → {ind_id} already exists, updating data only")
-
-                        # Update data
-                        if is_overlay:
-                            self._update_overlay_data(display_name, ind_data)
-                        else:
-                            self._update_oscillator_data(ind_id, ind_data)
-                        logger.info(f"  ✓ Updated data for {ind_id}")
-
-                    except Exception as ind_error:
-                        logger.error(f"  ❌ Error processing indicator {ind_id}: {ind_error}", exc_info=True)
-
-                elif ind_id in self.active_indicators:
-                    # Remove indicator if unchecked
-                    logger.info(f"  → Removing {ind_id} from chart (is_overlay={is_overlay})")
-                    self._remove_indicator_from_chart(ind_id, display_name, is_overlay)
-                    del self.active_indicators[ind_id]
-                    logger.info(f"  ✓ Removed {ind_id} from active indicators. Remaining: {list(self.active_indicators.keys())}")
+                self._process_indicator_action(
+                    ind_id, action, overlay_configs, oscillator_configs
+                )
 
         except Exception as e:
             logger.error(f"Error updating indicators: {e}", exc_info=True)
         finally:
             self._updating_indicators = False
+
+    def _should_skip_full_update(self) -> bool:
+        if not (self.page_loaded and self.chart_initialized):
+            logger.warning(
+                "❌ Cannot update indicators: chart not fully initialized yet (page_loaded=%s, chart_initialized=%s)",
+                self.page_loaded,
+                self.chart_initialized,
+            )
+            self._pending_indicator_update = True
+            return True
+        if self._updating_indicators:
+            logger.warning("⏸️ Indicator update already in progress, skipping...")
+            return True
+        return False
+
+    def _process_indicator_action(self, ind_id, action, overlay_configs, oscillator_configs) -> None:
+        is_checked = action.isChecked()
+        if is_checked:
+            logger.info(f"  → Processing checked indicator: {ind_id}")
+        indicator_data = action.data()
+        color = indicator_data["color"]
+
+        is_overlay = ind_id in overlay_configs
+        is_oscillator = ind_id in oscillator_configs
+
+        if not is_overlay and not is_oscillator:
+            if is_checked and ind_id not in self.active_indicators:
+                logger.warning(f"Indicator {ind_id} not yet implemented")
+            return
+
+        if is_overlay:
+            ind_type, params, display_name, _, _ = overlay_configs[ind_id]
+            min_val = max_val = None
+        else:
+            ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
+
+        if is_checked:
+            self._add_or_update_indicator(
+                ind_id,
+                ind_type,
+                params,
+                display_name,
+                is_overlay,
+                color,
+                min_val,
+                max_val,
+            )
+        elif ind_id in self.active_indicators:
+            logger.info(f"  → Removing {ind_id} from chart (is_overlay={is_overlay})")
+            self._remove_indicator_from_chart(ind_id, display_name, is_overlay)
+            del self.active_indicators[ind_id]
+            logger.info(
+                f"  ✓ Removed {ind_id} from active indicators. Remaining: {list(self.active_indicators.keys())}"
+            )
+
+    def _add_or_update_indicator(
+        self,
+        ind_id,
+        ind_type,
+        params,
+        display_name,
+        is_overlay,
+        color,
+        min_val,
+        max_val,
+    ) -> None:
+        try:
+            logger.info(f"  → Calculating {ind_id} with params: {params}")
+            config = IndicatorConfig(indicator_type=ind_type, params=params)
+            result = self.indicator_engine.calculate(self.data, config)
+            logger.info(
+                f"  ✓ Calculated {ind_id}, values shape: "
+                f"{result.values.shape if hasattr(result.values, 'shape') else len(result.values)}"
+            )
+
+            ind_data = self._convert_indicator_result(ind_id, result)
+            logger.info(f"  ✓ Converted {ind_id} to chart format, {len(ind_data)} data points")
+
+            should_create = ind_id not in self.active_indicators
+            if should_create:
+                logger.info(f"  → Creating new {'overlay' if is_overlay else 'panel'} for {ind_id}")
+                if is_overlay:
+                    self._create_overlay_indicator(display_name, color)
+                else:
+                    self._create_oscillator_panel(ind_id, display_name, color, min_val, max_val)
+                self.active_indicators[ind_id] = True
+                logger.info(f"  ✓ Created and activated {ind_id}")
+            else:
+                logger.info(f"  → {ind_id} already exists, updating data only")
+
+            if is_overlay:
+                self._update_overlay_data(display_name, ind_data)
+            else:
+                self._update_oscillator_data(ind_id, ind_data)
+            logger.info(f"  ✓ Updated data for {ind_id}")
+
+        except Exception as ind_error:
+            logger.error(f"  ❌ Error processing indicator {ind_id}: {ind_error}", exc_info=True)
+
+    def _convert_indicator_result(self, ind_id, result):
+        if isinstance(result.values, pd.DataFrame) and ind_id == "MACD":
+            return self._convert_macd_data_to_chart_format(result)
+        if isinstance(result.values, pd.DataFrame):
+            return self._convert_multi_series_data_to_chart_format(result, ind_id)
+        return self._convert_single_series_data_to_chart_format(result)
 
     def _update_indicators_realtime(self, candle: dict):
         """Update indicators in real-time with new candle data.
@@ -375,40 +405,12 @@ class IndicatorMixin:
         Args:
             candle: New candle dict with time, open, high, low, close
         """
-        if self.data is None or not self.active_indicators:
-            return  # No data or no active indicators
-
-        if not (self.page_loaded and self.chart_initialized):
-            return  # Chart not ready
-
-        # Skip if full indicator update is running
-        if self._updating_indicators:
+        if self._should_skip_realtime_update():
             return
 
         try:
-            # Update the last row of the DataFrame with new candle data
-            # candle['time'] has local timezone offset added for chart display,
-            # but self.data has UTC timestamps - so we need to remove the offset
-            local_offset = get_local_timezone_offset_seconds()
-            utc_timestamp = candle['time'] - local_offset
-
-            # Create a new row from the candle
-            new_row = pd.DataFrame([{
-                'time': pd.Timestamp.fromtimestamp(utc_timestamp, tz='UTC'),
-                'open': candle['open'],
-                'high': candle['high'],
-                'low': candle['low'],
-                'close': candle['close']
-            }])
-            new_row.set_index('time', inplace=True)
-
-            # Check if this timestamp already exists (update) or is new (append)
-            if new_row.index[0] in self.data.index:
-                # Update existing row
-                self.data.loc[new_row.index[0]] = new_row.iloc[0]
-            else:
-                # Append new row
-                self.data = pd.concat([self.data, new_row])
+            new_row = self._build_realtime_row(candle)
+            self._update_realtime_row(new_row)
 
             # Get indicator configs
             overlay_configs, oscillator_configs = self._get_indicator_configs()
@@ -428,79 +430,122 @@ class IndicatorMixin:
                 else:
                     ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
 
-                # Recalculate indicator
-                config = IndicatorConfig(indicator_type=ind_type, params=params)
-                result = self.indicator_engine.calculate(self.data, config)
-
-                # Get the last value(s)
-                if isinstance(result.values, pd.DataFrame):
-                    # Multi-series indicator (MACD, Stoch)
-                    if ind_id == "MACD":
-                        last_idx = result.values.index[-1]
-                        time_unix = _ts_to_local_unix(last_idx)
-                        panel_id = ind_id.lower()
-
-                        # Find MACD column names dynamically
-                        col_names = result.values.columns.tolist()
-                        macd_col = signal_col = hist_col = None
-                        for col in col_names:
-                            col_lower = col.lower()
-                            if 'macdh' in col_lower or 'hist' in col_lower:
-                                hist_col = col
-                            elif 'macds' in col_lower or 'signal' in col_lower:
-                                signal_col = col
-                            elif 'macd' in col_lower:
-                                macd_col = col
-
-                        # Update all three MACD series
-                        if hist_col:
-                            hist_val = float(result.values.loc[last_idx, hist_col])
-                            hist_point = json.dumps({
-                                'time': time_unix,
-                                'value': hist_val,
-                                'color': '#26a69a' if hist_val >= 0 else '#ef5350'
-                            })
-                            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {hist_point});")
-
-                        if macd_col:
-                            macd_val = float(result.values.loc[last_idx, macd_col])
-                            macd_point = json.dumps({'time': time_unix, 'value': macd_val})
-                            self._execute_js(f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'macd', {macd_point});")
-
-                        if signal_col:
-                            signal_val = float(result.values.loc[last_idx, signal_col])
-                            signal_point = json.dumps({'time': time_unix, 'value': signal_val})
-                            self._execute_js(f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'signal', {signal_point});")
-                    else:
-                        # Other multi-series indicators (Stoch, etc.)
-                        last_idx = result.values.index[-1]
-                        time_unix = _ts_to_local_unix(last_idx)
-
-                        # Use first column as main value
-                        main_val = float(result.values.iloc[-1, 0])
-                        point = json.dumps({'time': time_unix, 'value': main_val})
-
-                        if is_overlay:
-                            self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
-                        else:
-                            panel_id = ind_id.lower()
-                            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
-                else:
-                    # Single-series indicator (RSI, EMA, SMA, etc.)
-                    last_idx = result.values.index[-1]
-                    value = float(result.values.iloc[-1])
-                    time_unix = _ts_to_local_unix(last_idx)
-
-                    point = json.dumps({'time': time_unix, 'value': value})
-
-                    if is_overlay:
-                        self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
-                    else:
-                        panel_id = ind_id.lower()
-                        self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
+                self._update_indicator_realtime(
+                    ind_id,
+                    is_overlay,
+                    ind_type,
+                    params,
+                    display_name,
+                )
 
         except Exception as e:
             logger.error(f"Error updating indicators in real-time: {e}", exc_info=True)
+
+    def _should_skip_realtime_update(self) -> bool:
+        if self.data is None or not self.active_indicators:
+            return True
+        if not (self.page_loaded and self.chart_initialized):
+            return True
+        return self._updating_indicators
+
+    def _build_realtime_row(self, candle: dict) -> pd.DataFrame:
+        local_offset = get_local_timezone_offset_seconds()
+        utc_timestamp = candle['time'] - local_offset
+        new_row = pd.DataFrame([{
+            'time': pd.Timestamp.fromtimestamp(utc_timestamp, tz='UTC'),
+            'open': candle['open'],
+            'high': candle['high'],
+            'low': candle['low'],
+            'close': candle['close']
+        }])
+        new_row.set_index('time', inplace=True)
+        return new_row
+
+    def _update_realtime_row(self, new_row: pd.DataFrame) -> None:
+        if new_row.index[0] in self.data.index:
+            self.data.loc[new_row.index[0]] = new_row.iloc[0]
+        else:
+            self.data = pd.concat([self.data, new_row])
+
+    def _update_indicator_realtime(
+        self,
+        ind_id: str,
+        is_overlay: bool,
+        ind_type: IndicatorType,
+        params: dict,
+        display_name: str,
+    ) -> None:
+        config = IndicatorConfig(indicator_type=ind_type, params=params)
+        result = self.indicator_engine.calculate(self.data, config)
+        if isinstance(result.values, pd.DataFrame):
+            if ind_id == "MACD":
+                self._update_macd_realtime(ind_id, result)
+            else:
+                self._update_multi_series_realtime(ind_id, is_overlay, display_name, result)
+        else:
+            self._update_single_series_realtime(ind_id, is_overlay, display_name, result)
+
+    def _update_macd_realtime(self, ind_id: str, result) -> None:
+        last_idx = result.values.index[-1]
+        time_unix = _ts_to_local_unix(last_idx)
+        panel_id = ind_id.lower()
+        col_names = result.values.columns.tolist()
+        macd_col = signal_col = hist_col = None
+        for col in col_names:
+            col_lower = col.lower()
+            if 'macdh' in col_lower or 'hist' in col_lower:
+                hist_col = col
+            elif 'macds' in col_lower or 'signal' in col_lower:
+                signal_col = col
+            elif 'macd' in col_lower:
+                macd_col = col
+
+        if hist_col:
+            hist_val = float(result.values.loc[last_idx, hist_col])
+            hist_point = json.dumps({
+                'time': time_unix,
+                'value': hist_val,
+                'color': '#26a69a' if hist_val >= 0 else '#ef5350'
+            })
+            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {hist_point});")
+
+        if macd_col:
+            macd_val = float(result.values.loc[last_idx, macd_col])
+            macd_point = json.dumps({'time': time_unix, 'value': macd_val})
+            self._execute_js(
+                f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'macd', {macd_point});"
+            )
+
+        if signal_col:
+            signal_val = float(result.values.loc[last_idx, signal_col])
+            signal_point = json.dumps({'time': time_unix, 'value': signal_val})
+            self._execute_js(
+                f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'signal', {signal_point});"
+            )
+
+    def _update_multi_series_realtime(self, ind_id: str, is_overlay: bool, display_name: str, result) -> None:
+        last_idx = result.values.index[-1]
+        time_unix = _ts_to_local_unix(last_idx)
+        main_val = float(result.values.iloc[-1, 0])
+        point = json.dumps({'time': time_unix, 'value': main_val})
+
+        if is_overlay:
+            self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
+        else:
+            panel_id = ind_id.lower()
+            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
+
+    def _update_single_series_realtime(self, ind_id: str, is_overlay: bool, display_name: str, result) -> None:
+        last_idx = result.values.index[-1]
+        value = float(result.values.iloc[-1])
+        time_unix = _ts_to_local_unix(last_idx)
+        point = json.dumps({'time': time_unix, 'value': value})
+
+        if is_overlay:
+            self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
+        else:
+            panel_id = ind_id.lower()
+            self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
 
     def _update_indicators_button_badge(self):
         """Update indicators button to show count of active indicators."""

@@ -72,7 +72,17 @@ class AppLifecycleMixin:
         """Handle application close event."""
         logger.info("Application closing...")
 
-        # Close all chart windows
+        self._close_chart_windows()
+        self._save_settings_safe()
+        self._stop_timers()
+        self._disconnect_streams()
+        self._disconnect_broker()
+        self._close_ai_service()
+
+        logger.info("Application closed successfully")
+        event.accept()
+
+    def _close_chart_windows(self) -> None:
         try:
             if hasattr(self, 'chart_window_manager'):
                 self.chart_window_manager.close_all_windows()
@@ -81,13 +91,13 @@ class AppLifecycleMixin:
         except Exception as e:
             logger.error(f"Error closing chart windows: {e}")
 
-        # Save settings
+    def _save_settings_safe(self) -> None:
         try:
             self.save_settings()
         except Exception as e:
             logger.error(f"Error saving settings: {e}")
 
-        # Stop timers
+    def _stop_timers(self) -> None:
         try:
             if hasattr(self, 'time_timer'):
                 self.time_timer.stop()
@@ -96,52 +106,42 @@ class AppLifecycleMixin:
         except Exception as e:
             logger.error(f"Error stopping timers: {e}")
 
-        # Disconnect real-time streams
+    def _run_async_safe(self, coro) -> None:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(coro)
+        else:
+            loop.run_until_complete(coro)
+
+    def _disconnect_streams(self) -> None:
         try:
             if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
                 logger.info("Disconnecting stock stream...")
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(self.history_manager.stop_realtime_stream())
-                else:
-                    loop.run_until_complete(self.history_manager.stop_realtime_stream())
+                self._run_async_safe(self.history_manager.stop_realtime_stream())
 
             if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
                 logger.info("Disconnecting crypto stream...")
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(self.history_manager.stop_crypto_realtime_stream())
-                else:
-                    loop.run_until_complete(self.history_manager.stop_crypto_realtime_stream())
+                self._run_async_safe(self.history_manager.stop_crypto_realtime_stream())
         except Exception as e:
             logger.error(f"Error disconnecting streams: {e}")
 
-        # Disconnect broker
-        if self.broker:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(self.disconnect_broker())
+    def _disconnect_broker(self) -> None:
+        if not self.broker:
+            return
+        try:
+            self._run_async_safe(self.disconnect_broker())
+        except Exception as e:
+            logger.error(f"Error disconnecting broker: {e}")
+
+    def _close_ai_service(self) -> None:
+        if not self.ai_service:
+            return
+        try:
+            if hasattr(self.ai_service, 'close'):
+                if asyncio.iscoroutinefunction(self.ai_service.close):
+                    self._run_async_safe(self.ai_service.close())
                 else:
-                    loop.run_until_complete(self.disconnect_broker())
-            except Exception as e:
-                logger.error(f"Error disconnecting broker: {e}")
-
-        # Close AI service
-        if self.ai_service:
-            try:
-                if hasattr(self.ai_service, 'close'):
-                    if asyncio.iscoroutinefunction(self.ai_service.close):
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.ensure_future(self.ai_service.close())
-                        else:
-                            loop.run_until_complete(self.ai_service.close())
-                    else:
-                        self.ai_service.close()
-                logger.info("AI service closed")
-            except Exception as e:
-                logger.error(f"Error closing AI service: {e}")
-
-        logger.info("Application closed successfully")
-        event.accept()
+                    self.ai_service.close()
+            logger.info("AI service closed")
+        except Exception as e:
+            logger.error(f"Error closing AI service: {e}")

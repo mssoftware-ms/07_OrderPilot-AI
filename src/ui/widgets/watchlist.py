@@ -80,19 +80,26 @@ class WatchlistWidget(QWidget):
         """Initialize user interface."""
         layout = QVBoxLayout(self)
 
-        # Market status indicator
+        layout.addWidget(self._build_market_status_label())
+        layout.addLayout(self._build_input_row())
+        layout.addWidget(self._build_table())
+        layout.addLayout(self._build_quick_add_row())
+
+    def _build_market_status_label(self) -> QLabel:
         self.market_status_label = QLabel("Market: Checking...")
         self.market_status_label.setStyleSheet(
             "background-color: #2A2D33; color: #EAECEF; padding: 5px; "
             "border-radius: 3px; font-weight: bold;"
         )
-        layout.addWidget(self.market_status_label)
+        return self.market_status_label
 
-        # Add symbol input
+    def _build_input_row(self) -> QHBoxLayout:
         input_layout = QHBoxLayout()
 
         self.symbol_input = QLineEdit()
-        self.symbol_input.setPlaceholderText("Enter symbol (e.g., AAPL for stocks, BTC/USD for crypto)")
+        self.symbol_input.setPlaceholderText(
+            "Enter symbol (e.g., AAPL for stocks, BTC/USD for crypto)"
+        )
         self.symbol_input.returnPressed.connect(self.add_symbol_from_input)
         input_layout.addWidget(self.symbol_input)
 
@@ -101,24 +108,26 @@ class WatchlistWidget(QWidget):
         add_button.clicked.connect(self.add_symbol_from_input)
         add_button.setToolTip("Add symbol to watchlist")
         input_layout.addWidget(add_button)
+        return input_layout
 
-        layout.addLayout(input_layout)
-
-        # Create table
+    def _build_table(self) -> QTableWidget:
         self.table = QTableWidget()
         self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            "Symbol", "Name", "WKN", "Price", "Change", "Change %", "Volume"
-        ])
+        self.table.setHorizontalHeaderLabels(
+            ["Symbol", "Name", "WKN", "Price", "Change", "Change %", "Volume"]
+        )
 
-        # Configure table
+        self._configure_table()
+        return self.table
+
+    def _configure_table(self) -> None:
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
 
-        # Set stylesheet for better contrast
-        self.table.setStyleSheet("""
+        self.table.setStyleSheet(
+            """
             QTableWidget {
                 alternate-background-color: #2d2d2d;
                 background-color: #1e1e1e;
@@ -133,38 +142,31 @@ class WatchlistWidget(QWidget):
                 background-color: #FF8C00;
                 color: #ffffff;
             }
-        """)
+        """
+        )
 
-        # Configure header - make columns movable and resizable
         header = self.table.horizontalHeader()
-        header.setSectionsMovable(True)  # Allow column reordering
-        header.setSectionsClickable(True)  # Allow sorting by clicking
-        header.setStretchLastSection(False)  # Don't auto-stretch last section
-
-        # Set default column widths (Interactive allows user resizing)
+        header.setSectionsMovable(True)
+        header.setSectionsClickable(True)
+        header.setStretchLastSection(False)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
-        # Set initial default widths
-        self.table.setColumnWidth(0, 80)   # Symbol
-        self.table.setColumnWidth(1, 150)  # Name
-        self.table.setColumnWidth(2, 80)   # WKN
-        self.table.setColumnWidth(3, 100)  # Price
-        self.table.setColumnWidth(4, 80)   # Change
-        self.table.setColumnWidth(5, 80)   # Change %
-        self.table.setColumnWidth(6, 100)  # Volume
+        self.table.setColumnWidth(0, 80)
+        self.table.setColumnWidth(1, 150)
+        self.table.setColumnWidth(2, 80)
+        self.table.setColumnWidth(3, 100)
+        self.table.setColumnWidth(4, 80)
+        self.table.setColumnWidth(5, 80)
+        self.table.setColumnWidth(6, 100)
 
-        # Connect signals
         self.table.itemDoubleClicked.connect(self.on_symbol_double_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
 
-        # Save column state when columns are moved or resized
         header.sectionMoved.connect(self.save_column_state)
         header.sectionResized.connect(self.save_column_state)
 
-        layout.addWidget(self.table)
-
-        # Quick add buttons
+    def _build_quick_add_row(self) -> QHBoxLayout:
         quick_add_layout = QHBoxLayout()
 
         indices_btn = QPushButton("Indices")
@@ -186,8 +188,7 @@ class WatchlistWidget(QWidget):
         clear_btn.clicked.connect(self.clear_watchlist)
         clear_btn.setToolTip("Clear all symbols")
         quick_add_layout.addWidget(clear_btn)
-
-        layout.addLayout(quick_add_layout)
+        return quick_add_layout
 
     def setup_event_handlers(self):
         """Setup event bus handlers."""

@@ -137,54 +137,63 @@ class RegimeEngine:
 
         # Trending market - determine direction
         if adx >= self.ADX_TRENDING:
-            # Use DI for direction
-            if plus_di is not None and minus_di is not None:
-                di_diff = plus_di - minus_di
-
-                if di_diff > self.DI_MIN_DIFF:
-                    # Uptrend
-                    direction = RegimeType.TREND_UP
-                elif di_diff < -self.DI_MIN_DIFF:
-                    # Downtrend
-                    direction = RegimeType.TREND_DOWN
-                else:
-                    # Inconclusive DI
-                    direction = RegimeType.RANGE
-            else:
-                # No DI data, use RSI as fallback
-                if rsi is not None:
-                    if rsi > self.RSI_STRONG_UP:
-                        direction = RegimeType.TREND_UP
-                    elif rsi < self.RSI_STRONG_DOWN:
-                        direction = RegimeType.TREND_DOWN
-                    else:
-                        direction = RegimeType.UNKNOWN
-                else:
-                    direction = RegimeType.UNKNOWN
-
-            # Calculate confidence based on ADX strength
-            if adx >= self.ADX_STRONG_TREND:
-                confidence = 0.9
-            elif adx >= self.ADX_TRENDING:
-                confidence = 0.6 + (adx - self.ADX_TRENDING) / (self.ADX_STRONG_TREND - self.ADX_TRENDING) * 0.3
-            else:
-                confidence = 0.5
-
-            # RSI confirmation adjustment
-            if self.use_rsi_confirmation and rsi is not None:
-                if direction == RegimeType.TREND_UP and rsi > self.RSI_STRONG_UP:
-                    confidence = min(1.0, confidence + 0.1)
-                elif direction == RegimeType.TREND_DOWN and rsi < self.RSI_STRONG_DOWN:
-                    confidence = min(1.0, confidence + 0.1)
-                elif direction == RegimeType.TREND_UP and rsi < self.RSI_STRONG_DOWN:
-                    confidence = max(0.3, confidence - 0.2)  # Contradiction
-                elif direction == RegimeType.TREND_DOWN and rsi > self.RSI_STRONG_UP:
-                    confidence = max(0.3, confidence - 0.2)  # Contradiction
-
+            direction = self._resolve_trend_direction(plus_di, minus_di, rsi)
+            confidence = self._calc_trend_confidence(adx)
+            confidence = self._apply_rsi_confirmation(direction, rsi, confidence)
             return direction, confidence
 
         # Borderline case
         return RegimeType.RANGE, 0.5
+
+    def _resolve_trend_direction(
+        self,
+        plus_di: float | None,
+        minus_di: float | None,
+        rsi: float | None,
+    ) -> RegimeType:
+        if plus_di is not None and minus_di is not None:
+            di_diff = plus_di - minus_di
+            if di_diff > self.DI_MIN_DIFF:
+                return RegimeType.TREND_UP
+            if di_diff < -self.DI_MIN_DIFF:
+                return RegimeType.TREND_DOWN
+            return RegimeType.RANGE
+
+        if rsi is not None:
+            if rsi > self.RSI_STRONG_UP:
+                return RegimeType.TREND_UP
+            if rsi < self.RSI_STRONG_DOWN:
+                return RegimeType.TREND_DOWN
+            return RegimeType.UNKNOWN
+
+        return RegimeType.UNKNOWN
+
+    def _calc_trend_confidence(self, adx: float) -> float:
+        if adx >= self.ADX_STRONG_TREND:
+            return 0.9
+        if adx >= self.ADX_TRENDING:
+            return 0.6 + (adx - self.ADX_TRENDING) / (
+                self.ADX_STRONG_TREND - self.ADX_TRENDING
+            ) * 0.3
+        return 0.5
+
+    def _apply_rsi_confirmation(
+        self,
+        direction: RegimeType,
+        rsi: float | None,
+        confidence: float,
+    ) -> float:
+        if not (self.use_rsi_confirmation and rsi is not None):
+            return confidence
+        if direction == RegimeType.TREND_UP and rsi > self.RSI_STRONG_UP:
+            return min(1.0, confidence + 0.1)
+        if direction == RegimeType.TREND_DOWN and rsi < self.RSI_STRONG_DOWN:
+            return min(1.0, confidence + 0.1)
+        if direction == RegimeType.TREND_UP and rsi < self.RSI_STRONG_DOWN:
+            return max(0.3, confidence - 0.2)
+        if direction == RegimeType.TREND_DOWN and rsi > self.RSI_STRONG_UP:
+            return max(0.3, confidence - 0.2)
+        return confidence
 
     def _classify_volatility(
         self,

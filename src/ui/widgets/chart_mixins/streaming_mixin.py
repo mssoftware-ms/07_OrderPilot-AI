@@ -76,153 +76,162 @@ class StreamingMixin:
     def _on_market_tick(self, event: Event):
         """Handle market tick event - update current candle in real-time."""
         try:
-            # WICHTIG: Ignoriere Events wenn Streaming deaktiviert ist
-            if not getattr(self, 'live_streaming_enabled', False):
+            tick_data = self._validate_tick_event(event)
+            if not tick_data:
                 return
 
-            tick_data = event.data
-            if tick_data.get('symbol') != self.current_symbol:
-                return
-
-            # Update price in info label
-            price = tick_data.get('price', 0)
-            volume = tick_data.get('volume', tick_data.get('size', 0))
-
+            price, volume = self._extract_tick_price_volume(tick_data)
             if not price:
                 logger.warning(f"Received tick for {self.current_symbol} but no price data")
                 return
 
-            # Bad Tick Filter: Prüfe ob Preis plausibel ist
-            reference_price = getattr(self, '_current_candle_close', None)
-            if reference_price is None and hasattr(self, 'data') and self.data is not None:
-                # Fallback: Letzter Close aus DataFrame
-                if len(self.data) > 0 and 'close' in self.data.columns:
-                    reference_price = float(self.data['close'].iloc[-1])
-
+            reference_price = self._resolve_reference_price()
             if not self._is_valid_tick(price, reference_price):
-                return  # Bad Tick ignorieren
+                return
 
-            self.info_label.setText(f"Last: ${price:.2f}")
-            # Print to console for debugging (only when streaming enabled)
-            print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
-            logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
+            self._log_tick(price, volume)
 
-            # --- Time Handling Fix ---
-            # Use timestamp from event, NOT system time
-            ts = tick_data.get('timestamp')
-            if ts is None:
-                ts = event.timestamp
+            ts = self._resolve_tick_timestamp(event, tick_data)
+            current_tick_time, current_minute_start = self._resolve_tick_time(ts, tick_data)
 
-            if ts is None:
-                ts = datetime.now(timezone.utc)
-
-            # Ensure ts is datetime and UTC
-            if isinstance(ts, str):
-                try:
-                    ts = pd.to_datetime(ts).to_pydatetime()
-                except Exception:
-                    ts = datetime.now(timezone.utc)
-            elif isinstance(ts, (int, float)):
-                ts = datetime.fromtimestamp(ts, tz=timezone.utc)
-
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-
-            # Add local timezone offset so X-axis shows local time
-            local_offset = get_local_timezone_offset_seconds()
-            current_tick_time = int(ts.timestamp()) + local_offset
-            current_minute_start = current_tick_time - (current_tick_time % 60)
-
-            # DEBUG LOGGING
-            logger.info(f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | TickUnix: {current_tick_time} | MinStart: {current_minute_start}")
-
-            # Update current candle in real-time (Stock3 style)
             if not hasattr(self, '_current_candle_time'):
-                # Initialize with current minute boundary from DATA
-                self._current_candle_time = current_minute_start
-                self._current_candle_open = price
-                self._current_candle_high = price
-                self._current_candle_low = price
-                self._current_candle_volume = 0
+                self._initialize_candle(current_minute_start, price)
 
-            # Check if we need a new candle (new minute)
-            if current_minute_start > self._current_candle_time:
-                # Previous candle closed - capture OHLC BEFORE reset!
-                prev_open = getattr(self, '_current_candle_open', price)
-                prev_high = getattr(self, '_current_candle_high', price)
-                prev_low = getattr(self, '_current_candle_low', price)
-                prev_close = getattr(self, '_current_candle_close', price)
-                prev_volume = getattr(self, '_current_candle_volume', 0)
-
-                # Store previous candle volume for bot access
-                self._prev_candle_volume = prev_volume
-
-                # Emit signal with previous candle's OHLC and new candle's open
-                if hasattr(self, 'candle_closed'):
-                    self.candle_closed.emit(prev_open, prev_high, prev_low, prev_close, price)
-                    logger.info(
-                        f"🕯️ Candle closed: O={prev_open:.2f} H={prev_high:.2f} "
-                        f"L={prev_low:.2f} C={prev_close:.2f} V={prev_volume:.0f} -> new_open={price:.2f}"
-                    )
-
-                # New candle - reset AFTER emitting signal
-                self._current_candle_time = current_minute_start
-                self._current_candle_open = price
-                self._current_candle_high = price
-                self._current_candle_low = price
-                self._current_candle_volume = 0
-            else:
-                # Same candle - update high/low
-                self._current_candle_high = max(self._current_candle_high, price)
-                self._current_candle_low = min(self._current_candle_low, price)
-
-            # Accumulate volume
-            if volume:
-                self._current_candle_volume += volume
-
-            # Store current close for candle_closed signal
+            self._update_candle_for_tick(current_minute_start, price)
+            self._accumulate_volume(volume)
             self._current_candle_close = price
-
-            # Store last price for chart marking functions
             self._last_price = price
 
-            # Create candle update
-            candle = {
-                'time': self._current_candle_time,
-                'open': float(self._current_candle_open),
-                'high': float(self._current_candle_high),
-                'low': float(self._current_candle_low),
-                'close': float(price),
-            }
+            candle = self._build_candle_payload(price)
+            volume_bar = self._build_volume_payload(price)
 
-            volume_bar = {
-                'time': self._current_candle_time,
-                'value': float(self._current_candle_volume),
-                'color': '#26a69a' if price >= self._current_candle_open else '#ef5350'
-            }
-
-            # Update chart immediately (like Stock3!)
-            candle_json = json.dumps(candle)
-            volume_json = json.dumps(volume_bar)
-
-            self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
-            self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
-
-            # Update indicators in real-time
+            self._execute_chart_updates(candle, volume_bar)
             self._update_indicators_realtime(candle)
-
-            # Emit tick price for real-time P&L updates in bot panels
-            if hasattr(self, 'tick_price_updated'):
-                self.tick_price_updated.emit(price)
-                # Debug: Log occasionally to verify signal is emitting
-                if not hasattr(self, '_tick_emit_count'):
-                    self._tick_emit_count = 0
-                self._tick_emit_count += 1
-                if self._tick_emit_count % 100 == 1:
-                    logger.info(f"📡 tick_price_updated emitted #{self._tick_emit_count}: {price:.2f}")
+            self._emit_tick_price_updated(price)
 
         except Exception as e:
             logger.error(f"Error handling market tick: {e}", exc_info=True)
+
+    def _validate_tick_event(self, event: Event) -> dict | None:
+        if not getattr(self, 'live_streaming_enabled', False):
+            return None
+        tick_data = event.data
+        if tick_data.get('symbol') != self.current_symbol:
+            return None
+        return tick_data
+
+    def _extract_tick_price_volume(self, tick_data: dict) -> tuple[float, float]:
+        price = tick_data.get('price', 0)
+        volume = tick_data.get('volume', tick_data.get('size', 0))
+        return price, volume
+
+    def _resolve_reference_price(self) -> float | None:
+        reference_price = getattr(self, '_current_candle_close', None)
+        if reference_price is None and hasattr(self, 'data') and self.data is not None:
+            if len(self.data) > 0 and 'close' in self.data.columns:
+                reference_price = float(self.data['close'].iloc[-1])
+        return reference_price
+
+    def _log_tick(self, price: float, volume: float) -> None:
+        self.info_label.setText(f"Last: ${price:.2f}")
+        print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
+        logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
+
+    def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
+        ts = tick_data.get('timestamp')
+        if ts is None:
+            ts = event.timestamp
+        if ts is None:
+            ts = datetime.now(timezone.utc)
+        if isinstance(ts, str):
+            try:
+                ts = pd.to_datetime(ts).to_pydatetime()
+            except Exception:
+                ts = datetime.now(timezone.utc)
+        elif isinstance(ts, (int, float)):
+            ts = datetime.fromtimestamp(ts, tz=timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
+
+    def _resolve_tick_time(self, ts, tick_data: dict) -> tuple[int, int]:
+        local_offset = get_local_timezone_offset_seconds()
+        current_tick_time = int(ts.timestamp()) + local_offset
+        current_minute_start = current_tick_time - (current_tick_time % 60)
+        logger.info(
+            f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
+            f"TickUnix: {current_tick_time} | MinStart: {current_minute_start}"
+        )
+        return current_tick_time, current_minute_start
+
+    def _initialize_candle(self, current_minute_start: int, price: float) -> None:
+        self._current_candle_time = current_minute_start
+        self._current_candle_open = price
+        self._current_candle_high = price
+        self._current_candle_low = price
+        self._current_candle_volume = 0
+
+    def _update_candle_for_tick(self, current_minute_start: int, price: float) -> None:
+        if current_minute_start > self._current_candle_time:
+            prev_open = getattr(self, '_current_candle_open', price)
+            prev_high = getattr(self, '_current_candle_high', price)
+            prev_low = getattr(self, '_current_candle_low', price)
+            prev_close = getattr(self, '_current_candle_close', price)
+            prev_volume = getattr(self, '_current_candle_volume', 0)
+
+            self._prev_candle_volume = prev_volume
+
+            if hasattr(self, 'candle_closed'):
+                self.candle_closed.emit(prev_open, prev_high, prev_low, prev_close, price)
+                logger.info(
+                    f"🕯️ Candle closed: O={prev_open:.2f} H={prev_high:.2f} "
+                    f"L={prev_low:.2f} C={prev_close:.2f} V={prev_volume:.0f} -> new_open={price:.2f}"
+                )
+
+            self._current_candle_time = current_minute_start
+            self._current_candle_open = price
+            self._current_candle_high = price
+            self._current_candle_low = price
+            self._current_candle_volume = 0
+            return
+
+        self._current_candle_high = max(self._current_candle_high, price)
+        self._current_candle_low = min(self._current_candle_low, price)
+
+    def _accumulate_volume(self, volume: float) -> None:
+        if volume:
+            self._current_candle_volume += volume
+
+    def _build_candle_payload(self, price: float) -> dict:
+        return {
+            'time': self._current_candle_time,
+            'open': float(self._current_candle_open),
+            'high': float(self._current_candle_high),
+            'low': float(self._current_candle_low),
+            'close': float(price),
+        }
+
+    def _build_volume_payload(self, price: float) -> dict:
+        return {
+            'time': self._current_candle_time,
+            'value': float(self._current_candle_volume),
+            'color': '#26a69a' if price >= self._current_candle_open else '#ef5350'
+        }
+
+    def _execute_chart_updates(self, candle: dict, volume_bar: dict) -> None:
+        candle_json = json.dumps(candle)
+        volume_json = json.dumps(volume_bar)
+        self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
+        self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
+
+    def _emit_tick_price_updated(self, price: float) -> None:
+        if hasattr(self, 'tick_price_updated'):
+            self.tick_price_updated.emit(price)
+            if not hasattr(self, '_tick_emit_count'):
+                self._tick_emit_count = 0
+            self._tick_emit_count += 1
+            if self._tick_emit_count % 100 == 1:
+                logger.info(f"📡 tick_price_updated emitted #{self._tick_emit_count}: {price:.2f}")
 
     def _process_pending_updates(self):
         """Process pending bar updates (batched for performance)."""

@@ -60,7 +60,19 @@ class ChartSetDialog(QDialog):
         """Setup the dialog UI."""
         self.setWindowTitle("📊 Chart-Set öffnen (Pre-Trade Analyse)")
         self.setMinimumSize(700, 500)
-        self.setStyleSheet("""
+        self._apply_styles()
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+
+        layout.addWidget(self._build_header())
+        layout.addLayout(self._build_content())
+        layout.addWidget(self._build_quick_group())
+        layout.addLayout(self._build_bottom_buttons())
+
+    def _apply_styles(self) -> None:
+        self.setStyleSheet(
+            """
             QDialog {
                 background-color: #1e1e1e;
             }
@@ -135,21 +147,24 @@ class ChartSetDialog(QDialog):
             QCheckBox {
                 color: #e0e0e0;
             }
-        """)
+        """
+        )
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-
-        # Header
+    def _build_header(self) -> QLabel:
         header = QLabel("🎯 Wähle ein Chart-Layout für die Trend-Analyse")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; color: #4CAF50; padding: 10px;")
-        layout.addWidget(header)
+        header.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #4CAF50; padding: 10px;"
+        )
+        return header
 
-        # Main content - horizontal split
+    def _build_content(self) -> QHBoxLayout:
         content = QHBoxLayout()
         content.setSpacing(15)
+        content.addWidget(self._build_left_group(), 1)
+        content.addWidget(self._build_right_group(), 1)
+        return content
 
-        # Left side - Layout list
+    def _build_left_group(self) -> QGroupBox:
         left_group = QGroupBox("Verfügbare Layouts")
         left_layout = QVBoxLayout(left_group)
 
@@ -157,34 +172,30 @@ class ChartSetDialog(QDialog):
         self.layout_list.currentItemChanged.connect(self._on_layout_selected)
         left_layout.addWidget(self.layout_list)
 
-        # Layout actions
         layout_actions = QHBoxLayout()
         self.delete_btn = QPushButton("🗑️ Löschen")
         self.delete_btn.clicked.connect(self._delete_layout)
         layout_actions.addWidget(self.delete_btn)
         layout_actions.addStretch()
         left_layout.addLayout(layout_actions)
+        return left_group
 
-        content.addWidget(left_group, 1)
-
-        # Right side - Layout details and options
+    def _build_right_group(self) -> QGroupBox:
         right_group = QGroupBox("Einstellungen")
         right_layout = QVBoxLayout(right_group)
 
-        # Symbol selection
         form = QFormLayout()
-
         self.symbol_combo = QComboBox()
         self.symbol_combo.setEditable(True)
-        self.symbol_combo.addItems([
-            "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
-            "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ"
-        ])
+        self.symbol_combo.addItems(
+            [
+                "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
+                "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ",
+            ]
+        )
         form.addRow("Symbol:", self.symbol_combo)
-
         right_layout.addLayout(form)
 
-        # Layout description
         desc_label = QLabel("Beschreibung:")
         right_layout.addWidget(desc_label)
 
@@ -193,7 +204,6 @@ class ChartSetDialog(QDialog):
         self.description_text.setMaximumHeight(80)
         right_layout.addWidget(self.description_text)
 
-        # Windows preview
         windows_label = QLabel("Chart-Fenster:")
         right_layout.addWidget(windows_label)
 
@@ -201,16 +211,12 @@ class ChartSetDialog(QDialog):
         self.windows_text.setReadOnly(True)
         right_layout.addWidget(self.windows_text)
 
-        # Monitor info
         monitor_info = QLabel(self._get_monitor_info())
         monitor_info.setStyleSheet("color: #888; font-size: 11px;")
         right_layout.addWidget(monitor_info)
+        return right_group
 
-        content.addWidget(right_group, 1)
-
-        layout.addLayout(content)
-
-        # Quick actions
+    def _build_quick_group(self) -> QGroupBox:
         quick_group = QGroupBox("Schnell-Analyse")
         quick_layout = QHBoxLayout(quick_group)
 
@@ -224,15 +230,15 @@ class ChartSetDialog(QDialog):
         quick_layout.addWidget(self.quick_symbol)
 
         mtf_btn = QPushButton("📈 Multi-TF Analyse")
-        mtf_btn.setToolTip("Öffnet 3 Charts (Tag, Stunde, 5min) für den ausgewählten Symbol")
+        mtf_btn.setToolTip(
+            "Öffnet 3 Charts (Tag, Stunde, 5min) für den ausgewählten Symbol"
+        )
         mtf_btn.clicked.connect(self._quick_mtf_analysis)
         quick_layout.addWidget(mtf_btn)
-
         quick_layout.addStretch()
+        return quick_group
 
-        layout.addWidget(quick_group)
-
-        # Bottom buttons
+    def _build_bottom_buttons(self) -> QHBoxLayout:
         buttons = QHBoxLayout()
         buttons.addStretch()
 
@@ -244,8 +250,7 @@ class ChartSetDialog(QDialog):
         self.open_btn.setObjectName("openButton")
         self.open_btn.clicked.connect(self._open_layout)
         buttons.addWidget(self.open_btn)
-
-        layout.addLayout(buttons)
+        return buttons
 
     def _get_monitor_info(self) -> str:
         """Get info about available monitors."""

@@ -154,81 +154,21 @@ class PatternExtractor:
             Pattern object or None if invalid
         """
         try:
-            # Extract raw OHLCV data
-            opens = [float(b.open) for b in window_bars]
-            highs = [float(b.high) for b in window_bars]
-            lows = [float(b.low) for b in window_bars]
-            closes = [float(b.close) for b in window_bars]
-            volumes = [float(b.volume) if b.volume else 0 for b in window_bars]
-
-            # Normalize OHLC to percentage changes from first bar
+            opens, highs, lows, closes, volumes = self._extract_ohlcv(window_bars)
             first_price = opens[0]
             if first_price <= 0:
                 return None
 
-            ohlc_normalized = np.array([
-                [(o - first_price) / first_price * 100 for o in opens],
-                [(h - first_price) / first_price * 100 for h in highs],
-                [(l - first_price) / first_price * 100 for l in lows],
-                [(c - first_price) / first_price * 100 for c in closes],
-            ]).T  # Shape: (window_size, 4)
-
-            # Calculate pattern metrics
+            ohlc_normalized = self._normalize_ohlc(opens, highs, lows, closes, first_price)
             price_change_pct = (closes[-1] - opens[0]) / opens[0] * 100
+            volatility = self._calculate_volatility(closes)
+            trend_direction = self._classify_trend(price_change_pct)
+            volume_trend = self._classify_volume_trend(volumes)
 
-            # Calculate returns for volatility
-            returns = np.diff(closes) / np.array(closes[:-1])
-            volatility = float(np.std(returns)) if len(returns) > 0 else 0
-
-            # Trend direction
-            if price_change_pct > 1.0:
-                trend_direction = "up"
-            elif price_change_pct < -1.0:
-                trend_direction = "down"
-            else:
-                trend_direction = "sideways"
-
-            # Volume trend (simple: compare first half vs second half)
-            half = len(volumes) // 2
-            vol_first_half = np.mean(volumes[:half]) if half > 0 else 0
-            vol_second_half = np.mean(volumes[half:]) if half > 0 else 0
-            if vol_second_half > vol_first_half * 1.2:
-                volume_trend = "increasing"
-            elif vol_second_half < vol_first_half * 0.8:
-                volume_trend = "decreasing"
-            else:
-                volume_trend = "stable"
-
-            # Calculate outcome
-            outcome_return_pct = 0.0
-            outcome_max_drawdown_pct = 0.0
-            outcome_label = "neutral"
-
-            if outcome_bars:
-                entry_price = closes[-1]
-                outcome_closes = [float(b.close) for b in outcome_bars]
-                exit_price = outcome_closes[-1]
-
-                outcome_return_pct = (exit_price - entry_price) / entry_price * 100
-
-                # Max drawdown during outcome period
-                peak = entry_price
-                max_dd = 0
-                for c in outcome_closes:
-                    if c > peak:
-                        peak = c
-                    dd = (peak - c) / peak * 100
-                    if dd > max_dd:
-                        max_dd = dd
-                outcome_max_drawdown_pct = max_dd
-
-                # Label based on outcome
-                if outcome_return_pct > 0.5:
-                    outcome_label = "win"
-                elif outcome_return_pct < -0.5:
-                    outcome_label = "loss"
-                else:
-                    outcome_label = "neutral"
+            outcome_return_pct, outcome_max_drawdown_pct, outcome_label = self._calculate_outcome(
+                outcome_bars,
+                closes[-1],
+            )
 
             return Pattern(
                 symbol=symbol,
@@ -255,6 +195,86 @@ class PatternExtractor:
         except Exception as e:
             logger.error(f"Error creating pattern: {e}")
             return None
+
+    def _extract_ohlcv(self, window_bars: list[HistoricalBar]):
+        opens = [float(b.open) for b in window_bars]
+        highs = [float(b.high) for b in window_bars]
+        lows = [float(b.low) for b in window_bars]
+        closes = [float(b.close) for b in window_bars]
+        volumes = [float(b.volume) if b.volume else 0 for b in window_bars]
+        return opens, highs, lows, closes, volumes
+
+    def _normalize_ohlc(
+        self,
+        opens: list[float],
+        highs: list[float],
+        lows: list[float],
+        closes: list[float],
+        first_price: float,
+    ) -> np.ndarray:
+        return np.array([
+            [(o - first_price) / first_price * 100 for o in opens],
+            [(h - first_price) / first_price * 100 for h in highs],
+            [(l - first_price) / first_price * 100 for l in lows],
+            [(c - first_price) / first_price * 100 for c in closes],
+        ]).T
+
+    def _calculate_volatility(self, closes: list[float]) -> float:
+        returns = np.diff(closes) / np.array(closes[:-1])
+        return float(np.std(returns)) if len(returns) > 0 else 0
+
+    def _classify_trend(self, price_change_pct: float) -> str:
+        if price_change_pct > 1.0:
+            return "up"
+        if price_change_pct < -1.0:
+            return "down"
+        return "sideways"
+
+    def _classify_volume_trend(self, volumes: list[float]) -> str:
+        half = len(volumes) // 2
+        vol_first_half = np.mean(volumes[:half]) if half > 0 else 0
+        vol_second_half = np.mean(volumes[half:]) if half > 0 else 0
+        if vol_second_half > vol_first_half * 1.2:
+            return "increasing"
+        if vol_second_half < vol_first_half * 0.8:
+            return "decreasing"
+        return "stable"
+
+    def _calculate_outcome(
+        self,
+        outcome_bars: list[HistoricalBar],
+        entry_price: float,
+    ) -> tuple[float, float, str]:
+        outcome_return_pct = 0.0
+        outcome_max_drawdown_pct = 0.0
+        outcome_label = "neutral"
+
+        if outcome_bars:
+            outcome_closes = [float(b.close) for b in outcome_bars]
+            exit_price = outcome_closes[-1]
+            outcome_return_pct = (exit_price - entry_price) / entry_price * 100
+            outcome_max_drawdown_pct = self._calculate_drawdown(entry_price, outcome_closes)
+            outcome_label = self._classify_outcome(outcome_return_pct)
+
+        return outcome_return_pct, outcome_max_drawdown_pct, outcome_label
+
+    def _calculate_drawdown(self, entry_price: float, outcome_closes: list[float]) -> float:
+        peak = entry_price
+        max_dd = 0.0
+        for close_price in outcome_closes:
+            if close_price > peak:
+                peak = close_price
+            dd = (peak - close_price) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+        return max_dd
+
+    def _classify_outcome(self, outcome_return_pct: float) -> str:
+        if outcome_return_pct > 0.5:
+            return "win"
+        if outcome_return_pct < -0.5:
+            return "loss"
+        return "neutral"
 
     def extract_current_pattern(
         self,

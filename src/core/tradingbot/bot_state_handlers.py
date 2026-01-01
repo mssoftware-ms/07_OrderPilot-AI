@@ -171,45 +171,12 @@ class BotStateHandlersMixin:
             BotDecision or None
         """
         if not self.can_trade:
-            # Log why we can't trade for debugging
-            reasons = []
-            if not self._running:
-                reasons.append("Bot nicht gestartet")
-            if self._state_machine.is_paused():
-                reasons.append("Bot pausiert")
-            if self._state_machine.is_error():
-                reasons.append("Bot im Fehlerzustand")
-            # Only check restrictions if not disabled
-            if not self.config.bot.disable_restrictions:
-                if self._trades_today >= self.config.risk.max_trades_per_day:
-                    reasons.append(f"Max Trades erreicht ({self._trades_today}/{self.config.risk.max_trades_per_day})")
-                account_value = 10000.0
-                daily_pnl_pct = (self._daily_pnl / account_value) * 100
-                if daily_pnl_pct <= -self.config.risk.max_daily_loss_pct:
-                    reasons.append(f"Tagesverlust-Limit ({daily_pnl_pct:.2f}%)")
-                if self._consecutive_losses >= self.config.risk.loss_streak_cooldown:
-                    reasons.append(f"Verlustserie ({self._consecutive_losses} in Folge)")
-
-            # Only notify once when trading becomes blocked (not every bar)
-            if not self._trading_blocked or reasons != self._last_block_reasons:
-                self._trading_blocked = True
-                self._last_block_reasons = reasons.copy()
-                self._log_activity("BLOCKED", f"Trading blockiert: {', '.join(reasons) if reasons else 'unknown'}")
-
-                # Trigger popup callback
-                if self._on_trading_blocked and reasons:
-                    try:
-                        self._on_trading_blocked(reasons)
-                    except Exception as e:
-                        logger.error(f"Trading blocked callback error: {e}")
-
+            reasons = self._get_trade_block_reasons()
+            self._handle_trade_blocked(reasons)
             return None
 
         # Reset block tracking when trading is possible again
-        if self._trading_blocked:
-            self._trading_blocked = False
-            self._last_block_reasons = []
-            self._log_activity("UNBLOCKED", "Trading wieder moeglich")
+        self._reset_trade_blocked()
 
         # Calculate entry score
         long_score = self._calculate_entry_score(features, TradeSide.LONG)
@@ -223,19 +190,13 @@ class BotStateHandlersMixin:
         )
 
         # Get best signal
-        if long_score > short_score and long_score >= threshold:
-            side = TradeSide.LONG
-            score = long_score
-        elif short_score > long_score and short_score >= threshold:
-            side = TradeSide.SHORT
-            score = short_score
-        else:
-            # No valid signal
+        side, score = self._select_entry_signal(long_score, short_score, threshold)
+        if side is None:
             return self._create_decision(
                 BotAction.NO_TRADE,
                 TradeSide.NONE,
                 features,
-                ["SCORE_BELOW_THRESHOLD"]
+                ["SCORE_BELOW_THRESHOLD"],
             )
 
         # Optional pattern validation BEFORE signal creation (warn-only)
@@ -267,6 +228,59 @@ class BotStateHandlersMixin:
             ["SIGNAL_DETECTED"],
             notes=f"Signal {signal.id}: {side.value} score={score:.2f}"
         )
+
+    def _get_trade_block_reasons(self) -> list[str]:
+        reasons: list[str] = []
+        if not self._running:
+            reasons.append("Bot nicht gestartet")
+        if self._state_machine.is_paused():
+            reasons.append("Bot pausiert")
+        if self._state_machine.is_error():
+            reasons.append("Bot im Fehlerzustand")
+        if not self.config.bot.disable_restrictions:
+            if self._trades_today >= self.config.risk.max_trades_per_day:
+                reasons.append(
+                    f"Max Trades erreicht ({self._trades_today}/{self.config.risk.max_trades_per_day})"
+                )
+            account_value = 10000.0
+            daily_pnl_pct = (self._daily_pnl / account_value) * 100
+            if daily_pnl_pct <= -self.config.risk.max_daily_loss_pct:
+                reasons.append(f"Tagesverlust-Limit ({daily_pnl_pct:.2f}%)")
+            if self._consecutive_losses >= self.config.risk.loss_streak_cooldown:
+                reasons.append(f"Verlustserie ({self._consecutive_losses} in Folge)")
+        return reasons
+
+    def _handle_trade_blocked(self, reasons: list[str]) -> None:
+        if self._trading_blocked and reasons == self._last_block_reasons:
+            return
+        self._trading_blocked = True
+        self._last_block_reasons = reasons.copy()
+        self._log_activity(
+            "BLOCKED",
+            f"Trading blockiert: {', '.join(reasons) if reasons else 'unknown'}",
+        )
+
+        if self._on_trading_blocked and reasons:
+            try:
+                self._on_trading_blocked(reasons)
+            except Exception as e:
+                logger.error(f"Trading blocked callback error: {e}")
+
+    def _reset_trade_blocked(self) -> None:
+        if not self._trading_blocked:
+            return
+        self._trading_blocked = False
+        self._last_block_reasons = []
+        self._log_activity("UNBLOCKED", "Trading wieder moeglich")
+
+    def _select_entry_signal(
+        self, long_score: float, short_score: float, threshold: float
+    ) -> tuple[TradeSide | None, float]:
+        if long_score > short_score and long_score >= threshold:
+            return TradeSide.LONG, long_score
+        if short_score > long_score and short_score >= threshold:
+            return TradeSide.SHORT, short_score
+        return None, 0.0
 
     async def _process_signal(self, features: FeatureVector) -> BotDecision | None:
         """Process SIGNAL state - confirm or expire signal.
@@ -348,48 +362,12 @@ class BotStateHandlersMixin:
             self._state_machine.error("No position in MANAGE state")
             return None
 
-        close_price = bar.get("close", features.close)
-        low_price = bar.get("low", close_price)
-        high_price = bar.get("high", close_price)
-
-        # Update position with close price for P&L calculation
-        self._position.update_price(close_price)
-        self._position.bars_held += 1
+        close_price, low_price, high_price = self._extract_bar_prices(bar, features)
+        self._update_position_price(close_price)
 
         # Check stop hit using the EXTREME price of the candle (LOW for LONG, HIGH for SHORT)
         # This is critical: a candle's low might breach the stop even if close doesn't
-        stop_price = self._position.trailing.current_stop_price
-        initial_stop = self._position.trailing.initial_stop_price
-        stop_hit = False
-
-        # Log stop check details
-        side_str = self._position.side.value.upper()
-        self._log_activity(
-            "STOP_CHECK",
-            f"Side={side_str} | Stop={stop_price:.2f} (Initial={initial_stop:.2f}) | "
-            f"Candle: H={high_price:.2f} L={low_price:.2f} C={close_price:.2f}"
-        )
-
-        if self._position.side == TradeSide.LONG:
-            # For LONG: check if LOW breached stop
-            if low_price <= stop_price:
-                stop_hit = True
-                self._log_activity(
-                    "STOP",
-                    f"🛑 Stop-Loss getroffen! LOW={low_price:.2f} <= Stop={stop_price:.2f} "
-                    f"(Close={close_price:.2f})"
-                )
-        else:
-            # For SHORT: check if HIGH breached stop
-            if high_price >= stop_price:
-                stop_hit = True
-                self._log_activity(
-                    "STOP",
-                    f"🛑 Stop-Loss getroffen! HIGH={high_price:.2f} >= Stop={stop_price:.2f} "
-                    f"(Close={close_price:.2f})"
-                )
-
-        if stop_hit:
+        if self._check_stop_hit(close_price, low_price, high_price):
             return await self._handle_stop_hit(features)
 
         # Check exit signals
@@ -398,33 +376,9 @@ class BotStateHandlersMixin:
             return await self._handle_exit_signal(features, exit_signal)
 
         # Update trailing stop
-        new_stop = self._calculate_trailing_stop(features, self._position)
-        self._log_activity("DEBUG", f"_calculate_trailing_stop returned: {new_stop}")
-        if new_stop:
-            old_stop = self._position.trailing.current_stop_price
-            is_long = self._position.side == TradeSide.LONG
-            self._log_activity(
-                "DEBUG",
-                f"Calling update_stop: new={new_stop:.4f}, old={old_stop:.4f}, is_long={is_long}"
-            )
-            updated = self._position.trailing.update_stop(
-                new_stop,
-                self._bar_count,
-                datetime.utcnow(),
-                is_long=is_long
-            )
-            self._log_activity("DEBUG", f"update_stop returned: {updated}")
-
-            if updated:
-                self._state_machine.trigger(BotTrigger.STOP_UPDATED)
-                return self._create_decision(
-                    BotAction.ADJUST_STOP,
-                    self._position.side,
-                    features,
-                    ["TRAILING_STOP_UPDATED"],
-                    stop_before=old_stop,
-                    stop_after=new_stop
-                )
+        decision = self._maybe_update_trailing_stop(features)
+        if decision:
+            return decision
 
         # Hold position
         return self._create_decision(
@@ -433,6 +387,80 @@ class BotStateHandlersMixin:
             features,
             ["POSITION_HELD"]
         )
+
+    def _extract_bar_prices(
+        self,
+        bar: dict[str, Any],
+        features: FeatureVector,
+    ) -> tuple[float, float, float]:
+        close_price = bar.get("close", features.close)
+        low_price = bar.get("low", close_price)
+        high_price = bar.get("high", close_price)
+        return close_price, low_price, high_price
+
+    def _update_position_price(self, close_price: float) -> None:
+        self._position.update_price(close_price)
+        self._position.bars_held += 1
+
+    def _check_stop_hit(self, close_price: float, low_price: float, high_price: float) -> bool:
+        stop_price = self._position.trailing.current_stop_price
+        initial_stop = self._position.trailing.initial_stop_price
+
+        side_str = self._position.side.value.upper()
+        self._log_activity(
+            "STOP_CHECK",
+            f"Side={side_str} | Stop={stop_price:.2f} (Initial={initial_stop:.2f}) | "
+            f"Candle: H={high_price:.2f} L={low_price:.2f} C={close_price:.2f}"
+        )
+
+        if self._position.side == TradeSide.LONG:
+            if low_price <= stop_price:
+                self._log_activity(
+                    "STOP",
+                    f"🛑 Stop-Loss getroffen! LOW={low_price:.2f} <= Stop={stop_price:.2f} "
+                    f"(Close={close_price:.2f})"
+                )
+                return True
+        else:
+            if high_price >= stop_price:
+                self._log_activity(
+                    "STOP",
+                    f"🛑 Stop-Loss getroffen! HIGH={high_price:.2f} >= Stop={stop_price:.2f} "
+                    f"(Close={close_price:.2f})"
+                )
+                return True
+        return False
+
+    def _maybe_update_trailing_stop(self, features: FeatureVector) -> BotDecision | None:
+        new_stop = self._calculate_trailing_stop(features, self._position)
+        self._log_activity("DEBUG", f"_calculate_trailing_stop returned: {new_stop}")
+        if not new_stop:
+            return None
+        old_stop = self._position.trailing.current_stop_price
+        is_long = self._position.side == TradeSide.LONG
+        self._log_activity(
+            "DEBUG",
+            f"Calling update_stop: new={new_stop:.4f}, old={old_stop:.4f}, is_long={is_long}"
+        )
+        updated = self._position.trailing.update_stop(
+            new_stop,
+            self._bar_count,
+            datetime.utcnow(),
+            is_long=is_long
+        )
+        self._log_activity("DEBUG", f"update_stop returned: {updated}")
+
+        if updated:
+            self._state_machine.trigger(BotTrigger.STOP_UPDATED)
+            return self._create_decision(
+                BotAction.ADJUST_STOP,
+                self._position.side,
+                features,
+                ["TRAILING_STOP_UPDATED"],
+                stop_before=old_stop,
+                stop_after=new_stop
+            )
+        return None
 
     async def _handle_stop_hit(self, features: FeatureVector) -> BotDecision:
         """Handle stop-loss hit.
@@ -529,40 +557,50 @@ class BotStateHandlersMixin:
         if not self._position:
             return None
 
-        # Momentum reversal
-        if features.rsi_14 is not None:
-            if self._position.side == TradeSide.LONG and features.rsi_14 > 80:
-                return "RSI_EXTREME_OVERBOUGHT"
-            elif self._position.side == TradeSide.SHORT and features.rsi_14 < 20:
-                return "RSI_EXTREME_OVERSOLD"
+        rsi_exit = self._check_rsi_exit(features)
+        if rsi_exit:
+            return rsi_exit
 
-        # MACD cross - always detect and notify, but optionally don't exit
-        if features.macd is not None and features.macd_signal is not None:
-            macd_signal_type = None
+        return self._check_macd_exit(features)
 
-            if self._position.side == TradeSide.LONG:
-                if features.macd < features.macd_signal and features.macd_hist and features.macd_hist < 0:
-                    macd_signal_type = "MACD_BEARISH_CROSS"
-            else:  # SHORT position
-                if features.macd > features.macd_signal and features.macd_hist and features.macd_hist > 0:
-                    macd_signal_type = "MACD_BULLISH_CROSS"
+        return None
 
-            if macd_signal_type:
-                # Always notify for chart marker (even if exit is disabled)
-                if self._on_macd_signal:
-                    try:
-                        self._on_macd_signal(macd_signal_type, features.close)
-                    except Exception as e:
-                        logger.error(f"MACD signal callback error: {e}")
+    def _check_rsi_exit(self, features: FeatureVector) -> str | None:
+        if features.rsi_14 is None or not self._position:
+            return None
+        if self._position.side == TradeSide.LONG and features.rsi_14 > 80:
+            return "RSI_EXTREME_OVERBOUGHT"
+        if self._position.side == TradeSide.SHORT and features.rsi_14 < 20:
+            return "RSI_EXTREME_OVERSOLD"
+        return None
 
-                self._log_activity(
-                    "MACD",
-                    f"{macd_signal_type} erkannt @ {features.close:.2f} | "
-                    f"Exit: {'DEAKTIVIERT' if self.config.bot.disable_macd_exit else 'AKTIV'}"
-                )
+    def _check_macd_exit(self, features: FeatureVector) -> str | None:
+        if features.macd is None or features.macd_signal is None or not self._position:
+            return None
 
-                # Only trigger exit if MACD exit is enabled
-                if not self.config.bot.disable_macd_exit:
-                    return macd_signal_type
+        macd_signal_type = None
+        if self._position.side == TradeSide.LONG:
+            if features.macd < features.macd_signal and features.macd_hist and features.macd_hist < 0:
+                macd_signal_type = "MACD_BEARISH_CROSS"
+        else:
+            if features.macd > features.macd_signal and features.macd_hist and features.macd_hist > 0:
+                macd_signal_type = "MACD_BULLISH_CROSS"
 
+        if not macd_signal_type:
+            return None
+
+        if self._on_macd_signal:
+            try:
+                self._on_macd_signal(macd_signal_type, features.close)
+            except Exception as e:
+                logger.error(f"MACD signal callback error: {e}")
+
+        self._log_activity(
+            "MACD",
+            f"{macd_signal_type} erkannt @ {features.close:.2f} | "
+            f"Exit: {'DEAKTIVIERT' if self.config.bot.disable_macd_exit else 'AKTIV'}"
+        )
+
+        if not self.config.bot.disable_macd_exit:
+            return macd_signal_type
         return None

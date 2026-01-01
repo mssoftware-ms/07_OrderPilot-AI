@@ -282,54 +282,25 @@ class StrategyEvaluator:
         config = config or self.walk_forward_config
 
         if not all_trades:
-            return WalkForwardResult(
-                strategy_name=strategy.profile.name,
-                config=config,
-                in_sample_metrics=PerformanceMetrics(),
-                out_of_sample_metrics=PerformanceMetrics(),
-            )
+            return self._empty_walk_forward_result(strategy, config)
 
         # Sort trades by exit time
         trades = sorted(all_trades, key=lambda t: t.exit_time)
 
-        # Calculate date ranges
-        start_date = trades[0].entry_time
-        end_date = trades[-1].exit_time
-        total_days = (end_date - start_date).days
-
-        if total_days < config.training_window_days + config.test_window_days:
-            logger.warning(
-                f"Insufficient history for walk-forward: {total_days} days"
-            )
-            # Fall back to simple split
+        start_date, end_date, total_days = self._trade_date_range(trades)
+        if self._insufficient_history(total_days, config):
             return self._simple_train_test_split(strategy, trades, config)
 
-        # Run rolling walk-forward
         is_results = []
         oos_results = []
         periods_passed = 0
 
-        if config.anchored:
-            # Anchored walk-forward (expanding window)
-            periods = self._generate_anchored_periods(
-                start_date, end_date, config
-            )
-        else:
-            # Rolling walk-forward
-            periods = self._generate_rolling_periods(
-                start_date, end_date, config
-            )
+        periods = self._get_walk_forward_periods(start_date, end_date, config)
 
         for train_start, train_end, test_start, test_end in periods:
-            # Get trades for each period
-            train_trades = [
-                t for t in trades
-                if train_start <= t.exit_time < train_end
-            ]
-            test_trades = [
-                t for t in trades
-                if test_start <= t.exit_time < test_end
-            ]
+            train_trades, test_trades = self._slice_trades_for_period(
+                trades, train_start, train_end, test_start, test_end
+            )
 
             if len(train_trades) < config.min_training_trades:
                 continue
@@ -342,28 +313,18 @@ class StrategyEvaluator:
             oos_results.append(oos_metrics)
 
             # Check if this period passed
-            is_robust, _ = self.validate_robustness(is_metrics)
-            if is_robust and oos_metrics.total_trades > 0:
-                # Check OOS degradation
-                degradation = self._calculate_oos_degradation(is_metrics, oos_metrics)
-                if degradation <= self.robustness_gate.oos_degradation_max:
-                    periods_passed += 1
+            if self._period_passed(is_metrics, oos_metrics):
+                periods_passed += 1
 
         # Aggregate results
         agg_is_metrics = self._aggregate_metrics(is_results)
         agg_oos_metrics = self._aggregate_metrics(oos_results)
 
         # Calculate robustness score
-        robustness_score = (
-            periods_passed / len(is_results)
-            if is_results else 0.0
-        )
+        robustness_score = periods_passed / len(is_results) if is_results else 0.0
 
         # Determine if overall robust
-        is_robust, _ = self.validate_robustness(agg_is_metrics)
-        if self.robustness_gate.require_oos_validation:
-            oos_robust = agg_oos_metrics.profit_factor >= 1.0
-            is_robust = is_robust and oos_robust
+        is_robust = self._is_overall_robust(agg_is_metrics, agg_oos_metrics)
 
         return WalkForwardResult(
             strategy_name=strategy.profile.name,
@@ -375,6 +336,78 @@ class StrategyEvaluator:
             robustness_score=robustness_score,
             is_robust=is_robust,
         )
+
+    def _empty_walk_forward_result(
+        self,
+        strategy: "StrategyDefinition",
+        config: WalkForwardConfig,
+    ) -> WalkForwardResult:
+        return WalkForwardResult(
+            strategy_name=strategy.profile.name,
+            config=config,
+            in_sample_metrics=PerformanceMetrics(),
+            out_of_sample_metrics=PerformanceMetrics(),
+        )
+
+    def _trade_date_range(self, trades: list[TradeResult]) -> tuple[datetime, datetime, int]:
+        start_date = trades[0].entry_time
+        end_date = trades[-1].exit_time
+        total_days = (end_date - start_date).days
+        return start_date, end_date, total_days
+
+    def _insufficient_history(self, total_days: int, config: WalkForwardConfig) -> bool:
+        if total_days < config.training_window_days + config.test_window_days:
+            logger.warning(
+                f"Insufficient history for walk-forward: {total_days} days"
+            )
+            return True
+        return False
+
+    def _get_walk_forward_periods(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        config: WalkForwardConfig,
+    ) -> list[tuple[datetime, datetime, datetime, datetime]]:
+        if config.anchored:
+            return self._generate_anchored_periods(start_date, end_date, config)
+        return self._generate_rolling_periods(start_date, end_date, config)
+
+    def _slice_trades_for_period(
+        self,
+        trades: list[TradeResult],
+        train_start: datetime,
+        train_end: datetime,
+        test_start: datetime,
+        test_end: datetime,
+    ) -> tuple[list[TradeResult], list[TradeResult]]:
+        train_trades = [
+            t for t in trades
+            if train_start <= t.exit_time < train_end
+        ]
+        test_trades = [
+            t for t in trades
+            if test_start <= t.exit_time < test_end
+        ]
+        return train_trades, test_trades
+
+    def _period_passed(self, is_metrics: PerformanceMetrics, oos_metrics: PerformanceMetrics) -> bool:
+        is_robust, _ = self.validate_robustness(is_metrics)
+        if not is_robust or oos_metrics.total_trades <= 0:
+            return False
+        degradation = self._calculate_oos_degradation(is_metrics, oos_metrics)
+        return degradation <= self.robustness_gate.oos_degradation_max
+
+    def _is_overall_robust(
+        self,
+        agg_is_metrics: PerformanceMetrics,
+        agg_oos_metrics: PerformanceMetrics,
+    ) -> bool:
+        is_robust, _ = self.validate_robustness(agg_is_metrics)
+        if self.robustness_gate.require_oos_validation:
+            oos_robust = agg_oos_metrics.profit_factor >= 1.0
+            return is_robust and oos_robust
+        return is_robust
 
     def _simple_train_test_split(
         self,

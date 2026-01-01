@@ -67,46 +67,58 @@ class EmbeddedTradingViewChartUIMixin:
 
         menu = QMenu(self)
 
-        # Check for zones at current price (for zone-specific options)
-        zones_at_price = []
-        if hasattr(self, "_last_price") and self._last_price is not None:
-            zones_at_price = self._zones.get_zones_at_price(self._last_price)
-
-        # If zones found at this price, show zone management options first
+        zones_at_price = self._get_zones_at_price()
         if zones_at_price:
-            zone_mgmt_menu = menu.addMenu(f"📍 Zones at Price ({len(zones_at_price)})")
+            self._add_zone_management_menu(menu, zones_at_price)
 
-            for zone in zones_at_price:
-                zone_label = zone.label or zone.id
-                zone_type_icon = {
-                    "support": "🟢",
-                    "resistance": "🔴",
-                    "demand": "🟢",
-                    "supply": "🔴",
-                }.get(zone.zone_type.value, "📊")
+        self._add_entry_menu(menu)
+        self._add_zone_menu(menu)
+        self._add_structure_menu(menu)
+        self._add_lines_menu(menu)
+        self._add_clear_actions(menu)
 
-                # Submenu for this zone
-                zone_submenu = zone_mgmt_menu.addMenu(f"{zone_type_icon} {zone_label}")
+        menu.exec(self.web_view.mapToGlobal(pos))
 
-                edit_action = QAction("✏️ Edit Zone...", self)
-                edit_action.triggered.connect(lambda checked, z=zone: self._edit_zone(z))
-                zone_submenu.addAction(edit_action)
+    def _get_zones_at_price(self):
+        if hasattr(self, "_last_price") and self._last_price is not None:
+            return self._zones.get_zones_at_price(self._last_price)
+        return []
 
-                extend_action = QAction("➡️ Extend to Now", self)
-                extend_action.triggered.connect(lambda checked, z=zone: self._extend_zone_to_now(z))
-                zone_submenu.addAction(extend_action)
+    def _add_zone_management_menu(self, menu, zones_at_price):
+        from PyQt6.QtGui import QAction
 
-                zone_submenu.addSeparator()
+        zone_mgmt_menu = menu.addMenu(f"📍 Zones at Price ({len(zones_at_price)})")
 
-                delete_action = QAction("🗑️ Delete Zone", self)
-                delete_action.triggered.connect(lambda checked, z=zone: self._delete_zone(z))
-                zone_submenu.addAction(delete_action)
+        for zone in zones_at_price:
+            zone_label = zone.label or zone.id
+            zone_type_icon = {
+                "support": "🟢",
+                "resistance": "🔴",
+                "demand": "🟢",
+                "supply": "🔴",
+            }.get(zone.zone_type.value, "📊")
 
-            menu.addSeparator()
+            zone_submenu = zone_mgmt_menu.addMenu(f"{zone_type_icon} {zone_label}")
+            edit_action = QAction("✏️ Edit Zone...", self)
+            edit_action.triggered.connect(lambda checked, z=zone: self._edit_zone(z))
+            zone_submenu.addAction(edit_action)
 
-        # Entry Markers submenu
+            extend_action = QAction("➡️ Extend to Now", self)
+            extend_action.triggered.connect(lambda checked, z=zone: self._extend_zone_to_now(z))
+            zone_submenu.addAction(extend_action)
+
+            zone_submenu.addSeparator()
+
+            delete_action = QAction("🗑️ Delete Zone", self)
+            delete_action.triggered.connect(lambda checked, z=zone: self._delete_zone(z))
+            zone_submenu.addAction(delete_action)
+
+        menu.addSeparator()
+
+    def _add_entry_menu(self, menu):
+        from PyQt6.QtGui import QAction
+
         entry_menu = menu.addMenu("Add Entry Marker")
-
         long_action = QAction("Long Entry (Arrow Up)", self)
         long_action.triggered.connect(lambda: self._add_test_entry_marker("long"))
         entry_menu.addAction(long_action)
@@ -115,9 +127,10 @@ class EmbeddedTradingViewChartUIMixin:
         short_action.triggered.connect(lambda: self._add_test_entry_marker("short"))
         entry_menu.addAction(short_action)
 
-        # Zones submenu
-        zone_menu = menu.addMenu("Add Zone")
+    def _add_zone_menu(self, menu):
+        from PyQt6.QtGui import QAction
 
+        zone_menu = menu.addMenu("Add Zone")
         support_action = QAction("🟢 Support Zone", self)
         support_action.triggered.connect(lambda: self._add_test_zone("support"))
         zone_menu.addAction(support_action)
@@ -136,9 +149,10 @@ class EmbeddedTradingViewChartUIMixin:
         supply_action.triggered.connect(lambda: self._add_test_zone("supply"))
         zone_menu.addAction(supply_action)
 
-        # Structure Markers submenu
-        structure_menu = menu.addMenu("Add Structure Break")
+    def _add_structure_menu(self, menu):
+        from PyQt6.QtGui import QAction
 
+        structure_menu = menu.addMenu("Add Structure Break")
         bos_bull_action = QAction("BoS Bullish", self)
         bos_bull_action.triggered.connect(lambda: self._add_test_structure("bos", True))
         structure_menu.addAction(bos_bull_action)
@@ -165,9 +179,10 @@ class EmbeddedTradingViewChartUIMixin:
         msb_bear_action.triggered.connect(lambda: self._add_test_structure("msb", False))
         structure_menu.addAction(msb_bear_action)
 
-        # Lines submenu (Stop Loss, Take Profit, Entry)
-        lines_menu = menu.addMenu("📏 Add Line")
+    def _add_lines_menu(self, menu):
+        from PyQt6.QtGui import QAction
 
+        lines_menu = menu.addMenu("📏 Add Line")
         sl_long_action = QAction("🔴 Stop Loss (Long Position)", self)
         sl_long_action.triggered.connect(lambda: self._add_test_line("sl", True))
         lines_menu.addAction(sl_long_action)
@@ -202,9 +217,10 @@ class EmbeddedTradingViewChartUIMixin:
         trailing_action.triggered.connect(lambda: self._add_test_line("trailing", True))
         lines_menu.addAction(trailing_action)
 
-        menu.addSeparator()
+    def _add_clear_actions(self, menu):
+        from PyQt6.QtGui import QAction
 
-        # Clear actions
+        menu.addSeparator()
         clear_markers_action = QAction("Clear All Markers", self)
         clear_markers_action.triggered.connect(self._clear_all_markers)
         menu.addAction(clear_markers_action)
@@ -220,5 +236,3 @@ class EmbeddedTradingViewChartUIMixin:
         clear_all_action = QAction("Clear Everything", self)
         clear_all_action.triggered.connect(self._clear_all_markings)
         menu.addAction(clear_all_action)
-
-        menu.exec(self.web_view.mapToGlobal(pos))

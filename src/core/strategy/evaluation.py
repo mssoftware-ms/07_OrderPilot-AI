@@ -76,29 +76,48 @@ class ConditionEvaluator:
         left_operand: str
     ) -> bool:
         """Apply comparison operator to values."""
+        result = self._apply_basic_operator(operator, left_value, right_value)
+        if result is not None:
+            return result
+        return self._apply_cross_operator(operator, left_operand, left_value, right_value)
+
+    def _apply_basic_operator(
+        self,
+        operator: ComparisonOperator,
+        left_value: float,
+        right_value: float,
+    ) -> bool | None:
         if operator == ComparisonOperator.GT:
             return left_value > right_value
-        elif operator == ComparisonOperator.GTE:
+        if operator == ComparisonOperator.GTE:
             return left_value >= right_value
-        elif operator == ComparisonOperator.LT:
+        if operator == ComparisonOperator.LT:
             return left_value < right_value
-        elif operator == ComparisonOperator.LTE:
+        if operator == ComparisonOperator.LTE:
             return left_value <= right_value
-        elif operator == ComparisonOperator.EQ:
-            return abs(left_value - right_value) < 1e-9  # Float equality
-        elif operator == ComparisonOperator.NEQ:
+        if operator == ComparisonOperator.EQ:
+            return abs(left_value - right_value) < 1e-9
+        if operator == ComparisonOperator.NEQ:
             return abs(left_value - right_value) >= 1e-9
-        elif operator == ComparisonOperator.CROSSES_ABOVE:
+        return None
+
+    def _apply_cross_operator(
+        self,
+        operator: ComparisonOperator,
+        left_operand: str,
+        left_value: float,
+        right_value: float,
+    ) -> bool:
+        if operator == ComparisonOperator.CROSSES_ABOVE:
             return self._check_cross_above(left_operand, left_value, right_value)
-        elif operator == ComparisonOperator.CROSSES_BELOW:
+        if operator == ComparisonOperator.CROSSES_BELOW:
             return self._check_cross_below(left_operand, left_value, right_value)
-        elif operator == ComparisonOperator.CROSSES:
+        if operator == ComparisonOperator.CROSSES:
             return (
-                self._check_cross_above(left_operand, left_value, right_value) or
-                self._check_cross_below(left_operand, left_value, right_value)
+                self._check_cross_above(left_operand, left_value, right_value)
+                or self._check_cross_below(left_operand, left_value, right_value)
             )
-        else:
-            raise CompilationError(f"Unknown operator: {operator}")
+        raise CompilationError(f"Unknown operator: {operator}")
 
     def _evaluate_logic_group(self, group: LogicGroup) -> bool:
         """Evaluate a logic group (AND, OR, NOT).

@@ -63,33 +63,55 @@ class PatternDbBuildMixin:
             self.collection_status_label.setText(str(e)[:50])
     def _start_build(self):
         """Start building the database."""
-        # Get selected symbols
-        stock_symbols = []
-        crypto_symbols = []
-
-        if self.stock_radio.isChecked():
-            for i in range(self.stock_list.count()):
-                item = self.stock_list.item(i)
-                if item.isSelected():
-                    stock_symbols.append(item.text())
-            # If no explicit selection but checkbox is on, include all by default
-            if not stock_symbols:
-                stock_symbols = [self.stock_list.item(i).text() for i in range(self.stock_list.count())]
-
-        if self.crypto_radio.isChecked():
-            for i in range(self.crypto_list.count()):
-                item = self.crypto_list.item(i)
-                if item.isSelected():
-                    crypto_symbols.append(item.text())
-            if not crypto_symbols:
-                crypto_symbols = [self.crypto_list.item(i).text() for i in range(self.crypto_list.count())]
-
+        stock_symbols, crypto_symbols = self._collect_symbols()
         if not stock_symbols and not crypto_symbols:
             QMessageBox.warning(self, "No Symbols", "Please select at least one symbol.")
             return
 
-        # Get selected timeframes
-        timeframes = []
+        timeframes = self._collect_timeframes()
+        if not timeframes:
+            QMessageBox.warning(self, "No Timeframes", "Please select at least one timeframe.")
+            return
+
+        if not self._confirm_build(stock_symbols, crypto_symbols, timeframes):
+            return
+
+        self._reset_build_progress(stock_symbols, crypto_symbols, timeframes)
+        self._toggle_build_controls(False)
+        self._queue_builds(stock_symbols, crypto_symbols, timeframes)
+
+    def _collect_symbols(self) -> tuple[list[str], list[str]]:
+        stock_symbols: list[str] = []
+        crypto_symbols: list[str] = []
+
+        if self.stock_radio.isChecked():
+            stock_symbols = [
+                self.stock_list.item(i).text()
+                for i in range(self.stock_list.count())
+                if self.stock_list.item(i).isSelected()
+            ]
+            if not stock_symbols:
+                stock_symbols = [
+                    self.stock_list.item(i).text()
+                    for i in range(self.stock_list.count())
+                ]
+
+        if self.crypto_radio.isChecked():
+            crypto_symbols = [
+                self.crypto_list.item(i).text()
+                for i in range(self.crypto_list.count())
+                if self.crypto_list.item(i).isSelected()
+            ]
+            if not crypto_symbols:
+                crypto_symbols = [
+                    self.crypto_list.item(i).text()
+                    for i in range(self.crypto_list.count())
+                ]
+
+        return stock_symbols, crypto_symbols
+
+    def _collect_timeframes(self) -> list[str]:
+        timeframes: list[str] = []
         if self.tf_1min.isChecked():
             timeframes.append("1Min")
         if self.tf_5min.isChecked():
@@ -100,13 +122,11 @@ class PatternDbBuildMixin:
             timeframes.append("30Min")
         if self.tf_1hour.isChecked():
             timeframes.append("1Hour")
+        return timeframes
 
-        if not timeframes:
-            QMessageBox.warning(self, "No Timeframes", "Please select at least one timeframe.")
-            return
-
-        # Confirm
-        # Prepare preview of selections
+    def _confirm_build(
+        self, stock_symbols: list[str], crypto_symbols: list[str], timeframes: list[str]
+    ) -> bool:
         stock_preview = ", ".join(stock_symbols[:8]) + (" ..." if len(stock_symbols) > 8 else "")
         crypto_preview = ", ".join(crypto_symbols[:8]) + (" ..." if len(crypto_symbols) > 8 else "")
         msg = (
@@ -119,10 +139,14 @@ class PatternDbBuildMixin:
             f"- {self.days_spin.value()} days of history\n\n"
             f"This may take a while. Continue?"
         )
-        if QMessageBox.question(self, "Confirm Build", msg) != QMessageBox.StandardButton.Yes:
-            return
+        return QMessageBox.question(self, "Confirm Build", msg) == QMessageBox.StandardButton.Yes
 
-        # Clear log
+    def _reset_build_progress(
+        self,
+        stock_symbols: list[str],
+        crypto_symbols: list[str],
+        timeframes: list[str],
+    ) -> None:
         self.log_text.clear()
         self.progress_bar.setValue(0)
         self._progress_offset = 0
@@ -131,11 +155,16 @@ class PatternDbBuildMixin:
             len(stock_symbols) * len(timeframes) + len(crypto_symbols) * len(timeframes)
         )
 
-        # Disable build button, enable cancel
-        self.build_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
+    def _toggle_build_controls(self, enabled: bool) -> None:
+        self.build_btn.setEnabled(enabled)
+        self.cancel_btn.setEnabled(not enabled)
 
-        # Build stocks first, then crypto
+    def _queue_builds(
+        self,
+        stock_symbols: list[str],
+        crypto_symbols: list[str],
+        timeframes: list[str],
+    ) -> None:
         if stock_symbols:
             if crypto_symbols:
                 self._pending_crypto_symbols = crypto_symbols

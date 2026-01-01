@@ -40,24 +40,28 @@ class ChartChatUIMixin:
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         self.setMinimumWidth(350)
 
-        # Main container
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Header with symbol info
+        self._build_header(layout)
+        self._build_chat_display(layout)
+        layout.addWidget(self._build_control_panel())
+
+        self.setWidget(container)
+
+    def _build_header(self, layout: QVBoxLayout) -> None:
         self._header = QLabel()
-        self._header.setStyleSheet(
-            "font-weight: bold; font-size: 14px; padding: 4px;"
-        )
+        self._header.setStyleSheet("font-weight: bold; font-size: 14px; padding: 4px;")
         self._update_header()
         layout.addWidget(self._header)
 
-        # Chat display area (using QListWidget for proper bubble rendering)
+    def _build_chat_display(self, layout: QVBoxLayout) -> None:
         self._chat_display = QListWidget()
         self._chat_display.setFrameShape(QFrame.Shape.NoFrame)
-        self._chat_display.setStyleSheet("""
+        self._chat_display.setStyleSheet(
+            """
             QListWidget {
                 background-color: rgb(10, 10, 10);
                 border: 1px solid #333;
@@ -70,35 +74,44 @@ class ChartChatUIMixin:
             QListWidget::item:selected {
                 background: transparent;
             }
-        """)
+        """
+        )
         self._chat_display.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self._chat_display.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self._chat_display.setWordWrap(True)
-        layout.addWidget(self._chat_display, 1)  # Stretch factor 1
+        layout.addWidget(self._chat_display, 1)
 
-        # ===== Integrated Control Panel (all UI elements in one rounded frame) =====
+    def _build_control_panel(self) -> QFrame:
         control_panel = QFrame()
-        control_panel.setStyleSheet("""
+        control_panel.setStyleSheet(
+            """
             QFrame {
                 background-color: #2a2a2a;
                 border-radius: 8px;
             }
-        """)
+        """
+        )
         control_panel_layout = QVBoxLayout(control_panel)
         control_panel_layout.setContentsMargins(10, 10, 10, 10)
         control_panel_layout.setSpacing(8)
 
-        # Quick actions bar
+        control_panel_layout.addLayout(self._build_quick_actions())
+        control_panel_layout.addLayout(self._build_input_row())
+        control_panel_layout.addWidget(self._build_progress_bar())
+        control_panel_layout.addLayout(self._build_toolbar())
+        return control_panel
+
+    def _build_quick_actions(self) -> QHBoxLayout:
         quick_actions_layout = QHBoxLayout()
         quick_actions_layout.setSpacing(4)
-
         for action in self.service.get_quick_actions():
             btn = QPushButton(action["label"])
             btn.setToolTip(action.get("tooltip", ""))
             btn.setMaximumHeight(28)
             btn.setProperty("action_type", action["action"])
             btn.setProperty("question", action.get("question", ""))
-            btn.setStyleSheet("""
+            btn.setStyleSheet(
+                """
                 QPushButton {
                     background-color: #3a3a3a;
                     color: white;
@@ -109,20 +122,21 @@ class ChartChatUIMixin:
                 QPushButton:hover {
                     background-color: #4a4a4a;
                 }
-            """)
+            """
+            )
             btn.clicked.connect(self._on_quick_action)
             quick_actions_layout.addWidget(btn)
+        return quick_actions_layout
 
-        control_panel_layout.addLayout(quick_actions_layout)
-
-        # Input area
+    def _build_input_row(self) -> QHBoxLayout:
         input_layout = QHBoxLayout()
         input_layout.setSpacing(4)
 
         self._input_field = QLineEdit()
         self._input_field.setPlaceholderText("Frage zum Chart eingeben...")
         self._input_field.returnPressed.connect(self._on_send)
-        self._input_field.setStyleSheet("""
+        self._input_field.setStyleSheet(
+            """
             QLineEdit {
                 background-color: #1e1e1e;
                 color: white;
@@ -130,13 +144,15 @@ class ChartChatUIMixin:
                 border-radius: 4px;
                 padding: 6px;
             }
-        """)
+        """
+        )
         input_layout.addWidget(self._input_field, 1)
 
         self._send_button = QPushButton("Senden")
         self._send_button.clicked.connect(self._on_send)
         self._send_button.setMaximumWidth(80)
-        self._send_button.setStyleSheet("""
+        self._send_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #3a3a3a;
                 color: white;
@@ -147,24 +163,23 @@ class ChartChatUIMixin:
             QPushButton:hover {
                 background-color: #4a4a4a;
             }
-        """)
+        """
+        )
         input_layout.addWidget(self._send_button)
+        return input_layout
 
-        control_panel_layout.addLayout(input_layout)
-
-        # Progress indicator
+    def _build_progress_bar(self) -> QProgressBar:
         self._progress_bar = QProgressBar()
-        self._progress_bar.setRange(0, 0)  # Indeterminate
+        self._progress_bar.setRange(0, 0)
         self._progress_bar.setMaximumHeight(3)
         self._progress_bar.setTextVisible(False)
         self._progress_bar.hide()
-        control_panel_layout.addWidget(self._progress_bar)
+        return self._progress_bar
 
-        # Bottom toolbar with analysis controls
+    def _build_toolbar(self) -> QHBoxLayout:
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setSpacing(8)
 
-        # Full analysis button (same style as other buttons)
         self._analyze_button = QPushButton("📊 Vollständige Analyse")
         self._analyze_button.clicked.connect(self._on_full_analysis)
         self._analyze_button.setStyleSheet(
@@ -176,19 +191,28 @@ class ChartChatUIMixin:
         )
         toolbar_layout.addWidget(self._analyze_button)
 
-        # Separator
+        toolbar_layout.addWidget(self._build_toolbar_separator())
+        toolbar_layout.addWidget(self._build_bars_label())
+        toolbar_layout.addWidget(self._build_bars_spinbox())
+        toolbar_layout.addWidget(self._build_all_bars_checkbox())
+        toolbar_layout.addStretch()
+        toolbar_layout.addWidget(self._build_clear_button())
+        toolbar_layout.addWidget(self._build_export_button())
+        return toolbar_layout
+
+    def _build_toolbar_separator(self) -> QFrame:
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.VLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         separator.setStyleSheet("color: #444;")
-        toolbar_layout.addWidget(separator)
+        return separator
 
-        # Bars controls
+    def _build_bars_label(self) -> QLabel:
         bars_label = QLabel("Bars:")
         bars_label.setStyleSheet("color: #ccc; font-size: 11px;")
-        toolbar_layout.addWidget(bars_label)
+        return bars_label
 
-        from PyQt6.QtWidgets import QCheckBox
+    def _build_bars_spinbox(self) -> QSpinBox:
         self._bars_spinbox = QSpinBox()
         self._bars_spinbox.setMinimum(20)
         self._bars_spinbox.setMaximum(500)
@@ -196,7 +220,8 @@ class ChartChatUIMixin:
         self._bars_spinbox.setSingleStep(10)
         self._bars_spinbox.setMaximumWidth(70)
         self._bars_spinbox.setToolTip("Anzahl der Kerzen für die Analyse")
-        self._bars_spinbox.setStyleSheet("""
+        self._bars_spinbox.setStyleSheet(
+            """
             QSpinBox {
                 background-color: #2a2a2a;
                 color: white;
@@ -211,12 +236,15 @@ class ChartChatUIMixin:
             QSpinBox::up-button:hover, QSpinBox::down-button:hover {
                 background-color: #4a4a4a;
             }
-        """)
-        toolbar_layout.addWidget(self._bars_spinbox)
+        """
+        )
+        return self._bars_spinbox
 
+    def _build_all_bars_checkbox(self) -> QCheckBox:
         self._all_bars_checkbox = QCheckBox("Alle angezeigten")
         self._all_bars_checkbox.setToolTip("Alle im Chart sichtbaren Kerzen verwenden")
-        self._all_bars_checkbox.setStyleSheet("""
+        self._all_bars_checkbox.setStyleSheet(
+            """
             QCheckBox {
                 color: #ccc;
                 font-size: 11px;
@@ -234,16 +262,16 @@ class ChartChatUIMixin:
             QCheckBox::indicator:hover {
                 border-color: #666;
             }
-        """)
-        toolbar_layout.addWidget(self._all_bars_checkbox)
+        """
+        )
+        return self._all_bars_checkbox
 
-        toolbar_layout.addStretch()
-
-        # Clear history button
+    def _build_clear_button(self) -> QPushButton:
         clear_btn = QPushButton("🗑️")
         clear_btn.setToolTip("Chat-Verlauf löschen")
         clear_btn.setMaximumWidth(32)
-        clear_btn.setStyleSheet("""
+        clear_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #3a3a3a;
                 border: 1px solid #444;
@@ -253,15 +281,17 @@ class ChartChatUIMixin:
             QPushButton:hover {
                 background-color: #4a4a4a;
             }
-        """)
+        """
+        )
         clear_btn.clicked.connect(self._on_clear_history)
-        toolbar_layout.addWidget(clear_btn)
+        return clear_btn
 
-        # Export button
+    def _build_export_button(self) -> QPushButton:
         export_btn = QPushButton("📄")
         export_btn.setToolTip("Als Markdown exportieren")
         export_btn.setMaximumWidth(32)
-        export_btn.setStyleSheet("""
+        export_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #3a3a3a;
                 border: 1px solid #444;
@@ -271,16 +301,10 @@ class ChartChatUIMixin:
             QPushButton:hover {
                 background-color: #4a4a4a;
             }
-        """)
+        """
+        )
         export_btn.clicked.connect(self._on_export)
-        toolbar_layout.addWidget(export_btn)
-
-        control_panel_layout.addLayout(toolbar_layout)
-
-        # Add the integrated control panel to main layout
-        layout.addWidget(control_panel)
-
-        self.setWidget(container)
+        return export_btn
     def _create_message_widget(self, role: str, content: str, time_str: str) -> QWidget:
         """Create a custom widget for a chat message bubble.
 

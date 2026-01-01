@@ -11,20 +11,35 @@ class BotUISignalsMixin:
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Use splitter for top/bottom sections
         splitter = QSplitter(Qt.Orientation.Vertical)
 
-        # ==================== CURRENT POSITION ====================
+        splitter.addWidget(self._build_current_position_widget())
+        splitter.addWidget(self._build_signals_widget())
+        layout.addWidget(splitter)
+        return widget
+
+    def _build_current_position_widget(self) -> QWidget:
         position_widget = QWidget()
         position_layout = QVBoxLayout(position_widget)
         position_layout.setContentsMargins(0, 0, 0, 0)
 
         position_group = QGroupBox("Current Position")
+        position_group.setLayout(self._build_position_layout())
+        position_group.setMaximumHeight(180)
+        position_layout.addWidget(position_group)
+        return position_widget
+
+    def _build_position_layout(self) -> QHBoxLayout:
         position_h_layout = QHBoxLayout()
         position_h_layout.setContentsMargins(8, 8, 8, 8)
         position_h_layout.setSpacing(20)
 
-        # ---- Left column: Position info ----
+        position_h_layout.addWidget(self._build_position_left_column())
+        position_h_layout.addWidget(self._build_position_right_column())
+        position_h_layout.addStretch()
+        return position_h_layout
+
+    def _build_position_left_column(self) -> QWidget:
         left_widget = QWidget()
         left_widget.setMinimumWidth(180)
         left_widget.setMaximumWidth(220)
@@ -61,10 +76,9 @@ class BotUISignalsMixin:
 
         self.position_bars_held_label = QLabel("-")
         left_form.addRow("Bars Held:", self.position_bars_held_label)
+        return left_widget
 
-        position_h_layout.addWidget(left_widget)
-
-        # ---- Right column: Score, TR, Derivative ----
+    def _build_position_right_column(self) -> QWidget:
         right_widget = QWidget()
         right_widget.setMinimumWidth(160)
         right_form = QFormLayout(right_widget)
@@ -78,7 +92,6 @@ class BotUISignalsMixin:
         self.position_tr_price_label = QLabel("-")
         right_form.addRow("TR Kurs:", self.position_tr_price_label)
 
-        # Derivat-Sektion (nur sichtbar wenn Derivathandel aktiv)
         self.deriv_separator = QLabel("── Derivat ──")
         self.deriv_separator.setStyleSheet("color: #ff5722; font-weight: bold;")
         right_form.addRow(self.deriv_separator)
@@ -99,36 +112,34 @@ class BotUISignalsMixin:
         self.deriv_pnl_label = QLabel("-")
         self.deriv_pnl_label.setStyleSheet("font-weight: bold;")
         right_form.addRow("D P&L:", self.deriv_pnl_label)
+        return right_widget
 
-        position_h_layout.addWidget(right_widget)
-        position_h_layout.addStretch()
-
-        position_group.setLayout(position_h_layout)
-        position_group.setMaximumHeight(180)
-        position_layout.addWidget(position_group)
-        splitter.addWidget(position_widget)
-
-        # ==================== SIGNAL HISTORY ====================
+    def _build_signals_widget(self) -> QWidget:
         signals_widget = QWidget()
         signals_layout = QVBoxLayout(signals_widget)
         signals_layout.setContentsMargins(0, 0, 0, 0)
 
         signals_group = QGroupBox("Recent Signals")
         signals_inner = QVBoxLayout()
+        self._build_signals_table()
+        signals_inner.addWidget(self.signals_table)
+        signals_group.setLayout(signals_inner)
+        signals_layout.addWidget(signals_group)
+        return signals_widget
 
+    def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
         self.signals_table.setColumnCount(19)
-        self.signals_table.setHorizontalHeaderLabels([
-            "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
-            "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
-            "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop"
-        ])
-        # Derivat-Spalten initial verstecken (13-16)
+        self.signals_table.setHorizontalHeaderLabels(
+            [
+                "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
+                "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
+                "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
+            ]
+        )
         for col in [13, 14, 15, 16]:
             self.signals_table.setColumnHidden(col, True)
-        # Score verstecken (in GroupBox angezeigt)
-        self.signals_table.setColumnHidden(17, True)  # Score
-        # TR Kurs (column 18) bleibt sichtbar fuer Stop-Ueberwachung
+        self.signals_table.setColumnHidden(17, True)
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -136,21 +147,12 @@ class BotUISignalsMixin:
         self.signals_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.signals_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
 
-        # Context menu for signals table
         self.signals_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.signals_table.customContextMenuRequested.connect(self._show_signals_context_menu)
-
-        # Connect cell editing for bidirectional chart trading
+        self.signals_table.customContextMenuRequested.connect(
+            self._show_signals_context_menu
+        )
         self.signals_table.cellChanged.connect(self._on_signals_table_cell_changed)
-        # Selection -> reflect in Current Position panel
-        self.signals_table.itemSelectionChanged.connect(self._on_signals_table_selection_changed)
+        self.signals_table.itemSelectionChanged.connect(
+            self._on_signals_table_selection_changed
+        )
         self._signals_table_updating = False
-
-        signals_inner.addWidget(self.signals_table)
-
-        signals_group.setLayout(signals_inner)
-        signals_layout.addWidget(signals_group)
-        splitter.addWidget(signals_widget)
-
-        layout.addWidget(splitter)
-        return widget

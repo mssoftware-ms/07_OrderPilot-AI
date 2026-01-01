@@ -50,77 +50,92 @@ class BotSignalLogicMixin:
         score = 0.0
         weight_sum = 0.0
 
-        # Trend indicators (weight: 0.3)
-        if features.sma_20 and features.sma_50:
-            trend_weight = 0.3
-            if side == TradeSide.LONG:
-                if features.close > features.sma_20 > features.sma_50:
-                    score += trend_weight
-                elif features.close > features.sma_20:
-                    score += trend_weight * 0.5
-            else:  # SHORT
-                if features.close < features.sma_20 < features.sma_50:
-                    score += trend_weight
-                elif features.close < features.sma_20:
-                    score += trend_weight * 0.5
-            weight_sum += trend_weight
+        for part_score, weight in (
+            self._score_trend(features, side),
+            self._score_rsi(features, side),
+            self._score_macd(features, side),
+            self._score_adx(features),
+            self._score_bbands(features, side),
+        ):
+            if weight > 0:
+                score += part_score
+                weight_sum += weight
 
-        # Momentum (RSI) (weight: 0.2)
-        if features.rsi_14 is not None:
-            mom_weight = 0.2
-            if side == TradeSide.LONG:
-                if 40 <= features.rsi_14 <= 60:
-                    score += mom_weight * 0.8  # Neutral zone
-                elif features.rsi_14 < 40:
-                    score += mom_weight  # Oversold
-            else:  # SHORT
-                if 40 <= features.rsi_14 <= 60:
-                    score += mom_weight * 0.8
-                elif features.rsi_14 > 60:
-                    score += mom_weight  # Overbought
-            weight_sum += mom_weight
-
-        # MACD (weight: 0.2)
-        if features.macd is not None and features.macd_signal is not None:
-            macd_weight = 0.2
-            if side == TradeSide.LONG:
-                if features.macd > features.macd_signal:
-                    score += macd_weight
-                elif features.macd > 0:
-                    score += macd_weight * 0.5
-            else:  # SHORT
-                if features.macd < features.macd_signal:
-                    score += macd_weight
-                elif features.macd < 0:
-                    score += macd_weight * 0.5
-            weight_sum += macd_weight
-
-        # ADX trend strength (weight: 0.15)
-        if features.adx is not None:
-            adx_weight = 0.15
-            if features.adx > 25:  # Strong trend
-                score += adx_weight
-            elif features.adx > 20:
-                score += adx_weight * 0.5
-            weight_sum += adx_weight
-
-        # Bollinger Bands (weight: 0.15)
-        if features.bb_pct is not None:
-            bb_weight = 0.15
-            if side == TradeSide.LONG:
-                if features.bb_pct < 0.2:  # Near lower band
-                    score += bb_weight
-                elif features.bb_pct < 0.4:
-                    score += bb_weight * 0.5
-            else:  # SHORT
-                if features.bb_pct > 0.8:  # Near upper band
-                    score += bb_weight
-                elif features.bb_pct > 0.6:
-                    score += bb_weight * 0.5
-            weight_sum += bb_weight
-
-        # Normalize score
         return score / weight_sum if weight_sum > 0 else 0.0
+
+    def _score_trend(self, features: FeatureVector, side: TradeSide) -> tuple[float, float]:
+        if not (features.sma_20 and features.sma_50):
+            return 0.0, 0.0
+        trend_weight = 0.3
+        if side == TradeSide.LONG:
+            if features.close > features.sma_20 > features.sma_50:
+                return trend_weight, trend_weight
+            if features.close > features.sma_20:
+                return trend_weight * 0.5, trend_weight
+        else:
+            if features.close < features.sma_20 < features.sma_50:
+                return trend_weight, trend_weight
+            if features.close < features.sma_20:
+                return trend_weight * 0.5, trend_weight
+        return 0.0, trend_weight
+
+    def _score_rsi(self, features: FeatureVector, side: TradeSide) -> tuple[float, float]:
+        if features.rsi_14 is None:
+            return 0.0, 0.0
+        mom_weight = 0.2
+        if side == TradeSide.LONG:
+            if 40 <= features.rsi_14 <= 60:
+                return mom_weight * 0.8, mom_weight
+            if features.rsi_14 < 40:
+                return mom_weight, mom_weight
+        else:
+            if 40 <= features.rsi_14 <= 60:
+                return mom_weight * 0.8, mom_weight
+            if features.rsi_14 > 60:
+                return mom_weight, mom_weight
+        return 0.0, mom_weight
+
+    def _score_macd(self, features: FeatureVector, side: TradeSide) -> tuple[float, float]:
+        if features.macd is None or features.macd_signal is None:
+            return 0.0, 0.0
+        macd_weight = 0.2
+        if side == TradeSide.LONG:
+            if features.macd > features.macd_signal:
+                return macd_weight, macd_weight
+            if features.macd > 0:
+                return macd_weight * 0.5, macd_weight
+        else:
+            if features.macd < features.macd_signal:
+                return macd_weight, macd_weight
+            if features.macd < 0:
+                return macd_weight * 0.5, macd_weight
+        return 0.0, macd_weight
+
+    def _score_adx(self, features: FeatureVector) -> tuple[float, float]:
+        if features.adx is None:
+            return 0.0, 0.0
+        adx_weight = 0.15
+        if features.adx > 25:
+            return adx_weight, adx_weight
+        if features.adx > 20:
+            return adx_weight * 0.5, adx_weight
+        return 0.0, adx_weight
+
+    def _score_bbands(self, features: FeatureVector, side: TradeSide) -> tuple[float, float]:
+        if features.bb_pct is None:
+            return 0.0, 0.0
+        bb_weight = 0.15
+        if side == TradeSide.LONG:
+            if features.bb_pct < 0.2:
+                return bb_weight, bb_weight
+            if features.bb_pct < 0.4:
+                return bb_weight * 0.5, bb_weight
+        else:
+            if features.bb_pct > 0.8:
+                return bb_weight, bb_weight
+            if features.bb_pct > 0.6:
+                return bb_weight * 0.5, bb_weight
+        return 0.0, bb_weight
 
     def _get_entry_threshold(self) -> float:
         """Get entry threshold based on active strategy and regime."""

@@ -50,50 +50,9 @@ class ChartChatMixin:
 
             logger.info("Setting up chart chat...")
 
-            # Get or create AI service
+            ai_service = self._resolve_ai_service(ai_service)
             if ai_service is None:
-                logger.info("No AI service provided, attempting to create one...")
-                ai_service = self._get_or_create_ai_service()
-
-            if ai_service is None:
-                logger.warning(
-                    "No AI service available for chart chat. "
-                    "Check Settings -> AI tab for configuration."
-                )
-                # Create a placeholder dock widget with error message
-                from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget
-
-                self._chat_service = None
-                self._chat_widget = QDockWidget("🤖 AI Chat (Nicht konfiguriert)", self)  # type: ignore
-
-                # Create content widget with error message
-                content = QWidget()
-                layout = QVBoxLayout(content)
-                error_label = QLabel(
-                    "⚠️ AI Service nicht verfügbar!\n\n"
-                    "Bitte konfiguriere einen AI-Provider:\n"
-                    "1. Gehe zu File → Settings → AI Tab\n"
-                    "2. Wähle OpenAI oder Anthropic\n"
-                    "3. Setze den API-Key\n\n"
-                    "Oder setze Umgebungsvariable:\n"
-                    "• OPENAI_API_KEY\n"
-                    "• ANTHROPIC_API_KEY"
-                )
-                error_label.setStyleSheet("color: #ff6b6b; padding: 20px;")
-                error_label.setWordWrap(True)
-                layout.addWidget(error_label)
-                layout.addStretch()
-
-                self._chat_widget.setWidget(content)
-
-                if hasattr(self, "addDockWidget"):
-                    self.addDockWidget(  # type: ignore
-                        Qt.DockWidgetArea.RightDockWidgetArea,
-                        self._chat_widget,
-                    )
-                    self._chat_widget.hide()
-                    logger.info("Chat placeholder widget added (AI not configured)")
-
+                self._create_ai_placeholder()
                 return False
 
             logger.info(f"AI service available: {type(ai_service).__name__}")
@@ -111,18 +70,10 @@ class ChartChatMixin:
             )
 
             # Add as dock widget (assumes self is QMainWindow)
-            if hasattr(self, "addDockWidget"):
-                self.addDockWidget(  # type: ignore
-                    Qt.DockWidgetArea.RightDockWidgetArea,
-                    self._chat_widget,
-                )
-                # Start hidden
-                self._chat_widget.hide()
-                logger.info("Chat widget added as dock widget (initially hidden)")
+            self._dock_chat_widget()
 
             # Connect chart change signal if available
-            if hasattr(chart_widget, "symbol_changed"):
-                chart_widget.symbol_changed.connect(self._on_chart_symbol_changed)
+            self._connect_chart_signals(chart_widget)
 
             logger.info("✅ Chart chat setup complete")
             return True
@@ -137,6 +88,64 @@ class ChartChatMixin:
             self._chat_widget = None
             self._chat_service = None
             return False
+
+    def _resolve_ai_service(self, ai_service: Any | None):
+        if ai_service is not None:
+            return ai_service
+        logger.info("No AI service provided, attempting to create one...")
+        ai_service = self._get_or_create_ai_service()
+        if ai_service is None:
+            logger.warning(
+                "No AI service available for chart chat. "
+                "Check Settings -> AI tab for configuration."
+            )
+        return ai_service
+
+    def _create_ai_placeholder(self) -> None:
+        from PyQt6.QtWidgets import QDockWidget, QLabel, QVBoxLayout, QWidget
+
+        self._chat_service = None
+        self._chat_widget = QDockWidget("🤖 AI Chat (Nicht konfiguriert)", self)  # type: ignore
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        error_label = QLabel(
+            "⚠️ AI Service nicht verfügbar!\n\n"
+            "Bitte konfiguriere einen AI-Provider:\n"
+            "1. Gehe zu File → Settings → AI Tab\n"
+            "2. Wähle OpenAI oder Anthropic\n"
+            "3. Setze den API-Key\n\n"
+            "Oder setze Umgebungsvariable:\n"
+            "• OPENAI_API_KEY\n"
+            "• ANTHROPIC_API_KEY"
+        )
+        error_label.setStyleSheet("color: #ff6b6b; padding: 20px;")
+        error_label.setWordWrap(True)
+        layout.addWidget(error_label)
+        layout.addStretch()
+
+        self._chat_widget.setWidget(content)
+
+        if hasattr(self, "addDockWidget"):
+            self.addDockWidget(  # type: ignore
+                Qt.DockWidgetArea.RightDockWidgetArea,
+                self._chat_widget,
+            )
+            self._chat_widget.hide()
+            logger.info("Chat placeholder widget added (AI not configured)")
+
+    def _dock_chat_widget(self) -> None:
+        if hasattr(self, "addDockWidget"):
+            self.addDockWidget(  # type: ignore
+                Qt.DockWidgetArea.RightDockWidgetArea,
+                self._chat_widget,
+            )
+            self._chat_widget.hide()
+            logger.info("Chat widget added as dock widget (initially hidden)")
+
+    def _connect_chart_signals(self, chart_widget: "EmbeddedTradingViewChart") -> None:
+        if hasattr(chart_widget, "symbol_changed"):
+            chart_widget.symbol_changed.connect(self._on_chart_symbol_changed)
 
     def _get_or_create_ai_service(self) -> Any | None:
         """Get or create an AI service instance.

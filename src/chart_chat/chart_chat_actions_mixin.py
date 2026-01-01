@@ -26,6 +26,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+# Import AnalysisWorker here to avoid NameError
+from .chart_chat_worker import AnalysisWorker
+
 if TYPE_CHECKING:
     from .chat_service import ChartChatService
     from .models import ChartAnalysisResult, QuickAnswerResult
@@ -65,7 +68,9 @@ class ChartChatActionsMixin:
             f"[Vollständige Chartanalyse angefordert]"
         )
         self._start_analysis("full_analysis")
-        self.analysis_requested.emit()
+        # Emit signal with action type (signal expects str argument)
+        if hasattr(self, 'analysis_requested'):
+            self.analysis_requested.emit("full_analysis")
     def _start_analysis(
         self, action: str, question: str | None = None
     ) -> None:
@@ -75,8 +80,46 @@ class ChartChatActionsMixin:
             action: 'full_analysis' or 'ask'
             question: Optional question for 'ask' action
         """
+        # Check if a worker is already running
         if self._worker and self._worker.isRunning():
-            logger.warning("Analysis already in progress")
+            logger.warning("Analysis already in progress, ignoring new request")
+            self._append_message(
+                "assistant",
+                "⏳ Bitte warte, bis die aktuelle Anfrage abgeschlossen ist."
+            )
+            return
+
+        # Check if AI service is available
+        if not self.service.ai_service:
+            self._append_message(
+                "assistant",
+                "⚠️ **AI Service nicht verfügbar!**\n\n"
+                "Bitte konfiguriere einen AI-Provider:\n"
+                "1. Gehe zu File → Settings → AI Tab\n"
+                "2. Wähle OpenAI, Anthropic oder Gemini\n"
+                "3. Setze den entsprechenden API-Key\n\n"
+                "Alternativ kannst du eine Umgebungsvariable setzen:\n"
+                "• OPENAI_API_KEY\n"
+                "• ANTHROPIC_API_KEY\n"
+                "• GEMINI_API_KEY"
+            )
+            return
+
+        # Check if AI service has required methods
+        ai_service = self.service.ai_service
+        has_methods = (
+            hasattr(ai_service, "complete") or
+            hasattr(ai_service, "chat_completion") or
+            hasattr(ai_service, "generate")
+        )
+        if not has_methods:
+            self._append_message(
+                "assistant",
+                f"⚠️ **AI Service fehlerhaft!**\n\n"
+                f"Der AI-Service ({type(ai_service).__name__}) unterstützt keine "
+                f"bekannte Completion-Methode.\n\n"
+                f"Bitte überprüfe deine AI-Konfiguration."
+            )
             return
 
         self._set_loading(True)
@@ -92,6 +135,11 @@ class ChartChatActionsMixin:
             result: ChartAnalysisResult or QuickAnswerResult
         """
         self._set_loading(False)
+
+        # Clean up worker reference
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
 
         # Format response based on type
         if hasattr(result, "to_markdown"):
@@ -115,6 +163,12 @@ class ChartChatActionsMixin:
             error: Error message
         """
         self._set_loading(False)
+
+        # Clean up worker reference
+        if self._worker:
+            self._worker.deleteLater()
+            self._worker = None
+
         self._append_message(
             "assistant",
             f"⚠️ **Fehler:** {error}"

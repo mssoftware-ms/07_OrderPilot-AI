@@ -39,30 +39,33 @@ class StrategySignalGenerator:
         """
         df = self.data.copy()
 
-        if strategy_name == StrategyName.BREAKOUT:
-            signals = self._breakout_signals(df, parameters)
-        elif strategy_name == StrategyName.MOMENTUM:
-            signals = self._momentum_signals(df, parameters)
-        elif strategy_name == StrategyName.MEAN_REVERSION:
-            signals = self._mean_reversion_signals(df, parameters)
-        elif strategy_name == StrategyName.TREND_FOLLOWING:
-            signals = self._trend_following_signals(df, parameters)
-        elif strategy_name == StrategyName.SCALPING:
-            signals = self._scalping_signals(df, parameters)
-        elif strategy_name == StrategyName.BOLLINGER_SQUEEZE:
-            signals = self._bollinger_squeeze_signals(df, parameters)
-        elif strategy_name == StrategyName.TREND_PULLBACK:
-            signals = self._trend_pullback_signals(df, parameters)
-        elif strategy_name == StrategyName.OPENING_RANGE:
-            signals = self._opening_range_signals(df, parameters)
-        elif strategy_name == StrategyName.REGIME_HYBRID:
-            signals = self._regime_hybrid_signals(df, parameters)
-        else:
-            logger.warning(f"Unknown strategy: {strategy_name}, no signals generated")
-            signals = pd.Series(0, index=df.index)
+        signals = self._dispatch_signals(strategy_name, df, parameters)
 
         df["signal"] = signals
         return df
+
+    def _dispatch_signals(
+        self,
+        strategy_name: StrategyName,
+        df: pd.DataFrame,
+        parameters: dict[str, Any],
+    ) -> pd.Series:
+        handlers = {
+            StrategyName.BREAKOUT: self._breakout_signals,
+            StrategyName.MOMENTUM: self._momentum_signals,
+            StrategyName.MEAN_REVERSION: self._mean_reversion_signals,
+            StrategyName.TREND_FOLLOWING: self._trend_following_signals,
+            StrategyName.SCALPING: self._scalping_signals,
+            StrategyName.BOLLINGER_SQUEEZE: self._bollinger_squeeze_signals,
+            StrategyName.TREND_PULLBACK: self._trend_pullback_signals,
+            StrategyName.OPENING_RANGE: self._opening_range_signals,
+            StrategyName.REGIME_HYBRID: self._regime_hybrid_signals,
+        }
+        handler = handlers.get(strategy_name)
+        if not handler:
+            logger.warning(f"Unknown strategy: {strategy_name}, no signals generated")
+            return pd.Series(0, index=df.index)
+        return handler(df, parameters)
 
     def _breakout_signals(self, df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
         return breakout_signals(df, params, true_range=true_range)

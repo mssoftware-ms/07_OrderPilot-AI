@@ -73,115 +73,170 @@ class SimulationWorker(QThread):
             )
 
             is_all = self.strategy_name == "all"
-            strategies = list(StrategyName) if is_all else [StrategyName(self.strategy_name)]
-            sides = ["long", "short"] if self.entry_only else ["long"]
+            strategies = self._resolve_strategies(StrategyName, is_all)
+            sides = self._resolve_sides()
             total_runs = len(strategies) * len(sides)
 
             if self.mode == "manual":
-                # Single or batch simulation - needs event loop for async run_simulation
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                results: list[object] = []
-                try:
-                    simulator = StrategySimulator(self.data, self.symbol)
-                    run_index = 0
-                    for strategy in strategies:
-                        for side in sides:
-                            if self._cancelled:
-                                break
-                            run_index += 1
-                            self.strategy_started.emit(run_index, total_runs, strategy.value, side)
-                            if is_all:
-                                params = load_strategy_params(strategy.value) or get_default_parameters(strategy)
-                            else:
-                                params = self.parameters
-                            if self.entry_only:
-                                params = filter_entry_only_params(strategy, params)
-                            result = loop.run_until_complete(
-                                simulator.run_simulation(
-                                    strategy_name=strategy,
-                                    parameters=params,
-                                    entry_only=self.entry_only,
-                                    entry_side=side,
-                                    entry_lookahead_mode=self.entry_lookahead_mode,
-                                    entry_lookahead_bars=self.entry_lookahead_bars,
-                                )
-                            )
-                            results.append(result)
-                            if is_all:
-                                self.partial_result.emit(result)
-                        if self._cancelled:
-                            break
-                finally:
-                    loop.close()
-
-                if is_all:
-                    self.finished.emit({"batch_done": True, "count": len(results)})
-                else:
-                    if len(results) == 1:
-                        self.finished.emit(results[0])
-                    else:
-                        self.finished.emit(results)
+                results = self._run_manual(
+                    StrategySimulator,
+                    get_default_parameters,
+                    load_strategy_params,
+                    filter_entry_only_params,
+                    strategies,
+                    sides,
+                    total_runs,
+                    is_all,
+                )
+                self._emit_finished(results, is_all)
 
             elif self.mode in ("grid", "bayesian"):
-                # Optimization - optimizers are synchronous and manage their own event loops
-                results: list[object] = []
-                run_index = 0
-
-                def progress_cb(current, total, best):
-                    self.progress.emit(current, total, best)
-
-                for strategy in strategies:
-                    for side in sides:
-                        if self._cancelled:
-                            break
-
-                        run_index += 1
-                        self.strategy_started.emit(run_index, total_runs, strategy.value, side)
-                        objective_metric = "entry_score" if self.entry_only else self.objective_metric
-                        config = OptimizationConfig(
-                            strategy_name=strategy,
-                            objective_metric=objective_metric,
-                            direction="maximize",
-                            n_trials=self.opt_trials,
-                            entry_only=self.entry_only,
-                            entry_side=side,
-                            entry_lookahead_mode=self.entry_lookahead_mode,
-                            entry_lookahead_bars=self.entry_lookahead_bars,
-                        )
-
-                        if self.mode == "bayesian":
-                            optimizer = BayesianOptimizer(self.data, self.symbol, config)
-                        else:
-                            optimizer = GridSearchOptimizer(self.data, self.symbol, config)
-
-                        # Keep reference so we can cancel from UI thread
-                        self._optimizer = optimizer
-
-                        # Optimizers are now synchronous
-                        if self.mode == "grid":
-                            result = optimizer.optimize(
-                                progress_callback=progress_cb,
-                                max_combinations=self.opt_trials,
-                            )
-                        else:
-                            result = optimizer.optimize(progress_callback=progress_cb)
-                        results.append(result)
-                        if is_all:
-                            self.partial_result.emit(result)
-                    if self._cancelled:
-                        break
-
-                if is_all:
-                    self.finished.emit({"batch_done": True, "count": len(results)})
-                else:
-                    if len(results) == 1:
-                        self.finished.emit(results[0])
-                    else:
-                        self.finished.emit(results)
+                results = self._run_optimization(
+                    BayesianOptimizer,
+                    GridSearchOptimizer,
+                    OptimizationConfig,
+                    strategies,
+                    sides,
+                    total_runs,
+                    is_all,
+                )
+                self._emit_finished(results, is_all)
 
         except Exception as e:
             logger.error("Simulation failed: %s", e, exc_info=True)
             self.error.emit(str(e))
         finally:
             self._optimizer = None
+
+    def _resolve_strategies(self, StrategyName, is_all: bool):
+        return list(StrategyName) if is_all else [StrategyName(self.strategy_name)]
+
+    def _resolve_sides(self) -> list[str]:
+        return ["long", "short"] if self.entry_only else ["long"]
+
+    def _emit_finished(self, results: list[object], is_all: bool) -> None:
+        if is_all:
+            self.finished.emit({"batch_done": True, "count": len(results)})
+            return
+        if len(results) == 1:
+            self.finished.emit(results[0])
+        else:
+            self.finished.emit(results)
+
+    def _run_manual(
+        self,
+        StrategySimulator,
+        get_default_parameters,
+        load_strategy_params,
+        filter_entry_only_params,
+        strategies,
+        sides,
+        total_runs: int,
+        is_all: bool,
+    ) -> list[object]:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results: list[object] = []
+        try:
+            simulator = StrategySimulator(self.data, self.symbol)
+            run_index = 0
+            for strategy in strategies:
+                for side in sides:
+                    if self._cancelled:
+                        break
+                    run_index += 1
+                    self.strategy_started.emit(run_index, total_runs, strategy.value, side)
+                    params = self._resolve_parameters(
+                        strategy,
+                        is_all,
+                        get_default_parameters,
+                        load_strategy_params,
+                    )
+                    if self.entry_only:
+                        params = filter_entry_only_params(strategy, params)
+                    result = loop.run_until_complete(
+                        simulator.run_simulation(
+                            strategy_name=strategy,
+                            parameters=params,
+                            entry_only=self.entry_only,
+                            entry_side=side,
+                            entry_lookahead_mode=self.entry_lookahead_mode,
+                            entry_lookahead_bars=self.entry_lookahead_bars,
+                        )
+                    )
+                    results.append(result)
+                    if is_all:
+                        self.partial_result.emit(result)
+                if self._cancelled:
+                    break
+        finally:
+            loop.close()
+        return results
+
+    def _resolve_parameters(
+        self,
+        strategy,
+        is_all: bool,
+        get_default_parameters,
+        load_strategy_params,
+    ) -> dict:
+        if is_all:
+            return load_strategy_params(strategy.value) or get_default_parameters(strategy)
+        return self.parameters
+
+    def _run_optimization(
+        self,
+        BayesianOptimizer,
+        GridSearchOptimizer,
+        OptimizationConfig,
+        strategies,
+        sides,
+        total_runs: int,
+        is_all: bool,
+    ) -> list[object]:
+        results: list[object] = []
+        run_index = 0
+
+        def progress_cb(current, total, best):
+            self.progress.emit(current, total, best)
+
+        for strategy in strategies:
+            for side in sides:
+                if self._cancelled:
+                    break
+
+                run_index += 1
+                self.strategy_started.emit(run_index, total_runs, strategy.value, side)
+                objective_metric = "entry_score" if self.entry_only else self.objective_metric
+                config = OptimizationConfig(
+                    strategy_name=strategy,
+                    objective_metric=objective_metric,
+                    direction="maximize",
+                    n_trials=self.opt_trials,
+                    entry_only=self.entry_only,
+                    entry_side=side,
+                    entry_lookahead_mode=self.entry_lookahead_mode,
+                    entry_lookahead_bars=self.entry_lookahead_bars,
+                )
+
+                optimizer = (
+                    BayesianOptimizer(self.data, self.symbol, config)
+                    if self.mode == "bayesian"
+                    else GridSearchOptimizer(self.data, self.symbol, config)
+                )
+
+                self._optimizer = optimizer
+
+                if self.mode == "grid":
+                    result = optimizer.optimize(
+                        progress_callback=progress_cb,
+                        max_combinations=self.opt_trials,
+                    )
+                else:
+                    result = optimizer.optimize(progress_callback=progress_cb)
+                results.append(result)
+                if is_all:
+                    self.partial_result.emit(result)
+            if self._cancelled:
+                break
+        return results

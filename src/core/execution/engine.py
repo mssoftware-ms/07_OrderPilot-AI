@@ -278,8 +278,7 @@ class ExecutionEngine:
             task: Task to execute
         """
         try:
-            # Check timeout
-            if datetime.utcnow() - task.created_at > timedelta(seconds=self.order_timeout_seconds):
+            if self._is_task_timed_out(task):
                 logger.warning(f"Order {task.task_id} timed out")
                 return
 
@@ -292,121 +291,163 @@ class ExecutionEngine:
                     logger.info(f"Order {task.task_id} rejected by user")
                     return
 
-            # Execute order
-            try:
-                response = await task.broker.place_order(task.order_request)
-
-                # Store in database
-                await self._store_order(task, response)
-
-                # Emit ORDER_SUBMITTED event
-                event_bus.emit(Event(
-                    type=EventType.ORDER_SUBMITTED,
-                    timestamp=datetime.utcnow(),
-                    data={
-                        "task_id": task.task_id,
-                        "broker_order_id": response.broker_order_id,
-                        "status": response.status.value
-                    },
-                    source="execution_engine"
-                ))
-
-                # ===== CRITICAL: EMIT ORDER_FILLED EVENT FOR CHART MARKERS =====
-                # Check if order is filled (market orders are usually filled immediately)
-                if response.filled_qty and response.filled_qty > 0:
-                    from src.common.event_bus import OrderEvent
-
-                    event_bus.emit(OrderEvent(
-                        type=EventType.ORDER_FILLED,
-                        timestamp=datetime.utcnow(),
-                        symbol=task.order_request.symbol,
-                        order_id=response.broker_order_id,
-                        order_type=task.order_request.order_type.value if hasattr(task.order_request.order_type, 'value') else str(task.order_request.order_type),
-                        side=task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side),
-                        quantity=task.order_request.quantity,
-                        filled_quantity=response.filled_qty,
-                        avg_fill_price=response.filled_avg_price or response.limit_price or 0.0,
-                        status="filled",
-                        data={
-                            "symbol": task.order_request.symbol,
-                            "order_id": response.broker_order_id,
-                            "side": task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side),
-                            "filled_quantity": response.filled_qty,
-                            "avg_fill_price": response.filled_avg_price or response.limit_price or 0.0,
-                            "order_type": task.order_request.order_type.value if hasattr(task.order_request.order_type, 'value') else str(task.order_request.order_type)
-                        },
-                        source="execution_engine"
-                    ))
-
-                    logger.info(f"✅ ORDER_FILLED event emitted for {task.order_request.symbol} @ {response.filled_avg_price}")
-
-                    # ===== ALSO EMIT TRADE_ENTRY/EXIT EVENTS =====
-                    from src.common.event_bus import ExecutionEvent
-
-                    side_str = task.order_request.side.value if hasattr(task.order_request.side, 'value') else str(task.order_request.side)
-                    is_buy = side_str.upper() in ["BUY", "LONG"]
-
-                    if is_buy:
-                        # BUY order → Opening position (TRADE_ENTRY)
-                        event_bus.emit(ExecutionEvent(
-                            type=EventType.TRADE_ENTRY,
-                            timestamp=datetime.utcnow(),
-                            symbol=task.order_request.symbol,
-                            trade_id=f"trade_{task.order_request.symbol}_{response.broker_order_id}",
-                            action="entry",
-                            side="LONG",
-                            quantity=response.filled_qty,
-                            price=response.filled_avg_price or response.limit_price or 0.0,
-                            data={
-                                "symbol": task.order_request.symbol,
-                                "side": "LONG",
-                                "quantity": response.filled_qty,
-                                "price": response.filled_avg_price or response.limit_price or 0.0
-                            },
-                            source="execution_engine"
-                        ))
-                        logger.info(f"✅ TRADE_ENTRY event emitted for {task.order_request.symbol}")
-                    else:
-                        # SELL order → Closing position (TRADE_EXIT)
-                        event_bus.emit(ExecutionEvent(
-                            type=EventType.TRADE_EXIT,
-                            timestamp=datetime.utcnow(),
-                            symbol=task.order_request.symbol,
-                            trade_id=f"trade_{task.order_request.symbol}_{response.broker_order_id}",
-                            action="exit",
-                            side="SHORT",  # Exiting long = short action
-                            quantity=response.filled_qty,
-                            price=response.filled_avg_price or response.limit_price or 0.0,
-                            pnl=None,  # Would need position tracking for real P&L
-                            pnl_pct=None,
-                            reason="manual_exit",
-                            data={
-                                "symbol": task.order_request.symbol,
-                                "side": "SHORT",
-                                "quantity": response.filled_qty,
-                                "price": response.filled_avg_price or response.limit_price or 0.0
-                            },
-                            source="execution_engine"
-                        ))
-                        logger.info(f"✅ TRADE_EXIT event emitted for {task.order_request.symbol}")
-
-                logger.info(f"Order executed: {task.task_id}")
-
-            except Exception as e:
-                logger.error(f"Order execution failed: {e}")
-
-                # Retry logic
-                if task.retry_count < task.max_retries:
-                    task.retry_count += 1
-                    logger.info(f"Retrying order {task.task_id} (attempt {task.retry_count})")
-                    await asyncio.sleep(2 ** task.retry_count)  # Exponential backoff
-                    await self.pending_queue.put((-task.priority, task))
-                else:
-                    logger.error(f"Order {task.task_id} failed after {task.max_retries} retries")
+            await self._execute_and_record(task)
 
         finally:
             # Remove from active orders
             self.active_orders.pop(task.task_id, None)
+
+    def _is_task_timed_out(self, task: ExecutionTask) -> bool:
+        return datetime.utcnow() - task.created_at > timedelta(
+            seconds=self.order_timeout_seconds
+        )
+
+    async def _execute_and_record(self, task: ExecutionTask) -> None:
+        try:
+            response = await task.broker.place_order(task.order_request)
+            await self._store_order(task, response)
+            self._emit_order_submitted(task, response)
+            self._emit_filled_events(task, response)
+            logger.info(f"Order executed: {task.task_id}")
+        except Exception as e:
+            logger.error(f"Order execution failed: {e}")
+            await self._handle_execution_retry(task)
+
+    def _emit_order_submitted(self, task: ExecutionTask, response: OrderResponse) -> None:
+        event_bus.emit(
+            Event(
+                type=EventType.ORDER_SUBMITTED,
+                timestamp=datetime.utcnow(),
+                data={
+                    "task_id": task.task_id,
+                    "broker_order_id": response.broker_order_id,
+                    "status": response.status.value,
+                },
+                source="execution_engine",
+            )
+        )
+
+    def _emit_filled_events(self, task: ExecutionTask, response: OrderResponse) -> None:
+        if not response.filled_qty or response.filled_qty <= 0:
+            return
+
+        from src.common.event_bus import OrderEvent
+
+        side_str = self._order_side_str(task)
+        order_type_str = self._order_type_str(task)
+        avg_price = response.filled_avg_price or response.limit_price or 0.0
+
+        event_bus.emit(
+            OrderEvent(
+                type=EventType.ORDER_FILLED,
+                timestamp=datetime.utcnow(),
+                symbol=task.order_request.symbol,
+                order_id=response.broker_order_id,
+                order_type=order_type_str,
+                side=side_str,
+                quantity=task.order_request.quantity,
+                filled_quantity=response.filled_qty,
+                avg_fill_price=avg_price,
+                status="filled",
+                data={
+                    "symbol": task.order_request.symbol,
+                    "order_id": response.broker_order_id,
+                    "side": side_str,
+                    "filled_quantity": response.filled_qty,
+                    "avg_fill_price": avg_price,
+                    "order_type": order_type_str,
+                },
+                source="execution_engine",
+            )
+        )
+
+        logger.info(
+            f"✅ ORDER_FILLED event emitted for {task.order_request.symbol} @ {response.filled_avg_price}"
+        )
+
+        self._emit_trade_entry_exit(task, response, side_str, avg_price)
+
+    def _emit_trade_entry_exit(
+        self,
+        task: ExecutionTask,
+        response: OrderResponse,
+        side_str: str,
+        avg_price: float,
+    ) -> None:
+        from src.common.event_bus import ExecutionEvent
+
+        is_buy = side_str.upper() in ["BUY", "LONG"]
+        trade_id = f"trade_{task.order_request.symbol}_{response.broker_order_id}"
+
+        if is_buy:
+            event_bus.emit(
+                ExecutionEvent(
+                    type=EventType.TRADE_ENTRY,
+                    timestamp=datetime.utcnow(),
+                    symbol=task.order_request.symbol,
+                    trade_id=trade_id,
+                    action="entry",
+                    side="LONG",
+                    quantity=response.filled_qty,
+                    price=avg_price,
+                    data={
+                        "symbol": task.order_request.symbol,
+                        "side": "LONG",
+                        "quantity": response.filled_qty,
+                        "price": avg_price,
+                    },
+                    source="execution_engine",
+                )
+            )
+            logger.info(f"✅ TRADE_ENTRY event emitted for {task.order_request.symbol}")
+            return
+
+        event_bus.emit(
+            ExecutionEvent(
+                type=EventType.TRADE_EXIT,
+                timestamp=datetime.utcnow(),
+                symbol=task.order_request.symbol,
+                trade_id=trade_id,
+                action="exit",
+                side="SHORT",  # Exiting long = short action
+                quantity=response.filled_qty,
+                price=avg_price,
+                pnl=None,  # Would need position tracking for real P&L
+                pnl_pct=None,
+                reason="manual_exit",
+                data={
+                    "symbol": task.order_request.symbol,
+                    "side": "SHORT",
+                    "quantity": response.filled_qty,
+                    "price": avg_price,
+                },
+                source="execution_engine",
+            )
+        )
+        logger.info(f"✅ TRADE_EXIT event emitted for {task.order_request.symbol}")
+
+    async def _handle_execution_retry(self, task: ExecutionTask) -> None:
+        if task.retry_count < task.max_retries:
+            task.retry_count += 1
+            logger.info(f"Retrying order {task.task_id} (attempt {task.retry_count})")
+            await asyncio.sleep(2 ** task.retry_count)  # Exponential backoff
+            await self.pending_queue.put((-task.priority, task))
+        else:
+            logger.error(f"Order {task.task_id} failed after {task.max_retries} retries")
+
+    def _order_side_str(self, task: ExecutionTask) -> str:
+        return (
+            task.order_request.side.value
+            if hasattr(task.order_request.side, "value")
+            else str(task.order_request.side)
+        )
+
+    def _order_type_str(self, task: ExecutionTask) -> str:
+        return (
+            task.order_request.order_type.value
+            if hasattr(task.order_request.order_type, "value")
+            else str(task.order_request.order_type)
+        )
 
     async def _get_manual_approval(self, task: ExecutionTask) -> bool:
         """Get manual approval for order.

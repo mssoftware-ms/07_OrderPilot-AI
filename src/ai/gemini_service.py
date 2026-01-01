@@ -152,46 +152,16 @@ class GeminiService:
         if not self.cost_tracker.check_budget(estimated_cost=0.01):  # Estimate
             raise QuotaExceededError("Monthly AI budget exceeded")
 
-        # Cache key
-        cache_key = None
-        if use_cache:
-            cache_key = hashlib.md5(
-                f"{prompt}:{response_model.__name__}:{model or self.default_model}".encode()
-            ).hexdigest()
-            cached = self.cache_manager.get(cache_key)
-            if cached:
-                logger.debug(f"Cache hit for {response_model.__name__}")
-                return response_model.model_validate(cached)
+        cache_key = self._build_cache_key(prompt, response_model, model, use_cache)
+        cached = self._try_cache_hit(cache_key, response_model)
+        if cached is not None:
+            return cached
 
         # Build request
         model_to_use = model or self.default_model
 
         # Get JSON schema for structured output
-        schema = response_model.model_json_schema()
-        schema_str = json.dumps(schema, indent=2)
-
-        # Enhanced prompt for JSON output
-        enhanced_prompt = f"""{prompt}
-
-IMPORTANT: Respond with valid JSON matching this exact schema:
-
-{schema_str}
-
-Do not include any explanation, markdown formatting, or code blocks. Only output the raw JSON object."""
-
-        # Gemini API format
-        request_body = {
-            "contents": [
-                {
-                    "parts": [{"text": enhanced_prompt}]
-                }
-            ],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": 4096,
-                "responseMimeType": "application/json"
-            }
-        }
+        request_body = self._build_request_body(prompt, response_model, temperature)
 
         # Build URL with API key
         url = f"{self.base_url}/models/{model_to_use}:generateContent?key={self.api_key}"
@@ -220,71 +190,21 @@ Do not include any explanation, markdown formatting, or code blocks. Only output
                 # Parse response
                 response_data = await response.json()
 
-                # Extract content from Gemini's response format
-                # Gemini returns: {"candidates": [{"content": {"parts": [{"text": "..."}]}}], ...}
-                candidates = response_data.get("candidates", [])
-                if not candidates:
-                    # Check for safety blocks
-                    if "promptFeedback" in response_data:
-                        feedback = response_data["promptFeedback"]
-                        block_reason = feedback.get("blockReason", "Unknown")
-                        raise SchemaValidationError(f"Response blocked by safety filter: {block_reason}")
-                    raise SchemaValidationError("No candidates in Gemini response")
-
-                content = candidates[0].get("content", {})
-                parts = content.get("parts", [])
-                if not parts:
-                    raise SchemaValidationError("No content parts in Gemini response")
-
-                text_content = parts[0].get("text", "")
-
-                # Try to parse as JSON
-                try:
-                    # Remove markdown code blocks if present
-                    if "```json" in text_content:
-                        text_content = text_content.split("```json")[1].split("```")[0].strip()
-                    elif "```" in text_content:
-                        text_content = text_content.split("```")[1].split("```")[0].strip()
-
-                    json_data = json.loads(text_content)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse Gemini response as JSON: {e}")
-                    logger.debug(f"Raw content: {text_content[:500]}")
-                    raise SchemaValidationError(f"Invalid JSON in response: {e}")
-
-                # Validate against Pydantic model
-                try:
-                    result = response_model.model_validate(json_data)
-                except Exception as e:
-                    logger.error(f"Schema validation failed: {e}")
-                    raise SchemaValidationError(f"Response doesn't match schema: {e}")
+                text_content = self._extract_text_content(response_data)
+                json_data = self._parse_json_response(text_content)
+                result = self._validate_response(response_model, json_data)
 
                 # Track costs
                 usage_metadata = response_data.get("usageMetadata", {})
                 input_tokens = usage_metadata.get("promptTokenCount", 0)
                 output_tokens = usage_metadata.get("candidatesTokenCount", 0)
 
-                # Gemini pricing (approximate, varies by model)
-                # gemini-2.0-flash-exp: Input ~$0.10/1M, Output ~$0.30/1M
-                # gemini-1.5-pro: Input ~$1.25/1M, Output ~$5.00/1M
-                # gemini-1.5-flash: Input ~$0.075/1M, Output ~$0.30/1M
-                if "pro" in model_to_use:
-                    cost = (input_tokens * 1.25 / 1_000_000) + (output_tokens * 5.0 / 1_000_000)
-                else:  # flash models
-                    cost = (input_tokens * 0.10 / 1_000_000) + (output_tokens * 0.30 / 1_000_000)
-
+                cost = self._calculate_cost(model_to_use, input_tokens, output_tokens)
                 self.cost_tracker.add_cost(cost)
 
                 # Log request
                 elapsed_ms = (time.time() - start_time) * 1000
-                log_ai_request(
-                    provider="Gemini",
-                    model=model_to_use,
-                    tokens_used=input_tokens + output_tokens,
-                    cost_usd=cost,
-                    latency_ms=elapsed_ms,
-                    cache_hit=False
-                )
+                self._log_ai_request(model_to_use, input_tokens + output_tokens, cost, elapsed_ms)
 
                 # Cache result
                 if use_cache and cache_key:
@@ -295,6 +215,107 @@ Do not include any explanation, markdown formatting, or code blocks. Only output
         except aiohttp.ClientError as e:
             logger.error(f"Gemini API connection error: {e}")
             raise OpenAIError(f"Connection error: {e}")
+
+    def _build_cache_key(
+        self,
+        prompt: str,
+        response_model: type[T],
+        model: str | None,
+        use_cache: bool,
+    ) -> str | None:
+        if not use_cache:
+            return None
+        return hashlib.md5(
+            f"{prompt}:{response_model.__name__}:{model or self.default_model}".encode()
+        ).hexdigest()
+
+    def _try_cache_hit(self, cache_key: str | None, response_model: type[T]) -> T | None:
+        if not cache_key:
+            return None
+        cached = self.cache_manager.get(cache_key)
+        if cached:
+            logger.debug(f"Cache hit for {response_model.__name__}")
+            return response_model.model_validate(cached)
+        return None
+
+    def _build_request_body(
+        self,
+        prompt: str,
+        response_model: type[T],
+        temperature: float,
+    ) -> dict[str, Any]:
+        schema = response_model.model_json_schema()
+        schema_str = json.dumps(schema, indent=2)
+        enhanced_prompt = f"""{prompt}
+
+IMPORTANT: Respond with valid JSON matching this exact schema:
+
+{schema_str}
+
+Do not include any explanation, markdown formatting, or code blocks. Only output the raw JSON object."""
+        return {
+            "contents": [{"parts": [{"text": enhanced_prompt}]}],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": 4096,
+                "responseMimeType": "application/json",
+            },
+        }
+
+    def _extract_text_content(self, response_data: dict[str, Any]) -> str:
+        candidates = response_data.get("candidates", [])
+        if not candidates:
+            if "promptFeedback" in response_data:
+                feedback = response_data["promptFeedback"]
+                block_reason = feedback.get("blockReason", "Unknown")
+                raise SchemaValidationError(f"Response blocked by safety filter: {block_reason}")
+            raise SchemaValidationError("No candidates in Gemini response")
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        if not parts:
+            raise SchemaValidationError("No content parts in Gemini response")
+        return parts[0].get("text", "")
+
+    def _parse_json_response(self, text_content: str) -> dict[str, Any]:
+        try:
+            if "```json" in text_content:
+                text_content = text_content.split("```json")[1].split("```")[0].strip()
+            elif "```" in text_content:
+                text_content = text_content.split("```")[1].split("```")[0].strip()
+            return json.loads(text_content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Gemini response as JSON: {e}")
+            logger.debug(f"Raw content: {text_content[:500]}")
+            raise SchemaValidationError(f"Invalid JSON in response: {e}")
+
+    def _validate_response(self, response_model: type[T], json_data: dict[str, Any]) -> T:
+        try:
+            return response_model.model_validate(json_data)
+        except Exception as e:
+            logger.error(f"Schema validation failed: {e}")
+            raise SchemaValidationError(f"Response doesn't match schema: {e}")
+
+    def _calculate_cost(self, model_to_use: str, input_tokens: int, output_tokens: int) -> float:
+        if "pro" in model_to_use:
+            return (input_tokens * 1.25 / 1_000_000) + (output_tokens * 5.0 / 1_000_000)
+        return (input_tokens * 0.10 / 1_000_000) + (output_tokens * 0.30 / 1_000_000)
+
+    def _log_ai_request(
+        self,
+        model: str,
+        tokens_used: int,
+        cost: float,
+        elapsed_ms: float,
+    ) -> None:
+        log_ai_request(
+            provider="Gemini",
+            model=model,
+            tokens_used=tokens_used,
+            cost_usd=cost,
+            latency_ms=elapsed_ms,
+            cache_hit=False,
+        )
 
     # ==================== High-Level Task Methods ====================
 

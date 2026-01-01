@@ -32,30 +32,43 @@ class OptimizationTabsMixin:
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Strategy Selection
+        layout.addWidget(self._build_strategy_group())
+        layout.addWidget(self._build_param_group())
+        layout.addWidget(self._build_optimization_group())
+        self._setup_combination_label(layout)
+        layout.addStretch()
+
+        return widget
+
+    def _build_strategy_group(self) -> QGroupBox:
         strategy_group = QGroupBox("Strategy")
         strategy_layout = QFormLayout()
 
         self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems([
-            "SMA Crossover",
-            "RSI Mean Reversion",
-            "MACD Momentum"
-        ])
+        self.strategy_combo.addItems(
+            ["SMA Crossover", "RSI Mean Reversion", "MACD Momentum"]
+        )
         strategy_layout.addRow("Strategy:", self.strategy_combo)
 
         self.symbol_edit = QLineEdit()
-        self.symbol_edit.setText(self.current_symbol.upper() if self.current_symbol else "AAPL")
+        self.symbol_edit.setText(
+            self.current_symbol.upper() if self.current_symbol else "AAPL"
+        )
         strategy_layout.addRow("Symbol:", self.symbol_edit)
 
         strategy_group.setLayout(strategy_layout)
-        layout.addWidget(strategy_group)
+        return strategy_group
 
-        # Parameter Ranges
+    def _build_param_group(self) -> QGroupBox:
         param_group = QGroupBox("Parameter Ranges to Optimize")
         param_layout = QFormLayout()
+        param_layout.addRow(self._build_fast_row())
+        param_layout.addRow(self._build_slow_row())
+        param_layout.addRow(self._build_stop_loss_row())
+        param_group.setLayout(param_layout)
+        return param_group
 
-        # Fast Period
+    def _build_fast_row(self):
         fast_label = QLabel("Fast Period:")
         fast_widget = QWidget()
         fast_layout = QHBoxLayout(fast_widget)
@@ -78,10 +91,9 @@ class OptimizationTabsMixin:
         self.fast_step.setValue(5)
         self.fast_step.setPrefix("Step: ")
         fast_layout.addWidget(self.fast_step)
+        return fast_label, fast_widget
 
-        param_layout.addRow(fast_label, fast_widget)
-
-        # Slow Period
+    def _build_slow_row(self):
         slow_label = QLabel("Slow Period:")
         slow_widget = QWidget()
         slow_layout = QHBoxLayout(slow_widget)
@@ -104,10 +116,9 @@ class OptimizationTabsMixin:
         self.slow_step.setValue(10)
         self.slow_step.setPrefix("Step: ")
         slow_layout.addWidget(self.slow_step)
+        return slow_label, slow_widget
 
-        param_layout.addRow(slow_label, slow_widget)
-
-        # Stop Loss
+    def _build_stop_loss_row(self):
         sl_label = QLabel("Stop Loss %:")
         sl_widget = QWidget()
         sl_layout = QHBoxLayout(sl_widget)
@@ -136,23 +147,16 @@ class OptimizationTabsMixin:
         self.sl_step.setPrefix("Step: ")
         self.sl_step.setSuffix("%")
         sl_layout.addWidget(self.sl_step)
+        return sl_label, sl_widget
 
-        param_layout.addRow(sl_label, sl_widget)
-
-        param_group.setLayout(param_layout)
-        layout.addWidget(param_group)
-
-        # Optimization Settings
+    def _build_optimization_group(self) -> QGroupBox:
         opt_group = QGroupBox("Optimization Settings")
         opt_layout = QFormLayout()
 
         self.metric_combo = QComboBox()
-        self.metric_combo.addItems([
-            "Sharpe Ratio",
-            "Sortino Ratio",
-            "Total Return",
-            "Profit Factor"
-        ])
+        self.metric_combo.addItems(
+            ["Sharpe Ratio", "Sortino Ratio", "Total Return", "Profit Factor"]
+        )
         opt_layout.addRow("Optimize For:", self.metric_combo)
 
         self.ai_guidance = QCheckBox("Enable AI Guidance")
@@ -165,23 +169,27 @@ class OptimizationTabsMixin:
         opt_layout.addRow("AI Iterations:", self.iterations_spin)
 
         opt_group.setLayout(opt_layout)
-        layout.addWidget(opt_group)
+        return opt_group
 
-        # Combination info
+    def _setup_combination_label(self, layout: QVBoxLayout) -> None:
         self.combo_label = QLabel()
         self.combo_label.setStyleSheet("color: #888; font-style: italic; padding: 10px;")
         self._update_combination_count()
 
-        # Connect signals to update count
-        for widget in [self.fast_min, self.fast_max, self.fast_step,
-                      self.slow_min, self.slow_max, self.slow_step,
-                      self.sl_min, self.sl_max, self.sl_step]:
+        for widget in [
+            self.fast_min,
+            self.fast_max,
+            self.fast_step,
+            self.slow_min,
+            self.slow_max,
+            self.slow_step,
+            self.sl_min,
+            self.sl_max,
+            self.sl_step,
+        ]:
             widget.valueChanged.connect(self._update_combination_count)
 
         layout.addWidget(self.combo_label)
-        layout.addStretch()
-
-        return widget
 
     def _update_combination_count(self):
         """Update total combination count label."""

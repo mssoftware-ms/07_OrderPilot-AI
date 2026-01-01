@@ -73,19 +73,14 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.profile = config_manager.load_profile()
 
         # General
-        theme = self.settings.value("theme", "Dark")
-        index = self.theme_combo.findText(theme)
-        if index >= 0:
-            self.theme_combo.setCurrentIndex(index)
-
+        self._set_combo_value(self.theme_combo, self.settings.value("theme", "Dark"))
         self.auto_connect_check.setChecked(
             self.settings.value("auto_connect", False, type=bool)
         )
-
-        default_broker = self.settings.value("default_broker", "Trade Republic")
-        index = self.default_broker_combo.findText(default_broker)
-        if index >= 0:
-            self.default_broker_combo.setCurrentIndex(index)
+        self._set_combo_value(
+            self.default_broker_combo,
+            self.settings.value("default_broker", "Trade Republic"),
+        )
 
         # Trading
         self.manual_approval.setChecked(
@@ -98,10 +93,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.value("max_order_size", 10000, type=float)
         )
 
-        risk = self.settings.value("risk_tolerance", "Moderate")
-        index = self.risk_combo.findText(risk)
-        if index >= 0:
-            self.risk_combo.setCurrentIndex(index)
+        self._set_combo_value(
+            self.risk_combo,
+            self.settings.value("risk_tolerance", "Moderate"),
+        )
 
         # AI
         self.ai_enabled.setChecked(
@@ -109,38 +104,26 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         )
 
         # Default provider
-        ai_provider = self.settings.value("ai_default_provider", "Anthropic")
-        index = self.ai_default_provider.findText(ai_provider)
-        if index >= 0:
-            self.ai_default_provider.setCurrentIndex(index)
-
-        # Check if environment variables are set
-        if os.getenv("OPENAI_API_KEY"):
-            self.openai_api_key.setPlaceholderText("API key loaded from environment variable")
-
-        if os.getenv("ANTHROPIC_API_KEY"):
-            self.anthropic_api_key.setPlaceholderText("API key loaded from environment variable")
-
-        if os.getenv("GEMINI_API_KEY"):
-            self.gemini_api_key.setPlaceholderText("API key loaded from environment variable")
-
-        # OpenAI model
-        openai_model = self.settings.value("openai_model", "gpt-5.1 (Thinking Mode)")
-        index = self.openai_model.findText(openai_model)
-        if index >= 0:
-            self.openai_model.setCurrentIndex(index)
-
-        # Anthropic model
-        anthropic_model = self.settings.value("anthropic_model", "claude-sonnet-4-5-20250929 (Recommended)")
-        index = self.anthropic_model.findText(anthropic_model)
-        if index >= 0:
-            self.anthropic_model.setCurrentIndex(index)
-
-        # Gemini model
-        gemini_model = self.settings.value("gemini_model", "gemini-2.0-flash-exp (Latest)")
-        index = self.gemini_model.findText(gemini_model)
-        if index >= 0:
-            self.gemini_model.setCurrentIndex(index)
+        self._set_combo_value(
+            self.ai_default_provider,
+            self.settings.value("ai_default_provider", "Anthropic"),
+        )
+        self._set_env_placeholders()
+        self._set_combo_value(
+            self.openai_model,
+            self.settings.value("openai_model", "gpt-5.1 (Thinking Mode)"),
+        )
+        self._set_combo_value(
+            self.anthropic_model,
+            self.settings.value(
+                "anthropic_model",
+                "claude-sonnet-4-5-20250929 (Recommended)",
+            ),
+        )
+        self._set_combo_value(
+            self.gemini_model,
+            self.settings.value("gemini_model", "gemini-2.0-flash-exp (Latest)"),
+        )
 
         self.ai_budget.setValue(
             self.settings.value("ai_budget", 50, type=float)
@@ -151,15 +134,14 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.value("ibkr_host", "localhost")
         )
 
-        ibkr_port = self.settings.value("ibkr_port", "7497 (Paper)")
-        index = self.ibkr_port.findText(ibkr_port)
-        if index >= 0:
-            self.ibkr_port.setCurrentIndex(index)
-
-        ibkr_client_id = self.settings.value("ibkr_client_id", "1")
-        index = self.ibkr_client_id.findText(ibkr_client_id)
-        if index >= 0:
-            self.ibkr_client_id.setCurrentIndex(index)
+        self._set_combo_value(
+            self.ibkr_port,
+            self.settings.value("ibkr_port", "7497 (Paper)"),
+        )
+        self._set_combo_value(
+            self.ibkr_client_id,
+            self.settings.value("ibkr_client_id", "1"),
+        )
 
         self.tr_phone.setText(
             self.settings.value("tr_phone", "")
@@ -189,20 +171,18 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.yahoo_enabled.setChecked(market_config.yahoo_enabled)
 
         self.alpaca_enabled.setChecked(market_config.alpaca_enabled)
-        alpaca_key_exists = bool(config_manager.get_credential("alpaca_api_key"))
-        alpaca_secret_exists = bool(config_manager.get_credential("alpaca_api_secret"))
-        if alpaca_key_exists:
-            self.alpaca_api_key.setPlaceholderText(
-                "API key stored securely. Enter a new value to replace it."
-            )
-        else:
-            self.alpaca_api_key.setPlaceholderText("Enter Alpaca API key")
-        if alpaca_secret_exists:
-            self.alpaca_api_secret.setPlaceholderText(
-                "API secret stored securely. Enter a new value to replace it."
-            )
-        else:
-            self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
+        self._set_credential_placeholder(
+            self.alpaca_api_key,
+            "alpaca_api_key",
+            "Enter Alpaca API key",
+            "API key stored securely. Enter a new value to replace it.",
+        )
+        self._set_credential_placeholder(
+            self.alpaca_api_secret,
+            "alpaca_api_secret",
+            "Enter Alpaca API secret",
+            "API secret stored securely. Enter a new value to replace it.",
+        )
 
         self.prefer_live_broker.setChecked(market_config.prefer_live_broker)
 
@@ -221,6 +201,35 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.connection_notif.setChecked(
             self.settings.value("connection_notif", False, type=bool)
         )
+
+    def _set_combo_value(self, combo, value: str) -> None:
+        index = combo.findText(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
+    def _set_env_placeholders(self) -> None:
+        if os.getenv("OPENAI_API_KEY"):
+            self.openai_api_key.setPlaceholderText(
+                "API key loaded from environment variable"
+            )
+        if os.getenv("ANTHROPIC_API_KEY"):
+            self.anthropic_api_key.setPlaceholderText(
+                "API key loaded from environment variable"
+            )
+        if os.getenv("GEMINI_API_KEY"):
+            self.gemini_api_key.setPlaceholderText(
+                "API key loaded from environment variable"
+            )
+
+    def _set_credential_placeholder(
+        self,
+        field,
+        credential_key: str,
+        empty_text: str,
+        stored_text: str,
+    ) -> None:
+        key_exists = bool(config_manager.get_credential(credential_key))
+        field.setPlaceholderText(stored_text if key_exists else empty_text)
 
     def save_settings(self):
         """Save settings to QSettings and configuration."""

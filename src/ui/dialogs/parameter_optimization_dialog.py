@@ -111,35 +111,9 @@ class ParameterOptimizationDialog(OptimizationTabsMixin, QDialog):
         import numpy as np
 
         self.is_running = True
-        self.optimize_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
+        self._set_optimization_ui_state(running=True)
 
-        # Get parameter ranges
-        fast_values = list(np.arange(
-            self.fast_min.value(),
-            self.fast_max.value() + 1,
-            self.fast_step.value()
-        ))
-
-        slow_values = list(np.arange(
-            self.slow_min.value(),
-            self.slow_max.value() + 1,
-            self.slow_step.value()
-        ))
-
-        sl_values = list(np.arange(
-            self.sl_min.value(),
-            self.sl_max.value() + 0.01,
-            self.sl_step.value()
-        ))
-
-        ranges = [
-            ParameterRange(name="fast_period", values=[int(v) for v in fast_values]),
-            ParameterRange(name="slow_period", values=[int(v) for v in slow_values]),
-            ParameterRange(name="stop_loss_pct", values=[float(v) for v in sl_values])
-        ]
-
-        total_tests = len(fast_values) * len(slow_values) * len(sl_values)
+        ranges, total_tests = self._build_parameter_ranges(np)
 
         # Switch to progress tab
         self.tabs.setCurrentIndex(1)
@@ -149,52 +123,8 @@ class ParameterOptimizationDialog(OptimizationTabsMixin, QDialog):
         self.log_progress(f"Starting optimization with {total_tests} combinations...")
 
         try:
-            # Create optimizer
-            metric_map = {
-                "Sharpe Ratio": "sharpe_ratio",
-                "Sortino Ratio": "sortino_ratio",
-                "Total Return": "total_return_pct",
-                "Profit Factor": "profit_factor"
-            }
-
-            config = OptimizerConfig(
-                use_ai_guidance=self.ai_guidance.isChecked(),
-                primary_metric=metric_map[self.metric_combo.currentText()],
-                ai_analysis_frequency=max(total_tests // 4, 5)
-            )
-
-            # CRITICAL: Use REAL backtest runner, not mock
-            optimizer = ParameterOptimizer(self._run_real_backtest, config)
-
-            # Run optimization
-            tests_completed = 0
-
-            async def track_progress():
-                nonlocal tests_completed
-                while self.is_running and tests_completed < total_tests:
-                    await asyncio.sleep(0.1)
-
-            # Start progress tracking
-            progress_task = asyncio.create_task(track_progress())
-
-            # Run optimization
-            if self.ai_guidance.isChecked():
-                self.log_progress("Using AI guidance for optimization...")
-
-                # Check for API key
-                api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
-                if not api_key:
-                    raise ValueError("AI guidance requires API key (ANTHROPIC_API_KEY or OPENAI_API_KEY)")
-
-                result, insights = await optimizer.optimize_with_ai(
-                    ranges,
-                    max_iterations=self.iterations_spin.value()
-                )
-                self.ai_insights = insights
-
-            else:
-                self.log_progress("Running standard grid search...")
-                result = await optimizer.grid_search(ranges)
+            optimizer = self._build_optimizer(total_tests)
+            result = await self._run_optimizer(optimizer, ranges)
 
             self.optimization_result = result
 
@@ -222,9 +152,74 @@ class ParameterOptimizationDialog(OptimizationTabsMixin, QDialog):
 
         finally:
             self.is_running = False
-            self.optimize_btn.setEnabled(True)
-            self.stop_btn.setEnabled(False)
+            self._set_optimization_ui_state(running=False)
             self.progress_bar.setValue(100)
+
+    def _set_optimization_ui_state(self, running: bool) -> None:
+        self.optimize_btn.setEnabled(not running)
+        self.stop_btn.setEnabled(running)
+
+    def _build_parameter_ranges(self, np_module):
+        fast_values = list(np_module.arange(
+            self.fast_min.value(),
+            self.fast_max.value() + 1,
+            self.fast_step.value()
+        ))
+
+        slow_values = list(np_module.arange(
+            self.slow_min.value(),
+            self.slow_max.value() + 1,
+            self.slow_step.value()
+        ))
+
+        sl_values = list(np_module.arange(
+            self.sl_min.value(),
+            self.sl_max.value() + 0.01,
+            self.sl_step.value()
+        ))
+
+        ranges = [
+            ParameterRange(name="fast_period", values=[int(v) for v in fast_values]),
+            ParameterRange(name="slow_period", values=[int(v) for v in slow_values]),
+            ParameterRange(name="stop_loss_pct", values=[float(v) for v in sl_values]),
+        ]
+        total_tests = len(fast_values) * len(slow_values) * len(sl_values)
+        return ranges, total_tests
+
+    def _build_optimizer(self, total_tests: int) -> ParameterOptimizer:
+        metric_map = {
+            "Sharpe Ratio": "sharpe_ratio",
+            "Sortino Ratio": "sortino_ratio",
+            "Total Return": "total_return_pct",
+            "Profit Factor": "profit_factor",
+        }
+
+        config = OptimizerConfig(
+            use_ai_guidance=self.ai_guidance.isChecked(),
+            primary_metric=metric_map[self.metric_combo.currentText()],
+            ai_analysis_frequency=max(total_tests // 4, 5),
+        )
+        return ParameterOptimizer(self._run_real_backtest, config)
+
+    async def _run_optimizer(
+        self,
+        optimizer: ParameterOptimizer,
+        ranges: list[ParameterRange],
+    ):
+        if self.ai_guidance.isChecked():
+            self.log_progress("Using AI guidance for optimization...")
+            api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("AI guidance requires API key (ANTHROPIC_API_KEY or OPENAI_API_KEY)")
+            result, insights = await optimizer.optimize_with_ai(
+                ranges,
+                max_iterations=self.iterations_spin.value(),
+            )
+            self.ai_insights = insights
+            return result
+
+        self.log_progress("Running standard grid search...")
+        return await optimizer.grid_search(ranges)
 
     async def _run_real_backtest(self, params: dict) -> BacktestResult:
         """Run REAL backtest with actual market data (NO MOCK!).

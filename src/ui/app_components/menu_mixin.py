@@ -13,22 +13,26 @@ class MenuMixin:
     def create_menu_bar(self):
         """Create the application menu bar."""
         menubar = self.menuBar()
+        self._build_file_menu(menubar)
+        self._build_view_menu(menubar)
+        self._build_charts_menu(menubar)
+        self._build_trading_menu(menubar)
+        self._build_tools_menu(menubar)
+        self._build_help_menu(menubar)
 
-        # File Menu
+    def _build_file_menu(self, menubar) -> None:
         file_menu = menubar.addMenu("&File")
 
         new_order_action = QAction("&New Order...", self)
         new_order_action.setShortcut("Ctrl+N")
         new_order_action.triggered.connect(self.show_order_dialog)
         file_menu.addAction(new_order_action)
-
         file_menu.addSeparator()
 
         settings_action = QAction("&Settings...", self)
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings_dialog)
         file_menu.addAction(settings_action)
-
         file_menu.addSeparator()
 
         exit_action = QAction("&Exit", self)
@@ -36,10 +40,10 @@ class MenuMixin:
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # View Menu
+    def _build_view_menu(self, menubar) -> None:
         view_menu = menubar.addMenu("&View")
-
         theme_menu = view_menu.addMenu("&Theme")
+
         dark_theme_action = QAction("&Dark", self)
         dark_theme_action.triggered.connect(lambda: self.apply_theme("dark"))
         theme_menu.addAction(dark_theme_action)
@@ -48,62 +52,59 @@ class MenuMixin:
         light_theme_action.triggered.connect(lambda: self.apply_theme("light"))
         theme_menu.addAction(light_theme_action)
 
-        # Charts Menu (Multi-Chart Support)
+    def _build_charts_menu(self, menubar) -> None:
         charts_menu = menubar.addMenu("&Charts")
 
-        # PRE-TRADE ANALYSIS - THE KEY FEATURE
         pre_trade_action = QAction("🎯 &Pre-Trade Analyse...", self)
         pre_trade_action.setShortcut("Ctrl+Shift+T")
-        pre_trade_action.setToolTip("Multi-Timeframe Charts für Trendanalyse VOR dem Trade öffnen")
+        pre_trade_action.setToolTip(
+            "Multi-Timeframe Charts für Trendanalyse VOR dem Trade öffnen"
+        )
         pre_trade_action.triggered.connect(self._on_open_pre_trade_analysis)
         charts_menu.addAction(pre_trade_action)
-
         charts_menu.addSeparator()
 
         new_chart_action = QAction("&New Chart Window...", self)
         new_chart_action.setShortcut("Ctrl+Shift+N")
         new_chart_action.triggered.connect(self._on_new_chart_window)
         charts_menu.addAction(new_chart_action)
-
         charts_menu.addSeparator()
 
-        # Layouts Submenu
         layouts_menu = charts_menu.addMenu("&Layouts")
-
         save_layout_action = QAction("&Save Current Layout...", self)
         save_layout_action.triggered.connect(self._on_save_layout)
         layouts_menu.addAction(save_layout_action)
-
         layouts_menu.addSeparator()
 
-        # Preset layouts
         single_layout_action = QAction("Single Chart", self)
-        single_layout_action.triggered.connect(lambda: self._on_apply_layout("default_single"))
+        single_layout_action.triggered.connect(
+            lambda: self._on_apply_layout("default_single")
+        )
         layouts_menu.addAction(single_layout_action)
 
         dual_layout_action = QAction("Dual Charts (Side by Side)", self)
-        dual_layout_action.triggered.connect(lambda: self._on_apply_layout("default_dual"))
+        dual_layout_action.triggered.connect(
+            lambda: self._on_apply_layout("default_dual")
+        )
         layouts_menu.addAction(dual_layout_action)
 
         mtf_layout_action = QAction("Multi-Timeframe (4 Charts)", self)
-        mtf_layout_action.triggered.connect(lambda: self._on_apply_layout("default_mtf4"))
+        mtf_layout_action.triggered.connect(
+            lambda: self._on_apply_layout("default_mtf4")
+        )
         layouts_menu.addAction(mtf_layout_action)
-
         layouts_menu.addSeparator()
 
         manage_layouts_action = QAction("&Manage Layouts...", self)
         manage_layouts_action.triggered.connect(self._on_manage_layouts)
         layouts_menu.addAction(manage_layouts_action)
-
         charts_menu.addSeparator()
 
-        # Crosshair Sync
         self._crosshair_sync_action = QAction("&Sync Crosshairs", self)
         self._crosshair_sync_action.setCheckable(True)
         self._crosshair_sync_action.setChecked(False)
         self._crosshair_sync_action.triggered.connect(self._on_toggle_crosshair_sync)
         charts_menu.addAction(self._crosshair_sync_action)
-
         charts_menu.addSeparator()
 
         tile_charts_action = QAction("&Tile All Charts", self)
@@ -114,7 +115,7 @@ class MenuMixin:
         close_all_charts_action.triggered.connect(self._on_close_all_charts)
         charts_menu.addAction(close_all_charts_action)
 
-        # Trading Menu
+    def _build_trading_menu(self, menubar) -> None:
         trading_menu = menubar.addMenu("&Trading")
 
         connect_broker_action = QAction("&Connect Broker", self)
@@ -124,7 +125,6 @@ class MenuMixin:
         disconnect_broker_action = QAction("&Disconnect Broker", self)
         disconnect_broker_action.triggered.connect(self.disconnect_broker)
         trading_menu.addAction(disconnect_broker_action)
-
         trading_menu.addSeparator()
 
         backtest_action = QAction("&Run Backtest...", self)
@@ -135,7 +135,6 @@ class MenuMixin:
         ai_backtest_action.setShortcut("Ctrl+Shift+B")
         ai_backtest_action.triggered.connect(self.show_ai_backtest_dialog)
         trading_menu.addAction(ai_backtest_action)
-
         trading_menu.addSeparator()
 
         param_opt_action = QAction("&Parameter Optimization...", self)
@@ -143,13 +142,14 @@ class MenuMixin:
         param_opt_action.triggered.connect(self.show_parameter_optimization_dialog)
         trading_menu.addAction(param_opt_action)
 
-        # Tools Menu
+    def _build_tools_menu(self, menubar) -> None:
         tools_menu = menubar.addMenu("&Tools")
 
-        # Chart Analysis Section
         chart_analysis_action = QAction("📊 &Chart Analysis...", self)
         chart_analysis_action.setShortcut("Ctrl+Shift+A")
-        chart_analysis_action.setToolTip("Open AI-powered chart analysis for active chart")
+        chart_analysis_action.setToolTip(
+            "Open AI-powered chart analysis for active chart"
+        )
         chart_analysis_action.triggered.connect(self._on_open_chart_analysis)
         tools_menu.addAction(chart_analysis_action)
 
@@ -158,7 +158,6 @@ class MenuMixin:
         toggle_chat_action.setToolTip("Show/hide the chart chat widget")
         toggle_chat_action.triggered.connect(self._on_toggle_chat_widget)
         tools_menu.addAction(toggle_chat_action)
-
         tools_menu.addSeparator()
 
         ai_monitor_action = QAction("&AI Usage Monitor", self)
@@ -167,10 +166,11 @@ class MenuMixin:
 
         pattern_db_action = QAction("&Pattern Database...", self)
         pattern_db_action.setShortcut("Ctrl+Shift+D")
-        pattern_db_action.setToolTip("Manage Qdrant pattern database for signal validation")
+        pattern_db_action.setToolTip(
+            "Manage Qdrant pattern database for signal validation"
+        )
         pattern_db_action.triggered.connect(self.show_pattern_db_dialog)
         tools_menu.addAction(pattern_db_action)
-
         tools_menu.addSeparator()
 
         show_console_action = QAction("Show &Console Window", self)
@@ -179,13 +179,14 @@ class MenuMixin:
         tools_menu.addAction(show_console_action)
 
         reset_layout_action = QAction("&Reset Toolbars && Docks", self)
-        reset_layout_action.setToolTip("Reset all toolbars and dock widgets to default positions")
+        reset_layout_action.setToolTip(
+            "Reset all toolbars and dock widgets to default positions"
+        )
         reset_layout_action.triggered.connect(self.reset_toolbars_and_docks)
         tools_menu.addAction(reset_layout_action)
 
-        # Help Menu
+    def _build_help_menu(self, menubar) -> None:
         help_menu = menubar.addMenu("&Help")
-
         about_action = QAction("&About", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)

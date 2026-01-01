@@ -111,62 +111,14 @@ class OpenAIServiceClientMixin:
         Raises:
             Various OpenAI errors
         """
-        # Use model priority: parameter > default_model > config.model > "gpt-4o"
-        if model is None:
-            model = self.default_model or getattr(self.config, 'model', None) or "gpt-4o"
-
+        model = self._resolve_structured_model(model)
         schema = response_model.model_json_schema()
+        cached = await self._try_cached_structured(prompt, model, schema, response_model, use_cache)
+        if cached is not None:
+            return cached
 
-        # Check cache
-        if use_cache:
-            cached = await self.cache_manager.get(prompt, model, schema)
-            if cached:
-                return response_model(**cached)
-
-        # Ensure session is initialized and not closed
-        if not self._session or self._session.closed:
-            await self.initialize()
-
-        # Check if model supports json_schema
-        supports_json_schema = self._supports_json_schema(model)
-
-        if not supports_json_schema:
-            logger.warning(
-                f"Model '{model}' does not support json_schema. "
-                f"Falling back to JSON mode. "
-                f"For structured outputs, use gpt-4o or gpt-4o-mini."
-            )
-
-        # Prepare request with appropriate response_format
-        if supports_json_schema:
-            # Use structured outputs (json_schema)
-            request_data = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": response_model.__name__,
-                        "strict": True,
-                        "schema": schema
-                    }
-                }
-            }
-        else:
-            # Fallback to JSON mode with schema in prompt
-            schema_prompt = (
-                f"{prompt}\n\n"
-                f"IMPORTANT: Respond with valid JSON matching this schema:\n"
-                f"```json\n{json.dumps(schema, indent=2)}\n```"
-            )
-            request_data = {
-                "model": model,
-                "messages": [{"role": "user", "content": schema_prompt}],
-                "temperature": temperature,
-                "response_format": {"type": "json_object"}
-            }
-
+        await self._ensure_session()
+        request_data = self._build_structured_request(prompt, response_model, model, temperature, schema)
         start_time = time.monotonic()
 
         try:
@@ -193,13 +145,7 @@ class OpenAIServiceClientMixin:
                     raise OpenAIError(f"Request refused: {refusal}")
 
                 # Parse JSON response
-                parsed_content = json.loads(content)
-
-                # Validate against schema
-                try:
-                    validate(instance=parsed_content, schema=schema)
-                except JsonSchemaValidationError as e:
-                    raise SchemaValidationError(f"Response validation failed: {e}")
+                parsed_content = self._parse_structured_content(content, schema)
 
                 # Track usage and costs
                 usage = response_data.get("usage", {})
@@ -213,23 +159,14 @@ class OpenAIServiceClientMixin:
                 # Log telemetry
                 latency_ms = int((time.monotonic() - start_time) * 1000)
 
-                log_ai_request(
-                    model=model,
-                    tokens=input_tokens + output_tokens,
-                    cost=cost,
-                    latency=latency_ms / 1000,
-                    prompt_version="1.0",
-                    request_type=response_model.__name__,
-                    details=context
+                self._log_structured_request(
+                    model,
+                    input_tokens + output_tokens,
+                    cost,
+                    latency_ms,
+                    response_model.__name__,
+                    context,
                 )
-
-                if self.telemetry_callback:
-                    self.telemetry_callback(
-                        tokens=input_tokens + output_tokens,
-                        cost=cost,
-                        latency_ms=latency_ms,
-                        feature="structured_completion"
-                    )
 
                 # Cache response
                 if use_cache:
@@ -244,6 +181,107 @@ class OpenAIServiceClientMixin:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise
+
+    def _resolve_structured_model(self, model: str | None) -> str:
+        if model is None:
+            return self.default_model or getattr(self.config, 'model', None) or "gpt-4o"
+        return model
+
+    async def _try_cached_structured(
+        self,
+        prompt: str,
+        model: str,
+        schema: dict,
+        response_model: type[T],
+        use_cache: bool,
+    ) -> T | None:
+        if not use_cache:
+            return None
+        cached = await self.cache_manager.get(prompt, model, schema)
+        if cached:
+            return response_model(**cached)
+        return None
+
+    async def _ensure_session(self) -> None:
+        if not self._session or self._session.closed:
+            await self.initialize()
+
+    def _build_structured_request(
+        self,
+        prompt: str,
+        response_model: type[T],
+        model: str,
+        temperature: float,
+        schema: dict,
+    ) -> dict[str, Any]:
+        supports_json_schema = self._supports_json_schema(model)
+        if not supports_json_schema:
+            logger.warning(
+                f"Model '{model}' does not support json_schema. "
+                f"Falling back to JSON mode. "
+                f"For structured outputs, use gpt-4o or gpt-4o-mini."
+            )
+
+        if supports_json_schema:
+            return {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": response_model.__name__,
+                        "strict": True,
+                        "schema": schema,
+                    },
+                },
+            }
+
+        schema_prompt = (
+            f"{prompt}\n\n"
+            f"IMPORTANT: Respond with valid JSON matching this schema:\n"
+            f"```json\n{json.dumps(schema, indent=2)}\n```"
+        )
+        return {
+            "model": model,
+            "messages": [{"role": "user", "content": schema_prompt}],
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+
+    def _parse_structured_content(self, content: str, schema: dict) -> dict:
+        parsed_content = json.loads(content)
+        try:
+            validate(instance=parsed_content, schema=schema)
+        except JsonSchemaValidationError as e:
+            raise SchemaValidationError(f"Response validation failed: {e}")
+        return parsed_content
+
+    def _log_structured_request(
+        self,
+        model: str,
+        tokens: int,
+        cost: float,
+        latency_ms: int,
+        request_type: str,
+        context: dict[str, Any] | None,
+    ) -> None:
+        log_ai_request(
+            model=model,
+            tokens=tokens,
+            cost=cost,
+            latency=latency_ms / 1000,
+            prompt_version="1.0",
+            request_type=request_type,
+            details=context,
+        )
+        if self.telemetry_callback:
+            self.telemetry_callback(
+                tokens=tokens,
+                cost=cost,
+                latency_ms=latency_ms,
+                feature="structured_completion",
+            )
     async def chat_completion(
         self,
         messages: list[dict[str, str]],

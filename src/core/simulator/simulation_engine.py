@@ -210,91 +210,118 @@ class StrategySimulator:
 
             # Check for exit conditions if in position
             if position is not None:
-                should_exit = False
-                exit_reason = ""
-
-                # Check stop loss
-                if row["low"] <= position["stop_loss"]:
-                    should_exit = True
-                    exit_reason = "STOP_LOSS"
-                    exit_price = position["stop_loss"]
-                # Check take profit
-                elif row["high"] >= position["take_profit"]:
-                    should_exit = True
-                    exit_reason = "TAKE_PROFIT"
-                    exit_price = position["take_profit"]
-                # Check exit signal
-                elif signal == -1:
-                    should_exit = True
-                    exit_reason = "SIGNAL"
-                    exit_price = price * (1 - config.slippage_pct)
-
-                if should_exit:
-                    # Close position
-                    pnl = (exit_price - position["entry_price"]) * position["size"]
-                    commission = exit_price * position["size"] * config.commission_pct
-                    pnl -= commission
-
-                    trade = TradeRecord(
-                        entry_time=position["entry_time"],
-                        entry_price=position["entry_price"],
-                        exit_time=timestamp,
-                        exit_price=exit_price,
-                        side="long",
-                        size=position["size"],
-                        pnl=pnl,
-                        pnl_pct=pnl / (position["entry_price"] * position["size"]),
-                        exit_reason=exit_reason,
-                        stop_loss=position["stop_loss"],
-                        take_profit=position["take_profit"],
-                        commission=commission + position["commission"],
+                exit_info = self._check_exit_conditions(row, signal, position, config)
+                if exit_info:
+                    trade, capital = self._close_position(
+                        position,
+                        timestamp,
+                        exit_info,
+                        config,
+                        capital,
                     )
                     trades.append(trade)
-                    capital += pnl
                     position = None
 
             # Check for entry signal
             if position is None and signal == 1:
-                entry_price = price * (1 + config.slippage_pct)
-                position_value = capital * config.position_size_pct
-                size = position_value / entry_price
-                commission = position_value * config.commission_pct
-
-                position = {
-                    "entry_time": timestamp,
-                    "entry_price": entry_price,
-                    "size": size,
-                    "stop_loss": entry_price * (1 - config.stop_loss_pct),
-                    "take_profit": entry_price * (1 + config.take_profit_pct),
-                    "commission": commission,
-                }
-                capital -= commission
+                position, capital = self._open_position(timestamp, price, config, capital)
 
         # Close any open position at end
         if position is not None:
-            last_row = signals_df.iloc[-1]
-            exit_price = last_row["close"]
-            pnl = (exit_price - position["entry_price"]) * position["size"]
-            commission = exit_price * position["size"] * config.commission_pct
-            pnl -= commission
-
-            trade = TradeRecord(
-                entry_time=position["entry_time"],
-                entry_price=position["entry_price"],
-                exit_time=signals_df.index[-1],
-                exit_price=exit_price,
-                side="long",
-                size=position["size"],
-                pnl=pnl,
-                pnl_pct=pnl / (position["entry_price"] * position["size"]),
-                exit_reason="END_OF_DATA",
-                stop_loss=position["stop_loss"],
-                take_profit=position["take_profit"],
-                commission=commission + position["commission"],
-            )
+            trade = self._close_position_end(signals_df, position, config)
             trades.append(trade)
 
         return trades
+
+    def _check_exit_conditions(
+        self,
+        row: pd.Series,
+        signal: int,
+        position: dict,
+        config: SimulationConfig,
+    ) -> dict | None:
+        if row["low"] <= position["stop_loss"]:
+            return {"price": position["stop_loss"], "reason": "STOP_LOSS"}
+        if row["high"] >= position["take_profit"]:
+            return {"price": position["take_profit"], "reason": "TAKE_PROFIT"}
+        if signal == -1:
+            return {"price": row["close"] * (1 - config.slippage_pct), "reason": "SIGNAL"}
+        return None
+
+    def _close_position(
+        self,
+        position: dict,
+        timestamp,
+        exit_info: dict,
+        config: SimulationConfig,
+        capital: float,
+    ) -> tuple[TradeRecord, float]:
+        exit_price = exit_info["price"]
+        pnl = (exit_price - position["entry_price"]) * position["size"]
+        commission = exit_price * position["size"] * config.commission_pct
+        pnl -= commission
+        trade = TradeRecord(
+            entry_time=position["entry_time"],
+            entry_price=position["entry_price"],
+            exit_time=timestamp,
+            exit_price=exit_price,
+            side="long",
+            size=position["size"],
+            pnl=pnl,
+            pnl_pct=pnl / (position["entry_price"] * position["size"]),
+            exit_reason=exit_info["reason"],
+            stop_loss=position["stop_loss"],
+            take_profit=position["take_profit"],
+            commission=commission + position["commission"],
+        )
+        return trade, capital + pnl
+
+    def _open_position(
+        self,
+        timestamp,
+        price: float,
+        config: SimulationConfig,
+        capital: float,
+    ) -> tuple[dict, float]:
+        entry_price = price * (1 + config.slippage_pct)
+        position_value = capital * config.position_size_pct
+        size = position_value / entry_price
+        commission = position_value * config.commission_pct
+        position = {
+            "entry_time": timestamp,
+            "entry_price": entry_price,
+            "size": size,
+            "stop_loss": entry_price * (1 - config.stop_loss_pct),
+            "take_profit": entry_price * (1 + config.take_profit_pct),
+            "commission": commission,
+        }
+        return position, capital - commission
+
+    def _close_position_end(
+        self,
+        signals_df: pd.DataFrame,
+        position: dict,
+        config: SimulationConfig,
+    ) -> TradeRecord:
+        last_row = signals_df.iloc[-1]
+        exit_price = last_row["close"]
+        pnl = (exit_price - position["entry_price"]) * position["size"]
+        commission = exit_price * position["size"] * config.commission_pct
+        pnl -= commission
+        return TradeRecord(
+            entry_time=position["entry_time"],
+            entry_price=position["entry_price"],
+            exit_time=signals_df.index[-1],
+            exit_price=exit_price,
+            side="long",
+            size=position["size"],
+            pnl=pnl,
+            pnl_pct=pnl / (position["entry_price"] * position["size"]),
+            exit_reason="END_OF_DATA",
+            stop_loss=position["stop_loss"],
+            take_profit=position["take_profit"],
+            commission=commission + position["commission"],
+        )
 
     def _calculate_result(
         self,
@@ -305,36 +332,79 @@ class StrategySimulator:
     ) -> SimulationResult:
         """Calculate simulation result from trades."""
         if not trades:
-            return SimulationResult(
-                strategy_name=strategy_name,
-                parameters=parameters,
-                symbol=self.symbol,
-                trades=[],
-                total_pnl=0.0,
-                total_pnl_pct=0.0,
-                win_rate=0.0,
-                profit_factor=0.0,
-                max_drawdown_pct=0.0,
-                sharpe_ratio=None,
-                sortino_ratio=None,
-                total_trades=0,
-                winning_trades=0,
-                losing_trades=0,
-                avg_win=0.0,
-                avg_loss=0.0,
-                largest_win=0.0,
-                largest_loss=0.0,
-                avg_trade_duration_seconds=0.0,
-                max_consecutive_wins=0,
-                max_consecutive_losses=0,
-                initial_capital=initial_capital,
-                final_capital=initial_capital,
-                data_start=self.data.index[0],
-                data_end=self.data.index[-1],
-                bars_processed=len(self.data),
-            )
+            return self._empty_result(strategy_name, parameters, initial_capital)
 
-        # Calculate metrics
+        metrics = self._calculate_trade_metrics(trades, initial_capital)
+
+        return SimulationResult(
+            strategy_name=strategy_name,
+            parameters=parameters,
+            symbol=self.symbol,
+            trades=trades,
+            total_pnl=metrics["total_pnl"],
+            total_pnl_pct=(metrics["total_pnl"] / initial_capital) * 100,
+            win_rate=metrics["win_rate"],
+            profit_factor=metrics["profit_factor"],
+            max_drawdown_pct=metrics["max_drawdown_pct"],
+            sharpe_ratio=metrics["sharpe_ratio"],
+            sortino_ratio=metrics["sortino_ratio"],
+            total_trades=len(trades),
+            winning_trades=metrics["total_wins"],
+            losing_trades=metrics["total_losses"],
+            avg_win=metrics["avg_win"],
+            avg_loss=metrics["avg_loss"],
+            largest_win=metrics["largest_win"],
+            largest_loss=metrics["largest_loss"],
+            avg_trade_duration_seconds=metrics["avg_duration"],
+            max_consecutive_wins=metrics["max_cons_wins"],
+            max_consecutive_losses=metrics["max_cons_losses"],
+            initial_capital=initial_capital,
+            final_capital=metrics["final_capital"],
+            data_start=self.data.index[0],
+            data_end=self.data.index[-1],
+            bars_processed=len(self.data),
+        )
+
+    def _empty_result(
+        self,
+        strategy_name: str,
+        parameters: dict[str, Any],
+        initial_capital: float,
+    ) -> SimulationResult:
+        return SimulationResult(
+            strategy_name=strategy_name,
+            parameters=parameters,
+            symbol=self.symbol,
+            trades=[],
+            total_pnl=0.0,
+            total_pnl_pct=0.0,
+            win_rate=0.0,
+            profit_factor=0.0,
+            max_drawdown_pct=0.0,
+            sharpe_ratio=None,
+            sortino_ratio=None,
+            total_trades=0,
+            winning_trades=0,
+            losing_trades=0,
+            avg_win=0.0,
+            avg_loss=0.0,
+            largest_win=0.0,
+            largest_loss=0.0,
+            avg_trade_duration_seconds=0.0,
+            max_consecutive_wins=0,
+            max_consecutive_losses=0,
+            initial_capital=initial_capital,
+            final_capital=initial_capital,
+            data_start=self.data.index[0],
+            data_end=self.data.index[-1],
+            bars_processed=len(self.data),
+        )
+
+    def _calculate_trade_metrics(
+        self,
+        trades: list[TradeRecord],
+        initial_capital: float,
+    ) -> dict[str, Any]:
         total_pnl = sum(t.pnl for t in trades)
         winning_trades = [t for t in trades if t.is_winner]
         losing_trades = [t for t in trades if not t.is_winner]
@@ -346,6 +416,7 @@ class StrategySimulator:
         gross_profit = sum(t.pnl for t in winning_trades)
         gross_loss = abs(sum(t.pnl for t in losing_trades))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+        profit_factor = profit_factor if profit_factor != float("inf") else 99.99
 
         avg_win = gross_profit / total_wins if total_wins > 0 else 0.0
         avg_loss = gross_loss / total_losses if total_losses > 0 else 0.0
@@ -353,7 +424,33 @@ class StrategySimulator:
         largest_win = max((t.pnl for t in winning_trades), default=0.0)
         largest_loss = min((t.pnl for t in losing_trades), default=0.0)
 
-        # Calculate max drawdown
+        max_dd = self._max_drawdown_pct(trades, initial_capital)
+        final_capital = initial_capital + total_pnl
+
+        max_cons_wins, max_cons_losses = self._max_consecutive_runs(trades)
+        avg_duration = self._avg_trade_duration(trades)
+        sharpe, sortino = self._risk_ratios(trades)
+
+        return {
+            "total_pnl": total_pnl,
+            "total_wins": total_wins,
+            "total_losses": total_losses,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "max_drawdown_pct": max_dd,
+            "sharpe_ratio": sharpe,
+            "sortino_ratio": sortino,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "largest_win": largest_win,
+            "largest_loss": largest_loss,
+            "avg_duration": avg_duration,
+            "max_cons_wins": max_cons_wins,
+            "max_cons_losses": max_cons_losses,
+            "final_capital": final_capital,
+        }
+
+    def _max_drawdown_pct(self, trades: list[TradeRecord], initial_capital: float) -> float:
         equity = initial_capital
         peak = equity
         max_dd = 0.0
@@ -362,10 +459,9 @@ class StrategySimulator:
             peak = max(peak, equity)
             dd = (peak - equity) / peak
             max_dd = max(max_dd, dd)
+        return max_dd * 100
 
-        final_capital = initial_capital + total_pnl
-
-        # Calculate consecutive wins/losses
+    def _max_consecutive_runs(self, trades: list[TradeRecord]) -> tuple[int, int]:
         max_cons_wins = max_cons_losses = 0
         current_wins = current_losses = 0
         for trade in trades:
@@ -377,54 +473,23 @@ class StrategySimulator:
                 current_losses += 1
                 current_wins = 0
                 max_cons_losses = max(max_cons_losses, current_losses)
+        return max_cons_wins, max_cons_losses
 
-        # Calculate avg trade duration
+    def _avg_trade_duration(self, trades: list[TradeRecord]) -> float:
         durations = [t.duration_seconds for t in trades]
-        avg_duration = np.mean(durations) if durations else 0.0
+        return np.mean(durations) if durations else 0.0
 
-        # Calculate returns for Sharpe/Sortino
+    def _risk_ratios(self, trades: list[TradeRecord]) -> tuple[float | None, float | None]:
         returns = [t.pnl_pct for t in trades]
-        if len(returns) > 1:
-            mean_return = np.mean(returns)
-            std_return = np.std(returns)
-            neg_returns = [r for r in returns if r < 0]
-            downside_std = np.std(neg_returns) if neg_returns else 0.0
-
-            # Annualized (assuming 252 trading days)
-            sharpe = (mean_return * 252) / (std_return * np.sqrt(252)) if std_return > 0 else None
-            sortino = (mean_return * 252) / (downside_std * np.sqrt(252)) if downside_std > 0 else None
-        else:
-            sharpe = None
-            sortino = None
-
-        return SimulationResult(
-            strategy_name=strategy_name,
-            parameters=parameters,
-            symbol=self.symbol,
-            trades=trades,
-            total_pnl=total_pnl,
-            total_pnl_pct=(total_pnl / initial_capital) * 100,
-            win_rate=win_rate,
-            profit_factor=profit_factor if profit_factor != float("inf") else 99.99,
-            max_drawdown_pct=max_dd * 100,
-            sharpe_ratio=sharpe,
-            sortino_ratio=sortino,
-            total_trades=len(trades),
-            winning_trades=total_wins,
-            losing_trades=total_losses,
-            avg_win=avg_win,
-            avg_loss=avg_loss,
-            largest_win=largest_win,
-            largest_loss=largest_loss,
-            avg_trade_duration_seconds=avg_duration,
-            max_consecutive_wins=max_cons_wins,
-            max_consecutive_losses=max_cons_losses,
-            initial_capital=initial_capital,
-            final_capital=final_capital,
-            data_start=self.data.index[0],
-            data_end=self.data.index[-1],
-            bars_processed=len(self.data),
-        )
+        if len(returns) <= 1:
+            return None, None
+        mean_return = np.mean(returns)
+        std_return = np.std(returns)
+        neg_returns = [r for r in returns if r < 0]
+        downside_std = np.std(neg_returns) if neg_returns else 0.0
+        sharpe = (mean_return * 252) / (std_return * np.sqrt(252)) if std_return > 0 else None
+        sortino = (mean_return * 252) / (downside_std * np.sqrt(252)) if downside_std > 0 else None
+        return sharpe, sortino
 
     # Helper methods for indicator calculations
     def _true_range(self, df: pd.DataFrame) -> pd.Series:

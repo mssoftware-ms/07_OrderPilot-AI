@@ -182,24 +182,37 @@ class ChartWindow(
         self.history_manager = history_manager
         self.settings = QSettings("OrderPilot", "TradingApp")
 
-        # Window configuration
-        self.setWindowTitle(f"Chart - {symbol}")
+        self._setup_window()
+        self._setup_chart_widget()
+        self._setup_dock()
+        self._load_window_state()
+        self._restore_after_state_load()
+        self._setup_shortcuts()
+        self._update_toggle_button_text()
+        self._connect_dock_signals()
+        self._setup_event_subscriptions()
+        self._setup_chat()
+        self._ready_to_close = False
+        self._connect_data_loaded_signals()
+
+        logger.info(f"ChartWindow created for {symbol}")
+
+    def _setup_window(self) -> None:
+        self.setWindowTitle(f"Chart - {self.symbol}")
         self.setMinimumSize(800, 600)
 
-        # Center: Chart Widget
-        self.chart_widget = EmbeddedTradingViewChart(history_manager=history_manager)
+    def _setup_chart_widget(self) -> None:
+        self.chart_widget = EmbeddedTradingViewChart(history_manager=self.history_manager)
         if isinstance(self.chart_widget, QWidget):
             self.setCentralWidget(self.chart_widget)
         else:
-            # Allow tests to inject mocks without crashing QMainWindow
             self.setCentralWidget(QWidget())
 
-        # Set symbol in chart
-        self.chart_widget.current_symbol = symbol
+        self.chart_widget.current_symbol = self.symbol
         if hasattr(self.chart_widget, 'symbol_combo'):
-            self.chart_widget.symbol_combo.setCurrentText(symbol)
+            self.chart_widget.symbol_combo.setCurrentText(self.symbol)
 
-        # Dock: Control Panels (Strategy, Backtest, etc.)
+    def _setup_dock(self) -> None:
         self.dock_widget = QDockWidget("Analysis & Strategy", self)
         self.dock_widget.setObjectName("analysisDock")
         self.dock_widget.setAllowedAreas(
@@ -208,7 +221,6 @@ class ChartWindow(
             Qt.DockWidgetArea.RightDockWidgetArea
         )
 
-        # Custom title bar with min/max/reset buttons
         self._dock_title_bar = DockTitleBar("Analysis & Strategy")
         self._dock_title_bar.minimize_clicked.connect(self._minimize_dock)
         self._dock_title_bar.maximize_clicked.connect(self._toggle_dock_maximized)
@@ -217,74 +229,51 @@ class ChartWindow(
         self._dock_title_bar.help_clicked.connect(self._open_trailing_stop_help)
         self.dock_widget.setTitleBarWidget(self._dock_title_bar)
 
-        # State for dock maximize/minimize
         self._dock_maximized = False
         self._dock_minimized = False
-        self._saved_dock_height = 200  # Increased by 15% for Strategy Simulator
+        self._saved_dock_height = 200
 
-        # Create panel content (from PanelsMixin)
         self.bottom_panel = self._create_bottom_panel()
         self.dock_widget.setWidget(self.bottom_panel)
-
-        # Add dock to main window
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_widget)
 
-        # Connect toggle button
         if hasattr(self.chart_widget, 'toggle_panel_button'):
             self.chart_widget.toggle_panel_button.clicked.connect(self._toggle_bottom_panel)
             self.chart_widget.toggle_panel_button.setChecked(self.dock_widget.isVisible())
 
-        # Load window geometry from settings (from StateMixin)
-        self._load_window_state()
-
-        # SAFETY: Always ensure chart is visible after loading state
-        # This prevents the window from being stuck in maximized dock state
+    def _restore_after_state_load(self) -> None:
         self.chart_widget.setVisible(True)
         self._dock_maximized = False
         self._dock_minimized = False
         self._dock_title_bar.set_maximized(False)
 
-        # Keyboard shortcut for reset layout (Ctrl+R)
+    def _setup_shortcuts(self) -> None:
         self._reset_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
         self._reset_shortcut.activated.connect(self._reset_layout)
 
-        # Keyboard shortcut for help (F1)
         self._help_shortcut = QShortcut(QKeySequence("F1"), self)
         self._help_shortcut.activated.connect(self._open_trailing_stop_help)
 
-        # Keyboard shortcut for chat toggle (Ctrl+Shift+C)
         self._chat_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self._chat_shortcut.activated.connect(self.toggle_chat_widget)
 
-        # Keyboard shortcut for chart analysis (Ctrl+Shift+A)
         self._analysis_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self)
         self._analysis_shortcut.activated.connect(self.request_chart_analysis)
 
-        # Update button text based on loaded state
-        self._update_toggle_button_text()
-
-        # Connect dock visibility change
+    def _connect_dock_signals(self) -> None:
         self.dock_widget.visibilityChanged.connect(self._on_dock_visibility_changed)
 
-        # Setup event bus subscriptions (from EventBusMixin)
-        self._setup_event_subscriptions()
-
-        # Setup chart chat widget (from ChartChatMixin)
+    def _setup_chat(self) -> None:
         self.setup_chart_chat(self.chart_widget)
-
-        # Connect AI Chat toolbar button to toggle chat widget
         if hasattr(self.chart_widget, 'ai_chat_button'):
-            self.chart_widget.ai_chat_button.clicked.connect(self._on_ai_chat_button_clicked)
+            self.chart_widget.ai_chat_button.clicked.connect(
+                self._on_ai_chat_button_clicked
+            )
 
-        # State for closing
-        self._ready_to_close = False
-
-        # Restore layout when data is loaded (from StateMixin)
+    def _connect_data_loaded_signals(self) -> None:
         self.chart_widget.data_loaded.connect(self._restore_chart_state)
         self.chart_widget.data_loaded.connect(self._restore_indicators_after_data_load)
         self.chart_widget.data_loaded.connect(self._activate_live_stream)
-
-        logger.info(f"ChartWindow created for {symbol}")
 
     def _activate_live_stream(self):
         """Activate live streaming when chart data is loaded."""
@@ -303,12 +292,7 @@ class ChartWindow(
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event with async state saving."""
-        # Stop any running simulator worker to avoid QThread warnings on shutdown
-        if hasattr(self, "_cleanup_simulation_worker"):
-            try:
-                self._cleanup_simulation_worker(cancel=True, wait_ms=500)
-            except Exception as e:
-                logger.debug("Failed to stop simulation worker during close: %s", e)
+        self._cleanup_simulation_on_close()
 
         if not isinstance(self.chart_widget, QWidget):
             self._ready_to_close = True
@@ -316,60 +300,64 @@ class ChartWindow(
             return
 
         if self._ready_to_close:
-            logger.info(f"Closing ChartWindow for {self.symbol}...")
-
-            # Stop live stream if running - MUST disconnect WebSocket
-            if hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled:
-                try:
-                    # First disable flag to stop event processing
-                    self.chart_widget.live_streaming_enabled = False
-
-                    # Update UI
-                    if hasattr(self.chart_widget, 'live_stream_button'):
-                        self.chart_widget.live_stream_button.setChecked(False)
-
-                    # Actually disconnect the WebSocket stream
-                    if hasattr(self.chart_widget, '_stop_live_stream_async'):
-                        import asyncio
-                        asyncio.ensure_future(self.chart_widget._stop_live_stream_async())
-                        logger.info(f"Disconnecting live stream for {self.symbol}")
-                except Exception as e:
-                    logger.debug(f"Error stopping live stream: {e}")
-
-            # Unsubscribe from event bus (from EventBusMixin)
-            self._unsubscribe_events()
-
-            # Save signal history (from BotPanelsMixin)
-            if hasattr(self, '_save_signal_history'):
-                try:
-                    self._save_signal_history()
-                except Exception as e:
-                    logger.debug(f"Error saving signal history: {e}")
-
-            # Save Strategy Simulator splitter state (from StrategySimulatorMixin)
-            if hasattr(self, '_save_simulator_splitter_state'):
-                try:
-                    self._save_simulator_splitter_state()
-                except Exception as e:
-                    logger.debug(f"Error saving simulator splitter state: {e}")
-
-            # Save sync state (from StateMixin)
-            self._save_window_state()
-
-            # Cleanup chart chat (from ChartChatMixin)
-            if hasattr(self, 'cleanup_chart_chat'):
-                try:
-                    self.cleanup_chart_chat()
-                except Exception as e:
-                    logger.debug(f"Error cleaning up chart chat: {e}")
-
-            # Emit signal
-            self.window_closed.emit(self.symbol)
-
-            event.accept()
+            self._finalize_close(event)
             return
 
-        # Request async cleanup
+        self._request_close_state(event)
+
+    def _cleanup_simulation_on_close(self) -> None:
+        if not hasattr(self, "_cleanup_simulation_worker"):
+            return
+        try:
+            self._cleanup_simulation_worker(cancel=True, wait_ms=500)
+        except Exception as e:
+            logger.debug("Failed to stop simulation worker during close: %s", e)
+
+    def _finalize_close(self, event: QCloseEvent) -> None:
+        logger.info(f"Closing ChartWindow for {self.symbol}...")
+        self._stop_live_stream_on_close()
+        self._unsubscribe_events()
+        self._save_optional_state()
+        self._save_window_state()
+        self._cleanup_chat()
+        self.window_closed.emit(self.symbol)
+        event.accept()
+
+    def _stop_live_stream_on_close(self) -> None:
+        if not (hasattr(self.chart_widget, 'live_streaming_enabled') and self.chart_widget.live_streaming_enabled):
+            return
+        try:
+            self.chart_widget.live_streaming_enabled = False
+            if hasattr(self.chart_widget, 'live_stream_button'):
+                self.chart_widget.live_stream_button.setChecked(False)
+            if hasattr(self.chart_widget, '_stop_live_stream_async'):
+                import asyncio
+                asyncio.ensure_future(self.chart_widget._stop_live_stream_async())
+                logger.info(f"Disconnecting live stream for {self.symbol}")
+        except Exception as e:
+            logger.debug(f"Error stopping live stream: {e}")
+
+    def _save_optional_state(self) -> None:
+        if hasattr(self, '_save_signal_history'):
+            try:
+                self._save_signal_history()
+            except Exception as e:
+                logger.debug(f"Error saving signal history: {e}")
+
+        if hasattr(self, '_save_simulator_splitter_state'):
+            try:
+                self._save_simulator_splitter_state()
+            except Exception as e:
+                logger.debug(f"Error saving simulator splitter state: {e}")
+
+    def _cleanup_chat(self) -> None:
+        if hasattr(self, 'cleanup_chart_chat'):
+            try:
+                self.cleanup_chart_chat()
+            except Exception as e:
+                logger.debug(f"Error cleaning up chart chat: {e}")
+
+    def _request_close_state(self, event: QCloseEvent) -> None:
         logger.info(f"Requesting chart state before closing {self.symbol}...")
         event.ignore()
 
@@ -422,7 +410,6 @@ class ChartWindow(
                 logger.warning(f"Comprehensive state saving failed: {e}")
                 _save_individual_components()
 
-        # Timeout to force close
         def force_close():
             if not self._ready_to_close:
                 logger.warning("Chart state fetch timed out, forcing close")
@@ -430,8 +417,6 @@ class ChartWindow(
                 self.close()
 
         QTimer.singleShot(2000, force_close)
-
-        # Start chain
         self.chart_widget.get_pane_layout(on_layout_received)
 
     async def load_chart(self, data_provider: Optional[str] = None):

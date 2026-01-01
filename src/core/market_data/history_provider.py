@@ -168,109 +168,147 @@ class HistoryManager:
         Returns:
             Tuple of (bars, source_used)
         """
-        needs_fresh_data = False
+        needs_fresh_data = self._needs_fresh_data(request)
 
-        if request.end_date:
-            end_dt = request.end_date
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=timezone.utc)
-
-            now_utc = datetime.now(timezone.utc)
-            time_diff = now_utc - end_dt.astimezone(timezone.utc)
-
-            if time_diff < timedelta(minutes=5):
-                needs_fresh_data = True
-                logger.info(f"Fresh data needed for {request.symbol} (end_date is {time_diff.total_seconds():.0f}s ago)")
-
-        # Try specific source if requested
-        if request.source and request.source in self.providers:
-            provider = self.providers[request.source]
-            if await provider.is_available():
-                logger.info(f"Using specific source: {request.source.value} for {request.symbol}")
-                bars = await provider.fetch_bars(
-                    request.symbol,
-                    request.start_date,
-                    request.end_date,
-                    request.timeframe
-                )
-                if bars:
-                    await self._store_to_database(bars, request.symbol)
-                    logger.info(f"Got {len(bars)} bars from {request.source.value}")
-                    return bars, request.source.value
-                else:
-                    logger.warning(f"No bars returned from {request.source.value}, trying fallback...")
-            else:
-                logger.warning(f"Provider {request.source.value} not available, trying fallback...")
+        bars, source_used = await self._try_specific_source(request)
+        if bars:
+            return bars, source_used
 
         # Try providers in priority order
         for source in self.priority_order:
-            if source not in self.providers:
-                continue
-
-            # Skip DATABASE if we need fresh data
-            if needs_fresh_data and source == DataSource.DATABASE:
-                logger.debug(f"Skipping {source.value} because fresh data is needed")
-                continue
-
-            # Skip providers based on asset class
-            if request.asset_class == AssetClass.CRYPTO:
-                if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
-                    logger.debug(f"Skipping {source.value} for crypto asset class")
-                    continue
-            elif request.asset_class == AssetClass.STOCK:
-                if source == DataSource.ALPACA_CRYPTO:
-                    logger.debug(f"Skipping {source.value} for stock asset class")
-                    continue
-
-            # Skip Yahoo Finance for intraday timeframes
-            if source == DataSource.YAHOO:
-                intraday_timeframes = [
-                    Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15,
-                    Timeframe.MINUTE_30, Timeframe.HOUR_1, Timeframe.HOUR_4
-                ]
-                if request.timeframe in intraday_timeframes:
-                    logger.debug(f"Skipping Yahoo Finance for intraday timeframe {request.timeframe.value}")
-                    continue
-
-            provider = self.providers[source]
-            if not await provider.is_available():
-                continue
-
-            try:
-                await asyncio.sleep(provider.rate_limit_delay)
-
-                bars = await provider.fetch_bars(
-                    request.symbol,
-                    request.start_date,
-                    request.end_date,
-                    request.timeframe
-                )
-
-                if bars:
-                    if source != DataSource.DATABASE:
-                        await self._store_to_database(bars, request.symbol)
-
-                    event_bus.emit(Event(
-                        type=EventType.MARKET_DATA_FETCHED,
-                        timestamp=datetime.utcnow(),
-                        data={
-                            "symbol": request.symbol,
-                            "source": source.value,
-                            "bars_count": len(bars),
-                            "timeframe": request.timeframe.value
-                        },
-                        source="history_manager"
-                    ))
-
-                    logger.info(f"Fetched {len(bars)} bars from {source.value}")
-                    return bars, source.value
-
-            except Exception as e:
-                logger.error(f"Error with {source.value} provider: {e}")
-                continue
+            bars = await self._try_provider_source(request, source, needs_fresh_data)
+            if bars:
+                return bars, source.value
 
         logger.warning(f"No data available for {request.symbol}")
         return [], "none"
+
+    def _needs_fresh_data(self, request: DataRequest) -> bool:
+        if not request.end_date:
+            return False
+        end_dt = request.end_date
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        time_diff = now_utc - end_dt.astimezone(timezone.utc)
+        if time_diff < timedelta(minutes=5):
+            logger.info(
+                f"Fresh data needed for {request.symbol} (end_date is {time_diff.total_seconds():.0f}s ago)"
+            )
+            return True
+        return False
+
+    async def _try_specific_source(
+        self, request: DataRequest
+    ) -> tuple[list[HistoricalBar], str]:
+        if not (request.source and request.source in self.providers):
+            return [], ""
+        provider = self.providers[request.source]
+        if not await provider.is_available():
+            logger.warning(f"Provider {request.source.value} not available, trying fallback...")
+            return [], ""
+
+        logger.info(f"Using specific source: {request.source.value} for {request.symbol}")
+        bars = await provider.fetch_bars(
+            request.symbol,
+            request.start_date,
+            request.end_date,
+            request.timeframe,
+        )
+        if bars:
+            await self._store_to_database(bars, request.symbol)
+            logger.info(f"Got {len(bars)} bars from {request.source.value}")
+            return bars, request.source.value
+        logger.warning(f"No bars returned from {request.source.value}, trying fallback...")
+        return [], ""
+
+    async def _try_provider_source(
+        self,
+        request: DataRequest,
+        source: DataSource,
+        needs_fresh_data: bool,
+    ) -> list[HistoricalBar]:
+        if source not in self.providers:
+            return []
+
+        if self._should_skip_source(request, source, needs_fresh_data):
+            return []
+
+        provider = self.providers[source]
+        if not await provider.is_available():
+            return []
+
+        try:
+            await asyncio.sleep(provider.rate_limit_delay)
+            bars = await provider.fetch_bars(
+                request.symbol,
+                request.start_date,
+                request.end_date,
+                request.timeframe,
+            )
+            if bars:
+                await self._handle_provider_success(request, source, bars)
+                logger.info(f"Fetched {len(bars)} bars from {source.value}")
+            return bars
+        except Exception as e:
+            logger.error(f"Error with {source.value} provider: {e}")
+            return []
+
+    def _should_skip_source(
+        self,
+        request: DataRequest,
+        source: DataSource,
+        needs_fresh_data: bool,
+    ) -> bool:
+        if needs_fresh_data and source == DataSource.DATABASE:
+            logger.debug(f"Skipping {source.value} because fresh data is needed")
+            return True
+
+        if request.asset_class == AssetClass.CRYPTO:
+            if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
+                logger.debug(f"Skipping {source.value} for crypto asset class")
+                return True
+        elif request.asset_class == AssetClass.STOCK:
+            if source == DataSource.ALPACA_CRYPTO:
+                logger.debug(f"Skipping {source.value} for stock asset class")
+                return True
+
+        if source == DataSource.YAHOO:
+            intraday_timeframes = [
+                Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15,
+                Timeframe.MINUTE_30, Timeframe.HOUR_1, Timeframe.HOUR_4,
+            ]
+            if request.timeframe in intraday_timeframes:
+                logger.debug(
+                    f"Skipping Yahoo Finance for intraday timeframe {request.timeframe.value}"
+                )
+                return True
+
+        return False
+
+    async def _handle_provider_success(
+        self,
+        request: DataRequest,
+        source: DataSource,
+        bars: list[HistoricalBar],
+    ) -> None:
+        if source != DataSource.DATABASE:
+            await self._store_to_database(bars, request.symbol)
+
+        event_bus.emit(
+            Event(
+                type=EventType.MARKET_DATA_FETCHED,
+                timestamp=datetime.utcnow(),
+                data={
+                    "symbol": request.symbol,
+                    "source": source.value,
+                    "bars_count": len(bars),
+                    "timeframe": request.timeframe.value,
+                },
+                source="history_manager",
+            )
+        )
 
     async def _store_to_database(
         self,

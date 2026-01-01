@@ -184,88 +184,16 @@ class AlpacaAdapter(BrokerAdapter):
             )
 
         try:
-            # Map order parameters
             side = self._map_order_side(order.side)
             tif = self._map_time_in_force(order.time_in_force)
-
-            # Create order request based on type
-            if order.order_type == OrderType.MARKET:
-                alpaca_order = MarketOrderRequest(
-                    symbol=order.symbol,
-                    qty=float(order.quantity),
-                    side=side,
-                    time_in_force=tif
-                )
-
-            elif order.order_type == OrderType.LIMIT:
-                alpaca_order = LimitOrderRequest(
-                    symbol=order.symbol,
-                    qty=float(order.quantity),
-                    side=side,
-                    time_in_force=tif,
-                    limit_price=float(order.limit_price)
-                )
-
-            elif order.order_type == OrderType.STOP:
-                alpaca_order = StopOrderRequest(
-                    symbol=order.symbol,
-                    qty=float(order.quantity),
-                    side=side,
-                    time_in_force=tif,
-                    stop_price=float(order.stop_price)
-                )
-
-            elif order.order_type == OrderType.STOP_LIMIT:
-                alpaca_order = StopLimitOrderRequest(
-                    symbol=order.symbol,
-                    qty=float(order.quantity),
-                    side=side,
-                    time_in_force=tif,
-                    limit_price=float(order.limit_price),
-                    stop_price=float(order.stop_price)
-                )
-
-            else:
-                raise BrokerError(
-                    code="INVALID_ORDER_TYPE",
-                    message=f"Unsupported order type: {order.order_type}"
-                )
-
-            # Add stop loss and take profit if specified
-            if order.stop_loss or order.take_profit:
-                alpaca_order.order_class = "bracket"
-                if order.stop_loss:
-                    alpaca_order.stop_loss = {
-                        "stop_price": float(order.stop_loss)
-                    }
-                if order.take_profit:
-                    alpaca_order.take_profit = {
-                        "limit_price": float(order.take_profit)
-                    }
+            alpaca_order = self._build_alpaca_order(order, side, tif)
+            self._apply_bracket_order(alpaca_order, order)
 
             # Submit order
             alpaca_response = self._client.submit_order(alpaca_order)
 
             # Convert to OrderResponse
-            response = OrderResponse(
-                broker_order_id=alpaca_response.id,
-                internal_order_id=order.internal_order_id or alpaca_response.client_order_id,
-                status=self._map_order_status(alpaca_response.status),
-                symbol=alpaca_response.symbol,
-                side=order.side,
-                order_type=order.order_type,
-                quantity=Decimal(str(alpaca_response.qty)),
-                filled_quantity=Decimal(str(alpaca_response.filled_qty or 0)),
-                average_fill_price=(
-                    Decimal(str(alpaca_response.filled_avg_price))
-                    if alpaca_response.filled_avg_price else None
-                ),
-                created_at=alpaca_response.created_at,
-                submitted_at=alpaca_response.submitted_at,
-                updated_at=alpaca_response.updated_at or alpaca_response.created_at,
-                estimated_fee=estimated_fee,
-                message=f"Order placed on Alpaca: {alpaca_response.id}"
-            )
+            response = self._build_order_response(order, alpaca_response, estimated_fee)
 
             logger.info(
                 f"Order placed: {order.symbol} {order.side.value} {order.quantity} "
@@ -280,6 +208,88 @@ class AlpacaAdapter(BrokerAdapter):
                 message=f"Failed to place order: {e}",
                 details={"order": order.dict()}
             )
+
+    def _build_alpaca_order(
+        self,
+        order: OrderRequest,
+        side,
+        tif,
+    ):
+        if order.order_type == OrderType.MARKET:
+            return MarketOrderRequest(
+                symbol=order.symbol,
+                qty=float(order.quantity),
+                side=side,
+                time_in_force=tif,
+            )
+        if order.order_type == OrderType.LIMIT:
+            return LimitOrderRequest(
+                symbol=order.symbol,
+                qty=float(order.quantity),
+                side=side,
+                time_in_force=tif,
+                limit_price=float(order.limit_price),
+            )
+        if order.order_type == OrderType.STOP:
+            return StopOrderRequest(
+                symbol=order.symbol,
+                qty=float(order.quantity),
+                side=side,
+                time_in_force=tif,
+                stop_price=float(order.stop_price),
+            )
+        if order.order_type == OrderType.STOP_LIMIT:
+            return StopLimitOrderRequest(
+                symbol=order.symbol,
+                qty=float(order.quantity),
+                side=side,
+                time_in_force=tif,
+                limit_price=float(order.limit_price),
+                stop_price=float(order.stop_price),
+            )
+        raise BrokerError(
+            code="INVALID_ORDER_TYPE",
+            message=f"Unsupported order type: {order.order_type}",
+        )
+
+    def _apply_bracket_order(self, alpaca_order, order: OrderRequest) -> None:
+        if not (order.stop_loss or order.take_profit):
+            return
+        alpaca_order.order_class = "bracket"
+        if order.stop_loss:
+            alpaca_order.stop_loss = {
+                "stop_price": float(order.stop_loss)
+            }
+        if order.take_profit:
+            alpaca_order.take_profit = {
+                "limit_price": float(order.take_profit)
+            }
+
+    def _build_order_response(
+        self,
+        order: OrderRequest,
+        alpaca_response,
+        estimated_fee: Decimal,
+    ) -> OrderResponse:
+        return OrderResponse(
+            broker_order_id=alpaca_response.id,
+            internal_order_id=order.internal_order_id or alpaca_response.client_order_id,
+            status=self._map_order_status(alpaca_response.status),
+            symbol=alpaca_response.symbol,
+            side=order.side,
+            order_type=order.order_type,
+            quantity=Decimal(str(alpaca_response.qty)),
+            filled_quantity=Decimal(str(alpaca_response.filled_qty or 0)),
+            average_fill_price=(
+                Decimal(str(alpaca_response.filled_avg_price))
+                if alpaca_response.filled_avg_price else None
+            ),
+            created_at=alpaca_response.created_at,
+            submitted_at=alpaca_response.submitted_at,
+            updated_at=alpaca_response.updated_at or alpaca_response.created_at,
+            estimated_fee=estimated_fee,
+            message=f"Order placed on Alpaca: {alpaca_response.id}",
+        )
 
     async def cancel_order(self, order_id: str) -> bool:
         """Cancel order on Alpaca.

@@ -119,51 +119,51 @@ class IndicatorFactory:
         Raises:
             CompilationError: If indicator type is not supported
         """
-        indicator_class = cls.INDICATOR_MAP.get(config.type)
-
-        if indicator_class is None:
-            raise CompilationError(
-                f"Unsupported indicator type: {config.type}. "
-                f"Supported types: {list(cls.INDICATOR_MAP.keys())}"
-            )
+        indicator_class = cls._resolve_indicator_class(config.type)
 
         try:
-            # Create indicator with params
-            # Most BT indicators accept 'period' param; map to indicator-specific names
             params = cls._normalize_params(config.type, config.params)
-
             logger.debug(
                 f"Creating indicator: {config.alias} = {config.type}({params})"
             )
 
-            # Some indicators need full OHLCV data, others just need a single line
             if config.type in cls.FULL_DATA_INDICATORS:
-                # Pass full data feed (ATR, BBANDS, STOCH, etc.)
                 return indicator_class(data, **params)
-            else:
-                # Get specific data source line (default: close)
-                if config.source == "close":
-                    source = data.close
-                elif config.source == "open":
-                    source = data.open
-                elif config.source == "high":
-                    source = data.high
-                elif config.source == "low":
-                    source = data.low
-                elif config.source == "volume":
-                    source = data.volume
-                else:
-                    raise CompilationError(
-                        f"Unknown data source: {config.source}. "
-                        f"Valid sources: close, open, high, low, volume"
-                    )
 
-                return indicator_class(source, **params)
+            source = cls._resolve_data_source(config, data)
+            return indicator_class(source, **params)
 
         except Exception as e:
             raise CompilationError(
                 f"Failed to create indicator {config.alias} ({config.type}): {e}"
             ) from e
+
+    @classmethod
+    def _resolve_indicator_class(cls, indicator_type: IndicatorType):
+        indicator_class = cls.INDICATOR_MAP.get(indicator_type)
+        if indicator_class is None:
+            raise CompilationError(
+                f"Unsupported indicator type: {indicator_type}. "
+                f"Supported types: {list(cls.INDICATOR_MAP.keys())}"
+            )
+        return indicator_class
+
+    @classmethod
+    def _resolve_data_source(cls, config: IndicatorConfig, data: bt.DataBase):
+        if config.source == "close":
+            return data.close
+        if config.source == "open":
+            return data.open
+        if config.source == "high":
+            return data.high
+        if config.source == "low":
+            return data.low
+        if config.source == "volume":
+            return data.volume
+        raise CompilationError(
+            f"Unknown data source: {config.source}. "
+            f"Valid sources: close, open, high, low, volume"
+        )
 
     @classmethod
     def _normalize_params(
@@ -257,47 +257,63 @@ class ConditionEvaluator:
 
         # Handle range operators (inside, outside)
         if cond.operator in (ComparisonOperator.INSIDE, ComparisonOperator.OUTSIDE):
-            if not isinstance(cond.right, list) or len(cond.right) != 2:
-                raise CompilationError(
-                    f"Operator {cond.operator} requires list[low, high] as right operand"
-                )
-            low, high = cond.right
-
-            if cond.operator == ComparisonOperator.INSIDE:
-                return low <= left_value <= high
-            else:  # OUTSIDE
-                return left_value < low or left_value > high
+            return self._evaluate_range_condition(cond, left_value)
 
         # For non-range operators, resolve right operand
         right_value = self._resolve_operand(cond.right)
 
         # Handle comparison operators
+        result = self._evaluate_comparison_operator(cond, left_value, right_value)
+        if result is not None:
+            return result
+        return self._evaluate_cross_operator(cond, left_value, right_value)
+
+    def _evaluate_range_condition(self, cond: Condition, left_value: float) -> bool:
+        if not isinstance(cond.right, list) or len(cond.right) != 2:
+            raise CompilationError(
+                f"Operator {cond.operator} requires list[low, high] as right operand"
+            )
+        low, high = cond.right
+        if cond.operator == ComparisonOperator.INSIDE:
+            return low <= left_value <= high
+        return left_value < low or left_value > high
+
+    def _evaluate_comparison_operator(
+        self,
+        cond: Condition,
+        left_value: float,
+        right_value: float,
+    ) -> bool | None:
         if cond.operator == ComparisonOperator.GT:
             return left_value > right_value
-        elif cond.operator == ComparisonOperator.GTE:
+        if cond.operator == ComparisonOperator.GTE:
             return left_value >= right_value
-        elif cond.operator == ComparisonOperator.LT:
+        if cond.operator == ComparisonOperator.LT:
             return left_value < right_value
-        elif cond.operator == ComparisonOperator.LTE:
+        if cond.operator == ComparisonOperator.LTE:
             return left_value <= right_value
-        elif cond.operator == ComparisonOperator.EQ:
-            return abs(left_value - right_value) < 1e-9  # Float equality
-        elif cond.operator == ComparisonOperator.NEQ:
+        if cond.operator == ComparisonOperator.EQ:
+            return abs(left_value - right_value) < 1e-9
+        if cond.operator == ComparisonOperator.NEQ:
             return abs(left_value - right_value) >= 1e-9
+        return None
 
-        # Handle cross operators (require previous value tracking)
-        elif cond.operator == ComparisonOperator.CROSSES_ABOVE:
+    def _evaluate_cross_operator(
+        self,
+        cond: Condition,
+        left_value: float,
+        right_value: float,
+    ) -> bool:
+        if cond.operator == ComparisonOperator.CROSSES_ABOVE:
             return self._check_cross_above(cond.left, left_value, right_value)
-        elif cond.operator == ComparisonOperator.CROSSES_BELOW:
+        if cond.operator == ComparisonOperator.CROSSES_BELOW:
             return self._check_cross_below(cond.left, left_value, right_value)
-        elif cond.operator == ComparisonOperator.CROSSES:
+        if cond.operator == ComparisonOperator.CROSSES:
             return (
-                self._check_cross_above(cond.left, left_value, right_value) or
-                self._check_cross_below(cond.left, left_value, right_value)
+                self._check_cross_above(cond.left, left_value, right_value)
+                or self._check_cross_below(cond.left, left_value, right_value)
             )
-
-        else:
-            raise CompilationError(f"Unknown operator: {cond.operator}")
+        raise CompilationError(f"Unknown operator: {cond.operator}")
 
     def _evaluate_logic_group(self, group: LogicGroup) -> bool:
         """Evaluate a logic group (AND, OR, NOT).

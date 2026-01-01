@@ -26,28 +26,52 @@ class ToolbarMixin:
         Returns:
             Tuple of (toolbar1, toolbar2) for two-row layout
         """
-        # ========== ROW 1: Symbol, Timeframe, Period, Indicators, Actions ==========
         toolbar1 = QToolBar()
+        self._build_toolbar_row1(toolbar1)
 
-        # Symbol selector
-        toolbar1.addWidget(QLabel("Symbol:"))
+        toolbar2 = QToolBar()
+        self._build_toolbar_row2(toolbar2)
+
+        return (toolbar1, toolbar2)
+
+    def _build_toolbar_row1(self, toolbar: QToolBar) -> None:
+        self._add_symbol_selector(toolbar)
+        toolbar.addSeparator()
+        self._add_timeframe_selector(toolbar)
+        toolbar.addSeparator()
+        self._add_period_selector(toolbar)
+        toolbar.addSeparator()
+        self._add_indicators_menu(toolbar)
+        toolbar.addSeparator()
+        self._add_primary_actions(toolbar)
+
+    def _build_toolbar_row2(self, toolbar: QToolBar) -> None:
+        self._add_live_stream_toggle(toolbar)
+        toolbar.addSeparator()
+        self._add_chart_marking_button(toolbar)
+        self._add_ai_chat_button(toolbar)
+        toolbar.addSeparator()
+        self._add_bot_toggle_button(toolbar)
+        toolbar.addSeparator()
+        self._add_market_status(toolbar)
+
+    def _add_symbol_selector(self, toolbar: QToolBar) -> None:
+        toolbar.addWidget(QLabel("Symbol:"))
         self.symbol_combo = QComboBox()
-        # Add crypto symbols with separator
-        self.symbol_combo.addItems([
-            "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",  # Crypto
-            "───────",  # Visual separator
-            "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ"  # Stocks
-        ])
+        self.symbol_combo.addItems(
+            [
+                "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD",
+                "───────",
+                "AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "SPY", "QQQ",
+            ]
+        )
         self.symbol_combo.setCurrentText(self.current_symbol)
         self.symbol_combo.currentTextChanged.connect(self._on_symbol_change)
-        toolbar1.addWidget(self.symbol_combo)
+        toolbar.addWidget(self.symbol_combo)
 
-        toolbar1.addSeparator()
-
-        # Candle size selector (renamed from Zeitrahmen to Kerzen)
-        toolbar1.addWidget(QLabel("Kerzen:"))
+    def _add_timeframe_selector(self, toolbar: QToolBar) -> None:
+        toolbar.addWidget(QLabel("Kerzen:"))
         self.timeframe_combo = QComboBox()
-        # Add items with display labels and internal values
         timeframes = [
             ("1 Minute", "1T"),
             ("5 Minuten", "5T"),
@@ -55,12 +79,11 @@ class ToolbarMixin:
             ("30 Minuten", "30T"),
             ("1 Stunde", "1H"),
             ("4 Stunden", "4H"),
-            ("1 Tag", "1D")
+            ("1 Tag", "1D"),
         ]
         for display, value in timeframes:
             self.timeframe_combo.addItem(display, value)
 
-        # Set current based on internal value
         index = self.timeframe_combo.findData(self.current_timeframe)
         if index >= 0:
             self.timeframe_combo.setCurrentIndex(index)
@@ -68,29 +91,25 @@ class ToolbarMixin:
         self.timeframe_combo.currentIndexChanged.connect(
             lambda idx: self._on_timeframe_change(self.timeframe_combo.itemData(idx))
         )
-        toolbar1.addWidget(self.timeframe_combo)
+        toolbar.addWidget(self.timeframe_combo)
 
-        toolbar1.addSeparator()
-
-        # Time period selector (how far back to load)
-        toolbar1.addWidget(QLabel("Zeitraum:"))
+    def _add_period_selector(self, toolbar: QToolBar) -> None:
+        toolbar.addWidget(QLabel("Zeitraum:"))
         self.period_combo = QComboBox()
-        # Add time periods with display labels and lookback days
         periods = [
-            ("Intraday", "1D", 1),      # Today only
-            ("2 Tage", "2D", 2),        # Last 2 days
-            ("5 Tage", "5D", 5),        # Last week
-            ("1 Woche", "1W", 7),       # 1 week
-            ("2 Wochen", "2W", 14),     # 2 weeks
-            ("1 Monat", "1M", 30),      # 1 month
-            ("3 Monate", "3M", 90),     # 3 months
-            ("6 Monate", "6M", 180),    # 6 months
-            ("1 Jahr", "1Y", 365),      # 1 year
+            ("Intraday", "1D", 1),
+            ("2 Tage", "2D", 2),
+            ("5 Tage", "5D", 5),
+            ("1 Woche", "1W", 7),
+            ("2 Wochen", "2W", 14),
+            ("1 Monat", "1M", 30),
+            ("3 Monate", "3M", 90),
+            ("6 Monate", "6M", 180),
+            ("1 Jahr", "1Y", 365),
         ]
         for display, value, days in periods:
             self.period_combo.addItem(display, value)
 
-        # Set current based on internal value
         index = self.period_combo.findData(self.current_period)
         if index >= 0:
             self.period_combo.setCurrentIndex(index)
@@ -98,18 +117,14 @@ class ToolbarMixin:
         self.period_combo.currentIndexChanged.connect(
             lambda idx: self._on_period_change(self.period_combo.itemData(idx))
         )
-        toolbar1.addWidget(self.period_combo)
+        toolbar.addWidget(self.period_combo)
 
-        toolbar1.addSeparator()
-
-        # Indicators dropdown menu with checkboxes
-        toolbar1.addWidget(QLabel("Indikatoren:"))
-
+    def _add_indicators_menu(self, toolbar: QToolBar) -> None:
+        toolbar.addWidget(QLabel("Indikatoren:"))
         self.indicators_button = QPushButton("📊 Indikatoren")
         self.indicators_button.setToolTip("Wähle Indikatoren zur Anzeige")
         self.indicators_menu = QMenu(self)
 
-        # Available indicators (matching Strategy Tab)
         self.indicator_actions = {}
         indicators = [
             ("SMA", "SMA (Simple Moving Average)", "#FFA500"),
@@ -123,7 +138,6 @@ class ToolbarMixin:
             ("CCI", "CCI (Commodity Channel Index)", "#9933FF"),
             ("MFI", "MFI (Money Flow Index)", "#33FF99"),
         ]
-
         for ind_id, ind_name, color in indicators:
             action = QAction(ind_name, self)
             action.setCheckable(True)
@@ -133,7 +147,8 @@ class ToolbarMixin:
             self.indicator_actions[ind_id] = action
 
         self.indicators_button.setMenu(self.indicators_menu)
-        self.indicators_button.setStyleSheet("""
+        self.indicators_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2a2a2a;
                 color: #aaa;
@@ -149,43 +164,39 @@ class ToolbarMixin:
                 subcontrol-origin: padding;
                 subcontrol-position: right center;
             }
-        """)
-        toolbar1.addWidget(self.indicators_button)
+        """
+        )
+        toolbar.addWidget(self.indicators_button)
 
-        toolbar1.addSeparator()
-
-        # Load data button
+    def _add_primary_actions(self, toolbar: QToolBar) -> None:
         self.load_button = QPushButton("📊 Load Chart")
         self.load_button.clicked.connect(self._on_load_chart)
         self.load_button.setStyleSheet("font-weight: bold; padding: 5px 15px;")
-        toolbar1.addWidget(self.load_button)
+        toolbar.addWidget(self.load_button)
 
-        # Refresh button
         self.refresh_button = QPushButton("🔄 Refresh")
         self.refresh_button.clicked.connect(self._on_refresh)
-        toolbar1.addWidget(self.refresh_button)
+        toolbar.addWidget(self.refresh_button)
 
-        # Zoom-to-fit button
         self.zoom_all_button = QPushButton("🔍 Alles zoomen")
-        self.zoom_all_button.setToolTip("Gesamten Chart einpassen und Pane-Höhen sinnvoll setzen")
+        self.zoom_all_button.setToolTip(
+            "Gesamten Chart einpassen und Pane-Höhen sinnvoll setzen"
+        )
         self.zoom_all_button.clicked.connect(self._on_zoom_all)
-        toolbar1.addWidget(self.zoom_all_button)
+        toolbar.addWidget(self.zoom_all_button)
 
-        # Zoom-back button
         self.zoom_back_button = QPushButton("⤺ Zurück")
         self.zoom_back_button.setToolTip("Zur vorherigen Ansicht zurückkehren")
         self.zoom_back_button.clicked.connect(self._on_zoom_back)
-        toolbar1.addWidget(self.zoom_back_button)
+        toolbar.addWidget(self.zoom_back_button)
 
-        # ========== ROW 2: Live, Markierungen, AI Chat, Trading Bot ==========
-        toolbar2 = QToolBar()
-
-        # Live streaming toggle
+    def _add_live_stream_toggle(self, toolbar: QToolBar) -> None:
         self.live_stream_button = QPushButton("🔴 Live")
         self.live_stream_button.setCheckable(True)
         self.live_stream_button.setToolTip("Toggle real-time streaming (WebSocket)")
         self.live_stream_button.clicked.connect(self._toggle_live_stream)
-        self.live_stream_button.setStyleSheet("""
+        self.live_stream_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2a2a2a;
                 color: #aaa;
@@ -198,17 +209,17 @@ class ToolbarMixin:
                 background-color: #3a3a3a;
                 color: #fff;
             }
-        """)
-        toolbar2.addWidget(self.live_stream_button)
+        """
+        )
+        toolbar.addWidget(self.live_stream_button)
 
-        toolbar2.addSeparator()
-
-        # ===== CHART MARKING BUTTON =====
+    def _add_chart_marking_button(self, toolbar: QToolBar) -> None:
         self.chart_marking_button = QPushButton("📏 Markierungen")
         self.chart_marking_button.setToolTip(
             "Chart-Markierungen hinzufügen (Rechtsklick auf Chart für Menü)"
         )
-        self.chart_marking_button.setStyleSheet("""
+        self.chart_marking_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2a2a2a;
                 color: #4CAF50;
@@ -220,10 +231,14 @@ class ToolbarMixin:
             QPushButton:hover {
                 background-color: #3a3a3a;
             }
-        """)
+        """
+        )
         self.chart_marking_menu = QMenu(self)
+        self._build_chart_marking_menu()
+        self.chart_marking_button.setMenu(self.chart_marking_menu)
+        toolbar.addWidget(self.chart_marking_button)
 
-        # Entry Markers submenu
+    def _build_chart_marking_menu(self) -> None:
         entry_menu = self.chart_marking_menu.addMenu("📍 Entry Marker")
         long_action = QAction("🟢 Long Entry", self)
         long_action.triggered.connect(lambda: self._add_test_entry_marker("long"))
@@ -232,7 +247,6 @@ class ToolbarMixin:
         short_action.triggered.connect(lambda: self._add_test_entry_marker("short"))
         entry_menu.addAction(short_action)
 
-        # Zones submenu
         zone_menu = self.chart_marking_menu.addMenu("📊 Zonen")
         support_action = QAction("🟢 Support Zone", self)
         support_action.triggered.connect(lambda: self._add_test_zone("support"))
@@ -248,7 +262,6 @@ class ToolbarMixin:
         supply_action.triggered.connect(lambda: self._add_test_zone("supply"))
         zone_menu.addAction(supply_action)
 
-        # Structure submenu
         structure_menu = self.chart_marking_menu.addMenu("📈 Structure Breaks")
         bos_bull = QAction("⬆️ BoS Bullish", self)
         bos_bull.triggered.connect(lambda: self._add_test_structure("bos", True))
@@ -271,7 +284,6 @@ class ToolbarMixin:
         msb_bear.triggered.connect(lambda: self._add_test_structure("msb", False))
         structure_menu.addAction(msb_bear)
 
-        # Lines submenu
         lines_menu = self.chart_marking_menu.addMenu("📏 Linien")
         sl_long = QAction("🔴 Stop Loss (Long)", self)
         sl_long.triggered.connect(lambda: self._add_test_line("sl", True))
@@ -295,8 +307,6 @@ class ToolbarMixin:
         lines_menu.addAction(trailing)
 
         self.chart_marking_menu.addSeparator()
-
-        # Clear actions
         clear_markers = QAction("🗑️ Alle Marker löschen", self)
         clear_markers.triggered.connect(self._clear_all_markers)
         self.chart_marking_menu.addAction(clear_markers)
@@ -311,16 +321,14 @@ class ToolbarMixin:
         clear_all.triggered.connect(self._clear_all_markings)
         self.chart_marking_menu.addAction(clear_all)
 
-        self.chart_marking_button.setMenu(self.chart_marking_menu)
-        toolbar2.addWidget(self.chart_marking_button)
-
-        # ===== AI CHAT BUTTON =====
+    def _add_ai_chat_button(self, toolbar: QToolBar) -> None:
         self.ai_chat_button = QPushButton("🤖 AI Chat")
         self.ai_chat_button.setCheckable(True)
         self.ai_chat_button.setToolTip(
             "AI Chart-Analyse öffnen/schließen (Ctrl+Shift+C)"
         )
-        self.ai_chat_button.setStyleSheet("""
+        self.ai_chat_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2a2a2a;
                 color: #2196F3;
@@ -336,18 +344,17 @@ class ToolbarMixin:
                 background-color: #2196F3;
                 color: #fff;
             }
-        """)
-        # Connect signal - will be handled by parent ChartWindow
-        toolbar2.addWidget(self.ai_chat_button)
+        """
+        )
+        toolbar.addWidget(self.ai_chat_button)
 
-        toolbar2.addSeparator()
-
-        # ===== TRADING BOT TOGGLE BUTTON (right after Live button) =====
+    def _add_bot_toggle_button(self, toolbar: QToolBar) -> None:
         self.toggle_panel_button = QPushButton("▼ Trading Bot")
         self.toggle_panel_button.setCheckable(True)
-        self.toggle_panel_button.setChecked(True)  # Panel initially visible
+        self.toggle_panel_button.setChecked(True)
         self.toggle_panel_button.setToolTip("Trading Bot Panel ein-/ausblenden")
-        self.toggle_panel_button.setStyleSheet("""
+        self.toggle_panel_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #2a2a2a;
                 color: #FFA500;
@@ -363,18 +370,16 @@ class ToolbarMixin:
                 background-color: #FFA500;
                 color: #000;
             }
-        """)
-        # Signal will be emitted to parent ChartWindow
-        toolbar2.addWidget(self.toggle_panel_button)
+        """
+        )
+        toolbar.addWidget(self.toggle_panel_button)
 
-        toolbar2.addSeparator()
-
-        # Market status
+    def _add_market_status(self, toolbar: QToolBar) -> None:
         self.market_status_label = QLabel("Ready")
-        self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
-        toolbar2.addWidget(self.market_status_label)
-
-        return (toolbar1, toolbar2)
+        self.market_status_label.setStyleSheet(
+            "color: #888; font-weight: bold; padding: 5px;"
+        )
+        toolbar.addWidget(self.market_status_label)
 
     def _on_zoom_all(self):
         """Zoom chart to show all data with sane pane heights."""

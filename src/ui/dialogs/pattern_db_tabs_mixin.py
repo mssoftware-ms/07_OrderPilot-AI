@@ -123,11 +123,20 @@ class PatternDbTabsMixin:
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Asset Selection
+        layout.addWidget(self._build_asset_group())
+        layout.addWidget(self._build_settings_group())
+        layout.addWidget(self._build_progress_group())
+
+        return widget
+
+    def _build_asset_group(self) -> QGroupBox:
         asset_group = QGroupBox("Asset Selection")
         asset_layout = QVBoxLayout(asset_group)
+        asset_layout.addLayout(self._build_asset_type_layout())
+        asset_layout.addLayout(self._build_symbol_lists_layout())
+        return asset_group
 
-        # Asset type selection
+    def _build_asset_type_layout(self) -> QHBoxLayout:
         type_layout = QHBoxLayout()
         self.stock_radio = QCheckBox("Stocks / ETFs")
         self.stock_radio.setChecked(True)
@@ -137,12 +146,17 @@ class PatternDbTabsMixin:
         self.crypto_radio.setChecked(True)
         type_layout.addWidget(self.crypto_radio)
         type_layout.addStretch()
-        asset_layout.addLayout(type_layout)
+        return type_layout
 
-        # Symbol lists
+    def _build_symbol_lists_layout(self) -> QHBoxLayout:
         lists_layout = QHBoxLayout()
+        stock_box = self._build_stock_list_box()
+        crypto_box = self._build_crypto_list_box()
+        lists_layout.addLayout(stock_box)
+        lists_layout.addLayout(crypto_box)
+        return lists_layout
 
-        # Stock symbols
+    def _build_stock_list_box(self) -> QVBoxLayout:
         stock_box = QVBoxLayout()
         stock_box.addWidget(QLabel("Stock Symbols:"))
         self.stock_list = QListWidget()
@@ -153,7 +167,11 @@ class PatternDbTabsMixin:
             self.stock_list.addItem(item)
         stock_box.addWidget(self.stock_list)
 
-        # Stock quick actions
+        stock_box.addLayout(self._build_stock_buttons_layout())
+        stock_box.addLayout(self._build_custom_stock_layout())
+        return stock_box
+
+    def _build_stock_buttons_layout(self) -> QHBoxLayout:
         stock_btns = QHBoxLayout()
         select_all_stocks = QPushButton("All")
         select_all_stocks.clicked.connect(lambda: self._select_all(self.stock_list, True))
@@ -167,11 +185,22 @@ class PatternDbTabsMixin:
         clear_stocks = QPushButton("Clear List")
         clear_stocks.clicked.connect(self._clear_stock_list)
         stock_btns.addWidget(clear_stocks)
-        stock_box.addLayout(stock_btns)
+        return stock_btns
 
-        lists_layout.addLayout(stock_box)
+    def _build_custom_stock_layout(self) -> QHBoxLayout:
+        add_stock_layout = QHBoxLayout()
+        self.custom_stock_input = QLineEdit()
+        self.custom_stock_input.setPlaceholderText(
+            "Add stock/index (e.g., AAPL, SPY, QQQ, ^NDX)"
+        )
+        add_stock_layout.addWidget(self.custom_stock_input)
+        add_stock_btn = QPushButton("+")
+        add_stock_btn.setMaximumWidth(30)
+        add_stock_btn.clicked.connect(self._add_custom_stock)
+        add_stock_layout.addWidget(add_stock_btn)
+        return add_stock_layout
 
-        # Crypto symbols
+    def _build_crypto_list_box(self) -> QVBoxLayout:
         crypto_box = QVBoxLayout()
         crypto_box.addWidget(QLabel("Crypto Symbols:"))
         self.crypto_list = QListWidget()
@@ -180,14 +209,17 @@ class PatternDbTabsMixin:
             item = QListWidgetItem(symbol)
             item.setSelected(True)
             self.crypto_list.addItem(item)
-        # Add more crypto options
         for symbol in ["SOL/USD", "DOGE/USD", "AVAX/USD", "LINK/USD"]:
             item = QListWidgetItem(symbol)
             item.setSelected(False)
             self.crypto_list.addItem(item)
         crypto_box.addWidget(self.crypto_list)
 
-        # Add custom crypto
+        crypto_box.addLayout(self._build_custom_crypto_layout())
+        crypto_box.addLayout(self._build_crypto_buttons_layout())
+        return crypto_box
+
+    def _build_custom_crypto_layout(self) -> QHBoxLayout:
         add_crypto_layout = QHBoxLayout()
         self.custom_crypto_input = QLineEdit()
         self.custom_crypto_input.setPlaceholderText("Add custom (e.g., ADA/USD)")
@@ -196,9 +228,9 @@ class PatternDbTabsMixin:
         add_crypto_btn.setMaximumWidth(30)
         add_crypto_btn.clicked.connect(self._add_custom_crypto)
         add_crypto_layout.addWidget(add_crypto_btn)
-        crypto_box.addLayout(add_crypto_layout)
+        return add_crypto_layout
 
-        # Crypto quick actions
+    def _build_crypto_buttons_layout(self) -> QHBoxLayout:
         crypto_btns = QHBoxLayout()
         select_all_crypto = QPushButton("All")
         select_all_crypto.clicked.connect(lambda: self._select_all(self.crypto_list, True))
@@ -212,30 +244,37 @@ class PatternDbTabsMixin:
         clear_crypto = QPushButton("Clear List")
         clear_crypto.clicked.connect(self._clear_crypto_list)
         crypto_btns.addWidget(clear_crypto)
-        crypto_box.addLayout(crypto_btns)
+        return crypto_btns
 
-        # Add custom stocks / indices
-        add_stock_layout = QHBoxLayout()
-        self.custom_stock_input = QLineEdit()
-        self.custom_stock_input.setPlaceholderText("Add stock/index (e.g., AAPL, SPY, QQQ, ^NDX)")
-        add_stock_layout.addWidget(self.custom_stock_input)
-        add_stock_btn = QPushButton("+")
-        add_stock_btn.setMaximumWidth(30)
-        add_stock_btn.clicked.connect(self._add_custom_stock)
-        add_stock_layout.addWidget(add_stock_btn)
-        stock_box.addLayout(add_stock_layout)
-
-        lists_layout.addLayout(crypto_box)
-        asset_layout.addLayout(lists_layout)
-
-        layout.addWidget(asset_group)
-
-        # Timeframe & Settings
+    def _build_settings_group(self) -> QGroupBox:
         settings_group = QGroupBox("Timeframes & Settings")
         settings_layout = QGridLayout(settings_group)
-
-        # Timeframes
         settings_layout.addWidget(QLabel("Timeframes:"), 0, 0)
+        settings_layout.addLayout(self._build_timeframe_layout(), 0, 1)
+        settings_layout.addWidget(QLabel("Days of History:"), 1, 0)
+        self.days_spin = QSpinBox()
+        self.days_spin.setRange(30, 1825)
+        self.days_spin.setValue(365)
+        self.days_spin.setSuffix(" days")
+        settings_layout.addWidget(self.days_spin, 1, 1)
+
+        settings_layout.addWidget(QLabel("Pattern Window:"), 2, 0)
+        self.window_spin = QSpinBox()
+        self.window_spin.setRange(10, 100)
+        self.window_spin.setValue(20)
+        self.window_spin.setSuffix(" bars")
+        settings_layout.addWidget(self.window_spin, 2, 1)
+
+        settings_layout.addWidget(QLabel("Step Size:"), 3, 0)
+        self.step_spin = QSpinBox()
+        self.step_spin.setRange(1, 20)
+        self.step_spin.setValue(5)
+        self.step_spin.setSuffix(" bars")
+        self.step_spin.setToolTip("Higher = fewer patterns, faster build")
+        settings_layout.addWidget(self.step_spin, 3, 1)
+        return settings_group
+
+    def _build_timeframe_layout(self) -> QHBoxLayout:
         tf_layout = QHBoxLayout()
         self.tf_1min = QCheckBox("1Min")
         self.tf_1min.setChecked(True)
@@ -251,36 +290,9 @@ class PatternDbTabsMixin:
         self.tf_1hour = QCheckBox("1Hour")
         tf_layout.addWidget(self.tf_1hour)
         tf_layout.addStretch()
-        settings_layout.addLayout(tf_layout, 0, 1)
+        return tf_layout
 
-        # Days back
-        settings_layout.addWidget(QLabel("Days of History:"), 1, 0)
-        self.days_spin = QSpinBox()
-        self.days_spin.setRange(30, 1825)  # 1 month to 5 years
-        self.days_spin.setValue(365)
-        self.days_spin.setSuffix(" days")
-        settings_layout.addWidget(self.days_spin, 1, 1)
-
-        # Window size
-        settings_layout.addWidget(QLabel("Pattern Window:"), 2, 0)
-        self.window_spin = QSpinBox()
-        self.window_spin.setRange(10, 100)
-        self.window_spin.setValue(20)
-        self.window_spin.setSuffix(" bars")
-        settings_layout.addWidget(self.window_spin, 2, 1)
-
-        # Step size
-        settings_layout.addWidget(QLabel("Step Size:"), 3, 0)
-        self.step_spin = QSpinBox()
-        self.step_spin.setRange(1, 20)
-        self.step_spin.setValue(5)
-        self.step_spin.setSuffix(" bars")
-        self.step_spin.setToolTip("Higher = fewer patterns, faster build")
-        settings_layout.addWidget(self.step_spin, 3, 1)
-
-        layout.addWidget(settings_group)
-
-        # Progress
+    def _build_progress_group(self) -> QGroupBox:
         progress_group = QGroupBox("Build Progress")
         progress_layout = QVBoxLayout(progress_group)
 
@@ -294,7 +306,10 @@ class PatternDbTabsMixin:
         self.log_text.setFont(QFont("Consolas", 9))
         progress_layout.addWidget(self.log_text)
 
-        # Build buttons
+        progress_layout.addLayout(self._build_controls_layout())
+        return progress_group
+
+    def _build_controls_layout(self) -> QHBoxLayout:
         btn_layout = QHBoxLayout()
         self.build_btn = QPushButton("Build Database")
         self.build_btn.clicked.connect(self._start_build)
@@ -310,11 +325,7 @@ class PatternDbTabsMixin:
         btn_layout.addWidget(self.clear_db_btn)
 
         btn_layout.addStretch()
-        progress_layout.addLayout(btn_layout)
-
-        layout.addWidget(progress_group)
-
-        return widget
+        return btn_layout
 
     def _create_search_tab(self) -> QWidget:
         """Create the search test tab."""

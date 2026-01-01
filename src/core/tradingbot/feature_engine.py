@@ -287,94 +287,126 @@ class FeatureEngine:
         # SMA values
         sma_fast_key = f"sma_period{self.periods['sma_fast']}"
         sma_slow_key = f"sma_period{self.periods['sma_slow']}"
-
-        if sma_fast_key in results:
-            features['sma_20'] = self._get_last_value(results[sma_fast_key].values)
-        if sma_slow_key in results:
-            features['sma_50'] = self._get_last_value(results[sma_slow_key].values)
+        self._set_feature_from_result(results, sma_fast_key, 'sma_20', features)
+        self._set_feature_from_result(results, sma_slow_key, 'sma_50', features)
 
         # EMA values
         ema_fast_key = f"ema_period{self.periods['ema_fast']}"
         ema_slow_key = f"ema_period{self.periods['ema_slow']}"
-
-        if ema_fast_key in results:
-            features['ema_12'] = self._get_last_value(results[ema_fast_key].values)
-        if ema_slow_key in results:
-            features['ema_26'] = self._get_last_value(results[ema_slow_key].values)
+        self._set_feature_from_result(results, ema_fast_key, 'ema_12', features)
+        self._set_feature_from_result(results, ema_slow_key, 'ema_26', features)
 
         # MACD (multi-column result)
-        macd_key = f"macd_fast{self.periods['macd_fast']}_signal{self.periods['macd_signal']}_slow{self.periods['macd_slow']}"
-        if macd_key in results:
-            macd_result = results[macd_key].values
-            if isinstance(macd_result, pd.DataFrame):
-                features['macd'] = self._get_last_value(macd_result.get('macd'))
-                features['macd_signal'] = self._get_last_value(macd_result.get('signal'))
-                features['macd_hist'] = self._get_last_value(macd_result.get('histogram'))
-            elif isinstance(macd_result, dict):
-                features['macd'] = self._get_last_value(macd_result.get('macd'))
-                features['macd_signal'] = self._get_last_value(macd_result.get('signal'))
-                features['macd_hist'] = self._get_last_value(macd_result.get('histogram'))
+        macd_key = (
+            f"macd_fast{self.periods['macd_fast']}_signal{self.periods['macd_signal']}"
+            f"_slow{self.periods['macd_slow']}"
+        )
+        self._extract_macd(results, macd_key, features)
 
         # ADX (multi-column result)
         adx_key = f"adx_period{self.periods['adx']}"
-        if adx_key in results:
-            adx_result = results[adx_key].values
-            if isinstance(adx_result, pd.DataFrame):
-                features['adx'] = self._get_last_value(adx_result.get('adx'))
-                features['plus_di'] = self._get_last_value(adx_result.get('plus_di', adx_result.get('+di')))
-                features['minus_di'] = self._get_last_value(adx_result.get('minus_di', adx_result.get('-di')))
-            elif isinstance(adx_result, dict):
-                features['adx'] = self._get_last_value(adx_result.get('adx'))
-                features['plus_di'] = self._get_last_value(adx_result.get('plus_di', adx_result.get('+di')))
-                features['minus_di'] = self._get_last_value(adx_result.get('minus_di', adx_result.get('-di')))
-            elif isinstance(adx_result, pd.Series):
-                features['adx'] = self._get_last_value(adx_result)
+        self._extract_adx(results, adx_key, features)
 
         # RSI
         rsi_key = f"rsi_period{self.periods['rsi']}"
-        if rsi_key in results:
-            features['rsi_14'] = self._get_last_value(results[rsi_key].values)
+        self._set_feature_from_result(results, rsi_key, 'rsi_14', features)
 
         # Stochastic (multi-column result)
         stoch_key = f"stoch_d3_k{self.periods['stoch']}_smooth_k3"
-        if stoch_key in results:
-            stoch_result = results[stoch_key].values
-            if isinstance(stoch_result, pd.DataFrame):
-                features['stoch_k'] = self._get_last_value(stoch_result.get('k', stoch_result.get('%k')))
-                features['stoch_d'] = self._get_last_value(stoch_result.get('d', stoch_result.get('%d')))
-            elif isinstance(stoch_result, dict):
-                features['stoch_k'] = self._get_last_value(stoch_result.get('k', stoch_result.get('%k')))
-                features['stoch_d'] = self._get_last_value(stoch_result.get('d', stoch_result.get('%d')))
+        self._extract_stoch(results, stoch_key, features)
 
         # CCI
         cci_key = f"cci_period{self.periods['cci']}"
-        if cci_key in results:
-            features['cci'] = self._get_last_value(results[cci_key].values)
+        self._set_feature_from_result(results, cci_key, 'cci', features)
 
         # MFI
         mfi_key = f"mfi_period{self.periods['mfi']}"
-        if mfi_key in results:
-            features['mfi'] = self._get_last_value(results[mfi_key].values)
+        self._set_feature_from_result(results, mfi_key, 'mfi', features)
 
         # Bollinger Bands (multi-column result)
         bb_key = f"bb_period{self.periods['bb']}_std2.0"
-        if bb_key in results:
-            bb_result = results[bb_key].values
-            if isinstance(bb_result, pd.DataFrame):
-                features['bb_upper'] = self._get_last_value(bb_result.get('upper'))
-                features['bb_middle'] = self._get_last_value(bb_result.get('middle'))
-                features['bb_lower'] = self._get_last_value(bb_result.get('lower'))
-            elif isinstance(bb_result, dict):
-                features['bb_upper'] = self._get_last_value(bb_result.get('upper'))
-                features['bb_middle'] = self._get_last_value(bb_result.get('middle'))
-                features['bb_lower'] = self._get_last_value(bb_result.get('lower'))
+        self._extract_bbands(results, bb_key, features)
 
         # ATR
         atr_key = f"atr_period{self.periods['atr']}"
-        if atr_key in results:
-            features['atr_14'] = self._get_last_value(results[atr_key].values)
+        self._set_feature_from_result(results, atr_key, 'atr_14', features)
 
         return features
+
+    def _set_feature_from_result(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        feature_name: str,
+        features: dict[str, float | None],
+    ) -> None:
+        if key in results:
+            features[feature_name] = self._get_last_value(results[key].values)
+
+    def _extract_macd(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        features: dict[str, float | None],
+    ) -> None:
+        if key not in results:
+            return
+        macd_result = results[key].values
+        if isinstance(macd_result, pd.DataFrame) or isinstance(macd_result, dict):
+            features['macd'] = self._get_last_value(macd_result.get('macd'))
+            features['macd_signal'] = self._get_last_value(macd_result.get('signal'))
+            features['macd_hist'] = self._get_last_value(macd_result.get('histogram'))
+
+    def _extract_adx(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        features: dict[str, float | None],
+    ) -> None:
+        if key not in results:
+            return
+        adx_result = results[key].values
+        if isinstance(adx_result, pd.DataFrame) or isinstance(adx_result, dict):
+            features['adx'] = self._get_last_value(adx_result.get('adx'))
+            features['plus_di'] = self._get_last_value(
+                adx_result.get('plus_di', adx_result.get('+di'))
+            )
+            features['minus_di'] = self._get_last_value(
+                adx_result.get('minus_di', adx_result.get('-di'))
+            )
+        elif isinstance(adx_result, pd.Series):
+            features['adx'] = self._get_last_value(adx_result)
+
+    def _extract_stoch(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        features: dict[str, float | None],
+    ) -> None:
+        if key not in results:
+            return
+        stoch_result = results[key].values
+        if isinstance(stoch_result, pd.DataFrame) or isinstance(stoch_result, dict):
+            features['stoch_k'] = self._get_last_value(
+                stoch_result.get('k', stoch_result.get('%k'))
+            )
+            features['stoch_d'] = self._get_last_value(
+                stoch_result.get('d', stoch_result.get('%d'))
+            )
+
+    def _extract_bbands(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        features: dict[str, float | None],
+    ) -> None:
+        if key not in results:
+            return
+        bb_result = results[key].values
+        if isinstance(bb_result, pd.DataFrame) or isinstance(bb_result, dict):
+            features['bb_upper'] = self._get_last_value(bb_result.get('upper'))
+            features['bb_middle'] = self._get_last_value(bb_result.get('middle'))
+            features['bb_lower'] = self._get_last_value(bb_result.get('lower'))
 
     def _get_last_value(self, values) -> float | None:
         """Safely extract last value from Series, array, or scalar."""

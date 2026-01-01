@@ -236,50 +236,53 @@ class ChartContextBuilder:
         Returns:
             Dictionary of indicator values
         """
-        indicators = {}
-
-        # Get active indicators from chart
+        indicators: dict[str, Any] = {}
         active = getattr(self.chart, "active_indicators", {})
 
-        # Calculate each active indicator
         for indicator_name, is_active in active.items():
             if not is_active:
                 continue
-
-            indicator_name_upper = indicator_name.upper()
-
             try:
-                if indicator_name_upper == "RSI":
-                    rsi = self._calculate_rsi(df["close"])
-                    if rsi is not None:
-                        indicators["RSI"] = round(rsi, 2)
-
-                elif indicator_name_upper == "MACD":
-                    macd_data = self._calculate_macd(df["close"])
-                    if macd_data:
-                        indicators["MACD"] = macd_data
-
-                elif indicator_name_upper in ("SMA", "SMA20"):
-                    sma = df["close"].tail(20).mean()
-                    indicators["SMA20"] = round(sma, 4)
-
-                elif indicator_name_upper in ("EMA", "EMA20"):
-                    ema = df["close"].ewm(span=20).mean().iloc[-1]
-                    indicators["EMA20"] = round(ema, 4)
-
-                elif indicator_name_upper in ("BB", "BOLLINGER"):
-                    bb_data = self._calculate_bollinger(df["close"])
-                    if bb_data:
-                        indicators["Bollinger"] = bb_data
-
+                self._compute_indicator(df, indicator_name, indicators)
             except Exception as e:
                 logger.warning("Failed to calculate %s: %s", indicator_name, e)
 
-        # Always include basic stats
+        self._ensure_default_sma(df, indicators)
+        return indicators
+
+    def _compute_indicator(
+        self,
+        df: pd.DataFrame,
+        indicator_name: str,
+        indicators: dict[str, Any],
+    ) -> None:
+        indicator_name_upper = indicator_name.upper()
+        if indicator_name_upper == "RSI":
+            rsi = self._calculate_rsi(df["close"])
+            if rsi is not None:
+                indicators["RSI"] = round(rsi, 2)
+            return
+        if indicator_name_upper == "MACD":
+            macd_data = self._calculate_macd(df["close"])
+            if macd_data:
+                indicators["MACD"] = macd_data
+            return
+        if indicator_name_upper in ("SMA", "SMA20"):
+            sma = df["close"].tail(20).mean()
+            indicators["SMA20"] = round(sma, 4)
+            return
+        if indicator_name_upper in ("EMA", "EMA20"):
+            ema = df["close"].ewm(span=20).mean().iloc[-1]
+            indicators["EMA20"] = round(ema, 4)
+            return
+        if indicator_name_upper in ("BB", "BOLLINGER"):
+            bb_data = self._calculate_bollinger(df["close"])
+            if bb_data:
+                indicators["Bollinger"] = bb_data
+
+    def _ensure_default_sma(self, df: pd.DataFrame, indicators: dict[str, Any]) -> None:
         if len(df) >= 20 and "SMA20" not in indicators:
             indicators["SMA20"] = round(df["close"].tail(20).mean(), 4)
-
-        return indicators
 
     def _calculate_price_change(self, df: pd.DataFrame) -> float:
         """Calculate price change percentage over the period."""

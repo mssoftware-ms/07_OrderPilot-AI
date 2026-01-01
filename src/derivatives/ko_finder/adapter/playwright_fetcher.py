@@ -178,8 +178,7 @@ class PlaywrightFetcher:
         Returns:
             FetchResult mit HTML oder Fehler
         """
-        # Circuit-Breaker prüfen
-        if not self.circuit_breaker.can_execute():
+        if not self._can_execute():
             return FetchResult(
                 success=False,
                 url=url,
@@ -187,97 +186,115 @@ class PlaywrightFetcher:
                 run_id=run_id,
             )
 
-        # Rate-Limiting
-        async with self._lock:
-            await self._wait_for_rate_limit()
-            self.last_request_time = time.time()
-
+        await self._apply_rate_limit()
         start_time = time.time()
 
         try:
             page = await self._ensure_browser()
-
-            logger.info("Playwright navigating to: %s", url[:100])
-
-            # Zur URL navigieren
-            response = await page.goto(
-                url,
-                wait_until="domcontentloaded",
-                timeout=PLAYWRIGHT_TIMEOUT_MS,
-            )
-
+            response = await self._navigate_to_url(page, url)
             if response is None:
-                self.circuit_breaker.record_failure()
-                return FetchResult(
-                    success=False,
-                    url=url,
-                    error="No response from page",
-                    fetch_time_ms=int((time.time() - start_time) * 1000),
-                    run_id=run_id,
+                return self._build_failure(
+                    url,
+                    "No response from page",
+                    start_time,
+                    run_id,
                 )
 
             status_code = response.status
-
-            # Prüfe auf Fehler-Status
             if status_code >= 400:
-                self.circuit_breaker.record_failure()
-                return FetchResult(
-                    success=False,
-                    url=url,
+                return self._build_failure(
+                    url,
+                    f"HTTP {status_code}",
+                    start_time,
+                    run_id,
                     status_code=status_code,
-                    error=f"HTTP {status_code}",
-                    fetch_time_ms=int((time.time() - start_time) * 1000),
-                    run_id=run_id,
                 )
 
-            # Warte kurz für JavaScript-Rendering
-            await asyncio.sleep(PLAYWRIGHT_NAVIGATION_WAIT_MS / 1000)
-
-            # Warte auf Tabelle (wichtig für Knock-Out Liste)
-            try:
-                await page.wait_for_selector(
-                    "table, .table, [class*='table'], [data-test*='table']",
-                    timeout=PLAYWRIGHT_TABLE_WAIT_MS,
-                )
-                logger.debug("Table found on page")
-            except Exception:
-                logger.warning("No table found within timeout, continuing anyway")
-
-            # HTML extrahieren
+            await self._wait_for_render()
+            await self._wait_for_table(page)
             html = await page.content()
 
-            # Erfolg
-            self.circuit_breaker.record_success()
-
-            fetch_time_ms = int((time.time() - start_time) * 1000)
-            logger.info(
-                "Playwright fetch successful: %d bytes in %dms",
-                len(html),
-                fetch_time_ms,
-            )
-
-            return FetchResult(
-                success=True,
-                html=html,
-                url=url,
-                status_code=status_code,
-                fetch_time_ms=fetch_time_ms,
-                run_id=run_id,
-            )
+            return self._build_success(url, status_code, html, start_time, run_id)
 
         except Exception as e:
-            self.circuit_breaker.record_failure()
-
-            error_msg = str(e)
-            logger.error("Playwright fetch failed: %s", error_msg)
-
-            return FetchResult(
-                success=False,
-                url=url,
-                error=error_msg,
-                fetch_time_ms=int((time.time() - start_time) * 1000),
-                run_id=run_id,
+            return self._build_failure(
+                url,
+                str(e),
+                start_time,
+                run_id,
             )
+
+    def _can_execute(self) -> bool:
+        return self.circuit_breaker.can_execute()
+
+    async def _apply_rate_limit(self) -> None:
+        async with self._lock:
+            await self._wait_for_rate_limit()
+            self.last_request_time = time.time()
+
+    async def _navigate_to_url(self, page, url: str):
+        logger.info("Playwright navigating to: %s", url[:100])
+        return await page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=PLAYWRIGHT_TIMEOUT_MS,
+        )
+
+    async def _wait_for_render(self) -> None:
+        await asyncio.sleep(PLAYWRIGHT_NAVIGATION_WAIT_MS / 1000)
+
+    async def _wait_for_table(self, page) -> None:
+        try:
+            await page.wait_for_selector(
+                "table, .table, [class*='table'], [data-test*='table']",
+                timeout=PLAYWRIGHT_TABLE_WAIT_MS,
+            )
+            logger.debug("Table found on page")
+        except Exception:
+            logger.warning("No table found within timeout, continuing anyway")
+
+    def _build_success(
+        self,
+        url: str,
+        status_code: int,
+        html: str,
+        start_time: float,
+        run_id: str,
+    ) -> FetchResult:
+        self.circuit_breaker.record_success()
+        fetch_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "Playwright fetch successful: %d bytes in %dms",
+            len(html),
+            fetch_time_ms,
+        )
+        return FetchResult(
+            success=True,
+            html=html,
+            url=url,
+            status_code=status_code,
+            fetch_time_ms=fetch_time_ms,
+            run_id=run_id,
+        )
+
+    def _build_failure(
+        self,
+        url: str,
+        error_msg: str,
+        start_time: float,
+        run_id: str,
+        status_code: int | None = None,
+    ) -> FetchResult:
+        self.circuit_breaker.record_failure()
+        logger.error("Playwright fetch failed: %s", error_msg)
+        return FetchResult(
+            success=False,
+            url=url,
+            status_code=status_code,
+            error=error_msg,
+            fetch_time_ms=int((time.time() - start_time) * 1000),
+            run_id=run_id,
+        )
 
     async def _wait_for_rate_limit(self) -> None:
         """Warte bis Rate-Limit erlaubt."""

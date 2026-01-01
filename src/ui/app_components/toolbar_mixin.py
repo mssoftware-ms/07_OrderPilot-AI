@@ -26,28 +26,51 @@ class ToolbarMixin:
 
     def create_toolbar(self):
         """Create the application toolbar (two rows)."""
-        # ========== ROW 1: Connection, Broker, Mode, Data Provider ==========
+        self._build_toolbar_row1()
+        self._build_toolbar_row2()
+
+    def _build_toolbar_row1(self) -> None:
         toolbar1 = QToolBar("Main Toolbar - Row 1")
         toolbar1.setIconSize(QSize(24, 24))
         self.addToolBar(toolbar1)
 
-        # Connect/Disconnect actions
+        self._add_connection_actions(toolbar1)
+        toolbar1.addSeparator()
+        self._add_broker_selector(toolbar1)
+        toolbar1.addSeparator()
+        self._add_trading_mode_selector(toolbar1)
+        toolbar1.addSeparator()
+        self._add_data_provider_selector(toolbar1)
+        toolbar1.addAction(self._build_refresh_action())
+        toolbar1.addSeparator()
+        self._add_status_indicators(toolbar1)
+
+    def _build_toolbar_row2(self) -> None:
+        toolbar2 = QToolBar("Main Toolbar - Row 2")
+        toolbar2.setIconSize(QSize(24, 24))
+        self.addToolBar(toolbar2)
+
+        self._add_live_data_toggle(toolbar2)
+        toolbar2.addSeparator()
+        self._add_pre_trade_button(toolbar2)
+        toolbar2.addSeparator()
+        self._add_quick_actions(toolbar2)
+
+    def _add_connection_actions(self, toolbar: QToolBar) -> None:
         connect_action = QAction(get_icon("connect"), "Connect", self)
         connect_action.setToolTip("Connect to broker")
         connect_action.triggered.connect(self.connect_broker)
-        toolbar1.addAction(connect_action)
+        toolbar.addAction(connect_action)
 
         disconnect_action = QAction(get_icon("disconnect"), "Disconnect", self)
         disconnect_action.setToolTip("Disconnect from broker")
         disconnect_action.triggered.connect(self.disconnect_broker)
-        toolbar1.addAction(disconnect_action)
+        toolbar.addAction(disconnect_action)
 
-        toolbar1.addSeparator()
-
-        # Broker selector
+    def _add_broker_selector(self, toolbar: QToolBar) -> None:
         broker_label = QLabel("Broker: ")
         broker_label.setToolTip("Select your broker for trading")
-        toolbar1.addWidget(broker_label)
+        toolbar.addWidget(broker_label)
 
         self.broker_combo = QComboBox()
         self.broker_combo.addItems(["Mock Broker", "IBKR", "Trade Republic"])
@@ -57,15 +80,13 @@ class ToolbarMixin:
             "• IBKR - Interactive Brokers (TWS/Gateway required)\n"
             "• Trade Republic - Mobile trading platform"
         )
-        toolbar1.addWidget(self.broker_combo)
+        toolbar.addWidget(self.broker_combo)
 
-        toolbar1.addSeparator()
-
-        # Trading Mode Selector
+    def _add_trading_mode_selector(self, toolbar: QToolBar) -> None:
         mode_label = QLabel("Mode: ")
         mode_label.setToolTip("Trading Mode - CRITICAL safety setting!")
         mode_label.setStyleSheet("font-weight: bold; color: #FFA500;")
-        toolbar1.addWidget(mode_label)
+        toolbar.addWidget(mode_label)
 
         self.trading_mode_combo = QComboBox()
         self.trading_mode_combo.addItems(["Backtest", "Paper", "Live"])
@@ -76,7 +97,8 @@ class ToolbarMixin:
             "• Paper - Real-time simulation (NO real money)\n"
             "• Live - REAL TRADING with REAL MONEY!"
         )
-        self.trading_mode_combo.setStyleSheet("""
+        self.trading_mode_combo.setStyleSheet(
+            """
             QComboBox {
                 font-weight: bold;
                 padding: 5px 10px;
@@ -87,18 +109,17 @@ class ToolbarMixin:
             }
             QComboBox::drop-down { border: 0px; }
             QComboBox:hover { background-color: #3a3a3a; border-color: #FFD700; }
-        """)
+        """
+        )
         self.trading_mode_combo.currentTextChanged.connect(self._on_trading_mode_changed)
-        toolbar1.addWidget(self.trading_mode_combo)
+        toolbar.addWidget(self.trading_mode_combo)
 
         self.current_trading_mode = "Backtest"
 
-        toolbar1.addSeparator()
-
-        # Market Data Provider selector
+    def _add_data_provider_selector(self, toolbar: QToolBar) -> None:
         data_provider_label = QLabel("Market Data: ")
         data_provider_label.setToolTip("Select market data provider")
-        toolbar1.addWidget(data_provider_label)
+        toolbar.addWidget(data_provider_label)
 
         self.data_provider_combo = QComboBox()
         self.data_provider_combo.setToolTip(
@@ -109,37 +130,30 @@ class ToolbarMixin:
             "• Yahoo Finance - Free historical data"
         )
         self.data_provider_combo.currentTextChanged.connect(self.on_data_provider_changed)
-        toolbar1.addWidget(self.data_provider_combo)
+        toolbar.addWidget(self.data_provider_combo)
 
-        # Refresh action
+    def _build_refresh_action(self) -> QAction:
         refresh_action = QAction(get_icon("refresh"), "Refresh", self)
         refresh_action.setToolTip("Refresh market data")
         refresh_action.triggered.connect(self.refresh_market_data)
-        toolbar1.addAction(refresh_action)
+        return refresh_action
 
-        toolbar1.addSeparator()
-
-        # Status indicators (Row 1)
+    def _add_status_indicators(self, toolbar: QToolBar) -> None:
         self.connection_status = QLabel("Disconnected")
         self.connection_status.setStyleSheet("color: red;")
         self.connection_status.setToolTip("Broker connection status")
-        toolbar1.addWidget(self.connection_status)
+        toolbar.addWidget(self.connection_status)
 
         self.ai_status = QLabel("AI: Ready")
         self.ai_status.setToolTip("AI service status")
-        toolbar1.addWidget(self.ai_status)
+        toolbar.addWidget(self.ai_status)
 
         self.crypto_status = QLabel("Crypto: Off")
         self.crypto_status.setStyleSheet("color: gray;")
         self.crypto_status.setToolTip("Live Crypto Data Stream Status")
-        toolbar1.addWidget(self.crypto_status)
+        toolbar.addWidget(self.crypto_status)
 
-        # ========== ROW 2: Live Data, Pre-Trade, Quick Actions ==========
-        toolbar2 = QToolBar("Main Toolbar - Row 2")
-        toolbar2.setIconSize(QSize(24, 24))
-        self.addToolBar(toolbar2)
-
-        # Live Data Toggle
+    def _add_live_data_toggle(self, toolbar: QToolBar) -> None:
         self.live_data_toggle = QPushButton("Live Data: OFF")
         self.live_data_toggle.setCheckable(True)
         self.live_data_toggle.setToolTip(
@@ -148,11 +162,9 @@ class ToolbarMixin:
             "• OFF: Use cached/simulated data"
         )
         self.live_data_toggle.clicked.connect(self.toggle_live_data)
-        toolbar2.addWidget(self.live_data_toggle)
+        toolbar.addWidget(self.live_data_toggle)
 
-        toolbar2.addSeparator()
-
-        # ===== PRE-TRADE ANALYSIS BUTTON (KEY FEATURE!) =====
+    def _add_pre_trade_button(self, toolbar: QToolBar) -> None:
         self.pre_trade_button = QPushButton("🎯 Pre-Trade")
         self.pre_trade_button.setToolTip(
             "Pre-Trade Analyse\n\n"
@@ -160,7 +172,8 @@ class ToolbarMixin:
             "des übergeordneten Trends VOR dem Trade.\n\n"
             "Shortcut: Ctrl+Shift+T"
         )
-        self.pre_trade_button.setStyleSheet("""
+        self.pre_trade_button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
@@ -175,37 +188,36 @@ class ToolbarMixin:
             QPushButton:pressed {
                 background-color: #3d8b40;
             }
-        """)
+        """
+        )
         self.pre_trade_button.clicked.connect(self._on_open_pre_trade_analysis)
-        toolbar2.addWidget(self.pre_trade_button)
+        toolbar.addWidget(self.pre_trade_button)
 
-        toolbar2.addSeparator()
-
-        # Quick actions
+    def _add_quick_actions(self, toolbar: QToolBar) -> None:
         new_order_action = QAction(get_icon("order"), "New Order", self)
         new_order_action.setToolTip("Place new order")
         new_order_action.triggered.connect(self.show_order_dialog)
-        toolbar2.addAction(new_order_action)
+        toolbar.addAction(new_order_action)
 
         backtest_action = QAction(get_icon("backtest"), "Backtest", self)
         backtest_action.setToolTip("Run backtest")
         backtest_action.triggered.connect(self.show_backtest_dialog)
-        toolbar2.addAction(backtest_action)
+        toolbar.addAction(backtest_action)
 
         ai_backtest_action = QAction(get_icon("ai"), "AI Backtest", self)
         ai_backtest_action.setToolTip("AI-powered backtest analysis")
         ai_backtest_action.triggered.connect(self.show_ai_backtest_dialog)
-        toolbar2.addAction(ai_backtest_action)
+        toolbar.addAction(ai_backtest_action)
 
         param_opt_action = QAction(get_icon("optimize"), "Optimize", self)
         param_opt_action.setToolTip("Parameter optimization")
         param_opt_action.triggered.connect(self.show_parameter_optimization_dialog)
-        toolbar2.addAction(param_opt_action)
+        toolbar.addAction(param_opt_action)
 
         settings_action = QAction(get_icon("settings"), "Settings", self)
         settings_action.setToolTip("Open settings")
         settings_action.triggered.connect(self.show_settings_dialog)
-        toolbar2.addAction(settings_action)
+        toolbar.addAction(settings_action)
 
     def update_data_provider_list(self):
         """Update the list of available market data providers."""

@@ -36,16 +36,34 @@ class IndicatorsWidget(QWidget):
         """Setup the UI components."""
         layout = QVBoxLayout(self)
 
-        # Available indicators
+        layout.addWidget(self._build_available_group())
+        layout.addWidget(self._build_settings_group())
+        layout.addWidget(self._build_info_group())
+
+        layout.addStretch()
+
+        logger.info("IndicatorsWidget initialized")
+
+    def _build_available_group(self) -> QGroupBox:
         available_group = QGroupBox("Available Indicators")
         available_layout = QVBoxLayout()
 
         self.indicators_list = QTableWidget()
         self.indicators_list.setColumnCount(4)
-        self.indicators_list.setHorizontalHeaderLabels(["Indicator", "Type", "Parameters", "Enabled"])
-        self.indicators_list.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.indicators_list.setHorizontalHeaderLabels(
+            ["Indicator", "Type", "Parameters", "Enabled"]
+        )
+        self.indicators_list.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
 
-        # Add sample indicators
+        self._populate_indicators_table()
+        available_layout.addWidget(self.indicators_list)
+        available_layout.addLayout(self._build_indicator_controls())
+        available_group.setLayout(available_layout)
+        return available_group
+
+    def _populate_indicators_table(self) -> None:
         indicators = [
             ("SMA", "Trend", "period=20", True),
             ("EMA", "Trend", "period=20", False),
@@ -66,19 +84,21 @@ class IndicatorsWidget(QWidget):
             self.indicators_list.setItem(i, 2, QTableWidgetItem(params))
 
             check_item = QTableWidgetItem()
-            check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-            check_item.setCheckState(Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
+            check_item.setFlags(
+                Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled
+            )
+            check_item.setCheckState(
+                Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
+            )
             self.indicators_list.setItem(i, 3, check_item)
 
-        available_layout.addWidget(self.indicators_list)
-
-        # Add indicator controls
+    def _build_indicator_controls(self) -> QHBoxLayout:
         add_indicator_layout = QHBoxLayout()
 
         self.indicator_type_combo = QComboBox()
-        self.indicator_type_combo.addItems([
-            "SMA", "EMA", "RSI", "MACD", "BB", "ATR", "STOCH", "ADX", "CCI", "MFI"
-        ])
+        self.indicator_type_combo.addItems(
+            ["SMA", "EMA", "RSI", "MACD", "BB", "ATR", "STOCH", "ADX", "CCI", "MFI"]
+        )
         add_indicator_layout.addWidget(self.indicator_type_combo)
 
         self.indicator_params_edit = QLineEdit()
@@ -93,28 +113,30 @@ class IndicatorsWidget(QWidget):
         self.remove_indicator_button.clicked.connect(self._remove_indicator)
         add_indicator_layout.addWidget(self.remove_indicator_button)
 
-        available_layout.addLayout(add_indicator_layout)
-        available_group.setLayout(available_layout)
-        layout.addWidget(available_group)
+        return add_indicator_layout
 
-        # Indicator settings
+    def _build_settings_group(self) -> QGroupBox:
         settings_group = QGroupBox("Indicator Settings")
         settings_layout = QVBoxLayout()
 
         self.use_talib_check = QCheckBox("Use TA-Lib (if available)")
         self.use_talib_check.setChecked(True)
-        self.use_talib_check.setToolTip("Use TA-Lib library for faster indicator calculations when available")
+        self.use_talib_check.setToolTip(
+            "Use TA-Lib library for faster indicator calculations when available"
+        )
         settings_layout.addWidget(self.use_talib_check)
 
         self.cache_indicators_check = QCheckBox("Cache Indicator Results")
         self.cache_indicators_check.setChecked(True)
-        self.cache_indicators_check.setToolTip("Cache calculated indicator values to improve performance")
+        self.cache_indicators_check.setToolTip(
+            "Cache calculated indicator values to improve performance"
+        )
         settings_layout.addWidget(self.cache_indicators_check)
 
         settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
+        return settings_group
 
-        # Info section
+    def _build_info_group(self) -> QGroupBox:
         info_group = QGroupBox("Information")
         info_layout = QVBoxLayout()
 
@@ -129,11 +151,7 @@ class IndicatorsWidget(QWidget):
         info_layout.addWidget(info_text)
 
         info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
-
-        layout.addStretch()
-
-        logger.info("IndicatorsWidget initialized")
+        return info_group
 
     def _add_indicator(self):
         """Add a new indicator."""

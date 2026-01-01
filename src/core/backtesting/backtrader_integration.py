@@ -283,96 +283,29 @@ class BacktestEngine:
             f"Running backtest with strategy: {strategy_def.name} v{strategy_def.version}"
         )
 
-        # Compile strategy
-        compiler = StrategyCompiler()
-        strategy_class = compiler.compile(strategy_def)
-
-        # Create Cerebro engine
-        cerebro = bt.Cerebro()
-
-        # Set initial cash
-        cerebro.broker.setcash(initial_cash)
-
-        # Set commission
-        cerebro.broker.setcommission(commission=commission)
-
-        # Add data feed
-        if data_feed is not None:
-            cerebro.adddata(data_feed, name=symbol)
-        else:
-            # Fetch data from history manager
-            if not self.history_manager:
-                raise ValueError("HistoryManager required when data_feed is not provided")
-            data = await self._get_data_feed(symbol, start_date, end_date, timeframe)
-            if not data:
-                raise ValueError(f"No data available for {symbol}")
-            cerebro.adddata(data, name=symbol)
-
-        # Add compiled strategy
+        strategy_class = self._compile_strategy(strategy_def)
+        cerebro = self._build_cerebro(initial_cash, commission)
+        await self._add_backtest_data(cerebro, symbol, start_date, end_date, timeframe, data_feed)
         cerebro.addstrategy(strategy_class)
+        self._add_backtest_analyzers(cerebro)
 
-        # Add analyzers
-        cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe')
-        cerebro.addanalyzer(btanalyzers.Returns, _name='returns')
-        cerebro.addanalyzer(btanalyzers.DrawDown, _name='drawdown')
-        cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
-        cerebro.addanalyzer(btanalyzers.TimeReturn, _name='timereturn')
-
-        # Run backtest
         logger.info(f"Starting backtest from {start_date} to {end_date}")
         initial_value = cerebro.broker.getvalue()
-
-        results = cerebro.run()
-        strategy_instance = results[0]
-
+        strategy_instance = cerebro.run()[0]
         final_value = cerebro.broker.getvalue()
 
-        # Process results
         timeframe_str = timeframe.value if timeframe else "1d"
-
-        try:
-            result = backtrader_to_backtest_result(
-                strategy=strategy_instance,
-                cerebro=cerebro,
-                initial_value=initial_value,
-                final_value=final_value,
-                symbol=symbol,
-                timeframe=timeframe_str,
-                start_date=start_date,
-                end_date=end_date,
-                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
-                strategy_params={
-                    "indicators": [
-                        {"type": ind.type, "alias": ind.alias, "params": ind.params}
-                        for ind in strategy_def.indicators
-                    ],
-                    "risk_management": strategy_def.risk_management.model_dump(exclude_none=True)
-                }
-            )
-        except Exception as e:
-            logger.error(f"Error converting backtest results: {e}")
-            # Fallback to basic result
-            from src.core.models.backtest_models import BacktestMetrics, EquityPoint
-
-            result = BacktestResult(
-                symbol=symbol,
-                timeframe=timeframe_str,
-                mode="backtest",
-                start=start_date,
-                end=end_date,
-                initial_capital=initial_value,
-                final_capital=final_value,
-                bars=[],
-                trades=[],
-                equity_curve=[
-                    EquityPoint(time=start_date, equity=initial_value),
-                    EquityPoint(time=end_date, equity=final_value)
-                ],
-                metrics=BacktestMetrics(),
-                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
-                strategy_params={},
-                notes=f"Error during conversion: {e}"
-            )
+        result = self._convert_backtest_result(
+            strategy_def,
+            strategy_instance,
+            cerebro,
+            initial_value,
+            final_value,
+            symbol,
+            timeframe_str,
+            start_date,
+            end_date,
+        )
 
         # Emit event
         event_bus.emit(Event(
@@ -399,6 +332,97 @@ class BacktestEngine:
         )
 
         return result
+
+    def _compile_strategy(self, strategy_def: StrategyDefinition):
+        compiler = StrategyCompiler()
+        return compiler.compile(strategy_def)
+
+    def _build_cerebro(self, initial_cash: float, commission: float):
+        cerebro = bt.Cerebro()
+        cerebro.broker.setcash(initial_cash)
+        cerebro.broker.setcommission(commission=commission)
+        return cerebro
+
+    async def _add_backtest_data(
+        self,
+        cerebro: bt.Cerebro,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: Timeframe,
+        data_feed: bt.feeds.DataBase | None,
+    ) -> None:
+        if data_feed is not None:
+            cerebro.adddata(data_feed, name=symbol)
+            return
+        if not self.history_manager:
+            raise ValueError("HistoryManager required when data_feed is not provided")
+        data = await self._get_data_feed(symbol, start_date, end_date, timeframe)
+        if not data:
+            raise ValueError(f"No data available for {symbol}")
+        cerebro.adddata(data, name=symbol)
+
+    def _add_backtest_analyzers(self, cerebro: bt.Cerebro) -> None:
+        cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe')
+        cerebro.addanalyzer(btanalyzers.Returns, _name='returns')
+        cerebro.addanalyzer(btanalyzers.DrawDown, _name='drawdown')
+        cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trades')
+        cerebro.addanalyzer(btanalyzers.TimeReturn, _name='timereturn')
+
+    def _convert_backtest_result(
+        self,
+        strategy_def: StrategyDefinition,
+        strategy_instance,
+        cerebro: bt.Cerebro,
+        initial_value: float,
+        final_value: float,
+        symbol: str,
+        timeframe_str: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> BacktestResult:
+        try:
+            return backtrader_to_backtest_result(
+                strategy=strategy_instance,
+                cerebro=cerebro,
+                initial_value=initial_value,
+                final_value=final_value,
+                symbol=symbol,
+                timeframe=timeframe_str,
+                start_date=start_date,
+                end_date=end_date,
+                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
+                strategy_params={
+                    "indicators": [
+                        {"type": ind.type, "alias": ind.alias, "params": ind.params}
+                        for ind in strategy_def.indicators
+                    ],
+                    "risk_management": strategy_def.risk_management.model_dump(exclude_none=True),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error converting backtest results: {e}")
+            from src.core.models.backtest_models import BacktestMetrics, EquityPoint
+
+            return BacktestResult(
+                symbol=symbol,
+                timeframe=timeframe_str,
+                mode="backtest",
+                start=start_date,
+                end=end_date,
+                initial_capital=initial_value,
+                final_capital=final_value,
+                bars=[],
+                trades=[],
+                equity_curve=[
+                    EquityPoint(time=start_date, equity=initial_value),
+                    EquityPoint(time=end_date, equity=final_value),
+                ],
+                metrics=BacktestMetrics(),
+                strategy_name=f"{strategy_def.name} v{strategy_def.version}",
+                strategy_params={},
+                notes=f"Error during conversion: {e}",
+            )
 
     async def optimize_strategy(
         self,
