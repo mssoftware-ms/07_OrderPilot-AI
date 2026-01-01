@@ -83,9 +83,10 @@ class BacktestChartWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Toolbar
-        toolbar = self._create_toolbar()
-        layout.addWidget(toolbar)
+        # Toolbar - Two rows
+        toolbar1, toolbar2 = self._create_toolbar()
+        layout.addWidget(toolbar1)
+        layout.addWidget(toolbar2)
 
         # WebEngine View (main chart area)
         self.web_view.setMinimumSize(800, 600)

@@ -20,12 +20,17 @@ logger = logging.getLogger(__name__)
 class ToolbarMixin:
     """Mixin providing toolbar functionality for EmbeddedTradingViewChart."""
 
-    def _create_toolbar(self) -> QToolBar:
-        """Create chart toolbar."""
-        toolbar = QToolBar()
+    def _create_toolbar(self) -> tuple[QToolBar, QToolBar]:
+        """Create chart toolbar (two rows).
+
+        Returns:
+            Tuple of (toolbar1, toolbar2) for two-row layout
+        """
+        # ========== ROW 1: Symbol, Timeframe, Period, Indicators, Actions ==========
+        toolbar1 = QToolBar()
 
         # Symbol selector
-        toolbar.addWidget(QLabel("Symbol:"))
+        toolbar1.addWidget(QLabel("Symbol:"))
         self.symbol_combo = QComboBox()
         # Add crypto symbols with separator
         self.symbol_combo.addItems([
@@ -35,12 +40,12 @@ class ToolbarMixin:
         ])
         self.symbol_combo.setCurrentText(self.current_symbol)
         self.symbol_combo.currentTextChanged.connect(self._on_symbol_change)
-        toolbar.addWidget(self.symbol_combo)
+        toolbar1.addWidget(self.symbol_combo)
 
-        toolbar.addSeparator()
+        toolbar1.addSeparator()
 
         # Candle size selector (renamed from Zeitrahmen to Kerzen)
-        toolbar.addWidget(QLabel("Kerzen:"))
+        toolbar1.addWidget(QLabel("Kerzen:"))
         self.timeframe_combo = QComboBox()
         # Add items with display labels and internal values
         timeframes = [
@@ -63,12 +68,12 @@ class ToolbarMixin:
         self.timeframe_combo.currentIndexChanged.connect(
             lambda idx: self._on_timeframe_change(self.timeframe_combo.itemData(idx))
         )
-        toolbar.addWidget(self.timeframe_combo)
+        toolbar1.addWidget(self.timeframe_combo)
 
-        toolbar.addSeparator()
+        toolbar1.addSeparator()
 
         # Time period selector (how far back to load)
-        toolbar.addWidget(QLabel("Zeitraum:"))
+        toolbar1.addWidget(QLabel("Zeitraum:"))
         self.period_combo = QComboBox()
         # Add time periods with display labels and lookback days
         periods = [
@@ -93,12 +98,12 @@ class ToolbarMixin:
         self.period_combo.currentIndexChanged.connect(
             lambda idx: self._on_period_change(self.period_combo.itemData(idx))
         )
-        toolbar.addWidget(self.period_combo)
+        toolbar1.addWidget(self.period_combo)
 
-        toolbar.addSeparator()
+        toolbar1.addSeparator()
 
         # Indicators dropdown menu with checkboxes
-        toolbar.addWidget(QLabel("Indikatoren:"))
+        toolbar1.addWidget(QLabel("Indikatoren:"))
 
         self.indicators_button = QPushButton("📊 Indikatoren")
         self.indicators_button.setToolTip("Wähle Indikatoren zur Anzeige")
@@ -145,34 +150,35 @@ class ToolbarMixin:
                 subcontrol-position: right center;
             }
         """)
-        toolbar.addWidget(self.indicators_button)
+        toolbar1.addWidget(self.indicators_button)
 
-        toolbar.addSeparator()
+        toolbar1.addSeparator()
 
         # Load data button
         self.load_button = QPushButton("📊 Load Chart")
         self.load_button.clicked.connect(self._on_load_chart)
         self.load_button.setStyleSheet("font-weight: bold; padding: 5px 15px;")
-        toolbar.addWidget(self.load_button)
+        toolbar1.addWidget(self.load_button)
 
         # Refresh button
         self.refresh_button = QPushButton("🔄 Refresh")
         self.refresh_button.clicked.connect(self._on_refresh)
-        toolbar.addWidget(self.refresh_button)
+        toolbar1.addWidget(self.refresh_button)
 
         # Zoom-to-fit button
         self.zoom_all_button = QPushButton("🔍 Alles zoomen")
         self.zoom_all_button.setToolTip("Gesamten Chart einpassen und Pane-Höhen sinnvoll setzen")
         self.zoom_all_button.clicked.connect(self._on_zoom_all)
-        toolbar.addWidget(self.zoom_all_button)
+        toolbar1.addWidget(self.zoom_all_button)
 
         # Zoom-back button
         self.zoom_back_button = QPushButton("⤺ Zurück")
         self.zoom_back_button.setToolTip("Zur vorherigen Ansicht zurückkehren")
         self.zoom_back_button.clicked.connect(self._on_zoom_back)
-        toolbar.addWidget(self.zoom_back_button)
+        toolbar1.addWidget(self.zoom_back_button)
 
-        toolbar.addSeparator()
+        # ========== ROW 2: Live, Markierungen, AI Chat, Trading Bot ==========
+        toolbar2 = QToolBar()
 
         # Live streaming toggle
         self.live_stream_button = QPushButton("🔴 Live")
@@ -193,7 +199,148 @@ class ToolbarMixin:
                 color: #fff;
             }
         """)
-        toolbar.addWidget(self.live_stream_button)
+        toolbar2.addWidget(self.live_stream_button)
+
+        toolbar2.addSeparator()
+
+        # ===== CHART MARKING BUTTON =====
+        self.chart_marking_button = QPushButton("📏 Markierungen")
+        self.chart_marking_button.setToolTip(
+            "Chart-Markierungen hinzufügen (Rechtsklick auf Chart für Menü)"
+        )
+        self.chart_marking_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #4CAF50;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+        """)
+        self.chart_marking_menu = QMenu(self)
+
+        # Entry Markers submenu
+        entry_menu = self.chart_marking_menu.addMenu("📍 Entry Marker")
+        long_action = QAction("🟢 Long Entry", self)
+        long_action.triggered.connect(lambda: self._add_test_entry_marker("long"))
+        entry_menu.addAction(long_action)
+        short_action = QAction("🔴 Short Entry", self)
+        short_action.triggered.connect(lambda: self._add_test_entry_marker("short"))
+        entry_menu.addAction(short_action)
+
+        # Zones submenu
+        zone_menu = self.chart_marking_menu.addMenu("📊 Zonen")
+        support_action = QAction("🟢 Support Zone", self)
+        support_action.triggered.connect(lambda: self._add_test_zone("support"))
+        zone_menu.addAction(support_action)
+        resistance_action = QAction("🔴 Resistance Zone", self)
+        resistance_action.triggered.connect(lambda: self._add_test_zone("resistance"))
+        zone_menu.addAction(resistance_action)
+        zone_menu.addSeparator()
+        demand_action = QAction("🟢 Demand Zone", self)
+        demand_action.triggered.connect(lambda: self._add_test_zone("demand"))
+        zone_menu.addAction(demand_action)
+        supply_action = QAction("🔴 Supply Zone", self)
+        supply_action.triggered.connect(lambda: self._add_test_zone("supply"))
+        zone_menu.addAction(supply_action)
+
+        # Structure submenu
+        structure_menu = self.chart_marking_menu.addMenu("📈 Structure Breaks")
+        bos_bull = QAction("⬆️ BoS Bullish", self)
+        bos_bull.triggered.connect(lambda: self._add_test_structure("bos", True))
+        structure_menu.addAction(bos_bull)
+        bos_bear = QAction("⬇️ BoS Bearish", self)
+        bos_bear.triggered.connect(lambda: self._add_test_structure("bos", False))
+        structure_menu.addAction(bos_bear)
+        structure_menu.addSeparator()
+        choch_bull = QAction("⬆️ CHoCH Bullish", self)
+        choch_bull.triggered.connect(lambda: self._add_test_structure("choch", True))
+        structure_menu.addAction(choch_bull)
+        choch_bear = QAction("⬇️ CHoCH Bearish", self)
+        choch_bear.triggered.connect(lambda: self._add_test_structure("choch", False))
+        structure_menu.addAction(choch_bear)
+        structure_menu.addSeparator()
+        msb_bull = QAction("⬆️ MSB Bullish", self)
+        msb_bull.triggered.connect(lambda: self._add_test_structure("msb", True))
+        structure_menu.addAction(msb_bull)
+        msb_bear = QAction("⬇️ MSB Bearish", self)
+        msb_bear.triggered.connect(lambda: self._add_test_structure("msb", False))
+        structure_menu.addAction(msb_bear)
+
+        # Lines submenu
+        lines_menu = self.chart_marking_menu.addMenu("📏 Linien")
+        sl_long = QAction("🔴 Stop Loss (Long)", self)
+        sl_long.triggered.connect(lambda: self._add_test_line("sl", True))
+        lines_menu.addAction(sl_long)
+        sl_short = QAction("🔴 Stop Loss (Short)", self)
+        sl_short.triggered.connect(lambda: self._add_test_line("sl", False))
+        lines_menu.addAction(sl_short)
+        lines_menu.addSeparator()
+        tp_long = QAction("🟢 Take Profit (Long)", self)
+        tp_long.triggered.connect(lambda: self._add_test_line("tp", True))
+        lines_menu.addAction(tp_long)
+        tp_short = QAction("🟢 Take Profit (Short)", self)
+        tp_short.triggered.connect(lambda: self._add_test_line("tp", False))
+        lines_menu.addAction(tp_short)
+        lines_menu.addSeparator()
+        entry_line = QAction("🔵 Entry Line", self)
+        entry_line.triggered.connect(lambda: self._add_test_line("entry", True))
+        lines_menu.addAction(entry_line)
+        trailing = QAction("🟡 Trailing Stop", self)
+        trailing.triggered.connect(lambda: self._add_test_line("trailing", True))
+        lines_menu.addAction(trailing)
+
+        self.chart_marking_menu.addSeparator()
+
+        # Clear actions
+        clear_markers = QAction("🗑️ Alle Marker löschen", self)
+        clear_markers.triggered.connect(self._clear_all_markers)
+        self.chart_marking_menu.addAction(clear_markers)
+        clear_zones = QAction("🗑️ Alle Zonen löschen", self)
+        clear_zones.triggered.connect(self.clear_zones)
+        self.chart_marking_menu.addAction(clear_zones)
+        clear_lines = QAction("🗑️ Alle Linien löschen", self)
+        clear_lines.triggered.connect(self.clear_stop_loss_lines)
+        self.chart_marking_menu.addAction(clear_lines)
+        self.chart_marking_menu.addSeparator()
+        clear_all = QAction("🗑️ Alles löschen", self)
+        clear_all.triggered.connect(self._clear_all_markings)
+        self.chart_marking_menu.addAction(clear_all)
+
+        self.chart_marking_button.setMenu(self.chart_marking_menu)
+        toolbar2.addWidget(self.chart_marking_button)
+
+        # ===== AI CHAT BUTTON =====
+        self.ai_chat_button = QPushButton("🤖 AI Chat")
+        self.ai_chat_button.setCheckable(True)
+        self.ai_chat_button.setToolTip(
+            "AI Chart-Analyse öffnen/schließen (Ctrl+Shift+C)"
+        )
+        self.ai_chat_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #2196F3;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:checked {
+                background-color: #2196F3;
+                color: #fff;
+            }
+        """)
+        # Connect signal - will be handled by parent ChartWindow
+        toolbar2.addWidget(self.ai_chat_button)
+
+        toolbar2.addSeparator()
 
         # ===== TRADING BOT TOGGLE BUTTON (right after Live button) =====
         self.toggle_panel_button = QPushButton("▼ Trading Bot")
@@ -218,16 +365,16 @@ class ToolbarMixin:
             }
         """)
         # Signal will be emitted to parent ChartWindow
-        toolbar.addWidget(self.toggle_panel_button)
+        toolbar2.addWidget(self.toggle_panel_button)
 
-        toolbar.addSeparator()
+        toolbar2.addSeparator()
 
         # Market status
         self.market_status_label = QLabel("Ready")
         self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
-        toolbar.addWidget(self.market_status_label)
+        toolbar2.addWidget(self.market_status_label)
 
-        return toolbar
+        return (toolbar1, toolbar2)
 
     def _on_zoom_all(self):
         """Zoom chart to show all data with sane pane heights."""

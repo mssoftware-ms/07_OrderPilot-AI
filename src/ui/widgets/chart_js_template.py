@@ -10,10 +10,13 @@ The template includes:
 - Panel management for indicators
 - Drag-and-drop support for stop lines
 - WebChannel bridge for Python communication
+- Zone primitives for support/resistance rendering
 
 Note: This file contains a large string constant with HTML/JavaScript,
 not Python code, so LOC rules for Python code don't apply.
 """
+
+from src.chart_marking.zones.zone_primitive_js import get_zone_javascript
 
 # HTML template for TradingView Lightweight Charts
 # This is extracted from embedded_tradingview_chart.py to reduce file size.
@@ -673,6 +676,8 @@ CHART_HTML_TEMPLATE = """
                         } catch(e){ console.error(e); }
                     }
                 };
+
+                // ZONE_PRIMITIVE_JS_PLACEHOLDER
 
                 // ==================== DRAWING TOOLS ====================
 
@@ -1639,6 +1644,34 @@ CHART_HTML_TEMPLATE = """
 
                 // ==================== END DRAWING TOOLS ====================
 
+                // ==================== CROSSHAIR TRACKING ====================
+                // Subscribe to crosshair movements and notify Python bridge
+                chart.subscribeCrosshairMove((param) => {
+                    if (param.time && param.point && pyBridge) {
+                        const price = priceSeries.coordinateToPrice(param.point.y);
+                        if (price !== null) {
+                            pyBridge.onCrosshairMove(param.time, price);
+                        }
+                    }
+                });
+
+                // Expose crosshair position getter
+                window.chartAPI.getCrosshairPosition = () => {
+                    // Returns the last known crosshair position from chart state
+                    return window._lastCrosshairPosition || { time: null, price: null };
+                };
+
+                // Store crosshair position for local access
+                chart.subscribeCrosshairMove((param) => {
+                    if (param.time && param.point) {
+                        const price = priceSeries.coordinateToPrice(param.point.y);
+                        window._lastCrosshairPosition = {
+                            time: param.time,
+                            price: price
+                        };
+                    }
+                });
+
                 document.getElementById('status').textContent = 'Ready - waiting for data...';
             } catch (error) {
                 console.error('CRITICAL INIT ERROR:', error);
@@ -1652,3 +1685,16 @@ CHART_HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+
+def get_chart_html_template() -> str:
+    """Get the complete chart HTML template with zone primitives injected.
+
+    Returns:
+        Complete HTML template string with all JavaScript included.
+    """
+    zone_js = get_zone_javascript()
+    return CHART_HTML_TEMPLATE.replace(
+        "// ZONE_PRIMITIVE_JS_PLACEHOLDER",
+        zone_js
+    )

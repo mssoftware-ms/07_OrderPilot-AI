@@ -50,6 +50,7 @@ from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
 from src.core.market_data.history_provider import HistoryManager
 from src.database import initialize_database
+from src.chart_marking import MultiMonitorChartManager
 
 from .app_components import ActionsMixin, BrokerMixin, MenuMixin, ToolbarMixin
 
@@ -256,6 +257,11 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
         self.backtest_chart_manager = ChartWindowManager(
             history_manager=self.history_manager,
             parent=self
+        )
+
+        # Multi-Chart Manager for multi-window/multi-monitor support
+        self._multi_chart_manager = MultiMonitorChartManager(
+            chart_factory=self._create_chart_window
         )
 
         # Async update lock to prevent concurrent updates
@@ -536,6 +542,24 @@ class TradingApplication(ActionsMixin, MenuMixin, ToolbarMixin, BrokerMixin, QMa
         logger.info(f"Symbol added to watchlist: {symbol}")
         asyncio.create_task(self._subscribe_symbol_to_stream(symbol))
         self.status_bar.showMessage(f"Added {symbol} to watchlist", 3000)
+
+    def _create_chart_window(self, symbol: str, timeframe: str = "1T"):
+        """Create a new chart window (factory for MultiMonitorChartManager).
+
+        Args:
+            symbol: Trading symbol
+            timeframe: Chart timeframe
+
+        Returns:
+            ChartWindow instance
+        """
+        window = self.chart_window_manager.open_chart(symbol)
+        if window and timeframe != "1T":
+            # Set timeframe if not default
+            chart_widget = getattr(window, "chart_widget", None)
+            if chart_widget and hasattr(chart_widget, "set_timeframe"):
+                chart_widget.set_timeframe(timeframe)
+        return window
 
     @pyqtSlot(dict)
     def on_order_placed(self, order_data: dict[str, Any]):

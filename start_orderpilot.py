@@ -16,6 +16,37 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 
+def check_ai_api_keys() -> None:
+    """Check and display status of AI API keys from environment."""
+    print("\n" + "=" * 50)
+    print("🔑 AI API Keys Status (from Windows Environment)")
+    print("=" * 50)
+
+    keys = [
+        ("OPENAI_API_KEY", "OpenAI"),
+        ("ANTHROPIC_API_KEY", "Anthropic"),
+        ("GEMINI_API_KEY", "Gemini"),
+    ]
+
+    found_any = False
+    for env_var, name in keys:
+        value = os.environ.get(env_var)
+        if value:
+            # Show first 10 chars for verification
+            masked = value[:10] + "..." if len(value) > 10 else value
+            print(f"  ✅ {name}: {masked}")
+            found_any = True
+        else:
+            print(f"  ❌ {name}: NOT FOUND")
+
+    if not found_any:
+        print("\n⚠️  WARNUNG: Keine AI API Keys gefunden!")
+        print("   Die Keys müssen als Windows-Systemumgebungsvariablen gesetzt sein.")
+        print("   Nach dem Setzen: Terminal/CMD neu starten!")
+
+    print("=" * 50 + "\n")
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """Setup application logging"""
     log_dir = Path("logs")
@@ -200,6 +231,9 @@ def main() -> int:
 
         # Setup logging
         setup_logging(args.log_level)
+
+        # Check AI API keys
+        check_ai_api_keys()
 
         # Check dependencies
         print("\n🔍 Checking dependencies...")

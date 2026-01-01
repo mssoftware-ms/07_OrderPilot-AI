@@ -183,6 +183,9 @@ class StreamingMixin:
             # Store current close for candle_closed signal
             self._current_candle_close = price
 
+            # Store last price for chart marking functions
+            self._last_price = price
+
             # Create candle update
             candle = {
                 'time': self._current_candle_time,

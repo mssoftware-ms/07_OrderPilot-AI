@@ -200,6 +200,291 @@ src/ui/widgets/ko_finder/
 └── result_panel.py    # Tabellen + Meta-Info
 ```
 
+## Chart-Marking Modul
+
+Das Chart-Marking-Modul (`src/chart_marking/`) bietet einheitliche Chart-Markierungsfunktionen.
+
+### Architektur
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EmbeddedTradingViewChart                  │
+│               + ChartMarkingMixin                            │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ verwendet
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Manager-Komponenten                         │
+│  EntryMarkerManager  - Entry Pfeile (Long/Short)            │
+│  StructureMarkerManager - BoS/CHoCH/MSB Marker              │
+│  ZoneManager         - Support/Resistance Zonen             │
+│  StopLossLineManager - Stop-Loss/TP Linien                  │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ ruft auf
+┌─────────────────────────▼───────────────────────────────────┐
+│                  JavaScript Chart API                        │
+│  window.chartAPI.addTradeMarkers()                          │
+│  window.chartAPI.addZone() / clearZones()                   │
+│  window.chartAPI.addHorizontalLine()                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Modulstruktur
+
+```
+src/chart_marking/
+├── __init__.py              # Public API + Exports
+├── models.py                # Datenmodelle (EntryMarker, Zone, etc.)
+├── constants.py             # Farben, Styles, Größen
+│
+├── markers/
+│   ├── entry_markers.py     # Entry-Pfeile (Long/Short)
+│   └── structure_markers.py # BoS/CHoCH/MSB Marker
+│
+├── zones/
+│   ├── zone_primitive_js.py # JavaScript für Rechteck-Rendering
+│   └── support_resistance.py # Zone-Management
+│
+├── lines/
+│   └── stop_loss_line.py    # SL/TP/Entry Linien
+│
+├── mixin/
+│   └── chart_marking_mixin.py # Haupt-Mixin für Chart-Widget
+│
+└── multi_chart/             # Multi-Chart/Multi-Monitor
+    ├── layout_manager.py    # Layout-Presets + Persistenz
+    ├── crosshair_sync.py    # Crosshair-Synchronisation
+    └── multi_monitor_manager.py # Fenster-Verwaltung
+```
+
+### Multi-Chart Funktionalität
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  MultiMonitorChartManager                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  LayoutManager                                              │
+│  ├── save_layout() - Layout speichern                       │
+│  ├── load_layout() - Layout laden                           │
+│  ├── list_layouts() - Alle Layouts auflisten                │
+│  └── capture_current_layout() - Fenster erfassen            │
+│                                                             │
+│  CrosshairSyncManager                                       │
+│  ├── register_window() - Chart registrieren                 │
+│  ├── on_crosshair_move() - Sync an andere Charts            │
+│  └── set_enabled() - Sync ein/aus                           │
+│                                                             │
+│  Window Management                                          │
+│  ├── open_chart() - Neues Fenster öffnen                    │
+│  ├── apply_layout() - Layout anwenden                       │
+│  └── tile_on_monitor() - Fenster anordnen                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Datenmodelle
+
+```python
+# Entry Marker
+EntryMarker(id, timestamp, price, direction, text, score)
+
+# Support/Resistance Zone
+Zone(id, zone_type, start_time, end_time, top_price, bottom_price, opacity)
+
+# Structure Break
+StructureBreakMarker(id, timestamp, price, break_type, direction)
+
+# Stop-Loss Line
+StopLossLine(id, price, entry_price, direction, show_risk)
+
+# Multi-Chart Layout
+MultiChartLayout(id, name, charts: List[ChartConfig], sync_crosshair)
+ChartConfig(symbol, timeframe, monitor, position)
+```
+
+### JavaScript Integration
+
+Zone-Primitives werden via `get_chart_html_template()` in das Chart injiziert:
+
+```javascript
+// Zone API
+window.chartAPI.addZone(id, startTime, endTime, topPrice, bottomPrice, fillColor, borderColor, label)
+window.chartAPI.updateZone(id, startTime, endTime, topPrice, bottomPrice)
+window.chartAPI.removeZone(id)
+window.chartAPI.clearZones()
+
+// Marker API (v5)
+window.chartAPI.addTradeMarkers(markers)
+window.chartAPI.clearMarkers()
+
+// Line API
+window.chartAPI.addHorizontalLine(price, color, label, lineStyle, id)
+```
+
+## Chart Analysis Chatbot
+
+Das Chart-Chat-Modul (`src/chart_chat/`) bietet KI-gestützte Chart-Analyse und Konversation.
+
+### Architektur
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ChartWindow                               │
+│                + ChartChatMixin                              │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ erstellt
+┌─────────────────────────▼───────────────────────────────────┐
+│                  ChartChatWidget (QDockWidget)               │
+│  - Chat Display (Markdown)                                  │
+│  - Quick Actions (Trend, Support, Entry)                    │
+│  - Input Field + Send                                       │
+│  - Export / Clear History                                   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ verwendet
+┌─────────────────────────▼───────────────────────────────────┐
+│                  ChartChatService                            │
+│  - Conversation Management                                  │
+│  - History Persistence (pro Fenster: Symbol + Timeframe)    │
+│  - Chart Context Extraction                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ orchestriert
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Service Components                          │
+│  ChartContextBuilder - OHLCV + Indicators extrahieren       │
+│  ChartAnalyzer - KI-Aufrufe für Analyse + Q&A               │
+│  HistoryStore - JSON-Persistenz (FIFO, max 50 msgs)         │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ verwendet
+┌─────────────────────────▼───────────────────────────────────┐
+│                  AI Provider (AIProviderFactory)             │
+│  OpenAIProvider / AnthropicProvider / GeminiProvider        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Modulstruktur
+
+```
+src/chart_chat/
+├── __init__.py              # Public API + Exports
+├── models.py                # ChatMessage, ChartAnalysisResult, etc.
+├── prompts.py               # System Prompts, Templates
+├── context_builder.py       # ChartContext, ChartContextBuilder
+├── history_store.py         # HistoryStore (JSON Persistenz)
+├── analyzer.py              # ChartAnalyzer (KI-Aufrufe)
+├── chat_service.py          # ChartChatService (Orchestrierung)
+├── widget.py                # ChartChatWidget (QDockWidget)
+└── mixin.py                 # ChartChatMixin (Integration)
+```
+
+### Datenfluss: Chat-Anfrage
+
+```
+1. User stellt Frage im Chat Widget
+   │
+2. ChartChatService.ask_question(question)
+   │
+3. ChartContextBuilder.build_context()
+   │  - Extrahiert OHLCV aus chart.data
+   │  - Berechnet aktive Indikatoren (RSI, MACD, BB, etc.)
+   │  - Ermittelt Trend, Volatilität, Volume-Trend
+   │
+4. ChartAnalyzer.answer_question(question, context, history)
+   │  - Formatiert Prompt mit Kontext + Historie
+   │  - Ruft AI Provider auf
+   │
+5. QuickAnswerResult → Widget zeigt Antwort
+   │
+6. HistoryStore.save_history() → JSON Persistenz
+```
+
+### Datenfluss: Vollständige Analyse
+
+```
+1. User klickt "Vollständige Analyse"
+   │
+2. ChartChatService.analyze_chart()
+   │
+3. ChartContextBuilder.build_context(lookback=100)
+   │
+4. ChartAnalyzer.analyze_chart(context)
+   │  - System Prompt für technische Analyse
+   │  - Strukturierte JSON-Ausgabe
+   │
+5. ChartAnalysisResult (Pydantic Model)
+   │  - trend_direction, trend_strength
+   │  - support_levels, resistance_levels
+   │  - recommendation (action, confidence, reasoning)
+   │  - risk_assessment (stop_loss, take_profit, R:R)
+   │  - patterns_identified
+   │
+6. result.to_markdown() → Widget Anzeige
+```
+
+### History Persistenz
+
+```
+Speicherort: ~/.orderpilot/chat_history/
+Dateiformat: {symbol}_{timeframe}.json
+
+Beispiel: BTC_USD_1H.json
+{
+  "symbol": "BTC/USD",
+  "timeframe": "1H",
+  "updated_at": "2025-01-15T14:30:00",
+  "messages": [
+    {"role": "user", "content": "...", "timestamp": "..."},
+    {"role": "assistant", "content": "...", "timestamp": "..."}
+  ]
+}
+
+FIFO: Max 50 Nachrichten pro Chart
+```
+
+### Datenmodelle
+
+```python
+# Chat Message
+ChatMessage(id, role, content, timestamp, metadata)
+
+# Analysis Result
+ChartAnalysisResult(
+    trend_direction: TrendDirection,    # bullish/bearish/neutral
+    trend_strength: SignalStrength,     # strong/moderate/weak
+    support_levels: List[SupportResistanceLevel],
+    resistance_levels: List[SupportResistanceLevel],
+    recommendation: EntryExitRecommendation,
+    risk_assessment: RiskAssessment,
+    patterns_identified: List[PatternInfo],
+    indicator_summary: str,
+    overall_sentiment: str,
+    confidence_score: float             # 0.0-1.0
+)
+
+# Quick Answer
+QuickAnswerResult(answer, confidence, follow_up_suggestions)
+```
+
+### UI Integration
+
+```
+ChartWindow
+├── BotPanelsMixin
+├── KOFinderMixin
+├── StrategySimulatorMixin
+├── PanelsMixin
+├── EventBusMixin
+├── StateMixin
+├── ChartChatMixin      [NEU] ← Chart Chat Widget
+└── QMainWindow
+
+Features:
+- Dockbar rechts am Chart
+- Quick Actions: Trend, Support, Entry, Risiken
+- Vollständige Analyse mit Markdown-Output
+- Chat-Export als Markdown
+- Automatisches History-Loading bei Symbol-Wechsel
+```
+
 ## Verzeichnisstruktur
 
 ```
@@ -252,6 +537,26 @@ src/
 │           ├── filters.py
 │           ├── ranking.py
 │           └── cache.py
+├── chart_marking/        # Chart-Markierungen
+│   ├── models.py         # Datenmodelle
+│   ├── constants.py      # Farben, Styles
+│   ├── markers/          # Entry/Structure Marker
+│   ├── zones/            # Support/Resistance Zonen
+│   ├── lines/            # Stop-Loss/TP Linien
+│   ├── mixin/            # ChartMarkingMixin
+│   └── multi_chart/      # Multi-Monitor Support
+│       ├── layout_manager.py
+│       ├── crosshair_sync.py
+│       └── multi_monitor_manager.py
+├── chart_chat/           # KI Chart-Analyse Chatbot [NEU]
+│   ├── models.py         # ChatMessage, ChartAnalysisResult
+│   ├── prompts.py        # System Prompts, Templates
+│   ├── context_builder.py # Chart Context Extraktion
+│   ├── history_store.py  # JSON Persistenz (pro Fenster)
+│   ├── analyzer.py       # KI-Aufrufe
+│   ├── chat_service.py   # Orchestrierung
+│   ├── widget.py         # QDockWidget UI
+│   └── mixin.py          # ChartChatMixin
 ├── ai/                   # AI Services
 │   ├── openai_service.py # OpenAI Integration
 │   └── anthropic_service.py

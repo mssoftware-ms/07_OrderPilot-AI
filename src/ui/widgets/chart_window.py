@@ -30,6 +30,7 @@ from .chart_window_mixins import (
     KOFinderMixin,
     StrategySimulatorMixin,
 )
+from src.chart_chat import ChartChatMixin
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class ChartWindow(
     PanelsMixin,
     EventBusMixin,
     StateMixin,
+    ChartChatMixin,
     QMainWindow
 ):
     """Popup window for displaying a single chart."""
@@ -246,6 +248,14 @@ class ChartWindow(
         self._help_shortcut = QShortcut(QKeySequence("F1"), self)
         self._help_shortcut.activated.connect(self._open_trailing_stop_help)
 
+        # Keyboard shortcut for chat toggle (Ctrl+Shift+C)
+        self._chat_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+        self._chat_shortcut.activated.connect(self.toggle_chat_widget)
+
+        # Keyboard shortcut for chart analysis (Ctrl+Shift+A)
+        self._analysis_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self)
+        self._analysis_shortcut.activated.connect(self.request_chart_analysis)
+
         # Update button text based on loaded state
         self._update_toggle_button_text()
 
@@ -254,6 +264,13 @@ class ChartWindow(
 
         # Setup event bus subscriptions (from EventBusMixin)
         self._setup_event_subscriptions()
+
+        # Setup chart chat widget (from ChartChatMixin)
+        self.setup_chart_chat(self.chart_widget)
+
+        # Connect AI Chat toolbar button to toggle chat widget
+        if hasattr(self.chart_widget, 'ai_chat_button'):
+            self.chart_widget.ai_chat_button.clicked.connect(self._on_ai_chat_button_clicked)
 
         # State for closing
         self._ready_to_close = False
@@ -329,6 +346,13 @@ class ChartWindow(
 
             # Save sync state (from StateMixin)
             self._save_window_state()
+
+            # Cleanup chart chat (from ChartChatMixin)
+            if hasattr(self, 'cleanup_chart_chat'):
+                try:
+                    self.cleanup_chart_chat()
+                except Exception as e:
+                    logger.debug(f"Error cleaning up chart chat: {e}")
 
             # Emit signal
             self.window_closed.emit(self.symbol)
@@ -505,3 +529,20 @@ class ChartWindow(
                 logger.warning(f"Help file not found: {help_file}")
         except Exception as e:
             logger.error(f"Error opening help file: {e}")
+
+    def _on_ai_chat_button_clicked(self, checked: bool):
+        """Handle AI Chat toolbar button click.
+
+        Args:
+            checked: Button checked state
+        """
+        if checked:
+            self.show_chat_widget()
+        else:
+            self.hide_chat_widget()
+
+        # Sync button state with actual visibility
+        if self._chat_widget:
+            is_visible = self._chat_widget.isVisible()
+            if hasattr(self.chart_widget, 'ai_chat_button'):
+                self.chart_widget.ai_chat_button.setChecked(is_visible)

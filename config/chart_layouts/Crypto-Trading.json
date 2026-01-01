@@ -1,0 +1,32 @@
+{
+  "name": "Crypto-Trading",
+  "description": "BTC und ETH parallel mit Live-Stream",
+  "windows": [
+    {
+      "symbol": "BTC/USD",
+      "timeframe": "1T",
+      "period": "1D",
+      "monitor": 0,
+      "x": 0,
+      "y": 0,
+      "width": 960,
+      "height": 800,
+      "indicators": [],
+      "auto_stream": true
+    },
+    {
+      "symbol": "ETH/USD",
+      "timeframe": "1T",
+      "period": "1D",
+      "monitor": 0,
+      "x": 960,
+      "y": 0,
+      "width": 960,
+      "height": 800,
+      "indicators": [],
+      "auto_stream": true
+    }
+  ],
+  "sync_crosshair": true,
+  "sync_time_range": false
+}

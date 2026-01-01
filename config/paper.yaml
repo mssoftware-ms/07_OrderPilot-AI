@@ -60,6 +60,7 @@ database:
   host: localhost
   max_overflow: 20
   password: orderpilot
+  path: ./data/orderpilot.db
   pool_size: 10
   pool_timeout_seconds: 30
   port: 5432
@@ -118,6 +119,7 @@ trading:
   slippage_model: fixed
   slippage_value: 0.001
   use_margin: false
+trading_mode: paper
 ui:
   auto_save_layout: true
   chart_style: candlestick

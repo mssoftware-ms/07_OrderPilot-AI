@@ -105,6 +105,11 @@ class DataLoadingMixin:
             data = self._clean_bad_ticks(data)
             self.data = data
 
+            # Set _last_price from last close for chart marking functions
+            if len(data) > 0 and 'close' in data.columns:
+                self._last_price = float(data['close'].iloc[-1])
+                logger.debug(f"Set _last_price from data: {self._last_price}")
+
             # Prepare candlestick data
             candle_data = []
             volume_data = []
