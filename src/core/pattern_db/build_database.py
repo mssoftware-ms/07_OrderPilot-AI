@@ -30,6 +30,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _process_symbol_batch(
+    label: str,
+    symbols: list[str],
+    fetcher: PatternDataFetcher,
+    extractor: PatternExtractor,
+    db: TradingPatternDB,
+    config,
+) -> int:
+    """Fetch bars, extract patterns, and insert into Qdrant."""
+    logger.info(f"\nProcessing {len(symbols)} {label} symbols...")
+
+    config.symbols = symbols
+
+    def progress(symbol, tf, bars, done, total):
+        logger.info(f"[{done}/{total}] {symbol} {tf.value}: {bars} bars")
+
+    total_patterns = 0
+    async for symbol, timeframe, bars in fetcher.fetch_batch(config, progress):
+        if not bars:
+            continue
+
+        patterns = list(extractor.extract_patterns(bars, symbol, timeframe.value))
+        if patterns:
+            inserted = await db.insert_patterns_batch(patterns, batch_size=500)
+            total_patterns += inserted
+            logger.info(f"  -> Inserted {inserted} patterns for {symbol} {timeframe.value}")
+
+    return total_patterns
+
+
 async def build_database(
     include_stocks: bool = True,
     include_crypto: bool = True,
@@ -85,50 +115,28 @@ async def build_database(
     # Process stocks
     if include_stocks:
         symbols = stock_symbols or NASDAQ_100_TOP
-        logger.info(f"\nProcessing {len(symbols)} stocks...")
-
         stock_config = fetcher.get_default_stock_config(days_back)
-        stock_config.symbols = symbols
-
-        def progress(symbol, tf, bars, done, total):
-            logger.info(f"[{done}/{total}] {symbol} {tf.value}: {bars} bars")
-
-        async for symbol, timeframe, bars in fetcher.fetch_batch(stock_config, progress):
-            if not bars:
-                continue
-
-            # Extract patterns
-            patterns = list(extractor.extract_patterns(bars, symbol, timeframe.value))
-
-            if patterns:
-                # Insert into Qdrant
-                inserted = await db.insert_patterns_batch(patterns, batch_size=500)
-                total_patterns += inserted
-                logger.info(f"  -> Inserted {inserted} patterns for {symbol} {timeframe.value}")
+        total_patterns += await _process_symbol_batch(
+            "stock",
+            symbols,
+            fetcher,
+            extractor,
+            db,
+            stock_config,
+        )
 
     # Process crypto
     if include_crypto:
         symbols = crypto_symbols or CRYPTO_SYMBOLS
-        logger.info(f"\nProcessing {len(symbols)} crypto symbols...")
-
         crypto_config = fetcher.get_default_crypto_config(days_back)
-        crypto_config.symbols = symbols
-
-        def progress(symbol, tf, bars, done, total):
-            logger.info(f"[{done}/{total}] {symbol} {tf.value}: {bars} bars")
-
-        async for symbol, timeframe, bars in fetcher.fetch_batch(crypto_config, progress):
-            if not bars:
-                continue
-
-            # Extract patterns
-            patterns = list(extractor.extract_patterns(bars, symbol, timeframe.value))
-
-            if patterns:
-                # Insert into Qdrant
-                inserted = await db.insert_patterns_batch(patterns, batch_size=500)
-                total_patterns += inserted
-                logger.info(f"  -> Inserted {inserted} patterns for {symbol} {timeframe.value}")
+        total_patterns += await _process_symbol_batch(
+            "crypto",
+            symbols,
+            fetcher,
+            extractor,
+            db,
+            crypto_config,
+        )
 
     # Summary
     elapsed = (datetime.now() - start_time).total_seconds()

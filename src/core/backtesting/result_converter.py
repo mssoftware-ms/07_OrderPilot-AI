@@ -305,75 +305,16 @@ def _calculate_metrics(
     Returns:
         BacktestMetrics instance
     """
-    # Trade statistics
-    total_trades = len(trades)
-    winning_trades = len([t for t in trades if t.is_winner])
-    losing_trades = total_trades - winning_trades
-
-    win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-
-    # P&L analysis
-    if trades:
-        wins = [t.realized_pnl for t in trades if t.is_winner]
-        losses = [abs(t.realized_pnl) for t in trades if not t.is_winner]
-
-        avg_win = sum(wins) / len(wins) if wins else 0.0
-        avg_loss = sum(losses) / len(losses) if losses else 0.0
-        largest_win = max(wins) if wins else 0.0
-        largest_loss = -max(losses) if losses else 0.0
-
-        # Profit factor
-        gross_profit = sum(wins)
-        gross_loss = sum(losses)
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
-
-        # Expectancy
-        expectancy = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
-    else:
-        avg_win = 0.0
-        avg_loss = 0.0
-        largest_win = 0.0
-        largest_loss = 0.0
-        profit_factor = 0.0
-        expectancy = None
-
-    # R-multiple analysis
-    r_multiples = [t.r_multiple for t in trades if t.r_multiple is not None]
-    avg_r_multiple = sum(r_multiples) / len(r_multiples) if r_multiples else None
-    best_r_multiple = max(r_multiples) if r_multiples else None
-    worst_r_multiple = min(r_multiples) if r_multiples else None
-
-    # Returns
-    total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
-
-    # Annualized return
-    days = (end_date - start_date).days
-    years = days / 365.25 if days > 0 else 1
-    annual_return_pct = (((final_capital / initial_capital) ** (1 / years)) - 1) * 100 if years > 0 else 0
-
-    # Risk metrics from analyzers
-    sharpe_ratio = None
-    sortino_ratio = None
-    max_drawdown_pct = 0.0
-    max_drawdown_duration_days = None
-
-    try:
-        if hasattr(strategy_analyzers, 'sharpe'):
-            sharpe_analysis = strategy_analyzers.sharpe.get_analysis()
-            sharpe_ratio = sharpe_analysis.get('sharperatio', None)
-
-        if hasattr(strategy_analyzers, 'drawdown'):
-            drawdown_analysis = strategy_analyzers.drawdown.get_analysis()
-            max_drawdown_pct = abs(drawdown_analysis.get('max', {}).get('drawdown', 0))
-            max_drawdown_len = drawdown_analysis.get('max', {}).get('len', 0)
-            max_drawdown_duration_days = max_drawdown_len if max_drawdown_len else None
-
-    except Exception as e:
-        logger.warning(f"Error extracting analyzer metrics: {e}")
-
-    # Trade duration
-    durations = [t.duration for t in trades if t.duration is not None]
-    avg_trade_duration_minutes = (sum(durations) / len(durations) / 60) if durations else None
+    total_trades, winning_trades, losing_trades, win_rate = _trade_stats(trades)
+    avg_win, avg_loss, largest_win, largest_loss, profit_factor, expectancy = _pnl_stats(trades, win_rate)
+    avg_r_multiple, best_r_multiple, worst_r_multiple = _r_multiple_stats(trades)
+    total_return_pct, annual_return_pct = _return_stats(
+        initial_capital, final_capital, start_date, end_date
+    )
+    sharpe_ratio, sortino_ratio, max_drawdown_pct, max_drawdown_duration_days = _analyzer_risk_metrics(
+        strategy_analyzers
+    )
+    avg_trade_duration_minutes = _avg_trade_duration_minutes(trades)
 
     # Consecutive wins/losses
     max_consecutive_wins = _calculate_max_consecutive(trades, is_winner=True)
@@ -417,6 +358,84 @@ def _calculate_metrics(
         max_consecutive_losses=max_consecutive_losses
     )
 
+
+def _trade_stats(trades: list[Trade]) -> tuple[int, int, int, float]:
+    total_trades = len(trades)
+    winning_trades = len([t for t in trades if t.is_winner])
+    losing_trades = total_trades - winning_trades
+    win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
+    return total_trades, winning_trades, losing_trades, win_rate
+
+
+def _pnl_stats(
+    trades: list[Trade],
+    win_rate: float
+) -> tuple[float, float, float, float, float, float | None]:
+    if trades:
+        wins = [t.realized_pnl for t in trades if t.is_winner]
+        losses = [abs(t.realized_pnl) for t in trades if not t.is_winner]
+
+        avg_win = sum(wins) / len(wins) if wins else 0.0
+        avg_loss = sum(losses) / len(losses) if losses else 0.0
+        largest_win = max(wins) if wins else 0.0
+        largest_loss = -max(losses) if losses else 0.0
+
+        gross_profit = sum(wins)
+        gross_loss = sum(losses)
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
+        expectancy = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
+        return avg_win, avg_loss, largest_win, largest_loss, profit_factor, expectancy
+
+    return 0.0, 0.0, 0.0, 0.0, 0.0, None
+
+
+def _r_multiple_stats(trades: list[Trade]) -> tuple[float | None, float | None, float | None]:
+    r_multiples = [t.r_multiple for t in trades if t.r_multiple is not None]
+    avg_r_multiple = sum(r_multiples) / len(r_multiples) if r_multiples else None
+    best_r_multiple = max(r_multiples) if r_multiples else None
+    worst_r_multiple = min(r_multiples) if r_multiples else None
+    return avg_r_multiple, best_r_multiple, worst_r_multiple
+
+
+def _return_stats(
+    initial_capital: float,
+    final_capital: float,
+    start_date: datetime,
+    end_date: datetime,
+) -> tuple[float, float]:
+    total_return_pct = ((final_capital - initial_capital) / initial_capital) * 100
+    days = (end_date - start_date).days
+    years = days / 365.25 if days > 0 else 1
+    annual_return_pct = (((final_capital / initial_capital) ** (1 / years)) - 1) * 100 if years > 0 else 0
+    return total_return_pct, annual_return_pct
+
+
+def _analyzer_risk_metrics(strategy_analyzers) -> tuple[float | None, float | None, float, int | None]:
+    sharpe_ratio = None
+    sortino_ratio = None
+    max_drawdown_pct = 0.0
+    max_drawdown_duration_days = None
+
+    try:
+        if hasattr(strategy_analyzers, 'sharpe'):
+            sharpe_analysis = strategy_analyzers.sharpe.get_analysis()
+            sharpe_ratio = sharpe_analysis.get('sharperatio', None)
+
+        if hasattr(strategy_analyzers, 'drawdown'):
+            drawdown_analysis = strategy_analyzers.drawdown.get_analysis()
+            max_drawdown_pct = abs(drawdown_analysis.get('max', {}).get('drawdown', 0))
+            max_drawdown_len = drawdown_analysis.get('max', {}).get('len', 0)
+            max_drawdown_duration_days = max_drawdown_len if max_drawdown_len else None
+
+    except Exception as e:
+        logger.warning(f"Error extracting analyzer metrics: {e}")
+
+    return sharpe_ratio, sortino_ratio, max_drawdown_pct, max_drawdown_duration_days
+
+
+def _avg_trade_duration_minutes(trades: list[Trade]) -> float | None:
+    durations = [t.duration for t in trades if t.duration is not None]
+    return (sum(durations) / len(durations) / 60) if durations else None
 
 def _calculate_max_consecutive(trades: list[Trade], is_winner: bool) -> int:
     """Calculate maximum consecutive wins or losses.

@@ -26,6 +26,78 @@ CRYPTO_24_7 = {
     'tz': 'UTC'
 }
 
+def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+    if isinstance(df.index, pd.DatetimeIndex):
+        return df
+    if 'timestamp' in df.columns:
+        return df.set_index('timestamp')
+    if 'datetime' in df.columns:
+        return df.set_index('datetime')
+    if 'date' in df.columns:
+        return df.set_index('date')
+    return df
+
+
+def _normalize_timezone(df: pd.DataFrame, target_tz: str) -> pd.DataFrame:
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    df.index = df.index.tz_convert(target_tz)
+    return df
+
+
+def _sanitize_prices(df: pd.DataFrame, price_cols: list[str]) -> pd.DataFrame:
+    for col in price_cols:
+        if col in df.columns:
+            df.loc[df[col] <= 0, col] = np.nan
+    return df.replace([np.inf, -np.inf], np.nan)
+
+
+def _infer_frequency(index: pd.DatetimeIndex) -> str | None:
+    freq = pd.infer_freq(index)
+    if freq is None and len(index) > 1:
+        deltas = index.to_series().diff().dropna()
+        if len(deltas) > 0:
+            median_delta = deltas.median()
+            return f"{int(median_delta.total_seconds() // 60)}T"
+    return freq
+
+
+def _fill_missing_candles(df: pd.DataFrame, price_cols: list[str]) -> pd.DataFrame:
+    if len(df) == 0:
+        return df
+    freq = _infer_frequency(df.index)
+    if not freq:
+        return df
+
+    expected_idx = pd.date_range(
+        start=df.index.min(),
+        end=df.index.max(),
+        freq=freq,
+        tz=df.index.tz
+    )
+    missing_count = len(expected_idx) - len(df)
+    if missing_count > 0:
+        logger.debug(f"Filling {missing_count} missing candles")
+
+    df = df.reindex(expected_idx)
+    for col in price_cols:
+        if col in df.columns:
+            df[col] = df[col].ffill()
+    if 'volume' in df.columns:
+        df['volume'] = df['volume'].fillna(0)
+    return df
+
+
+def _filter_stock_sessions(df: pd.DataFrame) -> pd.DataFrame:
+    session = NASDAQ_RTH
+    df_time = df.index.time
+    mask = (df_time >= session['start']) & (df_time <= session['end'])
+    weekday_mask = df.index.dayofweek < 5
+    filtered = df[mask & weekday_mask]
+    if len(filtered) == 0:
+        logger.warning("No candles in RTH session after filtering")
+    return filtered
+
 
 def preprocess_candles(
     data: pd.DataFrame,
@@ -55,69 +127,25 @@ def preprocess_candles(
     df = data.copy()
 
     # Ensure datetime index
-    if not isinstance(df.index, pd.DatetimeIndex):
-        if 'timestamp' in df.columns:
-            df = df.set_index('timestamp')
-        elif 'datetime' in df.columns:
-            df = df.set_index('datetime')
-        elif 'date' in df.columns:
-            df = df.set_index('date')
+    df = _ensure_datetime_index(df)
 
     # Sort by time
     df = df.sort_index()
 
     # === TIMEZONE NORMALIZATION ===
-    if df.index.tz is None:
-        df.index = df.index.tz_localize('UTC')
-    df.index = df.index.tz_convert(target_tz)
+    df = _normalize_timezone(df, target_tz)
 
     # === INVALID PRICE DETECTION ===
     price_cols = ['open', 'high', 'low', 'close']
-    for col in price_cols:
-        if col in df.columns:
-            df.loc[df[col] <= 0, col] = np.nan
-
-    df = df.replace([np.inf, -np.inf], np.nan)
+    df = _sanitize_prices(df, price_cols)
 
     # === MISSING CANDLE HANDLING ===
-    if fill_missing and len(df) > 0:
-        freq = pd.infer_freq(df.index)
-        if freq is None and len(df) > 1:
-            deltas = df.index.to_series().diff().dropna()
-            if len(deltas) > 0:
-                median_delta = deltas.median()
-                freq = f"{int(median_delta.total_seconds() // 60)}T"
-
-        if freq:
-            expected_idx = pd.date_range(
-                start=df.index.min(),
-                end=df.index.max(),
-                freq=freq,
-                tz=df.index.tz
-            )
-            missing_count = len(expected_idx) - len(df)
-            if missing_count > 0:
-                logger.debug(f"Filling {missing_count} missing candles")
-
-            df = df.reindex(expected_idx)
-
-            for col in price_cols:
-                if col in df.columns:
-                    df[col] = df[col].ffill()
-
-            if 'volume' in df.columns:
-                df['volume'] = df['volume'].fillna(0)
+    if fill_missing:
+        df = _fill_missing_candles(df, price_cols)
 
     # === SESSION FILTERING ===
     if filter_sessions and market_type == "STOCK":
-        session = NASDAQ_RTH
-        df_time = df.index.time
-        mask = (df_time >= session['start']) & (df_time <= session['end'])
-        weekday_mask = df.index.dayofweek < 5
-        df = df[mask & weekday_mask]
-
-        if len(df) == 0:
-            logger.warning("No candles in RTH session after filtering")
+        df = _filter_stock_sessions(df)
 
     df = df.dropna(subset=['close'])
 
