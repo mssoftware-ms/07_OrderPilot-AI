@@ -17,6 +17,9 @@ from src.core.market_data.stream_client import MarketTick, StreamClient, StreamS
 
 logger = logging.getLogger(__name__)
 
+# Hard cap for spike filtering (matches historical/context filters)
+OUTLIER_PCT = 0.03  # 3% vs letzter Close
+
 
 class AlpacaCryptoStreamClient(StreamClient):
     """Real-time cryptocurrency market data client for Alpaca using WebSocket.
@@ -56,6 +59,7 @@ class AlpacaCryptoStreamClient(StreamClient):
         self.api_key = api_key
         self.api_secret = api_secret
         self.paper = paper
+        self._last_close: dict[str, float] = {}
 
         # Alpaca crypto stream client
         self._stream: CryptoDataStream | None = None
@@ -276,6 +280,16 @@ class AlpacaCryptoStreamClient(StreamClient):
             )
             request_time = datetime.now(timezone.utc)
 
+            last_close = self._last_close.get(bar.symbol)
+            if self._is_outlier_bar(bar, last_close):
+                logger.warning(
+                    "⏭️  Dropping outlier CRYPTO bar "
+                    f"{bar.symbol} O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} "
+                    f"(prev_close={last_close})"
+                )
+                self.metrics.messages_dropped += 1
+                return
+
             # Convert to MarketTick
             tick = MarketTick(
                 symbol=bar.symbol,
@@ -289,6 +303,7 @@ class AlpacaCryptoStreamClient(StreamClient):
             # Add to buffer
             self.buffer.append(tick)
             self.symbol_cache[bar.symbol] = tick
+            self._last_close[bar.symbol] = float(bar.close)
             self.metrics.messages_received += 1
             self.metrics.last_message_at = datetime.utcnow()
             self.metrics.update_latency(tick.latency_ms or 0)
@@ -432,6 +447,27 @@ class AlpacaCryptoStreamClient(StreamClient):
             Latest MarketTick or None
         """
         return self.symbol_cache.get(symbol)
+
+    @staticmethod
+    def _is_outlier_bar(bar: Bar, prev_close: float | None) -> bool:
+        """Return True if bar looks implausible compared to previous close."""
+        try:
+            high = float(bar.high)
+            low = float(bar.low)
+            close = float(bar.close)
+        except Exception:
+            return False
+
+        if low > high:
+            return True
+
+        if prev_close is None or prev_close == 0:
+            return False
+
+        def deviates(val: float) -> bool:
+            return abs(val - prev_close) / prev_close > OUTLIER_PCT
+
+        return deviates(high) or deviates(low) or deviates(close)
 
     def get_metrics(self) -> dict:
         """Get crypto stream metrics.

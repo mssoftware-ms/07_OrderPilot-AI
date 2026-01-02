@@ -180,21 +180,15 @@ class ChartChatUIMixin:
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setSpacing(8)
 
-        self._analyze_button = QPushButton("📊 Vollständige Analyse")
-        self._analyze_button.clicked.connect(self._on_full_analysis)
-        self._analyze_button.setStyleSheet(
-            "QPushButton { background-color: #3a3a3a; color: white; "
-            "padding: 6px 12px; border-radius: 4px; font-weight: bold; "
-            "border: 1px solid #444; }"
-            "QPushButton:hover { background-color: #4a4a4a; }"
-            "QPushButton:disabled { background-color: #6c757d; }"
-        )
-        toolbar_layout.addWidget(self._analyze_button)
-
-        toolbar_layout.addWidget(self._build_toolbar_separator())
         toolbar_layout.addWidget(self._build_bars_label())
         toolbar_layout.addWidget(self._build_bars_spinbox())
         toolbar_layout.addWidget(self._build_all_bars_checkbox())
+        toolbar_layout.addWidget(self._build_evaluate_checkbox())
+        self._eval_open_btn = QPushButton("Öffnen")
+        self._eval_open_btn.setMaximumWidth(70)
+        self._eval_open_btn.setToolTip("Letzte Auswertung anzeigen")
+        self._eval_open_btn.clicked.connect(self._on_open_evaluation_popup)
+        toolbar_layout.addWidget(self._eval_open_btn)
         toolbar_layout.addStretch()
         toolbar_layout.addWidget(self._build_clear_button())
         toolbar_layout.addWidget(self._build_export_button())
@@ -246,25 +240,58 @@ class ChartChatUIMixin:
         self._all_bars_checkbox.setStyleSheet(
             """
             QCheckBox {
-                color: #ccc;
+                background: transparent;
+                color: #dcdcdc;
                 font-size: 11px;
-                spacing: 4px;
+                spacing: 6px;
             }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
-                border: 1px solid #444;
+                border: 1px solid #888;
                 border-radius: 3px;
+                background: transparent;
             }
             QCheckBox::indicator:checked {
-                border-color: #0d6efd;
+                background: transparent;
+                border: 1px solid #0d6efd;
             }
             QCheckBox::indicator:hover {
-                border-color: #666;
+                border-color: #c0c0c0;
             }
         """
         )
         return self._all_bars_checkbox
+
+    def _build_evaluate_checkbox(self) -> QCheckBox:
+        self._evaluate_checkbox = QCheckBox("Auswerten")
+        self._evaluate_checkbox.setToolTip("Antwort in Tabelle anzeigen")
+        self._evaluate_checkbox.setStyleSheet(
+            """
+            QCheckBox {
+                background: transparent;
+                color: #dcdcdc;
+                font-size: 11px;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #888;
+                border-radius: 3px;
+                background: transparent;
+            }
+            QCheckBox::indicator:checked {
+                background: transparent;
+                border: 1px solid #0d6efd;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #c0c0c0;
+            }
+        """
+        )
+        self._evaluate_checkbox.setChecked(True)
+        return self._evaluate_checkbox
 
     def _build_clear_button(self) -> QPushButton:
         clear_btn = QPushButton("🗑️")

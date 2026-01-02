@@ -131,7 +131,36 @@ class ChartAnalysisResult(BaseModel):
 
     def to_markdown(self) -> str:
         """Convert analysis result to readable Markdown."""
+        # Variable-format summary (helps quick parsing in UI)
+        var_lines = []
+
+        # Trend
+        direction = self.trend_direction.value if hasattr(self.trend_direction, 'value') else self.trend_direction
+        strength = self.trend_strength.value if hasattr(self.trend_strength, 'value') else self.trend_strength
+        var_lines.append(f"[#Trend; {direction}]")
+        var_lines.append(f"[#Trend-Stärke; {strength}]")
+
+        # Support / Resistance
+        for level in self.support_levels:
+            strength_txt = level.strength.value if hasattr(level.strength, 'value') else level.strength
+            var_lines.append(f"[#Support; {level.price:.2f} ({strength_txt})]")
+        for level in self.resistance_levels:
+            strength_txt = level.strength.value if hasattr(level.strength, 'value') else level.strength
+            var_lines.append(f"[#Resistance; {level.price:.2f} ({strength_txt})]")
+
+        # Risk markers
+        if self.risk_assessment.stop_loss:
+            var_lines.append(f"[#Stop Loss; {self.risk_assessment.stop_loss:.2f}]")
+        if self.risk_assessment.take_profit:
+            var_lines.append(f"[#Take Profit; {self.risk_assessment.take_profit:.2f}]")
+
+        # Recommendation
+        var_lines.append(f"[#Aktion; {self.recommendation.action}]")
+        var_lines.append(f"[#Konfidenz; {self.recommendation.confidence:.0%}]")
+
         lines = [
+            "\n".join(var_lines),
+            "",
             f"# Chart Analysis: {self.symbol} ({self.timeframe})",
             f"*Generated: {self.analysis_timestamp.strftime('%Y-%m-%d %H:%M')}*",
             "",

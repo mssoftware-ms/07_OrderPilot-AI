@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QColorDialog, QApplication
 
 logger = logging.getLogger(__name__)
 class ChartBridge(QObject):
@@ -53,3 +55,41 @@ class ChartBridge(QObject):
             Tuple of (time, price) or (None, None) if not available
         """
         return (self._last_crosshair_time, self._last_crosshair_price)
+
+    @pyqtSlot(str, result=str)
+    def pickColor(self, current_color: str = "rgba(13,110,253,0.18)") -> str:
+        """Open QColorDialog and return the chosen color in CSS rgba format.
+
+        Args:
+            current_color: Current color in CSS format (rgba or hex)
+
+        Returns:
+            Chosen color in rgba(r,g,b,a) format or current_color if cancelled
+        """
+        try:
+            # Parse current color
+            qcolor = QColor(current_color)
+            if not qcolor.isValid():
+                qcolor = QColor("rgba(13,110,253,0.18)")
+
+            # Enable alpha channel in color dialog
+            options = QColorDialog.ColorDialogOption.ShowAlphaChannel
+
+            # Get main window for parent
+            main_window = QApplication.activeWindow()
+
+            # Open color dialog
+            chosen = QColorDialog.getColor(qcolor, main_window, "Farbe wählen", options)
+
+            if chosen.isValid():
+                # Convert to CSS rgba format
+                r = chosen.red()
+                g = chosen.green()
+                b = chosen.blue()
+                a = chosen.alpha() / 255.0  # Convert 0-255 to 0-1
+                return f"rgba({r},{g},{b},{a:.2f})"
+            else:
+                return current_color
+        except Exception as e:
+            logger.warning(f"Color dialog failed: {e}", exc_info=True)
+            return current_color

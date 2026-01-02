@@ -83,6 +83,11 @@
             <button class="tool-btn" id="tool-percent-rect" title="Prozent-Rechteck (% Differenz)">
                 <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="rgba(38,166,154,0.3)" stroke="#26a69a" stroke-width="1.5"/><text x="12" y="14" text-anchor="middle" fill="#26a69a" font-size="8" font-weight="bold">%</text></svg>
             </button>
+            <button class="tool-btn" id="tool-rect-range" title="Preisbereich (volle Breite)">
+                <svg viewBox="0 0 24 24">
+                    <rect x="4" y="6" width="16" height="12" fill="rgba(13,110,253,0.18)" stroke="#0d6efd" stroke-width="1.5"/>
+                </svg>
+            </button>
             <button class="tool-btn" id="tool-fibonacci" title="Fibonacci Retracement">
                 <svg viewBox="0 0 24 24">
                     <line x1="3" y1="4" x2="21" y2="4" stroke="#4CAF50" stroke-width="1.5"/>
@@ -644,6 +649,7 @@
                                     overlays: Object.keys(overlaySeries),
                                     panels: Object.keys(panelMap)
                                 },
+                                drawings: window.chartAPI.getDrawings ? window.chartAPI.getDrawings() : [],
                                 chartOptions: { autoSize: true }
                             };
                         } catch(e) { console.error(e); return {}; }
@@ -663,6 +669,24 @@
                                     catch(e) {}
                                 }, 500);
                                 restored++;
+                            }
+                            if (state.drawings && Array.isArray(state.drawings) && state.drawings.length) {
+                                try { clearAllDrawings(); } catch(e){}
+                                state.drawings.forEach(d => {
+                                    try {
+                                        if (d.type === 'hline') {
+                                            window.chartAPI.addHorizontalLine(d.price, d.color || '#26a69a', d.label || '', d.lineStyle || 'solid', d.id || null);
+                                        } else if (d.type === 'rect-range') {
+                                            window.chartAPI.addRectRange(d.priceLow, d.priceHigh, d.color || 'rgba(13,110,253,0.18)', d.label || '');
+                                        } else if (d.type === 'percent-rect') {
+                                            if (d.p1 && d.p2) window.chartAPI.addPercentRect(d.p1, d.p2, d.id || null);
+                                        } else if (d.type === 'fibonacci') {
+                                            if (d.p1 && d.p2) window.chartAPI.addFibonacci(d.p1, d.p2, d.id || null);
+                                        } else if (d.type === 'trendline' || d.type === 'ray') {
+                                            if (d.p1 && d.p2) window.chartAPI.addTrendLine(d.p1, d.p2, d.color || '#ffeb3b');
+                                        }
+                                    } catch(err) { console.warn('restore drawing failed', err); }
+                                });
                             }
                             return restored > 0;
                         } catch(e) { console.error(e); return false; }
@@ -708,6 +732,25 @@
                 let previewPrimitive = null;
                 const drawings = []; // All drawn primitives
                 let selectedDrawing = null;
+                let rectStage = null; // first price click for rect-range
+
+                function pickRectColor(currentColor = 'rgba(13,110,253,0.18)') {
+                    // Use Python QColorDialog via bridge (same as evaluation table)
+                    return new Promise(resolve => {
+                        if (window.chartBridge && typeof window.chartBridge.pickColor === 'function') {
+                            try {
+                                const chosenColor = window.chartBridge.pickColor(currentColor);
+                                resolve(chosenColor || currentColor);
+                            } catch (e) {
+                                console.error('Color dialog failed:', e);
+                                resolve(currentColor);
+                            }
+                        } else {
+                            console.warn('chartBridge.pickColor not available, using default color');
+                            resolve(currentColor);
+                        }
+                    });
+                }
 
                 // Drawing primitive classes
                 class HorizontalLinePrimitive {
@@ -775,6 +818,63 @@
                                 // Text
                                 ctx.fillStyle = '#ffffff';
                                 ctx.fillText(this._label, labelX, labelY - padding/2);
+                            }
+                        });
+                    }
+                }
+
+                class RectRangePrimitive {
+                    constructor(pLow, pHigh, color, label, id) {
+                        this.pLow = Math.min(pLow, pHigh);
+                        this.pHigh = Math.max(pLow, pHigh);
+                        this.color = color;
+                        this.label = label || '';
+                        this.id = id || genId();
+                        this.type = 'rect-range';
+                        this._paneViews = [new RectRangePaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class RectRangePaneView {
+                    constructor(source) { this._source = source; this._y1 = null; this._y2 = null; }
+                    update() {
+                        const low = this._source.pLow;
+                        const high = this._source.pHigh;
+                        this._y1 = priceSeries.priceToCoordinate(high);
+                        this._y2 = priceSeries.priceToCoordinate(low);
+                    }
+                    renderer() { return new RectRangeRenderer(this._y1, this._y2, this._source.color, this._source.label); }
+                }
+
+                class RectRangeRenderer {
+                    constructor(y1, y2, color, label) {
+                        this._y1 = y1;
+                        this._y2 = y2;
+                        this._color = color;
+                        this._label = label;
+                    }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._y1 == null || this._y2 == null) return;
+                            const ctx = scope.context;
+                            const top = Math.min(this._y1, this._y2) * scope.verticalPixelRatio;
+                            const bottom = Math.max(this._y1, this._y2) * scope.verticalPixelRatio;
+                            const height = bottom - top;
+
+                            // fill
+                            ctx.fillStyle = this._color || 'rgba(13,110,253,0.18)';
+                            ctx.fillRect(0, top, scope.bitmapSize.width, height);
+                            // border
+                            ctx.strokeStyle = this._color || '#0d6efd';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(0, top, scope.bitmapSize.width, height);
+
+                            if (this._label) {
+                                ctx.fillStyle = '#eaeaea';
+                                ctx.font = `bold ${12 * scope.verticalPixelRatio}px Segoe UI`;
+                                ctx.fillText(this._label, 8 * scope.horizontalPixelRatio, top + 16 * scope.verticalPixelRatio);
                             }
                         });
                     }
@@ -885,7 +985,12 @@
                     }
                     updatePercent() {
                         // Calculate percent difference based on current p1 and p2
-                        this.percentDiff = ((this.p2.price - this.p1.price) / this.p1.price) * 100;
+                        const denom = this.p1.price || 0;
+                        if (!denom || !isFinite(denom)) {
+                            this.percentDiff = 0;
+                        } else {
+                            this.percentDiff = ((this.p2.price - this.p1.price) / denom) * 100;
+                        }
                         // Color: green for positive, red for negative
                         this.color = this.percentDiff >= 0 ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)';
                         this.borderColor = this.percentDiff >= 0 ? '#26a69a' : '#ef5350';
@@ -995,7 +1100,119 @@
                     }
                 }
 
-                // ==================== FIBONACCI RETRACEMENT TOOL =============                // Generate unique ID
+                // ==================== FIBONACCI RETRACEMENT TOOL ====================
+                class FibonacciRetracementPrimitive {
+                    constructor(p1, p2, id) {
+                        this.p1 = p1;
+                        this.p2 = p2;
+                        this.id = id;
+                        this.type = 'fibonacci';
+                        this.levels = this.calculateLevels();
+                        this._paneViews = [new FibonacciRetracementPaneView(this)];
+                    }
+                    calculateLevels() {
+                        const fibs = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                        const levelColors = {
+                            0: '#9e9e9e',
+                            0.236: '#2196f3',   // blue
+                            0.382: '#ab47bc',   // purple
+                            0.5: '#fbc02d',     // yellow
+                            0.618: '#26a69a',   // teal
+                            0.786: '#ff7043',   // orange
+                            1: '#9e9e9e'
+                        };
+                        const delta = this.p2.price - this.p1.price;
+                        return fibs.map(l => ({
+                            level: l,
+                            price: this.p1.price + delta * l,
+                            color: levelColors[l] || '#8bc34a'
+                        }));
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class FibonacciRetracementPaneView {
+                    constructor(source) {
+                        this._source = source;
+                        this._p1 = { x: null, y: null };
+                        this._p2 = { x: null, y: null };
+                    }
+                    update() {
+                        const ts = chart.timeScale();
+                        this._p1 = { x: ts.timeToCoordinate(this._source.p1.time), y: priceSeries.priceToCoordinate(this._source.p1.price) };
+                        this._p2 = { x: ts.timeToCoordinate(this._source.p2.time), y: priceSeries.priceToCoordinate(this._source.p2.price) };
+                    }
+                    renderer() {
+                        return new FibonacciRetracementRenderer(this._p1, this._p2, this._source.levels);
+                    }
+                }
+
+                class FibonacciRetracementRenderer {
+                    constructor(p1, p2, levels) {
+                        this._p1 = p1;
+                        this._p2 = p2;
+                        this._levels = levels;
+                    }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._p1.x === null || this._p2.x === null || this._p1.y === null || this._p2.y === null) return;
+                            const ctx = scope.context;
+                            const x1 = Math.round(this._p1.x * scope.horizontalPixelRatio);
+                            const x2 = Math.round(this._p2.x * scope.horizontalPixelRatio);
+                            const y1 = Math.round(this._p1.y * scope.verticalPixelRatio);
+                            const y2 = Math.round(this._p2.y * scope.verticalPixelRatio);
+                            const minX = Math.min(x1, x2);
+                            const maxX = Math.max(x1, x2);
+                            const minY = Math.min(y1, y2);
+                            const maxY = Math.max(y1, y2);
+
+                            // Draw bands and lines
+                            ctx.lineWidth = 1;
+                            ctx.font = `${12 * scope.verticalPixelRatio}px Arial`;
+                            const toRgba = (hex, alpha) => {
+                                if (!hex || !hex.startsWith('#') || (hex.length !== 7 && hex.length !== 9)) return `rgba(139,195,74,${alpha})`;
+                                const r = parseInt(hex.slice(1,3),16);
+                                const g = parseInt(hex.slice(3,5),16);
+                                const b = parseInt(hex.slice(5,7),16);
+                                return `rgba(${r},${g},${b},${alpha})`;
+                            };
+
+                            this._levels.forEach((lvl, idx) => {
+                                const y = y1 + (y2 - y1) * lvl.level;
+                                const yPix = Math.round(y);
+
+                                // Optional fill between this and next level for better visibility
+                                if (idx < this._levels.length - 1) {
+                                    const nextY = y1 + (y2 - y1) * this._levels[idx + 1].level;
+                                    ctx.fillStyle = toRgba(lvl.color, 0.08);
+                                    ctx.fillRect(minX, Math.min(yPix, nextY), maxX - minX, Math.abs(nextY - yPix));
+                                }
+
+                                ctx.strokeStyle = lvl.color || '#8bc34a';
+                                ctx.beginPath();
+                                ctx.moveTo(minX, yPix);
+                                ctx.lineTo(maxX, yPix);
+                                ctx.stroke();
+
+                                const label = `${(lvl.level * 100).toFixed(1)}%  ${lvl.price.toFixed(2)}`;
+                                ctx.fillStyle = lvl.color || '#8bc34a';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText(label, minX + 4, yPix);
+                            });
+
+                            // Edge handles
+                            ctx.fillStyle = '#8bc34a';
+                            ctx.beginPath(); ctx.arc(x1, y1, 4, 0, 2 * Math.PI); ctx.fill();
+                            ctx.beginPath(); ctx.arc(x2, y2, 4, 0, 2 * Math.PI); ctx.fill();
+                            // Border box
+                            ctx.strokeStyle = 'rgba(139,195,74,0.5)';
+                            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+                        });
+                    }
+                }
+
+                // ==================== GENERIC UTILITIES ====================
                 let drawingIdCounter = 0;
                 const genId = () => 'drawing_' + (++drawingIdCounter);
 
@@ -1037,6 +1254,7 @@
                     const btn = document.getElementById('tool-' + toolId);
                     if (btn) btn.classList.add('active');
                     container.style.cursor = toolId === 'pointer' ? 'default' : 'crosshair';
+                    rectStage = null;
                 }
 
                 function removePreview() {
@@ -1150,6 +1368,16 @@
                                     return { drawing: d, handle: 'rect' };
                                 }
                             }
+                        } else if (d.type === 'rect-range') {
+                            const y1 = priceSeries.priceToCoordinate(d.pLow);
+                            const y2 = priceSeries.priceToCoordinate(d.pHigh);
+                            if (y1 !== null && y2 !== null) {
+                                const minY = Math.min(y1, y2);
+                                const maxY = Math.max(y1, y2);
+                                if (Math.abs(y - minY) < threshold) return { drawing: d, handle: 'top' };
+                                if (Math.abs(y - maxY) < threshold) return { drawing: d, handle: 'bottom' };
+                                if (y >= minY && y <= maxY) return { drawing: d, handle: 'body' };
+                            }
                         }
                     }
                     return null;
@@ -1231,6 +1459,12 @@
                                     container.style.cursor = 'ns-resize';
                                 } else if (target.drawing.type === 'percent-rect' && target.handle === 'rect') {
                                     container.style.cursor = 'grab';
+                                } else if (target.drawing.type === 'rect-range') {
+                                    if (target.handle === 'top' || target.handle === 'bottom') {
+                                        container.style.cursor = 'ns-resize';
+                                    } else if (target.handle === 'body') {
+                                        container.style.cursor = 'grab';
+                                    }
                                 } else {
                                     container.style.cursor = 'grab';
                                 }
@@ -1360,6 +1594,28 @@
                             d.updateAllViews();
                             chart.timeScale().applyOptions({}); // Force redraw
                         }
+                    } else if (d.type === 'rect-range') {
+                        const newPrice = priceSeries.coordinateToPrice(y);
+                        if (newPrice !== null) {
+                            if (dragTarget.handle === 'top') {
+                                d.pHigh = Math.max(newPrice, d.pLow);
+                            } else if (dragTarget.handle === 'bottom') {
+                                d.pLow = Math.min(newPrice, d.pHigh);
+                            } else if (dragTarget.handle === 'body') {
+                                // move whole rect by deltaY
+                                const dy = y - dragStartY;
+                                const priceAtStart = priceSeries.coordinateToPrice(dragStartY);
+                                const priceAtCurrent = priceSeries.coordinateToPrice(y);
+                                if (priceAtStart !== null && priceAtCurrent !== null) {
+                                    const pDelta = priceAtCurrent - priceAtStart;
+                                    d.pLow += pDelta;
+                                    d.pHigh += pDelta;
+                                }
+                                dragStartY = y;
+                            }
+                            d.updateAllViews();
+                            chart.timeScale().applyOptions({});
+                        }
                     }
                     e.preventDefault();
                     e.stopPropagation();
@@ -1411,19 +1667,22 @@
                     try {
                         // Get the logical index at this x position (works outside data range!)
                         const logicalIndex = ts.coordinateToLogical(pixelX);
-                        if (logicalIndex === null) return null;
+                if (logicalIndex === null) return null;
 
-                        // Get the data to find bar duration
-                        const data = priceSeries.data();
-                        if (!data || data.length < 2) {
-                            // Fallback: try direct coordinateToTime
-                            return ts.coordinateToTime(pixelX);
-                        }
+                // Get the data to find bar duration
+                const data = priceSeries.data();
+                if (!data || data.length < 2) {
+                    // Fallback: try direct coordinateToTime
+                    return ts.coordinateToTime(pixelX);
+                }
 
-                        // Calculate bar duration from data
-                        const barDuration = data[1].time - data[0].time;
-                        const firstBarTime = data[0].time;
-                        const firstBarLogical = 0; // First bar is at logical index 0
+                // Calculate bar duration from data
+                const barDuration = Number(data[1].time) - Number(data[0].time);
+                if (!isFinite(barDuration) || barDuration === 0) {
+                    return ts.coordinateToTime(pixelX);
+                }
+                const firstBarTime = data[0].time;
+                const firstBarLogical = 0; // First bar is at logical index 0
 
                         // Calculate time: firstTime + (logicalIndex - firstLogical) * barDuration
                         const calculatedTime = Math.round(firstBarTime + logicalIndex * barDuration);
@@ -1449,7 +1708,11 @@
                     if (price === null) return;
 
                     // Get time using our robust function that works everywhere
-                    const time = getTimeFromPixelX(x);
+                    let time = getTimeFromPixelX(x);
+                    if (time === null) {
+                        const data = priceSeries.data?.() || [];
+                        time = data.length ? data[data.length - 1].time : null;
+                    }
 
                     if (currentTool === 'hline-green') {
                         const line = new HorizontalLinePrimitive(price, '#26a69a', genId());
@@ -1486,6 +1749,22 @@
                             priceSeries.attachPrimitive(rect);
                             drawings.push(rect);
                             selectTool('pointer');
+                        }
+                    }
+                    else if (currentTool === 'rect-range') {
+                        // Collect two price clicks; rectangle spans full width between those prices
+                        rectStage = rectStage === null ? price : rectStage;
+                        if (rectStage !== null && rectStage !== price) {
+                            const low = Math.min(rectStage, price);
+                            const high = Math.max(rectStage, price);
+                            rectStage = null;
+                            const label = prompt("Label für Zone (optional)", "") || "";
+                            pickRectColor().then(color => {
+                                const rect = new RectRangePrimitive(low, high, color, label, genId());
+                                priceSeries.attachPrimitive(rect);
+                                drawings.push(rect);
+                                selectTool('pointer');
+                            });
                         }
                     }
                     else if (currentTool === 'fibonacci') {
@@ -1544,6 +1823,15 @@
                                         nearest = d; minDist = 0;
                                     }
                                 }
+                            } else if (d.type === 'rect-range') {
+                                const y1 = priceSeries.priceToCoordinate(d.pLow);
+                                const y2 = priceSeries.priceToCoordinate(d.pHigh);
+                                if (y1 !== null && y2 !== null) {
+                                    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                                    if (y >= minY && y <= maxY) {
+                                        nearest = d; minDist = 0;
+                                    }
+                                }
                             }
                         });
                         if (nearest) removeDrawing(nearest);
@@ -1557,7 +1845,11 @@
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
-                        const time = getTimeFromPixelX(x);
+                        let time = getTimeFromPixelX(x);
+                        if (time === null) {
+                            const data = priceSeries.data?.() || [];
+                            time = data.length ? data[data.length - 1].time : null;
+                        }
                         if (price === null || time === null) return;
                         removePreview();
                         const PrimitiveClass = currentTool === 'trendline' ? TrendLinePrimitive : RayPrimitive;
@@ -1570,7 +1862,11 @@
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
-                        const time = getTimeFromPixelX(x);
+                        let time = getTimeFromPixelX(x);
+                        if (time === null) {
+                            const data = priceSeries.data?.() || [];
+                            time = data.length ? data[data.length - 1].time : null;
+                        }
                         if (price === null || time === null) return;
                         removePreview();
                         previewPrimitive = new PercentRectPrimitive(drawingPoints[0], { time, price }, 'preview');
@@ -1581,7 +1877,11 @@
                         const x = e.clientX - rect.left;
                         const y = e.clientY - rect.top;
                         const price = priceSeries.coordinateToPrice(y);
-                        const time = getTimeFromPixelX(x);
+                        let time = getTimeFromPixelX(x);
+                        if (time === null) {
+                            const data = priceSeries.data?.() || [];
+                            time = data.length ? data[data.length - 1].time : null;
+                        }
                         if (price === null || time === null) return;
                         removePreview();
                         previewPrimitive = new FibonacciRetracementPrimitive(drawingPoints[0], { time, price }, 'preview');
@@ -1619,20 +1919,29 @@
                 document.getElementById('tool-trendline').onclick = () => selectTool('trendline');
                 document.getElementById('tool-ray').onclick = () => selectTool('ray');
                 document.getElementById('tool-percent-rect').onclick = () => selectTool('percent-rect');
+                document.getElementById('tool-rect-range').onclick = () => selectTool('rect-range');
                 document.getElementById('tool-fibonacci').onclick = () => selectTool('fibonacci');
                 document.getElementById('tool-delete').onclick = () => selectTool('delete');
                 document.getElementById('tool-clear-all').onclick = () => { clearAllDrawings(); selectTool('pointer'); };
 
                 // Keyboard shortcuts
                 document.addEventListener('keydown', e => {
-                    if (e.key === 'Escape') selectTool('pointer');
+                    if (e.key === 'Escape') { selectTool('pointer'); rectStage = null; }
                     if (e.key === 'Delete' && selectedDrawing) { removeDrawing(selectedDrawing); selectedDrawing = null; }
                 });
 
                 // Expose drawing API
                 window.chartAPI.getDrawings = () => drawings.map(d => ({
                     id: d.id, type: d.type,
-                    ...(d.type === 'hline' ? { price: d.price, color: d.color } : { p1: d.p1, p2: d.p2, color: d.color })
+                    ...(d.type === 'hline'
+                        ? { price: d.price, color: d.color, label: d.label, lineStyle: d.lineStyle }
+                        : d.type === 'rect-range'
+                            ? { priceLow: d.pLow, priceHigh: d.pHigh, color: d.color, label: d.label }
+                            : d.type === 'percent-rect'
+                                ? { p1: d.p1, p2: d.p2, color: d.color }
+                                : d.type === 'fibonacci'
+                                    ? { p1: d.p1, p2: d.p2 }
+                                    : { p1: d.p1, p2: d.p2, color: d.color })
                 }));
                 window.chartAPI.clearDrawings = clearAllDrawings;
                 window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid', customId = null) => {
@@ -1657,6 +1966,24 @@
                     priceSeries.attachPrimitive(line);
                     drawings.push(line);
                     return line.id;
+                };
+                window.chartAPI.addRectRange = (low, high, color, label = '') => {
+                    const rect = new RectRangePrimitive(low, high, color || 'rgba(13,110,253,0.18)', label || '', genId());
+                    priceSeries.attachPrimitive(rect);
+                    drawings.push(rect);
+                    return rect.id;
+                };
+                window.chartAPI.addPercentRect = (p1, p2, customId = null) => {
+                    const rect = new PercentRectPrimitive(p1, p2, customId || genId());
+                    priceSeries.attachPrimitive(rect);
+                    drawings.push(rect);
+                    return rect.id;
+                };
+                window.chartAPI.addFibonacci = (p1, p2, customId = null) => {
+                    const fib = new FibonacciRetracementPrimitive(p1, p2, customId || genId());
+                    priceSeries.attachPrimitive(fib);
+                    drawings.push(fib);
+                    return fib.id;
                 };
                 window.chartAPI.removeDrawingById = (id) => {
                     const d = drawings.find(x => x.id === id);

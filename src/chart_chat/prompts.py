@@ -44,16 +44,16 @@ KRITISCHE ANFORDERUNGEN:
 3. Aktualisiere bestehende Markierungen oder erstelle neue
 4. Maximal 2-3 Sätze Zusammenfassung
 5. Antworte auf Deutsch
-6. Für Support/Resistance-Zonen IMMER auch das Zeitfenster angeben: drittes Feld nach Semikolon als HH:MM-HH:MM (z. B. "[#Support Zone; 88270.00-88500.00; 14:31-16:50]")
+6. Stelle sicher, dass alle Levels klar beschriftet und konsistent formatiert sind.
 
 VARIABLEN-FORMAT BEISPIELE:
 [#Stop Loss; 87654.32]
 [#Take Profit; 92000.00]
-[#Support Zone; 85000-86000; 10:15-11:05]
+[#Support Zone; 85000-86000]
 [#Entry Long; 88500.00]
 
 ANTWORT-STRUKTUR:
-1. Variablen-Updates (eine pro Zeile) – Support/Resistance-Zonen mit Zeitfenster!
+1. Variablen-Updates (eine pro Zeile)
 2. Kurze Begründung (2-3 Stichpunkte)
 3. Zusammenfassung (max. 2 Sätze)"""
 
@@ -117,7 +117,7 @@ Range: {recent_low} - {recent_high}
 {question}
 
 ANTWORTE IM VARIABLEN-FORMAT:
-1. Aktualisierte Markierungen als [#Label; Wert] – Support/Resistance-Zonen mit Zeitfenster HH:MM-HH:MM als drittes Feld
+1. Aktualisierte Markierungen als [#Label; Wert]
 2. Begründung (2-3 Stichpunkte mit -)
 3. Kurze Zusammenfassung (max. 2 Sätze)
 

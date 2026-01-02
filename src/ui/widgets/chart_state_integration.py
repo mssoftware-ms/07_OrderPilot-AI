@@ -212,6 +212,7 @@ class TradingViewChartStateMixin:
                 pane_count=pl.get('pane_count', 1),
                 pane_heights=pl.get('pane_heights', [1.0])
             )
+        drawings = js_state.get('drawings', [])
 
         # Extract indicator information
         indicators = []
@@ -261,7 +262,8 @@ class TradingViewChartStateMixin:
             window_state=window_state,
             show_volume=getattr(self, 'show_volume', True),
             show_crosshair=True,
-            auto_scale=True
+            auto_scale=True,
+            drawings=drawings
         )
 
         return chart_state
@@ -340,6 +342,8 @@ class TradingViewChartStateMixin:
                     'pane_count': chart_state.pane_layout.pane_count,
                     'pane_heights': chart_state.pane_layout.pane_heights
                 }
+            if chart_state.drawings:
+                js_state['drawings'] = chart_state.drawings
 
             # Generate JavaScript code to apply state
             js_code = f"""

@@ -216,6 +216,20 @@ def convert_dataframe_to_ohlcv_list(
     if df.empty:
         return []
 
+    # Filter obvious outliers (>3% Abweichung vom Vortagesschluss)
+    if len(df) >= 3:
+        prev_close = df['close'].shift(1)
+        dev_high = (df['high'] - prev_close).abs() / prev_close
+        dev_low = (df['low'] - prev_close).abs() / prev_close
+        dev_close = (df['close'] - prev_close).abs() / prev_close
+        mask = (dev_high <= 0.03) & (dev_low <= 0.03) & (dev_close <= 0.03)
+        filtered = df[mask]
+        if len(filtered) != len(df):
+            logger.warning("Filtered %d outlier bars (>3%% deviation)", len(df) - len(filtered))
+        df = filtered
+        if df.empty:
+            return []
+
     result = []
     for timestamp, row in df.iterrows():
         if use_unix_timestamp and isinstance(timestamp, datetime):

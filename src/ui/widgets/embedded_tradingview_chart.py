@@ -146,6 +146,41 @@ class EmbeddedTradingViewChart(
 
         logger.info("EmbeddedTradingViewChart initialized")
 
+    # Public helper to add a full-width price range (used by chat evaluation popup)
+    def add_rect_range(self, low: float, high: float, label: str = "", color: str | None = None) -> None:
+        """Draw a full-width rectangle between low/high prices."""
+        color = color or "rgba(13,110,253,0.18)"
+        label_js = label.replace("'", "\\'")
+        js = (
+            "if (window.chartAPI && window.chartAPI.addRectRange) {"
+            f" window.chartAPI.addRectRange({low}, {high}, '{color}', '{label_js}');"
+            " if (window.chartAPI.setVisibleRange) {"
+            "   window.chartAPI.setVisibleRange(window.chartAPI.getVisibleRange && window.chartAPI.getVisibleRange());"
+            " }"
+            "}"
+        )
+        try:
+            self._execute_js(js)
+        except Exception as exc:
+            logger.debug("add_rect_range JS failed: %s", exc)
+
+    def add_horizontal_line(self, price: float, label: str = "", color: str | None = None) -> None:
+        """Draw a horizontal line at given price."""
+        color = color or "#0d6efd"
+        label_js = label.replace("'", "\\'")
+        js = (
+            "if (window.chartAPI && window.chartAPI.addHorizontalLine) {"
+            f" window.chartAPI.addHorizontalLine({price}, '{color}', '{label_js}');"
+            " if (window.chartAPI.setVisibleRange) {"
+            "   window.chartAPI.setVisibleRange(window.chartAPI.getVisibleRange && window.chartAPI.getVisibleRange());"
+            " }"
+            "}"
+        )
+        try:
+            self._execute_js(js)
+        except Exception as exc:
+            logger.debug("add_horizontal_line JS failed: %s", exc)
+
     def resizeEvent(self, event):
         """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""
         super().resizeEvent(event)

@@ -171,60 +171,12 @@ class ChartChatService:
         """
         self._sync_with_chart()
 
-        # Get current markings
-        markings_state = self.markings_manager.get_current_markings()
-
-        # Build context with current lookback setting and markings
+        # Build context with current lookback setting (markings kept for prompt completeness)
         context = self.context_builder.build_context(self._lookback_bars)
-        context.markings = markings_state
+        context.markings = self.markings_manager.get_current_markings()
 
-        # Perform analysis
+        # Perform full structured analysis
         result = await self.analyzer.analyze_chart(context)
-
-        # Extract and apply markings from analysis if available
-        if hasattr(result, 'support_levels') and result.support_levels:
-            # Convert analysis levels to markings
-            for level in result.support_levels:
-                from .chart_markings import MarkingType
-                self.markings_manager.add_manual_marking(
-                    marking_type=MarkingType.SUPPORT_ZONE,
-                    price_bottom=level.price * 0.995,  # 0.5% zone
-                    price_top=level.price * 1.005,
-                    label=f"Support {level.price:.2f}",
-                    reasoning=level.description or "From AI analysis",
-                )
-
-        if hasattr(result, 'resistance_levels') and result.resistance_levels:
-            for level in result.resistance_levels:
-                from .chart_markings import MarkingType
-                self.markings_manager.add_manual_marking(
-                    marking_type=MarkingType.RESISTANCE_ZONE,
-                    price_bottom=level.price * 0.995,
-                    price_top=level.price * 1.005,
-                    label=f"Resistance {level.price:.2f}",
-                    reasoning=level.description or "From AI analysis",
-                )
-
-        # Add Stop Loss and Take Profit from risk assessment
-        if hasattr(result, 'risk_assessment') and result.risk_assessment:
-            risk = result.risk_assessment
-            from .chart_markings import MarkingType
-
-            if risk.stop_loss:
-                self.markings_manager.add_manual_marking(
-                    marking_type=MarkingType.STOP_LOSS,
-                    price=risk.stop_loss,
-                    label="Stop Loss",
-                    reasoning="From AI risk assessment",
-                )
-
-            if risk.take_profit:
-                self.markings_manager.add_manual_marking(
-                    marking_type=MarkingType.TAKE_PROFIT,
-                    price=risk.take_profit,
-                    label="Take Profit",
-                    reasoning="From AI risk assessment",
-                )
 
         # Add to conversation
         self._add_message(
@@ -265,10 +217,6 @@ class ChartChatService:
             context=context,
             conversation_history=self._conversation[:-1],  # Exclude just-added question
         )
-
-        # Apply marking updates to chart if any
-        if hasattr(result, 'markings_response') and result.markings_response:
-            self.markings_manager.apply_ai_response(result.markings_response)
 
         # Add assistant response to history
         self._add_message(MessageRole.ASSISTANT, result.answer)

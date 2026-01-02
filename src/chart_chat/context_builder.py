@@ -150,8 +150,18 @@ class ChartContextBuilder:
                 current_price=current_price,
             )
 
-        # Limit to lookback
-        df_recent = df.tail(lookback_bars)
+        # Limit to lookback and filter outliers (>3% vs previous close)
+        df_recent = df.tail(lookback_bars).copy()
+        if len(df_recent) >= 3:
+            prev_close = df_recent['close'].shift(1)
+            dev_high = (df_recent['high'] - prev_close).abs() / prev_close
+            dev_low = (df_recent['low'] - prev_close).abs() / prev_close
+            dev_close = (df_recent['close'] - prev_close).abs() / prev_close
+            mask = (dev_high <= 0.03) & (dev_low <= 0.03) & (dev_close <= 0.03)
+            dropped = len(df_recent) - mask.sum()
+            if dropped > 0:
+                logger.warning("AI context: filtered %d outlier bars (>3%% deviation)", dropped)
+            df_recent = df_recent[mask]
 
         # Build context
         context = ChartContext(

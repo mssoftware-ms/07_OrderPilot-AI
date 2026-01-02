@@ -70,6 +70,7 @@ class ChartState:
     show_volume: bool = True
     show_crosshair: bool = True
     auto_scale: bool = True
+    drawings: List[dict] = None
 
     def __post_init__(self):
         if self.indicators is None:
@@ -78,6 +79,8 @@ class ChartState:
             self.view_range = ViewRange(x_min=0, x_max=100)
         if self.pane_layout is None:
             self.pane_layout = PaneLayout(pane_count=1, pane_heights=[1.0])
+        if self.drawings is None:
+            self.drawings = []
 
 
 class ChartStateManager(QObject):
