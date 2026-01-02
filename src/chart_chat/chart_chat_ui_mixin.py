@@ -399,10 +399,12 @@ class ChartChatUIMixin:
 
         return container
     def _update_header(self) -> None:
-        """Update the header with current symbol/timeframe."""
+        """Update the header with current symbol/timeframe and model."""
         symbol = self.service.current_symbol or "Kein Chart"
         timeframe = self.service.current_timeframe or ""
-        self._header.setText(f"💬 {symbol} {timeframe}")
+        model = getattr(self.service, "model_name", "") or ""
+        suffix = f" | {model}" if model else ""
+        self._header.setText(f"💬 {symbol} {timeframe}{suffix}")
     def _copy_to_clipboard(self, text: str) -> None:
         """Copy text to system clipboard.
 

@@ -202,3 +202,4 @@ class QuickAnswerResult(BaseModel):
     answer: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.8)
     follow_up_suggestions: list[str] = Field(default_factory=list)
+    markings_response: Any | None = None  # CompactAnalysisResponse from chart_markings

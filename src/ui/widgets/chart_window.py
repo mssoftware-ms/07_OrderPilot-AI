@@ -181,6 +181,7 @@ class ChartWindow(
         self.symbol = symbol
         self.history_manager = history_manager
         self.settings = QSettings("OrderPilot", "TradingApp")
+        self._chart_resize_pending = False
 
         self._setup_window()
         self._setup_chart_widget()
@@ -269,6 +270,55 @@ class ChartWindow(
             self.chart_widget.ai_chat_button.clicked.connect(
                 self._on_ai_chat_button_clicked
             )
+        if getattr(self, "_chat_widget", None):
+            self._chat_widget.visibilityChanged.connect(self._on_chat_visibility_changed)
+            self._chat_widget.topLevelChanged.connect(self._on_chat_top_level_changed)
+            self._chat_widget.dockLocationChanged.connect(self._on_chat_dock_location_changed)
+
+    def _ensure_chat_docked_right(self) -> None:
+        """Dock the chat widget to the right if it is not floating."""
+        if not getattr(self, "_chat_widget", None):
+            return
+        if self._chat_widget.isFloating():
+            return
+        try:
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._chat_widget)
+        except Exception as e:
+            logger.debug("Failed to dock chat widget: %s", e)
+
+    def _sync_ai_chat_button_state(self) -> None:
+        """Ensure the toolbar toggle reflects the dock visibility."""
+        if hasattr(self.chart_widget, 'ai_chat_button') and getattr(self, "_chat_widget", None):
+            self.chart_widget.ai_chat_button.setChecked(self._chat_widget.isVisible())
+
+    def _schedule_chart_resize(self, delay_ms: int = 120) -> None:
+        """Throttle resize requests after dock/undock/visibility changes."""
+        if self._chart_resize_pending:
+            return
+        self._chart_resize_pending = True
+
+        def _do_resize():
+            self._chart_resize_pending = False
+            try:
+                if hasattr(self.chart_widget, "request_chart_resize"):
+                    self.chart_widget.request_chart_resize()
+            except Exception as e:
+                logger.debug("Chart resize after chat change failed: %s", e)
+
+        QTimer.singleShot(delay_ms, _do_resize)
+
+    def _on_chat_visibility_changed(self, visible: bool) -> None:
+        if visible:
+            self._ensure_chat_docked_right()
+        self._sync_ai_chat_button_state()
+        self._schedule_chart_resize()
+
+    def _on_chat_top_level_changed(self, floating: bool) -> None:
+        # Floating=True means detached; resize ensures chart reclaims full width
+        self._schedule_chart_resize()
+
+    def _on_chat_dock_location_changed(self, _area) -> None:
+        self._schedule_chart_resize()
 
     def _connect_data_loaded_signals(self) -> None:
         self.chart_widget.data_loaded.connect(self._restore_chart_state)
@@ -532,11 +582,9 @@ class ChartWindow(
         """
         if checked:
             self.show_chat_widget()
+            self._ensure_chat_docked_right()
         else:
             self.hide_chat_widget()
 
-        # Sync button state with actual visibility
-        if self._chat_widget:
-            is_visible = self._chat_widget.isVisible()
-            if hasattr(self.chart_widget, 'ai_chat_button'):
-                self.chart_widget.ai_chat_button.setChecked(is_visible)
+        self._sync_ai_chat_button_state()
+        self._schedule_chart_resize()

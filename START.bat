@@ -33,9 +33,6 @@ if errorlevel 1 (
 REM Start the application
 echo Starting OrderPilot-AI...
 echo.
-python start_orderpilot.py %*
-
-REM Deactivate on exit
-deactivate
-
-pause
+REM Launch minimized without keeping this console open
+start "" /min pythonw start_orderpilot.py %*
+exit /b

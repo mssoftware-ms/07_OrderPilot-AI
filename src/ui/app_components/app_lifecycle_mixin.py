@@ -80,6 +80,10 @@ class AppLifecycleMixin:
         self._close_ai_service()
 
         logger.info("Application closed successfully")
+
+        # Clear log file after logging is done
+        self._clear_log_files()
+
         event.accept()
 
     def _close_chart_windows(self) -> None:
@@ -145,3 +149,26 @@ class AppLifecycleMixin:
             logger.info("AI service closed")
         except Exception as e:
             logger.error(f"Error closing AI service: {e}")
+
+    def _clear_log_files(self) -> None:
+        """Clear the main log file after application shutdown."""
+        try:
+            # Close all log handlers to release file locks
+            root_logger = logging.getLogger()
+            for handler in root_logger.handlers[:]:
+                try:
+                    handler.close()
+                    root_logger.removeHandler(handler)
+                except Exception as e:
+                    # Can't log here since handlers are being closed
+                    pass
+
+            # Clear the main log file
+            log_file = Path("./logs/orderpilot.log")
+            if log_file.exists():
+                log_file.write_text("")
+                # Print to console since logging is closed
+                print("✅ Log file cleared: logs/orderpilot.log")
+        except Exception as e:
+            # Print to console since logging might be closed
+            print(f"⚠️ Error clearing log file: {e}")

@@ -22,11 +22,14 @@ from .models import (
     SupportResistanceLevel,
     TrendDirection,
 )
+from .chart_markings import CompactAnalysisResponse
 from .prompts import (
     CHART_ANALYSIS_SYSTEM_PROMPT,
+    COMPACT_ANALYSIS_SYSTEM_PROMPT,
     CONVERSATIONAL_SYSTEM_PROMPT,
     STRUCTURED_OUTPUT_INSTRUCTIONS,
     build_analysis_prompt,
+    build_compact_question_prompt,
     build_conversation_prompt,
     format_conversation_history,
 )
@@ -175,6 +178,77 @@ class ChartAnalyzer:
 
         except Exception as e:
             logger.error("Question answering failed: %s", e)
+            return QuickAnswerResult(
+                answer=f"Entschuldigung, ich konnte die Frage nicht beantworten: {e}",
+                confidence=0.0,
+                follow_up_suggestions=[],
+            )
+
+    async def answer_question_with_markings(
+        self,
+        question: str,
+        context: ChartContext,
+        conversation_history: list[ChatMessage],
+    ) -> QuickAnswerResult:
+        """Answer question with compact format and marking updates.
+
+        Uses the compact analysis prompt that includes current markings
+        and expects variable-format responses.
+
+        Args:
+            question: User's question
+            context: Chart context including markings
+            conversation_history: Previous messages in conversation
+
+        Returns:
+            Answer result with markings response
+        """
+        logger.info(
+            f"💬 Compact Question: '{question}' | "
+            f"{context.symbol} {context.timeframe} @ {context.current_price:.4f} | "
+            f"Markings: {len(context.markings.markings)}"
+        )
+
+        prompt_data = context.to_prompt_context()
+
+        # Build compact prompt
+        user_prompt = build_compact_question_prompt(
+            symbol=prompt_data["symbol"],
+            timeframe=prompt_data["timeframe"],
+            current_price=prompt_data["current_price"],
+            indicators=prompt_data["indicators"],
+            markings=prompt_data["markings"],
+            question=question,
+            price_change_pct=prompt_data["price_change_pct"],
+            volatility_atr=prompt_data["volatility_atr"],
+            volume_trend=prompt_data["volume_trend"],
+            recent_high=prompt_data["recent_high"],
+            recent_low=prompt_data["recent_low"],
+        )
+
+        try:
+            response = await self._get_text_completion(
+                system_prompt=COMPACT_ANALYSIS_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+            )
+
+            # Parse markings from response
+            markings_response = CompactAnalysisResponse.from_ai_text(response)
+
+            # Create result with markings
+            result = QuickAnswerResult(
+                answer=response,  # Full response for display
+                confidence=0.8,
+                follow_up_suggestions=self._generate_follow_ups(question),
+            )
+
+            # Attach markings response for service to apply
+            result.markings_response = markings_response  # type: ignore
+
+            return result
+
+        except Exception as e:
+            logger.error("Compact question answering failed: %s", e)
             return QuickAnswerResult(
                 answer=f"Entschuldigung, ich konnte die Frage nicht beantworten: {e}",
                 confidence=0.0,

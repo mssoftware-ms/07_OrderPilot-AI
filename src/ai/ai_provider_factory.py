@@ -300,6 +300,8 @@ class AIProviderFactory:
             cost_limit_monthly=50.0,
             timeouts={"read_ms": 15000, "connect_ms": 5000}
         )
+        # Ensure the selected model is reflected in the config (so UI can display it)
+        ai_config.model = model
         logger.info("Step 5b: AI config created")
 
         # Create service based on provider

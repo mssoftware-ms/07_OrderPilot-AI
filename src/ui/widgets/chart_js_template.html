@@ -1,5 +1,6 @@
 
 <!DOCTYPE html>
+<!-- TEMPLATE VERSION: 2025-01-02-v2 -->
 <html>
 <head>
     <meta charset="utf-8">
@@ -14,8 +15,16 @@
             background: #0a0a0a;
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-width: 0;
+            min-height: 0;
         }
-        #main-container { display: flex; width: 100vw; height: 100vh; }
+        #main-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
+        }
         #drawing-toolbar {
             width: 36px;
             background: #1a1a1a;
@@ -42,7 +51,13 @@
         .tool-btn.active { background: #2962ff; }
         .tool-btn svg { width: 18px; height: 18px; }
         .tool-separator { height: 1px; background: #333; margin: 6px 4px; }
-        #chart-container { flex: 1; height: 100vh; position: relative; }
+        #chart-container {
+            flex: 1 1 auto;
+            height: 100%;
+            position: relative;
+            min-width: 0;   /* allow flex child to shrink when chat dock is shown */
+            min-height: 0;
+        }
         #status { position: absolute; top: 10px; left: 10px; color: #00ff00; font-size: 12px; font-family: monospace; z-index: 1000; }
     </style>
 </head>
@@ -145,8 +160,8 @@
                         timeVisible: true,
                         secondsVisible: false,
                         borderColor: '#485c7b',
-                        // Shift displayed time by local timezone offset
                         shiftVisibleRangeOnNewBar: true,
+                        barSpacing: 6,
                     },
                     localization: {
                         locale: 'de-DE',
@@ -180,6 +195,16 @@
                     autoSize: true,
                 });
 
+                // Keep chart canvas in sync with container width/height (also fixes dock/undock)
+                const resizeObserver = new ResizeObserver((entries) => {
+                    const entry = entries?.[0];
+                    if (!entry) return;
+                    const width = Math.max(50, Math.floor(entry.contentRect.width));
+                    const height = Math.max(50, Math.floor(entry.contentRect.height));
+                    chart.resize(width, height);
+                });
+                resizeObserver.observe(container);
+
                 const overlaySeries = {};
                 const panelMap = {};
                 const panelMainSeries = {};
@@ -191,12 +216,23 @@
                 const rightScale = chart.priceScale('right');
                 let lastViewState = null; // Stores previous visible range + pane layout for undo
 
+                // No extra drawing margin by default
+                const DRAWING_MARGIN = 0;
+
+                // Whitespace padding removed; drawing tools operate on real data range only.
+                function extendVisibleRange() {
+                    // no-op: keep API compatibility for callers
+                    return;
+                }
+
                 function refitPriceScale() {
                     rightScale.applyOptions({ autoScale: true, scaleMargins });
                     chart.timeScale().fitContent();
+                    // Use setTimeout to ensure fitContent has completed before extending
                     setTimeout(() => {
+                        extendVisibleRange();
                         rightScale.applyOptions({ autoScale: false, scaleMargins });
-                    }, 0);
+                    }, 50);
                 }
 
                 function snapshotViewState() {
@@ -307,6 +343,8 @@
                                 refitPriceScale();
                             } else {
                                 console.log('setData: skipping fitContent (skipFit=' + skipFit + ', suppressFitContent=' + suppressFitContent + ')');
+                                // Still extend drawing area even when skipFit is true
+                                setTimeout(() => extendVisibleRange(), 100);
                             }
                         } catch(e){ console.error(e); }
                     },
@@ -463,6 +501,7 @@
                         } catch(e){ console.error(e); }
                     },
                     resetPriceScale: () => { try { refitPriceScale(); } catch(e){ console.error(e); } },
+                    extendDrawingArea: () => { try { extendVisibleRange(); return true; } catch(e){ console.error(e); return false; } },
 
                     addTradeMarkers: (markers) => {
                         try {
@@ -543,6 +582,18 @@
                             }
                             return layout;
                         } catch(e) { console.error(e); return {}; }
+                    },
+
+                    resizeToContainer: () => {
+                        try {
+                            const container = document.getElementById('chart-container');
+                            if (!container || !chart) return false;
+                            const rect = container.getBoundingClientRect();
+                            const width = Math.max(50, Math.floor(rect.width));
+                            const height = Math.max(50, Math.floor(rect.height));
+                            chart.resize(width, height);
+                            return { width, height };
+                        } catch(e) { console.error(e); return false; }
                     },
 
                     setPaneLayout: (layout) => {
@@ -1642,7 +1693,13 @@
                     }
                 });
 
-                document.getElementById('status').textContent = 'Ready - waiting for data...';
+                window.addEventListener('resize', () => {
+                    if (window.chartAPI?.resizeToContainer) {
+                        window.chartAPI.resizeToContainer();
+                    }
+                });
+
+        document.getElementById('status').textContent = 'Ready v4 - waiting for data...';
             } catch (error) {
                 console.error('CRITICAL INIT ERROR:', error);
                 document.getElementById('status').textContent = 'ERROR: ' + error.message;

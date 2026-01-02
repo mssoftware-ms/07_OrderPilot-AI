@@ -16,6 +16,19 @@ import os
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+# Minimize console window on Windows (optional; harmless if no console)
+if os.name == "nt":
+    try:
+        import ctypes
+
+        _SW_MINIMIZE = 6
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, _SW_MINIMIZE)
+    except Exception:
+        # Non-critical: ignore if API not available
+        pass
+
 if __name__ == "__main__":
     # Import and run the full-featured launcher
     import start_orderpilot

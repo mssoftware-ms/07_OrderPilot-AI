@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from .chart_markings import ChartMarkingsState
+
 if TYPE_CHECKING:
     from src.ui.widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
 
@@ -30,6 +32,9 @@ class ChartContext:
 
     # Active Indicators
     indicators: dict[str, Any] = field(default_factory=dict)
+
+    # Chart Markings (bidirectional)
+    markings: ChartMarkingsState = field(default_factory=lambda: ChartMarkingsState())
 
     # Derived Metrics
     price_change_pct: float = 0.0
@@ -51,6 +56,7 @@ class ChartContext:
             "current_price": self.current_price,
             "ohlcv_summary": self._format_ohlcv_summary(),
             "indicators": self._format_indicators(),
+            "markings": self.markings.to_prompt_text(),
             "price_change_pct": self.price_change_pct,
             "volatility_atr": self.volatility_atr,
             "volume_trend": self.volume_trend,

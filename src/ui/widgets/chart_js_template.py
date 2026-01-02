@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 
 from src.chart_marking.zones.zone_primitive_js import get_zone_javascript
@@ -10,12 +9,15 @@ from src.chart_marking.zones.zone_primitive_js import get_zone_javascript
 _TEMPLATE_PATH = Path(__file__).with_name("chart_js_template.html")
 
 
-@lru_cache(maxsize=1)
 def _load_chart_template() -> str:
-    """Load the HTML/JS template from disk to keep this module small."""
+    """Load the HTML/JS template from disk.
+
+    Note: No caching to allow hot-reload during development.
+    """
     return _TEMPLATE_PATH.read_text(encoding="utf-8")
 
 
+# For backwards compatibility (though get_chart_html_template() should be preferred)
 CHART_HTML_TEMPLATE = _load_chart_template()
 
 

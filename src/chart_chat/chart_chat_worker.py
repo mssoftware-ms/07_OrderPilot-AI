@@ -62,24 +62,36 @@ class AnalysisWorker(QThread):
                 )
                 return
 
+            # Create a fresh event loop for this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
             try:
+                # Ensure AI service session is initialized with the current loop
+                # This is critical to avoid "Event loop is closed" errors
+                if hasattr(self.service.ai_service, 'close'):
+                    # Close old session if it exists (may be tied to old loop)
+                    await_task = self.service.ai_service.close()
+                    if await_task:
+                        loop.run_until_complete(await_task)
+
+                if hasattr(self.service.ai_service, 'initialize'):
+                    # Initialize with fresh session on current loop
+                    loop.run_until_complete(self.service.ai_service.initialize())
+
+                # Now run the actual analysis
                 if self.action == "full_analysis":
-                    # Add timeout to prevent hanging
                     result = loop.run_until_complete(
                         asyncio.wait_for(
                             self.service.analyze_chart(),
-                            timeout=30.0  # 30 second timeout
+                            timeout=30.0
                         )
                     )
                 elif self.action == "ask" and self.question:
-                    # Add timeout to prevent hanging
                     result = loop.run_until_complete(
                         asyncio.wait_for(
                             self.service.ask_question(self.question),
-                            timeout=30.0  # 30 second timeout
+                            timeout=30.0
                         )
                     )
                 else:
@@ -95,7 +107,23 @@ class AnalysisWorker(QThread):
                     "Bitte überprüfe deine Netzwerkverbindung und API-Konfiguration."
                 )
             finally:
-                loop.close()
+                # Clean up: close AI service session and loop
+                try:
+                    if hasattr(self.service.ai_service, 'close'):
+                        close_task = self.service.ai_service.close()
+                        if close_task:
+                            loop.run_until_complete(close_task)
+                except Exception as e:
+                    logger.warning(f"Error closing AI service: {e}")
+
+                # Close the loop to free resources
+                try:
+                    loop.close()
+                except Exception:
+                    pass
+
+                # Clear loop from thread
+                asyncio.set_event_loop(None)
 
         except Exception as e:
             logger.exception("Analysis worker error")

@@ -62,3 +62,22 @@ class EmbeddedTradingViewChartViewMixin:
         self.web_view.page().runJavaScript("window.chartAPI.restoreLastView();", _on_result)
         # Fire-and-forget; assume success if state existed
         return True
+
+    def request_chart_resize(self) -> None:
+        """Force the JS chart to match the current Qt container size.
+
+        Useful after dock/undock or when the chat panel is shown/hidden.
+        Safe to call even before the chart is ready; the JS call is queued.
+        """
+        resize_script = """
+            (() => {
+                if (window.chartAPI && typeof window.chartAPI.resizeToContainer === 'function') {
+                    return window.chartAPI.resizeToContainer();
+                }
+                return false;
+            })();
+        """
+        try:
+            self._execute_js(resize_script)
+        except Exception as exc:
+            logger.debug("Chart resize request failed: %s", exc)

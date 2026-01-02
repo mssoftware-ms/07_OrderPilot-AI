@@ -147,6 +147,11 @@ class DataLoadingMixin:
             })
         return candle_data, volume_data
 
+    @staticmethod
+    def _pad_whitespace_bars(candle_data: list[dict], margin: int = 0) -> list[dict]:
+        """Deprecated: whitespace padding removed to avoid drawing offsets."""
+        return candle_data
+
     def _update_chart_series(self, candle_data: list[dict]) -> None:
         skip_fit = getattr(self, '_skip_fit_content', False)
         if skip_fit:

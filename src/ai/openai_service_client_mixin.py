@@ -184,7 +184,7 @@ class OpenAIServiceClientMixin:
 
     def _resolve_structured_model(self, model: str | None) -> str:
         if model is None:
-            return self.default_model or getattr(self.config, 'model', None) or "gpt-4o"
+            return self.default_model or getattr(self.config, 'model', None) or "gpt-5.1"
         return model
 
     async def _try_cached_structured(

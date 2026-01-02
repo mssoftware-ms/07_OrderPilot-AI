@@ -36,6 +36,27 @@ REGELN:
 4. Antworte auf Deutsch
 5. Wenn du etwas nicht weißt, sage es ehrlich"""
 
+COMPACT_ANALYSIS_SYSTEM_PROMPT = """Du bist ein präziser Trading-Analyst, der KOMPAKTE Antworten im Variablen-Format gibt.
+
+KRITISCHE ANFORDERUNGEN:
+1. VERWENDE DAS VARIABLEN-FORMAT: [#Label; Wert] für ALLE Preisniveaus
+2. KEINE langen Fließtexte - nur kurze Stichpunkte
+3. Aktualisiere bestehende Markierungen oder erstelle neue
+4. Maximal 2-3 Sätze Zusammenfassung
+5. Antworte auf Deutsch
+6. Für Support/Resistance-Zonen IMMER auch das Zeitfenster angeben: drittes Feld nach Semikolon als HH:MM-HH:MM (z. B. "[#Support Zone; 88270.00-88500.00; 14:31-16:50]")
+
+VARIABLEN-FORMAT BEISPIELE:
+[#Stop Loss; 87654.32]
+[#Take Profit; 92000.00]
+[#Support Zone; 85000-86000; 10:15-11:05]
+[#Entry Long; 88500.00]
+
+ANTWORT-STRUKTUR:
+1. Variablen-Updates (eine pro Zeile) – Support/Resistance-Zonen mit Zeitfenster!
+2. Kurze Begründung (2-3 Stichpunkte)
+3. Zusammenfassung (max. 2 Sätze)"""
+
 # =============================================================================
 # User Message Templates
 # =============================================================================
@@ -80,6 +101,86 @@ Symbol: {symbol} | Timeframe: {timeframe} | Preis: {current_price}
 {question}
 
 Beantworte die Frage basierend auf dem Chart-Kontext. Sei konkret und hilfreich."""
+
+COMPACT_ANALYSIS_USER_TEMPLATE = """=== CHART: {symbol} {timeframe} @ {current_price} ===
+
+{markings}
+
+=== INDIKATOREN ===
+{indicators}
+
+=== METRIKEN ===
+Änderung: {price_change_pct}% | ATR: {volatility_atr} | Vol: {volume_trend}
+Range: {recent_low} - {recent_high}
+
+=== ANFRAGE ===
+{question}
+
+ANTWORTE IM VARIABLEN-FORMAT:
+1. Aktualisierte Markierungen als [#Label; Wert] – Support/Resistance-Zonen mit Zeitfenster HH:MM-HH:MM als drittes Feld
+2. Begründung (2-3 Stichpunkte mit -)
+3. Kurze Zusammenfassung (max. 2 Sätze)
+
+Beispiel:
+[#Stop Loss; 87654.32]
+[#Take Profit; 92000.00]
+[#Support Zone; 85000-86000; 10:15-11:05]
+
+- RSI überkauft, Korrektur wahrscheinlich
+- MACD bearish cross signalisiert Schwäche
+- Volumen sinkt = wenig Überzeugung
+
+Stop angepasst da Support bei 87.6k. TP bei 92k wegen Resistance."""
+
+# =============================================================================
+# Prompt Builder Functions
+# =============================================================================
+
+def build_compact_question_prompt(
+    symbol: str,
+    timeframe: str,
+    current_price: float,
+    indicators: str,
+    markings: str,
+    question: str,
+    price_change_pct: float,
+    volatility_atr: float | None,
+    volume_trend: str,
+    recent_high: float,
+    recent_low: float,
+) -> str:
+    """Build compact question prompt with markings.
+
+    Args:
+        symbol: Trading symbol
+        timeframe: Chart timeframe
+        current_price: Current price
+        indicators: Formatted indicators string
+        markings: Formatted markings string
+        question: User's question
+        price_change_pct: Price change percentage
+        volatility_atr: ATR volatility
+        volume_trend: Volume trend description
+        recent_high: Recent high price
+        recent_low: Recent low price
+
+    Returns:
+        Formatted prompt string
+    """
+    return COMPACT_ANALYSIS_USER_TEMPLATE.format(
+        symbol=symbol,
+        timeframe=timeframe,
+        current_price=f"{current_price:.2f}",
+        indicators=indicators,
+        markings=markings,
+        question=question,
+        price_change_pct=f"{price_change_pct:.2f}",
+        volatility_atr=f"{volatility_atr:.2f}" if volatility_atr else "N/A",
+        volume_trend=volume_trend,
+        recent_high=f"{recent_high:.2f}",
+        recent_low=f"{recent_low:.2f}",
+    )
+
 
 # =============================================================================
 # Response Format Instructions

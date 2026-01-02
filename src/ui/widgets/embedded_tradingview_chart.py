@@ -38,11 +38,13 @@ from .embedded_tradingview_chart_loading_mixin import EmbeddedTradingViewChartLo
 from .embedded_tradingview_chart_marking_mixin import EmbeddedTradingViewChartMarkingMixin
 from .embedded_tradingview_chart_ui_mixin import EmbeddedTradingViewChartUIMixin
 from .embedded_tradingview_chart_view_mixin import EmbeddedTradingViewChartViewMixin
+from .chart_ai_markings_mixin import ChartAIMarkingsMixin
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddedTradingViewChart(
+    ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
     BotOverlayMixin,
     ToolbarMixin,
@@ -143,3 +145,12 @@ class EmbeddedTradingViewChart(
         event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick_event)
 
         logger.info("EmbeddedTradingViewChart initialized")
+
+    def resizeEvent(self, event):
+        """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""
+        super().resizeEvent(event)
+        try:
+            # request_chart_resize is provided by EmbeddedTradingViewChartViewMixin
+            self.request_chart_resize()
+        except Exception as exc:
+            logger.debug("resizeEvent chart resize failed: %s", exc)
