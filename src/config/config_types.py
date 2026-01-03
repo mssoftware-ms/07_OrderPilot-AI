@@ -33,6 +33,7 @@ class BrokerType(str, Enum):
     MOCK = "mock"
     IBKR = "ibkr"  # Interactive Brokers
     ALPACA = "alpaca"  # Alpaca Markets
+    BITUNIX = "bitunix"  # Bitunix Futures
     TRADE_REPUBLIC = "trade_republic"
     DEGIRO = "degiro"
     COMDIRECT = "comdirect"
@@ -74,6 +75,8 @@ class DatabaseConfig(BaseModel):
 class MarketDataProviderConfig(BaseModel):
     """Market data provider configuration and toggles."""
     alpaca_enabled: bool = False
+    bitunix_enabled: bool = False
+    bitunix_testnet: bool = True  # DEFAULT: TESTNET for safety!
     alpha_vantage_enabled: bool = False
     finnhub_enabled: bool = False
     yahoo_enabled: bool = True

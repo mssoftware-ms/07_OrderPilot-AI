@@ -99,6 +99,7 @@ Datenquellen sind als Provider abstrahiert:
 HistoricalDataProvider (Abstract Base)
 ├── AlpacaProvider         - Alpaca Stock API
 ├── AlpacaCryptoProvider   - Alpaca Crypto API
+├── BitunixProvider        - Bitunix Futures API (NEW)
 ├── YahooFinanceProvider   - yfinance
 ├── AlphaVantageProvider   - Alpha Vantage API
 ├── FinnhubProvider        - Finnhub API
@@ -489,11 +490,7 @@ Features:
 
 ```
 src/
-├── brokers/              # Broker-Adapter
-│   └── alpaca/           # Alpaca-spezifisch
-│       ├── client.py     # REST-Client
-│       ├── streaming.py  # WebSocket-Client
-│       └── models.py     # DTOs
+├── brokers/              # Deprecated - wird migriert
 ├── common/               # Shared Utilities
 │   ├── event_bus.py      # Globaler Event-Bus
 │   ├── logging_setup.py  # Logging-Konfiguration
@@ -501,7 +498,19 @@ src/
 ├── core/                 # Business Logic
 │   ├── market_data/      # Marktdaten
 │   │   ├── history_provider.py
+│   │   ├── alpaca_stream.py
+│   │   ├── bitunix_stream.py           # NEW - Bitunix WebSocket
+│   │   ├── stream_client.py
 │   │   └── providers/    # Datenquellen
+│   │       ├── alpaca_stock_provider.py
+│   │       ├── bitunix_provider.py     # NEW - Bitunix REST API
+│   │       ├── yahoo_provider.py
+│   │       └── ...
+│   ├── broker/           # Broker Trading Adapters
+│   │   ├── base.py       # BrokerAdapter (Abstract Base)
+│   │   ├── alpaca_adapter.py
+│   │   ├── bitunix_adapter.py          # NEW - Bitunix Trading API
+│   │   └── broker_types.py
 │   ├── strategy/         # Strategien
 │   │   ├── engine.py     # Strategie-Engine
 │   │   ├── compiler.py   # DSL-Compiler

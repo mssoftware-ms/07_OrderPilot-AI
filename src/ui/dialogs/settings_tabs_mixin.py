@@ -99,6 +99,19 @@ class SettingsTabsMixin:
         self.tr_pin.setMaxLength(4)
         layout.addRow("PIN:", self.tr_pin)
 
+        # Bitunix Settings
+        layout.addRow(QLabel(""))  # Spacer
+        layout.addRow(QLabel("<b>Bitunix Futures</b>"))
+
+        self.bitunix_broker_enabled = QCheckBox("Enable Bitunix for trading")
+        layout.addRow(self.bitunix_broker_enabled)
+
+        bitunix_note = QLabel(
+            "<i>Note: Configure API keys in Market Data → Bitunix tab</i>"
+        )
+        bitunix_note.setWordWrap(True)
+        layout.addRow(bitunix_note)
+
         return tab
 
     def _create_market_data_tab(self) -> QWidget:
@@ -155,6 +168,7 @@ class SettingsTabsMixin:
         self.market_tabs.addTab(self._build_finnhub_tab(), "Finnhub")
         self.market_tabs.addTab(self._build_yahoo_tab(), "Yahoo Finance")
         self.market_tabs.addTab(self._build_alpaca_tab(), "Alpaca")
+        self.market_tabs.addTab(self._build_bitunix_tab(), "Bitunix")
 
     def _build_alpha_tab(self) -> QWidget:
         alpha_tab = QWidget()
@@ -236,6 +250,48 @@ class SettingsTabsMixin:
         alpaca_info.setWordWrap(True)
         alpaca_layout.addRow(alpaca_info)
         return alpaca_tab
+
+    def _build_bitunix_tab(self) -> QWidget:
+        """Create Bitunix Futures settings tab."""
+        bitunix_tab = QWidget()
+        bitunix_layout = QFormLayout(bitunix_tab)
+
+        self.bitunix_enabled = QCheckBox("Enable Bitunix Futures provider")
+        bitunix_layout.addRow(self.bitunix_enabled)
+
+        self.bitunix_api_key = QLineEdit()
+        self.bitunix_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.bitunix_api_key.setPlaceholderText("Enter Bitunix API key")
+        bitunix_layout.addRow("API Key:", self.bitunix_api_key)
+
+        self.bitunix_api_secret = QLineEdit()
+        self.bitunix_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
+        self.bitunix_api_secret.setPlaceholderText("Enter Bitunix API secret")
+        bitunix_layout.addRow("API Secret:", self.bitunix_api_secret)
+
+        self.bitunix_testnet = QCheckBox("Use Testnet (Recommended for testing)")
+        self.bitunix_testnet.setChecked(True)
+        self.bitunix_testnet.setToolTip(
+            "When enabled, uses Bitunix testnet environment for safe testing. "
+            "Uncheck only when you want to trade with real money!"
+        )
+        bitunix_layout.addRow(self.bitunix_testnet)
+
+        bitunix_info = QLabel(
+            "<b>Bitunix Futures Trading</b><br>"
+            "Provides crypto futures (perpetual contracts) trading and market data.<br>"
+            "<br>"
+            "<b>⚠️ IMPORTANT:</b><br>"
+            "• Testnet is enabled by default for safety<br>"
+            "• Get API keys from: <a href='https://www.bitunix.com/api'>https://www.bitunix.com/api</a><br>"
+            "• Supports USDT-margined perpetual contracts<br>"
+            "• Trading fees: 0.02% maker / 0.06% taker"
+        )
+        bitunix_info.setWordWrap(True)
+        bitunix_info.setOpenExternalLinks(True)
+        bitunix_layout.addRow(bitunix_info)
+
+        return bitunix_tab
 
     def _build_general_ai_layout(self) -> QFormLayout:
         general_ai_layout = QFormLayout()

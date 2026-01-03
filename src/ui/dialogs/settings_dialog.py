@@ -184,6 +184,26 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             "API secret stored securely. Enter a new value to replace it.",
         )
 
+        self.bitunix_enabled.setChecked(market_config.bitunix_enabled)
+        self._set_credential_placeholder(
+            self.bitunix_api_key,
+            "bitunix_api_key",
+            "Enter Bitunix API key",
+            "API key stored securely. Enter a new value to replace it.",
+        )
+        self._set_credential_placeholder(
+            self.bitunix_api_secret,
+            "bitunix_api_secret",
+            "Enter Bitunix API secret",
+            "API secret stored securely. Enter a new value to replace it.",
+        )
+        self.bitunix_testnet.setChecked(
+            self.settings.value("bitunix_testnet", True, type=bool)
+        )
+        self.bitunix_broker_enabled.setChecked(
+            self.settings.value("bitunix_broker_enabled", False, type=bool)
+        )
+
         self.prefer_live_broker.setChecked(market_config.prefer_live_broker)
 
         # Live data in paper mode
@@ -356,7 +376,12 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         market_config.alpha_vantage_enabled = self.alpha_enabled.isChecked()
         market_config.finnhub_enabled = self.finnhub_enabled.isChecked()
         market_config.yahoo_enabled = self.yahoo_enabled.isChecked()
+        market_config.bitunix_enabled = self.bitunix_enabled.isChecked()
         market_config.prefer_live_broker = self.prefer_live_broker.isChecked()
+
+        # Bitunix testnet setting
+        self.settings.setValue("bitunix_testnet", self.bitunix_testnet.isChecked())
+        self.settings.setValue("bitunix_broker_enabled", self.bitunix_broker_enabled.isChecked())
 
         # Alpha Vantage API key
         alpha_key = self.alpha_api_key.text().strip()
@@ -403,6 +428,28 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             QMessageBox.warning(
                 self, "Incomplete Credentials",
                 "Both API key and secret are required for Alpaca.\n\n"
+                "Please provide both or leave both empty."
+            )
+
+        # Bitunix credentials
+        bitunix_key = self.bitunix_api_key.text().strip()
+        bitunix_secret = self.bitunix_api_secret.text().strip()
+        if bitunix_key and bitunix_secret:
+            try:
+                config_manager.set_credential("bitunix_api_key", bitunix_key)
+                config_manager.set_credential("bitunix_api_secret", bitunix_secret)
+                self.bitunix_api_key.clear()
+                self.bitunix_api_secret.clear()
+            except Exception as e:
+                QMessageBox.warning(
+                    self, "API Key Storage",
+                    f"Could not store Bitunix API credentials securely:\n{str(e)}\n\n"
+                    "You may need to re-enter them next session."
+                )
+        elif bitunix_key or bitunix_secret:
+            QMessageBox.warning(
+                self, "Incomplete Credentials",
+                "Both API key and secret are required for Bitunix.\n\n"
                 "Please provide both or leave both empty."
             )
 

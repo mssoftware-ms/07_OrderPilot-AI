@@ -14,6 +14,7 @@ from decimal import Decimal
 from src.common.event_bus import Event, EventType, event_bus
 from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
+from src.core.market_data.bar_validator import BarValidator
 from src.core.market_data.types import AssetClass, DataRequest, DataSource, HistoricalBar, Timeframe
 from src.database import get_db_manager
 from src.database.models import MarketBar
@@ -56,6 +57,7 @@ class HistoryManager:
         self.providers: dict[DataSource, HistoricalDataProvider] = {}
         self.priority_order = []
         self.stream_client = None  # Real-time stream client
+        self.bar_validator = BarValidator()
 
         # Initialize database provider (always available)
         self.providers[DataSource.DATABASE] = DatabaseProvider()
@@ -92,6 +94,7 @@ class HistoryManager:
         if live_first:
             self.priority_order = [
                 DataSource.DATABASE,
+                DataSource.BITUNIX,  # High priority for Crypto Futures
                 DataSource.IBKR,
                 DataSource.ALPACA,
                 DataSource.ALPACA_CRYPTO,
@@ -102,6 +105,7 @@ class HistoryManager:
         else:
             self.priority_order = [
                 DataSource.DATABASE,
+                DataSource.BITUNIX,  # High priority for Crypto Futures
                 DataSource.ALPACA,
                 DataSource.ALPACA_CRYPTO,
                 DataSource.ALPHA_VANTAGE,
@@ -156,6 +160,22 @@ class HistoryManager:
         if market_config.yahoo_enabled:
             self.register_provider(DataSource.YAHOO, YahooFinanceProvider())
 
+        # Bitunix (Crypto Futures)
+        if market_config.bitunix_enabled:
+            api_key = config_manager.get_credential("bitunix_api_key")
+            api_secret = config_manager.get_credential("bitunix_api_secret")
+            use_testnet = config_manager.get_setting("bitunix_testnet", True)  # DEFAULT: TESTNET!
+
+            if api_key and api_secret:
+                from src.core.market_data.providers.bitunix_provider import BitunixProvider
+                self.register_provider(
+                    DataSource.BITUNIX,
+                    BitunixProvider(api_key, api_secret, use_testnet)
+                )
+                logger.info(f"Registered Bitunix provider (testnet: {use_testnet}, key: {api_key[:8]}...)")
+            else:
+                logger.warning("Bitunix provider enabled but API credentials not found")
+
     async def fetch_data(
         self,
         request: DataRequest
@@ -172,16 +192,60 @@ class HistoryManager:
 
         bars, source_used = await self._try_specific_source(request)
         if bars:
-            return bars, source_used
+            return self._sanitize_bars(request.symbol, bars), source_used
 
         # Try providers in priority order
         for source in self.priority_order:
             bars = await self._try_provider_source(request, source, needs_fresh_data)
             if bars:
-                return bars, source.value
+                return self._sanitize_bars(request.symbol, bars), source.value
 
         logger.warning(f"No data available for {request.symbol}")
         return [], "none"
+
+    def _sanitize_bars(self, symbol: str, bars: list[HistoricalBar]) -> list[HistoricalBar]:
+        """Apply validation/sanitization rules to fetched bars."""
+        if not bars:
+            return bars
+
+        def getter(bar: HistoricalBar):
+            return (
+                bar.timestamp,
+                float(bar.open),
+                float(bar.high),
+                float(bar.low),
+                float(bar.close),
+                int(bar.volume or 0),
+            )
+
+        def builder(ts, open_, high, low, close, volume, source, vwap, trades, low_reliability):
+            hb = HistoricalBar(
+                timestamp=ts,
+                open=Decimal(str(open_)),
+                high=Decimal(str(high)),
+                low=Decimal(str(low)),
+                close=Decimal(str(close)),
+                volume=volume,
+                vwap=Decimal(str(vwap)) if vwap is not None else None,
+                trades=trades,
+                source=source,
+            )
+            # attach low reliability marker for consumers (chart / strategies)
+            setattr(hb, "low_reliability", low_reliability)
+            return hb
+
+        cleaned = self.bar_validator.validate_historical_bars(
+            symbol=symbol,
+            bars=bars,
+            getter=getter,
+            builder=builder,
+        )
+
+        dropped = len(bars) - len(cleaned)
+        if dropped:
+            logger.warning("Dropped %s anomalous bars for %s during load", dropped, symbol)
+
+        return cleaned
 
     def _needs_fresh_data(self, request: DataRequest) -> bool:
         if not request.end_date:
@@ -266,11 +330,11 @@ class HistoryManager:
             return True
 
         if request.asset_class == AssetClass.CRYPTO:
-            if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
+            if source not in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX, DataSource.DATABASE]:
                 logger.debug(f"Skipping {source.value} for crypto asset class")
                 return True
         elif request.asset_class == AssetClass.STOCK:
-            if source == DataSource.ALPACA_CRYPTO:
+            if source in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX]:
                 logger.debug(f"Skipping {source.value} for stock asset class")
                 return True
 

@@ -15,13 +15,11 @@ from alpaca.data.requests import StockBarsRequest, StockLatestBarRequest
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.timeframe import TimeFrame
 
+from src.core.market_data.bar_validator import BarValidator
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.market_data.stream_client import MarketTick, StreamClient, StreamStatus
 
 logger = logging.getLogger(__name__)
-
-# Hard cap for spike filtering (matches historical/context filters)
-OUTLIER_PCT = 0.03  # 3% versus letzter Close
 
 
 class AlpacaStreamClient(StreamClient):
@@ -56,7 +54,7 @@ class AlpacaStreamClient(StreamClient):
         self.api_secret = api_secret
         self.paper = paper
         self.feed = feed
-        self._last_close: dict[str, float] = {}
+        self._validator = BarValidator()
 
         # Alpaca stream client
         self._stream: StockDataStream | None = None
@@ -233,6 +231,9 @@ class AlpacaStreamClient(StreamClient):
             )
             symbols = symbols[:self.max_symbols - len(self.metrics.subscribed_symbols)]
 
+        # Prime validator with latest closes so first bar after (re)connect is checked properly
+        await self._seed_validator(symbols)
+
         # Add to subscribed set
         for symbol in symbols:
             if symbol not in self.metrics.subscribed_symbols:
@@ -274,34 +275,40 @@ class AlpacaStreamClient(StreamClient):
             bar: Alpaca bar object
         """
         try:
-            logger.info(f"📊 Received bar: {bar.symbol} OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} Vol: {bar.volume}")
+            logger.info(
+                f"📊 Received bar: {bar.symbol} "
+                f"OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} Vol: {bar.volume}"
+            )
             request_time = datetime.now(timezone.utc)  # Use timezone-aware datetime
 
-            # Spike protection: drop bars with implausible moves vs last close
-            last_close = self._last_close.get(bar.symbol)
-            if self._is_outlier_bar(bar, last_close):
-                logger.warning(
-                    "⏭️  Dropping outlier bar from stream "
-                    f"{bar.symbol} O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} "
-                    f"(prev_close={last_close})"
-                )
+            cleaned = self._validator.validate_stream_bar(
+                symbol=bar.symbol,
+                timestamp=bar.timestamp,
+                open_=float(bar.open),
+                high=float(bar.high),
+                low=float(bar.low),
+                close=float(bar.close),
+                volume=int(bar.volume or 0),
+            )
+            if cleaned is None:
                 self.metrics.messages_dropped += 1
                 return
 
+            symbol = cleaned["symbol"]
+
             # Convert to MarketTick
             tick = MarketTick(
-                symbol=bar.symbol,
-                last=Decimal(str(bar.close)),
-                volume=bar.volume,
-                timestamp=bar.timestamp,
+                symbol=symbol,
+                last=Decimal(str(cleaned["close"])),
+                volume=cleaned["volume"],
+                timestamp=cleaned["timestamp"],
                 source=self.name,
-                latency_ms=(request_time - bar.timestamp).total_seconds() * 1000
+                latency_ms=(request_time - cleaned["timestamp"]).total_seconds() * 1000
             )
 
             # Add to buffer
             self.buffer.append(tick)
-            self.symbol_cache[bar.symbol] = tick
-            self._last_close[bar.symbol] = float(bar.close)
+            self.symbol_cache[symbol] = tick
             self.metrics.messages_received += 1
             self.metrics.last_message_at = datetime.utcnow()
             self.metrics.update_latency(tick.latency_ms or 0)
@@ -309,30 +316,32 @@ class AlpacaStreamClient(StreamClient):
             # Emit bar event (more detailed than tick)
             event_bus.emit(Event(
                 type=EventType.MARKET_BAR,
-                timestamp=bar.timestamp,
+                timestamp=cleaned["timestamp"],
                 data={
-                    "symbol": bar.symbol,
-                    "open": float(bar.open),
-                    "high": float(bar.high),
-                    "low": float(bar.low),
-                    "close": float(bar.close),
-                    "volume": bar.volume,
-                    "vwap": float(bar.vwap) if bar.vwap else None,
-                    "trade_count": bar.trade_count,
-                    "timestamp": bar.timestamp.isoformat(),
-                    "source": self.name
+                    "symbol": symbol,
+                    "open": cleaned["open"],
+                    "high": cleaned["high"],
+                    "low": cleaned["low"],
+                    "close": cleaned["close"],
+                    "volume": cleaned["volume"],
+                    "vwap": float(bar.vwap) if getattr(bar, "vwap", None) else None,
+                    "trade_count": getattr(bar, "trade_count", None),
+                    "timestamp": cleaned["timestamp"].isoformat(),
+                    "source": self.name,
+                    "low_reliability": cleaned.get("low_reliability", False)
                 }
             ))
 
             # Also emit tick event
             event_bus.emit(Event(
                 type=EventType.MARKET_DATA_TICK,
-                timestamp=bar.timestamp,
+                timestamp=cleaned["timestamp"],
                 data={
-                    "symbol": bar.symbol,
-                    "price": float(bar.close),
-                    "volume": bar.volume,
-                    "source": self.name
+                    "symbol": symbol,
+                    "price": cleaned["close"],
+                    "volume": cleaned["volume"],
+                    "source": self.name,
+                    "low_reliability": cleaned.get("low_reliability", False)
                 }
             ))
 
@@ -412,28 +421,6 @@ class AlpacaStreamClient(StreamClient):
         """
         return self.symbol_cache.get(symbol)
 
-    @staticmethod
-    def _is_outlier_bar(bar: Bar, prev_close: float | None) -> bool:
-        """Return True if bar looks implausible compared to previous close."""
-        try:
-            high = float(bar.high)
-            low = float(bar.low)
-            close = float(bar.close)
-        except Exception:
-            return False
-
-        # Basic sanity
-        if low > high:
-            return True
-
-        if prev_close is None or prev_close == 0:
-            return False
-
-        def deviates(val: float) -> bool:
-            return abs(val - prev_close) / prev_close > OUTLIER_PCT
-
-        return deviates(high) or deviates(low) or deviates(close)
-
     async def get_latest_bar(self, symbol: str) -> dict | None:
         """Get the latest bar from Alpaca REST API.
 
@@ -486,3 +473,18 @@ class AlpacaStreamClient(StreamClient):
             "max_symbols": self.max_symbols,
             "feed": self.feed
         }
+
+    async def _seed_validator(self, symbols: list[str]) -> None:
+        """Fetch latest bars and seed validator to avoid loose first-bar checks."""
+        if not symbols or not self._historical_client:
+            return
+        try:
+            request = StockLatestBarRequest(symbol_or_symbols=symbols)
+            latest = self._historical_client.get_stock_latest_bar(request)
+            for sym, bar in latest.items():
+                close = float(bar.close)
+                ts = bar.timestamp
+                if close > 0:
+                    self._validator.seed(sym, close=close, timestamp=ts)
+        except Exception as e:
+            logger.warning(f"Validator seeding failed: {e}")

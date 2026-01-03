@@ -31,6 +31,7 @@ from .chart_window_mixins import (
     StrategySimulatorMixin,
 )
 from src.chart_chat import ChartChatMixin
+from src.ui.widgets.bitunix_trading import BitunixTradingMixin
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,7 @@ class ChartWindow(
     EventBusMixin,
     StateMixin,
     ChartChatMixin,
+    BitunixTradingMixin,
     QMainWindow
 ):
     """Popup window for displaying a single chart."""
@@ -193,6 +195,7 @@ class ChartWindow(
         self._connect_dock_signals()
         self._setup_event_subscriptions()
         self._setup_chat()
+        self._setup_bitunix_trading()
         self._ready_to_close = False
         self._connect_data_loaded_signals()
 
@@ -274,6 +277,16 @@ class ChartWindow(
             self._chat_widget.visibilityChanged.connect(self._on_chat_visibility_changed)
             self._chat_widget.topLevelChanged.connect(self._on_chat_top_level_changed)
             self._chat_widget.dockLocationChanged.connect(self._on_chat_dock_location_changed)
+
+    def _setup_bitunix_trading(self) -> None:
+        """Set up Bitunix trading widget integration."""
+        self.setup_bitunix_trading(self.chart_widget)
+        if hasattr(self.chart_widget, 'bitunix_trading_button'):
+            self.chart_widget.bitunix_trading_button.clicked.connect(
+                self._on_bitunix_trading_button_clicked
+            )
+        if getattr(self, "_bitunix_widget", None):
+            self._bitunix_widget.visibilityChanged.connect(self._on_bitunix_visibility_changed)
 
     def _ensure_chat_docked_right(self) -> None:
         """Dock the chat widget to the right if it is not floating."""
@@ -370,6 +383,7 @@ class ChartWindow(
         self._save_optional_state()
         self._save_window_state()
         self._cleanup_chat()
+        self._cleanup_bitunix_trading()
         self.window_closed.emit(self.symbol)
         event.accept()
 
@@ -406,6 +420,14 @@ class ChartWindow(
                 self.cleanup_chart_chat()
             except Exception as e:
                 logger.debug(f"Error cleaning up chart chat: {e}")
+
+    def _cleanup_bitunix_trading(self) -> None:
+        """Clean up Bitunix trading resources."""
+        if hasattr(self, 'cleanup_bitunix_trading'):
+            try:
+                self.cleanup_bitunix_trading()
+            except Exception as e:
+                logger.debug(f"Error cleaning up Bitunix trading: {e}")
 
     def _request_close_state(self, event: QCloseEvent) -> None:
         logger.info(f"Requesting chart state before closing {self.symbol}...")
@@ -587,4 +609,26 @@ class ChartWindow(
             self.hide_chat_widget()
 
         self._sync_ai_chat_button_state()
+
+    def _on_bitunix_trading_button_clicked(self, checked: bool):
+        """Handle Bitunix Trading toolbar button click.
+
+        Args:
+            checked: Button checked state
+        """
+        if checked:
+            self.show_bitunix_widget()
+        else:
+            self.hide_bitunix_widget()
+
+        self._sync_bitunix_trading_button_state()
+
+    def _sync_bitunix_trading_button_state(self) -> None:
+        """Ensure the toolbar toggle reflects the Bitunix widget visibility."""
+        if hasattr(self.chart_widget, 'bitunix_trading_button') and getattr(self, "_bitunix_widget", None):
+            self.chart_widget.bitunix_trading_button.setChecked(self._bitunix_widget.isVisible())
+
+    def _on_bitunix_visibility_changed(self, visible: bool) -> None:
+        """Handle Bitunix widget visibility change."""
+        self._sync_bitunix_trading_button_state()
         self._schedule_chart_resize()

@@ -22,6 +22,7 @@ class DataSource(Enum):
     IBKR = "ibkr"
     ALPACA = "alpaca"
     ALPACA_CRYPTO = "alpaca_crypto"  # Alpaca cryptocurrency data
+    BITUNIX = "bitunix"  # Bitunix Futures (Crypto)
     ALPHA_VANTAGE = "alpha_vantage"
     FINNHUB = "finnhub"
     YAHOO = "yahoo"

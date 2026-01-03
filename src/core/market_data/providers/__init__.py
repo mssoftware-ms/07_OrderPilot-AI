@@ -8,6 +8,7 @@ REFACTORED: Providers extracted from history_provider.py for better organization
 
 from .base import HistoricalDataProvider
 from .alpaca_stock_provider import AlpacaProvider
+from .bitunix_provider import BitunixProvider
 from .yahoo_provider import YahooFinanceProvider
 from .alpha_vantage_provider import AlphaVantageProvider
 from .finnhub_provider import FinnhubProvider
@@ -17,6 +18,7 @@ from .database_provider import DatabaseProvider
 __all__ = [
     "HistoricalDataProvider",
     "AlpacaProvider",
+    "BitunixProvider",
     "YahooFinanceProvider",
     "AlphaVantageProvider",
     "FinnhubProvider",

@@ -1,0 +1,9 @@
+Tabelle 1: Data-Engineer Validierungs-Matrix (Python-Logik);;;
+;;;
+Validierungs-Check;Beschreibung & Logik;Kritikalität;Handlung bei Fehler
+Timestamp Continuity;Prüfung auf fehlende Kerzen (Gaps). if Time(t) - Time(t-1)!= Interval;Hoch;Data Stitching: Lücken via REST-API nachladen oder linear interpolieren (bei <3 fehlenden Kerzen).
+Negative Price Check;Preise müssen > 0 sein. if Low <= 0;Kritisch;Datenpunkt verwerfen, System-Alert an Data Engineer.
+High/Low Inversion;Das Hoch darf nicht tiefer als das Tief sein. if High < Low;Kritisch;"Swap High/Low Werte, Markierung als ""Bad Tick""."
+Outlier Detection (Z-Score);Identifikation statistisch unmöglicher Bewegungen. Z = (Price - Mean) / StdDev. Grenzwert: Z > 4.7;Mittel;Ersetzung des Wertes durch den Median der letzten 5 Perioden (Winsorizing), um Indikatoren zu glätten..8
+Volume/Price Divergence;Preisbewegung ohne Volumen (häufig bei Datenfeed-Fehlern). if DeltaPrice > ATR(14)*2 AND Vol < AvgVol(20)*0.1;Mittel;"Flag ""Low Reliability"". Kein Trade-Trigger auf dieser Kerze."
+Stationaritäts-Prüfung;Prüfung auf Stationarität der Zeitreihe (ADF-Test) für ML-Modelle..9;Niedrig (Pre-Calc);Transformation der Daten (Differenzierung oder Log-Returns), falls Test fehlschlägt.

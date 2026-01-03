@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtCore import QSettings
 
 # Import AnalysisWorker here to avoid NameError
 from .chart_chat_worker import AnalysisWorker
@@ -336,6 +337,27 @@ class ChartChatActionsMixin:
 
         # Track changes for save button state
         has_changes = [False]
+        settings = QSettings("OrderPilot", "TradingApp")
+        default_color_rules = {
+            "stop": "#ef5350",
+            "take profit": "#26a69a",
+            "target": "#26a69a",
+            "tp": "#26a69a",
+            "support": "#2ca8b1",
+            "demand": "#2ca8b1",
+            "resistance": "#f39c12",
+            "supply": "#f39c12",
+            "entry long": "#0d6efd",
+            "entry short": "#c2185b",
+            "sma": "#9e9e9e",
+            "ema": "#9e9e9e",
+            "vwap": "#9e9e9e",
+        }
+        stored = settings.value("eval_color_rules", None)
+        if isinstance(stored, dict):
+            color_rules = {**default_color_rules, **stored}
+        else:
+            color_rules = default_color_rules.copy()
 
         def mark_changed():
             """Mark table as changed."""
@@ -390,6 +412,60 @@ class ChartChatActionsMixin:
             """Enable save button when changes are made."""
             mark_changed()
             save_btn.setDisabled(False)
+
+        def auto_assign_colors():
+            """Assign standard colors based on label keywords."""
+            def pick_color(label: str) -> str:
+                lbl = label.lower()
+                for key, clr in color_rules.items():
+                    if key in lbl:
+                        return clr
+                # fallback: alternate palette to avoid transparent default
+                fallback_palette = ["#7e57c2", "#ffca28", "#00897b", "#5c6bc0"]
+                return fallback_palette[hash(lbl) % len(fallback_palette)]
+
+            for r in range(table.rowCount()):
+                label_item = table.item(r, 0)
+                if not label_item:
+                    continue
+                color = pick_color(label_item.text())
+                _apply_color(r, color)
+            mark_changed()
+            save_btn.setDisabled(False)
+
+        def open_palette_dialog():
+            dlg_pal = QDialog(dlg)
+            dlg_pal.setWindowTitle("Farben zuordnen")
+            layout = QVBoxLayout(dlg_pal)
+
+            buttons = {}
+            for key, clr in color_rules.items():
+                row_layout = QHBoxLayout()
+                lbl = QLabel(key)
+                btn = QPushButton(" ")
+                btn.setFixedWidth(32)
+                btn.setStyleSheet(f"background:{clr};")
+                def make_handler(k, b):
+                    def handler():
+                        chosen = QColorDialog.getColor(QColor(color_rules[k]), dlg_pal, f"Farbe für {k}")
+                        if chosen.isValid():
+                            color_rules[k] = chosen.name()
+                            b.setStyleSheet(f"background:{chosen.name()};")
+                    return handler
+                btn.clicked.connect(make_handler(key, btn))
+                row_layout.addWidget(lbl)
+                row_layout.addStretch()
+                row_layout.addWidget(btn)
+                layout.addLayout(row_layout)
+
+            apply_btn = QPushButton("Übernehmen")
+            def save_and_close():
+                settings.setValue("eval_color_rules", color_rules)
+                settings.sync()
+                dlg_pal.accept()
+            apply_btn.clicked.connect(save_and_close)
+            layout.addWidget(apply_btn)
+            dlg_pal.exec()
 
         def save_entries():
             new_entries = []
@@ -512,6 +588,11 @@ class ChartChatActionsMixin:
         save_btn = QPushButton("Speichern", dlg)
         save_btn.setDisabled(True)  # Initially disabled until changes are made
         save_btn.clicked.connect(save_entries)
+        auto_color_btn = QPushButton("Farben setzen", dlg)
+        auto_color_btn.clicked.connect(auto_assign_colors)
+        palette_btn = QPushButton("🎨", dlg)
+        palette_btn.setToolTip("Farbregeln bearbeiten")
+        palette_btn.clicked.connect(open_palette_dialog)
         draw_btn = QPushButton("In Chart zeichnen", dlg)
         draw_btn.clicked.connect(draw_selected)
         del_btn = QPushButton("Löschen", dlg)
@@ -551,6 +632,8 @@ class ChartChatActionsMixin:
         btn_row.addWidget(draw_btn)
         btn_row.addWidget(del_btn)
         btn_row.addWidget(clear_btn)
+        btn_row.addWidget(auto_color_btn)  # nach "Leeren"
+        btn_row.addWidget(palette_btn)
         btn_row.addStretch()
         btn_row.addWidget(close_btn)
         dlg_layout.addLayout(btn_row)
