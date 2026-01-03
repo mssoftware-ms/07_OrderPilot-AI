@@ -6,6 +6,7 @@ break unrelated dialogs like the Pattern Database manager.
 
 AIBacktestDialog = None
 BacktestDialog = None
+ChartMarkingsManagerDialog = None
 LayoutManagerDialog = None
 OrderDialog = None
 ParameterOptimizationDialog = None
@@ -20,6 +21,11 @@ except Exception:
 
 try:
     from .backtest_dialog import BacktestDialog  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from .chart_markings_manager_dialog import ChartMarkingsManagerDialog  # noqa: F401
 except Exception:
     pass
 
@@ -56,6 +62,7 @@ except Exception:
 __all__ = [
     "AIBacktestDialog",
     "BacktestDialog",
+    "ChartMarkingsManagerDialog",
     "LayoutManagerDialog",
     "OrderDialog",
     "ParameterOptimizationDialog",

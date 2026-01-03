@@ -52,6 +52,10 @@ class BitunixTradingMixin:
             from src.ui.widgets.bitunix_trading.bitunix_trading_widget import BitunixTradingWidget
 
             logger.info("Setting up Bitunix trading...")
+            logger.info(
+                "Bitunix setup: chart_widget has bitunix_trading_button=%s",
+                hasattr(chart_widget, "bitunix_trading_button"),
+            )
 
             # Get or create adapter
             adapter = self._resolve_bitunix_adapter(adapter)
@@ -74,6 +78,12 @@ class BitunixTradingMixin:
 
             # Connect chart change signal if available
             self._connect_bitunix_chart_signals(chart_widget)
+
+            # Also refresh visibility after data load (captures provider changes)
+            if hasattr(chart_widget, "data_loaded"):
+                chart_widget.data_loaded.connect(
+                    lambda: self._update_bitunix_button_visibility(chart_widget)
+                )
 
             # Perform initial button visibility check
             self._update_bitunix_button_visibility(chart_widget)
@@ -210,11 +220,15 @@ class BitunixTradingMixin:
         Returns:
             Asset class (CRYPTO or STOCK)
         """
-        # Simple heuristic: if symbol ends with USDT, USDC, USD, etc., it's crypto
+        # Recognize common crypto notations used across the app
+        # TradingView-style pairs include a slash (e.g., BTC/USD)
+        if "/" in symbol:
+            return AssetClass.CRYPTO
+
+        # Bitunix/Alpaca-style tickers without slash but with quote suffix
         crypto_suffixes = ["USDT", "USDC", "USD", "BTC", "ETH"]
-        for suffix in crypto_suffixes:
-            if symbol.endswith(suffix):
-                return AssetClass.CRYPTO
+        if any(symbol.endswith(suffix) for suffix in crypto_suffixes):
+            return AssetClass.CRYPTO
 
         return AssetClass.STOCK
 
@@ -239,22 +253,23 @@ class BitunixTradingMixin:
         if not hasattr(chart_widget, "current_symbol"):
             return
 
-        symbol = chart_widget.current_symbol
+        symbol = str(chart_widget.current_symbol or "").upper()
+        provider = getattr(chart_widget, "current_data_provider", None)
         asset_class = self._get_symbol_asset_class(symbol)
 
-        # Only show button and update widget for crypto symbols
-        if asset_class == AssetClass.CRYPTO:
-            if self._bitunix_widget:
-                self._bitunix_widget.set_symbol(symbol)
-                logger.info(f"Bitunix widget symbol updated to: {symbol}")
+        # Always show the Bitunix control, regardless of provider/symbol.
+        if self._bitunix_widget:
+            self._bitunix_widget.set_symbol(symbol)
+            logger.info(f"Bitunix widget symbol updated to: {symbol}")
 
-            # Show button for crypto
-            if hasattr(chart_widget, "bitunix_trading_button"):
-                chart_widget.bitunix_trading_button.setVisible(True)
-        else:
-            # Hide button for non-crypto
-            if hasattr(chart_widget, "bitunix_trading_button"):
-                chart_widget.bitunix_trading_button.setVisible(False)
+        if hasattr(chart_widget, "bitunix_trading_button"):
+            chart_widget.bitunix_trading_button.setVisible(True)
+            logger.info(
+                "Bitunix button forced visible | symbol=%s provider=%s asset_class=%s",
+                symbol,
+                provider,
+                asset_class,
+            )
 
     def toggle_bitunix_widget(self) -> None:
         """Toggle visibility of the Bitunix trading widget."""

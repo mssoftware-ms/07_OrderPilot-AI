@@ -204,6 +204,41 @@ class StructureMarkerManager:
         logger.debug(f"Cleared {len(to_remove)} {break_type.value} markers")
         return len(to_remove)
 
+    def set_locked(self, marker_id: str, is_locked: bool) -> bool:
+        """Set structure marker lock status.
+
+        Args:
+            marker_id: Marker ID
+            is_locked: Whether marker is locked
+
+        Returns:
+            True if updated, False if not found
+        """
+        marker = self._markers.get(marker_id)
+        if not marker:
+            return False
+
+        marker.is_locked = is_locked
+        logger.debug(f"Structure marker {marker_id} locked={is_locked}")
+        return True
+
+    def toggle_locked(self, marker_id: str) -> bool | None:
+        """Toggle structure marker lock status.
+
+        Args:
+            marker_id: Marker ID
+
+        Returns:
+            New lock state, or None if marker not found
+        """
+        marker = self._markers.get(marker_id)
+        if not marker:
+            return None
+
+        marker.is_locked = not marker.is_locked
+        logger.debug(f"Structure marker {marker_id} toggled to {'locked' if marker.is_locked else 'unlocked'}")
+        return marker.is_locked
+
     def get(self, marker_id: str) -> Optional[StructureBreakMarker]:
         """Get a marker by ID."""
         return self._markers.get(marker_id)

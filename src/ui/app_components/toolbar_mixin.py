@@ -233,6 +233,13 @@ class ToolbarMixin:
             if alpaca_available and "alpaca" not in filtered_sources:
                 filtered_sources.append("alpaca")
 
+            # Preserve current selection to avoid unwanted resets
+            previous_index = self.data_provider_combo.currentIndex() if self.data_provider_combo.count() else -1
+            previous_key = self.data_provider_combo.itemData(previous_index) if previous_index >= 0 else None
+            previous_text = self.data_provider_combo.currentText() if previous_index >= 0 else None
+
+            # Avoid emitting change signals while rebuilding the list
+            self.data_provider_combo.blockSignals(True)
             self.data_provider_combo.clear()
 
             # Add "Auto" option
@@ -242,6 +249,7 @@ class ToolbarMixin:
                 "database": "Database (Cache)",
                 "ibkr": "Interactive Brokers",
                 "alpaca": "Alpaca (Stocks & Crypto)",
+                "bitunix": "Bitunix Futures",
                 "alpha_vantage": "Alpha Vantage",
                 "finnhub": "Finnhub",
                 "yahoo": "Yahoo Finance"
@@ -280,11 +288,43 @@ class ToolbarMixin:
                 self.data_provider_combo.addItem("Yahoo Finance", "yahoo")
                 logger.info("Registered Yahoo Finance provider")
 
-            # Load saved preference
-            saved_provider = self.settings.value("market_data_provider", "Auto (Priority Order)")
-            index = self.data_provider_combo.findText(saved_provider)
-            if index >= 0:
-                self.data_provider_combo.setCurrentIndex(index)
+            # Load saved preference (key preferred, fallback to text)
+            saved_key_raw = self.settings.value("market_data_provider_key", None)
+            saved_text = self.settings.value("market_data_provider", "Auto (Priority Order)")
+            saved_key = str(saved_key_raw) if saved_key_raw not in (None, "") else None
+
+            def _set_by_key(key):
+                if key is None:
+                    return False
+                for i in range(self.data_provider_combo.count()):
+                    if self.data_provider_combo.itemData(i) == key:
+                        self.data_provider_combo.setCurrentIndex(i)
+                        return True
+                return False
+
+            target_set = False
+
+            # 1) Saved key from settings
+            if _set_by_key(saved_key):
+                target_set = True
+
+            # 2) Saved text from settings
+            if not target_set:
+                idx = self.data_provider_combo.findText(saved_text)
+                if idx >= 0:
+                    self.data_provider_combo.setCurrentIndex(idx)
+                    target_set = True
+
+            # 3) Previous selection (runtime) if still available
+            if not target_set and _set_by_key(previous_key):
+                target_set = True
+
+            # 4) Fallback: Auto
+            if not target_set and self.data_provider_combo.count() > 0:
+                self.data_provider_combo.setCurrentIndex(0)
+
+            # Re-enable signals after rebuild
+            self.data_provider_combo.blockSignals(False)
 
             logger.info(f"Available market data providers: {filtered_sources}")
 
@@ -312,6 +352,7 @@ class ToolbarMixin:
             # Persist selection for next start
             if hasattr(self, "settings"):
                 self.settings.setValue("market_data_provider", self.data_provider_combo.currentText())
+                self.settings.setValue("market_data_provider_key", provider_key)
 
             logger.info(f"Selected market data provider: {provider_key}")
 

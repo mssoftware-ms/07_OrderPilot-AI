@@ -269,6 +269,41 @@ class StopLossLineManager:
         if self._on_update:
             self._on_update()
 
+    def set_locked(self, line_id: str, is_locked: bool) -> bool:
+        """Set stop-loss line lock status.
+
+        Args:
+            line_id: Line ID
+            is_locked: Whether line is locked
+
+        Returns:
+            True if updated, False if not found
+        """
+        line = self._lines.get(line_id)
+        if not line:
+            return False
+
+        line.is_locked = is_locked
+        logger.debug(f"SL line {line_id} locked={is_locked}")
+        return True
+
+    def toggle_locked(self, line_id: str) -> bool | None:
+        """Toggle stop-loss line lock status.
+
+        Args:
+            line_id: Line ID
+
+        Returns:
+            New lock state, or None if line not found
+        """
+        line = self._lines.get(line_id)
+        if not line:
+            return None
+
+        line.is_locked = not line.is_locked
+        logger.debug(f"SL line {line_id} toggled to {'locked' if line.is_locked else 'unlocked'}")
+        return line.is_locked
+
     def get(self, line_id: str) -> Optional[StopLossLine]:
         """Get a line by ID."""
         return self._lines.get(line_id)

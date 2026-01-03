@@ -53,13 +53,27 @@ class AppLifecycleMixin:
     async def initialize_services(self) -> None:
         """Initialize background services (AI, etc.)."""
         try:
-            self.ai_service = get_openai_service()
-            if self.ai_service:
-                if hasattr(self, "ai_status"):
-                    self.ai_status.setText("AI: Ready")
-            else:
+            profile = config_manager.load_profile()
+            ai_config = getattr(profile, "ai", None)
+            api_key = config_manager.get_credential("openai_api_key")
+
+            if not ai_config or not getattr(ai_config, "enabled", True):
+                self.ai_service = None
                 if hasattr(self, "ai_status"):
                     self.ai_status.setText("AI: Disabled")
+                return
+
+            if not api_key:
+                logger.warning("OpenAI API key not configured; AI service disabled")
+                self.ai_service = None
+                if hasattr(self, "ai_status"):
+                    self.ai_status.setText("AI: Missing Key")
+                return
+
+            # get_openai_service is async
+            self.ai_service = await get_openai_service(ai_config, api_key)
+            if hasattr(self, "ai_status"):
+                self.ai_status.setText("AI: Ready")
         except Exception as e:
             logger.error(f"Failed to initialize AI service: {e}", exc_info=True)
             if hasattr(self, "ai_status"):

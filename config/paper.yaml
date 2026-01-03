@@ -88,7 +88,9 @@ features:
   trade_republic_enabled: false
 market_data:
   alpaca_enabled: true
-  alpha_vantage_enabled: true
+  alpha_vantage_enabled: false
+  bitunix_enabled: true
+  bitunix_testnet: true
   finnhub_enabled: true
   prefer_live_broker: true
   yahoo_enabled: true

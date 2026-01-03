@@ -7,6 +7,7 @@ import json
 import logging
 
 import pandas as pd
+from dataclasses import dataclass
 from PyQt6.QtGui import QAction
 
 from src.core.indicators.engine import IndicatorConfig, IndicatorType
@@ -22,6 +23,18 @@ def _ts_to_local_unix(ts) -> int:
 
 class IndicatorMixin:
     """Mixin providing indicator functionality for EmbeddedTradingViewChart."""
+
+    @dataclass
+    class IndicatorInstance:
+        instance_id: str
+        ind_id: str
+        ind_type: IndicatorType
+        params: dict
+        display_name: str
+        is_overlay: bool
+        color: str
+        min_val: float | None
+        max_val: float | None
 
     def _get_indicator_configs(self):
         """Get indicator configuration dictionaries.
@@ -46,6 +59,94 @@ class IndicatorMixin:
         }
 
         return overlay_configs, oscillator_configs
+
+    # --- Instance management (multi-add) ---------------------------------
+
+    def _add_indicator_instance(self, ind_id: str, params: dict, color: str) -> None:
+        """Create a new indicator instance (may be multiple per type)."""
+        overlay_configs, oscillator_configs = self._get_indicator_configs()
+
+        is_overlay = ind_id in overlay_configs
+        is_oscillator = ind_id in oscillator_configs
+        if not (is_overlay or is_oscillator):
+            logger.warning("Indicator %s not implemented", ind_id)
+            return
+
+        if is_overlay:
+            ind_type, default_params, base_display, _, _ = overlay_configs[ind_id]
+        else:
+            ind_type, default_params, base_display, min_val, max_val = oscillator_configs[ind_id]
+
+        # merge params over defaults
+        merged_params = dict(default_params or {})
+        merged_params.update(params or {})
+
+        self._indicator_counter += 1
+        instance_id = f"{ind_id}_{self._indicator_counter}"
+        display_name = f"{base_display} #{self._indicator_counter}"
+
+        inst = self.IndicatorInstance(
+            instance_id=instance_id,
+            ind_id=ind_id,
+            ind_type=ind_type,
+            params=merged_params,
+            display_name=display_name,
+            is_overlay=is_overlay,
+            color=color,
+            min_val=None if is_overlay else min_val,
+            max_val=None if is_overlay else max_val,
+        )
+
+        self.active_indicators[instance_id] = inst
+        # If data not yet loaded or chart not ready, queue instance
+        if self.data is None or not (self.page_loaded and self.chart_initialized):
+            self._pending_indicator_instances.append(inst)
+            logger.info("Queued indicator %s until chart is ready", display_name)
+        else:
+            self._add_indicator_instance_to_chart(inst)
+        self._update_indicators_button_badge()
+        if hasattr(self, "_refresh_active_indicator_menu"):
+            self._refresh_active_indicator_menu()
+
+    def _remove_indicator_instance(self, instance_id: str) -> None:
+        inst = self.active_indicators.get(instance_id)
+        if not inst:
+            return
+        try:
+            self._remove_indicator_from_chart(
+                inst.instance_id,
+                inst.display_name,
+                inst.is_overlay,
+            )
+        finally:
+            self.active_indicators.pop(instance_id, None)
+            self._update_indicators_button_badge()
+            if hasattr(self, "_refresh_active_indicator_menu"):
+                self._refresh_active_indicator_menu()
+
+    def _add_indicator_instance_to_chart(self, inst: IndicatorInstance) -> None:
+        """Calculate + render a specific instance."""
+        try:
+            if self.data is None:
+                logger.warning("No data yet, cannot add indicator %s", inst.display_name)
+                return
+            config = IndicatorConfig(indicator_type=inst.ind_type, params=inst.params)
+            result = self.indicator_engine.calculate(self.data, config)
+            ind_data = self._convert_indicator_result(inst.ind_id, result)
+
+            should_create = inst.instance_id not in self.active_indicators or inst.is_overlay and inst.display_name not in self.active_indicators
+            if inst.is_overlay:
+                self._create_overlay_indicator(inst.display_name, inst.color)
+            else:
+                self._create_oscillator_panel(inst.instance_id, inst.display_name, inst.color, inst.min_val, inst.max_val)
+
+            if inst.is_overlay:
+                self._update_overlay_data(inst.display_name, ind_data)
+            else:
+                self._update_oscillator_data(inst.instance_id, ind_data)
+
+        except Exception as ind_error:
+            logger.error("Error creating indicator %s: %s", inst.ind_id, ind_error, exc_info=True)
 
     def _convert_macd_data_to_chart_format(self, result):
         """Convert MACD indicator result to chart format.
@@ -164,19 +265,17 @@ class IndicatorMixin:
         """
         self._execute_js(f"window.chartAPI.addIndicator('{display_name}', '{color}');")
 
-    def _create_oscillator_panel(self, ind_id, display_name, color, min_val, max_val):
+    def _create_oscillator_panel(self, panel_id, display_name, color, min_val, max_val):
         """Create oscillator panel with indicator-specific reference lines.
 
         Args:
-            ind_id: Indicator ID string
+            panel_id: Unique panel ID (instance-based)
             display_name: Display name for the panel
             color: Color string for the indicator
             min_val: Minimum value for y-axis (or None)
             max_val: Maximum value for y-axis (or None)
         """
-        panel_id = ind_id.lower()
-
-        if ind_id == "MACD":
+        if panel_id.upper().startswith("MACD"):
             # MACD: Create panel with histogram
             logger.info(f"  📊 Creating MACD panel with ID '{panel_id}'")
             self._execute_js(
@@ -193,25 +292,26 @@ class IndicatorMixin:
             self._execute_js(
                 f"window.chartAPI.createPanel('{panel_id}', '{display_name}', 'line', '{color}', {js_min}, {js_max});"
             )
-            self._add_oscillator_reference_lines(ind_id, panel_id)
+            self._add_oscillator_reference_lines(display_name, panel_id)
 
         logger.info(f"Created panel for {ind_id}")
 
-    def _add_oscillator_reference_lines(self, ind_id, panel_id):
+    def _add_oscillator_reference_lines(self, ind_display_name, panel_id):
         """Add indicator-specific reference lines to oscillator panel.
 
         Args:
-            ind_id: Indicator ID string
+            ind_display_name: Display name (contains type)
             panel_id: Panel ID string
         """
-        if ind_id == "RSI":
+        base = ind_display_name.split("(")[0]
+        if base == "RSI":
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 30, '#FF0000', 'dashed', 'Oversold');")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 70, '#00FF00', 'dashed', 'Overbought');")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 50, '#888888', 'dotted', 'Neutral');")
-        elif ind_id == "STOCH":
+        elif base == "STOCH":
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 20, '#FF0000', 'dashed', 'Oversold');")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 80, '#00FF00', 'dashed', 'Overbought');")
-        elif ind_id == "CCI":
+        elif base == "CCI":
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', -100, '#FF0000', 'dashed', '-100');")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 100, '#00FF00', 'dashed', '+100');")
             self._execute_js(f"window.chartAPI.addPanelPriceLine('{panel_id}', 0, '#888888', 'dotted', '0');")
@@ -226,16 +326,16 @@ class IndicatorMixin:
         ind_json = json.dumps(ind_data)
         self._execute_js(f"window.chartAPI.setIndicatorData('{display_name}', {ind_json});")
 
-    def _update_oscillator_data(self, ind_id, ind_data):
+    def _update_oscillator_data(self, panel_id, ind_data):
         """Update oscillator panel data.
 
         Args:
-            ind_id: Indicator ID string
+            panel_id: Panel identifier (instance-based)
             ind_data: Either list of time/value dicts or dict with multiple series
         """
-        panel_id = ind_id.lower()
+        panel_id = panel_id.lower()
 
-        if isinstance(ind_data, dict) and ind_id == "MACD":
+        if isinstance(ind_data, dict) and panel_id.startswith("macd"):
             # MACD: Set data for all 3 series
             macd_json = json.dumps(ind_data['macd'])
             signal_json = json.dumps(ind_data['signal'])
@@ -251,20 +351,20 @@ class IndicatorMixin:
             ind_json = json.dumps(ind_data)
             self._execute_js(f"window.chartAPI.setPanelData('{panel_id}', {ind_json});")
 
-    def _remove_indicator_from_chart(self, ind_id, display_name, is_overlay):
+    def _remove_indicator_from_chart(self, panel_or_id, display_name, is_overlay):
         """Remove indicator from chart.
 
         Args:
-            ind_id: Indicator ID string
+            panel_or_id: Panel/indicator identifier (instance-based)
             display_name: Display name of the indicator
             is_overlay: True if overlay indicator, False if oscillator
         """
         if is_overlay:
             self._execute_js(f"window.chartAPI.removeIndicator('{display_name}');")
         else:
-            panel_id = ind_id.lower()
+            panel_id = panel_or_id.lower()
             self._execute_js(f"window.chartAPI.removePanel('{panel_id}');")
-            logger.info(f"Removed panel for {ind_id}")
+            logger.info(f"Removed panel {panel_id}")
 
     def _update_indicators(self):
         """Update technical indicators on chart."""
@@ -281,13 +381,16 @@ class IndicatorMixin:
 
         try:
             self._updating_indicators = True
-            overlay_configs, oscillator_configs = self._get_indicator_configs()
+            # First apply any pending instances queued before data was ready
+            if hasattr(self, "_pending_indicator_instances") and self._pending_indicator_instances:
+                pending = list(self._pending_indicator_instances)
+                self._pending_indicator_instances.clear()
+                for inst in pending:
+                    self._add_indicator_instance_to_chart(inst)
 
-            # Process each indicator
-            for ind_id, action in self.indicator_actions.items():
-                self._process_indicator_action(
-                    ind_id, action, overlay_configs, oscillator_configs
-                )
+            for inst in list(self.active_indicators.values()):
+                self._add_indicator_instance_to_chart(inst)
+            self._update_indicators_button_badge()
 
         except Exception as e:
             logger.error(f"Error updating indicators: {e}", exc_info=True)
@@ -349,7 +452,6 @@ class IndicatorMixin:
             )
 
     def _add_or_update_indicator(
-        self,
         ind_id,
         ind_type,
         params,
@@ -413,30 +515,8 @@ class IndicatorMixin:
             self._update_realtime_row(new_row)
 
             # Get indicator configs
-            overlay_configs, oscillator_configs = self._get_indicator_configs()
-
-            # Update each active indicator
-            for ind_id in self.active_indicators:
-                # Determine if overlay or oscillator
-                is_overlay = ind_id in overlay_configs
-                is_oscillator = ind_id in oscillator_configs
-
-                if not is_overlay and not is_oscillator:
-                    continue
-
-                # Get configuration
-                if is_overlay:
-                    ind_type, params, display_name, _, _ = overlay_configs[ind_id]
-                else:
-                    ind_type, params, display_name, min_val, max_val = oscillator_configs[ind_id]
-
-                self._update_indicator_realtime(
-                    ind_id,
-                    is_overlay,
-                    ind_type,
-                    params,
-                    display_name,
-                )
+            for inst in self.active_indicators.values():
+                self._update_indicator_realtime(inst)
 
         except Exception as e:
             logger.error(f"Error updating indicators in real-time: {e}", exc_info=True)
@@ -467,28 +547,21 @@ class IndicatorMixin:
         else:
             self.data = pd.concat([self.data, new_row])
 
-    def _update_indicator_realtime(
-        self,
-        ind_id: str,
-        is_overlay: bool,
-        ind_type: IndicatorType,
-        params: dict,
-        display_name: str,
-    ) -> None:
-        config = IndicatorConfig(indicator_type=ind_type, params=params)
+    def _update_indicator_realtime(self, inst: IndicatorInstance) -> None:
+        config = IndicatorConfig(indicator_type=inst.ind_type, params=inst.params)
         result = self.indicator_engine.calculate(self.data, config)
         if isinstance(result.values, pd.DataFrame):
-            if ind_id == "MACD":
-                self._update_macd_realtime(ind_id, result)
+            if inst.ind_id == "MACD":
+                self._update_macd_realtime(inst.instance_id, result)
             else:
-                self._update_multi_series_realtime(ind_id, is_overlay, display_name, result)
+                self._update_multi_series_realtime(inst.instance_id, inst.is_overlay, inst.display_name, result)
         else:
-            self._update_single_series_realtime(ind_id, is_overlay, display_name, result)
+            self._update_single_series_realtime(inst.instance_id, inst.is_overlay, inst.display_name, result)
 
-    def _update_macd_realtime(self, ind_id: str, result) -> None:
+    def _update_macd_realtime(self, instance_id: str, result) -> None:
         last_idx = result.values.index[-1]
         time_unix = _ts_to_local_unix(last_idx)
-        panel_id = ind_id.lower()
+        panel_id = instance_id.lower()
         col_names = result.values.columns.tolist()
         macd_col = signal_col = hist_col = None
         for col in col_names:
@@ -523,7 +596,7 @@ class IndicatorMixin:
                 f"window.chartAPI.updatePanelSeriesData('{panel_id}', 'signal', {signal_point});"
             )
 
-    def _update_multi_series_realtime(self, ind_id: str, is_overlay: bool, display_name: str, result) -> None:
+    def _update_multi_series_realtime(self, instance_id: str, is_overlay: bool, display_name: str, result) -> None:
         last_idx = result.values.index[-1]
         time_unix = _ts_to_local_unix(last_idx)
         main_val = float(result.values.iloc[-1, 0])
@@ -532,10 +605,10 @@ class IndicatorMixin:
         if is_overlay:
             self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
         else:
-            panel_id = ind_id.lower()
+            panel_id = instance_id.lower()
             self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
 
-    def _update_single_series_realtime(self, ind_id: str, is_overlay: bool, display_name: str, result) -> None:
+    def _update_single_series_realtime(self, instance_id: str, is_overlay: bool, display_name: str, result) -> None:
         last_idx = result.values.index[-1]
         value = float(result.values.iloc[-1])
         time_unix = _ts_to_local_unix(last_idx)
@@ -544,12 +617,12 @@ class IndicatorMixin:
         if is_overlay:
             self._execute_js(f"window.chartAPI.updateIndicator('{display_name}', {point});")
         else:
-            panel_id = ind_id.lower()
+            panel_id = instance_id.lower()
             self._execute_js(f"window.chartAPI.updatePanelData('{panel_id}', {point});")
 
     def _update_indicators_button_badge(self):
         """Update indicators button to show count of active indicators."""
-        active_count = sum(1 for action in self.indicator_actions.values() if action.isChecked())
+        active_count = len(getattr(self, "active_indicators", {}))
 
         if active_count > 0:
             self.indicators_button.setText(f"📊 Indikatoren ({active_count})")

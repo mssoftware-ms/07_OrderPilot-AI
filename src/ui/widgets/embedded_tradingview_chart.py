@@ -100,9 +100,11 @@ class EmbeddedTradingViewChart(
         self.current_data_provider: Optional[str] = None
         self.data: Optional[pd.DataFrame] = None
         self.volume_data: list = []
-        self.active_indicators: Dict[str, bool] = {}
+        self.active_indicators: Dict[str, dict] = {}
         self.active_indicator_params: Dict[str, dict] = {}
         self.live_streaming_enabled = False
+        self._indicator_counter = 0
+        self._pending_indicator_instances: list = []
 
         # State restoration queue
         self._pending_state_restoration = None

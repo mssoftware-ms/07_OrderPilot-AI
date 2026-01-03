@@ -26,8 +26,9 @@ class ZonePrimitive {
      * @param {string} fillColor - Fill color (rgba)
      * @param {string} borderColor - Border color (solid)
      * @param {string} label - Optional label text
+     * @param {boolean} isLocked - Whether zone is locked (prevent editing)
      */
-    constructor(id, startTime, endTime, topPrice, bottomPrice, fillColor, borderColor, label) {
+    constructor(id, startTime, endTime, topPrice, bottomPrice, fillColor, borderColor, label, isLocked) {
         this.id = id;
         this.startTime = startTime;
         this.endTime = endTime;
@@ -36,6 +37,7 @@ class ZonePrimitive {
         this.fillColor = fillColor;
         this.borderColor = borderColor;
         this.label = label || '';
+        this.isLocked = isLocked || false;
         this._paneViews = [new ZonePaneView(this)];
     }
 
@@ -115,7 +117,8 @@ class ZonePaneView {
             height: Math.abs(y2 - y1),
             fillColor: source.fillColor,
             borderColor: source.borderColor,
-            label: source.label
+            label: source.label,
+            isLocked: source.isLocked
         });
     }
 
@@ -145,7 +148,7 @@ class ZoneRenderer {
             return;
         }
 
-        const { x, y, width, height, fillColor, borderColor, label } = this._data;
+        const { x, y, width, height, fillColor, borderColor, label, isLocked } = this._data;
 
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
@@ -169,6 +172,15 @@ class ZoneRenderer {
                 ctx.font = `${Math.round(11 * scope.verticalPixelRatio)}px sans-serif`;
                 ctx.textBaseline = 'top';
                 ctx.fillText(label, scaledX + 4, scaledY + 4);
+            }
+
+            // Draw lock icon if locked
+            if (isLocked) {
+                ctx.fillStyle = borderColor;
+                ctx.font = `${Math.round(16 * scope.verticalPixelRatio)}px sans-serif`;
+                ctx.textBaseline = 'top';
+                // Draw lock icon (🔒) in top-right corner
+                ctx.fillText('🔒', scaledX + scaledWidth - 25, scaledY + 4);
             }
         });
     }

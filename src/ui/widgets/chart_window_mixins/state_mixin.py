@@ -74,19 +74,19 @@ class StateMixin:
                 if index >= 0:
                     self.chart_widget.period_combo.setCurrentIndex(index)
 
-        if hasattr(self.chart_widget, 'indicator_actions'):
-            active_indicators = self._safe_settings_value(f"{settings_key}/indicators")
-            if active_indicators and isinstance(active_indicators, list):
-                logger.info(f"Pre-setting {len(active_indicators)} indicators as checked")
-                for indicator_id in active_indicators:
-                    if indicator_id in self.chart_widget.indicator_actions:
-                        action = self.chart_widget.indicator_actions[indicator_id]
-                        action.setChecked(True)
-
-        indicator_params = self._safe_settings_value(f"{settings_key}/indicator_params")
-        if indicator_params and isinstance(indicator_params, dict):
-            if hasattr(self.chart_widget, 'active_indicator_params'):
-                self.chart_widget.active_indicator_params = indicator_params
+        if hasattr(self.chart_widget, '_add_indicator_instance'):
+            instances = self._safe_settings_value(f"{settings_key}/indicator_instances")
+            if instances and isinstance(instances, list):
+                logger.info(f"Restoring {len(instances)} indicator instances")
+                for inst in instances:
+                    try:
+                        self.chart_widget._add_indicator_instance(
+                            inst.get("ind_id"),
+                            inst.get("params", {}),
+                            inst.get("color", "#FFA500"),
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to restore indicator {inst}: {e}")
 
         logger.debug(f"Loaded window state for {self.symbol}")
 
@@ -110,16 +110,15 @@ class StateMixin:
         if hasattr(self.chart_widget, 'current_period'):
             self.settings.setValue(f"{settings_key}/period", self.chart_widget.current_period)
 
-        if hasattr(self.chart_widget, 'indicator_actions'):
-            active_indicators = [
-                ind_id for ind_id, action in self.chart_widget.indicator_actions.items()
-                if action.isChecked()
-            ]
-            self.settings.setValue(f"{settings_key}/indicators", active_indicators)
-
-        if hasattr(self.chart_widget, 'active_indicator_params'):
-            self.settings.setValue(f"{settings_key}/indicator_params",
-                                 self.chart_widget.active_indicator_params)
+        if hasattr(self.chart_widget, 'active_indicators'):
+            instances = []
+            for inst in self.chart_widget.active_indicators.values():
+                instances.append({
+                    "ind_id": inst.ind_id,
+                    "params": inst.params,
+                    "color": inst.color,
+                })
+            self.settings.setValue(f"{settings_key}/indicator_instances", instances)
 
         logger.debug(f"Saved window state for {self.symbol}")
 
@@ -285,41 +284,24 @@ class StateMixin:
     def _restore_indicators_now(self, settings_key):
         """Restore indicators."""
         try:
-            active_indicators = self.settings.value(f"{settings_key}/indicators")
-            if not active_indicators or not isinstance(active_indicators, list):
+            active_instances = self.settings.value(f"{settings_key}/indicator_instances")
+            if not active_instances or not isinstance(active_instances, list):
                 logger.debug(f"No saved indicators found for {self.symbol}")
                 return
 
-            logger.info(f"Found {len(active_indicators)} saved indicators to restore")
-
-            if not hasattr(self.chart_widget, 'indicator_actions'):
-                logger.warning("Chart widget has no indicator_actions")
-                return
+            logger.info(f"Found {len(active_instances)} saved indicators to restore")
 
             restored_count = 0
-
-            for indicator_id in active_indicators:
-                if indicator_id in self.chart_widget.indicator_actions:
-                    action = self.chart_widget.indicator_actions[indicator_id]
-
-                    if not action.isChecked():
-                        logger.info(f"Setting indicator {indicator_id} as checked")
-                        action.setChecked(True)
-
-                    param_key = f"{settings_key}/indicator_params/{indicator_id}"
-                    saved_params = self.settings.value(param_key)
-                    if saved_params and hasattr(self.chart_widget, 'active_indicator_params'):
-                        try:
-                            if isinstance(saved_params, str):
-                                saved_params = json.loads(saved_params)
-                            self.chart_widget.active_indicator_params[indicator_id] = saved_params
-                        except (json.JSONDecodeError, TypeError) as e:
-                            logger.warning(f"Could not parse saved parameters for {indicator_id}: {e}")
-
-                    if hasattr(self.chart_widget, 'active_indicators'):
-                        self.chart_widget.active_indicators[indicator_id] = True
-
+            for inst in active_instances:
+                try:
+                    self.chart_widget._add_indicator_instance(
+                        inst.get("ind_id"),
+                        inst.get("params", {}),
+                        inst.get("color", "#FFA500"),
+                    )
                     restored_count += 1
+                except Exception as e:
+                    logger.warning(f"Could not restore indicator {inst}: {e}")
 
             if restored_count > 0:
                 logger.info(f"Restored {restored_count} indicators, forcing chart update")

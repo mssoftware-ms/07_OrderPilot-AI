@@ -77,6 +77,12 @@ class EmbeddedTradingViewChartUIMixin:
         self._add_lines_menu(menu)
         self._add_clear_actions(menu)
 
+        # Chart Markings Manager
+        menu.addSeparator()
+        manager_action = QAction("📋 Manage All Markings...", self)
+        manager_action.triggered.connect(self._show_markings_manager)
+        menu.addAction(manager_action)
+
         menu.exec(self.web_view.mapToGlobal(pos))
 
     def _get_zones_at_price(self):
@@ -98,17 +104,35 @@ class EmbeddedTradingViewChartUIMixin:
                 "supply": "🔴",
             }.get(zone.zone_type.value, "📊")
 
-            zone_submenu = zone_mgmt_menu.addMenu(f"{zone_type_icon} {zone_label}")
+            # Add lock indicator to submenu title
+            lock_icon = "🔒" if zone.is_locked else "🔓"
+            zone_submenu = zone_mgmt_menu.addMenu(f"{zone_type_icon} {lock_icon} {zone_label}")
+
+            # Lock/Unlock action (first position)
+            lock_action = QAction(
+                f"{'🔓 Unlock' if zone.is_locked else '🔒 Lock'} Zone",
+                self
+            )
+            lock_action.triggered.connect(lambda checked, z=zone: self._toggle_zone_lock(z))
+            zone_submenu.addAction(lock_action)
+
+            zone_submenu.addSeparator()
+
+            # Edit action (disabled if locked)
             edit_action = QAction("✏️ Edit Zone...", self)
             edit_action.triggered.connect(lambda checked, z=zone: self._edit_zone(z))
+            edit_action.setEnabled(not zone.is_locked)
             zone_submenu.addAction(edit_action)
 
+            # Extend action (disabled if locked)
             extend_action = QAction("➡️ Extend to Now", self)
             extend_action.triggered.connect(lambda checked, z=zone: self._extend_zone_to_now(z))
+            extend_action.setEnabled(not zone.is_locked)
             zone_submenu.addAction(extend_action)
 
             zone_submenu.addSeparator()
 
+            # Delete action (NOT disabled - user wants only edit/move locked, not delete)
             delete_action = QAction("🗑️ Delete Zone", self)
             delete_action.triggered.connect(lambda checked, z=zone: self._delete_zone(z))
             zone_submenu.addAction(delete_action)
@@ -236,3 +260,10 @@ class EmbeddedTradingViewChartUIMixin:
         clear_all_action = QAction("Clear Everything", self)
         clear_all_action.triggered.connect(self._clear_all_markings)
         menu.addAction(clear_all_action)
+
+    def _show_markings_manager(self):
+        """Show the Chart Markings Manager dialog."""
+        from src.ui.dialogs import ChartMarkingsManagerDialog
+
+        dialog = ChartMarkingsManagerDialog(self, self)
+        dialog.exec()

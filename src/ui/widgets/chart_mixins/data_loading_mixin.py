@@ -306,6 +306,7 @@ class DataLoadingMixin:
                 "alpha_vantage": DataSource.ALPHA_VANTAGE,
                 "ibkr": DataSource.IBKR,
                 "finnhub": DataSource.FINNHUB,
+                "bitunix": DataSource.BITUNIX,
             }
             return provider_map.get(data_provider)
 

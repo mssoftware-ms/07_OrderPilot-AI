@@ -123,29 +123,13 @@ class ToolbarMixin:
     def _add_indicators_menu(self, toolbar: QToolBar) -> None:
         toolbar.addWidget(QLabel("Indikatoren:"))
         self.indicators_button = QPushButton("📊 Indikatoren")
-        self.indicators_button.setToolTip("Wähle Indikatoren zur Anzeige")
-        self.indicators_menu = QMenu(self)
+        self.indicators_button.setToolTip("Mehrfach-Indikatoren hinzufügen/entfernen")
 
-        self.indicator_actions = {}
-        indicators = [
-            ("SMA", "SMA (Simple Moving Average)", "#FFA500"),
-            ("EMA", "EMA (Exponential Moving Average)", "#00FFFF"),
-            ("RSI", "RSI (Relative Strength Index)", "#FF00FF"),
-            ("MACD", "MACD", "#00FF00"),
-            ("BB", "Bollinger Bands", "#FFFF00"),
-            ("ATR", "ATR (Average True Range)", "#FF0000"),
-            ("STOCH", "Stochastic Oscillator", "#0000FF"),
-            ("ADX", "ADX (Average Directional Index)", "#FF6600"),
-            ("CCI", "CCI (Commodity Channel Index)", "#9933FF"),
-            ("MFI", "MFI (Money Flow Index)", "#33FF99"),
-        ]
-        for ind_id, ind_name, color in indicators:
-            action = QAction(ind_name, self)
-            action.setCheckable(True)
-            action.setData({"id": ind_id, "color": color})
-            action.triggered.connect(lambda _checked, a=action: self._on_indicator_toggled(a))
-            self.indicators_menu.addAction(action)
-            self.indicator_actions[ind_id] = action
+        self.indicators_menu = QMenu(self)
+        # Direkt Kategorien auf oberster Ebene
+        self._build_indicator_tree(self.indicators_menu)
+        self._remove_actions: list[QAction] = []
+        self._remove_section_separator = None
 
         self.indicators_button.setMenu(self.indicators_menu)
         self.indicators_button.setStyleSheet(
@@ -168,6 +152,113 @@ class ToolbarMixin:
         """
         )
         toolbar.addWidget(self.indicators_button)
+
+    def _build_indicator_tree(self, root_menu: QMenu) -> None:
+        """Create tree-like add menu with presets and custom entries."""
+        def add_action(menu, text, ind_id, params, color):
+            act = QAction(text, self)
+            act.triggered.connect(lambda _=False, i=ind_id, p=params, c=color: self._on_indicator_add(i, p, c))
+            menu.addAction(act)
+
+        # Trend
+        trend_menu = root_menu.addMenu("Trend")
+        add_action(trend_menu, "SMA (20)", "SMA", {"period": 20}, "#FFA500")
+        add_action(trend_menu, "SMA (50)", "SMA", {"period": 50}, "#FFB347")
+        add_action(trend_menu, "SMA (200)", "SMA", {"period": 200}, "#FFC87C")
+        add_action(trend_menu, "EMA (9)", "EMA", {"period": 9}, "#00CED1")
+        add_action(trend_menu, "EMA (20)", "EMA", {"period": 20}, "#00FFFF")
+        add_action(trend_menu, "EMA (50)", "EMA", {"period": 50}, "#20B2AA")
+        add_action(trend_menu, "EMA (200)", "EMA", {"period": 200}, "#4682B4")
+        # ADX with presets + custom
+        adx_menu = trend_menu.addMenu("ADX")
+        for p in (7, 14, 28):
+            add_action(adx_menu, f"ADX ({p})", "ADX", {"period": p}, "#FF6600")
+        adx_custom = QAction("ADX (Custom…)", self)
+        adx_custom.triggered.connect(lambda: self._prompt_custom_period("ADX", "#FF6600"))
+        adx_menu.addAction(adx_custom)
+
+        # Momentum
+        mom_menu = root_menu.addMenu("Momentum")
+        add_action(mom_menu, "RSI (14)", "RSI", {"period": 14}, "#FF00FF")
+        add_action(mom_menu, "STOCH (14,3)", "STOCH", {"k_period": 14, "d_period": 3}, "#0000FF")
+        add_action(mom_menu, "CCI (20)", "CCI", {"period": 20}, "#9933FF")
+        add_action(mom_menu, "MFI (14)", "MFI", {"period": 14}, "#33FF99")
+        macd_act = QAction("MACD (12,26,9)", self)
+        macd_act.triggered.connect(lambda: self._on_indicator_add("MACD", {"fast": 12, "slow": 26, "signal": 9}, "#00FF00"))
+        mom_menu.addAction(macd_act)
+
+        # Volatility
+        vol_menu = root_menu.addMenu("Volatilität")
+        add_action(vol_menu, "BB (20,2)", "BB", {"period": 20, "std": 2}, "#FFFF00")
+        add_action(vol_menu, "ATR (14)", "ATR", {"period": 14}, "#FF0000")
+
+        # Generic custom
+        custom_menu = root_menu.addMenu("Custom")
+        for ind_id, label, color in [
+            ("SMA", "Custom SMA…", "#FFA500"),
+            ("EMA", "Custom EMA…", "#00FFFF"),
+            ("RSI", "Custom RSI…", "#FF00FF"),
+            ("BB", "Custom BB…", "#FFFF00"),
+        ]:
+            act = QAction(label, self)
+            act.triggered.connect(lambda _=False, i=ind_id, c=color: self._prompt_generic_params(i, c))
+            custom_menu.addAction(act)
+
+    def _prompt_custom_period(self, ind_id: str, color: str) -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        period, ok = QInputDialog.getInt(self, "Periode wählen", f"{ind_id} Periode:", value=14, min=1, max=500)
+        if ok:
+            self._on_indicator_add(ind_id, {"period": period}, color)
+
+    def _prompt_generic_params(self, ind_id: str, color: str) -> None:
+        from PyQt6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(self, "Parameter", f"{ind_id} Parameter (key=value,comma-separated):", text="period=20")
+        if not ok:
+            return
+        params = {}
+        try:
+            for part in text.split(","):
+                k, v = part.split("=")
+                params[k.strip()] = float(v) if "." in v else int(v)
+            self._on_indicator_add(ind_id, params, color)
+        except Exception:
+            logger.error("Parameter-Parsing fehlgeschlagen: %s", text)
+
+    def _refresh_active_indicator_menu(self) -> None:
+        """Show active indicators as remove-actions directly in main menu."""
+        if not hasattr(self, "indicators_menu"):
+            return
+        # remove old actions
+        if getattr(self, "_remove_actions", None):
+            for act in self._remove_actions:
+                self.indicators_menu.removeAction(act)
+        if getattr(self, "_remove_section_separator", None):
+            self.indicators_menu.removeAction(self._remove_section_separator)
+        self._remove_actions = []
+        self._remove_section_separator = None
+
+        if not hasattr(self, "chart_widget") or not getattr(self.chart_widget, "active_indicators", None):
+            return
+
+        if self.chart_widget.active_indicators:
+            self._remove_section_separator = self.indicators_menu.addSeparator()
+            for instance_id, inst in self.chart_widget.active_indicators.items():
+                label = f"Remove: {inst.display_name}"
+                act = QAction(label, self)
+                act.triggered.connect(lambda _=False, iid=instance_id: self._on_indicator_remove(iid))
+                self.indicators_menu.addAction(act)
+                self._remove_actions.append(act)
+
+    # Hooks into IndicatorMixin
+    def _on_indicator_add(self, ind_id: str, params: dict, color: str) -> None:
+        if hasattr(self, "chart_widget") and hasattr(self.chart_widget, "_add_indicator_instance"):
+            self.chart_widget._add_indicator_instance(ind_id, params, color)
+            self._refresh_active_indicator_menu()
+
+    def _on_indicator_remove(self, instance_id: str) -> None:
+        if hasattr(self, "chart_widget") and hasattr(self.chart_widget, "_remove_indicator_instance"):
+            self.chart_widget._remove_indicator_instance(instance_id)
+            self._refresh_active_indicator_menu()
 
     def _add_primary_actions(self, toolbar: QToolBar) -> None:
         self.load_button = QPushButton("📊 Load Chart")
@@ -375,9 +466,10 @@ class ToolbarMixin:
             }
         """
         )
-        # Initially hidden - shown only for crypto symbols
-        self.bitunix_trading_button.setVisible(False)
+        # Always visible (user can decide to open/close the dock)
+        self.bitunix_trading_button.setVisible(True)
         toolbar.addWidget(self.bitunix_trading_button)
+        logger.info("Toolbar: Bitunix trading button created and added (visible)")
 
     def _add_bot_toggle_button(self, toolbar: QToolBar) -> None:
         self.toggle_panel_button = QPushButton("▼ Trading Bot")

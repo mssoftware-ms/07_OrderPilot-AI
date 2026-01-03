@@ -291,6 +291,16 @@ class ConfigManager:
             logger.error(f"Failed to load watchlist: {e}")
             return []
 
+    # --- Compatibility helpers ------------------------------------------
+    def get_setting(self, key: str, default=None):
+        """Return a setting from profile.market_data or AppSettings (compat layer)."""
+        profile = self._profile_config or self.load_profile()
+        if hasattr(profile.market_data, key):
+            return getattr(profile.market_data, key)
+        if hasattr(self.settings, key):
+            return getattr(self.settings, key)
+        return default
+
     @property
     def profile(self) -> ProfileConfig:
         """Get the current profile configuration."""

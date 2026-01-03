@@ -262,8 +262,18 @@ class EmbeddedTradingViewChartMarkingMixin:
         Args:
             zone: Zone object to edit
         """
+        from PyQt6.QtWidgets import QMessageBox
         from src.ui.dialogs.zone_edit_dialog import ZoneEditDialog
         from src.chart_marking.models import ZoneType
+
+        # GUARD: Check if locked
+        if zone.is_locked:
+            QMessageBox.warning(
+                self, "Zone Locked",
+                f"Zone '{zone.label or zone.id}' is locked.\n"
+                "Unlock it first to edit."
+            )
+            return
 
         dialog = ZoneEditDialog(zone, self)
         result = dialog.exec()
@@ -299,7 +309,17 @@ class EmbeddedTradingViewChartMarkingMixin:
         Args:
             zone: Zone object to extend
         """
+        from PyQt6.QtWidgets import QMessageBox
         import time
+
+        # GUARD: Check if locked
+        if zone.is_locked:
+            QMessageBox.warning(
+                self, "Zone Locked",
+                "Cannot extend locked zone."
+            )
+            return
+
         new_end_time = int(time.time())
         success = self.extend_zone(zone.id, new_end_time)
         if success:
@@ -322,3 +342,19 @@ class EmbeddedTradingViewChartMarkingMixin:
         if reply == QMessageBox.StandardButton.Yes:
             self.remove_zone(zone.id)
             logger.info(f"Zone '{zone_label}' deleted")
+
+    def _toggle_zone_lock(self, zone):
+        """Toggle zone lock status.
+
+        Args:
+            zone: Zone object to toggle lock state
+        """
+        new_state = self._zones.toggle_locked(zone.id)
+        if new_state is not None:
+            status = "locked" if new_state else "unlocked"
+            logger.info(f"Zone '{zone.label or zone.id}' {status}")
+
+            # Optional: Show brief tooltip notification
+            from PyQt6.QtWidgets import QToolTip
+            from PyQt6.QtGui import QCursor
+            QToolTip.showText(QCursor.pos(), f"Zone {status}", self, msecShowTime=1500)

@@ -246,6 +246,11 @@ class ZoneManager:
         if not zone:
             return False
 
+        # GUARD: Check if locked
+        if zone.is_locked:
+            logger.warning(f"Cannot update locked zone: {zone_id}")
+            return False
+
         if start_time is not None:
             zone.start_time = self._normalize_time(start_time)
         if end_time is not None:
@@ -299,6 +304,43 @@ class ZoneManager:
             self._on_update()
 
         return True
+
+    def set_locked(self, zone_id: str, is_locked: bool) -> bool:
+        """Set zone lock status.
+
+        Args:
+            zone_id: Zone ID
+            is_locked: Whether zone is locked
+
+        Returns:
+            True if updated, False if not found
+        """
+        zone = self._zones.get(zone_id)
+        if not zone:
+            return False
+
+        zone.is_locked = is_locked
+        logger.debug(f"Zone {zone_id} locked={is_locked}")
+
+        # Note: No chart update needed as visual state unchanged (icon added in JS layer)
+        return True
+
+    def toggle_locked(self, zone_id: str) -> bool | None:
+        """Toggle zone lock status.
+
+        Args:
+            zone_id: Zone ID
+
+        Returns:
+            New lock state, or None if zone not found
+        """
+        zone = self._zones.get(zone_id)
+        if not zone:
+            return None
+
+        zone.is_locked = not zone.is_locked
+        logger.debug(f"Zone {zone_id} toggled to {'locked' if zone.is_locked else 'unlocked'}")
+        return zone.is_locked
 
     def remove(self, zone_id: str) -> bool:
         """Remove a zone.
@@ -396,6 +438,7 @@ class ZoneManager:
                 "fillColor": zone.fill_color,
                 "borderColor": zone.border_color,
                 "label": zone.label,
+                "isLocked": zone.is_locked,
             })
         return zones
 

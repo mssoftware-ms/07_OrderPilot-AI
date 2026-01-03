@@ -454,6 +454,27 @@ class HistoryManager:
             logger.warning(f"📡 Available providers: {list(self.providers.keys())}")
             logger.info(f"Starting real-time stream for {len(symbols)} symbols. Available providers: {list(self.providers.keys())}")
 
+            profile = config_manager.load_profile()
+
+            # Priority 0: Bitunix (if enabled)
+            if DataSource.BITUNIX in self.providers:
+                try:
+                    from src.core.market_data.bitunix_stream import BitunixStreamClient
+
+                    use_testnet = getattr(profile.market_data, "bitunix_testnet", True)
+                    if not self.stream_client or not isinstance(self.stream_client, BitunixStreamClient):
+                        self.stream_client = BitunixStreamClient(use_testnet=use_testnet)
+
+                    connected = await self.stream_client.connect()
+                    if connected:
+                        await self.stream_client.subscribe(symbols)
+                        logger.info(f"Started Bitunix WebSocket stream for {len(symbols)} symbols (testnet={use_testnet})")
+                        return True
+                    else:
+                        logger.warning("Failed to connect Bitunix stream, trying fallback...")
+                except Exception as e:
+                    logger.warning(f"Bitunix streaming failed: {e}, trying fallback...")
+
             # Priority 1: Try Alpaca WebSocket
             if DataSource.ALPACA in self.providers:
                 logger.info("Attempting to use Alpaca WebSocket for streaming...")

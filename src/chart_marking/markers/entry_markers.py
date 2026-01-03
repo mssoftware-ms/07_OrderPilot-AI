@@ -156,6 +156,41 @@ class EntryMarkerManager:
         if self._on_update:
             self._on_update()
 
+    def set_locked(self, marker_id: str, is_locked: bool) -> bool:
+        """Set entry marker lock status.
+
+        Args:
+            marker_id: Marker ID
+            is_locked: Whether marker is locked
+
+        Returns:
+            True if updated, False if not found
+        """
+        marker = self._markers.get(marker_id)
+        if not marker:
+            return False
+
+        marker.is_locked = is_locked
+        logger.debug(f"Entry marker {marker_id} locked={is_locked}")
+        return True
+
+    def toggle_locked(self, marker_id: str) -> bool | None:
+        """Toggle entry marker lock status.
+
+        Args:
+            marker_id: Marker ID
+
+        Returns:
+            New lock state, or None if marker not found
+        """
+        marker = self._markers.get(marker_id)
+        if not marker:
+            return None
+
+        marker.is_locked = not marker.is_locked
+        logger.debug(f"Entry marker {marker_id} toggled to {'locked' if marker.is_locked else 'unlocked'}")
+        return marker.is_locked
+
     def get(self, marker_id: str) -> Optional[EntryMarker]:
         """Get a marker by ID."""
         return self._markers.get(marker_id)

@@ -36,6 +36,7 @@ class ChartMarking(BaseModel):
     price_bottom: float | None = None  # For zones
     label: str = ""
     is_active: bool = True
+    is_locked: bool = False
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
     reasoning: str = ""
 
@@ -176,6 +177,7 @@ class ChartMarkingsState(BaseModel):
             existing.price_bottom = marking.price_bottom
             existing.label = marking.label
             existing.is_active = marking.is_active
+            existing.is_locked = marking.is_locked
             existing.confidence = marking.confidence
             existing.reasoning = marking.reasoning
         else:

@@ -97,6 +97,7 @@ class EntryMarker:
     text: str = ""
     tooltip: str = ""
     score: Optional[float] = None
+    is_locked: bool = False
 
     def to_chart_marker(self) -> dict[str, Any]:
         """Convert to Lightweight Charts marker format."""
@@ -123,6 +124,7 @@ class EntryMarker:
             "text": self.text,
             "tooltip": self.tooltip,
             "score": self.score,
+            "is_locked": self.is_locked,
         }
 
     @classmethod
@@ -136,6 +138,7 @@ class EntryMarker:
             text=data.get("text", ""),
             tooltip=data.get("tooltip", ""),
             score=data.get("score"),
+            is_locked=data.get("is_locked", False),
         )
 
 
@@ -166,6 +169,7 @@ class Zone:
     opacity: float = 0.3
     label: str = ""
     is_active: bool = True
+    is_locked: bool = False
 
     @property
     def fill_color(self) -> str:
@@ -215,6 +219,7 @@ class Zone:
             "opacity": self.opacity,
             "label": self.label,
             "is_active": self.is_active,
+            "is_locked": self.is_locked,
         }
 
     @classmethod
@@ -231,6 +236,7 @@ class Zone:
             opacity=data.get("opacity", 0.3),
             label=data.get("label", ""),
             is_active=data.get("is_active", True),
+            is_locked=data.get("is_locked", False),
         )
 
 
@@ -253,6 +259,7 @@ class StructureBreakMarker:
     break_type: StructureBreakType
     direction: Direction
     text: str = ""
+    is_locked: bool = False
 
     def to_chart_marker(self) -> dict[str, Any]:
         """Convert to Lightweight Charts marker format."""
@@ -289,6 +296,7 @@ class StructureBreakMarker:
             "break_type": self.break_type.value,
             "direction": self.direction.value,
             "text": self.text,
+            "is_locked": self.is_locked,
         }
 
     @classmethod
@@ -301,6 +309,7 @@ class StructureBreakMarker:
             break_type=StructureBreakType(data["break_type"]),
             direction=Direction(data["direction"]),
             text=data.get("text", ""),
+            is_locked=data.get("is_locked", False),
         )
 
 
@@ -329,6 +338,7 @@ class StopLossLine:
     label: str = "SL"
     show_risk: bool = True
     risk_percent: Optional[float] = None
+    is_locked: bool = False
 
     @property
     def calculated_risk_pct(self) -> Optional[float]:
@@ -360,6 +370,7 @@ class StopLossLine:
             "label": self.label,
             "show_risk": self.show_risk,
             "risk_percent": self.risk_percent,
+            "is_locked": self.is_locked,
         }
 
     @classmethod
@@ -375,6 +386,7 @@ class StopLossLine:
             label=data.get("label", "SL"),
             show_risk=data.get("show_risk", True),
             risk_percent=data.get("risk_percent"),
+            is_locked=data.get("is_locked", False),
         )
 
 
