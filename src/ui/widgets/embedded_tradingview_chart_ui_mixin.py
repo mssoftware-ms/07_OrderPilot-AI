@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 
-from PyQt6.QtCore import Qt
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
@@ -33,7 +35,10 @@ class EmbeddedTradingViewChartUIMixin:
         # Web view for chart
         self.web_view = QWebEngineView()
         self.web_view.loadFinished.connect(self._on_page_loaded)
-        self.web_view.setHtml(get_chart_html_template())
+        # Load template with injected zone primitives
+        template_dir = Path(__file__).parent  # points to src/ui/widgets
+        base_url = QUrl.fromLocalFile(str(template_dir) + "/")
+        self.web_view.setHtml(get_chart_html_template(), base_url)
         layout.addWidget(self.web_view, stretch=1)
 
         # Setup WebChannel for JavaScript to Python communication

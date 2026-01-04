@@ -10,10 +10,7 @@ _TEMPLATE_PATH = Path(__file__).with_name("chart_js_template.html")
 
 
 def _load_chart_template() -> str:
-    """Load the HTML/JS template from disk.
-
-    Note: No caching to allow hot-reload during development.
-    """
+    """Load the HTML/JS template from disk."""
     return _TEMPLATE_PATH.read_text(encoding="utf-8")
 
 

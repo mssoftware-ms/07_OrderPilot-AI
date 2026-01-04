@@ -155,6 +155,7 @@ class EmbeddedTradingViewChart(
         Refactored to use ChartMarkingMixin for state tracking.
         """
         color = color or "rgba(13,110,253,0.18)"
+        label = label or "Range"
         
         # Calculate time range (wide range to simulate full width)
         import time
@@ -172,25 +173,35 @@ class EmbeddedTradingViewChart(
 
         try:
             if hasattr(self, "add_zone"):
-                from src.chart_marking.models import ZoneType
+                logger.info(
+                    "add_rect_range -> add_zone (AI mixin) prices %.2f-%.2f label=%s color=%s",
+                    min(high, low),
+                    max(high, low),
+                    label,
+                    color,
+                )
+                # ChartAIMarkingsMixin.add_zone signature:
+                # add_zone(start_time, end_time, top_price, bottom_price, fill_color, border_color, label)
+                # Ensure color fallbacks are set
+                fill_color = color or "rgba(13,110,253,0.18)"
+                border_color = "#0d6efd"
 
                 self.add_zone(
-                    zone_id=None,
-                    zone_type=ZoneType.SUPPORT,  # generic zone type for evaluation overlays
-                    start_time=start_time,
-                    end_time=end_time,
-                    top_price=max(high, low),
-                    bottom_price=min(high, low),
-                    opacity=0.35,
-                    label=label or "Range",
-                    color=color,
+                    start_time,
+                    end_time,
+                    max(high, low),
+                    min(high, low),
+                    fill_color,
+                    border_color,
+                    label,
                 )
             # Fallback: also draw via JS primitive so user sees it immediately
             if hasattr(self, "web_view") and self.web_view:
                 js = (
                     "window.chartAPI && window.chartAPI.addRectRange && "
-                    f"window.chartAPI.addRectRange({min(high, low)}, {max(high, low)}, '{color}', '{label or 'Range'}');"
+                    f"window.chartAPI.addRectRange({min(high, low)}, {max(high, low)}, '{fill_color}', '{label}');"
                 )
+                logger.info("add_rect_range -> JS addRectRange")
                 self.web_view.page().runJavaScript(js)
             else:
                 logger.warning("add_zone not available")

@@ -575,8 +575,23 @@ class ChartMarkingMixin:
         Args:
             js_code: JavaScript code to execute
         """
+        # If another mixin provides robust JS queuing, delegate to it.
+        try:
+            return super()._execute_js(js_code)  # type: ignore[misc]
+        except AttributeError:
+            pass
+
+        # If chart not ready, queue it if possible
+        def _queue_pending():
+            if hasattr(self, "pending_js_commands"):
+                self.pending_js_commands.append(js_code)
+                logger.debug("Queued JS (chart not ready): %s", js_code[:120])
+                return True
+            return False
+
         if not hasattr(self, "web_view") or not self.web_view:
-            logger.warning("Cannot execute JS: web_view not available")
+            if not _queue_pending():
+                logger.warning("Cannot execute JS: web_view not available")
             return
 
         # Check thread safety
@@ -589,7 +604,10 @@ class ChartMarkingMixin:
             )
             return
 
-        self.web_view.page().runJavaScript(js_code)
+        try:
+            self.web_view.page().runJavaScript(js_code)
+        except Exception as exc:
+            logger.error("runJavaScript failed: %s", exc)
 
     # =========================================================================
     # Properties for Direct Access

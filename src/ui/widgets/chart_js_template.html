@@ -5,7 +5,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://unpkg.com/lightweight-charts@5.0.9/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Prefer local copy to avoid CDN/network failures -->
+    <script src="assets/lightweight-charts.standalone.production.js"></script>
     <style>
         html, body {
             margin: 0;
@@ -2000,6 +2001,7 @@
                     const rect = new RectRangePrimitive(low, high, color || 'rgba(13,110,253,0.18)', label || '', genId());
                     priceSeries.attachPrimitive(rect);
                     drawings.push(rect);
+                    console.log('addRectRange', low, high, color, label);
                     return rect.id;
                 };
                 window.chartAPI.addPercentRect = (p1, p2, customId = null) => {

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QUrl
 
 logger = logging.getLogger(__name__)
 
