@@ -12,6 +12,7 @@ import pandas as pd
 from PyQt6.QtCore import pyqtSlot
 
 from src.common.event_bus import Event
+from src.core.market_data.types import AssetClass, DataSource
 from .data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
@@ -366,23 +367,48 @@ class StreamingMixin:
             return
 
         try:
-            # Detect if crypto symbol (contains "/" like BTC/USD)
-            is_crypto = "/" in self.current_symbol
-            logger.warning(f"🔍 START STREAM: symbol={self.current_symbol}, is_crypto={is_crypto}")
+            # Determine asset class from stored context or symbol pattern
+            asset_class = getattr(self, "current_asset_class", None)
+            if asset_class is None and hasattr(self, "_resolve_asset_class"):
+                asset_class = self._resolve_asset_class(self.current_symbol, AssetClass)
+            if asset_class is None:
+                asset_class = AssetClass.CRYPTO if ("/" in self.current_symbol or self.current_symbol.endswith("USDT")) else AssetClass.STOCK
+
+            # Prefer Bitunix stream for crypto symbols when Bitunix provided the data
+            source_used = getattr(self, "current_data_source", None)
+            selected_provider = getattr(self, "current_data_provider", None)
+            has_bitunix_provider = hasattr(self.history_manager, "providers") and DataSource.BITUNIX in self.history_manager.providers
+            use_bitunix_stream = (
+                source_used == DataSource.BITUNIX.value
+                or selected_provider == "bitunix"
+                or (asset_class == AssetClass.CRYPTO and has_bitunix_provider and source_used in (None, DataSource.DATABASE.value))
+            )
+            use_crypto_stream = asset_class == AssetClass.CRYPTO and not use_bitunix_stream
+
+            logger.warning(
+                f"🔍 START STREAM: symbol={self.current_symbol}, asset_class={asset_class.value if hasattr(asset_class, 'value') else asset_class}, "
+                f"source_used={source_used}, provider_selected={selected_provider}, use_bitunix={use_bitunix_stream}, use_crypto={use_crypto_stream}"
+            )
 
             # Start appropriate real-time stream via HistoryManager
-            if is_crypto:
+            if use_bitunix_stream:
+                logger.warning(f"📡 Starting BITUNIX stream for {self.current_symbol}")
+                success = await self.history_manager.start_realtime_stream([self.current_symbol])
+                logger.info(f"✓ Live Bitunix stream started for {self.current_symbol}")
+                asset_label = "Bitunix"
+            elif use_crypto_stream:
                 logger.warning(f"📡 Starting CRYPTO stream for {self.current_symbol}")
                 success = await self.history_manager.start_crypto_realtime_stream([self.current_symbol])
                 logger.info(f"✓ Live crypto stream started for {self.current_symbol}")
+                asset_label = "Crypto"
             else:
                 logger.warning(f"📡 Starting STOCK stream for {self.current_symbol}")
                 success = await self.history_manager.start_realtime_stream([self.current_symbol])
                 logger.info(f"✓ Live stock stream started for {self.current_symbol}")
+                asset_label = "Stock"
 
             if success:
-                asset_type = "Crypto" if is_crypto else "Stock"
-                self.market_status_label.setText(f"🟢 Live ({asset_type}): {self.current_symbol}")
+                self.market_status_label.setText(f"🟢 Live ({asset_label}): {self.current_symbol}")
                 self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
             else:
                 logger.error("Failed to start live stream")
