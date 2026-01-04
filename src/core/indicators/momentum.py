@@ -62,6 +62,7 @@ class MomentumIndicators(BaseIndicatorCalculator):
         """Calculate Stochastic Oscillator."""
         k_period = params.get('k_period', 14)
         d_period = params.get('d_period', 3)
+        smooth = params.get('smooth', 3)
 
         if use_talib and TALIB_AVAILABLE:
             k, d = talib.STOCH(
@@ -69,7 +70,7 @@ class MomentumIndicators(BaseIndicatorCalculator):
                 data['low'],
                 data['close'],
                 fastk_period=k_period,
-                slowk_period=d_period,
+                slowk_period=smooth,
                 slowd_period=d_period
             )
             values = pd.DataFrame({'k': k, 'd': d})
@@ -79,14 +80,18 @@ class MomentumIndicators(BaseIndicatorCalculator):
                 data['low'],
                 data['close'],
                 k=k_period,
-                d=d_period
+                d=d_period,
+                smooth_k=smooth
             )
         else:
             # Manual calculation
             low_min = data['low'].rolling(window=k_period).min()
             high_max = data['high'].rolling(window=k_period).max()
 
-            k = 100 * ((data['close'] - low_min) / (high_max - low_min))
+            fast_k = 100 * ((data['close'] - low_min) / (high_max - low_min))
+            # Smooth K
+            k = fast_k.rolling(window=smooth).mean()
+            # D is moving average of K
             d = k.rolling(window=d_period).mean()
 
             values = pd.DataFrame({'k': k, 'd': d})

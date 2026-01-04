@@ -34,6 +34,8 @@ class IndicatorType(Enum):
 
     # Volatility
     BB = "bb"  # Bollinger Bands
+    BB_WIDTH = "bb_width"  # Bollinger Bandwidth
+    BB_PERCENT = "bb_percent"  # Bollinger %B
     KC = "kc"  # Keltner Channels
     ATR = "atr"  # Average True Range
     NATR = "natr"  # Normalized ATR

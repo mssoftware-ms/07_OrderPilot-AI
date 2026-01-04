@@ -56,6 +56,8 @@ class IndicatorMixin:
             "ADX": (IndicatorType.ADX, {'period': 14}, "ADX(14)", 0, 100),
             "CCI": (IndicatorType.CCI, {'period': 20}, "CCI(20)", -100, 100),
             "MFI": (IndicatorType.MFI, {'period': 14}, "MFI(14)", 0, 100),
+            "BB_WIDTH": (IndicatorType.BB_WIDTH, {'period': 20, 'std': 2}, "BB Width", 0, None),
+            "BB_PERCENT": (IndicatorType.BB_PERCENT, {'period': 20, 'std': 2}, "%B", 0, 1.2),
         }
 
         return overlay_configs, oscillator_configs

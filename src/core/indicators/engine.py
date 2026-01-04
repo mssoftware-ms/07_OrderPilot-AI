@@ -58,6 +58,8 @@ class IndicatorEngine:
 
             # Volatility
             IndicatorType.BB: VolatilityIndicators.calculate_bb,
+            IndicatorType.BB_WIDTH: VolatilityIndicators.calculate_bb_width,
+            IndicatorType.BB_PERCENT: VolatilityIndicators.calculate_bb_percent,
             IndicatorType.KC: VolatilityIndicators.calculate_kc,
             IndicatorType.ATR: VolatilityIndicators.calculate_atr,
             IndicatorType.NATR: VolatilityIndicators.calculate_natr,

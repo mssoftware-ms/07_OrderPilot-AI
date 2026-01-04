@@ -161,49 +161,100 @@ class ToolbarMixin:
             act.triggered.connect(lambda _=False, i=ind_id, p=params, c=color: self._on_indicator_add(i, p, c))
             menu.addAction(act)
 
-        # Trend
-        trend_menu = root_menu.addMenu("Trend")
-        add_action(trend_menu, "SMA (20)", "SMA", {"period": 20}, "#FFA500")
-        add_action(trend_menu, "SMA (50)", "SMA", {"period": 50}, "#FFB347")
-        add_action(trend_menu, "SMA (200)", "SMA", {"period": 200}, "#FFC87C")
-        add_action(trend_menu, "EMA (9)", "EMA", {"period": 9}, "#00CED1")
-        add_action(trend_menu, "EMA (20)", "EMA", {"period": 20}, "#00FFFF")
-        add_action(trend_menu, "EMA (50)", "EMA", {"period": 50}, "#20B2AA")
-        add_action(trend_menu, "EMA (200)", "EMA", {"period": 200}, "#4682B4")
-        # ADX with presets + custom
-        adx_menu = trend_menu.addMenu("ADX")
-        for p in (7, 14, 28):
-            add_action(adx_menu, f"ADX ({p})", "ADX", {"period": p}, "#FF6600")
-        adx_custom = QAction("ADX (Custom…)", self)
+        # 1. Overlap Studies (Trend & Struktur)
+        overlap_menu = root_menu.addMenu("Trend & Struktur")
+        
+        # EMA
+        ema_menu = overlap_menu.addMenu("EMA (Exponential Moving Average)")
+        add_action(ema_menu, "EMA (9) - Scalping", "EMA", {"period": 9}, "#00CED1")
+        add_action(ema_menu, "EMA (20) - Basis", "EMA", {"period": 20}, "#00FFFF")
+        add_action(ema_menu, "EMA (21) - Scalping", "EMA", {"period": 21}, "#20B2AA")
+        add_action(ema_menu, "EMA (50) - Trend", "EMA", {"period": 50}, "#FFB347")
+        add_action(ema_menu, "EMA (200) - Langfristig", "EMA", {"period": 200}, "#FF4500")
+        ema_menu.addSeparator()
+        ema_custom = QAction("Custom EMA…", self)
+        ema_custom.triggered.connect(lambda: self._prompt_custom_period("EMA", "#00FFFF"))
+        ema_menu.addAction(ema_custom)
+
+        # SMA
+        sma_menu = overlap_menu.addMenu("SMA (Simple Moving Average)")
+        add_action(sma_menu, "SMA (20)", "SMA", {"period": 20}, "#FFA500")
+        add_action(sma_menu, "SMA (50)", "SMA", {"period": 50}, "#FF8C00")
+        add_action(sma_menu, "SMA (200)", "SMA", {"period": 200}, "#FFD700")
+        sma_menu.addSeparator()
+        sma_custom = QAction("Custom SMA…", self)
+        sma_custom.triggered.connect(lambda: self._prompt_custom_period("SMA", "#FFA500"))
+        sma_menu.addAction(sma_custom)
+
+        # Bollinger Bands
+        bb_menu = overlap_menu.addMenu("Bollinger Bands")
+        add_action(bb_menu, "BB (20, 2)", "BB", {"period": 20, "std": 2}, "#FFFF00")
+        bb_menu.addSeparator()
+        bb_custom = QAction("Custom BB…", self)
+        bb_custom.triggered.connect(lambda: self._prompt_generic_params("BB", "#FFFF00"))
+        bb_menu.addAction(bb_custom)
+
+        # 2. Momentum & Oszillatoren
+        mom_menu = root_menu.addMenu("Momentum & Oszillatoren")
+        
+        # RSI
+        rsi_menu = mom_menu.addMenu("RSI (Relative Strength Index)")
+        add_action(rsi_menu, "RSI (14)", "RSI", {"period": 14}, "#FF00FF")
+        rsi_menu.addSeparator()
+        rsi_custom = QAction("Custom RSI…", self)
+        rsi_custom.triggered.connect(lambda: self._prompt_custom_period("RSI", "#FF00FF"))
+        rsi_menu.addAction(rsi_custom)
+
+        # MACD
+        macd_menu = mom_menu.addMenu("MACD")
+        add_action(macd_menu, "MACD (12, 26, 9)", "MACD", {"fast": 12, "slow": 26, "signal": 9}, "#00FF00")
+        macd_menu.addSeparator()
+        macd_custom = QAction("Custom MACD…", self)
+        macd_custom.triggered.connect(lambda: self._prompt_generic_params("MACD", "#00FF00"))
+        macd_menu.addAction(macd_custom)
+
+        # Stochastic
+        stoch_menu = mom_menu.addMenu("Stochastic")
+        add_action(stoch_menu, "Stoch (14, 3, 3)", "STOCH", {"k_period": 14, "d_period": 3, "smooth": 3}, "#0000FF")
+        stoch_menu.addSeparator()
+        stoch_custom = QAction("Custom Stoch…", self)
+        stoch_custom.triggered.connect(lambda: self._prompt_generic_params("STOCH", "#0000FF"))
+        stoch_menu.addAction(stoch_custom)
+
+        # CCI
+        cci_menu = mom_menu.addMenu("CCI")
+        add_action(cci_menu, "CCI (20)", "CCI", {"period": 20}, "#9933FF")
+        
+        # MFI
+        mfi_menu = mom_menu.addMenu("MFI")
+        add_action(mfi_menu, "MFI (14)", "MFI", {"period": 14}, "#33FF99")
+
+        # 3. Volatilität & Trendstärke
+        vol_menu = root_menu.addMenu("Volatilität & Trendstärke")
+        
+        # ATR
+        atr_menu = vol_menu.addMenu("ATR (Average True Range)")
+        add_action(atr_menu, "ATR (14)", "ATR", {"period": 14}, "#FF4500")
+        atr_menu.addSeparator()
+        atr_custom = QAction("Custom ATR…", self)
+        atr_custom.triggered.connect(lambda: self._prompt_custom_period("ATR", "#FF4500"))
+        atr_menu.addAction(atr_custom)
+
+        # ADX
+        adx_menu = vol_menu.addMenu("ADX (Avg Directional Index)")
+        add_action(adx_menu, "ADX (14)", "ADX", {"period": 14}, "#FF6600")
+        adx_menu.addSeparator()
+        adx_custom = QAction("Custom ADX…", self)
         adx_custom.triggered.connect(lambda: self._prompt_custom_period("ADX", "#FF6600"))
         adx_menu.addAction(adx_custom)
 
-        # Momentum
-        mom_menu = root_menu.addMenu("Momentum")
-        add_action(mom_menu, "RSI (14)", "RSI", {"period": 14}, "#FF00FF")
-        add_action(mom_menu, "STOCH (14,3)", "STOCH", {"k_period": 14, "d_period": 3}, "#0000FF")
-        add_action(mom_menu, "CCI (20)", "CCI", {"period": 20}, "#9933FF")
-        add_action(mom_menu, "MFI (14)", "MFI", {"period": 14}, "#33FF99")
-        macd_act = QAction("MACD (12,26,9)", self)
-        macd_act.triggered.connect(lambda: self._on_indicator_add("MACD", {"fast": 12, "slow": 26, "signal": 9}, "#00FF00"))
-        mom_menu.addAction(macd_act)
-
-        # Volatility
-        vol_menu = root_menu.addMenu("Volatilität")
-        add_action(vol_menu, "BB (20,2)", "BB", {"period": 20, "std": 2}, "#FFFF00")
-        add_action(vol_menu, "ATR (14)", "ATR", {"period": 14}, "#FF0000")
+        # Bollinger Derived
+        bb_derived = vol_menu.addMenu("Bollinger Derived")
+        add_action(bb_derived, "%B", "BB_PERCENT", {"period": 20, 'std': 2}, "#32CD32")
+        add_action(bb_derived, "Bandwidth", "BB_WIDTH", {"period": 20, 'std': 2}, "#4169E1")
 
         # Generic custom
         custom_menu = root_menu.addMenu("Custom")
-        for ind_id, label, color in [
-            ("SMA", "Custom SMA…", "#FFA500"),
-            ("EMA", "Custom EMA…", "#00FFFF"),
-            ("RSI", "Custom RSI…", "#FF00FF"),
-            ("BB", "Custom BB…", "#FFFF00"),
-        ]:
-            act = QAction(label, self)
-            act.triggered.connect(lambda _=False, i=ind_id, c=color: self._prompt_generic_params(i, c))
-            custom_menu.addAction(act)
 
     def _prompt_custom_period(self, ind_id: str, color: str) -> None:
         from PyQt6.QtWidgets import QInputDialog
