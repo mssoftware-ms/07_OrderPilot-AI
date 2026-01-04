@@ -167,7 +167,7 @@ class BitunixTradingMixin:
         logger.info("Attempting to create Bitunix adapter from credentials...")
         try:
             from src.core.broker.bitunix_adapter import BitunixAdapter
-            from src.config.config_manager import config_manager
+            from src.config.loader import config_manager
 
             api_key = config_manager.get_credential("bitunix_api_key")
             api_secret = config_manager.get_credential("bitunix_api_secret")
