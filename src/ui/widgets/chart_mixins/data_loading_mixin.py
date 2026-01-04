@@ -247,6 +247,10 @@ class DataLoadingMixin:
 
             bars, source_used = await self.history_manager.fetch_data(request)
 
+            # Track asset class and data source for downstream streaming decisions
+            self.current_asset_class = asset_class
+            self.current_data_source = source_used
+
             # Log fetched data range
             if bars:
                 first_bar = bars[0].timestamp

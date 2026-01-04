@@ -34,8 +34,8 @@ class BitunixStreamClient(StreamClient):
         Private channels (orders, positions) require API key (not implemented here).
 
     Environments:
-        - Testnet: wss://testnet-stream.bitunix.com/public/
-        - Mainnet: wss://stream.bitunix.com/public/
+        - Futures public (recommended for both paper and live data): wss://fapi.bitunix.com/public/
+        - Legacy testnet endpoint (unstable, not used by default): wss://testnet-stream.bitunix.com/public/
     """
 
     def __init__(
@@ -74,9 +74,9 @@ class BitunixStreamClient(StreamClient):
         Returns:
             WebSocket URL
         """
-        if self.use_testnet:
-            return "wss://testnet-stream.bitunix.com/public/"
-        return "wss://stream.bitunix.com/public/"
+        # Official futures WebSocket endpoint (matches SDK config files)
+        # Using the fapi host for both environments avoids DNS failures seen on legacy testnet hosts.
+        return "wss://fapi.bitunix.com/public/"
 
     async def connect(self) -> bool:
         """Connect to Bitunix WebSocket.
