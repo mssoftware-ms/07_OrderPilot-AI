@@ -190,11 +190,19 @@ class HistoryManager:
         """
         needs_fresh_data = self._needs_fresh_data(request)
 
-        bars, source_used = await self._try_specific_source(request)
-        if bars:
+        # If a specific source is requested, try ONLY that source.
+        # This prevents unwanted fallbacks (e.g. Bitunix -> Alpaca) when the user
+        # explicitly wants a specific provider or the default logic selected one.
+        if request.source:
+            bars, source_used = await self._try_specific_source(request)
+            if not bars:
+                logger.warning(
+                    f"No data from requested source {request.source.value} for {request.symbol}. "
+                    "Fallback disabled for explicit source request."
+                )
             return self._sanitize_bars(request.symbol, bars), source_used
 
-        # Try providers in priority order
+        # Only use priority order if NO source was specified (auto-mode)
         for source in self.priority_order:
             bars = await self._try_provider_source(request, source, needs_fresh_data)
             if bars:

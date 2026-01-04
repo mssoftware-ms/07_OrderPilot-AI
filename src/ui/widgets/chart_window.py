@@ -32,6 +32,7 @@ from .chart_window_mixins import (
 )
 from src.chart_chat import ChartChatMixin
 from src.ui.widgets.bitunix_trading import BitunixTradingMixin
+from src.ui.ai_analysis_window import AIAnalysisWindow
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ class ChartWindow(
         self.history_manager = history_manager
         self.settings = QSettings("OrderPilot", "TradingApp")
         self._chart_resize_pending = False
+        self._ai_analysis_window = None
 
         self._setup_window()
         self._setup_chart_widget()
@@ -196,6 +198,7 @@ class ChartWindow(
         self._setup_event_subscriptions()
         self._setup_chat()
         self._setup_bitunix_trading()
+        self._setup_ai_analysis()
         self._ready_to_close = False
         self._connect_data_loaded_signals()
 
@@ -287,6 +290,33 @@ class ChartWindow(
             )
         if getattr(self, "_bitunix_widget", None):
             self._bitunix_widget.visibilityChanged.connect(self._on_bitunix_visibility_changed)
+
+    def _setup_ai_analysis(self) -> None:
+        """Setup the AI Analysis Popup."""
+        if hasattr(self.chart_widget, 'ai_analysis_button'):
+            self.chart_widget.ai_analysis_button.clicked.connect(
+                self._on_ai_analysis_button_clicked
+            )
+
+    def _on_ai_analysis_button_clicked(self, checked: bool) -> None:
+        """Open or focus the AI Analysis Popup."""
+        if checked:
+            if not self._ai_analysis_window:
+                self._ai_analysis_window = AIAnalysisWindow(self, symbol=self.symbol)
+                self._ai_analysis_window.finished.connect(self._on_analysis_window_closed)
+            
+            self._ai_analysis_window.show()
+            self._ai_analysis_window.raise_()
+            self._ai_analysis_window.activateWindow()
+        else:
+            if self._ai_analysis_window:
+                self._ai_analysis_window.hide()
+
+    def _on_analysis_window_closed(self, result: int) -> None:
+        """Handle analysis window close event to uncheck the button."""
+        self._ai_analysis_window = None
+        if hasattr(self.chart_widget, 'ai_analysis_button'):
+            self.chart_widget.ai_analysis_button.setChecked(False)
 
     def _ensure_chat_docked_right(self) -> None:
         """Dock the chat widget to the right if it is not floating."""

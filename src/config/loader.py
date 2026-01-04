@@ -11,6 +11,7 @@ REFACTORED: Split into multiple files to meet 600 LOC limit.
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import keyring
@@ -140,12 +141,13 @@ class ConfigManager:
         logger.info(f"Profile saved to {profile_path}")
 
     def get_credential(self, key: str, service: str = "OrderPilot-AI") -> str | None:
-        """Retrieve a credential from .env file or Windows Credential Manager.
+        """Retrieve a credential from environment variables, .env file or Windows Credential Manager.
 
         Priority:
         1. Check in-memory cache
-        2. Check .env file in config/secrets/
-        3. Check Windows Credential Manager
+        2. Check system environment variables (os.environ)
+        3. Check .env file in config/secrets/
+        4. Check Windows Credential Manager
 
         Args:
             key: Credential key (e.g., 'openai_api_key', 'alpaca_api_key')
@@ -157,6 +159,12 @@ class ConfigManager:
         cached = self._get_cached_credential(key)
         if cached is not None:
             return cached
+
+        # Check system env vars (uppercase)
+        env_val = os.environ.get(key.upper())
+        if env_val:
+            self._credentials[key] = env_val
+            return env_val
 
         env_value = self._get_env_credential(key)
         if env_value is not None:

@@ -50,6 +50,7 @@ class ToolbarMixin:
         toolbar.addSeparator()
         self._add_chart_marking_button(toolbar)
         self._add_ai_chat_button(toolbar)
+        self._add_ai_analysis_button(toolbar)
         self._add_bitunix_trading_button(toolbar)
         toolbar.addSeparator()
         self._add_bot_toggle_button(toolbar)
@@ -439,6 +440,33 @@ class ToolbarMixin:
         """
         )
         toolbar.addWidget(self.ai_chat_button)
+
+    def _add_ai_analysis_button(self, toolbar: QToolBar) -> None:
+        self.ai_analysis_button = QPushButton("🧠 AI Analyse")
+        self.ai_analysis_button.setCheckable(True)
+        self.ai_analysis_button.setToolTip(
+            "Deep Market Analysis Popup öffnen"
+        )
+        self.ai_analysis_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #9C27B0;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:checked {
+                background-color: #9C27B0;
+                color: #fff;
+            }
+        """
+        )
+        toolbar.addWidget(self.ai_analysis_button)
 
     def _add_bitunix_trading_button(self, toolbar: QToolBar) -> None:
         """Add Bitunix trading button to toolbar (initially hidden)."""

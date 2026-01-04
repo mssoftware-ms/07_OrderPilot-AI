@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import aiohttp
@@ -65,9 +65,15 @@ class BitunixProvider(HistoricalDataProvider):
         Returns:
             Base URL for Bitunix API
         """
-        if self.use_testnet:
-            return "https://testnet-api.bitunix.com"
-        return "https://api.bitunix.com"
+        # For Market Data, we prefer Mainnet to ensure realistic data (volume/liquidity)
+        # even when in Testnet/Paper trading mode.
+        # Verified URL from Python Demo: https://fapi.bitunix.com
+        return "https://fapi.bitunix.com"
+
+        # Previous Testnet URL (unverified/broken): https://testnet-api.bitunix.com
+        # if self.use_testnet:
+        #     return "https://testnet-api.bitunix.com"
+        # return "https://fapi.bitunix.com"
 
     def _generate_signature(self, params: dict) -> str:
         """Generate HMAC-SHA256 signature for Bitunix API.
@@ -175,8 +181,10 @@ class BitunixProvider(HistoricalDataProvider):
             'limit': 1000  # Max 1000 klines per request
         }
 
-        # Build authenticated headers
-        headers = self._build_headers(params.copy())  # Copy to avoid mutation
+        # Public endpoint - no auth required
+        headers = {
+            'Content-Type': 'application/json'
+        }
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -188,6 +196,9 @@ class BitunixProvider(HistoricalDataProvider):
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
+                        # Log raw response for debugging
+                        logger.info(f"Bitunix raw response for {symbol}: {data}")
+                        
                         bars = self._parse_klines(data, symbol)
                         logger.info(
                             f"Fetched {len(bars)} bars for {symbol} from {self.name}"
@@ -250,13 +261,16 @@ class BitunixProvider(HistoricalDataProvider):
 
         klines = data.get('data', [])
         if not klines:
-            logger.warning(f"No kline data returned for {symbol}")
+            logger.warning(f"No kline data returned for {symbol}. Full response: {data}")
             return []
 
         for kline in klines:
             try:
+                # Bitunix returns time as string or int in milliseconds
+                ts_ms = int(kline['time'])
+                
                 bar = HistoricalBar(
-                    timestamp=datetime.fromtimestamp(kline['time'] / 1000),
+                    timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
                     open=Decimal(str(kline['open'])),
                     high=Decimal(str(kline['high'])),
                     low=Decimal(str(kline['low'])),
@@ -266,7 +280,7 @@ class BitunixProvider(HistoricalDataProvider):
                 )
                 bars.append(bar)
             except (KeyError, ValueError, TypeError) as e:
-                logger.debug(f"Skipping invalid kline: {e}")
+                logger.warning(f"Skipping invalid kline: {e} | Data: {kline}")
                 continue
 
         return bars

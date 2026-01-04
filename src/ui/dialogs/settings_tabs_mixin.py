@@ -16,6 +16,13 @@ from PyQt6.QtWidgets import (
 )
 
 
+from src.ai.model_constants import (
+    AI_PROVIDERS,
+    OPENAI_MODELS,
+    ANTHROPIC_MODELS,
+    GEMINI_MODELS,
+)
+
 class SettingsTabsMixin:
     """Mixin providing tab creation methods for SettingsDialog."""
 
@@ -301,7 +308,7 @@ class SettingsTabsMixin:
         general_ai_layout.addRow(self.ai_enabled)
 
         self.ai_default_provider = QComboBox()
-        self.ai_default_provider.addItems(["Anthropic", "OpenAI", "Gemini"])
+        self.ai_default_provider.addItems(AI_PROVIDERS)
         general_ai_layout.addRow("Default Provider:", self.ai_default_provider)
 
         self.ai_budget = QDoubleSpinBox()
@@ -328,15 +335,7 @@ class SettingsTabsMixin:
         openai_layout.addRow("API Key:", self.openai_api_key)
 
         self.openai_model = QComboBox()
-        self.openai_model.addItems(
-            [
-                "gpt-5.1 (Thinking Mode)",
-                "gpt-5.1-chat-latest (Instant)",
-                "gpt-4.1-2025-04-14 (GPT-4.1 Full)",
-                "gpt-4.1-mini-2025-04-14 (GPT-4.1 Mini)",
-                "gpt-4.1-nano-2025-04-14 (GPT-4.1 Nano - Fastest)",
-            ]
-        )
+        self.openai_model.addItems(OPENAI_MODELS)
         openai_layout.addRow("Default Model:", self.openai_model)
 
         openai_info = QLabel(
@@ -359,9 +358,7 @@ class SettingsTabsMixin:
         anthropic_layout.addRow("API Key:", self.anthropic_api_key)
 
         self.anthropic_model = QComboBox()
-        self.anthropic_model.addItems(
-            ["claude-sonnet-4-5-20250929 (Recommended)", "claude-sonnet-4-5 (Latest)"]
-        )
+        self.anthropic_model.addItems(ANTHROPIC_MODELS)
         anthropic_layout.addRow("Default Model:", self.anthropic_model)
 
         anthropic_info = QLabel(
@@ -383,13 +380,7 @@ class SettingsTabsMixin:
         gemini_layout.addRow("API Key:", self.gemini_api_key)
 
         self.gemini_model = QComboBox()
-        self.gemini_model.addItems(
-            [
-                "gemini-2.0-flash-exp (Latest)",
-                "gemini-1.5-pro (Most Capable)",
-                "gemini-1.5-flash (Fast)",
-            ]
-        )
+        self.gemini_model.addItems(GEMINI_MODELS)
         gemini_layout.addRow("Default Model:", self.gemini_model)
 
         gemini_info = QLabel(

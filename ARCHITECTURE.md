@@ -486,6 +486,54 @@ Features:
 - Automatisches History-Loading bei Symbol-Wechsel
 ```
 
+## AI Market Analysis Module
+
+Das AI Analysis Modul (`src/core/ai_analysis/`) bietet eine tiefgehende Marktstrukturanalyse als Popup.
+Es ist **isoliert vom Trading** (Read-Only) und fokussiert auf Setup-Erkennung.
+
+### Architektur
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AIAnalysisWindow (Popup)                  │
+│                + src/ui/ai_analysis_window.py                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ ruft auf
+┌─────────────────────────▼───────────────────────────────────┐
+│                   AIAnalysisEngine                           │
+│  Orchestrator: Data → Validator → Regime → Features → LLM   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ verwendet
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Core Components                             │
+│  DataValidator - Pre-Flight Checks (Lag, Bad Ticks)         │
+│  RegimeDetector - Deterministische Marktphasen (Bull/Bear)  │
+│  FeatureEngineer - Technische Features (RSI, Struct, Pivots)│
+│  PromptComposer - JSON-Prompt Generierung                   │
+│  OpenAIClient - Async API Wrapper (mit Retries)             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Datenfluss
+
+```
+1. User klickt "AI Analyse" im Chart
+   │
+2. AIAnalysisWindow.start_analysis()
+   │
+3. DataValidator.validate_data(df) → Check Lag/Volume
+   │
+4. RegimeDetector.detect_regime(df) → "STRONG_TREND_BULL"
+   │
+5. FeatureEngineer.extract_features(df) → RSI State, Pivots
+   │
+6. PromptComposer.compose_prompt(input_json)
+   │
+7. OpenAIClient.analyze(prompt) → LLM
+   │
+8. AIAnalysisOutput (JSON) → UI Anzeige
+```
+
 ## Verzeichnisstruktur
 
 ```

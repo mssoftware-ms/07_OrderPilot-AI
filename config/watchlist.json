@@ -31,6 +31,11 @@
       "wkn": ""
     },
     {
+      "symbol": "BTCUSDT",
+      "name": "Bitcoin Future (Bitunix)",
+      "wkn": ""
+    },
+    {
       "symbol": "ETH/USD",
       "name": "Ethereum",
       "wkn": ""
