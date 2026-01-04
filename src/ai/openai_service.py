@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import aiohttp
+
 from src.config.loader import AIConfig
 
 from .openai_models import (
@@ -41,6 +43,9 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+# Global singleton instance
+_service_instance: OpenAIService | None = None
 
 
 class OpenAIService(
@@ -104,6 +109,10 @@ async def get_openai_service(
         OpenAI service instance
     """
     global _service_instance
+
+    # Guard against cases where the module globals were cleared (e.g., during reload/shutdown)
+    if "_service_instance" not in globals():
+        _service_instance = None
 
     if _service_instance is None:
         _service_instance = OpenAIService(config, api_key)

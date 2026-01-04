@@ -347,20 +347,19 @@ class DataLoadingMixin:
     def _calculate_date_range(self, asset_class, lookback_days: int, AssetClass):
         """
         Calculate date range for fetching historical data.
-        Uses a fixed recent date to avoid requesting future data from APIs.
+        Uses current time to ensure data is up-to-date with live stream.
         """
-        # Use a fixed recent date to avoid issues with future system clocks
-        end_date = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        # Use current UTC time as end date to align with live stream timestamps
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=lookback_days)
 
         if asset_class == AssetClass.CRYPTO:
-            logger.info("Crypto asset: Using fixed recent date for data fetching")
-            # Crypto is 24/7, so the fixed date range is fine.
+            logger.info("Crypto asset: Using current date for 24/7 data fetching")
+            # Crypto is 24/7, so we can safely use the current time.
         else:
             # Stock market hours are complex (weekends, holidays, pre-market)
-            # For simplicity, we still use the fixed date range. If specific market
-            # hours logic is needed, it should be implemented here or in a provider.
-            logger.info("Stock asset: Using fixed recent date for data fetching")
+            # Using current time; providers should handle market hours if needed.
+            logger.info("Stock asset: Using current date for data fetching")
 
         return start_date, end_date
 

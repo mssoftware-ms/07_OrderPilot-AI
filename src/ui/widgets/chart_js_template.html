@@ -1944,6 +1944,35 @@
                                     : { p1: d.p1, p2: d.p2, color: d.color })
                 }));
                 window.chartAPI.clearDrawings = clearAllDrawings;
+
+                // Zones handled separately to avoid clearing user drawings
+                const zones = {};
+                window.chartAPI.clearZones = () => {
+                    Object.values(zones).forEach((z) => {
+                        try { priceSeries.detachPrimitive(z); } catch(e) { console.error(e); }
+                    });
+                    Object.keys(zones).forEach(k => delete zones[k]);
+                    console.log('Cleared zones');
+                    return true;
+                };
+                window.chartAPI.addZone = (id, startTime, endTime, topPrice, bottomPrice, color, opacity, label = '') => {
+                    try {
+                        const zoneId = id || genId();
+                        const fill = color || 'rgba(13,110,253,0.18)';
+                        // Ensure correct ordering
+                        const low = Math.min(topPrice, bottomPrice);
+                        const high = Math.max(topPrice, bottomPrice);
+                        // Remove existing with same id
+                        if (zones[zoneId]) {
+                            try { priceSeries.detachPrimitive(zones[zoneId]); } catch(e) {}
+                        }
+                        const rect = new RectRangePrimitive(low, high, fill, label || '', zoneId);
+                        priceSeries.attachPrimitive(rect);
+                        zones[zoneId] = rect;
+                        console.log('addZone', zoneId, 'low=', low, 'high=', high, 'color=', fill);
+                        return zoneId;
+                    } catch(e){ console.error('addZone error:', e); return null; }
+                };
                 window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid', customId = null) => {
                     // Use custom ID if provided, otherwise generate one
                     const lineId = customId || genId();

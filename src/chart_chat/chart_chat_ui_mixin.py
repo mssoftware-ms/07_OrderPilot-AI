@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from .prompts_editor_dialog import PromptsEditorDialog
 if TYPE_CHECKING:
     from .chat_service import ChartChatService
     from .models import ChartAnalysisResult, QuickAnswerResult
@@ -192,7 +193,19 @@ class ChartChatUIMixin:
         toolbar_layout.addStretch()
         toolbar_layout.addWidget(self._build_clear_button())
         toolbar_layout.addWidget(self._build_export_button())
+        self._prompts_btn = QPushButton("Prompts")
+        self._prompts_btn.setMaximumWidth(80)
+        self._prompts_btn.setToolTip("Alle Chat-Prompts bearbeiten")
+        self._prompts_btn.clicked.connect(self._on_open_prompts_editor)
+        toolbar_layout.addWidget(self._prompts_btn)
         return toolbar_layout
+
+    def _on_open_prompts_editor(self):
+        """Open prompt editor dialog and refresh header (model info unaffected)."""
+        dlg = PromptsEditorDialog(self)
+        if dlg.exec():
+            # After saving, no restart needed; prompts are read per-call.
+            self._append_system_message("Prompts aktualisiert. Neue Eingaben gelten für zukünftige Antworten.")
 
     def _build_toolbar_separator(self) -> QFrame:
         separator = QFrame()

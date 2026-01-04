@@ -2,6 +2,7 @@ import pandas as pd
 import logging
 from typing import Optional
 from datetime import datetime, timezone
+import re
 
 from src.core.ai_analysis.types import AIAnalysisOutput, AIAnalysisInput
 from src.core.ai_analysis.validators import DataValidator
@@ -19,12 +20,39 @@ class AIAnalysisEngine:
     """
 
     def __init__(self, api_key: str):
-        self.validator = DataValidator()
+        # Use larger lag multiplier for historical data analysis
+        # Historical data is always at least 1-2 intervals old (last completed candle)
+        self.validator = DataValidator(max_lag_multiplier=5.0)
         self.regime_detector = RegimeDetector()
         self.feature_engineer = FeatureEngineer()
         self.prompt_composer = PromptComposer()
         self.client = OpenAIClient(api_key=api_key)
         self._is_running = False
+
+    def apply_prompt_overrides(
+        self,
+        system_prompt: str | None = None,
+        tasks_prompt: str | None = None,
+    ) -> None:
+        """Inject UI-provided prompt overrides into the composer."""
+        self.prompt_composer.set_overrides(system_prompt, tasks_prompt)
+
+    def _timeframe_to_minutes(self, timeframe: str) -> int:
+        tf = (timeframe or "").strip().upper()
+        m = re.match(r"^(\d+)([A-Z]+)$", tf)
+        if not m:
+            return 5
+        value = int(m.group(1))
+        unit = m.group(2)
+
+        if unit == "T":
+            return value
+        if unit == "H":
+            return value * 60
+        if unit == "D":
+            return value * 60 * 24
+
+        return 5
 
     async def run_analysis(self, symbol: str, timeframe: str, df: pd.DataFrame, model: Optional[str] = None) -> Optional[AIAnalysisOutput]:
         """
@@ -46,14 +74,11 @@ class AIAnalysisEngine:
         self._is_running = True
         try:
             # 1. Validate
-            # TODO: Infer interval from timeframe string (e.g. "1h" -> 60)
-            # For now hardcoded or safe default, assuming DataValidator is robust.
-            is_valid, error = self.validator.validate_data(df, interval_minutes=5) 
+            interval_minutes = self._timeframe_to_minutes(timeframe)
+            is_valid, error = self.validator.validate_data(df, interval_minutes=interval_minutes)
             if not is_valid:
                 logger.warning(f"Validation failed: {error}")
-                # We return None, but maybe we should return an error object?
-                # The prompt asks for Output. For now None + Log is fine.
-                return None
+                raise ValueError(error)
 
             # 1b. Clean (Optional per checklist, but good practice)
             df_clean = self.validator.clean_data(df)
@@ -98,6 +123,6 @@ class AIAnalysisEngine:
 
         except Exception as e:
             logger.error(f"Analysis run failed: {e}", exc_info=True)
-            return None
+            raise
         finally:
             self._is_running = False

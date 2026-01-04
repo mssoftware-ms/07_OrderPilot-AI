@@ -111,8 +111,27 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self._set_env_placeholders()
         self._set_combo_value(
             self.openai_model,
-            self.settings.value("openai_model", "gpt-5.1 (Thinking Mode)"),
+            self.settings.value("openai_model", "gpt-5.1 (GPT-5.1)"),
         )
+
+        # Trigger model change to populate reasoning efforts
+        self._on_openai_model_changed(self.openai_model.currentText())
+
+        # OpenAI Reasoning settings
+        self._set_combo_value(
+            self.openai_reasoning_effort,
+            self.settings.value("openai_reasoning_effort", "medium"),
+        )
+        self.openai_max_tokens.setValue(
+            self.settings.value("openai_max_tokens", 3000, type=int)
+        )
+        self.openai_temperature.setValue(
+            self.settings.value("openai_temperature", 0.1, type=float)
+        )
+        self.openai_top_p.setValue(
+            self.settings.value("openai_top_p", 1.0, type=float)
+        )
+
         self._set_combo_value(
             self.anthropic_model,
             self.settings.value(
@@ -269,6 +288,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("ai_enabled", self.ai_enabled.isChecked())
             self.settings.setValue("ai_default_provider", self.ai_default_provider.currentText())
             self.settings.setValue("openai_model", self.openai_model.currentText())
+            self.settings.setValue("openai_reasoning_effort", self.openai_reasoning_effort.currentText())
+            self.settings.setValue("openai_max_tokens", self.openai_max_tokens.value())
+            self.settings.setValue("openai_temperature", self.openai_temperature.value())
+            self.settings.setValue("openai_top_p", self.openai_top_p.value())
             self.settings.setValue("anthropic_model", self.anthropic_model.currentText())
             self.settings.setValue("gemini_model", self.gemini_model.currentText())
             self.settings.setValue("ai_budget", self.ai_budget.value())

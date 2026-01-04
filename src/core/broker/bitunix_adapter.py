@@ -1,14 +1,21 @@
 """Bitunix Futures Trading Adapter.
 
-Broker adapter for Bitunix Futures trading with HMAC authentication.
+Broker adapter for Bitunix Futures trading with double SHA256 authentication.
 Supports order placement, position management, and account queries.
+
+Authentication:
+    Bitunix uses a two-step SHA256 signature process:
+    1. digest = SHA256(nonce + timestamp + api_key + query_params + body)
+    2. sign = SHA256(digest + secret_key)
 """
 
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import time
+import uuid
 from decimal import Decimal
 
 import aiohttp
@@ -81,56 +88,94 @@ class BitunixAdapter(BrokerAdapter):
         self.base_url = self._get_base_url()
         self._session: aiohttp.ClientSession | None = None
 
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
     def _get_base_url(self) -> str:
         """Get API base URL based on environment.
 
         Returns:
             Base URL for Bitunix API
-        """
-        if self.use_testnet:
-            return "https://testnet-api.bitunix.com"
-        return "https://api.bitunix.com"
 
-    def _generate_signature(self, params: dict) -> str:
-        """Generate HMAC-SHA256 signature for Bitunix API.
+        Note:
+            Using fapi.bitunix.com for both environments as testnet-api.bitunix.com
+            is not reachable. This matches the WebSocket endpoint used in bitunix_stream.py.
+        """
+        # Use the same host as WebSocket (fapi.bitunix.com) to avoid DNS failures
+        # The testnet-api.bitunix.com host is not reliably accessible
+        return "https://fapi.bitunix.com"
+
+    def _generate_signature(
+        self,
+        nonce: str,
+        timestamp: str,
+        query_params: str = "",
+        body: str = ""
+    ) -> str:
+        """Generate double SHA256 signature for Bitunix API.
+
+        Bitunix uses a two-step SHA256 process (NOT HMAC-SHA256):
+        1. digest = SHA256(nonce + timestamp + api_key + query_params + body)
+        2. sign = SHA256(digest + secret_key)
 
         Args:
-            params: Request parameters
+            nonce: Random UUID string
+            timestamp: Millisecond timestamp
+            query_params: Sorted query parameters (no spaces)
+            body: JSON body (no spaces)
 
         Returns:
             Hex-encoded signature string
         """
-        # Sort parameters alphabetically
-        sorted_params = sorted(params.items())
-        query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
+        # Step 1: Create digest from nonce + timestamp + api_key + query_params + body
+        digest_input = nonce + timestamp + self.api_key + query_params + body
+        digest = hashlib.sha256(digest_input.encode('utf-8')).hexdigest()
 
-        # Generate HMAC-SHA256 signature
-        signature = hmac.new(
-            self.api_secret.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
+        # Step 2: Sign digest + secret_key
+        sign_input = digest + self.api_secret
+        sign = hashlib.sha256(sign_input.encode('utf-8')).hexdigest()
 
-        return signature
+        return sign
 
-    def _build_headers(self, params: dict) -> dict:
+    def _sort_params(self, params: dict) -> str:
+        """Sort parameters and concatenate as keyvalue pairs.
+
+        Args:
+            params: Parameter dictionary
+
+        Returns:
+            Sorted parameter string in format: key1value1key2value2...
+        """
+        if not params:
+            return ""
+        # Sort by key and concatenate directly (no separators)
+        return ''.join(f"{k}{v}" for k, v in sorted(params.items()))
+
+    def _build_headers(self, query_params: str = "", body: str = "") -> dict:
         """Build request headers with API key and signature.
 
         Args:
-            params: Request parameters (will be modified with timestamp)
+            query_params: Sorted query parameters as string (no spaces)
+            body: JSON body as string (no spaces)
 
         Returns:
             Headers dictionary for HTTP request
         """
-        # Add timestamp (required for signature)
-        params['timestamp'] = int(time.time() * 1000)
+        # Generate nonce (random UUID without dashes)
+        nonce = str(uuid.uuid4()).replace('-', '')
 
-        # Generate signature
-        signature = self._generate_signature(params)
+        # Generate timestamp in milliseconds
+        timestamp = str(int(time.time() * 1000))
+
+        # Generate signature using Bitunix double SHA256 method
+        signature = self._generate_signature(nonce, timestamp, query_params, body)
 
         return {
-            'X-API-KEY': self.api_key,
-            'X-SIGNATURE': signature,
+            'api-key': self.api_key,
+            'sign': signature,
+            'nonce': nonce,
+            'timestamp': timestamp,
             'Content-Type': 'application/json'
         }
 
@@ -141,6 +186,14 @@ class BitunixAdapter(BrokerAdapter):
 
         Creates aiohttp session and validates credentials.
         """
+        # Avoid hammering the API if credentials are wrong: one attempt at a time.
+        if getattr(self, "_auth_failed", False):
+            raise BrokerConnectionError(
+                code="BITUNIX_AUTH_FAILED",
+                message="Previous Bitunix auth failed; skipping reconnect. Fix API key/secret and restart.",
+                details={}
+            )
+
         try:
             # Create aiohttp session
             self._session = aiohttp.ClientSession(
@@ -162,6 +215,8 @@ class BitunixAdapter(BrokerAdapter):
             if self._session:
                 await self._session.close()
                 self._session = None
+            # Flag auth failure to stop repeated attempts
+            self._auth_failed = True
             raise BrokerConnectionError(
                 code="BITUNIX_CONNECT_FAILED",
                 message=f"Failed to connect to Bitunix: {str(e)}",
@@ -216,13 +271,16 @@ class BitunixAdapter(BrokerAdapter):
                 )
             params['price'] = str(order.limit_price)
 
-        # Build authenticated headers
-        headers = self._build_headers(params.copy())
+        # Convert params to JSON string without spaces (required for signature)
+        body_json = json.dumps(params, separators=(',', ':'))
+
+        # Build authenticated headers (no query params for POST, only body)
+        headers = self._build_headers(query_params="", body=body_json)
 
         try:
             async with self._session.post(
                 f"{self.base_url}/api/v1/futures/trade/place_order",
-                json=params,
+                data=body_json,  # Send as raw JSON string, not dict
                 headers=headers
             ) as response:
                 if response.status == 200:
@@ -259,12 +317,16 @@ class BitunixAdapter(BrokerAdapter):
             'orderId': order_id,
         }
 
-        headers = self._build_headers(params.copy())
+        # Convert params to JSON string without spaces
+        body_json = json.dumps(params, separators=(',', ':'))
+
+        # Build authenticated headers
+        headers = self._build_headers(query_params="", body=body_json)
 
         try:
             async with self._session.post(
                 f"{self.base_url}/api/v1/futures/trade/cancel_orders",
-                json=params,
+                data=body_json,
                 headers=headers
             ) as response:
                 if response.status == 200:
@@ -295,12 +357,16 @@ class BitunixAdapter(BrokerAdapter):
             'orderId': order_id,
         }
 
-        headers = self._build_headers(params.copy())
+        # For GET requests, convert params to sorted string format
+        query_params = self._sort_params(params)
+
+        # Build authenticated headers (GET has query params, no body)
+        headers = self._build_headers(query_params=query_params, body="")
 
         try:
             async with self._session.get(
                 f"{self.base_url}/api/v1/futures/trade/get_order_detail",
-                params=params,
+                params=params,  # Still pass params as dict for URL construction
                 headers=headers
             ) as response:
                 if response.status == 200:
@@ -341,13 +407,13 @@ class BitunixAdapter(BrokerAdapter):
         if not self._session:
             return []
 
-        params = {}
-        headers = self._build_headers(params.copy())
+        # No params for this endpoint
+        # Build authenticated headers (GET with no query params)
+        headers = self._build_headers(query_params="", body="")
 
         try:
             async with self._session.get(
                 f"{self.base_url}/api/v1/futures/position/get_pending_positions",
-                params=params,
                 headers=headers
             ) as response:
                 if response.status == 200:
@@ -368,19 +434,25 @@ class BitunixAdapter(BrokerAdapter):
         if not self._session:
             return None
 
-        params = {}
-        headers = self._build_headers(params.copy())
+        # No params for this endpoint
+        # Build authenticated headers (GET with no query params)
+        headers = self._build_headers(query_params="", body="")
 
         try:
             async with self._session.get(
                 f"{self.base_url}/api/v1/futures/account",
-                params=params,
                 headers=headers
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return self._parse_balance(data)
-                return None
+                    if data is not None:
+                        return self._parse_balance(data)
+                    else:
+                        logger.warning("Bitunix balance API returned None")
+                        return None
+                else:
+                    logger.warning(f"Bitunix balance API returned status {response.status}")
+                    return None
 
         except Exception as e:
             logger.error(f"Failed to get balance: {e}")

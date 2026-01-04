@@ -283,8 +283,8 @@ class BitunixTradingWidget(QDockWidget):
             self.account_timer.start()
             self.positions_timer.start()
             # Trigger initial load
-            asyncio.create_task(self._load_account_info())
-            asyncio.create_task(self._load_positions())
+            self._load_account_info()
+            self._load_positions()
 
     def _stop_updates(self) -> None:
         """Stop periodic updates."""
@@ -347,7 +347,12 @@ class BitunixTradingWidget(QDockWidget):
             try:
                 await self.adapter.connect()
             except Exception as e:
-                logger.error(f"Failed to connect to Bitunix: {e}")
+                # Stop timers on persistent auth failure to avoid UI stalls
+                if "AUTH_FAILED" in str(e):
+                    logger.error(f"Bitunix auth failed, stopping Bitunix timers: {e}")
+                    self._stop_updates()
+                else:
+                    logger.error(f"Failed to connect to Bitunix: {e}")
                 return
 
         try:
@@ -377,7 +382,11 @@ class BitunixTradingWidget(QDockWidget):
             try:
                 await self.adapter.connect()
             except Exception as e:
-                logger.error(f"Failed to connect to Bitunix: {e}")
+                if "AUTH_FAILED" in str(e):
+                    logger.error(f"Bitunix auth failed, stopping Bitunix timers: {e}")
+                    self._stop_updates()
+                else:
+                    logger.error(f"Failed to connect to Bitunix: {e}")
                 return
 
         try:

@@ -394,7 +394,13 @@ class HistoryManager:
         try:
             db_manager = get_db_manager()
             with db_manager.session() as session:
-                timestamps = [bar.timestamp for bar in bars]
+                def _normalize_ts(ts: datetime) -> datetime:
+                    if ts.tzinfo is not None:
+                        ts = ts.astimezone(timezone.utc)
+                        ts = ts.replace(tzinfo=None)
+                    return ts
+
+                timestamps = [_normalize_ts(bar.timestamp) for bar in bars]
                 min_ts = min(timestamps)
                 max_ts = max(timestamps)
 
@@ -403,15 +409,18 @@ class HistoryManager:
                     MarketBar.timestamp >= min_ts,
                     MarketBar.timestamp <= max_ts
                 ).all()
-                existing_timestamps = {row[0] for row in existing_rows}
+                existing_timestamps = {_normalize_ts(row[0]) for row in existing_rows}
 
                 new_bars = []
+                seen_new_timestamps: set[datetime] = set()
                 for bar in bars:
-                    if bar.timestamp in existing_timestamps:
+                    ts = _normalize_ts(bar.timestamp)
+                    if ts in existing_timestamps or ts in seen_new_timestamps:
                         continue
+                    seen_new_timestamps.add(ts)
                     new_bars.append(MarketBar(
                         symbol=symbol,
-                        timestamp=bar.timestamp,
+                        timestamp=ts,
                         open=bar.open,
                         high=bar.high,
                         low=bar.low,

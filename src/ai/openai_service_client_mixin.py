@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -49,15 +50,26 @@ class OpenAIServiceClientMixin:
         await self.close()
     async def initialize(self) -> None:
         """Initialize the service."""
-        if not self._session:
-            timeout = aiohttp.ClientTimeout(
-                total=self.config.timeouts.get("read_ms", 15000) / 1000,
-                connect=self.config.timeouts.get("connect_ms", 5000) / 1000
-            )
-            self._session = aiohttp.ClientSession(
-                headers=self.headers,
-                timeout=timeout
-            )
+        if self._session:
+            return
+
+        # aiohttp.ClientSession requires a running loop. If we're invoked during app startup/shutdown
+        # without an active loop (e.g., Qt initializing in the main thread), defer creation until a
+        # running loop is available; _ensure_session will call initialize() again in that context.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            logger.debug("No running event loop; deferring aiohttp session creation")
+            return
+
+        timeout = aiohttp.ClientTimeout(
+            total=self.config.timeouts.get("read_ms", 15000) / 1000,
+            connect=self.config.timeouts.get("connect_ms", 5000) / 1000
+        )
+        self._session = aiohttp.ClientSession(
+            headers=self.headers,
+            timeout=timeout
+        )
     async def close(self) -> None:
         """Close the service."""
         if self._session:

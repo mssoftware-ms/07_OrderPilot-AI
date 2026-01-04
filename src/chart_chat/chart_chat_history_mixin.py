@@ -74,6 +74,10 @@ class ChartChatHistoryMixin:
 
         # Scroll to bottom
         self._chat_display.scrollToBottom()
+
+    def _append_system_message(self, text: str) -> None:
+        """Convenience helper to append an assistant/system note."""
+        self._append_message("assistant", text)
     def _on_clear_history(self) -> None:
         """Handle clear history button click."""
         self.service.clear_history()

@@ -24,14 +24,14 @@ from .models import (
 )
 from .chart_markings import CompactAnalysisResponse
 from .prompts import (
-    CHART_ANALYSIS_SYSTEM_PROMPT,
-    COMPACT_ANALYSIS_SYSTEM_PROMPT,
-    CONVERSATIONAL_SYSTEM_PROMPT,
     STRUCTURED_OUTPUT_INSTRUCTIONS,
     build_analysis_prompt,
     build_compact_question_prompt,
     build_conversation_prompt,
     format_conversation_history,
+    get_chart_analysis_system_prompt,
+    get_compact_system_prompt,
+    get_conversational_system_prompt,
 )
 
 if TYPE_CHECKING:
@@ -101,7 +101,7 @@ class ChartAnalyzer:
             if hasattr(self.ai_service, "structured_completion"):
                 # Combine system prompt with user prompt for structured completion
                 combined_prompt = (
-                    f"{CHART_ANALYSIS_SYSTEM_PROMPT}\n\n"
+                    f"{get_chart_analysis_system_prompt()}\n\n"
                     f"User Request:\n{full_prompt}"
                 )
                 result = await self.ai_service.structured_completion(
@@ -115,7 +115,7 @@ class ChartAnalyzer:
 
             # Fall back to text completion with JSON parsing
             response = await self._get_text_completion(
-                system_prompt=CHART_ANALYSIS_SYSTEM_PROMPT,
+                system_prompt=get_chart_analysis_system_prompt(),
                 user_prompt=full_prompt,
             )
 
@@ -166,7 +166,7 @@ class ChartAnalyzer:
 
         try:
             response = await self._get_text_completion(
-                system_prompt=CONVERSATIONAL_SYSTEM_PROMPT,
+                system_prompt=get_conversational_system_prompt(),
                 user_prompt=user_prompt,
             )
 
@@ -228,7 +228,7 @@ class ChartAnalyzer:
 
         try:
             response = await self._get_text_completion(
-                system_prompt=COMPACT_ANALYSIS_SYSTEM_PROMPT,
+                system_prompt=get_compact_system_prompt(),
                 user_prompt=user_prompt,
             )
 

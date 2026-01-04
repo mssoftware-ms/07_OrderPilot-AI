@@ -268,7 +268,7 @@ class BitunixProvider(HistoricalDataProvider):
             try:
                 # Bitunix returns time as string or int in milliseconds
                 ts_ms = int(kline['time'])
-                
+
                 bar = HistoricalBar(
                     timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
                     open=Decimal(str(kline['open'])),
@@ -282,6 +282,10 @@ class BitunixProvider(HistoricalDataProvider):
             except (KeyError, ValueError, TypeError) as e:
                 logger.warning(f"Skipping invalid kline: {e} | Data: {kline}")
                 continue
+
+        # IMPORTANT: Sort bars by timestamp (ascending order)
+        # Bitunix API may return bars in descending order, but charts expect ascending
+        bars.sort(key=lambda b: b.timestamp)
 
         return bars
 

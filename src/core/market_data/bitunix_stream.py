@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import websockets
@@ -125,9 +125,13 @@ class BitunixStreamClient(StreamClient):
                 await self._stream_task
             except asyncio.CancelledError:
                 pass
+            self._stream_task = None
 
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
             self.ws = None
 
         await super().disconnect()
@@ -145,21 +149,17 @@ class BitunixStreamClient(StreamClient):
             logger.warning("WebSocket not connected, cannot subscribe")
             return
 
-        # Subscribe to ticker channel
-        ticker_msg = {
-            "op": "subscribe",
-            "args": [{"channel": "ticker", "symbols": symbols}]
-        }
-        await self.ws.send(json.dumps(ticker_msg))
-        logger.debug(f"Subscribed to ticker: {symbols}")
-
-        # Subscribe to 1m kline channel
+        # Bitunix WS docs (01_Projectplan/Bitunix_API):
+        # {
+        #   "op": "subscribe",
+        #   "args": [{"symbol":"BTCUSDT","ch":"market_kline_1min"}]
+        # }
         kline_msg = {
             "op": "subscribe",
-            "args": [{"channel": "market_kline", "symbols": symbols, "interval": "1m"}]
+            "args": [{"symbol": s, "ch": "market_kline_1min"} for s in symbols],
         }
         await self.ws.send(json.dumps(kline_msg))
-        logger.debug(f"Subscribed to kline: {symbols}")
+        logger.info(f"📡 Bitunix: Subscribed to market_kline_1min for symbols: {symbols}")
 
     async def _handle_unsubscription(self, symbols: list[str]) -> None:
         """Handle unsubscription from symbols.
@@ -170,20 +170,13 @@ class BitunixStreamClient(StreamClient):
         if not self.ws:
             return
 
-        # Unsubscribe from all channels
         unsub_msg = {
             "op": "unsubscribe",
-            "args": [{"channel": "ticker", "symbols": symbols}]
+            "args": [{"symbol": s, "ch": "market_kline_1min"} for s in symbols],
         }
         await self.ws.send(json.dumps(unsub_msg))
 
-        unsub_msg = {
-            "op": "unsubscribe",
-            "args": [{"channel": "market_kline", "symbols": symbols}]
-        }
-        await self.ws.send(json.dumps(unsub_msg))
-
-        logger.debug(f"Unsubscribed from {len(symbols)} symbols")
+        logger.debug(f"Unsubscribed from kline for {len(symbols)} symbols")
 
     async def _run_stream(self) -> None:
         """Main message loop with auto-reconnect."""
@@ -196,14 +189,18 @@ class BitunixStreamClient(StreamClient):
                 if self.connected:
                     logger.warning(f"Connection closed: {e}, attempting reconnect...")
                     await self._handle_reconnect()
+                    # After reconnect, connect() starts a new _stream_task
+                    # This old task should exit to avoid duplicates
+                    return
                 else:
                     break
 
             except Exception as e:
                 logger.error(f"Stream error: {e}")
                 if self.connected:
-                    await asyncio.sleep(5)
+                    # Avoid tight loops; let reconnect logic run
                     await self._handle_reconnect()
+                    return
                 else:
                     break
 
@@ -223,9 +220,24 @@ class BitunixStreamClient(StreamClient):
         logger.info(f"Reconnecting in {delay}s (attempt {self._reconnect_count}/{self.reconnect_attempts})")
         await asyncio.sleep(delay)
 
-        # Reconnect
+        # Close old WebSocket and reset connection state
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception:
+                pass  # Ignore errors when closing dead connection
+
+        # Cancel old stream task if it's still running (should have exited already)
+        if self._stream_task and not self._stream_task.done():
+            self._stream_task.cancel()
+            try:
+                await self._stream_task
+            except asyncio.CancelledError:
+                pass
+
+        self.ws = None
+        self._stream_task = None
+        self.connected = False  # CRITICAL: Reset flag before reconnect
 
         success = await self.connect()
 
@@ -234,6 +246,10 @@ class BitunixStreamClient(StreamClient):
             symbols = list(self.metrics.subscribed_symbols)
             await self._handle_subscription(symbols)
             logger.info(f"Re-subscribed to {len(symbols)} symbols")
+        elif not success:
+            # If reconnect fails (e.g., auth/endpoint issues), stop attempting to avoid tight loops
+            self.connected = False
+            self.metrics.status = StreamStatus.ERROR
 
     async def _on_message(self, message: str) -> None:
         """Parse and handle incoming WebSocket messages.
@@ -250,29 +266,34 @@ class BitunixStreamClient(StreamClient):
 
             # Handle different message types
             op = data.get('op')
+
+            # Log first few messages to help debug (including pongs)
+            if self.metrics.messages_received <= 5:
+                logger.debug(f"📨 Bitunix message #{self.metrics.messages_received}: {data}")
+
             if op == 'pong':
-                # Heartbeat response
+                # Heartbeat response (keep-alive)
+                logger.debug(f"💓 Heartbeat pong received")
                 return
 
             # Channel messages
             channel = data.get('ch', '')
 
-            if 'ticker' in channel:
-                await self._handle_ticker(data)
-            elif 'kline' in channel or 'market_kline' in channel:
+            if 'kline' in channel or 'market_kline' in channel:
                 await self._handle_kline(data)
             elif 'depth' in channel:
                 await self._handle_depth(data)
             elif 'trade' in channel:
                 await self._handle_trade(data)
             else:
-                logger.debug(f"Unknown message type: {data}")
+                # Unknown/heartbeat noise -> debug only
+                logger.debug(f"⚠ Bitunix: Unknown message type (op={op}, ch={channel}): {data}")
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message: {e}")
             self.metrics.messages_dropped += 1
         except Exception as e:
-            logger.error(f"Message processing error: {e}")
+            logger.error(f"Message processing error: {e}", exc_info=True)
             self.metrics.messages_dropped += 1
 
     async def _handle_ticker(self, data: dict) -> None:
@@ -319,15 +340,20 @@ class BitunixStreamClient(StreamClient):
         self.process_tick(tick)
 
         # Emit event
-        event_bus.emit(Event(
-            type=EventType.MARKET_DATA_TICK,
-            data={
-                "symbol": symbol,
-                "tick": tick,
-                "last_price": float(tick.last),
-                "volume": tick.volume
-            }
-        ))
+        event_bus.emit(
+            Event(
+                type=EventType.MARKET_DATA_TICK,
+                timestamp=tick.timestamp or datetime.utcnow(),
+                data={
+                    "symbol": symbol,
+                    "tick": tick,
+                    "price": float(tick.last) if tick.last is not None else 0.0,
+                    "volume": tick.volume,
+                    "timestamp": tick.timestamp or datetime.utcnow(),
+                },
+                source=self.name,
+            )
+        )
 
     async def _handle_kline(self, data: dict) -> None:
         """Handle kline (candlestick) updates.
@@ -350,29 +376,57 @@ class BitunixStreamClient(StreamClient):
         Args:
             data: Kline data
         """
-        kline = data.get('data', {})
-        symbol = kline.get('symbol')
+        # Bitunix WS docs format:
+        # {
+        #   "ch": "mark_kline_1min",
+        #   "symbol": "BNBUSDT",
+        #   "ts": 1732178884994,
+        #   "data": {"o":"...","h":"...","l":"...","c":"...","b":"...","q":"..."}
+        # }
+        symbol = data.get("symbol")
+        ts_ms = data.get("ts")
+        kline = data.get("data") or {}
 
-        # Only process closed candles
-        if not kline.get('closed', False):
+        if not symbol or not ts_ms:
+            logger.warning(f"⚠ Bitunix: Kline missing symbol or timestamp: {data}")
             return
 
-        if not symbol:
-            return
+        ts = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
+        open_ = float(kline.get("o", 0))
+        high = float(kline.get("h", 0))
+        low = float(kline.get("l", 0))
+        close = float(kline.get("c", 0))
+        volume = float(kline.get("b", 0))
 
-        # Emit MARKET_BAR event
-        event_bus.emit(Event(
-            type=EventType.MARKET_BAR,
-            data={
-                "symbol": symbol,
-                "open": float(kline.get('open', 0)),
-                "high": float(kline.get('high', 0)),
-                "low": float(kline.get('low', 0)),
-                "close": float(kline.get('close', 0)),
-                "volume": int(float(kline.get('baseVol', 0))),
-                "timestamp": datetime.fromtimestamp(kline.get('time', 0) / 1000)
-            }
-        ))
+        # Log first kline to confirm data flow
+        if not hasattr(self, '_kline_count'):
+            self._kline_count = 0
+        self._kline_count += 1
+        if self._kline_count <= 3:
+            logger.info(f"📊 Bitunix kline #{self._kline_count}: {symbol} @ ${close:.2f} (vol={volume:.2f})")
+
+        # NOTE: Only emit MARKET_DATA_TICK, not MARKET_BAR
+        # The streaming_mixin's _on_market_tick handler already aggregates ticks into candles.
+        # Emitting MARKET_BAR would cause duplicate candles since both handlers would
+        # update the chart independently with potentially different timestamps.
+
+        # Emit tick event - the chart's tick handler will aggregate this into candles
+        event_bus.emit(
+            Event(
+                type=EventType.MARKET_DATA_TICK,
+                timestamp=ts,
+                data={
+                    "symbol": symbol,
+                    "price": close,
+                    "volume": volume,
+                    "open": open_,    # Include OHLC for better tick handling
+                    "high": high,
+                    "low": low,
+                    "timestamp": ts,
+                },
+                source=self.name,
+            )
+        )
 
     async def _handle_depth(self, data: dict) -> None:
         """Handle order book depth updates.

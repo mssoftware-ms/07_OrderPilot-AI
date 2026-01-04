@@ -186,20 +186,74 @@ class ChartMarkingsManagerDialog(QDialog):
                 "\n".join(debug_info)
             )
 
+        # Also include JS drawing primitives (horizontal lines, rectangles, etc.)
+        self._load_js_drawings()
         self._filter_markings()
 
-    def _add_marking_row(self, category: str, marking: Any):
+    def _load_js_drawings(self):
+        """Fetch JS drawings (chartAPI.getDrawings) and list them as read-only."""
+        if not hasattr(self.chart, "web_view") or not getattr(self.chart, "web_view"):
+            return
+
+        try:
+            page = self.chart.web_view.page()
+        except Exception:
+            return
+
+        def _on_js_result(result):
+            try:
+                drawings = result or []
+                for d in drawings:
+                    # Normalize fields
+                    d_id = d.get("id") or "drawing"
+                    d_type = d.get("type", "drawing")
+                    # Compose a human label
+                    label = d.get("label") or d_type
+                    price_range = ""
+                    if d_type == "hline":
+                        price_range = f"{d.get('price', '')}"
+                    elif d_type == "rect-range":
+                        price_range = f"{d.get('priceLow', '')} - {d.get('priceHigh', '')}"
+                    elif d_type == "trend-line":
+                        price_range = f"{d.get('p1', '')} → {d.get('p2', '')}"
+                    else:
+                        price_range = ""
+
+                    drawing_stub = {
+                        "id": d_id,
+                        "label": label,
+                        "price_display": price_range,
+                        "is_active": True,
+                        "is_locked": False,
+                        "type": d_type,
+                    }
+                    self._add_marking_row("Drawing", drawing_stub, managed=False)
+                logger.info("Loaded %d JS drawings into manager", len(drawings))
+                self._filter_markings()
+            except Exception as exc:
+                logger.warning("Failed to process JS drawings: %s", exc)
+
+        try:
+            page.runJavaScript(
+                "window.chartAPI && window.chartAPI.getDrawings ? window.chartAPI.getDrawings() : [];",
+                _on_js_result
+            )
+        except Exception as exc:
+            logger.debug("runJavaScript getDrawings failed: %s", exc)
+
+    def _add_marking_row(self, category: str, marking: Any, managed: bool = True):
         """Add a marking to the table.
 
         Args:
             category: Marking category (Zone, Entry, Structure, Line)
             marking: Marking object
+            managed: True if managed by Python managers; False for JS-only drawings
         """
         row = self.table.rowCount()
         self.table.insertRow(row)
 
         # Store marking reference
-        marking_data = {"category": category, "marking": marking}
+        marking_data = {"category": category, "marking": marking, "managed": managed}
         self._all_markings.append(marking_data)
 
         # Type column
@@ -208,7 +262,7 @@ class ChartMarkingsManagerDialog(QDialog):
         self.table.setItem(row, 0, type_item)
 
         # Name column
-        name = getattr(marking, 'label', None) or getattr(marking, 'text', '') or marking.id
+        name = getattr(marking, 'label', None) or getattr(marking, 'text', '') or getattr(marking, "id", "")
         self.table.setItem(row, 1, QTableWidgetItem(name))
 
         # Price/Range column
@@ -221,12 +275,15 @@ class ChartMarkingsManagerDialog(QDialog):
         active_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, 3, active_item)
 
-        # Lock column (clickable icon)
+        # Lock column (clickable icon) - drawings are read-only
         is_locked = getattr(marking, 'is_locked', False)
         lock_item = QTableWidgetItem("🔒" if is_locked else "🔓")
         lock_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        lock_item.setToolTip("Click to toggle lock state")
-        if is_locked:
+        lock_item.setToolTip("Click to toggle lock state" if managed else "Read-only drawing")
+        if not managed:
+            lock_item.setText("—")
+            lock_item.setFlags(Qt.ItemFlag.NoItemFlags)
+        elif is_locked:
             lock_item.setBackground(QColor("#ffebee"))  # Light red tint
         self.table.setItem(row, 4, lock_item)
 
@@ -249,6 +306,8 @@ class ChartMarkingsManagerDialog(QDialog):
         elif category == "Line":
             label = getattr(marking, 'label', 'Line')
             return f"Line: {label}"
+        elif category == "Drawing":
+            return f"Drawing: {getattr(marking, 'type', '') or marking.get('type', '')}"
         return category
 
     def _get_price_display(self, marking: Any) -> str:
@@ -260,6 +319,15 @@ class ChartMarkingsManagerDialog(QDialog):
         Returns:
             Price display string
         """
+        if isinstance(marking, dict):
+            if "price_display" in marking:
+                return str(marking["price_display"])
+            if "price" in marking:
+                try:
+                    return f"{float(marking['price']):.2f}"
+                except Exception:
+                    return str(marking["price"])
+            return ""
         if hasattr(marking, 'top_price') and hasattr(marking, 'bottom_price'):
             return f"{marking.bottom_price:.2f} - {marking.top_price:.2f}"
         elif hasattr(marking, 'price'):
@@ -322,6 +390,9 @@ class ChartMarkingsManagerDialog(QDialog):
 
         type_item = self.table.item(row, 0)
         marking_data = type_item.data(Qt.ItemDataRole.UserRole)
+        if not marking_data.get("managed", True):
+            QMessageBox.information(self, "Read-only", "Zeichnungen aus dem Chart (JS) sind schreibgeschützt. Bitte im Chart löschen/bearbeiten.")
+            return
         category = marking_data["category"]
         marking = marking_data["marking"]
 
@@ -381,6 +452,9 @@ class ChartMarkingsManagerDialog(QDialog):
 
         type_item = self.table.item(row, 0)
         marking_data = type_item.data(Qt.ItemDataRole.UserRole)
+        if not marking_data.get("managed", True):
+            QMessageBox.information(self, "Read-only", "Zeichnungen aus dem Chart (JS) sind schreibgeschützt. Bitte im Chart löschen/bearbeiten.")
+            return
         marking = marking_data["marking"]
 
         if marking.is_locked:
@@ -405,6 +479,9 @@ class ChartMarkingsManagerDialog(QDialog):
 
         type_item = self.table.item(row, 0)
         marking_data = type_item.data(Qt.ItemDataRole.UserRole)
+        if not marking_data.get("managed", True):
+            QMessageBox.information(self, "Read-only", "Zeichnungen aus dem Chart (JS) sind schreibgeschützt. Bitte im Chart löschen/bearbeiten.")
+            return
         marking = marking_data["marking"]
         category = marking_data["category"]
 

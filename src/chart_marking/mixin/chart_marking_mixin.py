@@ -14,6 +14,8 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
+from PyQt6.QtCore import QMetaObject, Qt, QThread, Q_ARG, pyqtSlot
+
 from ..lines import StopLossLineManager
 from ..markers import EntryMarkerManager, StructureMarkerManager
 from ..models import Direction, StructureBreakType, ZoneType
@@ -205,6 +207,7 @@ class ChartMarkingMixin:
         bottom_price: float,
         opacity: float = 0.3,
         label: str = "",
+        color: Optional[str] = None,
     ) -> str:
         """Add a support/resistance zone.
 
@@ -217,13 +220,15 @@ class ChartMarkingMixin:
             bottom_price: Lower price boundary
             opacity: Fill opacity (0-1)
             label: Zone label text
+            color: Optional custom fill color
 
         Returns:
             Zone ID
         """
+        logger.debug(f"ChartMarkingMixin.add_zone called: {label} ({zone_type}) [{bottom_price}-{top_price}]")
         return self._zones.add(
             zone_id, zone_type, start_time, end_time,
-            top_price, bottom_price, opacity, label
+            top_price, bottom_price, opacity, label, color
         )
 
     def add_support_zone(
@@ -316,6 +321,34 @@ class ChartMarkingMixin:
     # =========================================================================
     # Stop-Loss Lines
     # =========================================================================
+
+    def add_line(
+        self,
+        line_id: str,
+        price: float,
+        color: str,
+        label: str = "",
+        line_style: str = "solid",
+        show_risk: bool = False,
+    ) -> str:
+        """Add a generic horizontal line.
+
+        Args:
+            line_id: Unique identifier
+            price: Price level
+            color: Line color
+            label: Line label
+            line_style: "solid", "dashed", or "dotted"
+            show_risk: Whether to show risk (requires entry price, defaults to False)
+
+        Returns:
+            Line ID
+        """
+        from ..models import Direction
+        return self._sl_lines.add(
+            line_id, price, None, Direction.LONG,
+            color, line_style, label, show_risk
+        )
 
     def add_stop_loss_line(
         self,
@@ -474,10 +507,19 @@ class ChartMarkingMixin:
     def _update_chart_zones(self) -> None:
         """Update all zones on the chart."""
         # First clear existing zones
+        logger.info("ChartMarkingMixin: clearing zones on chart")
         self._execute_js("window.chartAPI.clearZones();")
 
         # Add each zone
         for zone_data in self._zones.get_chart_zones():
+            logger.info(
+                "ChartMarkingMixin: addZone id=%s range=%s-%s prices=%.2f-%.2f",
+                zone_data["id"],
+                zone_data["startTime"],
+                zone_data["endTime"],
+                zone_data["bottomPrice"],
+                zone_data["topPrice"],
+            )
             js_code = (
                 f"window.chartAPI.addZone("
                 f"'{zone_data['id']}', "
@@ -486,7 +528,7 @@ class ChartMarkingMixin:
                 f"{zone_data['topPrice']}, "
                 f"{zone_data['bottomPrice']}, "
                 f"'{zone_data['fillColor']}', "
-                f"'{zone_data['borderColor']}', "
+                f"{zone_data.get('opacity', 0.3)}, "
                 f"'{zone_data['label']}'"
                 f");"
             )
@@ -494,8 +536,23 @@ class ChartMarkingMixin:
 
     def _update_chart_lines(self) -> None:
         """Update all horizontal lines on the chart."""
-        # Clear existing lines first
-        self._execute_js("window.chartAPI.clearHorizontalLines();")
+        # Remove all horizontal lines using safe iteration
+        # We cannot assume clearHorizontalLines exists in the JS API
+        clear_js = """
+            (function() {
+                try {
+                    if (window.chartAPI && window.chartAPI.getDrawings && window.chartAPI.removeDrawingById) {
+                        const drawings = window.chartAPI.getDrawings();
+                        drawings.forEach(d => {
+                            if (d.type === 'hline') {
+                                window.chartAPI.removeDrawingById(d.id);
+                            }
+                        });
+                    }
+                } catch(e) { console.error('Error clearing lines:', e); }
+            })();
+        """
+        self._execute_js(clear_js)
 
         # Add each line
         for line_data in self._sl_lines.get_chart_lines():
@@ -511,16 +568,28 @@ class ChartMarkingMixin:
             )
             self._execute_js(js_code)
 
+    @pyqtSlot(str)
     def _execute_js(self, js_code: str) -> None:
-        """Execute JavaScript in the chart web view.
+        """Execute JavaScript in the chart web view (thread-safe).
 
         Args:
             js_code: JavaScript code to execute
         """
-        if hasattr(self, "web_view") and self.web_view:
-            self.web_view.page().runJavaScript(js_code)
-        else:
+        if not hasattr(self, "web_view") or not self.web_view:
             logger.warning("Cannot execute JS: web_view not available")
+            return
+
+        # Check thread safety
+        if QThread.currentThread() != self.thread():
+            QMetaObject.invokeMethod(
+                self,
+                "_execute_js",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, js_code),
+            )
+            return
+
+        self.web_view.page().runJavaScript(js_code)
 
     # =========================================================================
     # Properties for Direct Access

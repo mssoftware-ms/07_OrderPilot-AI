@@ -3,12 +3,25 @@
 AI_PROVIDERS = ["Anthropic", "OpenAI", "Gemini"]
 
 OPENAI_MODELS = [
-    "gpt-5.1 (Thinking Mode)",
-    "gpt-5.1-chat-latest (Instant)",
-    "gpt-4.1-2025-04-14 (GPT-4.1 Full)",
-    "gpt-4.1-mini-2025-04-14 (GPT-4.1 Mini)",
-    "gpt-4.1-nano-2025-04-14 (GPT-4.1 Nano - Fastest)",
+    "gpt-5.2 (GPT-5.2 Latest)",
+    "gpt-5.2-chat-latest (ChatGPT Alias)",
+    "gpt-5.1 (GPT-5.1)",
+    "gpt-5.1-chat-latest (ChatGPT Alias)",
+    "gpt-4.1 (GPT-4.1 Full)",
+    "gpt-4.1-mini (GPT-4.1 Mini)",
+    "gpt-4.1-nano (GPT-4.1 Nano - Fastest)",
 ]
+
+# Reasoning effort options per model
+OPENAI_REASONING_EFFORTS = {
+    "gpt-5.2": ["none", "low", "medium", "high", "xhigh"],
+    "gpt-5.2-chat-latest": ["none", "low", "medium", "high", "xhigh"],
+    "gpt-5.1": ["none", "low", "medium", "high"],
+    "gpt-5.1-chat-latest": ["none", "low", "medium", "high"],
+    "gpt-4.1": [],  # Non-reasoning
+    "gpt-4.1-mini": [],  # Non-reasoning
+    "gpt-4.1-nano": [],  # Non-reasoning
+}
 
 ANTHROPIC_MODELS = [
     "claude-sonnet-4-5-20250929 (Recommended)",

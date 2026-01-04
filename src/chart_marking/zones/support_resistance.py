@@ -437,6 +437,7 @@ class ZoneManager:
                 "bottomPrice": zone.bottom_price,
                 "fillColor": zone.fill_color,
                 "borderColor": zone.border_color,
+                "opacity": zone.opacity,
                 "label": zone.label,
                 "isLocked": zone.is_locked,
             })

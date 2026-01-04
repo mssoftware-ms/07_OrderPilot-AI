@@ -16,13 +16,63 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 
+def load_windows_env_vars_in_wsl() -> None:
+    """Load Windows environment variables in WSL environment.
+
+    When running in WSL, Windows user environment variables are not automatically
+    available. This function loads them using PowerShell.
+    """
+    # Check if running in WSL
+    try:
+        with open('/proc/version', 'r') as f:
+            if 'microsoft' not in f.read().lower():
+                return  # Not in WSL, skip
+    except FileNotFoundError:
+        return  # Not Linux, skip
+
+    # Load Windows env vars via PowerShell
+    import subprocess
+
+    env_vars = [
+        'BITUNIX_API_KEY',
+        'BITUNIX_SECRET_KEY',
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'GEMINI_API_KEY',
+    ]
+
+    for var_name in env_vars:
+        if var_name in os.environ:
+            continue  # Already set, skip
+
+        try:
+            result = subprocess.run(
+                ['powershell.exe', '-Command',
+                 f'[System.Environment]::GetEnvironmentVariable("{var_name}", "User")'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            value = result.stdout.strip()
+            if value:
+                os.environ[var_name] = value
+        except Exception:
+            pass  # Silently skip on error
+
+
+# Load Windows environment variables if in WSL
+load_windows_env_vars_in_wsl()
+
+
 def check_ai_api_keys() -> None:
     """Check and display status of AI API keys from environment."""
     print("\n" + "=" * 50)
-    print("🔑 AI API Keys Status (from Windows Environment)")
+    print("🔑 API Keys Status (from Windows Environment)")
     print("=" * 50)
 
     keys = [
+        ("BITUNIX_API_KEY", "Bitunix"),
+        ("BITUNIX_SECRET_KEY", "Bitunix Secret"),
         ("OPENAI_API_KEY", "OpenAI"),
         ("ANTHROPIC_API_KEY", "Anthropic"),
         ("GEMINI_API_KEY", "Gemini"),

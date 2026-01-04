@@ -150,38 +150,77 @@ class EmbeddedTradingViewChart(
 
     # Public helper to add a full-width price range (used by chat evaluation popup)
     def add_rect_range(self, low: float, high: float, label: str = "", color: str | None = None) -> None:
-        """Draw a full-width rectangle between low/high prices."""
+        """Draw a full-width rectangle between low/high prices.
+        
+        Refactored to use ChartMarkingMixin for state tracking.
+        """
         color = color or "rgba(13,110,253,0.18)"
-        label_js = label.replace("'", "\\'")
-        js = (
-            "if (window.chartAPI && window.chartAPI.addRectRange) {"
-            f" window.chartAPI.addRectRange({low}, {high}, '{color}', '{label_js}');"
-            " if (window.chartAPI.setVisibleRange) {"
-            "   window.chartAPI.setVisibleRange(window.chartAPI.getVisibleRange && window.chartAPI.getVisibleRange());"
-            " }"
-            "}"
-        )
+        
+        # Calculate time range (wide range to simulate full width)
+        import time
+        now = int(time.time())
+        start_time = now - 365 * 24 * 3600  # 1 year back
+        end_time = now + 365 * 24 * 3600    # 1 year forward
+        
+        # Try to use data range if available
+        if self.data is not None and not self.data.empty and 'time' in self.data.columns:
+            try:
+                start_time = int(self.data['time'].iloc[0])
+                end_time = int(self.data['time'].iloc[-1]) + 30 * 24 * 3600 # +1 month
+            except Exception:
+                pass
+
         try:
-            self._execute_js(js)
+            if hasattr(self, "add_zone"):
+                from src.chart_marking.models import ZoneType
+
+                self.add_zone(
+                    zone_id=None,
+                    zone_type=ZoneType.SUPPORT,  # generic zone type for evaluation overlays
+                    start_time=start_time,
+                    end_time=end_time,
+                    top_price=max(high, low),
+                    bottom_price=min(high, low),
+                    opacity=0.35,
+                    label=label or "Range",
+                    color=color,
+                )
+            # Fallback: also draw via JS primitive so user sees it immediately
+            if hasattr(self, "web_view") and self.web_view:
+                js = (
+                    "window.chartAPI && window.chartAPI.addRectRange && "
+                    f"window.chartAPI.addRectRange({min(high, low)}, {max(high, low)}, '{color}', '{label or 'Range'}');"
+                )
+                self.web_view.page().runJavaScript(js)
+            else:
+                logger.warning("add_zone not available")
+                
         except Exception as exc:
-            logger.debug("add_rect_range JS failed: %s", exc)
+            logger.error("add_rect_range failed: %s", exc)
 
     def add_horizontal_line(self, price: float, label: str = "", color: str | None = None) -> None:
-        """Draw a horizontal line at given price."""
+        """Draw a horizontal line at given price.
+        
+        Refactored to use ChartMarkingMixin for state tracking.
+        """
         color = color or "#0d6efd"
-        label_js = label.replace("'", "\\'")
-        js = (
-            "if (window.chartAPI && window.chartAPI.addHorizontalLine) {"
-            f" window.chartAPI.addHorizontalLine({price}, '{color}', '{label_js}');"
-            " if (window.chartAPI.setVisibleRange) {"
-            "   window.chartAPI.setVisibleRange(window.chartAPI.getVisibleRange && window.chartAPI.getVisibleRange());"
-            " }"
-            "}"
-        )
+        import time
+        line_id = f"line_{int(price)}_{int(time.time()*1000)}"
+        
         try:
-            self._execute_js(js)
+            if hasattr(self, "add_line"):
+                self.add_line(
+                    line_id=line_id,
+                    price=price,
+                    color=color,
+                    label=label,
+                    line_style="solid",
+                    show_risk=False
+                )
+            else:
+                 logger.warning("add_line not available")
         except Exception as exc:
-            logger.debug("add_horizontal_line JS failed: %s", exc)
+            logger.error("add_horizontal_line failed: %s", exc)
 
     def resizeEvent(self, event):
         """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""

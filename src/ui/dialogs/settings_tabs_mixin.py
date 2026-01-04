@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -326,6 +327,8 @@ class SettingsTabsMixin:
         return provider_tabs
 
     def _build_openai_tab(self) -> QWidget:
+        from src.ai.model_constants import OPENAI_REASONING_EFFORTS
+
         openai_tab = QWidget()
         openai_layout = QFormLayout(openai_tab)
 
@@ -336,17 +339,88 @@ class SettingsTabsMixin:
 
         self.openai_model = QComboBox()
         self.openai_model.addItems(OPENAI_MODELS)
+        self.openai_model.currentTextChanged.connect(self._on_openai_model_changed)
         openai_layout.addRow("Default Model:", self.openai_model)
 
+        # Reasoning Effort (nur für GPT-5.x)
+        self.openai_reasoning_effort = QComboBox()
+        openai_layout.addRow("Reasoning Effort:", self.openai_reasoning_effort)
+
+        # Max Completion Tokens
+        self.openai_max_tokens = QSpinBox()
+        self.openai_max_tokens.setRange(100, 128000)
+        self.openai_max_tokens.setValue(3000)
+        self.openai_max_tokens.setToolTip("Maximum tokens for completion (includes reasoning tokens for GPT-5.x)")
+        openai_layout.addRow("Max Completion Tokens:", self.openai_max_tokens)
+
+        # Temperature (nur wenn reasoning_effort = none)
+        self.openai_temperature = QDoubleSpinBox()
+        self.openai_temperature.setRange(0.0, 2.0)
+        self.openai_temperature.setSingleStep(0.1)
+        self.openai_temperature.setValue(0.1)
+        self.openai_temperature.setToolTip("Only active when reasoning_effort = none")
+        openai_layout.addRow("Temperature:", self.openai_temperature)
+
+        # Top P (nur wenn reasoning_effort = none)
+        self.openai_top_p = QDoubleSpinBox()
+        self.openai_top_p.setRange(0.0, 1.0)
+        self.openai_top_p.setSingleStep(0.1)
+        self.openai_top_p.setValue(1.0)
+        self.openai_top_p.setToolTip("Only active when reasoning_effort = none")
+        openai_layout.addRow("Top P:", self.openai_top_p)
+
+        # Info Label
         openai_info = QLabel(
-            "GPT-5.1: Adaptive reasoning modes for complex tasks. "
-            "GPT-4.1: 1M token context, excellent for coding. "
-            "GPT-4.1 Nano: Fastest and cheapest for low-latency tasks. "
+            "<b>GPT-5.2:</b> Latest reasoning model (none|low|medium|high|xhigh)<br>"
+            "<b>GPT-5.1:</b> Reasoning model (none|low|medium|high)<br>"
+            "<b>GPT-4.1:</b> 1M token context, excellent for coding (no reasoning)<br>"
+            "<b>GPT-4.1 Nano:</b> Fastest and cheapest<br><br>"
+            "⚠️ <i>temperature/top_p only work when reasoning_effort = none</i><br>"
             "Set OPENAI_API_KEY environment variable for automatic configuration."
         )
         openai_info.setWordWrap(True)
         openai_layout.addRow(openai_info)
+
+        # Connect reasoning effort change to update sampling controls
+        self.openai_reasoning_effort.currentTextChanged.connect(self._on_openai_reasoning_changed)
+
         return openai_tab
+
+    def _on_openai_model_changed(self, model_text: str):
+        """Update reasoning effort options based on selected model."""
+        from src.ai.model_constants import OPENAI_REASONING_EFFORTS
+
+        # Extract model name (remove description in parentheses)
+        import re
+        model_name = re.sub(r'\s*\(.*?\)\s*', '', model_text).strip()
+
+        # Get reasoning efforts for this model
+        efforts = OPENAI_REASONING_EFFORTS.get(model_name, [])
+
+        # Update combo box
+        self.openai_reasoning_effort.blockSignals(True)
+        self.openai_reasoning_effort.clear()
+
+        if efforts:
+            self.openai_reasoning_effort.addItems(efforts)
+            self.openai_reasoning_effort.setCurrentText("medium")  # Default to medium
+            self.openai_reasoning_effort.setEnabled(True)
+        else:
+            self.openai_reasoning_effort.addItem("N/A (non-reasoning model)")
+            self.openai_reasoning_effort.setEnabled(False)
+            # Enable sampling controls for non-reasoning models
+            self.openai_temperature.setEnabled(True)
+            self.openai_top_p.setEnabled(True)
+
+        self.openai_reasoning_effort.blockSignals(False)
+        self._on_openai_reasoning_changed(self.openai_reasoning_effort.currentText())
+
+    def _on_openai_reasoning_changed(self, reasoning_effort: str):
+        """Enable/disable sampling controls based on reasoning effort."""
+        # Temperature and top_p only work when reasoning_effort = none
+        is_none = reasoning_effort == "none"
+        self.openai_temperature.setEnabled(is_none)
+        self.openai_top_p.setEnabled(is_none)
 
     def _build_anthropic_tab(self) -> QWidget:
         anthropic_tab = QWidget()

@@ -5,6 +5,7 @@ Free tier includes: 30 concurrent symbols, 200 REST calls/min, real-time bars.
 """
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -59,6 +60,7 @@ class AlpacaStreamClient(StreamClient):
         # Alpaca stream client
         self._stream: StockDataStream | None = None
         self._historical_client: StockHistoricalDataClient | None = None
+        self._stream_task: asyncio.Task | None = None
 
         # Connection limits
         self.max_symbols = 30 if feed == "iex" else 10000  # IEX free tier limit
@@ -107,8 +109,8 @@ class AlpacaStreamClient(StreamClient):
             self._stream.subscribe_trades(self._on_trade, *list(self.metrics.subscribed_symbols))
             self._stream.subscribe_quotes(self._on_quote, *list(self.metrics.subscribed_symbols))
 
-            # Start stream in background
-            asyncio.create_task(self._run_stream())
+            # Start stream in background and keep a handle for clean cancellation
+            self._stream_task = asyncio.create_task(self._run_stream())
 
             self.connected = True
             self.metrics.status = StreamStatus.CONNECTED
@@ -191,6 +193,12 @@ class AlpacaStreamClient(StreamClient):
             self.connected = False
             self.metrics.status = StreamStatus.DISCONNECTED
             self.metrics.subscribed_symbols.clear()
+
+            if self._stream_task:
+                self._stream_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._stream_task
+                self._stream_task = None
 
             if self._stream:
                 # Run in thread to avoid blocking - stop_ws may be synchronous

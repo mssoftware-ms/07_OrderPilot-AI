@@ -1,7 +1,10 @@
 """Prompt templates for Chart Analysis Chatbot.
 
 Contains system prompts and user message templates for AI interactions.
+Supports runtime overrides stored in QSettings so the UI can edit prompts.
 """
+
+from PyQt6.QtCore import QSettings
 
 # =============================================================================
 # System Prompts
@@ -167,7 +170,8 @@ def build_compact_question_prompt(
     Returns:
         Formatted prompt string
     """
-    return COMPACT_ANALYSIS_USER_TEMPLATE.format(
+    template = get_compact_user_template()
+    return template.format(
         symbol=symbol,
         timeframe=timeframe,
         current_price=f"{current_price:.2f}",
@@ -223,6 +227,42 @@ Antworte im folgenden JSON-Format:
 """
 
 # =============================================================================
+# Overrides via QSettings
+# =============================================================================
+
+_SETTINGS = QSettings("OrderPilot", "TradingApp")
+
+
+def _get_override(key: str, default: str) -> str:
+    """Return QSettings override or default if empty."""
+    val = (_SETTINGS.value(key, "") or "").strip()
+    return val if val else default
+
+
+def get_chart_analysis_system_prompt() -> str:
+    return _get_override("chat_prompts/chart_analysis_system", CHART_ANALYSIS_SYSTEM_PROMPT)
+
+
+def get_conversational_system_prompt() -> str:
+    return _get_override("chat_prompts/conversational_system", CONVERSATIONAL_SYSTEM_PROMPT)
+
+
+def get_compact_system_prompt() -> str:
+    return _get_override("chat_prompts/compact_system", COMPACT_ANALYSIS_SYSTEM_PROMPT)
+
+
+def get_chart_analysis_user_template() -> str:
+    return _get_override("chat_prompts/chart_analysis_user", CHART_ANALYSIS_USER_TEMPLATE)
+
+
+def get_conversational_user_template() -> str:
+    return _get_override("chat_prompts/conversational_user", CONVERSATIONAL_USER_TEMPLATE)
+
+
+def get_compact_user_template() -> str:
+    return _get_override("chat_prompts/compact_user", COMPACT_ANALYSIS_USER_TEMPLATE)
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -241,7 +281,8 @@ def build_analysis_prompt(
     lookback: int = 100,
 ) -> str:
     """Build the user prompt for full chart analysis."""
-    return CHART_ANALYSIS_USER_TEMPLATE.format(
+    template = get_chart_analysis_user_template()
+    return template.format(
         symbol=symbol,
         timeframe=timeframe,
         current_price=f"{current_price:.4f}",
@@ -265,7 +306,8 @@ def build_conversation_prompt(
     question: str,
 ) -> str:
     """Build the user prompt for conversational Q&A."""
-    return CONVERSATIONAL_USER_TEMPLATE.format(
+    template = get_conversational_user_template()
+    return template.format(
         symbol=symbol,
         timeframe=timeframe,
         current_price=f"{current_price:.4f}",

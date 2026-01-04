@@ -5,6 +5,7 @@ Endpoint: wss://stream.data.alpaca.markets/v1beta3/crypto/us
 """
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -63,6 +64,7 @@ class AlpacaCryptoStreamClient(StreamClient):
 
         # Alpaca crypto stream client
         self._stream: CryptoDataStream | None = None
+        self._stream_task: asyncio.Task | None = None
 
         logger.info(f"Alpaca crypto stream client initialized (paper={paper})")
 
@@ -109,7 +111,8 @@ class AlpacaCryptoStreamClient(StreamClient):
                 print("⚠️ DEBUG: No symbols to subscribe during connect!")
 
             # Start stream in background
-            asyncio.create_task(self._run_stream())
+            # Track background task so we can cancel cleanly on shutdown
+            self._stream_task = asyncio.create_task(self._run_stream())
 
             self.connected = True
             self.metrics.status = StreamStatus.CONNECTED
@@ -192,6 +195,13 @@ class AlpacaCryptoStreamClient(StreamClient):
             self.connected = False
             self.metrics.status = StreamStatus.DISCONNECTED
             self.metrics.subscribed_symbols.clear()
+
+            # Cancel and await the background stream task to avoid asyncgen close errors
+            if self._stream_task:
+                self._stream_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._stream_task
+                self._stream_task = None
 
             if self._stream:
                 # Run in thread to avoid blocking - stop_ws may be synchronous

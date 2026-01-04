@@ -98,7 +98,7 @@ class StreamingMixin:
             if not hasattr(self, '_current_candle_time'):
                 self._initialize_candle(current_minute_start, price)
 
-            self._update_candle_for_tick(current_minute_start, price)
+            self._update_candle_for_tick(current_minute_start, price, tick_data)
             self._accumulate_volume(volume)
             self._current_candle_close = price
             self._last_price = price
@@ -135,8 +135,9 @@ class StreamingMixin:
 
     def _log_tick(self, price: float, volume: float) -> None:
         self.info_label.setText(f"Last: ${price:.2f}")
+        # Keep tick output visible; this was requested
         print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
-        logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
+        logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f} vol={volume}")
 
     def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
         ts = tick_data.get('timestamp')
@@ -159,7 +160,7 @@ class StreamingMixin:
         local_offset = get_local_timezone_offset_seconds()
         current_tick_time = int(ts.timestamp()) + local_offset
         current_minute_start = current_tick_time - (current_tick_time % 60)
-        logger.info(
+        logger.debug(
             f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
             f"TickUnix: {current_tick_time} | MinStart: {current_minute_start}"
         )
@@ -172,7 +173,7 @@ class StreamingMixin:
         self._current_candle_low = price
         self._current_candle_volume = 0
 
-    def _update_candle_for_tick(self, current_minute_start: int, price: float) -> None:
+    def _update_candle_for_tick(self, current_minute_start: int, price: float, tick_data: dict = None) -> None:
         if current_minute_start > self._current_candle_time:
             prev_open = getattr(self, '_current_candle_open', price)
             prev_high = getattr(self, '_current_candle_high', price)
@@ -196,8 +197,14 @@ class StreamingMixin:
             self._current_candle_volume = 0
             return
 
-        self._current_candle_high = max(self._current_candle_high, price)
-        self._current_candle_low = min(self._current_candle_low, price)
+        # Use actual OHLC from source if available (e.g., Bitunix klines)
+        if tick_data and 'high' in tick_data and 'low' in tick_data:
+            self._current_candle_high = max(self._current_candle_high, float(tick_data['high']))
+            self._current_candle_low = min(self._current_candle_low, float(tick_data['low']))
+        else:
+            # Fallback: calculate from price (for simple ticks without OHLC)
+            self._current_candle_high = max(self._current_candle_high, price)
+            self._current_candle_low = min(self._current_candle_low, price)
 
     def _accumulate_volume(self, volume: float) -> None:
         if volume:
@@ -222,6 +229,18 @@ class StreamingMixin:
     def _execute_chart_updates(self, candle: dict, volume_bar: dict) -> None:
         candle_json = json.dumps(candle)
         volume_json = json.dumps(volume_bar)
+
+        # Log every 10th update to track if JS is being called
+        if not hasattr(self, '_update_call_count'):
+            self._update_call_count = 0
+        self._update_call_count += 1
+        if self._update_call_count % 10 == 1:
+            logger.info(
+                f"🔄 updateCandle #{self._update_call_count}: "
+                f"O={candle['open']:.2f} H={candle['high']:.2f} "
+                f"L={candle['low']:.2f} C={candle['close']:.2f}"
+            )
+
         self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
         self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
 
@@ -256,8 +275,12 @@ class StreamingMixin:
                     else:
                         ts_value = ts_raw
                     unix_time = int(pd.Timestamp(ts_value).timestamp()) + local_offset
+                    # IMPORTANT: Round to minute start for consistent candle grouping
+                    # This prevents each tick from creating a new candle
+                    unix_time = unix_time - (unix_time % 60)
                 except Exception:
                     unix_time = int(datetime.now().timestamp()) + local_offset
+                    unix_time = unix_time - (unix_time % 60)
 
                 candle = {
                     'time': unix_time,

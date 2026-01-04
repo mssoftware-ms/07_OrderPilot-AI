@@ -112,6 +112,39 @@ pytest tests/test_broker_adapter.py -v
 pytest --cov=src --cov-report=html
 ```
 
+## (Optional) aider CLI + Ollama
+
+This project includes a helper script to run `aider` against a local Ollama server.
+
+### Prerequisites
+
+```powershell
+# Install Ollama (and make sure `ollama` is on PATH)
+# https://ollama.com
+
+# Install aider
+python -m pip install aider-install
+```
+
+### Start Ollama
+
+```powershell
+ollama pull qwen2.5-coder:7b-instruct
+ollama serve
+```
+
+### Run aider (from repo)
+
+```powershell
+./tools/aider_ollama.ps1 -Model qwen2.5-coder:7b-instruct
+```
+
+If your Ollama endpoint is non-default:
+
+```powershell
+./tools/aider_ollama.ps1 -ApiBase http://127.0.0.1:11434 -Model qwen2.5-coder:7b-instruct
+```
+
 ## Project Structure
 
 ```
