@@ -91,10 +91,8 @@ class AlpacaCryptoStreamClient(StreamClient):
             )
 
             # Set up handlers for subscribed symbols
-            print(f"🔍 DEBUG: subscribed_symbols at connect = {self.metrics.subscribed_symbols}")
             if self.metrics.subscribed_symbols:
                 symbols_list = list(self.metrics.subscribed_symbols)
-                print(f"🔍 DEBUG: Subscribing to {symbols_list} during connect")
                 self._stream.subscribe_bars(
                     self._on_bar,
                     *symbols_list
@@ -107,8 +105,6 @@ class AlpacaCryptoStreamClient(StreamClient):
                     self._on_quote,
                     *symbols_list
                 )
-            else:
-                print("⚠️ DEBUG: No symbols to subscribe during connect!")
 
             # Start stream in background
             # Track background task so we can cancel cleanly on shutdown
@@ -233,9 +229,6 @@ class AlpacaCryptoStreamClient(StreamClient):
         Args:
             symbols: List of crypto trading pairs (e.g., ["BTC/USD", "ETH/USD"])
         """
-        print(f"🔔 SUBSCRIBE called with symbols: {symbols}")
-        print(f"🔔 connected={self.connected}, _stream={self._stream is not None}")
-
         # Add to subscribed set
         for symbol in symbols:
             if symbol not in self.metrics.subscribed_symbols:
@@ -243,15 +236,11 @@ class AlpacaCryptoStreamClient(StreamClient):
 
         # Subscribe to stream if connected
         if self.connected and self._stream:
-            print(f"🔔 Subscribing to bars/trades/quotes for: {symbols}")
             self._stream.subscribe_bars(self._on_bar, *symbols)
             self._stream.subscribe_trades(self._on_trade, *symbols)
             self._stream.subscribe_quotes(self._on_quote, *symbols)
-            print(f"✅ Subscription complete for: {symbols}")
 
             logger.info(f"Subscribed to {len(symbols)} crypto symbols: {', '.join(symbols)}")
-        else:
-            print(f"⚠️ Cannot subscribe - not connected or no stream!")
 
     async def unsubscribe(self, symbols: list[str]):
         """Unsubscribe from crypto symbols.
@@ -281,13 +270,6 @@ class AlpacaCryptoStreamClient(StreamClient):
             bar: Alpaca crypto bar object
         """
         try:
-            # Print to console for debugging
-            print(f"📊 CRYPTO BAR: {bar.symbol} | Close: ${float(bar.close):.2f} | O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} | Vol: {bar.volume}")
-            logger.info(
-                f"📊 Received crypto bar: {bar.symbol} "
-                f"OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} "
-                f"Vol: {bar.volume}"
-            )
             request_time = datetime.now(timezone.utc)
 
             last_close = self._last_close.get(bar.symbol)
@@ -361,13 +343,6 @@ class AlpacaCryptoStreamClient(StreamClient):
             trade: Alpaca crypto trade object
         """
         try:
-            # Print to console for debugging
-            print(f"💰 CRYPTO TRADE: {trade.symbol} | Price: ${float(trade.price):.2f} | Size: {trade.size}")
-            logger.info(
-                f"🔔 Received crypto trade: {trade.symbol} "
-                f"@ ${trade.price} (size: {trade.size})"
-            )
-
             # Create tick from trade
             tick = MarketTick(
                 symbol=trade.symbol,

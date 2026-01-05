@@ -7,6 +7,7 @@ Supports ticker, kline, depth, and trade channels.
 import asyncio
 import json
 import logging
+import ssl
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -66,6 +67,7 @@ class BitunixStreamClient(StreamClient):
         self.ws_url = self._get_ws_url()
         self.ws = None
         self._stream_task = None
+        self._heartbeat_task = None
         self._reconnect_count = 0
 
     def _get_ws_url(self) -> str:
@@ -79,54 +81,31 @@ class BitunixStreamClient(StreamClient):
         return "wss://fapi.bitunix.com/public/"
 
     async def connect(self) -> bool:
-        """Connect to Bitunix WebSocket.
+        """Establish WebSocket connection via supervisor task.
 
         Returns:
-            True if connection successful
+            True if supervisor started
         """
         if self.connected:
-            logger.warning("Already connected")
+            logger.warning("Already connected or connecting")
             return True
 
-        try:
-            self.metrics.status = StreamStatus.CONNECTING
-            logger.info(f"Connecting to {self.ws_url}")
+        self.connected = True
+        self.metrics.status = StreamStatus.CONNECTING
+        self._reconnect_count = 0
 
-            self.ws = await websockets.connect(
-                self.ws_url,
-                ping_interval=self.heartbeat_interval,
-                ping_timeout=self.heartbeat_interval * 2
-            )
+        # Start single supervisor task
+        if not self._stream_task or self._stream_task.done():
+            self._stream_task = asyncio.create_task(self._run_supervisor())
 
-            self.connected = True
-            self.metrics.status = StreamStatus.CONNECTED
-            self.metrics.connected_at = datetime.utcnow()
-            self._reconnect_count = 0
-
-            # Start message handler
-            self._stream_task = asyncio.create_task(self._run_stream())
-
-            logger.info(f"✓ Connected to {self.ws_url}")
-            return True
-
-        except Exception as e:
-            self.metrics.status = StreamStatus.ERROR
-            logger.error(f"Connection failed: {e}")
-            return False
+        return True
 
     async def disconnect(self) -> None:
-        """Disconnect from Bitunix WebSocket."""
+        """Disconnect from Bitunix WebSocket and stop supervisor."""
         self.connected = False
         self.metrics.status = StreamStatus.DISCONNECTED
 
-        if self._stream_task:
-            self._stream_task.cancel()
-            try:
-                await self._stream_task
-            except asyncio.CancelledError:
-                pass
-            self._stream_task = None
-
+        # Signal closure to WebSocket
         if self.ws:
             try:
                 await self.ws.close()
@@ -134,122 +113,91 @@ class BitunixStreamClient(StreamClient):
                 pass
             self.ws = None
 
+        # Supervisor task will exit naturally because self.connected is False
+        # and it awaits current operations with timeouts or exception handling.
+        # We don't await self._stream_task here to avoid any potential UI hang.
+        self._stream_task = None
+        self._heartbeat_task = None # Obsolete
+
         await super().disconnect()
-        logger.info("Disconnected from Bitunix WebSocket")
+        logger.info("Bitunix stream disconnected")
 
-    async def _handle_subscription(self, symbols: list[str]) -> None:
-        """Handle subscription to symbols.
-
-        Subscribes to ticker and 1m kline channels for each symbol.
-
-        Args:
-            symbols: List of symbols to subscribe to
-        """
-        if not self.ws:
-            logger.warning("WebSocket not connected, cannot subscribe")
-            return
-
-        # Bitunix WS docs (01_Projectplan/Bitunix_API):
-        # {
-        #   "op": "subscribe",
-        #   "args": [{"symbol":"BTCUSDT","ch":"market_kline_1min"}]
-        # }
-        kline_msg = {
-            "op": "subscribe",
-            "args": [{"symbol": s, "ch": "market_kline_1min"} for s in symbols],
-        }
-        await self.ws.send(json.dumps(kline_msg))
-        logger.info(f"📡 Bitunix: Subscribed to market_kline_1min for symbols: {symbols}")
-
-    async def _handle_unsubscription(self, symbols: list[str]) -> None:
-        """Handle unsubscription from symbols.
-
-        Args:
-            symbols: List of symbols to unsubscribe from
-        """
-        if not self.ws:
-            return
-
-        unsub_msg = {
-            "op": "unsubscribe",
-            "args": [{"symbol": s, "ch": "market_kline_1min"} for s in symbols],
-        }
-        await self.ws.send(json.dumps(unsub_msg))
-
-        logger.debug(f"Unsubscribed from kline for {len(symbols)} symbols")
-
-    async def _run_stream(self) -> None:
-        """Main message loop with auto-reconnect."""
+    async def _run_supervisor(self) -> None:
+        """Supervisor loop managing connection lifecycle and heartbeats."""
         while self.connected:
             try:
-                async for message in self.ws:
-                    await self._on_message(message)
+                self.metrics.status = StreamStatus.CONNECTING
+                logger.info(f"Connecting to Bitunix: {self.ws_url}")
 
-            except ConnectionClosed as e:
-                if self.connected:
-                    logger.warning(f"Connection closed: {e}, attempting reconnect...")
-                    await self._handle_reconnect()
-                    # After reconnect, connect() starts a new _stream_task
-                    # This old task should exit to avoid duplicates
-                    return
-                else:
-                    break
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
 
-            except Exception as e:
-                logger.error(f"Stream error: {e}")
-                if self.connected:
-                    # Avoid tight loops; let reconnect logic run
-                    await self._handle_reconnect()
-                    return
-                else:
+                async with websockets.connect(
+                    self.ws_url,
+                    ssl=ssl_context,
+                    ping_interval=None, # Manual heartbeat
+                    ping_timeout=10
+                ) as ws:
+                    self.ws = websocket = ws # Use local ref for loop
+                    self.metrics.status = StreamStatus.CONNECTED
+                    self.metrics.connected_at = datetime.utcnow()
+                    self._reconnect_count = 0
+                    logger.info(f"✓ Connected to Bitunix")
+
+                    # Subscribe to symbols
+                    if self.metrics.subscribed_symbols:
+                        await self._handle_subscription(list(self.metrics.subscribed_symbols))
+
+                    # Message and Heartbeat loop
+                    last_ping = 0
+                    while self.connected and not websocket.closed:
+                        # 1. Check Heartbeat (3s interval)
+                        now = time.time()
+                        if now - last_ping >= 3:
+                            ping_msg = {"op": "ping", "ping": int(round(now * 1000))}
+                            await websocket.send(json.dumps(ping_msg))
+                            last_ping = now
+
+                        # 2. Process Messages with timeout to allow heartbeat check
+                        try:
+                            # Use wait_for to keep loop responsive
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                            await self._on_message(message)
+                        except asyncio.TimeoutError:
+                            continue # Just loop back for heartbeat/status check
+
+            except (ConnectionClosed, Exception) as e:
+                if not self.connected:
                     break
+                
+                self.metrics.status = StreamStatus.RECONNECTING
+                self._reconnect_count += 1
+                delay = min(2 ** self._reconnect_count, 30)
+                logger.warning(f"Bitunix connection error: {e}. Retrying in {delay}s...")
+                
+                # Cleanup state
+                self.ws = None
+                
+                # Wait before retry
+                for _ in range(delay):
+                    if not self.connected: break
+                    await asyncio.sleep(1)
+
+        self.metrics.status = StreamStatus.DISCONNECTED
+        logger.info("Bitunix supervisor stopped")
+
+    async def _run_stream(self) -> None:
+        """Deprecated: Logic moved to _run_supervisor."""
+        pass
+
+    async def _run_heartbeat(self) -> None:
+        """Deprecated: Logic moved to _run_supervisor."""
+        pass
 
     async def _handle_reconnect(self) -> None:
-        """Handle reconnection logic with exponential backoff."""
-        if self._reconnect_count >= self.reconnect_attempts:
-            logger.error(f"Max reconnect attempts ({self.reconnect_attempts}) reached")
-            await self.disconnect()
-            return
-
-        self._reconnect_count += 1
-        self.metrics.reconnect_count = self._reconnect_count
-        self.metrics.status = StreamStatus.RECONNECTING
-
-        # Exponential backoff: 2^n seconds
-        delay = min(2 ** self._reconnect_count, 60)  # Max 60 seconds
-        logger.info(f"Reconnecting in {delay}s (attempt {self._reconnect_count}/{self.reconnect_attempts})")
-        await asyncio.sleep(delay)
-
-        # Close old WebSocket and reset connection state
-        if self.ws:
-            try:
-                await self.ws.close()
-            except Exception:
-                pass  # Ignore errors when closing dead connection
-
-        # Cancel old stream task if it's still running (should have exited already)
-        if self._stream_task and not self._stream_task.done():
-            self._stream_task.cancel()
-            try:
-                await self._stream_task
-            except asyncio.CancelledError:
-                pass
-
-        self.ws = None
-        self._stream_task = None
-        self.connected = False  # CRITICAL: Reset flag before reconnect
-
-        success = await self.connect()
-
-        # Re-subscribe to previous symbols
-        if success and self.metrics.subscribed_symbols:
-            symbols = list(self.metrics.subscribed_symbols)
-            await self._handle_subscription(symbols)
-            logger.info(f"Re-subscribed to {len(symbols)} symbols")
-        elif not success:
-            # If reconnect fails (e.g., auth/endpoint issues), stop attempting to avoid tight loops
-            self.connected = False
-            self.metrics.status = StreamStatus.ERROR
+        """Deprecated: Logic moved to _run_supervisor."""
+        pass
 
     async def _on_message(self, message: str) -> None:
         """Parse and handle incoming WebSocket messages.

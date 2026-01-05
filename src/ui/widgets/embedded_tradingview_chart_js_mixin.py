@@ -10,7 +10,8 @@ class EmbeddedTradingViewChartJSMixin:
     def _execute_js(self, script: str):
         """Execute JavaScript in the web view, queueing until chart is ready."""
         if self.page_loaded and self.chart_initialized:
-            if 'Indicator' in script or 'Panel' in script or 'createPanel' in script:
+            # Avoid logging high-frequency data updates like updatePanelData
+            if ('Indicator' in script or 'Panel' in script or 'createPanel' in script) and 'updatePanelData' not in script:
                 logger.info(f"🔧 Executing JS (indicator): {script[:100]}...")
             self.web_view.page().runJavaScript(script)
         else:

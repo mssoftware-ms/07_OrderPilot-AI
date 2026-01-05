@@ -170,6 +170,16 @@ class DataLoadingMixin:
 
     def _finalize_chart_load(self, data: pd.DataFrame, candle_data: list[dict]) -> None:
         self._update_indicators()
+        
+        # Restore any existing chart markings (markers, zones, lines)
+        # setData() in JS wipes all custom drawings, so we must re-apply them.
+        if hasattr(self, '_update_chart_markers'):
+            self._update_chart_markers()
+        if hasattr(self, '_update_chart_zones'):
+            self._update_chart_zones()
+        if hasattr(self, '_update_chart_lines'):
+            self._update_chart_lines()
+            
         first_date = data.index[0].strftime('%Y-%m-%d %H:%M')
         last_date = data.index[-1].strftime('%Y-%m-%d %H:%M')
         self.info_label.setText(

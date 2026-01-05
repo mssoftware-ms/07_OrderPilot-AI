@@ -283,10 +283,6 @@ class AlpacaStreamClient(StreamClient):
             bar: Alpaca bar object
         """
         try:
-            logger.info(
-                f"📊 Received bar: {bar.symbol} "
-                f"OHLC: {bar.open}/{bar.high}/{bar.low}/{bar.close} Vol: {bar.volume}"
-            )
             request_time = datetime.now(timezone.utc)  # Use timezone-aware datetime
 
             cleaned = self._validator.validate_stream_bar(
@@ -364,8 +360,6 @@ class AlpacaStreamClient(StreamClient):
             trade: Alpaca trade object
         """
         try:
-            logger.info(f"🔔 Received trade: {trade.symbol} @ ${trade.price} (size: {trade.size})")
-
             # Create tick from trade
             tick = MarketTick(
                 symbol=trade.symbol,
