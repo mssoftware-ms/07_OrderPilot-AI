@@ -69,6 +69,7 @@ class BitunixStreamClient(StreamClient):
         self._stream_task = None
         self._heartbeat_task = None
         self._reconnect_count = 0
+        self._kline_channel = "market_kline_1min"
 
     def _get_ws_url(self) -> str:
         """Get WebSocket URL based on environment.
@@ -143,6 +144,7 @@ class BitunixStreamClient(StreamClient):
                     self.metrics.status = StreamStatus.CONNECTED
                     self.metrics.connected_at = datetime.utcnow()
                     self._reconnect_count = 0
+                    self.metrics.reconnect_count = 0
                     logger.info(f"✓ Connected to Bitunix")
 
                     # Subscribe to symbols
@@ -155,7 +157,7 @@ class BitunixStreamClient(StreamClient):
                         # 1. Check Heartbeat (3s interval)
                         now = time.time()
                         if now - last_ping >= 3:
-                            ping_msg = {"op": "ping", "ping": int(round(now * 1000))}
+                            ping_msg = {"op": "ping", "ping": int(now)}
                             await websocket.send(json.dumps(ping_msg))
                             last_ping = now
 
@@ -173,6 +175,7 @@ class BitunixStreamClient(StreamClient):
                 
                 self.metrics.status = StreamStatus.RECONNECTING
                 self._reconnect_count += 1
+                self.metrics.reconnect_count = self._reconnect_count
                 delay = min(2 ** self._reconnect_count, 30)
                 logger.warning(f"Bitunix connection error: {e}. Retrying in {delay}s...")
                 
@@ -215,13 +218,25 @@ class BitunixStreamClient(StreamClient):
             # Handle different message types
             op = data.get('op')
 
-            # Log first few messages to help debug (including pongs)
+            # Log first few messages to help debug (including pings)
             if self.metrics.messages_received <= 5:
                 logger.debug(f"📨 Bitunix message #{self.metrics.messages_received}: {data}")
 
-            if op == 'pong':
+            if op == 'ping':
                 # Heartbeat response (keep-alive)
-                logger.debug(f"💓 Heartbeat pong received")
+                logger.debug("💓 Heartbeat ping/pong received")
+                return
+
+            if op in {"subscribe", "unsubscribe"}:
+                logger.info(f"Bitunix WS ack: {data}")
+                return
+
+            if op == "connect":
+                logger.info("Bitunix WS connected/authorized")
+                return
+
+            if op == "error":
+                logger.error(f"Bitunix WS error: {data}")
                 return
 
             # Channel messages
@@ -229,6 +244,8 @@ class BitunixStreamClient(StreamClient):
 
             if 'kline' in channel or 'market_kline' in channel:
                 await self._handle_kline(data)
+            elif 'ticker' in channel:
+                await self._handle_ticker(data)
             elif 'depth' in channel:
                 await self._handle_depth(data)
             elif 'trade' in channel:
@@ -280,11 +297,7 @@ class BitunixStreamClient(StreamClient):
             source=self.name
         )
 
-        # Add to buffer and cache
-        self.buffer.append(tick)
-        self.symbol_cache[symbol] = tick
-
-        # Process tick (latency calculation, callbacks)
+        # Process tick (latency calculation, callbacks, caching)
         self.process_tick(tick)
 
         # Emit event
@@ -393,6 +406,46 @@ class BitunixStreamClient(StreamClient):
         """
         # TODO: Implement trade handling if needed
         logger.debug(f"Trade update: {data.get('data', {}).get('symbol')}")
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        """Normalize symbols to Bitunix format (uppercase, no separators)."""
+        return str(symbol).replace("/", "").replace("-", "").upper()
+
+    def _build_subscription_args(self, symbols: list[str]) -> list[dict[str, str]]:
+        """Build subscription args for ticker + 1m kline channels."""
+        args: list[dict[str, str]] = []
+        for symbol in symbols:
+            normalized = self._normalize_symbol(symbol)
+            args.append({"symbol": normalized, "ch": self._kline_channel})
+            args.append({"symbol": normalized, "ch": "ticker"})
+        return args
+
+    async def _handle_subscription(self, symbols: list[str]) -> None:
+        """Send subscription request for given symbols."""
+        if not self.ws or self.ws.closed:
+            logger.warning("Bitunix WS not connected; subscription deferred")
+            return
+
+        args = self._build_subscription_args(symbols)
+        if not args:
+            logger.warning("Bitunix subscription skipped (no symbols)")
+            return
+
+        payload = {"op": "subscribe", "args": args}
+        await self.ws.send(json.dumps(payload))
+        logger.info(f"Subscribed to Bitunix {len(args)} channels for {len(symbols)} symbols")
+
+    async def _handle_unsubscription(self, symbols: list[str]) -> None:
+        """Send unsubscription request for given symbols."""
+        if not self.ws or self.ws.closed:
+            logger.warning("Bitunix WS not connected; unsubscription skipped")
+            return
+
+        args = self._build_subscription_args(symbols)
+        payload = {"op": "unsubscribe", "args": args}
+        await self.ws.send(json.dumps(payload))
+        logger.info(f"Unsubscribed from Bitunix channels for {len(symbols)} symbols")
 
     def get_latest_tick(self, symbol: str) -> MarketTick | None:
         """Get latest tick for symbol.
