@@ -6,6 +6,8 @@ import pytest
 
 from src.core.broker import MockBroker as MockBrokerAdapter
 from src.core.broker import OrderRequest
+from src.core.broker.bitunix_paper_adapter import BitunixPaperAdapter
+from src.core.market_data.history_provider import HistoryManager
 from src.database.models import OrderSide, OrderStatus, OrderType, TimeInForce
 
 
@@ -17,6 +19,47 @@ class TestMockBrokerAdapter:
         self.broker = MockBrokerAdapter(
             initial_cash=Decimal('10000')
         )
+
+    def test_bitunix_paper_adapter_market_order(self):
+        """Bitunix paper adapter should instantiate and fill a market order."""
+
+        class _StubHistory:
+            async def get_latest_price(self, symbol: str):
+                return Decimal('100.0')
+
+        class _StubAdapter(BitunixPaperAdapter):
+            """Inject stub price directly if history missing."""
+
+            async def _place_order_impl(self, order, estimated_fee):
+                # Force price even if history_manager is None
+                if not hasattr(self, "history_manager") or self.history_manager is None:
+                    self.history_manager = _StubHistory()
+                return await super()._place_order_impl(order, estimated_fee)
+
+        async def _run():
+            adapter = _StubAdapter(history_manager=_StubHistory())
+            await adapter.connect()
+
+            order = OrderRequest(
+                symbol="BTCUSDT",
+                side=OrderSide.SELL.value,  # Short to verify sign handling
+                order_type=OrderType.MARKET.value,
+                quantity=Decimal('0.5'),
+                time_in_force=TimeInForce.GTC.value,
+            )
+
+            resp = await adapter.place_order(order)
+
+            assert resp.status == OrderStatus.FILLED.value
+            assert resp.average_fill_price == Decimal('100.0')
+            positions = await adapter.get_positions()
+            assert len(positions) == 1
+            assert positions[0].symbol == "BTCUSDT"
+            # SELL should create a short (negative quantity)
+            assert positions[0].quantity == Decimal('-0.5')
+
+        import asyncio
+        asyncio.run(_run())
 
     @pytest.mark.asyncio
     async def test_connect_disconnect(self):

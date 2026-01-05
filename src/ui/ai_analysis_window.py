@@ -4,7 +4,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QComboBox, QProgressBar, QApplication, QMessageBox,
-    QDialogButtonBox
+    QDialogButtonBox, QTabWidget, QWidget
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
 from PyQt6.QtGui import QClipboard
@@ -18,6 +18,7 @@ from src.ai.model_constants import (
     ANTHROPIC_MODELS,
     GEMINI_MODELS,
 )
+from src.ui.widgets.deep_analysis_window import DeepAnalysisWidget
 
 class AnalysisWorker(QThread):
     """
@@ -155,7 +156,7 @@ class AIAnalysisWindow(QDialog):
         super().__init__(parent)
         self.symbol = symbol
         self.setWindowTitle(f"AI Analysis - {symbol}")
-        self.resize(500, 700)
+        self.resize(800, 800)
         self.settings = QSettings("OrderPilot", "TradingApp")
 
         self.engine: Optional[AIAnalysisEngine] = None
@@ -169,7 +170,22 @@ class AIAnalysisWindow(QDialog):
         self._load_settings()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+
+        # --- Tab 1: Overview (Original UI) ---
+        self.overview_tab = QWidget()
+        self._init_overview_tab()
+        self.tabs.addTab(self.overview_tab, "Overview")
+
+        # --- Tab 2: Deep Analysis (New) ---
+        self.deep_analysis_tab = DeepAnalysisWidget()
+        self.tabs.addTab(self.deep_analysis_tab, "Deep Analysis")
+
+    def _init_overview_tab(self):
+        layout = QVBoxLayout(self.overview_tab)
 
         # --- Header ---
         header_layout = QHBoxLayout()
@@ -338,6 +354,12 @@ class AIAnalysisWindow(QDialog):
             self.lbl_status.setText("Error: OpenAI API key missing or not configured")
             return
 
+        # Inject context into DeepAnalysisWidget
+        if hasattr(self, 'deep_analysis_tab'):
+            self.deep_analysis_tab.context.set_market_context(
+                history_manager, symbol, asset_class, data_source
+            )
+
         # 3. UI State Update
         self.btn_analyze.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -364,10 +386,15 @@ class AIAnalysisWindow(QDialog):
         if result:
             # Pretty print the Pydantic model
             try:
+                # Convert to dict for DeepAnalysisWidget
+                result_dict = result.model_dump()
+                self.deep_analysis_tab.update_from_initial_analysis(result_dict)
+                
                 json_str = result.model_dump_json(indent=2)
                 self.txt_output.setText(json_str)
-            except:
+            except Exception as e:
                 self.txt_output.setText(str(result))
+                print(f"Error transferring data to DeepAnalysis: {e}")
         else:
             self.txt_output.setText("Analysis failed (returned None). Check logs.")
 

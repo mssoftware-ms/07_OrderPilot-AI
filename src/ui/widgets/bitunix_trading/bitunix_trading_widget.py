@@ -24,17 +24,21 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QGroupBox,
-    QSpinBox,
     QDoubleSpinBox,
+    QSlider,
     QMessageBox,
     QHeaderView,
+    QCheckBox,
+    QFrame
 )
 
 from src.core.broker.broker_types import OrderRequest, OrderSide
 from src.database.models import OrderType as DBOrderType
+from src.core.broker.bitunix_paper_adapter import BitunixPaperAdapter
 
 if TYPE_CHECKING:
     from src.core.broker.bitunix_adapter import BitunixAdapter
+    from src.core.market_data.history_provider import HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ class BitunixTradingWidget(QDockWidget):
         - Order entry panel (Market/Limit, Buy/Sell)
         - Position management table
         - Account info display (Balance, Margin, PnL)
+        - Live / Paper Trading Switch
     """
 
     def __init__(self, adapter: BitunixAdapter | None = None, parent=None):
@@ -57,14 +62,22 @@ class BitunixTradingWidget(QDockWidget):
         """
         super().__init__("💱 Bitunix Trading", parent)
 
-        self.adapter = adapter
+        self.live_adapter = adapter
+        self.paper_adapter = BitunixPaperAdapter()
+        self.adapter = self.paper_adapter # Default to Paper for safety
         self._current_symbol = None
+        self.is_paper_mode = True
 
         self._setup_ui()
         self._setup_timers()
+        self._update_mode_ui() # Set initial visual state
 
         if self.adapter:
             self._start_updates()
+
+    def set_history_manager(self, history_manager: HistoryManager):
+        """Inject history manager into paper adapter for price feeds."""
+        self.paper_adapter.history_manager = history_manager
 
     def _setup_ui(self) -> None:
         """Set up the widget UI."""
@@ -75,6 +88,33 @@ class BitunixTradingWidget(QDockWidget):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(12)
+
+        # --- Mode Switch & Banner ---
+        mode_layout = QHBoxLayout()
+        
+        self.mode_toggle = QCheckBox("Paper Trading Mode")
+        self.mode_toggle.setChecked(True)
+        self.mode_toggle.toggled.connect(self._toggle_mode)
+        self.mode_toggle.setStyleSheet("""
+            QCheckBox { font-weight: bold; font-size: 14px; }
+            QCheckBox::indicator { width: 18px; height: 18px; }
+        """)
+        mode_layout.addWidget(self.mode_toggle)
+        mode_layout.addStretch()
+        layout.addLayout(mode_layout)
+
+        self.mode_banner = QLabel("PAPER TRADING - SIMULATION")
+        self.mode_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mode_banner.setStyleSheet("""
+            background-color: #4CAF50; 
+            color: white; 
+            font-weight: bold; 
+            padding: 8px; 
+            border-radius: 4px;
+            font-size: 12px;
+        """)
+        layout.addWidget(self.mode_banner)
+        # ----------------------------
 
         # Account info section
         layout.addWidget(self._build_account_section())
@@ -87,6 +127,45 @@ class BitunixTradingWidget(QDockWidget):
 
         layout.addStretch()
         self.setWidget(container)
+
+    def _toggle_mode(self, is_paper: bool):
+        """Switch between Live and Paper adapters."""
+        self.is_paper_mode = is_paper
+        
+        if is_paper:
+            self.adapter = self.paper_adapter
+        else:
+            self.adapter = self.live_adapter
+            
+        self._update_mode_ui()
+        
+        # Trigger immediate refresh
+        self._load_account_info()
+        self._load_positions()
+        self._update_button_states()
+
+    def _update_mode_ui(self):
+        """Update banner and colors based on mode."""
+        if self.is_paper_mode:
+            self.mode_banner.setText("PAPER TRADING - SIMULATION")
+            self.mode_banner.setStyleSheet("""
+                background-color: #4CAF50; 
+                color: white; 
+                font-weight: bold; 
+                padding: 8px; 
+                border-radius: 4px;
+            """)
+            self.reset_btn.setVisible(True)
+        else:
+            self.mode_banner.setText("⚠️ LIVE TRADING - REAL MONEY ⚠️")
+            self.mode_banner.setStyleSheet("""
+                background-color: #D32F2F; 
+                color: white; 
+                font-weight: bold; 
+                padding: 8px; 
+                border-radius: 4px;
+            """)
+            self.reset_btn.setVisible(False)
 
     def _build_account_section(self) -> QGroupBox:
         """Build account information display.
@@ -122,8 +201,29 @@ class BitunixTradingWidget(QDockWidget):
         pnl_layout.addWidget(self.pnl_label)
         pnl_layout.addStretch()
         layout.addLayout(pnl_layout)
+        
+        # Reset Button (Paper only)
+        self.reset_btn = QPushButton("🔄 Reset Paper Account")
+        self.reset_btn.clicked.connect(self._reset_paper_account)
+        self.reset_btn.setStyleSheet("background-color: #555; color: #aaa; font-size: 10px; margin-top: 5px;")
+        layout.addWidget(self.reset_btn)
 
         return group
+
+    def _reset_paper_account(self):
+        """Reset paper trading balance."""
+        if not self.is_paper_mode:
+            return
+            
+        confirm = QMessageBox.question(
+            self, "Reset Simulation", 
+            "Reset paper balance to 10,000 USDT?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.paper_adapter.reset_account()
+            self._load_account_info()
+            self._load_positions()
 
     def _build_order_entry_section(self) -> QGroupBox:
         """Build order entry panel.
@@ -177,12 +277,42 @@ class BitunixTradingWidget(QDockWidget):
         # Leverage
         leverage_layout = QHBoxLayout()
         leverage_layout.addWidget(QLabel("Leverage:"))
-        self.leverage_spin = QSpinBox()
-        self.leverage_spin.setMinimum(1)
-        self.leverage_spin.setMaximum(100)
-        self.leverage_spin.setValue(1)
-        leverage_layout.addWidget(self.leverage_spin)
+        self.leverage_slider = QSlider(Qt.Orientation.Horizontal)
+        self.leverage_slider.setMinimum(0)
+        self.leverage_slider.setMaximum(100)
+        self.leverage_slider.setValue(5)
+        self.leverage_slider.setTickInterval(5)
+        self.leverage_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.leverage_slider.valueChanged.connect(self._on_leverage_changed)
+        leverage_layout.addWidget(self.leverage_slider)
+        self.leverage_value = QLabel("5x")
+        self.leverage_value.setMinimumWidth(40)
+        leverage_layout.addWidget(self.leverage_value)
         layout.addLayout(leverage_layout)
+
+        # Stop Loss
+        stop_layout = QHBoxLayout()
+        stop_layout.addWidget(QLabel("Stop Loss:"))
+        self.stop_loss_spin = QDoubleSpinBox()
+        self.stop_loss_spin.setDecimals(2)
+        self.stop_loss_spin.setMinimum(0)
+        self.stop_loss_spin.setMaximum(1_000_000)
+        self.stop_loss_spin.setValue(0)
+        self.stop_loss_spin.setToolTip("0 = kein Stop Loss. Preis in USDT.")
+        stop_layout.addWidget(self.stop_loss_spin)
+        layout.addLayout(stop_layout)
+
+        # Take Profit
+        tp_layout = QHBoxLayout()
+        tp_layout.addWidget(QLabel("Take Profit:"))
+        self.take_profit_spin = QDoubleSpinBox()
+        self.take_profit_spin.setDecimals(2)
+        self.take_profit_spin.setMinimum(0)
+        self.take_profit_spin.setMaximum(1_000_000)
+        self.take_profit_spin.setValue(0)
+        self.take_profit_spin.setToolTip("0 = kein Take Profit. Preis in USDT.")
+        tp_layout.addWidget(self.take_profit_spin)
+        layout.addLayout(tp_layout)
 
         # Buy/Sell buttons
         button_layout = QHBoxLayout()
@@ -310,6 +440,8 @@ class BitunixTradingWidget(QDockWidget):
         self._current_symbol = symbol
         self.symbol_label.setText(symbol)
         logger.info(f"Bitunix trading symbol set to: {symbol}")
+        # Enable order buttons as soon as we have a symbol
+        self._update_button_states()
 
     def _on_order_type_changed(self, order_type: str) -> None:
         """Handle order type change.
@@ -325,6 +457,16 @@ class BitunixTradingWidget(QDockWidget):
         enabled = self.adapter is not None and self._current_symbol is not None
         self.buy_button.setEnabled(enabled)
         self.sell_button.setEnabled(enabled)
+
+    def _current_leverage(self) -> int:
+        """Return leverage value from slider (treat 0 as 1 for safety)."""
+        val = int(self.leverage_slider.value()) if hasattr(self, "leverage_slider") else 1
+        return max(val, 1)
+
+    def _on_leverage_changed(self, value: int) -> None:
+        """Update leverage label when slider moves."""
+        if hasattr(self, "leverage_value"):
+            self.leverage_value.setText(f"{value}x")
 
     @qasync.asyncSlot()
     async def _on_buy_clicked(self) -> None:
@@ -443,18 +585,28 @@ class BitunixTradingWidget(QDockWidget):
             order_type = DBOrderType.MARKET if self.order_type_combo.currentText() == "Market" else DBOrderType.LIMIT
             quantity = Decimal(str(self.quantity_spin.value()))
             limit_price = Decimal(str(self.price_spin.value())) if order_type == DBOrderType.LIMIT else None
+            stop_loss_val = Decimal(str(self.stop_loss_spin.value()))
+            stop_loss = stop_loss_val if stop_loss_val > 0 else None
+            take_profit_val = Decimal(str(self.take_profit_spin.value()))
+            take_profit = take_profit_val if take_profit_val > 0 else None
+            leverage_val = self._current_leverage()
 
             order = OrderRequest(
                 symbol=self._current_symbol,
                 side=side,
                 order_type=order_type,
                 quantity=quantity,
-                limit_price=limit_price
+                limit_price=limit_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                notes=f"leverage={leverage_val}x"
             )
 
             # Confirm order
             side_text = "BUY" if side == OrderSide.BUY else "SELL"
             type_text = "Market" if order_type == DBOrderType.MARKET else f"Limit @ {limit_price}"
+            stop_text = f"{stop_loss} (price)" if stop_loss else "—"
+            tp_text = f"{take_profit} (price)" if take_profit else "—"
             confirm = QMessageBox.question(
                 self,
                 "Confirm Order",
@@ -462,7 +614,9 @@ class BitunixTradingWidget(QDockWidget):
                 f"Symbol: {self._current_symbol}\n"
                 f"Type: {type_text}\n"
                 f"Quantity: {quantity}\n"
-                f"Leverage: {self.leverage_spin.value()}x",
+                f"Leverage: {leverage_val}x\n"
+                f"Stop Loss: {stop_text}\n"
+                f"Take Profit: {tp_text}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
 

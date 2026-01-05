@@ -66,6 +66,10 @@ class BitunixTradingMixin:
                 parent=self,  # type: ignore
             )
 
+            # Inject HistoryManager for Paper Trading
+            if hasattr(chart_widget, 'history_manager') and chart_widget.history_manager:
+                self._bitunix_widget.set_history_manager(chart_widget.history_manager)
+
             # Set initial symbol if crypto
             if hasattr(chart_widget, 'current_symbol'):
                 symbol = chart_widget.current_symbol
@@ -93,11 +97,13 @@ class BitunixTradingMixin:
 
         except ImportError as e:
             logger.error("Failed to import Bitunix trading modules: %s", e)
+            print(f"DEBUG: Bitunix import failed: {e}")
             self._bitunix_widget = None
             self._bitunix_adapter = None
             return False
         except Exception as e:
             logger.exception("Failed to setup Bitunix trading: %s", e)
+            print(f"DEBUG: Bitunix setup failed: {e}")
             self._bitunix_widget = None
             self._bitunix_adapter = None
             return False
