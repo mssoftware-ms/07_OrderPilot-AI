@@ -224,21 +224,26 @@ class DataLoadingMixin:
             # Stock symbols don't (e.g., AAPL, MSFT)
             asset_class = self._resolve_asset_class(symbol, AssetClass)
 
-            # Map timeframe
-            timeframe = self._resolve_timeframe(Timeframe)
-
-            # Map provider (single Alpaca option auto-selects crypto vs stocks)
-            provider_source = self._resolve_provider_source(
-                data_provider, asset_class, DataSource, AssetClass
-            )
-
             # Determine lookback period based on selected time period
             lookback_days = self._resolve_lookback_days()
             start_date, end_date = self._calculate_date_range(
                 asset_class, lookback_days, AssetClass
             )
 
-            logger.info(f"Loading {symbol} - Candles: {self.current_timeframe}, Period: {self.current_period} ({lookback_days} days)")
+            # Map provider (single Alpaca option auto-selects crypto vs stocks)
+            provider_source = self._resolve_provider_source(
+                data_provider, asset_class, DataSource, AssetClass
+            )
+
+            # Map timeframe (with adaptive downsampling for long crypto ranges)
+            timeframe = self._resolve_timeframe(
+                Timeframe, lookback_days, provider_source, asset_class, DataSource, AssetClass
+            )
+
+            logger.info(
+                f"Loading {symbol} - Candles: {self.current_timeframe} (effective {timeframe.name}), "
+                f"Period: {self.current_period} ({lookback_days} days)"
+            )
             logger.info(f"Date range: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} to {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
 
@@ -308,7 +313,8 @@ class DataLoadingMixin:
             return AssetClass.CRYPTO
         return AssetClass.STOCK
 
-    def _resolve_timeframe(self, Timeframe) -> Timeframe:
+    def _resolve_timeframe(self, Timeframe, lookback_days: int, provider_source, asset_class, DataSource, AssetClass) -> Timeframe:
+        """Map UI timeframe with adaptive downsampling for long crypto ranges."""
         timeframe_map = {
             "1T": Timeframe.MINUTE_1,
             "5T": Timeframe.MINUTE_5,
@@ -318,7 +324,21 @@ class DataLoadingMixin:
             "4H": Timeframe.HOUR_4,
             "1D": Timeframe.DAY_1,
         }
-        return timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
+        base_tf = timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
+
+        # Adaptive rule: for Bitunix crypto and long ranges, downsample to keep dataset manageable
+        if provider_source == DataSource.BITUNIX and asset_class == AssetClass.CRYPTO:
+            if lookback_days > 180:
+                logger.info("Downsampling crypto timeframe to 1D for >180d range (Bitunix cap).")
+                return Timeframe.DAY_1
+            if lookback_days > 60:
+                logger.info("Downsampling crypto timeframe to 4H for >60d range (Bitunix cap).")
+                return Timeframe.HOUR_4
+            if lookback_days > 7 and base_tf in {Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15}:
+                logger.info("Downsampling crypto timeframe to 1H for >7d range (Bitunix cap).")
+                return Timeframe.HOUR_1
+
+        return base_tf
 
     def _resolve_provider_source(self, data_provider, asset_class, DataSource, AssetClass):
         if data_provider:

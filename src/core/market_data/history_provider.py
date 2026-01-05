@@ -29,6 +29,7 @@ from src.core.market_data.providers import (
     IBKRHistoricalProvider,
     DatabaseProvider,
 )
+from src.core.market_data.errors import MarketDataAccessBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -165,12 +166,20 @@ class HistoryManager:
             api_key = config_manager.get_credential("bitunix_api_key")
             api_secret = config_manager.get_credential("bitunix_api_secret")
             use_testnet = config_manager.get_setting("bitunix_testnet", True)  # DEFAULT: TESTNET!
+            max_bars = getattr(market_config, "bitunix_max_bars", 15000)
+            max_batches = getattr(market_config, "bitunix_max_batches", 120)
 
             if api_key and api_secret:
                 from src.core.market_data.providers.bitunix_provider import BitunixProvider
                 self.register_provider(
                     DataSource.BITUNIX,
-                    BitunixProvider(api_key, api_secret, use_testnet)
+                    BitunixProvider(
+                        api_key,
+                        api_secret,
+                        use_testnet,
+                        max_bars=max_bars,
+                        max_batches=max_batches,
+                    )
                 )
                 logger.info(f"Registered Bitunix provider (testnet: {use_testnet}, key: {api_key[:8]}...)")
             else:
@@ -489,6 +498,9 @@ class HistoryManager:
                         return True
                     else:
                         logger.warning("Failed to connect Bitunix stream, trying fallback...")
+                except MarketDataAccessBlocked:
+                    # Surface upstream so UI can show immediate popup
+                    raise
                 except Exception as e:
                     logger.warning(f"Bitunix streaming failed: {e}, trying fallback...")
 

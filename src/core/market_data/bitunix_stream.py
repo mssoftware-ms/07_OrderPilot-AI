@@ -13,9 +13,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import websockets
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from src.common.event_bus import Event, EventType, event_bus
+from src.core.market_data.errors import MarketDataAccessBlocked
 from src.core.market_data.stream_client import MarketTick, StreamClient, StreamStatus
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ class BitunixStreamClient(StreamClient):
         self._heartbeat_task = None
         self._reconnect_count = 0
         self._kline_channel = "market_kline_1min"
+        self.last_error: Exception | None = None
 
     def _get_ws_url(self) -> str:
         """Get WebSocket URL based on environment.
@@ -77,9 +79,10 @@ class BitunixStreamClient(StreamClient):
         Returns:
             WebSocket URL
         """
-        # Official futures WebSocket endpoint (matches SDK config files)
-        # Using the fapi host for both environments avoids DNS failures seen on legacy testnet hosts.
-        return "wss://fapi.bitunix.com/public/"
+        # Offizielle öffentliche Futures-WS-Domain lt. Projekt-RTF:
+        #   wss://fapi.bitunix.com/public/Main
+        # Wir folgen exakt dem Pfad inklusive /Main, um Kompatibilität sicherzustellen.
+        return "wss://fapi.bitunix.com/public/Main"
 
     async def connect(self) -> bool:
         """Establish WebSocket connection via supervisor task.
@@ -91,9 +94,13 @@ class BitunixStreamClient(StreamClient):
             logger.warning("Already connected or connecting")
             return True
 
+        # Preflight WS handshake to surface 403/Cloudflare immediately
+        await self._preflight_handshake()
+
         self.connected = True
         self.metrics.status = StreamStatus.CONNECTING
         self._reconnect_count = 0
+        self.last_error = None
 
         # Start single supervisor task
         if not self._stream_task or self._stream_task.done():
@@ -153,7 +160,7 @@ class BitunixStreamClient(StreamClient):
 
                     # Message and Heartbeat loop
                     last_ping = 0
-                    while self.connected and not websocket.closed:
+                    while self.connected and self._is_ws_open(websocket):
                         # 1. Check Heartbeat (3s interval)
                         now = time.time()
                         if now - last_ping >= 3:
@@ -169,6 +176,13 @@ class BitunixStreamClient(StreamClient):
                         except asyncio.TimeoutError:
                             continue # Just loop back for heartbeat/status check
 
+            except InvalidStatus as e:
+                blocked = self._map_invalid_status(e)
+                self.last_error = blocked
+                self.metrics.status = StreamStatus.ERROR
+                self.connected = False
+                logger.error(f"Bitunix WS blocked: {blocked}")
+                break
             except (ConnectionClosed, Exception) as e:
                 if not self.connected:
                     break
@@ -201,6 +215,80 @@ class BitunixStreamClient(StreamClient):
     async def _handle_reconnect(self) -> None:
         """Deprecated: Logic moved to _run_supervisor."""
         pass
+
+    async def _preflight_handshake(self) -> None:
+        """Perform a single WS handshake to detect blocking (e.g., 403/Cloudflare)."""
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        try:
+            async with websockets.connect(
+                self.ws_url,
+                ssl=ssl_context,
+                ping_interval=None,
+                ping_timeout=10,
+                close_timeout=5,
+            ):
+                self.last_error = None
+                return
+        except InvalidStatus as e:
+            blocked = self._map_invalid_status(e)
+            self.last_error = blocked
+            raise blocked
+
+    def _map_invalid_status(self, exc: InvalidStatus) -> MarketDataAccessBlocked:
+        """Convert websockets InvalidStatus to a rich exception for UI handling."""
+        status = getattr(exc, "status_code", None)
+        response = getattr(exc, "response", None)
+        if response:
+            status = status or getattr(response, "status_code", None) or getattr(response, "status", None)
+
+        body_snippet = ""
+        if response and hasattr(response, "body"):
+            raw_body = getattr(response, "body", b"")
+            try:
+                if isinstance(raw_body, (bytes, bytearray)):
+                    body_snippet = raw_body[:400].decode("utf-8", errors="ignore")
+                else:
+                    body_snippet = str(raw_body)[:400]
+            except Exception:
+                body_snippet = ""
+
+        reason = "WebSocket handshake rejected"
+        text = body_snippet.lower() if body_snippet else ""
+        if status == 403:
+            if "api key does not support this operation" in text:
+                reason = "Forbidden: API key lacks permission for this operation"
+            elif "api key" in text:
+                reason = "Forbidden: API key/permission issue"
+            else:
+                reason = "Forbidden / Bot-Protection (Cloudflare?)"
+
+        return MarketDataAccessBlocked(
+            provider="bitunix-ws",
+            status_code=status,
+            reason=reason,
+            body_snippet=body_snippet,
+        )
+
+    @staticmethod
+    def _is_ws_open(ws) -> bool:
+        """Compatibility helper: determine if websockets connection is open."""
+        try:
+            closed = getattr(ws, "closed", None)
+            if closed is not None:
+                return not closed
+
+            state = getattr(ws, "state", None)
+            if state is not None:
+                name = getattr(state, "name", "").lower()
+                return name in ("open", "connected")
+        except Exception:
+            pass
+
+        # Fallback: assume open to avoid premature disconnect
+        return True
 
     async def _on_message(self, message: str) -> None:
         """Parse and handle incoming WebSocket messages.
@@ -423,7 +511,7 @@ class BitunixStreamClient(StreamClient):
 
     async def _handle_subscription(self, symbols: list[str]) -> None:
         """Send subscription request for given symbols."""
-        if not self.ws or self.ws.closed:
+        if not self.ws or not self._is_ws_open(self.ws):
             logger.warning("Bitunix WS not connected; subscription deferred")
             return
 
@@ -438,7 +526,7 @@ class BitunixStreamClient(StreamClient):
 
     async def _handle_unsubscription(self, symbols: list[str]) -> None:
         """Send unsubscription request for given symbols."""
-        if not self.ws or self.ws.closed:
+        if not self.ws or not self._is_ws_open(self.ws):
             logger.warning("Bitunix WS not connected; unsubscription skipped")
             return
 

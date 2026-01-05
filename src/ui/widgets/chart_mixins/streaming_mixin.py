@@ -11,8 +11,10 @@ from datetime import datetime, timezone
 
 import pandas as pd
 from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtWidgets import QMessageBox
 
 from src.common.event_bus import Event
+from src.core.market_data.errors import MarketDataAccessBlocked
 from src.core.market_data.types import AssetClass, DataSource
 from .data_loading_mixin import get_local_timezone_offset_seconds
 
@@ -297,6 +299,8 @@ class StreamingMixin:
             self.live_stream_button.setStyleSheet("background-color: #00FF00; color: black; font-weight: bold;")
             self.live_stream_button.setText("🟢 Live")
             self.market_status_label.setText("🔴 Streaming...")
+        except MarketDataAccessBlocked as e:
+            self._handle_stream_blocked(e)
         except Exception as e:
             logger.error(f"Failed to start live stream: {e}")
 
@@ -326,8 +330,34 @@ class StreamingMixin:
             else:
                 self.live_stream_button.setChecked(False)
                 self._toggle_live_stream()
+        except MarketDataAccessBlocked:
+            # Re-raise to outer handler so UI popup can be shown
+            self.live_stream_button.setChecked(False)
+            self.live_streaming_enabled = False
+            raise
         except Exception as e:
             logger.error(f"Error starting live stream: {e}")
+
+    def _handle_stream_blocked(self, exc: MarketDataAccessBlocked) -> None:
+        """Show UI popup when Bitunix blocks access (e.g., HTTP 403)."""
+        self.live_streaming_enabled = False
+        self.live_stream_button.setChecked(False)
+        self.live_stream_button.setStyleSheet("")
+        self.live_stream_button.setText("🔴 Live")
+        label_reason = exc.reason or "Bitunix blockiert"
+        self.market_status_label.setText(label_reason)
+        self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
+
+        details = exc.details()
+        message = (
+            "Bitunix WebSocket hat den Zugriff blockiert.\n\n"
+            f"Grund: {label_reason}\n"
+            "Maßnahmen:\n"
+            "- VPN/IP wechseln oder gültigen API-Key mit ausreichenden Rechten nutzen.\n"
+            "- Falls Cloudflare-Challenge: Browser-Cookie/clearance übertragen.\n\n"
+            f"Provider: {exc.provider}\n{details}"
+        )
+        QMessageBox.critical(self, "Bitunix blockiert", message, QMessageBox.StandardButton.Ok)
 
     async def _stop_live_stream(self):
         """Stop live streaming."""

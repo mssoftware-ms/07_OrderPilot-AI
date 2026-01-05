@@ -42,7 +42,9 @@ class BitunixProvider(HistoricalDataProvider):
         api_key: str,
         api_secret: str,
         use_testnet: bool = True,
-        enable_cache: bool = True
+        enable_cache: bool = True,
+        max_bars: int = 15000,
+        max_batches: int = 120,
     ):
         """Initialize Bitunix provider.
 
@@ -51,6 +53,8 @@ class BitunixProvider(HistoricalDataProvider):
             api_secret: Bitunix API secret
             use_testnet: Use testnet environment (default: True for safety)
             enable_cache: Enable response caching
+            max_bars: Safety cap for total bars fetched in one request sequence
+            max_batches: Safety cap for request batches (pagination)
         """
         super().__init__("Bitunix Futures", enable_cache)
         self.api_key = api_key
@@ -58,6 +62,8 @@ class BitunixProvider(HistoricalDataProvider):
         self.use_testnet = use_testnet
         self.base_url = self._get_base_url()
         self.rate_limit_delay = 0.1  # Conservative: ~600 calls/min
+        self.max_bars = max_bars
+        self.max_batches = max_batches
 
     def _get_base_url(self) -> str:
         """Get API base URL based on environment.
@@ -149,6 +155,20 @@ class BitunixProvider(HistoricalDataProvider):
             return "1m"
         return interval
 
+    @staticmethod
+    def _interval_ms(interval: str) -> int:
+        """Return interval length in milliseconds for pagination."""
+        table = {
+            "1m": 60_000,
+            "5m": 5 * 60_000,
+            "15m": 15 * 60_000,
+            "30m": 30 * 60_000,
+            "1h": 60 * 60_000,
+            "4h": 4 * 60 * 60_000,
+            "1d": 24 * 60 * 60_000,
+        }
+        return table.get(interval, 60_000)
+
     async def fetch_bars(
         self,
         symbol: str,
@@ -171,45 +191,71 @@ class BitunixProvider(HistoricalDataProvider):
             aiohttp.ClientError: On API request failures
         """
         interval = self._timeframe_to_bitunix(timeframe)
+        interval_ms = self._interval_ms(interval)
+        start_ms = int(start_date.timestamp() * 1000)
+        end_ms = int(end_date.timestamp() * 1000)
+        limit = 200  # API spec: max 200 per call
 
-        # Build request parameters
-        params = {
-            'symbol': symbol,
-            'interval': interval,
-            'startTime': self._to_unix_timestamp(start_date) * 1000,  # Milliseconds
-            'endTime': self._to_unix_timestamp(end_date) * 1000,
-            'limit': 1000  # Max 1000 klines per request
-        }
-
-        # Public endpoint - no auth required
-        headers = {
-            'Content-Type': 'application/json'
-        }
+        headers = {'Content-Type': 'application/json'}
+        all_bars: list[HistoricalBar] = []
+        max_batches = self.max_batches or 120
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{self.base_url}/api/v1/futures/market/kline",
-                    params=params,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as response:
-                    if response.status == 200:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                batches = 0
+                while start_ms < end_ms and batches < max_batches:
+                    params = {
+                        'symbol': symbol,
+                        'interval': interval,
+                        'limit': limit,
+                        'startTime': start_ms,
+                        'endTime': end_ms,
+                        'type': 'LAST_PRICE',
+                    }
+
+                    async with session.get(
+                        f"{self.base_url}/api/v1/futures/market/kline",
+                        params=params,
+                        headers=headers,
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            logger.error(f"Bitunix API error {response.status}: {error_text}")
+                            break
+
                         data = await response.json()
-                        # Log raw response for debugging
-                        logger.info(f"Bitunix raw response for {symbol}: {data}")
-                        
-                        bars = self._parse_klines(data, symbol)
-                        logger.info(
-                            f"Fetched {len(bars)} bars for {symbol} from {self.name}"
-                        )
-                        return bars
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            f"Bitunix API error {response.status}: {error_text}"
-                        )
-                        return []
+                        batch = self._parse_klines(data, symbol)
+
+                        if not batch:
+                            logger.info("No more bars returned; stopping pagination.")
+                            break
+
+                        all_bars.extend(batch)
+                        if len(all_bars) >= self.max_bars:
+                            logger.warning(
+                                f"Reached max_bars={self.max_bars} for {symbol}; stopping pagination"
+                            )
+                            break
+
+                        # Advance window: next start = last bar timestamp + interval
+                        last_ts_ms = int(batch[-1].timestamp.timestamp() * 1000)
+                        start_ms = last_ts_ms + interval_ms
+                        batches += 1
+                        if batches >= max_batches:
+                            logger.warning(
+                                f"Reached max_batches={max_batches} for {symbol}; stopping pagination"
+                            )
+                            break
+
+                        # Respect rate limits
+                        await asyncio.sleep(self.rate_limit_delay)
+
+            # Deduplicate and sort
+            dedup = {int(bar.timestamp.timestamp() * 1000): bar for bar in all_bars}
+            bars_sorted = [dedup[k] for k in sorted(dedup.keys())]
+
+            logger.info(f"Fetched {len(bars_sorted)} bars for {symbol} from {self.name} ({batches} requests, interval {interval})")
+            return bars_sorted
 
         except asyncio.TimeoutError:
             logger.error(f"Timeout fetching {symbol} from {self.name}")

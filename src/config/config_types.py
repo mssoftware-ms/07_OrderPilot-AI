@@ -77,6 +77,8 @@ class MarketDataProviderConfig(BaseModel):
     alpaca_enabled: bool = False
     bitunix_enabled: bool = False
     bitunix_testnet: bool = True  # DEFAULT: TESTNET for safety!
+    bitunix_max_bars: int = 15000  # safety cap for pagination
+    bitunix_max_batches: int = 120  # extra guard for large intervals
     alpha_vantage_enabled: bool = False
     finnhub_enabled: bool = False
     yahoo_enabled: bool = True

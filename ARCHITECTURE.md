@@ -12,7 +12,7 @@
                           │ ruft auf
 ┌─────────────────────────▼───────────────────────────────────┐
 │                     Service Layer                           │
-│  src/core/market_data/ ── HistoryManager, Provider          │
+│  src/core/market_data/ ── HistoryManager, Provider, Errors  │
 │  src/core/strategy/ ── Engine, Compiler, Evaluation         │
 │  src/core/trading/ ── Order-Execution (TODO)                │
 └─────────────────────────┬───────────────────────────────────┘
