@@ -30,69 +30,149 @@ class VolatilityIndicators(BaseIndicatorCalculator):
         params: dict[str, Any],
         use_talib: bool
     ) -> IndicatorResult:
-        """Calculate Bollinger Bands."""
+        """Calculate Bollinger Bands (refactored).
+
+        Args:
+            data: Price data with 'close' column
+            params: Parameters (period, std_dev)
+            use_talib: Whether to prefer TALib if available
+
+        Returns:
+            IndicatorResult with BB values
+        """
         period = params.get('period', 20)
         std_dev = params.get('std_dev', 2)
 
+        # Dispatch to appropriate calculation method
         if use_talib and TALIB_AVAILABLE:
-            upper, middle, lower = talib.BBANDS(
-                data['close'],
-                timeperiod=period,
-                nbdevup=std_dev,
-                nbdevdn=std_dev
-            )
-            values = pd.DataFrame({
-                'upper': upper,
-                'middle': middle,
-                'lower': lower,
-                'bandwidth': upper - lower,
-                'percent': (data['close'] - lower) / (upper - lower)
-            })
+            values = VolatilityIndicators._calculate_bb_talib(data, period, std_dev)
         elif PANDAS_TA_AVAILABLE:
-            values = ta.bbands(data['close'], length=period, std=std_dev)
-            # Normalize pandas_ta output columns if needed, but for now assuming standard keys or using calculate_bb directly
-            # pandas_ta returns columns like BBL_20_2.0, BBM_20_2.0, BBU_20_2.0, BBB_20_2.0 (bandwidth), BBP_20_2.0 (%b)
-            # We map them to standard names for consistency
-            if values is not None:
-                # Find columns dynamically
-                cols = values.columns
-                bbl = next((c for c in cols if c.startswith('BBL')), None)
-                bbm = next((c for c in cols if c.startswith('BBM')), None)
-                bbu = next((c for c in cols if c.startswith('BBU')), None)
-                bbb = next((c for c in cols if c.startswith('BBB')), None)
-                bbp = next((c for c in cols if c.startswith('BBP')), None)
-                
-                new_values = pd.DataFrame(index=values.index)
-                if bbu: new_values['upper'] = values[bbu]
-                if bbm: new_values['middle'] = values[bbm]
-                if bbl: new_values['lower'] = values[bbl]
-                if bbb: new_values['bandwidth'] = values[bbb]
-                if bbp: new_values['percent'] = values[bbp]
-                values = new_values
-
+            values = VolatilityIndicators._calculate_bb_pandas_ta(data, period, std_dev)
         else:
-            # Manual calculation
-            sma = data['close'].rolling(window=period).mean()
-            std = data['close'].rolling(window=period).std()
-
-            upper = sma + (std * std_dev)
-            lower = sma - (std * std_dev)
-
-            # Avoid division by zero
-            diff = upper - lower
-            percent = (data['close'] - lower) / diff.replace(0, np.nan)
-
-            values = pd.DataFrame({
-                'upper': upper,
-                'middle': sma,
-                'lower': lower,
-                'bandwidth': diff,
-                'percent': percent
-            })
+            values = VolatilityIndicators._calculate_bb_manual(data, period, std_dev)
 
         return VolatilityIndicators.create_result(
             IndicatorType.BB, values, params
         )
+
+    @staticmethod
+    def _calculate_bb_talib(
+        data: pd.DataFrame,
+        period: int,
+        std_dev: float
+    ) -> pd.DataFrame:
+        """Calculate BB using TALib.
+
+        Args:
+            data: Price data
+            period: Rolling window period
+            std_dev: Standard deviation multiplier
+
+        Returns:
+            DataFrame with BB columns
+        """
+        upper, middle, lower = talib.BBANDS(
+            data['close'],
+            timeperiod=period,
+            nbdevup=std_dev,
+            nbdevdn=std_dev
+        )
+        return pd.DataFrame({
+            'upper': upper,
+            'middle': middle,
+            'lower': lower,
+            'bandwidth': upper - lower,
+            'percent': (data['close'] - lower) / (upper - lower)
+        })
+
+    @staticmethod
+    def _calculate_bb_pandas_ta(
+        data: pd.DataFrame,
+        period: int,
+        std_dev: float
+    ) -> pd.DataFrame:
+        """Calculate BB using pandas_ta.
+
+        Args:
+            data: Price data
+            period: Rolling window period
+            std_dev: Standard deviation multiplier
+
+        Returns:
+            DataFrame with BB columns
+        """
+        values = ta.bbands(data['close'], length=period, std=std_dev)
+        # Normalize pandas_ta output columns
+        # pandas_ta returns: BBL_20_2.0, BBM_20_2.0, BBU_20_2.0, BBB_20_2.0, BBP_20_2.0
+        if values is not None:
+            return VolatilityIndicators._normalize_pandas_ta_columns(values)
+        return pd.DataFrame()
+
+    @staticmethod
+    def _normalize_pandas_ta_columns(values: pd.DataFrame) -> pd.DataFrame:
+        """Normalize pandas_ta BB column names to standard format.
+
+        Args:
+            values: DataFrame from pandas_ta.bbands()
+
+        Returns:
+            DataFrame with standardized column names
+        """
+        cols = values.columns
+        # Find columns dynamically
+        bbl = next((c for c in cols if c.startswith('BBL')), None)
+        bbm = next((c for c in cols if c.startswith('BBM')), None)
+        bbu = next((c for c in cols if c.startswith('BBU')), None)
+        bbb = next((c for c in cols if c.startswith('BBB')), None)
+        bbp = next((c for c in cols if c.startswith('BBP')), None)
+
+        new_values = pd.DataFrame(index=values.index)
+        if bbu:
+            new_values['upper'] = values[bbu]
+        if bbm:
+            new_values['middle'] = values[bbm]
+        if bbl:
+            new_values['lower'] = values[bbl]
+        if bbb:
+            new_values['bandwidth'] = values[bbb]
+        if bbp:
+            new_values['percent'] = values[bbp]
+
+        return new_values
+
+    @staticmethod
+    def _calculate_bb_manual(
+        data: pd.DataFrame,
+        period: int,
+        std_dev: float
+    ) -> pd.DataFrame:
+        """Calculate BB manually (fallback).
+
+        Args:
+            data: Price data
+            period: Rolling window period
+            std_dev: Standard deviation multiplier
+
+        Returns:
+            DataFrame with BB columns
+        """
+        sma = data['close'].rolling(window=period).mean()
+        std = data['close'].rolling(window=period).std()
+
+        upper = sma + (std * std_dev)
+        lower = sma - (std * std_dev)
+
+        # Avoid division by zero
+        diff = upper - lower
+        percent = (data['close'] - lower) / diff.replace(0, np.nan)
+
+        return pd.DataFrame({
+            'upper': upper,
+            'middle': sma,
+            'lower': lower,
+            'bandwidth': diff,
+            'percent': percent
+        })
 
     @staticmethod
     def calculate_bb_width(

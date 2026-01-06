@@ -136,7 +136,7 @@ class StrategySelector:
         symbol: str,
         force: bool = False
     ) -> SelectionResult:
-        """Select best strategy for current conditions.
+        """Select best strategy for current conditions (refactored).
 
         Args:
             regime: Current market regime
@@ -146,10 +146,8 @@ class StrategySelector:
         Returns:
             SelectionResult with selected strategy
         """
-        now = datetime.utcnow()
-
-        # Check if we should re-select
-        if not force and not self._should_reselect(regime, now):
+        # Guard: Check if we should re-select
+        if not force and not self._should_reselect(regime, datetime.utcnow()):
             if self._current_selection:
                 return self._current_selection
 
@@ -158,31 +156,17 @@ class StrategySelector:
             f"(regime={regime.regime.value}, vol={regime.volatility.value})"
         )
 
-        # Get applicable strategies for regime
+        # Get candidates
         candidates = self.catalog.get_strategies_for_regime(regime)
-
         if not candidates:
             return self._create_fallback_result(
                 regime,
                 "No strategies applicable for current regime"
             )
 
-        # Evaluate each candidate
-        evaluated = []
-        for strategy in candidates:
-            trades = self._trade_history.get(strategy.profile.name, [])
-            if trades:
-                wf_result = self.evaluator.run_walk_forward(strategy, trades)
-                evaluated.append((strategy, wf_result))
-            else:
-                # No history - use profile defaults
-                evaluated.append((strategy, None))
-
-        # Filter to robust strategies
-        robust = [
-            (s, r) for s, r in evaluated
-            if r is None or r.is_robust
-        ]
+        # Evaluate and filter
+        evaluated = self._evaluate_candidates(candidates)
+        robust = self._filter_robust_strategies(evaluated)
 
         if not robust:
             return self._create_fallback_result(
@@ -190,41 +174,93 @@ class StrategySelector:
                 "No strategies passed robustness validation"
             )
 
-        # Rank strategies
+        # Select best
+        result = self._select_best_strategy(robust, regime, candidates, symbol)
+        return result if result else self._create_fallback_result(regime, "Selection logic error")
+
+    def _evaluate_candidates(
+        self,
+        candidates: list
+    ) -> list[tuple]:
+        """Evaluate each candidate strategy with walk-forward analysis."""
+        evaluated = []
+        for strategy in candidates:
+            trades = self._trade_history.get(strategy.profile.name, [])
+            if trades:
+                wf_result = self.evaluator.run_walk_forward(strategy, trades)
+                evaluated.append((strategy, wf_result))
+            else:
+                evaluated.append((strategy, None))
+        return evaluated
+
+    def _filter_robust_strategies(self, evaluated: list[tuple]) -> list[tuple]:
+        """Filter to strategies that pass robustness validation."""
+        return [
+            (s, r) for s, r in evaluated
+            if r is None or r.is_robust
+        ]
+
+    def _select_best_strategy(
+        self,
+        robust: list[tuple],
+        regime: RegimeState,
+        candidates: list,
+        symbol: str
+    ) -> SelectionResult | None:
+        """Select best strategy from robust list."""
+        # Try ranking approach first
         if any(r for _, r in robust if r is not None):
-            wf_results = [r for _, r in robust if r is not None]
-            rankings = self.evaluator.compare_strategies(wf_results)
+            result = self._rank_and_select_best(robust, regime, candidates)
+            if result:
+                self._save_selection(result, symbol)
+                return result
 
-            # Find best that's in our robust list
-            for strategy_name, score in rankings:
-                for strategy, wf_result in robust:
-                    if strategy.profile.name == strategy_name:
-                        result = self._create_selection_result(
-                            strategy,
-                            regime,
-                            wf_result,
-                            {name: sc for name, sc in rankings},
-                            len(candidates),
-                            len(robust)
-                        )
-                        self._save_selection(result, symbol)
-                        return result
-        else:
-            # No historical data - use first applicable
-            strategy, _ = robust[0]
-            result = self._create_selection_result(
-                strategy,
-                regime,
-                None,
-                {strategy.profile.name: 0.5},
-                len(candidates),
-                len(robust)
-            )
-            self._save_selection(result, symbol)
-            return result
+        # Fallback: use first applicable
+        return self._select_first_applicable(robust, regime, candidates, symbol)
 
-        # Should not reach here
-        return self._create_fallback_result(regime, "Selection logic error")
+    def _rank_and_select_best(
+        self,
+        robust: list[tuple],
+        regime: RegimeState,
+        candidates: list
+    ) -> SelectionResult | None:
+        """Rank strategies and select best."""
+        wf_results = [r for _, r in robust if r is not None]
+        rankings = self.evaluator.compare_strategies(wf_results)
+
+        # Find best that's in our robust list
+        for strategy_name, score in rankings:
+            for strategy, wf_result in robust:
+                if strategy.profile.name == strategy_name:
+                    return self._create_selection_result(
+                        strategy,
+                        regime,
+                        wf_result,
+                        {name: sc for name, sc in rankings},
+                        len(candidates),
+                        len(robust)
+                    )
+        return None
+
+    def _select_first_applicable(
+        self,
+        robust: list[tuple],
+        regime: RegimeState,
+        candidates: list,
+        symbol: str
+    ) -> SelectionResult:
+        """Select first applicable strategy (no historical data)."""
+        strategy, _ = robust[0]
+        result = self._create_selection_result(
+            strategy,
+            regime,
+            None,
+            {strategy.profile.name: 0.5},
+            len(candidates),
+            len(robust)
+        )
+        self._save_selection(result, symbol)
+        return result
 
     def _should_reselect(
         self,

@@ -319,7 +319,7 @@ class StrategyEngine:
         return signals
 
     def combine_signals(self, signals: list[Signal]) -> Signal | None:
-        """Combine multiple signals into consensus.
+        """Combine multiple signals into consensus (refactored).
 
         Args:
             signals: List of signals
@@ -327,71 +327,161 @@ class StrategyEngine:
         Returns:
             Combined signal or None
         """
+        # Guard: empty signals
         if not signals:
             return None
 
-        # Group by symbol
-        symbol_signals: dict[str, list[Signal]] = {}
-
-        for signal in signals:
-            if signal.symbol not in symbol_signals:
-                symbol_signals[signal.symbol] = []
-            symbol_signals[signal.symbol].append(signal)
+        # Group signals by symbol
+        symbol_signals = self._group_signals_by_symbol(signals)
 
         # Vote on each symbol
         combined_signals = []
-
         for symbol, sig_list in symbol_signals.items():
-            # Count signal types
-            buy_count = sum(1 for s in sig_list if s.signal_type == SignalType.BUY)
-            sell_count = sum(1 for s in sig_list if s.signal_type == SignalType.SELL)
-            close_count = sum(1 for s in sig_list if s.signal_type in
-                            [SignalType.CLOSE_LONG, SignalType.CLOSE_SHORT])
-
-            # Weighted average confidence
-            avg_confidence = sum(s.confidence for s in sig_list) / len(sig_list)
-
-            # Determine consensus
-            if buy_count > len(sig_list) / 2:
-                # Majority buy
-                best_signal = max((s for s in sig_list if s.signal_type == SignalType.BUY),
-                                key=lambda s: s.confidence)
-
-                combined = Signal(
-                    strategy_name="consensus",
-                    symbol=symbol,
-                    signal_type=SignalType.BUY,
-                    confidence=avg_confidence,
-                    timestamp=datetime.utcnow(),
-                    price=best_signal.price,
-                    stop_loss=best_signal.stop_loss,
-                    take_profit=best_signal.take_profit,
-                    reason=f"Consensus buy ({buy_count}/{len(sig_list)} strategies)",
-                    metadata={'strategies': [s.strategy_name for s in sig_list]}
-                )
-                combined_signals.append(combined)
-
-            elif close_count > len(sig_list) / 2:
-                # Majority close
-                best_signal = sig_list[0]
-
-                combined = Signal(
-                    strategy_name="consensus",
-                    symbol=symbol,
-                    signal_type=SignalType.CLOSE_LONG,
-                    confidence=avg_confidence,
-                    timestamp=datetime.utcnow(),
-                    price=best_signal.price,
-                    reason=f"Consensus close ({close_count}/{len(sig_list)} strategies)",
-                    metadata={'strategies': [s.strategy_name for s in sig_list]}
-                )
-                combined_signals.append(combined)
+            consensus_signal = self._create_consensus_for_symbol(symbol, sig_list)
+            if consensus_signal:
+                combined_signals.append(consensus_signal)
 
         # Return highest confidence combined signal
         if combined_signals:
             return max(combined_signals, key=lambda s: s.confidence)
 
         return None
+
+    def _group_signals_by_symbol(self, signals: list[Signal]) -> dict[str, list[Signal]]:
+        """Group signals by symbol.
+
+        Args:
+            signals: List of signals
+
+        Returns:
+            Dictionary mapping symbol to list of signals
+        """
+        symbol_signals: dict[str, list[Signal]] = {}
+        for signal in signals:
+            if signal.symbol not in symbol_signals:
+                symbol_signals[signal.symbol] = []
+            symbol_signals[signal.symbol].append(signal)
+        return symbol_signals
+
+    def _create_consensus_for_symbol(
+        self,
+        symbol: str,
+        sig_list: list[Signal]
+    ) -> Signal | None:
+        """Create consensus signal for a single symbol.
+
+        Args:
+            symbol: Trading symbol
+            sig_list: List of signals for this symbol
+
+        Returns:
+            Consensus signal or None if no consensus
+        """
+        # Count signal types
+        buy_count, close_count = self._count_signal_types(sig_list)
+        avg_confidence = self._calculate_avg_confidence(sig_list)
+        total = len(sig_list)
+
+        # Determine consensus
+        if buy_count > total / 2:
+            return self._create_buy_consensus_signal(symbol, sig_list, buy_count, avg_confidence)
+        elif close_count > total / 2:
+            return self._create_close_consensus_signal(symbol, sig_list, close_count, avg_confidence)
+
+        return None
+
+    def _count_signal_types(self, sig_list: list[Signal]) -> tuple[int, int]:
+        """Count buy and close signals.
+
+        Args:
+            sig_list: List of signals
+
+        Returns:
+            Tuple of (buy_count, close_count)
+        """
+        buy_count = sum(1 for s in sig_list if s.signal_type == SignalType.BUY)
+        close_count = sum(1 for s in sig_list if s.signal_type in
+                         [SignalType.CLOSE_LONG, SignalType.CLOSE_SHORT])
+        return buy_count, close_count
+
+    def _calculate_avg_confidence(self, sig_list: list[Signal]) -> float:
+        """Calculate average confidence from signal list.
+
+        Args:
+            sig_list: List of signals
+
+        Returns:
+            Average confidence value
+        """
+        return sum(s.confidence for s in sig_list) / len(sig_list)
+
+    def _create_buy_consensus_signal(
+        self,
+        symbol: str,
+        sig_list: list[Signal],
+        buy_count: int,
+        avg_confidence: float
+    ) -> Signal:
+        """Create consensus BUY signal.
+
+        Args:
+            symbol: Trading symbol
+            sig_list: List of signals
+            buy_count: Number of buy signals
+            avg_confidence: Average confidence
+
+        Returns:
+            Consensus buy signal
+        """
+        # Find best buy signal
+        best_signal = max(
+            (s for s in sig_list if s.signal_type == SignalType.BUY),
+            key=lambda s: s.confidence
+        )
+
+        return Signal(
+            strategy_name="consensus",
+            symbol=symbol,
+            signal_type=SignalType.BUY,
+            confidence=avg_confidence,
+            timestamp=datetime.utcnow(),
+            price=best_signal.price,
+            stop_loss=best_signal.stop_loss,
+            take_profit=best_signal.take_profit,
+            reason=f"Consensus buy ({buy_count}/{len(sig_list)} strategies)",
+            metadata={'strategies': [s.strategy_name for s in sig_list]}
+        )
+
+    def _create_close_consensus_signal(
+        self,
+        symbol: str,
+        sig_list: list[Signal],
+        close_count: int,
+        avg_confidence: float
+    ) -> Signal:
+        """Create consensus CLOSE signal.
+
+        Args:
+            symbol: Trading symbol
+            sig_list: List of signals
+            close_count: Number of close signals
+            avg_confidence: Average confidence
+
+        Returns:
+            Consensus close signal
+        """
+        best_signal = sig_list[0]
+
+        return Signal(
+            strategy_name="consensus",
+            symbol=symbol,
+            signal_type=SignalType.CLOSE_LONG,
+            confidence=avg_confidence,
+            timestamp=datetime.utcnow(),
+            price=best_signal.price,
+            reason=f"Consensus close ({close_count}/{len(sig_list)} strategies)",
+            metadata={'strategies': [s.strategy_name for s in sig_list]}
+        )
 
     def get_strategy_stats(self, name: str) -> dict[str, Any]:
         """Get strategy statistics.

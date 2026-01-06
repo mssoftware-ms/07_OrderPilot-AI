@@ -102,3 +102,4 @@ refactoring_*.json
 
 # Claude Flow temporary files
 .claude-flow/
+refactoring_inventory.json

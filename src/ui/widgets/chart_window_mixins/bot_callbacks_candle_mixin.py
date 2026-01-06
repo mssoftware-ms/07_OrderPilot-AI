@@ -85,7 +85,7 @@ class BotCallbacksCandleMixin:
         candle_low: float,
         candle_close: float
     ) -> None:
-        """Check if any stops were hit by this candle.
+        """Check if any stops were hit by this candle (refactored).
 
         SIMPLE LOGIC:
         - SHORT: if candle_high >= stop_price → SELL (price went above stop)
@@ -98,75 +98,134 @@ class BotCallbacksCandleMixin:
             candle_low: Low price of the closed candle
             candle_close: Close price of the closed candle
         """
-        # Find active position in signal history
-        active_signal = None
-        for sig in self._signal_history:
-            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
-                active_signal = sig
-                break
-
+        # Guard: Find active position
+        active_signal = self._find_active_position()
         if not active_signal:
             return
 
+        # Extract stop data
         side = active_signal.get("side", "").lower()
-        stop_price = active_signal.get("stop_price", 0)  # Initial SL (column "Stop")
-        tr_stop_price = active_signal.get("trailing_stop_price", 0)  # Trailing Stop
-        tr_active = active_signal.get("tr_active", False)  # TR only active after threshold crossed
+        stop_data = {
+            'stop_price': active_signal.get("stop_price", 0),
+            'tr_stop_price': active_signal.get("trailing_stop_price", 0),
+            'tr_active': active_signal.get("tr_active", False)
+        }
 
-        # Log the check
-        self._add_ki_log_entry(
-            "STOP_CHECK",
-            f"Kerze H={candle_high:.2f} L={candle_low:.2f} | "
-            f"Side={side.upper()} | SL={stop_price:.2f} | TR-Stop={tr_stop_price:.2f} (aktiv={tr_active})"
-        )
+        # Log check
+        self._log_stop_check(candle_high, candle_low, side, stop_data)
 
-        if stop_price <= 0 and tr_stop_price <= 0:
+        # Guard: No stops set
+        if stop_data['stop_price'] <= 0 and stop_data['tr_stop_price'] <= 0:
             self._add_ki_log_entry("DEBUG", "Kein Stop gesetzt!")
             return
 
-        stop_hit = False
-        exit_reason = ""
-
-        if side == "short":
-            # SHORT: sell if candle HIGH >= stop (price went UP above our stop)
-            # Check initial SL first
-            if stop_price > 0 and candle_high >= stop_price:
-                stop_hit = True
-                exit_reason = "SL"
-                self._add_ki_log_entry(
-                    "STOP",
-                    f"🛑 SL getroffen! HIGH={candle_high:.2f} >= SL={stop_price:.2f}"
-                )
-            # Check TR stop ONLY if tr_active (threshold crossed)
-            elif tr_active and tr_stop_price > 0 and candle_high >= tr_stop_price:
-                stop_hit = True
-                exit_reason = "TR"
-                self._add_ki_log_entry(
-                    "STOP",
-                    f"🛑 TR getroffen! HIGH={candle_high:.2f} >= TR-Stop={tr_stop_price:.2f}"
-                )
-
-        elif side == "long":
-            # LONG: sell if candle LOW <= stop (price went DOWN below our stop)
-            # Check initial SL first
-            if stop_price > 0 and candle_low <= stop_price:
-                stop_hit = True
-                exit_reason = "SL"
-                self._add_ki_log_entry(
-                    "STOP",
-                    f"🛑 SL getroffen! LOW={candle_low:.2f} <= SL={stop_price:.2f}"
-                )
-            # Check TR stop ONLY if tr_active (threshold crossed)
-            elif tr_active and tr_stop_price > 0 and candle_low <= tr_stop_price:
-                stop_hit = True
-                exit_reason = "TR"
-                self._add_ki_log_entry(
-                    "STOP",
-                    f"🛑 TR getroffen! LOW={candle_low:.2f} <= TR-Stop={tr_stop_price:.2f}"
-                )
+        # Check stops based on side
+        stop_hit, exit_reason = self._check_stops_for_side(
+            side, candle_high, candle_low, stop_data
+        )
 
         if stop_hit:
             self._execute_stop_exit(active_signal, exit_reason, candle_close)
+
+    def _find_active_position(self) -> dict | None:
+        """Find active position in signal history."""
+        for sig in self._signal_history:
+            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+                return sig
+        return None
+
+    def _log_stop_check(
+        self,
+        candle_high: float,
+        candle_low: float,
+        side: str,
+        stop_data: dict
+    ) -> None:
+        """Log stop check details."""
+        self._add_ki_log_entry(
+            "STOP_CHECK",
+            f"Kerze H={candle_high:.2f} L={candle_low:.2f} | "
+            f"Side={side.upper()} | SL={stop_data['stop_price']:.2f} | "
+            f"TR-Stop={stop_data['tr_stop_price']:.2f} (aktiv={stop_data['tr_active']})"
+        )
+
+    def _check_stops_for_side(
+        self,
+        side: str,
+        candle_high: float,
+        candle_low: float,
+        stop_data: dict
+    ) -> tuple[bool, str]:
+        """Check stops based on position side.
+
+        Returns:
+            (stop_hit, exit_reason) tuple
+        """
+        if side == "short":
+            return self._check_short_stops(candle_high, stop_data)
+        elif side == "long":
+            return self._check_long_stops(candle_low, stop_data)
+        return False, ""
+
+    def _check_short_stops(
+        self,
+        candle_high: float,
+        stop_data: dict
+    ) -> tuple[bool, str]:
+        """Check stops for SHORT position (price went UP).
+
+        Returns:
+            (stop_hit, exit_reason) tuple
+        """
+        # Check initial SL first
+        if stop_data['stop_price'] > 0 and candle_high >= stop_data['stop_price']:
+            self._add_ki_log_entry(
+                "STOP",
+                f"🛑 SL getroffen! HIGH={candle_high:.2f} >= SL={stop_data['stop_price']:.2f}"
+            )
+            return True, "SL"
+
+        # Check trailing stop (only if active)
+        if (stop_data['tr_active'] and
+            stop_data['tr_stop_price'] > 0 and
+            candle_high >= stop_data['tr_stop_price']):
+            self._add_ki_log_entry(
+                "STOP",
+                f"🛑 TR getroffen! HIGH={candle_high:.2f} >= TR-Stop={stop_data['tr_stop_price']:.2f}"
+            )
+            return True, "TR"
+
+        return False, ""
+
+    def _check_long_stops(
+        self,
+        candle_low: float,
+        stop_data: dict
+    ) -> tuple[bool, str]:
+        """Check stops for LONG position (price went DOWN).
+
+        Returns:
+            (stop_hit, exit_reason) tuple
+        """
+        # Check initial SL first
+        if stop_data['stop_price'] > 0 and candle_low <= stop_data['stop_price']:
+            self._add_ki_log_entry(
+                "STOP",
+                f"🛑 SL getroffen! LOW={candle_low:.2f} <= SL={stop_data['stop_price']:.2f}"
+            )
+            return True, "SL"
+
+        # Check trailing stop (only if active)
+        if (stop_data['tr_active'] and
+            stop_data['tr_stop_price'] > 0 and
+            candle_low <= stop_data['tr_stop_price']):
+            self._add_ki_log_entry(
+                "STOP",
+                f"🛑 TR getroffen! LOW={candle_low:.2f} <= TR-Stop={stop_data['tr_stop_price']:.2f}"
+            )
+            return True, "TR"
+
+        return False, ""
     def _execute_stop_exit(self, signal: dict, exit_reason: str, exit_price: float) -> None:
         """Execute stop exit - close the position.
 
