@@ -30,6 +30,18 @@ class MarkingsManager:
         self.chart = chart_widget
         self._markings_state = ChartMarkingsState()
 
+        # Dispatch map: MarkingType -> handler method
+        self._marking_handlers = {
+            MarkingType.STOP_LOSS: self._apply_stop_loss,
+            MarkingType.TAKE_PROFIT: self._apply_take_profit,
+            MarkingType.ENTRY_LONG: self._apply_entry_long,
+            MarkingType.ENTRY_SHORT: self._apply_entry_short,
+            MarkingType.SUPPORT_ZONE: self._apply_support_zone,
+            MarkingType.RESISTANCE_ZONE: self._apply_resistance_zone,
+            MarkingType.DEMAND_ZONE: self._apply_demand_zone,
+            MarkingType.SUPPLY_ZONE: self._apply_supply_zone,
+        }
+
     def get_current_markings(self) -> ChartMarkingsState:
         """Get current state of all chart markings.
 
@@ -65,58 +77,76 @@ class MarkingsManager:
         logger.info("Chart markings updated successfully")
 
     def _apply_marking_to_chart(self, marking: ChartMarking) -> None:
-        """Apply a single marking to the chart.
+        """Apply a single marking to the chart using dispatch pattern.
 
         Args:
             marking: Marking to apply
         """
         try:
-            # Map MarkingType to chart methods
-            if marking.type == MarkingType.STOP_LOSS and marking.price:
-                logger.info(f"Adding Stop Loss at {marking.price:.2f}")
-                self._add_horizontal_line(marking.price, "#f44336", marking.label or "Stop Loss")
-
-            elif marking.type == MarkingType.TAKE_PROFIT and marking.price:
-                logger.info(f"Adding Take Profit at {marking.price:.2f}")
-                self._add_horizontal_line(marking.price, "#4caf50", marking.label or "Take Profit")
-
-            elif marking.type == MarkingType.ENTRY_LONG and marking.price:
-                logger.info(f"Adding Long Entry at {marking.price:.2f}")
-                timestamp = self._get_current_timestamp()
-                if hasattr(self.chart, 'add_long_entry'):
-                    self.chart.add_long_entry(timestamp, marking.price, marking.label or "Long Entry")
-                else:
-                    logger.warning("Chart does not have add_long_entry method")
-
-            elif marking.type == MarkingType.ENTRY_SHORT and marking.price:
-                logger.info(f"Adding Short Entry at {marking.price:.2f}")
-                timestamp = self._get_current_timestamp()
-                if hasattr(self.chart, 'add_short_entry'):
-                    self.chart.add_short_entry(timestamp, marking.price, marking.label or "Short Entry")
-                else:
-                    logger.warning("Chart does not have add_short_entry method")
-
-            elif marking.type == MarkingType.SUPPORT_ZONE and marking.price_top and marking.price_bottom:
-                logger.info(f"Adding Support Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
-                self._add_zone(marking, "support")
-
-            elif marking.type == MarkingType.RESISTANCE_ZONE and marking.price_top and marking.price_bottom:
-                logger.info(f"Adding Resistance Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
-                self._add_zone(marking, "resistance")
-
-            elif marking.type == MarkingType.DEMAND_ZONE and marking.price_top and marking.price_bottom:
-                logger.info(f"Adding Demand Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
-                self._add_zone(marking, "demand")
-
-            elif marking.type == MarkingType.SUPPLY_ZONE and marking.price_top and marking.price_bottom:
-                logger.info(f"Adding Supply Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
-                self._add_zone(marking, "supply")
-
+            handler = self._marking_handlers.get(marking.type)
+            if handler:
+                handler(marking)
             else:
                 logger.warning(f"Unsupported marking type: {marking.type}")
-
         except Exception as e:
             logger.error(f"Failed to apply marking {marking.type}: {e}", exc_info=True)
+
+    # Handler methods for each marking type (reduce complexity)
+    def _apply_stop_loss(self, marking: ChartMarking) -> None:
+        """Apply stop loss marking."""
+        if marking.price:
+            logger.info(f"Adding Stop Loss at {marking.price:.2f}")
+            self._add_horizontal_line(marking.price, "#f44336", marking.label or "Stop Loss")
+
+    def _apply_take_profit(self, marking: ChartMarking) -> None:
+        """Apply take profit marking."""
+        if marking.price:
+            logger.info(f"Adding Take Profit at {marking.price:.2f}")
+            self._add_horizontal_line(marking.price, "#4caf50", marking.label or "Take Profit")
+
+    def _apply_entry_long(self, marking: ChartMarking) -> None:
+        """Apply long entry marking."""
+        if marking.price:
+            logger.info(f"Adding Long Entry at {marking.price:.2f}")
+            timestamp = self._get_current_timestamp()
+            if hasattr(self.chart, 'add_long_entry'):
+                self.chart.add_long_entry(timestamp, marking.price, marking.label or "Long Entry")
+            else:
+                logger.warning("Chart does not have add_long_entry method")
+
+    def _apply_entry_short(self, marking: ChartMarking) -> None:
+        """Apply short entry marking."""
+        if marking.price:
+            logger.info(f"Adding Short Entry at {marking.price:.2f}")
+            timestamp = self._get_current_timestamp()
+            if hasattr(self.chart, 'add_short_entry'):
+                self.chart.add_short_entry(timestamp, marking.price, marking.label or "Short Entry")
+            else:
+                logger.warning("Chart does not have add_short_entry method")
+
+    def _apply_support_zone(self, marking: ChartMarking) -> None:
+        """Apply support zone marking."""
+        if marking.price_top and marking.price_bottom:
+            logger.info(f"Adding Support Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
+            self._add_zone(marking, "support")
+
+    def _apply_resistance_zone(self, marking: ChartMarking) -> None:
+        """Apply resistance zone marking."""
+        if marking.price_top and marking.price_bottom:
+            logger.info(f"Adding Resistance Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
+            self._add_zone(marking, "resistance")
+
+    def _apply_demand_zone(self, marking: ChartMarking) -> None:
+        """Apply demand zone marking."""
+        if marking.price_top and marking.price_bottom:
+            logger.info(f"Adding Demand Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
+            self._add_zone(marking, "demand")
+
+    def _apply_supply_zone(self, marking: ChartMarking) -> None:
+        """Apply supply zone marking."""
+        if marking.price_top and marking.price_bottom:
+            logger.info(f"Adding Supply Zone {marking.price_bottom:.2f}-{marking.price_top:.2f}")
+            self._add_zone(marking, "supply")
 
     def _add_horizontal_line(self, price: float, color: str, label: str) -> None:
         """Add horizontal line to chart.

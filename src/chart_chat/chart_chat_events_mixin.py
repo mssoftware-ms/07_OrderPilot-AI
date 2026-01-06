@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,

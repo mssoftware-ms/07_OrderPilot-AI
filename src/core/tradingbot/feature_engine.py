@@ -25,7 +25,6 @@ from src.core.tradingbot.bot_helpers import (
     calculate_macd,
     calculate_rsi,
     calculate_sma,
-    calculate_stoch_rsi,
 )
 from .models import FeatureVector
 

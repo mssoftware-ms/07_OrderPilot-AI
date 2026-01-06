@@ -220,116 +220,141 @@ class ToolbarMixin:
         toolbar.addAction(settings_action)
 
     def update_data_provider_list(self):
-        """Update the list of available market data providers."""
+        """Update the list of available market data providers (refactored)."""
         try:
-            available_sources = self.history_manager.get_available_sources()
+            # Get and filter available sources
+            filtered_sources = self._get_filtered_sources()
 
-            # Collapse Alpaca variants
-            alpaca_available = "alpaca" in available_sources or "alpaca_crypto" in available_sources
-            filtered_sources = [
-                s for s in available_sources
-                if s not in ("alpaca_crypto",)
-            ]
-            if alpaca_available and "alpaca" not in filtered_sources:
-                filtered_sources.append("alpaca")
+            # Preserve current selection
+            previous_key = self._get_current_provider_key()
 
-            # Preserve current selection to avoid unwanted resets
-            previous_index = self.data_provider_combo.currentIndex() if self.data_provider_combo.count() else -1
-            previous_key = self.data_provider_combo.itemData(previous_index) if previous_index >= 0 else None
-            previous_text = self.data_provider_combo.currentText() if previous_index >= 0 else None
-
-            # Avoid emitting change signals while rebuilding the list
+            # Rebuild combo box
             self.data_provider_combo.blockSignals(True)
             self.data_provider_combo.clear()
+            self._populate_provider_combo(filtered_sources)
 
-            # Add "Auto" option
-            self.data_provider_combo.addItem("Auto (Priority Order)", None)
+            # Restore selection
+            self._restore_provider_selection(previous_key)
 
-            provider_display_names = {
-                "database": "Database (Cache)",
-                "ibkr": "Interactive Brokers",
-                "alpaca": "Alpaca (Stocks & Crypto)",
-                "bitunix": "Bitunix Futures",
-                "alpha_vantage": "Alpha Vantage",
-                "finnhub": "Finnhub",
-                "yahoo": "Yahoo Finance"
-            }
-
-            for source in filtered_sources:
-                display_name = provider_display_names.get(source, source.title())
-                self.data_provider_combo.addItem(f"{display_name}", source)
-
-            # Check for disabled providers
-            profile = config_manager.load_profile()
-            market_config = profile.market_data
-
-            if market_config.alpaca_enabled and "alpaca" not in filtered_sources:
-                self.data_provider_combo.addItem(
-                    "Alpaca (Configure API Keys)",
-                    "alpaca_disabled"
-                )
-
-            if market_config.alpha_vantage_enabled and "alpha_vantage" not in available_sources:
-                self.data_provider_combo.addItem(
-                    "Alpha Vantage (Configure API Key)",
-                    "alpha_vantage_disabled"
-                )
-
-            if market_config.finnhub_enabled and "finnhub" not in available_sources:
-                self.data_provider_combo.addItem(
-                    "Finnhub (Configure API Key)",
-                    "finnhub_disabled"
-                )
-
-            # Yahoo should always be available
-            if market_config.yahoo_enabled and "yahoo" not in available_sources:
-                from src.core.market_data.history_provider import DataSource, YahooFinanceProvider
-                self.history_manager.register_provider(DataSource.YAHOO, YahooFinanceProvider())
-                self.data_provider_combo.addItem("Yahoo Finance", "yahoo")
-                logger.info("Registered Yahoo Finance provider")
-
-            # Load saved preference (key preferred, fallback to text)
-            saved_key_raw = self.settings.value("market_data_provider_key", None)
-            saved_text = self.settings.value("market_data_provider", "Auto (Priority Order)")
-            saved_key = str(saved_key_raw) if saved_key_raw not in (None, "") else None
-
-            def _set_by_key(key):
-                if key is None:
-                    return False
-                for i in range(self.data_provider_combo.count()):
-                    if self.data_provider_combo.itemData(i) == key:
-                        self.data_provider_combo.setCurrentIndex(i)
-                        return True
-                return False
-
-            target_set = False
-
-            # 1) Saved key from settings
-            if _set_by_key(saved_key):
-                target_set = True
-
-            # 2) Saved text from settings
-            if not target_set:
-                idx = self.data_provider_combo.findText(saved_text)
-                if idx >= 0:
-                    self.data_provider_combo.setCurrentIndex(idx)
-                    target_set = True
-
-            # 3) Previous selection (runtime) if still available
-            if not target_set and _set_by_key(previous_key):
-                target_set = True
-
-            # 4) Fallback: Auto
-            if not target_set and self.data_provider_combo.count() > 0:
-                self.data_provider_combo.setCurrentIndex(0)
-
-            # Re-enable signals after rebuild
             self.data_provider_combo.blockSignals(False)
-
             logger.info(f"Available market data providers: {filtered_sources}")
 
         except Exception as e:
             logger.error(f"Failed to update data provider list: {e}")
+
+    def _get_filtered_sources(self):
+        """Get available sources with Alpaca variants collapsed."""
+        available_sources = self.history_manager.get_available_sources()
+
+        # Collapse Alpaca variants
+        alpaca_available = "alpaca" in available_sources or "alpaca_crypto" in available_sources
+        filtered_sources = [s for s in available_sources if s not in ("alpaca_crypto",)]
+
+        if alpaca_available and "alpaca" not in filtered_sources:
+            filtered_sources.append("alpaca")
+
+        return filtered_sources
+
+    def _get_current_provider_key(self):
+        """Get current provider key to preserve selection."""
+        if self.data_provider_combo.count() > 0:
+            current_index = self.data_provider_combo.currentIndex()
+            if current_index >= 0:
+                return self.data_provider_combo.itemData(current_index)
+        return None
+
+    def _populate_provider_combo(self, filtered_sources):
+        """Populate combo box with available and disabled providers."""
+        # Add "Auto" option
+        self.data_provider_combo.addItem("Auto (Priority Order)", None)
+
+        # Display names mapping
+        provider_display_names = {
+            "database": "Database (Cache)",
+            "ibkr": "Interactive Brokers",
+            "alpaca": "Alpaca (Stocks & Crypto)",
+            "bitunix": "Bitunix Futures",
+            "alpha_vantage": "Alpha Vantage",
+            "finnhub": "Finnhub",
+            "yahoo": "Yahoo Finance"
+        }
+
+        # Add available providers
+        for source in filtered_sources:
+            display_name = provider_display_names.get(source, source.title())
+            self.data_provider_combo.addItem(f"{display_name}", source)
+
+        # Add disabled providers
+        self._add_disabled_providers(filtered_sources)
+
+    def _add_disabled_providers(self, available_sources):
+        """Add disabled providers with configuration prompts."""
+        profile = config_manager.load_profile()
+        market_config = profile.market_data
+
+        # Alpaca
+        if market_config.alpaca_enabled and "alpaca" not in available_sources:
+            self.data_provider_combo.addItem(
+                "Alpaca (Configure API Keys)",
+                "alpaca_disabled"
+            )
+
+        # Alpha Vantage
+        if market_config.alpha_vantage_enabled and "alpha_vantage" not in available_sources:
+            self.data_provider_combo.addItem(
+                "Alpha Vantage (Configure API Key)",
+                "alpha_vantage_disabled"
+            )
+
+        # Finnhub
+        if market_config.finnhub_enabled and "finnhub" not in available_sources:
+            self.data_provider_combo.addItem(
+                "Finnhub (Configure API Key)",
+                "finnhub_disabled"
+            )
+
+        # Yahoo (always available fallback)
+        if market_config.yahoo_enabled and "yahoo" not in available_sources:
+            from src.core.market_data.history_provider import DataSource, YahooFinanceProvider
+            self.history_manager.register_provider(DataSource.YAHOO, YahooFinanceProvider())
+            self.data_provider_combo.addItem("Yahoo Finance", "yahoo")
+            logger.info("Registered Yahoo Finance provider")
+
+    def _restore_provider_selection(self, previous_key):
+        """Restore provider selection with fallback chain."""
+        # Load saved preferences
+        saved_key_raw = self.settings.value("market_data_provider_key", None)
+        saved_text = self.settings.value("market_data_provider", "Auto (Priority Order)")
+        saved_key = str(saved_key_raw) if saved_key_raw not in (None, "") else None
+
+        # Try selection methods in order of priority
+        if self._select_by_key(saved_key):  # 1. Saved key
+            return
+        if self._select_by_text(saved_text):  # 2. Saved text
+            return
+        if self._select_by_key(previous_key):  # 3. Previous runtime selection
+            return
+        # 4. Fallback to Auto
+        if self.data_provider_combo.count() > 0:
+            self.data_provider_combo.setCurrentIndex(0)
+
+    def _select_by_key(self, key):
+        """Select provider by key, return True if found."""
+        if key is None:
+            return False
+        for i in range(self.data_provider_combo.count()):
+            if self.data_provider_combo.itemData(i) == key:
+                self.data_provider_combo.setCurrentIndex(i)
+                return True
+        return False
+
+    def _select_by_text(self, text):
+        """Select provider by display text, return True if found."""
+        idx = self.data_provider_combo.findText(text)
+        if idx >= 0:
+            self.data_provider_combo.setCurrentIndex(idx)
+            return True
+        return False
 
     def on_data_provider_changed(self, provider_name: str):
         """Handle data provider selection changes."""

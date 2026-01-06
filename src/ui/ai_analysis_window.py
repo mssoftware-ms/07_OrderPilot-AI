@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox, QTabWidget, QWidget
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
-from PyQt6.QtGui import QClipboard
 
 from src.core.ai_analysis.engine import AIAnalysisEngine
 from src.core.ai_analysis.prompt import PromptComposer
