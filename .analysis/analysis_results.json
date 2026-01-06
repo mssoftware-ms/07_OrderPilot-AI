@@ -1,37 +1,10 @@
 {
   "dead_code": [
     {
-      "name": "QEvent",
-      "type": "import",
-      "file": "src/chart_chat/chart_chat_events_mixin.py",
-      "line": 7,
-      "confidence": "HIGH",
-      "reason": "Keine Referenzen gefunden (vulture)",
-      "warning": ""
-    },
-    {
-      "name": "calculate_stoch_rsi",
-      "type": "import",
-      "file": "src/core/tradingbot/feature_engine.py",
-      "line": 22,
-      "confidence": "HIGH",
-      "reason": "Keine Referenzen gefunden (vulture)",
-      "warning": ""
-    },
-    {
-      "name": "QClipboard",
-      "type": "import",
-      "file": "src/ui/ai_analysis_window.py",
-      "line": 10,
-      "confidence": "HIGH",
-      "reason": "Keine Referenzen gefunden (vulture)",
-      "warning": ""
-    },
-    {
       "name": "provider_name",
       "type": "variable",
       "file": "src/ui/app_components/toolbar_mixin.py",
-      "line": 334,
+      "line": 359,
       "confidence": "HIGH",
       "reason": "Keine Referenzen gefunden (vulture)",
       "warning": ""
@@ -6646,8 +6619,8 @@
         ],
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          18,
-          22
+          17,
+          21
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6720,8 +6693,8 @@
         ],
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          27,
-          31
+          26,
+          30
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6758,8 +6731,8 @@
         ],
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          28,
-          32
+          27,
+          31
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6801,8 +6774,8 @@
         ],
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          29,
-          33
+          28,
+          32
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6844,8 +6817,8 @@
         ],
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          30,
-          34
+          29,
+          33
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6919,12 +6892,89 @@
       "similarity": 1.0
     },
     {
+      "hash": "a913ca9e",
+      "files": [
+        [
+          "src/chart_chat/chart_chat_events_mixin.py",
+          3,
+          7
+        ],
+        [
+          "src/chart_chat/chart_chat_export_mixin.py",
+          3,
+          7
+        ]
+      ],
+      "lines": 5,
+      "code_sample": "import logging\nfrom datetime import datetime\nfrom typing import TYPE_CHECKING\n\nfrom PyQt6.QtWidgets import (\n",
+      "similarity": 1.0
+    },
+    {
+      "hash": "2f09b5a2",
+      "files": [
+        [
+          "src/chart_chat/chart_chat_events_mixin.py",
+          4,
+          8
+        ],
+        [
+          "src/chart_chat/chart_chat_export_mixin.py",
+          4,
+          8
+        ]
+      ],
+      "lines": 5,
+      "code_sample": "from datetime import datetime\nfrom typing import TYPE_CHECKING\n\nfrom PyQt6.QtWidgets import (\n    QApplication,\n",
+      "similarity": 1.0
+    },
+    {
+      "hash": "32df2b74",
+      "files": [
+        [
+          "src/chart_chat/chart_chat_events_mixin.py",
+          5,
+          9
+        ],
+        [
+          "src/chart_chat/chart_chat_export_mixin.py",
+          5,
+          9
+        ]
+      ],
+      "lines": 5,
+      "code_sample": "from typing import TYPE_CHECKING\n\nfrom PyQt6.QtWidgets import (\n    QApplication,\n    QCheckBox,\n",
+      "similarity": 1.0
+    },
+    {
+      "hash": "9b6e9071",
+      "files": [
+        [
+          "src/chart_chat/chart_chat_events_mixin.py",
+          6,
+          10
+        ],
+        [
+          "src/chart_chat/chart_chat_export_mixin.py",
+          6,
+          10
+        ],
+        [
+          "src/chart_chat/chart_chat_ui_mixin.py",
+          8,
+          12
+        ]
+      ],
+      "lines": 5,
+      "code_sample": "\nfrom PyQt6.QtWidgets import (\n    QApplication,\n    QCheckBox,\n    QDockWidget,\n",
+      "similarity": 1.0
+    },
+    {
       "hash": "2d3b8e92",
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          8,
-          12
+          7,
+          11
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6956,8 +7006,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          9,
-          13
+          8,
+          12
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -6989,8 +7039,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          13,
-          17
+          12,
+          16
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7027,8 +7077,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          14,
-          18
+          13,
+          17
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7065,8 +7115,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          15,
-          19
+          14,
+          18
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7103,8 +7153,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          16,
-          20
+          15,
+          19
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7136,8 +7186,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          17,
-          21
+          16,
+          20
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7169,8 +7219,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          19,
-          23
+          18,
+          22
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7202,8 +7252,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          20,
-          24
+          19,
+          23
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7235,8 +7285,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          21,
-          25
+          20,
+          24
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7268,8 +7318,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          25,
-          29
+          24,
+          28
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7296,8 +7346,8 @@
       "files": [
         [
           "src/chart_chat/chart_chat_events_mixin.py",
-          26,
-          30
+          25,
+          29
         ],
         [
           "src/chart_chat/chart_chat_export_mixin.py",
@@ -7317,24 +7367,6 @@
       ],
       "lines": 5,
       "code_sample": ")\n\nif TYPE_CHECKING:\n    from .chat_service import ChartChatService\n    from .models import ChartAnalysisResult, QuickAnswerResult\n",
-      "similarity": 1.0
-    },
-    {
-      "hash": "9b6e9071",
-      "files": [
-        [
-          "src/chart_chat/chart_chat_export_mixin.py",
-          6,
-          10
-        ],
-        [
-          "src/chart_chat/chart_chat_ui_mixin.py",
-          8,
-          12
-        ]
-      ],
-      "lines": 5,
-      "code_sample": "\nfrom PyQt6.QtWidgets import (\n    QApplication,\n    QCheckBox,\n    QDockWidget,\n",
       "similarity": 1.0
     },
     {
@@ -9053,8 +9085,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          15,
-          19
+          14,
+          18
         ],
         [
           "src/ui/dialogs/settings_tabs_mixin.py",
@@ -9071,8 +9103,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          16,
-          20
+          15,
+          19
         ],
         [
           "src/ui/dialogs/settings_tabs_mixin.py",
@@ -9089,8 +9121,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          120,
-          124
+          119,
+          123
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -9107,8 +9139,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          121,
-          125
+          120,
+          124
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -9125,8 +9157,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          122,
-          126
+          121,
+          125
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -9143,8 +9175,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          123,
-          127
+          122,
+          126
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -9161,8 +9193,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          124,
-          128
+          123,
+          127
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -9179,8 +9211,8 @@
       "files": [
         [
           "src/ui/ai_analysis_window.py",
-          125,
-          129
+          124,
+          128
         ],
         [
           "src/core/analysis/orchestrator.py",
@@ -16671,8 +16703,8 @@
         ],
         [
           "src/core/market_data/bar_validator.py",
-          225,
-          229
+          244,
+          248
         ]
       ],
       "lines": 5,
@@ -16689,8 +16721,8 @@
         ],
         [
           "src/core/market_data/bar_validator.py",
-          226,
-          230
+          245,
+          249
         ]
       ],
       "lines": 5,
@@ -16712,13 +16744,13 @@
         ],
         [
           "src/core/market_data/bar_validator.py",
-          227,
-          231
+          246,
+          250
         ],
         [
           "src/core/market_data/bar_validator.py",
-          228,
-          232
+          247,
+          251
         ]
       ],
       "lines": 5,
@@ -30811,24 +30843,6 @@
       "similarity": 1.0
     },
     {
-      "hash": "4c338afc",
-      "files": [
-        [
-          "src/ui/widgets/chart_window_mixins/bot_panels_mixin.py",
-          205,
-          209
-        ],
-        [
-          "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
-          120,
-          124
-        ]
-      ],
-      "lines": 5,
-      "code_sample": "        side = sig.get(\"side\", \"long\")\n\n        if entry_price <= 0:\n            return\n\n",
-      "similarity": 1.0
-    },
-    {
       "hash": "6f647934",
       "files": [
         [
@@ -31438,20 +31452,9 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "_apply_marking_to_chart",
-      "file": "src/chart_chat/markings_manager.py",
-      "line": 67,
-      "cyclomatic_complexity": 28,
-      "nesting_depth": 0,
-      "loc": 52,
-      "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=28)"
-    },
-    {
       "function": "_get_zone_time_range",
       "file": "src/chart_chat/markings_manager.py",
-      "line": 165,
+      "line": 195,
       "cyclomatic_complexity": 8,
       "nesting_depth": 0,
       "loc": 48,
@@ -31460,20 +31463,9 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "MarkingsManager",
-      "file": "src/chart_chat/markings_manager.py",
-      "line": 21,
-      "cyclomatic_complexity": 6,
-      "nesting_depth": 0,
-      "loc": 264,
-      "parameters": 0,
-      "severity": "ACCEPTABLE",
-      "recommendation": "Akzeptabel, aber beobachten"
-    },
-    {
       "function": "_get_current_timestamp",
       "file": "src/chart_chat/markings_manager.py",
-      "line": 215,
+      "line": 245,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 22,
@@ -31491,28 +31483,6 @@
       "parameters": 0,
       "severity": "ACCEPTABLE",
       "recommendation": "Akzeptabel, aber beobachten"
-    },
-    {
-      "function": "ChartAnalysisResult",
-      "file": "src/chart_chat/models.py",
-      "line": 94,
-      "cyclomatic_complexity": 25,
-      "nesting_depth": 0,
-      "loc": 131,
-      "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=25)"
-    },
-    {
-      "function": "to_markdown",
-      "file": "src/chart_chat/models.py",
-      "line": 132,
-      "cyclomatic_complexity": 24,
-      "nesting_depth": 0,
-      "loc": 93,
-      "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=24)"
     },
     {
       "function": "to_chart_marker",
@@ -32351,20 +32321,31 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "_validate_bar",
+      "function": "_check_volume_price_divergence",
       "file": "src/core/market_data/bar_validator.py",
-      "line": 111,
-      "cyclomatic_complexity": 21,
+      "line": 222,
+      "cyclomatic_complexity": 7,
       "nesting_depth": 0,
-      "loc": 109,
+      "loc": 12,
       "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=21)"
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
+      "function": "_apply_zscore_winsorizing",
+      "file": "src/core/market_data/bar_validator.py",
+      "line": 203,
+      "cyclomatic_complexity": 6,
+      "nesting_depth": 0,
+      "loc": 17,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
     },
     {
       "function": "_calc_atr",
       "file": "src/core/market_data/bar_validator.py",
-      "line": 258,
+      "line": 277,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 18,
@@ -33915,7 +33896,7 @@
     {
       "function": "_calculate_derived_features",
       "file": "src/core/tradingbot/feature_engine.py",
-      "line": 433,
+      "line": 432,
       "cyclomatic_complexity": 14,
       "nesting_depth": 0,
       "loc": 53,
@@ -33926,7 +33907,7 @@
     {
       "function": "_get_last_value",
       "file": "src/core/tradingbot/feature_engine.py",
-      "line": 412,
+      "line": 411,
       "cyclomatic_complexity": 7,
       "nesting_depth": 0,
       "loc": 19,
@@ -34122,17 +34103,6 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "_aggregate_metrics",
-      "file": "src/core/tradingbot/strategy_evaluator.py",
-      "line": 504,
-      "cyclomatic_complexity": 24,
-      "nesting_depth": 0,
-      "loc": 58,
-      "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=24)"
-    },
-    {
       "function": "calculate_metrics",
       "file": "src/core/tradingbot/strategy_evaluator.py",
       "line": 69,
@@ -34166,6 +34136,17 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
+      "function": "_calculate_derived_metrics",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "line": 528,
+      "cyclomatic_complexity": 8,
+      "nesting_depth": 0,
+      "loc": 24,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
       "function": "validate_robustness",
       "file": "src/core/tradingbot/strategy_evaluator.py",
       "line": 222,
@@ -34177,12 +34158,23 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "StrategyEvaluator",
+      "function": "_aggregate_drawdowns_and_streaks",
       "file": "src/core/tradingbot/strategy_evaluator.py",
-      "line": 42,
+      "line": 555,
+      "cyclomatic_complexity": 7,
+      "nesting_depth": 0,
+      "loc": 13,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
+      "function": "_sum_trade_totals",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "line": 519,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
-      "loc": 567,
+      "loc": 7,
       "parameters": 0,
       "severity": "ACCEPTABLE",
       "recommendation": "Akzeptabel, aber beobachten"
@@ -34190,7 +34182,7 @@
     {
       "function": "compare_strategies",
       "file": "src/core/tradingbot/strategy_evaluator.py",
-      "line": 564,
+      "line": 575,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 45,
@@ -34586,7 +34578,7 @@
     {
       "function": "run",
       "file": "src/ui/ai_analysis_window.py",
-      "line": 42,
+      "line": 41,
       "cyclomatic_complexity": 8,
       "nesting_depth": 0,
       "loc": 105,
@@ -34597,7 +34589,7 @@
     {
       "function": "start_analysis",
       "file": "src/ui/ai_analysis_window.py",
-      "line": 320,
+      "line": 319,
       "cyclomatic_complexity": 8,
       "nesting_depth": 0,
       "loc": 59,
@@ -34608,7 +34600,7 @@
     {
       "function": "_open_prompt_editor",
       "file": "src/ui/ai_analysis_window.py",
-      "line": 416,
+      "line": 415,
       "cyclomatic_complexity": 7,
       "nesting_depth": 0,
       "loc": 28,
@@ -34619,7 +34611,7 @@
     {
       "function": "AnalysisWorker",
       "file": "src/ui/ai_analysis_window.py",
-      "line": 23,
+      "line": 22,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 124,
@@ -34630,7 +34622,7 @@
     {
       "function": "_on_provider_changed",
       "file": "src/ui/ai_analysis_window.py",
-      "line": 274,
+      "line": 273,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 26,
@@ -34760,23 +34752,45 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "update_data_provider_list",
+      "function": "_add_disabled_providers",
       "file": "src/ui/app_components/toolbar_mixin.py",
-      "line": 222,
-      "cyclomatic_complexity": 27,
+      "line": 290,
+      "cyclomatic_complexity": 9,
       "nesting_depth": 0,
-      "loc": 110,
+      "loc": 31,
       "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=27)"
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
     },
     {
       "function": "on_data_provider_changed",
       "file": "src/ui/app_components/toolbar_mixin.py",
-      "line": 334,
+      "line": 359,
       "cyclomatic_complexity": 7,
       "nesting_depth": 0,
       "loc": 26,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
+      "function": "_get_filtered_sources",
+      "file": "src/ui/app_components/toolbar_mixin.py",
+      "line": 245,
+      "cyclomatic_complexity": 6,
+      "nesting_depth": 0,
+      "loc": 11,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
+      "function": "_restore_provider_selection",
+      "file": "src/ui/app_components/toolbar_mixin.py",
+      "line": 323,
+      "cyclomatic_complexity": 6,
+      "nesting_depth": 0,
+      "loc": 16,
       "parameters": 0,
       "severity": "ACCEPTABLE",
       "recommendation": "Akzeptabel, aber beobachten"
@@ -36520,17 +36534,6 @@
       "recommendation": "Akzeptabel, aber beobachten"
     },
     {
-      "function": "_on_signals_table_cell_changed",
-      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
-      "line": 87,
-      "cyclomatic_complexity": 21,
-      "nesting_depth": 0,
-      "loc": 83,
-      "parameters": 0,
-      "severity": "CRITICAL",
-      "recommendation": "In 5-6 Funktionen splitten (CC=21)"
-    },
-    {
       "function": "_on_chart_stop_line_moved",
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
       "line": 15,
@@ -36542,20 +36545,42 @@
       "recommendation": "Vereinfachen oder in 2-3 Funktionen splitten (CC=20)"
     },
     {
+      "function": "_on_signals_table_cell_changed",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "line": 87,
+      "cyclomatic_complexity": 9,
+      "nesting_depth": 0,
+      "loc": 32,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
       "function": "BotPositionPersistenceChartMixin",
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
       "line": 8,
-      "cyclomatic_complexity": 13,
+      "cyclomatic_complexity": 7,
       "nesting_depth": 0,
-      "loc": 183,
+      "loc": 214,
       "parameters": 0,
-      "severity": "WARNING",
-      "recommendation": "Vereinfachen oder in 2-3 Funktionen splitten (CC=13)"
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
+    },
+    {
+      "function": "_get_editable_signal",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "line": 133,
+      "cyclomatic_complexity": 7,
+      "nesting_depth": 0,
+      "loc": 14,
+      "parameters": 0,
+      "severity": "ACCEPTABLE",
+      "recommendation": "Akzeptabel, aber beobachten"
     },
     {
       "function": "_sync_stop_to_bot_controller",
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
-      "line": 171,
+      "line": 202,
       "cyclomatic_complexity": 6,
       "nesting_depth": 0,
       "loc": 20,

@@ -85,84 +85,115 @@ class BotPositionPersistenceChartMixin:
                 self._update_signals_table()
                 break
     def _on_signals_table_cell_changed(self, row: int, column: int) -> None:
-        """Handle table cell editing - update chart lines when SL% or TR% changes."""
-        if self._signals_table_updating:
+        """Handle table cell editing - update chart lines when SL% or TR% changes (refactored)."""
+        # Guard clauses
+        if self._signals_table_updating or column not in (6, 7):
             return
 
-        if column not in (6, 7):
+        # Parse and validate input
+        new_pct = self._parse_percentage_input(row, column)
+        if new_pct is None or new_pct <= 0:
             return
 
+        # Get signal
+        sig = self._get_editable_signal(row)
+        if not sig:
+            return
+
+        # Calculate new stop price
+        new_stop_price = self._calculate_stop_price(sig, new_pct)
+        if new_stop_price is None:
+            return
+
+        logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%, new_stop={new_stop_price:.2f}")
+
+        # Update based on column type
+        if column == 6:  # SL%
+            self._update_stop_loss(sig, new_stop_price, new_pct)
+        elif column == 7:  # TR%
+            self._update_trailing_stop(sig, new_stop_price, new_pct)
+
+        # Sync and save
+        self._sync_stop_to_bot_controller(new_stop_price)
+        self._save_signal_history()
+        self._refresh_signals_table()
+
+    def _parse_percentage_input(self, row: int, column: int) -> float | None:
+        """Parse percentage input from table cell."""
         item = self.signals_table.item(row, column)
         if not item:
-            return
+            return None
 
         try:
-            new_pct = float(item.text().replace(",", ".").replace("%", "").strip())
+            return float(item.text().replace(",", ".").replace("%", "").strip())
         except (ValueError, AttributeError):
             logger.warning(f"Invalid percentage value in row {row}, column {column}")
-            return
+            return None
 
-        if new_pct <= 0:
-            return
-
+    def _get_editable_signal(self, row: int) -> dict | None:
+        """Get signal that can be edited from table row."""
         visible_signals = [s for s in self._signal_history if s.get("status") in ("ENTERED", "EXITED")]
         signal_idx = len(visible_signals) - 1 - row
 
         if signal_idx < 0 or signal_idx >= len(visible_signals):
-            return
+            return None
 
         sig = visible_signals[signal_idx]
 
+        # Only allow editing open positions
         if not (sig.get("status") == "ENTERED" and sig.get("is_open", False)):
-            return
+            return None
+
+        return sig
+
+    def _calculate_stop_price(self, sig: dict, new_pct: float) -> float | None:
+        """Calculate new stop price based on entry price and percentage."""
+        entry_price = sig.get("price", 0)
+        if entry_price <= 0:
+            return None
+
+        side = sig.get("side", "long")
+        if side == "long":
+            return entry_price * (1 - new_pct / 100)
+        else:
+            return entry_price * (1 + new_pct / 100)
+
+    def _update_stop_loss(self, sig: dict, new_stop_price: float, new_pct: float) -> None:
+        """Update stop loss on signal and chart."""
+        sig["stop_price"] = new_stop_price
+        sig["initial_sl_pct"] = new_pct
+
+        if hasattr(self, "chart_widget") and self.chart_widget:
+            label = f"SL @ {new_stop_price:.2f} ({new_pct:.2f}%)"
+            self.chart_widget.add_stop_line(
+                line_id="initial_stop",
+                price=new_stop_price,
+                line_type="initial",
+                label=label
+            )
+        self._add_ki_log_entry("TABLE", f"Stop Loss geaendert -> {new_stop_price:.2f} ({new_pct:.2f}%)")
+
+    def _update_trailing_stop(self, sig: dict, new_stop_price: float, new_pct: float) -> None:
+        """Update trailing stop on signal and chart."""
+        sig["trailing_stop_price"] = new_stop_price
+        sig["trailing_stop_pct"] = new_pct
 
         entry_price = sig.get("price", 0)
-        side = sig.get("side", "long")
+        current_price = sig.get("current_price", entry_price)
+        tra_pct = abs((current_price - new_stop_price) / current_price) * 100 if current_price > 0 else 0.0
 
-        if entry_price <= 0:
-            return
+        if hasattr(self, "chart_widget") and self.chart_widget:
+            label = f"TSL @ {new_stop_price:.2f} ({new_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+            self.chart_widget.add_stop_line(
+                line_id="trailing_stop",
+                price=new_stop_price,
+                line_type="trailing",
+                label=label
+            )
+        self._add_ki_log_entry("TABLE", f"Trailing Stop geaendert -> {new_stop_price:.2f} ({new_pct:.2f}%)")
 
-        if side == "long":
-            new_stop_price = entry_price * (1 - new_pct / 100)
-        else:
-            new_stop_price = entry_price * (1 + new_pct / 100)
-
-        logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%, new_stop={new_stop_price:.2f}")
-
-        if column == 6:  # SL%
-            sig["stop_price"] = new_stop_price
-            sig["initial_sl_pct"] = new_pct
-
-            if hasattr(self, "chart_widget") and self.chart_widget:
-                label = f"SL @ {new_stop_price:.2f} ({new_pct:.2f}%)"
-                self.chart_widget.add_stop_line(
-                    line_id="initial_stop",
-                    price=new_stop_price,
-                    line_type="initial",
-                    label=label
-                )
-            self._add_ki_log_entry("TABLE", f"Stop Loss geaendert -> {new_stop_price:.2f} ({new_pct:.2f}%)")
-
-        elif column == 7:  # TR%
-            sig["trailing_stop_price"] = new_stop_price
-            sig["trailing_stop_pct"] = new_pct
-
-            current_price = sig.get("current_price", entry_price)
-            tra_pct = abs((current_price - new_stop_price) / current_price) * 100 if current_price > 0 else 0.0
-
-            if hasattr(self, "chart_widget") and self.chart_widget:
-                label = f"TSL @ {new_stop_price:.2f} ({new_pct:.2f}% / TRA: {tra_pct:.2f}%)"
-                self.chart_widget.add_stop_line(
-                    line_id="trailing_stop",
-                    price=new_stop_price,
-                    line_type="trailing",
-                    label=label
-                )
-            self._add_ki_log_entry("TABLE", f"Trailing Stop geaendert -> {new_stop_price:.2f} ({new_pct:.2f}%)")
-
-        self._sync_stop_to_bot_controller(new_stop_price)
-        self._save_signal_history()
-
+    def _refresh_signals_table(self) -> None:
+        """Refresh signals table with update lock."""
         self._signals_table_updating = True
         try:
             self._update_signals_table()

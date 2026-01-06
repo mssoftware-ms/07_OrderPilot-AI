@@ -1,6 +1,6 @@
 {
   "project": "OrderPilot-AI",
-  "timestamp": "2026-01-06T08:45:14.665073",
+  "timestamp": "2026-01-06T09:24:21.995727",
   "files_total": 371,
   "files_over_600": 0,
   "files_list": [
@@ -276,11 +276,11 @@
     },
     {
       "path": "src/chart_chat/models.py",
-      "loc_total": 234,
-      "loc_productive": 21,
-      "loc_comments": 156,
-      "loc_blank": 57,
-      "functions": 1,
+      "loc_total": 279,
+      "loc_productive": 73,
+      "loc_comments": 140,
+      "loc_blank": 66,
+      "functions": 11,
       "classes": 11
     },
     {
@@ -1131,11 +1131,11 @@
     },
     {
       "path": "src/core/market_data/bar_validator.py",
-      "loc_total": 288,
-      "loc_productive": 170,
-      "loc_comments": 81,
-      "loc_blank": 37,
-      "functions": 11,
+      "loc_total": 307,
+      "loc_productive": 137,
+      "loc_comments": 125,
+      "loc_blank": 45,
+      "functions": 19,
       "classes": 1
     },
     {
@@ -1725,8 +1725,8 @@
     },
     {
       "path": "src/core/tradingbot/feature_engine.py",
-      "loc_total": 510,
-      "loc_productive": 53,
+      "loc_total": 503,
+      "loc_productive": 46,
       "loc_comments": 388,
       "loc_blank": 69,
       "functions": 20,
@@ -1842,11 +1842,11 @@
     },
     {
       "path": "src/core/tradingbot/strategy_evaluator.py",
-      "loc_total": 609,
-      "loc_productive": 101,
-      "loc_comments": 389,
-      "loc_blank": 119,
-      "functions": 20,
+      "loc_total": 620,
+      "loc_productive": 122,
+      "loc_comments": 381,
+      "loc_blank": 117,
+      "functions": 24,
       "classes": 1
     },
     {
@@ -3102,11 +3102,11 @@
     },
     {
       "path": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
-      "loc_total": 191,
-      "loc_productive": 56,
-      "loc_comments": 96,
-      "loc_blank": 39,
-      "functions": 4,
+      "loc_total": 222,
+      "loc_productive": 32,
+      "loc_comments": 149,
+      "loc_blank": 41,
+      "functions": 10,
       "classes": 1
     },
     {
@@ -6438,10 +6438,158 @@
       "file": "src/chart_chat/models.py",
       "lines": [
         132,
-        225
+        136
       ],
       "parameters": [
         "self"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_build_variable_format_summary",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        138,
+        166
+      ],
+      "parameters": [
+        "self"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_build_markdown_report",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        168,
+        186
+      ],
+      "parameters": [
+        "self",
+        "var_lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_trend_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        188,
+        197
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_key_levels_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        199,
+        215
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_recommendation_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        217,
+        225
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_risk_assessment_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        227,
+        238
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_patterns_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        240,
+        248
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_indicators_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        250,
+        257
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_add_warnings_section",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        259,
+        265
+      ],
+      "parameters": [
+        "self",
+        "lines"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_get_enum_value",
+      "file": "src/chart_chat/models.py",
+      "lines": [
+        268,
+        270
+      ],
+      "parameters": [
+        "value"
       ],
       "is_async": false,
       "is_method": false,
@@ -16038,7 +16186,7 @@
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
         111,
-        221
+        161
       ],
       "parameters": [
         "self",
@@ -16056,11 +16204,158 @@
       "class_name": ""
     },
     {
+      "name": "_validate_positive_prices",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        163,
+        168
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "open_",
+        "high",
+        "low",
+        "close"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_fix_inverted_high_low",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        170,
+        175
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "high",
+        "low"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_log_timestamp_gap",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        177,
+        183
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "timestamp"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_log_hard_outlier",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        185,
+        190
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "open_",
+        "high",
+        "low",
+        "close",
+        "prev_close"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_validate_first_bar_range",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        192,
+        201
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "high",
+        "low",
+        "close",
+        "prev_close"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_apply_zscore_winsorizing",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        203,
+        220
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "close",
+        "high",
+        "low"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_check_volume_price_divergence",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        222,
+        234
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "close",
+        "prev_close",
+        "volume"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_update_history",
+      "file": "src/core/market_data/bar_validator.py",
+      "lines": [
+        236,
+        240
+      ],
+      "parameters": [
+        "self",
+        "symbol",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "timestamp"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
       "name": "_is_hard_outlier",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        224,
-        231
+        243,
+        250
       ],
       "parameters": [
         "high",
@@ -16076,8 +16371,8 @@
       "name": "_record_history",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        233,
-        256
+        252,
+        275
       ],
       "parameters": [
         "self",
@@ -16096,8 +16391,8 @@
       "name": "_calc_atr",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        258,
-        276
+        277,
+        295
       ],
       "parameters": [
         "self",
@@ -16111,8 +16406,8 @@
       "name": "_calc_avg_volume",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        278,
-        282
+        297,
+        301
       ],
       "parameters": [
         "self",
@@ -16126,8 +16421,8 @@
       "name": "_ensure_history",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        285,
-        288
+        304,
+        307
       ],
       "parameters": [
         "store",
@@ -16141,8 +16436,8 @@
       "name": "deviates",
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
-        228,
-        229
+        247,
+        248
       ],
       "parameters": [
         "val"
@@ -23543,8 +23838,8 @@
       "name": "__init__",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        62,
-        80
+        55,
+        73
       ],
       "parameters": [
         "self",
@@ -23559,8 +23854,8 @@
       "name": "_build_indicator_configs",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        82,
-        167
+        75,
+        160
       ],
       "parameters": [
         "self"
@@ -23573,8 +23868,8 @@
       "name": "calculate_features",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        169,
-        230
+        162,
+        223
       ],
       "parameters": [
         "self",
@@ -23590,8 +23885,8 @@
       "name": "_normalize_columns",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        232,
-        236
+        225,
+        229
       ],
       "parameters": [
         "self",
@@ -23605,8 +23900,8 @@
       "name": "preprocess_candles",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        239,
-        241
+        232,
+        234
       ],
       "parameters": [
         "self",
@@ -23620,8 +23915,8 @@
       "name": "detect_missing_candles",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        243,
-        245
+        236,
+        238
       ],
       "parameters": [
         "self",
@@ -23636,8 +23931,8 @@
       "name": "validate_candles",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        247,
-        249
+        240,
+        242
       ],
       "parameters": [
         "self",
@@ -23651,8 +23946,8 @@
       "name": "_calculate_all_indicators",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        251,
-        272
+        244,
+        265
       ],
       "parameters": [
         "self",
@@ -23666,8 +23961,8 @@
       "name": "_result_key",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        274,
-        277
+        267,
+        270
       ],
       "parameters": [
         "self",
@@ -23681,8 +23976,8 @@
       "name": "_extract_feature_values",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        279,
-        334
+        272,
+        327
       ],
       "parameters": [
         "self",
@@ -23697,8 +23992,8 @@
       "name": "_set_feature_from_result",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        336,
-        344
+        329,
+        337
       ],
       "parameters": [
         "self",
@@ -23715,8 +24010,8 @@
       "name": "_extract_macd",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        346,
-        358
+        339,
+        351
       ],
       "parameters": [
         "self",
@@ -23732,8 +24027,8 @@
       "name": "_extract_adx",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        360,
-        378
+        353,
+        371
       ],
       "parameters": [
         "self",
@@ -23749,8 +24044,8 @@
       "name": "_extract_stoch",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        380,
-        395
+        373,
+        388
       ],
       "parameters": [
         "self",
@@ -23766,8 +24061,8 @@
       "name": "_extract_bbands",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        397,
-        409
+        390,
+        402
       ],
       "parameters": [
         "self",
@@ -23783,8 +24078,8 @@
       "name": "_get_last_value",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        411,
-        430
+        404,
+        423
       ],
       "parameters": [
         "self",
@@ -23798,8 +24093,8 @@
       "name": "_calculate_derived_features",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        432,
-        485
+        425,
+        478
       ],
       "parameters": [
         "self",
@@ -23814,8 +24109,8 @@
       "name": "_get_sma_at_index",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        487,
-        501
+        480,
+        494
       ],
       "parameters": [
         "self",
@@ -23831,8 +24126,8 @@
       "name": "get_required_bars",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        503,
-        505
+        496,
+        498
       ],
       "parameters": [
         "self"
@@ -23845,8 +24140,8 @@
       "name": "clear_cache",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        507,
-        510
+        500,
+        503
       ],
       "parameters": [
         "self"
@@ -25841,7 +26136,7 @@
       "file": "src/core/tradingbot/strategy_evaluator.py",
       "lines": [
         504,
-        562
+        517
       ],
       "parameters": [
         "self",
@@ -25852,11 +26147,74 @@
       "class_name": ""
     },
     {
+      "name": "_sum_trade_totals",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "lines": [
+        519,
+        526
+      ],
+      "parameters": [
+        "self",
+        "agg",
+        "metrics_list"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_calculate_derived_metrics",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "lines": [
+        528,
+        553
+      ],
+      "parameters": [
+        "self",
+        "agg"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_aggregate_drawdowns_and_streaks",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "lines": [
+        555,
+        568
+      ],
+      "parameters": [
+        "self",
+        "agg",
+        "metrics_list"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_aggregate_date_range",
+      "file": "src/core/tradingbot/strategy_evaluator.py",
+      "lines": [
+        570,
+        573
+      ],
+      "parameters": [
+        "self",
+        "agg",
+        "metrics_list"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
       "name": "compare_strategies",
       "file": "src/core/tradingbot/strategy_evaluator.py",
       "lines": [
-        564,
-        609
+        575,
+        620
       ],
       "parameters": [
         "self",
@@ -42795,7 +43153,7 @@
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
       "lines": [
         87,
-        170
+        119
       ],
       "parameters": [
         "self",
@@ -42807,11 +43165,106 @@
       "class_name": ""
     },
     {
+      "name": "_parse_percentage_input",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        121,
+        131
+      ],
+      "parameters": [
+        "self",
+        "row",
+        "column"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_get_editable_signal",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        133,
+        147
+      ],
+      "parameters": [
+        "self",
+        "row"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_calculate_stop_price",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        149,
+        159
+      ],
+      "parameters": [
+        "self",
+        "sig",
+        "new_pct"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_update_stop_loss",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        161,
+        174
+      ],
+      "parameters": [
+        "self",
+        "sig",
+        "new_stop_price",
+        "new_pct"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_update_trailing_stop",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        176,
+        193
+      ],
+      "parameters": [
+        "self",
+        "sig",
+        "new_stop_price",
+        "new_pct"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
+      "name": "_refresh_signals_table",
+      "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
+      "lines": [
+        195,
+        201
+      ],
+      "parameters": [
+        "self"
+      ],
+      "is_async": false,
+      "is_method": false,
+      "class_name": ""
+    },
+    {
       "name": "_sync_stop_to_bot_controller",
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
       "lines": [
-        171,
-        191
+        202,
+        222
       ],
       "parameters": [
         "self",
@@ -47507,10 +47960,20 @@
       "file": "src/chart_chat/models.py",
       "lines": [
         94,
-        225
+        270
       ],
       "methods": [
-        "to_markdown"
+        "to_markdown",
+        "_build_variable_format_summary",
+        "_build_markdown_report",
+        "_add_trend_section",
+        "_add_key_levels_section",
+        "_add_recommendation_section",
+        "_add_risk_assessment_section",
+        "_add_patterns_section",
+        "_add_indicators_section",
+        "_add_warnings_section",
+        "_get_enum_value"
       ],
       "base_classes": [
         "BaseModel"
@@ -47521,8 +47984,8 @@
       "name": "QuickAnswerResult",
       "file": "src/chart_chat/models.py",
       "lines": [
-        228,
-        234
+        273,
+        279
       ],
       "methods": [],
       "base_classes": [
@@ -50359,7 +50822,7 @@
       "file": "src/core/market_data/bar_validator.py",
       "lines": [
         34,
-        288
+        307
       ],
       "methods": [
         "__init__",
@@ -50367,6 +50830,14 @@
         "validate_stream_bar",
         "validate_historical_bars",
         "_validate_bar",
+        "_validate_positive_prices",
+        "_fix_inverted_high_low",
+        "_log_timestamp_gap",
+        "_log_hard_outlier",
+        "_validate_first_bar_range",
+        "_apply_zscore_winsorizing",
+        "_check_volume_price_divergence",
+        "_update_history",
         "_is_hard_outlier",
         "_record_history",
         "_calc_atr",
@@ -52510,8 +52981,8 @@
       "name": "FeatureEngine",
       "file": "src/core/tradingbot/feature_engine.py",
       "lines": [
-        34,
-        510
+        27,
+        503
       ],
       "methods": [
         "__init__",
@@ -53153,7 +53624,7 @@
       "file": "src/core/tradingbot/strategy_evaluator.py",
       "lines": [
         42,
-        609
+        620
       ],
       "methods": [
         "__init__",
@@ -53175,6 +53646,10 @@
         "_generate_anchored_periods",
         "_calculate_oos_degradation",
         "_aggregate_metrics",
+        "_sum_trade_totals",
+        "_calculate_derived_metrics",
+        "_aggregate_drawdowns_and_streaks",
+        "_aggregate_date_range",
         "compare_strategies"
       ],
       "base_classes": [],
@@ -56471,12 +56946,18 @@
       "file": "src/ui/widgets/chart_window_mixins/bot_position_persistence_chart_mixin.py",
       "lines": [
         8,
-        191
+        222
       ],
       "methods": [
         "_connect_chart_line_signals",
         "_on_chart_stop_line_moved",
         "_on_signals_table_cell_changed",
+        "_parse_percentage_input",
+        "_get_editable_signal",
+        "_calculate_stop_price",
+        "_update_stop_loss",
+        "_update_trailing_stop",
+        "_refresh_signals_table",
         "_sync_stop_to_bot_controller"
       ],
       "base_classes": [],
@@ -57047,10 +57528,10 @@
       "is_ui_component": false
     }
   ],
-  "loc_total": 87265,
-  "loc_productive": 28898,
-  "loc_comments": 43487,
-  "loc_blank": 14880,
+  "loc_total": 87364,
+  "loc_productive": 28907,
+  "loc_comments": 43560,
+  "loc_blank": 14897,
   "ui_components": [
     "PromptsEditorDialog (src/chart_chat/prompts_editor_dialog.py)",
     "AIAnalysisWindow (src/ui/ai_analysis_window.py)",
@@ -57088,5 +57569,5 @@
     "KOResultPanel (src/ui/widgets/ko_finder/result_panel.py)",
     "KOSettingsDialog (src/ui/widgets/ko_finder/settings_dialog.py)"
   ],
-  "imports_total": 2708
+  "imports_total": 2707
 }

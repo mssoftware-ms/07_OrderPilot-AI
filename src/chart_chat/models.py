@@ -130,22 +130,27 @@ class ChartAnalysisResult(BaseModel):
     timeframe: str = ""
 
     def to_markdown(self) -> str:
-        """Convert analysis result to readable Markdown."""
-        # Variable-format summary (helps quick parsing in UI)
+        """Convert analysis result to readable Markdown (refactored)."""
+        var_lines = self._build_variable_format_summary()
+        lines = self._build_markdown_report(var_lines)
+        return "\n".join(lines)
+
+    def _build_variable_format_summary(self) -> list[str]:
+        """Build variable-format summary for UI parsing."""
         var_lines = []
 
         # Trend
-        direction = self.trend_direction.value if hasattr(self.trend_direction, 'value') else self.trend_direction
-        strength = self.trend_strength.value if hasattr(self.trend_strength, 'value') else self.trend_strength
+        direction = self._get_enum_value(self.trend_direction)
+        strength = self._get_enum_value(self.trend_strength)
         var_lines.append(f"[#Trend; {direction}]")
         var_lines.append(f"[#Trend-Stärke; {strength}]")
 
         # Support / Resistance
         for level in self.support_levels:
-            strength_txt = level.strength.value if hasattr(level.strength, 'value') else level.strength
+            strength_txt = self._get_enum_value(level.strength)
             var_lines.append(f"[#Support; {level.price:.2f} ({strength_txt})]")
         for level in self.resistance_levels:
-            strength_txt = level.strength.value if hasattr(level.strength, 'value') else level.strength
+            strength_txt = self._get_enum_value(level.strength)
             var_lines.append(f"[#Resistance; {level.price:.2f} ({strength_txt})]")
 
         # Risk markers
@@ -158,41 +163,70 @@ class ChartAnalysisResult(BaseModel):
         var_lines.append(f"[#Aktion; {self.recommendation.action}]")
         var_lines.append(f"[#Konfidenz; {self.recommendation.confidence:.0%}]")
 
+        return var_lines
+
+    def _build_markdown_report(self, var_lines: list[str]) -> list[str]:
+        """Build full markdown report."""
         lines = [
             "\n".join(var_lines),
             "",
             f"# Chart Analysis: {self.symbol} ({self.timeframe})",
             f"*Generated: {self.analysis_timestamp.strftime('%Y-%m-%d %H:%M')}*",
             "",
+        ]
+
+        self._add_trend_section(lines)
+        self._add_key_levels_section(lines)
+        self._add_recommendation_section(lines)
+        self._add_risk_assessment_section(lines)
+        self._add_patterns_section(lines)
+        self._add_indicators_section(lines)
+        self._add_warnings_section(lines)
+
+        return lines
+
+    def _add_trend_section(self, lines: list[str]) -> None:
+        """Add trend section to markdown."""
+        direction = self._get_enum_value(self.trend_direction).upper()
+        strength = self._get_enum_value(self.trend_strength)
+        lines.extend([
             "## Trend",
-            f"**Direction:** {(self.trend_direction.value if hasattr(self.trend_direction, 'value') else self.trend_direction).upper()} "
-            f"({self.trend_strength.value if hasattr(self.trend_strength, 'value') else self.trend_strength})",
+            f"**Direction:** {direction} ({strength})",
             f"{self.trend_description}",
             "",
-            "## Key Levels",
-        ]
+        ])
+
+    def _add_key_levels_section(self, lines: list[str]) -> None:
+        """Add support/resistance levels to markdown."""
+        lines.append("## Key Levels")
 
         if self.support_levels:
             lines.append("**Support:**")
             for level in self.support_levels:
-                strength = level.strength.value if hasattr(level.strength, 'value') else level.strength
+                strength = self._get_enum_value(level.strength)
                 lines.append(f"- {level.price:.2f} ({strength})")
 
         if self.resistance_levels:
             lines.append("**Resistance:**")
             for level in self.resistance_levels:
-                strength = level.strength.value if hasattr(level.strength, 'value') else level.strength
+                strength = self._get_enum_value(level.strength)
                 lines.append(f"- {level.price:.2f} ({strength})")
 
+        lines.append("")
+
+    def _add_recommendation_section(self, lines: list[str]) -> None:
+        """Add recommendation section to markdown."""
         lines.extend([
-            "",
             "## Recommendation",
             f"**Action:** {self.recommendation.action.replace('_', ' ').title()}",
             f"**Confidence:** {self.recommendation.confidence:.0%}",
             f"**Reasoning:** {self.recommendation.reasoning}",
             "",
-            "## Risk Assessment",
         ])
+
+    def _add_risk_assessment_section(self, lines: list[str]) -> None:
+        """Add risk assessment to markdown."""
+        lines.append("## Risk Assessment")
 
         if self.risk_assessment.stop_loss:
             lines.append(f"- Stop Loss: {self.risk_assessment.stop_loss:.2f}")
@@ -201,28 +235,39 @@ class ChartAnalysisResult(BaseModel):
         if self.risk_assessment.risk_reward_ratio:
             lines.append(f"- Risk/Reward: {self.risk_assessment.risk_reward_ratio:.2f}")
 
+        lines.append("")
+
+    def _add_patterns_section(self, lines: list[str]) -> None:
+        """Add identified patterns to markdown."""
         if self.patterns_identified:
-            lines.extend(["", "## Patterns"])
+            lines.append("## Patterns")
             for pattern in self.patterns_identified:
                 lines.append(
-                    f"- **{pattern.name}** ({pattern.confidence:.0%}) - "
-                    f"{pattern.implication}"
+                    f"- **{pattern.name}** ({pattern.confidence:.0%}) - {pattern.implication}"
                 )
+            lines.append("")
 
+    def _add_indicators_section(self, lines: list[str]) -> None:
+        """Add indicators summary to markdown."""
         lines.extend([
-            "",
             "## Indicators",
             self.indicator_summary,
             "",
             f"**Overall Confidence:** {self.confidence_score:.0%}",
         ])
 
+    def _add_warnings_section(self, lines: list[str]) -> None:
+        """Add warnings to markdown if present."""
         if self.warnings:
-            lines.extend(["", "## Warnings"])
+            lines.append("")
+            lines.append("## Warnings")
             for warning in self.warnings:
                 lines.append(f"- {warning}")
 
-        return "\n".join(lines)
+    @staticmethod
+    def _get_enum_value(value):
+        """Get enum value or return as-is."""
+        return value.value if hasattr(value, 'value') else value
 
 
 class QuickAnswerResult(BaseModel):

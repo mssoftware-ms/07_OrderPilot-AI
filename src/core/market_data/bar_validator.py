@@ -119,94 +119,34 @@ class BarValidator:
         volume: int,
         extra: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        """Core validation and sanitization. Returns dict or None if rejected."""
+        """Core validation and sanitization (refactored). Returns dict or None if rejected."""
         extra = extra or {}
 
-        if min(open_, high, low, close) <= 0:
-            logger.warning("Rejecting bar with non-positive price for %s", symbol)
+        # Basic validation
+        if not self._validate_positive_prices(symbol, open_, high, low, close):
             return None
 
-        if high < low:
-            logger.warning("High/Low inverted for %s. Swapping values.", symbol)
-            high, low = low, high
-
-        # Timestamp continuity (log only)
-        last_ts = self._last_timestamp.get(symbol)
-        if last_ts:
-            gap = (timestamp - last_ts).total_seconds()
-            if gap > 90:
-                logger.info("Gap detected for %s: %.0fs since last bar", symbol, gap)
+        high, low = self._fix_inverted_high_low(symbol, high, low)
+        self._log_timestamp_gap(symbol, timestamp)
 
         prev_close = self._last_close.get(symbol)
-        low_reliability = False
 
+        # Outlier checks
         if self._is_hard_outlier(high, low, close, prev_close):
-            logger.warning(
-                "Dropping hard outlier bar %s O:%s H:%s L:%s C:%s (prev_close=%s)",
-                symbol,
-                open_,
-                high,
-                low,
-                close,
-                prev_close,
-            )
+            self._log_hard_outlier(symbol, open_, high, low, close, prev_close)
             return None
 
-        # If no prev_close yet, still drop absurd ranges
-        if prev_close is None:
-            if close > 0 and (high - low) / close > RANGE_HARD_PCT:
-                logger.warning(
-                    "Dropping first-bar range outlier for %s: range_pct=%.2f",
-                    symbol,
-                    (high - low) / close,
-                )
-                return None
+        if not self._validate_first_bar_range(symbol, high, low, close, prev_close):
+            return None
 
-        # Z-Score winsorizing
-        closes_hist = self._ensure_history(self._close_history, symbol)
-        if len(closes_hist) >= MEDIAN_WINDOW and len(closes_hist) >= ATR_PERIOD:
-            stdev = statistics.pstdev(closes_hist) if len(closes_hist) > 1 else 0
-            if stdev > 0:
-                mean = statistics.fmean(closes_hist)
-                z = abs((close - mean) / stdev)
-                if z > MAX_ZSCORE:
-                    median = statistics.median(list(closes_hist)[-MEDIAN_WINDOW:])
-                    logger.warning(
-                        "Z-Score %.2f for %s. Winsorizing close from %.6f to %.6f",
-                        z,
-                        symbol,
-                        close,
-                        median,
-                    )
-                    close = median
-                    high = max(high, close)
-                    low = min(low, close)
+        # Z-score winsorizing
+        close, high, low = self._apply_zscore_winsorizing(symbol, close, high, low)
 
-        # Volume/Price divergence
-        atr = self._calc_atr(symbol)
-        avg_vol = self._calc_avg_volume(symbol)
-        if (
-            atr is not None
-            and prev_close
-            and abs(close - prev_close) > atr * 2
-            and avg_vol is not None
-            and avg_vol > 0
-            and volume < avg_vol * 0.1
-        ):
-            logger.warning(
-                "Volume/Price divergence for %s: Δp=%.6f, ATR=%.6f, vol=%s, avg_vol=%.1f. Flagging low reliability.",
-                symbol,
-                abs(close - prev_close),
-                atr,
-                volume,
-                avg_vol,
-            )
-            low_reliability = True
+        # Volume/price divergence check
+        low_reliability = self._check_volume_price_divergence(symbol, close, prev_close, volume)
 
-        # Record history
-        self._record_history(symbol, high, low, close, volume, timestamp)
-        self._last_close[symbol] = close
-        self._last_timestamp[symbol] = timestamp
+        # Update history
+        self._update_history(symbol, high, low, close, volume, timestamp)
 
         return {
             "symbol": symbol,
@@ -219,6 +159,85 @@ class BarValidator:
             "low_reliability": low_reliability,
             **extra,
         }
+
+    def _validate_positive_prices(self, symbol: str, open_: float, high: float, low: float, close: float) -> bool:
+        """Check all prices are positive."""
+        if min(open_, high, low, close) <= 0:
+            logger.warning("Rejecting bar with non-positive price for %s", symbol)
+            return False
+        return True
+
+    def _fix_inverted_high_low(self, symbol: str, high: float, low: float) -> tuple[float, float]:
+        """Fix inverted high/low values."""
+        if high < low:
+            logger.warning("High/Low inverted for %s. Swapping values.", symbol)
+            return low, high
+        return high, low
+
+    def _log_timestamp_gap(self, symbol: str, timestamp: datetime) -> None:
+        """Log timestamp gaps (continuity check)."""
+        last_ts = self._last_timestamp.get(symbol)
+        if last_ts:
+            gap = (timestamp - last_ts).total_seconds()
+            if gap > 90:
+                logger.info("Gap detected for %s: %.0fs since last bar", symbol, gap)
+
+    def _log_hard_outlier(self, symbol: str, open_: float, high: float, low: float, close: float, prev_close: float | None) -> None:
+        """Log hard outlier rejection."""
+        logger.warning(
+            "Dropping hard outlier bar %s O:%s H:%s L:%s C:%s (prev_close=%s)",
+            symbol, open_, high, low, close, prev_close
+        )
+
+    def _validate_first_bar_range(self, symbol: str, high: float, low: float, close: float, prev_close: float | None) -> bool:
+        """Validate range for first bar (no previous close)."""
+        if prev_close is None:
+            if close > 0 and (high - low) / close > RANGE_HARD_PCT:
+                logger.warning(
+                    "Dropping first-bar range outlier for %s: range_pct=%.2f",
+                    symbol, (high - low) / close
+                )
+                return False
+        return True
+
+    def _apply_zscore_winsorizing(self, symbol: str, close: float, high: float, low: float) -> tuple[float, float, float]:
+        """Apply Z-score winsorizing to close price."""
+        closes_hist = self._ensure_history(self._close_history, symbol)
+        if len(closes_hist) >= MEDIAN_WINDOW and len(closes_hist) >= ATR_PERIOD:
+            stdev = statistics.pstdev(closes_hist) if len(closes_hist) > 1 else 0
+            if stdev > 0:
+                mean = statistics.fmean(closes_hist)
+                z = abs((close - mean) / stdev)
+                if z > MAX_ZSCORE:
+                    median = statistics.median(list(closes_hist)[-MEDIAN_WINDOW:])
+                    logger.warning(
+                        "Z-Score %.2f for %s. Winsorizing close from %.6f to %.6f",
+                        z, symbol, close, median
+                    )
+                    close = median
+                    high = max(high, close)
+                    low = min(low, close)
+        return close, high, low
+
+    def _check_volume_price_divergence(self, symbol: str, close: float, prev_close: float | None, volume: int) -> bool:
+        """Check for volume/price divergence. Returns True if low reliability."""
+        atr = self._calc_atr(symbol)
+        avg_vol = self._calc_avg_volume(symbol)
+
+        if (atr is not None and prev_close and abs(close - prev_close) > atr * 2
+            and avg_vol is not None and avg_vol > 0 and volume < avg_vol * 0.1):
+            logger.warning(
+                "Volume/Price divergence for %s: Δp=%.6f, ATR=%.6f, vol=%s, avg_vol=%.1f. Flagging low reliability.",
+                symbol, abs(close - prev_close), atr, volume, avg_vol
+            )
+            return True
+        return False
+
+    def _update_history(self, symbol: str, high: float, low: float, close: float, volume: int, timestamp: datetime) -> None:
+        """Update symbol history and tracking."""
+        self._record_history(symbol, high, low, close, volume, timestamp)
+        self._last_close[symbol] = close
+        self._last_timestamp[symbol] = timestamp
 
     @staticmethod
     def _is_hard_outlier(high: float, low: float, close: float, prev_close: float | None) -> bool:

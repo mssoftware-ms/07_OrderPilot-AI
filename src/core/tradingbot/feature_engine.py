@@ -19,13 +19,6 @@ import pandas as pd
 from src.core.indicators.engine import IndicatorEngine
 from src.core.indicators.types import IndicatorConfig, IndicatorResult, IndicatorType
 
-from src.core.tradingbot.bot_helpers import (
-    calculate_atr,
-    calculate_ema,
-    calculate_macd,
-    calculate_rsi,
-    calculate_sma,
-)
 from .models import FeatureVector
 
 logger = logging.getLogger(__name__)

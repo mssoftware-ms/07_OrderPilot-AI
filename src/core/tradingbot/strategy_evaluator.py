@@ -505,13 +505,19 @@ class StrategyEvaluator:
         self,
         metrics_list: list[PerformanceMetrics]
     ) -> PerformanceMetrics:
-        """Aggregate metrics from multiple periods."""
+        """Aggregate metrics from multiple periods (refactored)."""
         if not metrics_list:
             return PerformanceMetrics()
 
         agg = PerformanceMetrics()
+        self._sum_trade_totals(agg, metrics_list)
+        self._calculate_derived_metrics(agg)
+        self._aggregate_drawdowns_and_streaks(agg, metrics_list)
+        self._aggregate_date_range(agg, metrics_list)
+        return agg
 
-        # Sum totals
+    def _sum_trade_totals(self, agg: PerformanceMetrics, metrics_list: list[PerformanceMetrics]) -> None:
+        """Sum total trades and profits/losses."""
         agg.total_trades = sum(m.total_trades for m in metrics_list)
         agg.winning_trades = sum(m.winning_trades for m in metrics_list)
         agg.losing_trades = sum(m.losing_trades for m in metrics_list)
@@ -519,19 +525,23 @@ class StrategyEvaluator:
         agg.gross_loss = sum(m.gross_loss for m in metrics_list)
         agg.net_profit = agg.gross_profit - agg.gross_loss
 
-        # Calculate derived metrics
+    def _calculate_derived_metrics(self, agg: PerformanceMetrics) -> None:
+        """Calculate win rate, profit factor, averages, and expectancy."""
+        # Win rate
         if agg.total_trades > 0:
             agg.win_rate = agg.winning_trades / agg.total_trades
 
+        # Profit factor
         if agg.gross_loss > 0:
             agg.profit_factor = agg.gross_profit / agg.gross_loss
 
+        # Average win/loss
         if agg.winning_trades > 0:
             agg.avg_win = agg.gross_profit / agg.winning_trades
-
         if agg.losing_trades > 0:
             agg.avg_loss = -agg.gross_loss / agg.losing_trades
 
+        # Average trade
         if agg.total_trades > 0:
             agg.avg_trade = agg.net_profit / agg.total_trades
 
@@ -542,6 +552,8 @@ class StrategyEvaluator:
                 (1 - agg.win_rate) * agg.avg_loss
             )
 
+    def _aggregate_drawdowns_and_streaks(self, agg: PerformanceMetrics, metrics_list: list[PerformanceMetrics]) -> None:
+        """Aggregate drawdowns, streaks, and average bars held."""
         # Worst drawdown across periods
         agg.max_drawdown = min(m.max_drawdown for m in metrics_list)
         agg.max_drawdown_pct = min(m.max_drawdown_pct for m in metrics_list)
@@ -555,11 +567,10 @@ class StrategyEvaluator:
         if agg.total_trades > 0:
             agg.avg_bars_held = total_bars / agg.total_trades
 
-        # Date range
+    def _aggregate_date_range(self, agg: PerformanceMetrics, metrics_list: list[PerformanceMetrics]) -> None:
+        """Aggregate start and end dates."""
         agg.start_date = min(m.start_date for m in metrics_list if m.start_date)
         agg.end_date = max(m.end_date for m in metrics_list if m.end_date)
-
-        return agg
 
     def compare_strategies(
         self,
