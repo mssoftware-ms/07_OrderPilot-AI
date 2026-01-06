@@ -196,9 +196,13 @@ class BitunixProvider(HistoricalDataProvider):
         end_ms = int(end_date.timestamp() * 1000)
         limit = 200  # API spec: max 200 per call
 
-        headers = {'Content-Type': 'application/json'}
         all_bars: list[HistoricalBar] = []
         max_batches = self.max_batches or 120
+
+        logger.info(f"📡 Bitunix Provider: Fetching {symbol} bars...")
+        logger.debug(f"📡 Bitunix Provider: Timeframe={timeframe.value}, Interval={interval}")
+        logger.debug(f"📡 Bitunix Provider: Start={start_date}, End={end_date}")
+        logger.debug(f"📡 Bitunix Provider: Base URL={self.base_url}")
 
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
@@ -213,6 +217,11 @@ class BitunixProvider(HistoricalDataProvider):
                         'type': 'LAST_PRICE',
                     }
 
+                    # Build authenticated headers (adds timestamp and signature)
+                    headers = self._build_headers(params)
+
+                    logger.debug(f"📡 Bitunix Provider: Request #{batches + 1}, params={params}")
+
                     async with session.get(
                         f"{self.base_url}/api/v1/futures/market/kline",
                         params=params,
@@ -220,10 +229,26 @@ class BitunixProvider(HistoricalDataProvider):
                     ) as response:
                         if response.status != 200:
                             error_text = await response.text()
-                            logger.error(f"Bitunix API error {response.status}: {error_text}")
+                            logger.error(f"❌ Bitunix API Error:")
+                            logger.error(f"   HTTP Status: {response.status}")
+                            logger.error(f"   Symbol: {symbol}")
+                            logger.error(f"   Interval: {interval}")
+                            logger.error(f"   URL: {self.base_url}/api/v1/futures/market/kline")
+                            logger.error(f"   Params: {params}")
+                            logger.error(f"   Response: {error_text[:500]}")  # First 500 chars
                             break
 
                         data = await response.json()
+
+                        # Check for API-level errors (code != 0)
+                        if data.get('code') != 0:
+                            logger.error(f"❌ Bitunix API Error Response:")
+                            logger.error(f"   Error Code: {data.get('code')}")
+                            logger.error(f"   Error Message: {data.get('message', 'Unknown')}")
+                            logger.error(f"   Symbol: {symbol}")
+                            logger.error(f"   Full Response: {data}")
+                            break
+
                         batch = self._parse_klines(data, symbol)
 
                         if not batch:
@@ -254,17 +279,27 @@ class BitunixProvider(HistoricalDataProvider):
             dedup = {int(bar.timestamp.timestamp() * 1000): bar for bar in all_bars}
             bars_sorted = [dedup[k] for k in sorted(dedup.keys())]
 
-            logger.info(f"Fetched {len(bars_sorted)} bars for {symbol} from {self.name} ({batches} requests, interval {interval})")
+            logger.info(f"✅ Bitunix Provider: Fetched {len(bars_sorted)} bars for {symbol} ({batches} requests, interval {interval})")
             return bars_sorted
 
         except asyncio.TimeoutError:
-            logger.error(f"Timeout fetching {symbol} from {self.name}")
+            logger.error(f"❌ Bitunix Provider: Request timeout")
+            logger.error(f"   Symbol: {symbol}")
+            logger.error(f"   Interval: {interval}")
+            logger.error(f"   URL: {self.base_url}/api/v1/futures/market/kline")
+            logger.error(f"   Timeout: 30 seconds")
             return []
         except aiohttp.ClientError as e:
-            logger.error(f"Network error fetching {symbol}: {e}")
+            logger.error(f"❌ Bitunix Provider: Network error")
+            logger.error(f"   Symbol: {symbol}")
+            logger.error(f"   Error Type: {type(e).__name__}")
+            logger.error(f"   Error: {e}")
             return []
         except Exception as e:
-            logger.error(f"Unexpected error fetching {symbol}: {e}")
+            logger.error(f"❌ Bitunix Provider: Unexpected error")
+            logger.error(f"   Symbol: {symbol}")
+            logger.error(f"   Error Type: {type(e).__name__}")
+            logger.error(f"   Error: {e}", exc_info=True)
             return []
 
     def _parse_klines(self, data: dict, symbol: str) -> list[HistoricalBar]:
@@ -299,15 +334,19 @@ class BitunixProvider(HistoricalDataProvider):
 
         # Check for API errors
         if data.get('code') != 0:
-            logger.error(
-                f"Bitunix API returned error code {data.get('code')}: "
-                f"{data.get('message', 'Unknown error')}"
-            )
+            logger.error(f"❌ Bitunix Provider: API Error in kline response")
+            logger.error(f"   Symbol: {symbol}")
+            logger.error(f"   Error Code: {data.get('code')}")
+            logger.error(f"   Error Message: {data.get('message', 'Unknown error')}")
+            logger.error(f"   Full Response: {data}")
             return []
 
         klines = data.get('data', [])
         if not klines:
-            logger.warning(f"No kline data returned for {symbol}. Full response: {data}")
+            logger.warning(f"⚠️ Bitunix Provider: No kline data in response")
+            logger.warning(f"   Symbol: {symbol}")
+            logger.warning(f"   Response Code: {data.get('code')}")
+            logger.warning(f"   Full Response: {data}")
             return []
 
         for kline in klines:

@@ -282,7 +282,18 @@ class DataLoadingMixin:
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold;")
 
     def _resolve_asset_class(self, symbol: str, AssetClass) -> AssetClass:
-        return AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
+        # Bitunix symbols: BTCUSDT, ETHUSDT, etc. (crypto futures)
+        # Alpaca crypto: BTC/USD, ETH/USD (spot with slash)
+        # Stocks: AAPL, MSFT, etc.
+        if "USDT" in symbol or "USDC" in symbol:
+            # Bitunix perpetual futures (BTCUSDT, ETHUSDT)
+            return AssetClass.CRYPTO
+        elif "/" in symbol:
+            # Alpaca crypto spot (BTC/USD, ETH/USD)
+            return AssetClass.CRYPTO
+        else:
+            # Traditional stocks (AAPL, MSFT)
+            return AssetClass.STOCK
 
     def _resolve_timeframe(self, Timeframe) -> Timeframe:
         timeframe_map = {
@@ -300,6 +311,8 @@ class DataLoadingMixin:
         if data_provider:
             if data_provider == "alpaca":
                 return DataSource.ALPACA_CRYPTO if asset_class == AssetClass.CRYPTO else DataSource.ALPACA
+            elif data_provider == "bitunix":
+                return DataSource.BITUNIX
             provider_map = {
                 "database": DataSource.DATABASE,
                 "yahoo": DataSource.YAHOO,
@@ -309,10 +322,18 @@ class DataLoadingMixin:
             }
             return provider_map.get(data_provider)
 
+        # Auto-detect provider based on symbol pattern when no provider specified
         if asset_class == AssetClass.CRYPTO:
-            logger.info("No provider specified, using Alpaca Crypto for live data")
-            return DataSource.ALPACA_CRYPTO
-        logger.info("No provider specified, using Alpaca for live data")
+            # Check if it's a Bitunix symbol (USDT/USDC suffix)
+            symbol = self.current_symbol if hasattr(self, 'current_symbol') else ""
+            if "USDT" in symbol or "USDC" in symbol:
+                logger.info(f"🔍 Bitunix symbol detected ({symbol}), using Bitunix provider")
+                return DataSource.BITUNIX
+            else:
+                logger.info(f"🔍 Alpaca crypto symbol detected ({symbol}), using Alpaca Crypto")
+                return DataSource.ALPACA_CRYPTO
+
+        logger.info("🔍 Stock symbol detected, using Alpaca Stock")
         return DataSource.ALPACA
 
     def _resolve_lookback_days(self) -> int:

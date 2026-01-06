@@ -85,9 +85,13 @@ class StreamingMixin:
                 logger.warning(f"Received tick for {self.current_symbol} but no price data")
                 return
 
-            reference_price = self._resolve_reference_price()
-            if not self._is_valid_tick(price, reference_price):
-                return
+            # Bitunix ticks are already filtered by Z-Score filter in provider
+            # Only apply 5% deviation filter to Alpaca ticks (which can have bad ticks)
+            is_bitunix = getattr(event, 'source', '').lower() == 'bitunix stream'
+            if not is_bitunix:
+                reference_price = self._resolve_reference_price()
+                if not self._is_valid_tick(price, reference_price):
+                    return
 
             self._log_tick(price, volume)
 
@@ -366,22 +370,37 @@ class StreamingMixin:
             return
 
         try:
-            # Detect if crypto symbol (contains "/" like BTC/USD)
-            is_crypto = "/" in self.current_symbol
-            logger.warning(f"🔍 START STREAM: symbol={self.current_symbol}, is_crypto={is_crypto}")
+            # Detect symbol type
+            is_bitunix = "USDT" in self.current_symbol or "USDC" in self.current_symbol
+            is_alpaca_crypto = "/" in self.current_symbol
+            is_stock = not is_bitunix and not is_alpaca_crypto
+
+            logger.warning(
+                f"🔍 START STREAM: symbol={self.current_symbol}, "
+                f"bitunix={is_bitunix}, alpaca_crypto={is_alpaca_crypto}, stock={is_stock}"
+            )
 
             # Start appropriate real-time stream via HistoryManager
-            if is_crypto:
-                logger.warning(f"📡 Starting CRYPTO stream for {self.current_symbol}")
+            if is_bitunix:
+                logger.warning(f"📡 Starting BITUNIX stream for {self.current_symbol}")
+                success = await self.history_manager.start_bitunix_stream([self.current_symbol])
+                logger.info(f"✓ Live Bitunix stream started for {self.current_symbol}")
+            elif is_alpaca_crypto:
+                logger.warning(f"📡 Starting ALPACA CRYPTO stream for {self.current_symbol}")
                 success = await self.history_manager.start_crypto_realtime_stream([self.current_symbol])
-                logger.info(f"✓ Live crypto stream started for {self.current_symbol}")
+                logger.info(f"✓ Live Alpaca crypto stream started for {self.current_symbol}")
             else:
                 logger.warning(f"📡 Starting STOCK stream for {self.current_symbol}")
                 success = await self.history_manager.start_realtime_stream([self.current_symbol])
                 logger.info(f"✓ Live stock stream started for {self.current_symbol}")
 
             if success:
-                asset_type = "Crypto" if is_crypto else "Stock"
+                if is_bitunix:
+                    asset_type = "Bitunix"
+                elif is_alpaca_crypto:
+                    asset_type = "Crypto"
+                else:
+                    asset_type = "Stock"
                 self.market_status_label.setText(f"🟢 Live ({asset_type}): {self.current_symbol}")
                 self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
             else:
@@ -406,10 +425,16 @@ class StreamingMixin:
             return
 
         try:
-            is_crypto = "/" in self.current_symbol if self.current_symbol else False
+            is_bitunix = "USDT" in self.current_symbol or "USDC" in self.current_symbol if self.current_symbol else False
+            is_alpaca_crypto = "/" in self.current_symbol if self.current_symbol else False
 
-            if is_crypto:
-                # Disconnect crypto stream completely to free connection
+            if is_bitunix:
+                # Disconnect Bitunix stream
+                if hasattr(self.history_manager, 'bitunix_stream_client') and self.history_manager.bitunix_stream_client:
+                    await self.history_manager.bitunix_stream_client.disconnect()
+                    logger.info(f"✓ Disconnected Bitunix stream")
+            elif is_alpaca_crypto:
+                # Disconnect Alpaca crypto stream
                 if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
                     await self.history_manager.crypto_stream_client.disconnect()
                     logger.info(f"✓ Disconnected crypto stream")

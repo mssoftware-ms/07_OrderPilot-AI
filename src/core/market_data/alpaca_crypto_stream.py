@@ -15,11 +15,12 @@ from alpaca.data.models import Bar, Quote, Trade
 
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.market_data.stream_client import MarketTick, StreamClient, StreamStatus
+from src.analysis.data_cleaning import ZScoreVolatilityFilter
 
 logger = logging.getLogger(__name__)
 
 # Hard cap for spike filtering (matches historical/context filters)
-OUTLIER_PCT = 0.03  # 3% vs letzter Close
+OUTLIER_PCT = 0.03  # 3% vs letzter Close (legacy - replaced by HampelBadTickDetector)
 
 
 class AlpacaCryptoStreamClient(StreamClient):
@@ -66,7 +67,24 @@ class AlpacaCryptoStreamClient(StreamClient):
         self._stream: CryptoDataStream | None = None
         self._stream_task: asyncio.Task | None = None
 
-        logger.info(f"Alpaca crypto stream client initialized (paper={paper})")
+        # Initialize Z-Score Volatility Filter
+        # REPLACES extreme High/Low values inline BEFORE indicators are calculated
+        # Prevents EMAs from being destroyed by fat-finger errors
+        # Aborts on null volume (data leak detection)
+        self._bad_tick_filter = ZScoreVolatilityFilter(
+            volatility_window=20,  # 20-bar volatility window
+            z_threshold=4.0,  # Z-Score > 4 = statistically extreme
+            median_window=3,  # Replace with 3-bar median
+            min_volume=0.0001,  # Abort if volume <= 0.0001
+        )
+
+        # Keep recent bars for volatility calculation
+        self._recent_bars = []
+        self._max_recent_bars = 100  # Keep last 100 bars for context
+
+        logger.info("🛡️  Z-Score Volatility Filter initialized (vol_window=20, z_threshold=4.0, median_window=3)")
+
+        logger.info(f"Alpaca crypto stream client initialized (paper={paper}) with bad tick filter")
 
     async def connect(self) -> bool:
         """Connect to Alpaca Crypto WebSocket stream.
@@ -272,21 +290,54 @@ class AlpacaCryptoStreamClient(StreamClient):
         try:
             request_time = datetime.now(timezone.utc)
 
-            last_close = self._last_close.get(bar.symbol)
-            if self._is_outlier_bar(bar, last_close):
-                logger.warning(
-                    "⏭️  Dropping outlier CRYPTO bar "
-                    f"{bar.symbol} O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} "
-                    f"(prev_close={last_close})"
+            # Convert bar to dict for filter
+            bar_dict = {
+                'timestamp': bar.timestamp,
+                'open': float(bar.open),
+                'high': float(bar.high),
+                'low': float(bar.low),
+                'close': float(bar.close),
+                'volume': bar.volume,
+                'symbol': bar.symbol,
+            }
+
+            # Convert recent bars to DataFrame for Z-Score calculation
+            import pandas as pd
+            recent_bars_df = pd.DataFrame(self._recent_bars) if self._recent_bars else pd.DataFrame()
+
+            # Use Z-Score Volatility Filter - REPLACES extreme values inline
+            cleaned_bar_dict, is_valid = self._bad_tick_filter.filter_single_bar(
+                bar_dict, recent_bars_df
+            )
+
+            if not is_valid:
+                # Null volume detected - data leak, abort
+                logger.error(
+                    f"❌ BAD TICK REJECTED (NULL VOLUME): "
+                    f"{bar.symbol} @ {bar.timestamp} | "
+                    f"O:{bar.open} H:{bar.high} L:{bar.low} C:{bar.close} V:{bar.volume}"
                 )
                 self.metrics.messages_dropped += 1
                 return
 
-            # Convert to MarketTick
+            # Add cleaned bar to recent bars (for next iteration's context)
+            self._recent_bars.append({
+                'open': cleaned_bar_dict['open'],
+                'high': cleaned_bar_dict['high'],
+                'low': cleaned_bar_dict['low'],
+                'close': cleaned_bar_dict['close'],
+                'volume': cleaned_bar_dict['volume'],
+            })
+
+            # Keep only last N bars
+            if len(self._recent_bars) > self._max_recent_bars:
+                self._recent_bars.pop(0)
+
+            # Convert to MarketTick - USE CLEANED VALUES
             tick = MarketTick(
                 symbol=bar.symbol,
-                last=Decimal(str(bar.close)),
-                volume=bar.volume,
+                last=Decimal(str(cleaned_bar_dict['close'])),
+                volume=cleaned_bar_dict['volume'],
                 timestamp=bar.timestamp,
                 source=self.name,
                 latency_ms=(request_time - bar.timestamp).total_seconds() * 1000

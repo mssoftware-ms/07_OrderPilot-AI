@@ -70,3 +70,44 @@ class DataRequest:
     source: DataSource | None = None
     include_extended_hours: bool = False
     adjust_for_splits: bool = True
+
+
+def format_symbol_with_source(symbol: str, source: DataSource) -> str:
+    """Format symbol with source prefix for unique database storage.
+
+    Args:
+        symbol: Raw symbol (e.g., "BTC/USD", "BTCUSDT")
+        source: Data source provider
+
+    Returns:
+        Formatted symbol with source prefix (e.g., "alpaca_crypto:BTC/USD", "bitunix:BTCUSDT")
+
+    Examples:
+        >>> format_symbol_with_source("BTC/USD", DataSource.ALPACA_CRYPTO)
+        "alpaca_crypto:BTC/USD"
+        >>> format_symbol_with_source("BTCUSDT", DataSource.BITUNIX)
+        "bitunix:BTCUSDT"
+    """
+    return f"{source.value}:{symbol}"
+
+
+def parse_symbol_with_source(formatted_symbol: str) -> tuple[str, str]:
+    """Parse formatted symbol back to raw symbol and source.
+
+    Args:
+        formatted_symbol: Symbol with source prefix (e.g., "bitunix:BTCUSDT")
+
+    Returns:
+        Tuple of (symbol, source_name)
+
+    Examples:
+        >>> parse_symbol_with_source("bitunix:BTCUSDT")
+        ("BTCUSDT", "bitunix")
+        >>> parse_symbol_with_source("alpaca_crypto:BTC/USD")
+        ("BTC/USD", "alpaca_crypto")
+    """
+    if ":" in formatted_symbol:
+        source, symbol = formatted_symbol.split(":", 1)
+        return symbol, source
+    # Fallback for legacy symbols without source prefix
+    return formatted_symbol, "unknown"

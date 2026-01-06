@@ -13,6 +13,7 @@ import pandas as pd
 from src.core.market_data.types import HistoricalBar, Timeframe
 from src.database import get_db_manager
 from src.database.models import MarketBar
+from src.analysis.data_cleaning import ZScoreVolatilityFilter
 
 from .base import HistoricalDataProvider
 
@@ -26,6 +27,17 @@ class DatabaseProvider(HistoricalDataProvider):
         """Initialize database provider."""
         super().__init__("Database")
         self.db_manager = get_db_manager()
+
+        # Initialize Z-Score Volatility Filter
+        # REPLACES extreme High/Low values inline (no gaps in data!)
+        # Prevents EMAs from being destroyed by fat-finger errors
+        self.bad_tick_filter = ZScoreVolatilityFilter(
+            volatility_window=20,  # 20-bar volatility window
+            z_threshold=4.0,  # Z-Score > 4 = statistically extreme
+            median_window=3,  # Replace with 3-bar median
+            min_volume=0.0001,  # Abort if volume <= 0.0001
+        )
+        logger.info("🛡️  DatabaseProvider initialized with Z-Score Volatility Filter (vol_window=20, z_threshold=4.0)")
 
     async def fetch_bars(
         self,
@@ -75,6 +87,10 @@ class DatabaseProvider(HistoricalDataProvider):
                 )
                 bars.append(bar)
 
+            # Apply bad tick filtering BEFORE resampling
+            if bars:
+                bars = self._filter_bad_ticks(bars)
+
             # Resample if needed
             if bars and timeframe != Timeframe.SECOND_1:
                 bars = self._resample_bars(bars, timeframe)
@@ -85,6 +101,50 @@ class DatabaseProvider(HistoricalDataProvider):
     async def is_available(self) -> bool:
         """Check if database is available."""
         return True  # Always available
+
+    def _filter_bad_ticks(self, bars: list[HistoricalBar]) -> list[HistoricalBar]:
+        """Filter out bad ticks from bar data.
+
+        Args:
+            bars: List of historical bars
+
+        Returns:
+            Filtered list with bad ticks removed
+        """
+        if not bars:
+            return bars
+
+        # Convert to DataFrame for cleaning
+        df = pd.DataFrame([{
+            'timestamp': b.timestamp,
+            'open': float(b.open),
+            'high': float(b.high),
+            'low': float(b.low),
+            'close': float(b.close),
+            'volume': b.volume if b.volume else 0
+        } for b in bars])
+
+        # Clean data inline - REPLACES extreme values (NO gaps!)
+        try:
+            df_cleaned = self.bad_tick_filter.clean_data_inline(df)
+        except ValueError as e:
+            # Null volume detected - data leak
+            logger.error(f"❌ Data cleaning failed: {e}")
+            return []  # Return empty list on critical error
+
+        # Convert cleaned DataFrame back to HistoricalBar objects
+        cleaned_bars = []
+        for _, row in df_cleaned.iterrows():
+            cleaned_bars.append(HistoricalBar(
+                timestamp=row['timestamp'],
+                open=Decimal(str(row['open'])),
+                high=Decimal(str(row['high'])),
+                low=Decimal(str(row['low'])),
+                close=Decimal(str(row['close'])),
+                volume=row['volume']
+            ))
+
+        return cleaned_bars
 
     def _resample_bars(
         self,

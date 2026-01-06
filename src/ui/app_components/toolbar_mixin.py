@@ -31,6 +31,7 @@ class ToolbarMixin:
 
     def _build_toolbar_row1(self) -> None:
         toolbar1 = QToolBar("Main Toolbar - Row 1")
+        toolbar1.setObjectName("mainToolbarRow1")
         toolbar1.setIconSize(QSize(24, 24))
         self.addToolBar(toolbar1)
 
@@ -47,6 +48,7 @@ class ToolbarMixin:
 
     def _build_toolbar_row2(self) -> None:
         toolbar2 = QToolBar("Main Toolbar - Row 2")
+        toolbar2.setObjectName("mainToolbarRow2")
         toolbar2.setIconSize(QSize(24, 24))
         self.addToolBar(toolbar2)
 
@@ -311,6 +313,13 @@ class ToolbarMixin:
             self.data_provider_combo.addItem(
                 "Finnhub (Configure API Key)",
                 "finnhub_disabled"
+            )
+
+        # Bitunix
+        if market_config.bitunix_enabled and "bitunix" not in available_sources:
+            self.data_provider_combo.addItem(
+                "Bitunix Futures (Configure API Keys)",
+                "bitunix_disabled"
             )
 
         # Yahoo (always available fallback)

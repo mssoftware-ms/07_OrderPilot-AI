@@ -112,6 +112,7 @@ class AppUIMixin:
         """Create dock widgets for additional panels."""
         # Watchlist dock
         watchlist_dock = QDockWidget("Watchlist", self)
+        watchlist_dock.setObjectName("watchlistDock")
         watchlist_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea |
                                       Qt.DockWidgetArea.RightDockWidgetArea)
         self.watchlist_widget = WatchlistWidget()
@@ -126,6 +127,7 @@ class AppUIMixin:
 
         # Activity log dock
         log_dock = QDockWidget("Activity Log", self)
+        log_dock.setObjectName("activityLogDock")
         log_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
         log_widget = QWidget()
         log_layout = QVBoxLayout(log_widget)

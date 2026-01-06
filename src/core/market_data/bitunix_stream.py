@@ -90,12 +90,22 @@ class BitunixStreamClient(StreamClient):
         Returns:
             True if supervisor started
         """
+        logger.info("📡 Bitunix Stream: Starting connection...")
+        logger.debug(f"📡 Bitunix Stream: WS URL = {self.ws_url}")
+        logger.debug(f"📡 Bitunix Stream: Use Testnet = {self.use_testnet}")
+
         if self.connected:
-            logger.warning("Already connected or connecting")
+            logger.warning("📡 Bitunix Stream: Already connected or connecting")
             return True
 
         # Preflight WS handshake to surface 403/Cloudflare immediately
-        await self._preflight_handshake()
+        logger.debug("📡 Bitunix Stream: Running preflight handshake...")
+        try:
+            await self._preflight_handshake()
+            logger.debug("📡 Bitunix Stream: Preflight handshake successful")
+        except Exception as e:
+            logger.error(f"❌ Bitunix Stream: Preflight handshake failed: {e}")
+            raise
 
         self.connected = True
         self.metrics.status = StreamStatus.CONNECTING
@@ -104,21 +114,28 @@ class BitunixStreamClient(StreamClient):
 
         # Start single supervisor task
         if not self._stream_task or self._stream_task.done():
+            logger.info("📡 Bitunix Stream: Starting supervisor task...")
             self._stream_task = asyncio.create_task(self._run_supervisor())
+        else:
+            logger.debug("📡 Bitunix Stream: Supervisor task already running")
 
         return True
 
     async def disconnect(self) -> None:
         """Disconnect from Bitunix WebSocket and stop supervisor."""
+        logger.info("📡 Bitunix Stream: Disconnecting...")
+
         self.connected = False
         self.metrics.status = StreamStatus.DISCONNECTED
 
         # Signal closure to WebSocket
         if self.ws:
             try:
+                logger.debug("📡 Bitunix Stream: Closing WebSocket connection...")
                 await self.ws.close()
-            except Exception:
-                pass
+                logger.debug("📡 Bitunix Stream: WebSocket closed successfully")
+            except Exception as e:
+                logger.warning(f"⚠️ Bitunix Stream: Error closing WebSocket: {e}")
             self.ws = None
 
         # Supervisor task will exit naturally because self.connected is False
@@ -128,14 +145,16 @@ class BitunixStreamClient(StreamClient):
         self._heartbeat_task = None # Obsolete
 
         await super().disconnect()
-        logger.info("Bitunix stream disconnected")
+        logger.info("✅ Bitunix Stream: Disconnected")
 
     async def _run_supervisor(self) -> None:
         """Supervisor loop managing connection lifecycle and heartbeats."""
+        logger.info("📡 Bitunix Stream: Supervisor loop started")
+
         while self.connected:
             try:
                 self.metrics.status = StreamStatus.CONNECTING
-                logger.info(f"Connecting to Bitunix: {self.ws_url}")
+                logger.info(f"📡 Bitunix Stream: Connecting to {self.ws_url}")
 
                 ssl_context = ssl.create_default_context()
                 ssl_context.check_hostname = False
@@ -152,26 +171,34 @@ class BitunixStreamClient(StreamClient):
                     self.metrics.connected_at = datetime.utcnow()
                     self._reconnect_count = 0
                     self.metrics.reconnect_count = 0
-                    logger.info(f"✓ Connected to Bitunix")
+                    logger.info(f"✅ Bitunix Stream: Connected successfully")
 
                     # Subscribe to symbols
                     if self.metrics.subscribed_symbols:
+                        logger.info(f"📡 Bitunix Stream: Subscribing to {len(self.metrics.subscribed_symbols)} symbols...")
                         await self._handle_subscription(list(self.metrics.subscribed_symbols))
+                    else:
+                        logger.debug("📡 Bitunix Stream: No symbols to subscribe yet")
 
                     # Message and Heartbeat loop
                     last_ping = 0
+                    message_count = 0
                     while self.connected and self._is_ws_open(websocket):
                         # 1. Check Heartbeat (3s interval)
                         now = time.time()
                         if now - last_ping >= 3:
                             ping_msg = {"op": "ping", "ping": int(now)}
                             await websocket.send(json.dumps(ping_msg))
+                            logger.debug(f"💓 Bitunix Stream: Heartbeat sent")
                             last_ping = now
 
                         # 2. Process Messages with timeout to allow heartbeat check
                         try:
                             # Use wait_for to keep loop responsive
                             message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                            message_count += 1
+                            if message_count <= 5:
+                                logger.debug(f"📨 Bitunix Stream: Received message #{message_count}")
                             await self._on_message(message)
                         except asyncio.TimeoutError:
                             continue # Just loop back for heartbeat/status check
@@ -181,28 +208,54 @@ class BitunixStreamClient(StreamClient):
                 self.last_error = blocked
                 self.metrics.status = StreamStatus.ERROR
                 self.connected = False
-                logger.error(f"Bitunix WS blocked: {blocked}")
+                logger.error(f"❌ Bitunix Stream: WebSocket blocked (HTTP {e.status_code if hasattr(e, 'status_code') else 'unknown'})")
+                logger.error(f"❌ Bitunix Stream: Error details: {blocked}")
                 break
-            except (ConnectionClosed, Exception) as e:
+            except ConnectionClosed as e:
                 if not self.connected:
+                    logger.debug("📡 Bitunix Stream: Connection closed normally (disconnect requested)")
                     break
-                
+
                 self.metrics.status = StreamStatus.RECONNECTING
                 self._reconnect_count += 1
                 self.metrics.reconnect_count = self._reconnect_count
                 delay = min(2 ** self._reconnect_count, 30)
-                logger.warning(f"Bitunix connection error: {e}. Retrying in {delay}s...")
-                
+                logger.warning(f"⚠️ Bitunix Stream: Connection closed unexpectedly (code={e.code if hasattr(e, 'code') else 'unknown'}, reason={e.reason if hasattr(e, 'reason') else 'unknown'})")
+                logger.warning(f"⚠️ Bitunix Stream: Reconnecting in {delay}s (attempt #{self._reconnect_count})...")
+
                 # Cleanup state
                 self.ws = None
-                
+
                 # Wait before retry
-                for _ in range(delay):
-                    if not self.connected: break
+                for i in range(delay):
+                    if not self.connected:
+                        logger.debug("📡 Bitunix Stream: Reconnect cancelled (disconnect requested)")
+                        break
+                    await asyncio.sleep(1)
+            except Exception as e:
+                if not self.connected:
+                    logger.debug(f"📡 Bitunix Stream: Connection error during shutdown: {e}")
+                    break
+
+                self.metrics.status = StreamStatus.RECONNECTING
+                self._reconnect_count += 1
+                self.metrics.reconnect_count = self._reconnect_count
+                delay = min(2 ** self._reconnect_count, 30)
+                logger.error(f"❌ Bitunix Stream: Unexpected error: {type(e).__name__}: {e}")
+                logger.error(f"❌ Bitunix Stream: Reconnecting in {delay}s (attempt #{self._reconnect_count})...", exc_info=True)
+
+                # Cleanup state
+                self.ws = None
+
+                # Wait before retry
+                for i in range(delay):
+                    if not self.connected:
+                        logger.debug("📡 Bitunix Stream: Reconnect cancelled (disconnect requested)")
+                        break
                     await asyncio.sleep(1)
 
         self.metrics.status = StreamStatus.DISCONNECTED
-        logger.info("Bitunix supervisor stopped")
+        logger.info("📡 Bitunix Stream: Supervisor stopped")
 
     async def _run_stream(self) -> None:
         """Deprecated: Logic moved to _run_supervisor."""
@@ -320,11 +373,19 @@ class BitunixStreamClient(StreamClient):
                 return
 
             if op == "connect":
-                logger.info("Bitunix WS connected/authorized")
+                logger.info("✅ Bitunix Stream: Server confirmed connection")
                 return
 
             if op == "error":
-                logger.error(f"Bitunix WS error: {data}")
+                error_code = data.get('code', 'unknown')
+                error_msg = data.get('message', data.get('msg', 'Unknown error'))
+                error_data = data.get('data', {})
+                logger.error(f"❌ Bitunix Stream: Server error received!")
+                logger.error(f"   Error Code: {error_code}")
+                logger.error(f"   Error Message: {error_msg}")
+                if error_data:
+                    logger.error(f"   Error Data: {error_data}")
+                logger.error(f"   Full Response: {data}")
                 return
 
             # Channel messages
@@ -512,28 +573,40 @@ class BitunixStreamClient(StreamClient):
     async def _handle_subscription(self, symbols: list[str]) -> None:
         """Send subscription request for given symbols."""
         if not self.ws or not self._is_ws_open(self.ws):
-            logger.warning("Bitunix WS not connected; subscription deferred")
+            logger.warning("⚠️ Bitunix Stream: WebSocket not connected; subscription deferred")
             return
 
         args = self._build_subscription_args(symbols)
         if not args:
-            logger.warning("Bitunix subscription skipped (no symbols)")
+            logger.warning("⚠️ Bitunix Stream: No subscription args generated (no symbols)")
             return
 
         payload = {"op": "subscribe", "args": args}
-        await self.ws.send(json.dumps(payload))
-        logger.info(f"Subscribed to Bitunix {len(args)} channels for {len(symbols)} symbols")
+        logger.info(f"📡 Bitunix Stream: Subscribing to {len(args)} channels for {len(symbols)} symbols...")
+        logger.debug(f"📡 Bitunix Stream: Subscription payload: {payload}")
+
+        try:
+            await self.ws.send(json.dumps(payload))
+            logger.info(f"✅ Bitunix Stream: Subscription request sent for {len(symbols)} symbols")
+        except Exception as e:
+            logger.error(f"❌ Bitunix Stream: Failed to send subscription: {e}")
 
     async def _handle_unsubscription(self, symbols: list[str]) -> None:
         """Send unsubscription request for given symbols."""
         if not self.ws or not self._is_ws_open(self.ws):
-            logger.warning("Bitunix WS not connected; unsubscription skipped")
+            logger.warning("⚠️ Bitunix Stream: WebSocket not connected; unsubscription skipped")
             return
 
         args = self._build_subscription_args(symbols)
         payload = {"op": "unsubscribe", "args": args}
-        await self.ws.send(json.dumps(payload))
-        logger.info(f"Unsubscribed from Bitunix channels for {len(symbols)} symbols")
+        logger.info(f"📡 Bitunix Stream: Unsubscribing from {len(args)} channels for {len(symbols)} symbols...")
+        logger.debug(f"📡 Bitunix Stream: Unsubscription payload: {payload}")
+
+        try:
+            await self.ws.send(json.dumps(payload))
+            logger.info(f"✅ Bitunix Stream: Unsubscription request sent for {len(symbols)} symbols")
+        except Exception as e:
+            logger.error(f"❌ Bitunix Stream: Failed to send unsubscription: {e}")
 
     def get_latest_tick(self, symbol: str) -> MarketTick | None:
         """Get latest tick for symbol.

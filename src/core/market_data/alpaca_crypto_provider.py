@@ -9,11 +9,14 @@ import importlib.util
 import logging
 from datetime import datetime, timezone
 
+import pandas as pd
+
 from src.core.market_data.history_provider import (
     HistoricalBar,
     HistoricalDataProvider,
     Timeframe
 )
+from src.analysis.data_cleaning import ZScoreVolatilityFilter
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +31,16 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
     - Real-time data available via WebSocket (see AlpacaCryptoStreamClient)
     """
 
-    def __init__(self, api_key: str, api_secret: str):
+    def __init__(self, api_key: str | None = None, api_secret: str | None = None):
         """Initialize Alpaca crypto provider.
 
         Args:
-            api_key: Alpaca API key
-            api_secret: Alpaca API secret
+            api_key: Alpaca API key (optional for crypto market data)
+            api_secret: Alpaca API secret (optional for crypto market data)
+
+        Note:
+            For pure crypto market data, API keys are NOT required.
+            Keys are only needed for trading operations.
         """
         super().__init__("AlpacaCrypto")
         self.api_key = api_key
@@ -43,8 +50,20 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         self.auth_failed = False
         self.last_error: str | None = None
 
+        # Initialize Z-Score Volatility Filter
+        # REPLACES extreme High/Low values inline (no gaps in data!)
+        # Prevents EMAs from being destroyed by fat-finger errors
+        self.bad_tick_filter = ZScoreVolatilityFilter(
+            volatility_window=20,  # 20-bar volatility window
+            z_threshold=4.0,  # Z-Score > 4 = statistically extreme
+            median_window=3,  # Replace with 3-bar median
+            min_volume=0.0001,  # Abort if volume <= 0.0001
+        )
+
         if not self._sdk_available:
             logger.warning("Alpaca SDK not available. Crypto provider will be disabled.")
+        else:
+            logger.info("🛡️  AlpacaCryptoProvider initialized with Z-Score Volatility Filter (vol_window=20, z_threshold=4.0)")
 
     async def fetch_bars(
         self,
@@ -72,12 +91,18 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             from alpaca.data.historical import CryptoHistoricalDataClient
             from alpaca.data.requests import CryptoBarsRequest
             from alpaca.data.timeframe import TimeFrame as AlpacaTimeFrame
+            from dateutil.relativedelta import relativedelta
 
-            # Create client
-            client = CryptoHistoricalDataClient(
-                api_key=self.api_key,
-                secret_key=self.api_secret
-            )
+            # Create client (keys are optional for crypto market data)
+            if self.api_key and self.api_secret:
+                client = CryptoHistoricalDataClient(
+                    api_key=self.api_key,
+                    secret_key=self.api_secret
+                )
+                logger.debug("Alpaca crypto client created with API keys")
+            else:
+                client = CryptoHistoricalDataClient()
+                logger.debug("Alpaca crypto client created without API keys (market data only)")
 
             # Convert timeframe
             alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
@@ -86,50 +111,116 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             start_date_utc = self._ensure_utc_naive(start_date)
             end_date_utc = self._ensure_utc_naive(end_date)
 
+            # Calculate time span to determine if chunking is needed
+            time_span = end_date_utc - start_date_utc
+            needs_chunking = time_span.days > 31  # Chunk if more than 1 month
+
             logger.info(
                 f"Alpaca crypto request: {symbol}, "
                 f"timeframe={timeframe.value}, "
                 f"start={start_date_utc}, "
-                f"end={end_date_utc}"
+                f"end={end_date_utc}, "
+                f"span={time_span.days} days, "
+                f"chunking={'yes' if needs_chunking else 'no'}"
             )
 
-            # Create request for crypto data
-            # Note: Crypto API uses different endpoint than stock API
-            request = CryptoBarsRequest(
-                symbol_or_symbols=symbol,
-                timeframe=alpaca_timeframe,
-                start=start_date_utc,
-                end=end_date_utc
-            )
+            all_bars = []
 
-            # Fetch data - run in thread to avoid blocking event loop
-            bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
+            if needs_chunking:
+                # Chunk requests by month to avoid hitting limits
+                current_start = start_date_utc
+                chunk_num = 0
 
-            # Check response
-            if not hasattr(bars_response, 'data') or symbol not in bars_response.data:
-                logger.warning(f"No crypto data found for {symbol} from Alpaca")
-                if hasattr(bars_response, 'data'):
-                    logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
-                return []
+                while current_start < end_date_utc:
+                    current_end = min(
+                        current_start + relativedelta(months=1),
+                        end_date_utc
+                    )
 
-            # Convert to HistoricalBar objects
-            bars = []
-            for bar in bars_response.data[symbol]:
-                hist_bar = HistoricalBar(
-                    timestamp=bar.timestamp,
-                    open=bar.open,
-                    high=bar.high,
-                    low=bar.low,
-                    close=bar.close,
-                    volume=int(bar.volume) if bar.volume else 0,
-                    vwap=bar.vwap if hasattr(bar, 'vwap') else None,
-                    trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
-                    source="alpaca_crypto"
+                    chunk_num += 1
+                    logger.debug(
+                        f"Chunk {chunk_num}: {current_start.date()} to {current_end.date()}"
+                    )
+
+                    request = CryptoBarsRequest(
+                        symbol_or_symbols=symbol,
+                        timeframe=alpaca_timeframe,
+                        start=current_start,
+                        end=current_end
+                    )
+
+                    # Fetch chunk
+                    bars_response = await asyncio.to_thread(
+                        client.get_crypto_bars, request
+                    )
+
+                    # Convert chunk to HistoricalBar objects
+                    if hasattr(bars_response, 'data') and symbol in bars_response.data:
+                        for bar in bars_response.data[symbol]:
+                            hist_bar = HistoricalBar(
+                                timestamp=bar.timestamp,
+                                open=bar.open,
+                                high=bar.high,
+                                low=bar.low,
+                                close=bar.close,
+                                volume=int(bar.volume) if bar.volume else 0,
+                                vwap=bar.vwap if hasattr(bar, 'vwap') else None,
+                                trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
+                                source="alpaca_crypto"
+                            )
+                            all_bars.append(hist_bar)
+
+                    # Move to next chunk
+                    current_start = current_end
+
+                    # Rate limiting between chunks
+                    if current_start < end_date_utc:
+                        await asyncio.sleep(self.rate_limit_delay)
+
+                logger.info(
+                    f"Fetched {len(all_bars)} crypto bars from Alpaca for {symbol} "
+                    f"({chunk_num} chunks)"
                 )
-                bars.append(hist_bar)
+            else:
+                # Single request for short time spans
+                request = CryptoBarsRequest(
+                    symbol_or_symbols=symbol,
+                    timeframe=alpaca_timeframe,
+                    start=start_date_utc,
+                    end=end_date_utc
+                )
 
-            logger.info(f"Fetched {len(bars)} crypto bars from Alpaca for {symbol}")
-            return bars
+                bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
+
+                # Check response
+                if not hasattr(bars_response, 'data') or symbol not in bars_response.data:
+                    logger.warning(f"No crypto data found for {symbol} from Alpaca")
+                    if hasattr(bars_response, 'data'):
+                        logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
+                    return []
+
+                # Convert to HistoricalBar objects
+                for bar in bars_response.data[symbol]:
+                    hist_bar = HistoricalBar(
+                        timestamp=bar.timestamp,
+                        open=bar.open,
+                        high=bar.high,
+                        low=bar.low,
+                        close=bar.close,
+                        volume=int(bar.volume) if bar.volume else 0,
+                        vwap=bar.vwap if hasattr(bar, 'vwap') else None,
+                        trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
+                        source="alpaca_crypto"
+                    )
+                    all_bars.append(hist_bar)
+
+                logger.info(f"Fetched {len(all_bars)} crypto bars from Alpaca for {symbol}")
+
+            # Filter bad ticks before returning
+            if all_bars:
+                all_bars = self._filter_bad_ticks(all_bars)
+
+            return all_bars
 
         except Exception as e:
             error_str = str(e)
@@ -143,9 +234,9 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         """Check if Alpaca crypto provider is available.
 
         Returns:
-            True if provider is available
+            True if provider is available (SDK is sufficient, keys are optional for market data)
         """
-        return bool(self.api_key and self.api_secret and self._sdk_available)
+        return self._sdk_available
 
     def _ensure_utc_naive(self, dt: datetime) -> datetime:
         """Convert datetime to UTC naive datetime.
@@ -183,6 +274,51 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             Timeframe.MONTH_1: AlpacaTimeFrame(1, TimeFrameUnit.Month),
         }
         return mapping.get(timeframe, AlpacaTimeFrame(1, TimeFrameUnit.Minute))
+
+    def _filter_bad_ticks(self, bars: list[HistoricalBar]) -> list[HistoricalBar]:
+        """Filter out bad ticks from bar data.
+
+        Args:
+            bars: List of historical bars
+
+        Returns:
+            Filtered list with bad ticks removed
+        """
+        if not bars:
+            return bars
+
+        # Convert to DataFrame for cleaning
+        df = pd.DataFrame([{
+            'timestamp': b.timestamp,
+            'open': float(b.open),
+            'high': float(b.high),
+            'low': float(b.low),
+            'close': float(b.close),
+            'volume': b.volume if b.volume else 0
+        } for b in bars])
+
+        # Clean data inline - REPLACES extreme values (NO gaps!)
+        try:
+            df_cleaned = self.bad_tick_filter.clean_data_inline(df)
+        except ValueError as e:
+            # Null volume detected - data leak
+            logger.error(f"❌ Data cleaning failed for Alpaca data: {e}")
+            return []  # Return empty list on critical error
+
+        # Convert cleaned DataFrame back to HistoricalBar objects
+        from decimal import Decimal
+        cleaned_bars = []
+        for _, row in df_cleaned.iterrows():
+            cleaned_bars.append(HistoricalBar(
+                timestamp=row['timestamp'],
+                open=Decimal(str(row['open'])),
+                high=Decimal(str(row['high'])),
+                low=Decimal(str(row['low'])),
+                close=Decimal(str(row['close'])),
+                volume=row['volume']
+            ))
+
+        return cleaned_bars
 
     def _check_sdk(self) -> bool:
         """Check whether the Alpaca SDK is installed.

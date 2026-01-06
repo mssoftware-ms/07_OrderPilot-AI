@@ -61,6 +61,7 @@ class BitunixTradingWidget(QDockWidget):
             parent: Parent widget
         """
         super().__init__("💱 Bitunix Trading", parent)
+        self.setObjectName("bitunixTradingDock")
 
         self.live_adapter = adapter
         self.paper_adapter = BitunixPaperAdapter()

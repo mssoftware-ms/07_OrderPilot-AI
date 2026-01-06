@@ -90,9 +90,9 @@ market_data:
   alpaca_enabled: true
   alpha_vantage_enabled: false
   bitunix_enabled: true
-  bitunix_testnet: true
   bitunix_max_bars: 15000
   bitunix_max_batches: 120
+  bitunix_testnet: false  # Use mainnet for historical data (testnet has limited history)
   finnhub_enabled: true
   prefer_live_broker: true
   yahoo_enabled: true
