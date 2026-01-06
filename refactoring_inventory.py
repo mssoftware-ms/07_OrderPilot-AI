@@ -269,3 +269,12 @@ def create_detailed_report(inventory: ProjectInventory, output_file: str):
         f.write('\n'.join(lines))
 
     print(f"Detaillierter Bericht erstellt: {output_file}")
+
+if __name__ == "__main__":
+    project_root = os.getcwd()
+    inventory = create_inventory(project_root, "refactoring_inventory.json")
+    
+    # Detailed markdown report
+    create_detailed_report(inventory, "REFACTORING_INVENTORY_REPORT.md")
+    
+    print_summary(inventory)

@@ -91,4 +91,14 @@ SESSION_SUMMARY_*.md
 # WSL Virtual Environment
 .wsl_venv/
 .wsl_env/
+.wsl-tmp/
 .aider*
+
+# Code analysis files (large JSON outputs)
+*_inventory.json
+*_analysis.json
+code_*.json
+refactoring_*.json
+
+# Claude Flow temporary files
+.claude-flow/

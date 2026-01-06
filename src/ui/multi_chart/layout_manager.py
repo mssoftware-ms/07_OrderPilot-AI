@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QObject, pyqtSignal, QRect, QPoint
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QScreen
+from PyQt6.QtCore import QObject, QRect, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QWidget
 
 if TYPE_CHECKING:
     from src.ui.widgets.chart_window import ChartWindow

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 
+@dataclass
 class FunctionInfo:
     """Information über eine Funktion/Methode."""
     name: str
@@ -15,6 +16,7 @@ class FunctionInfo:
     docstring: Optional[str]
     class_name: Optional[str] = None
 
+@dataclass
 class ClassInfo:
     """Information über eine Klasse."""
     name: str
@@ -27,6 +29,7 @@ class ClassInfo:
     docstring: Optional[str]
     is_ui_component: bool = False
 
+@dataclass
 class ImportInfo:
     """Information über einen Import."""
     module: str
@@ -35,6 +38,7 @@ class ImportInfo:
     line_number: int
     is_from_import: bool
 
+@dataclass
 class EventHandlerInfo:
     """Information über Event-Handler."""
     name: str
@@ -43,6 +47,7 @@ class EventHandlerInfo:
     signal_name: Optional[str]
     handler_type: str
 
+@dataclass
 class UIComponentInfo:
     """Information über UI-Komponenten."""
     class_name: str
@@ -54,6 +59,7 @@ class UIComponentInfo:
     signals: List[str]
     slots: List[str]
 
+@dataclass
 class FileInventory:
     """Inventur einer einzelnen Datei."""
     file_path: str
@@ -68,6 +74,7 @@ class FileInventory:
     constants: List[Dict[str, Any]] = field(default_factory=list)
     global_variables: List[Dict[str, Any]] = field(default_factory=list)
 
+@dataclass
 class ProjectInventory:
     """Gesamtinventur des Projekts."""
     timestamp: str

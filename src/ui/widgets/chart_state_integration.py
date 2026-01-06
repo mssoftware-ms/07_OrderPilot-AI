@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QWidget
 
 from .chart_state_manager import (
     ChartStateManager, ChartState, IndicatorState, ViewRange, PaneLayout,
-    TradingViewChartStateHelper, PyQtGraphChartStateHelper,
+    PyQtGraphChartStateHelper,
     get_chart_state_manager
 )
 

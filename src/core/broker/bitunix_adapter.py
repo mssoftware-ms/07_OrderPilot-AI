@@ -10,16 +10,13 @@ Authentication:
 """
 
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
-import time
-import uuid
 from decimal import Decimal
 
 import aiohttp
 
+from src.core.auth.bitunix_signer import BitunixSigner
 from src.core.broker.base import BrokerAdapter
 from src.core.broker.broker_types import (
     Balance,
@@ -87,6 +84,9 @@ class BitunixAdapter(BrokerAdapter):
         self.use_testnet = use_testnet
         self.base_url = self._get_base_url()
         self._session: aiohttp.ClientSession | None = None
+        
+        # Initialize signer
+        self.signer = BitunixSigner(api_key, api_secret)
 
     @property
     def connected(self) -> bool:
@@ -105,38 +105,6 @@ class BitunixAdapter(BrokerAdapter):
         # Use the same host as WebSocket (fapi.bitunix.com) to avoid DNS failures
         # The testnet-api.bitunix.com host is not reliably accessible
         return "https://fapi.bitunix.com"
-
-    def _generate_signature(
-        self,
-        nonce: str,
-        timestamp: str,
-        query_params: str = "",
-        body: str = ""
-    ) -> str:
-        """Generate double SHA256 signature for Bitunix API.
-
-        Bitunix uses a two-step SHA256 process (NOT HMAC-SHA256):
-        1. digest = SHA256(nonce + timestamp + api_key + query_params + body)
-        2. sign = SHA256(digest + secret_key)
-
-        Args:
-            nonce: Random UUID string
-            timestamp: Millisecond timestamp
-            query_params: Sorted query parameters (no spaces)
-            body: JSON body (no spaces)
-
-        Returns:
-            Hex-encoded signature string
-        """
-        # Step 1: Create digest from nonce + timestamp + api_key + query_params + body
-        digest_input = nonce + timestamp + self.api_key + query_params + body
-        digest = hashlib.sha256(digest_input.encode('utf-8')).hexdigest()
-
-        # Step 2: Sign digest + secret_key
-        sign_input = digest + self.api_secret
-        sign = hashlib.sha256(sign_input.encode('utf-8')).hexdigest()
-
-        return sign
 
     def _sort_params(self, params: dict) -> str:
         """Sort parameters and concatenate as keyvalue pairs.
@@ -162,22 +130,7 @@ class BitunixAdapter(BrokerAdapter):
         Returns:
             Headers dictionary for HTTP request
         """
-        # Generate nonce (random UUID without dashes)
-        nonce = str(uuid.uuid4()).replace('-', '')
-
-        # Generate timestamp in milliseconds
-        timestamp = str(int(time.time() * 1000))
-
-        # Generate signature using Bitunix double SHA256 method
-        signature = self._generate_signature(nonce, timestamp, query_params, body)
-
-        return {
-            'api-key': self.api_key,
-            'sign': signature,
-            'nonce': nonce,
-            'timestamp': timestamp,
-            'Content-Type': 'application/json'
-        }
+        return self.signer.build_headers(query_params, body)
 
     # ==================== Connection Management ====================
 

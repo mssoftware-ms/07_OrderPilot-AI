@@ -8,7 +8,7 @@ Onvista verwendet dedizierte URLs pro Underlying: /Knock-Outs-auf-{SLUG}
 from __future__ import annotations
 
 import logging
-from urllib.parse import urlencode, quote
+from urllib.parse import quote
 
 from ..config import KOFilterConfig
 from ..constants import (

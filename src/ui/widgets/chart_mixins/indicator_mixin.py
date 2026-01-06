@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from PyQt6.QtGui import QAction
 
 from src.core.indicators.engine import IndicatorConfig, IndicatorType
+from src.core.indicators.registry import get_overlay_configs, get_oscillator_configs
 from .data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
@@ -49,25 +50,7 @@ class IndicatorMixin:
         Returns:
             Tuple of (overlay_configs, oscillator_configs)
         """
-        overlay_configs = {
-            "SMA": (IndicatorType.SMA, {'period': 20}, "SMA(20)", None, None),
-            "EMA": (IndicatorType.EMA, {'period': 20}, "EMA(20)", None, None),
-            "BB": (IndicatorType.BB, {'period': 20, 'std': 2}, "BB(20,2)", None, None),
-        }
-
-        oscillator_configs = {
-            "RSI": (IndicatorType.RSI, {'period': 14}, "RSI(14)", 0, 100),
-            "MACD": (IndicatorType.MACD, {'fast': 12, 'slow': 26, 'signal': 9}, "MACD(12,26,9)", None, None),
-            "STOCH": (IndicatorType.STOCH, {'k_period': 14, 'd_period': 3}, "STOCH(14,3)", 0, 100),
-            "ATR": (IndicatorType.ATR, {'period': 14}, "ATR(14)", 0, None),
-            "ADX": (IndicatorType.ADX, {'period': 14}, "ADX(14)", 0, 100),
-            "CCI": (IndicatorType.CCI, {'period': 20}, "CCI(20)", -100, 100),
-            "MFI": (IndicatorType.MFI, {'period': 14}, "MFI(14)", 0, 100),
-            "BB_WIDTH": (IndicatorType.BB_WIDTH, {'period': 20, 'std': 2}, "BB Width", 0, None),
-            "BB_PERCENT": (IndicatorType.BB_PERCENT, {'period': 20, 'std': 2}, "%B", 0, 1.2),
-        }
-
-        return overlay_configs, oscillator_configs
+        return get_overlay_configs(), get_oscillator_configs()
 
     # --- Instance management (multi-add) ---------------------------------
 

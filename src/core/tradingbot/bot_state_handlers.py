@@ -563,8 +563,6 @@ class BotStateHandlersMixin:
 
         return self._check_macd_exit(features)
 
-        return None
-
     def _check_rsi_exit(self, features: FeatureVector) -> str | None:
         if features.rsi_14 is None or not self._position:
             return None
