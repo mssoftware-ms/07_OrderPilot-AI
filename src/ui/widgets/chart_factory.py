@@ -88,7 +88,10 @@ class ChartFactory:
     ) -> QWidget:
         """Create embedded TradingView chart.
 
-        This is now the ONLY chart implementation.
+        CRITICAL: Creates provider-specific chart based on symbol:
+        - Alpaca Crypto: BTC/USD, ETH/USD (symbols with /)
+        - Bitunix: BTCUSDT, ETHUSDT (symbols with USDT/USDC)
+        - Alpaca Stock: AAPL, MSFT (everything else)
 
         Args:
             symbol: Trading symbol
@@ -96,11 +99,23 @@ class ChartFactory:
             **kwargs: Additional chart parameters
 
         Returns:
-            EmbeddedTradingViewChart instance
+            AlpacaTradingViewChart or BitunixTradingViewChart instance
         """
-        from .embedded_tradingview_chart import EmbeddedTradingViewChart
+        # CRITICAL: Detect provider based on symbol format
+        is_bitunix = "USDT" in symbol or "USDC" in symbol
+        is_alpaca = not is_bitunix  # Everything else is Alpaca (Stock + Crypto)
 
-        chart = EmbeddedTradingViewChart(history_manager=history_manager)
+        # Import the correct chart class
+        if is_bitunix:
+            from .bitunix_tradingview_chart import BitunixTradingViewChart
+            chart = BitunixTradingViewChart(history_manager=history_manager)
+            import logging
+            logging.getLogger(__name__).info(f"✅ Created BitunixTradingViewChart for {symbol}")
+        else:
+            from .alpaca_tradingview_chart import AlpacaTradingViewChart
+            chart = AlpacaTradingViewChart(history_manager=history_manager)
+            import logging
+            logging.getLogger(__name__).info(f"✅ Created AlpacaTradingViewChart for {symbol}")
 
         # Set symbol
         if hasattr(chart, 'symbol_combo'):

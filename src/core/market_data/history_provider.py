@@ -296,6 +296,19 @@ class HistoryManager:
             return True
 
         if request.asset_class == AssetClass.CRYPTO:
+            # CRITICAL: Strict separation of Alpaca and Bitunix crypto providers
+            # Alpaca Crypto: BTC/USD, ETH/USD (symbols with slash)
+            # Bitunix: BTCUSDT, ETHUSDT (symbols with USDT/USDC suffix)
+            symbol = request.symbol
+            is_alpaca_crypto = "/" in symbol  # BTC/USD format
+            is_bitunix = "USDT" in symbol or "USDC" in symbol  # BTCUSDT format
+
+            if source == DataSource.ALPACA_CRYPTO and is_bitunix:
+                logger.debug(f"Skipping Alpaca Crypto for Bitunix symbol {symbol}")
+                return True
+            if source == DataSource.BITUNIX and is_alpaca_crypto:
+                logger.debug(f"Skipping Bitunix for Alpaca Crypto symbol {symbol}")
+                return True
             if source not in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX, DataSource.DATABASE]:
                 logger.debug(f"Skipping {source.value} for crypto asset class")
                 return True

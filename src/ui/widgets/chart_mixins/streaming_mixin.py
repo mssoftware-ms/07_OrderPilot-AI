@@ -87,7 +87,12 @@ class StreamingMixin:
 
             # Bitunix ticks are already filtered by Z-Score filter in provider
             # Only apply 5% deviation filter to Alpaca ticks (which can have bad ticks)
-            is_bitunix = getattr(event, 'source', '').lower() == 'bitunix stream'
+            try:
+                source = str(getattr(event, 'source', ''))
+                is_bitunix = source.lower() == 'bitunix stream'
+            except (AttributeError, TypeError):
+                is_bitunix = False
+
             if not is_bitunix:
                 reference_price = self._resolve_reference_price()
                 if not self._is_valid_tick(price, reference_price):

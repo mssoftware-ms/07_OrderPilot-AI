@@ -16,7 +16,6 @@ from src.core.market_data.history_provider import (
     HistoricalDataProvider,
     Timeframe
 )
-from src.analysis.data_cleaning import ZScoreVolatilityFilter
 
 logger = logging.getLogger(__name__)
 
@@ -50,20 +49,10 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         self.auth_failed = False
         self.last_error: str | None = None
 
-        # Initialize Z-Score Volatility Filter
-        # REPLACES extreme High/Low values inline (no gaps in data!)
-        # Prevents EMAs from being destroyed by fat-finger errors
-        self.bad_tick_filter = ZScoreVolatilityFilter(
-            volatility_window=20,  # 20-bar volatility window
-            z_threshold=4.0,  # Z-Score > 4 = statistically extreme
-            median_window=3,  # Replace with 3-bar median
-            min_volume=0.0001,  # Abort if volume <= 0.0001
-        )
-
         if not self._sdk_available:
             logger.warning("Alpaca SDK not available. Crypto provider will be disabled.")
         else:
-            logger.info("🛡️  AlpacaCryptoProvider initialized with Z-Score Volatility Filter (vol_window=20, z_threshold=4.0)")
+            logger.info("AlpacaCryptoProvider initialized")
 
     async def fetch_bars(
         self,
@@ -216,10 +205,6 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
 
                 logger.info(f"Fetched {len(all_bars)} crypto bars from Alpaca for {symbol}")
 
-            # Filter bad ticks before returning
-            if all_bars:
-                all_bars = self._filter_bad_ticks(all_bars)
-
             return all_bars
 
         except Exception as e:
@@ -274,51 +259,6 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             Timeframe.MONTH_1: AlpacaTimeFrame(1, TimeFrameUnit.Month),
         }
         return mapping.get(timeframe, AlpacaTimeFrame(1, TimeFrameUnit.Minute))
-
-    def _filter_bad_ticks(self, bars: list[HistoricalBar]) -> list[HistoricalBar]:
-        """Filter out bad ticks from bar data.
-
-        Args:
-            bars: List of historical bars
-
-        Returns:
-            Filtered list with bad ticks removed
-        """
-        if not bars:
-            return bars
-
-        # Convert to DataFrame for cleaning
-        df = pd.DataFrame([{
-            'timestamp': b.timestamp,
-            'open': float(b.open),
-            'high': float(b.high),
-            'low': float(b.low),
-            'close': float(b.close),
-            'volume': b.volume if b.volume else 0
-        } for b in bars])
-
-        # Clean data inline - REPLACES extreme values (NO gaps!)
-        try:
-            df_cleaned = self.bad_tick_filter.clean_data_inline(df)
-        except ValueError as e:
-            # Null volume detected - data leak
-            logger.error(f"❌ Data cleaning failed for Alpaca data: {e}")
-            return []  # Return empty list on critical error
-
-        # Convert cleaned DataFrame back to HistoricalBar objects
-        from decimal import Decimal
-        cleaned_bars = []
-        for _, row in df_cleaned.iterrows():
-            cleaned_bars.append(HistoricalBar(
-                timestamp=row['timestamp'],
-                open=Decimal(str(row['open'])),
-                high=Decimal(str(row['high'])),
-                low=Decimal(str(row['low'])),
-                close=Decimal(str(row['close'])),
-                volume=row['volume']
-            ))
-
-        return cleaned_bars
 
     def _check_sdk(self) -> bool:
         """Check whether the Alpaca SDK is installed.
