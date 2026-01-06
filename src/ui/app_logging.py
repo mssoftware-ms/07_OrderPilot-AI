@@ -34,9 +34,13 @@ class LogStream(QObject):
             except Exception:
                 pass
         self._buffer += text
-        while "\n" in self._buffer:
-            line, self._buffer = self._buffer.split("\n", 1)
-            self.text_written.emit(line)
+        try:
+            while "\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\n", 1)
+                self.text_written.emit(line)
+        except RuntimeError:
+            # QObject already deleted during shutdown; ignore late log writes
+            return
 
     def flush(self) -> None:
         if self._mirror is not None:
@@ -44,6 +48,10 @@ class LogStream(QObject):
                 self._mirror.flush()
             except Exception:
                 pass
-        if self._buffer:
-            self.text_written.emit(self._buffer)
+        try:
+            if self._buffer:
+                self.text_written.emit(self._buffer)
+                self._buffer = ""
+        except RuntimeError:
+            # QObject deleted; drop pending buffer quietly
             self._buffer = ""

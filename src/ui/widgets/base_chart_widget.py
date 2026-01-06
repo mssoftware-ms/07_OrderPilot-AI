@@ -5,7 +5,7 @@ This is a foundation for future refactoring of chart widgets.
 """
 
 import logging
-from abc import ABC, abstractmethod
+from abc import ABCMeta, abstractmethod
 from typing import Optional
 
 import pandas as pd
@@ -14,7 +14,12 @@ from PyQt6.QtWidgets import QWidget
 logger = logging.getLogger(__name__)
 
 
-class BaseChartWidget(ABC, QWidget):
+class QWidgetABCMeta(type(QWidget), ABCMeta):
+    """Combined metaclass to resolve conflict between QWidget and ABC."""
+    pass
+
+
+class BaseChartWidget(QWidget, metaclass=QWidgetABCMeta):
     """Abstract base class for chart widgets.
 
     Provides common functionality shared across different chart implementations:

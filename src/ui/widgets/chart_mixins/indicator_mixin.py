@@ -17,8 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def _ts_to_local_unix(ts) -> int:
-    """Convert timestamp to Unix seconds with local timezone offset for chart display."""
-    return int(ts.timestamp()) + get_local_timezone_offset_seconds()
+    """Convert timestamp to Unix seconds (UTC).
+
+    Handles both timezone-aware and naive datetimes.
+    Naive datetimes are interpreted as UTC.
+    """
+    from datetime import timezone
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return int(ts.timestamp())
 
 
 class IndicatorMixin:
@@ -531,7 +538,7 @@ class IndicatorMixin:
         return self._updating_indicators
 
     def _build_realtime_row(self, candle: dict) -> pd.DataFrame:
-        local_offset = get_local_timezone_offset_seconds()
+        # FIXED: Removed local_offset - not needed, timestamps stay in UTC
         utc_timestamp = candle['time'] - local_offset
         new_row = pd.DataFrame([{
             'time': pd.Timestamp.fromtimestamp(utc_timestamp, tz='UTC'),

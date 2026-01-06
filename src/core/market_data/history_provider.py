@@ -14,7 +14,6 @@ from decimal import Decimal
 from src.common.event_bus import Event, EventType, event_bus
 from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
-from src.core.market_data.bar_validator import BarValidator
 from src.core.market_data.types import AssetClass, DataRequest, DataSource, HistoricalBar, Timeframe
 from src.database import get_db_manager
 from src.database.models import MarketBar
@@ -29,7 +28,6 @@ from src.core.market_data.providers import (
     IBKRHistoricalProvider,
     DatabaseProvider,
 )
-from src.core.market_data.errors import MarketDataAccessBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +56,6 @@ class HistoryManager:
         self.providers: dict[DataSource, HistoricalDataProvider] = {}
         self.priority_order = []
         self.stream_client = None  # Real-time stream client
-        self.bar_validator = BarValidator()
 
         # Initialize database provider (always available)
         self.providers[DataSource.DATABASE] = DatabaseProvider()
@@ -95,7 +92,6 @@ class HistoryManager:
         if live_first:
             self.priority_order = [
                 DataSource.DATABASE,
-                DataSource.BITUNIX,  # High priority for Crypto Futures
                 DataSource.IBKR,
                 DataSource.ALPACA,
                 DataSource.ALPACA_CRYPTO,
@@ -106,7 +102,6 @@ class HistoryManager:
         else:
             self.priority_order = [
                 DataSource.DATABASE,
-                DataSource.BITUNIX,  # High priority for Crypto Futures
                 DataSource.ALPACA,
                 DataSource.ALPACA_CRYPTO,
                 DataSource.ALPHA_VANTAGE,
@@ -161,30 +156,6 @@ class HistoryManager:
         if market_config.yahoo_enabled:
             self.register_provider(DataSource.YAHOO, YahooFinanceProvider())
 
-        # Bitunix (Crypto Futures)
-        if market_config.bitunix_enabled:
-            api_key = config_manager.get_credential("bitunix_api_key")
-            api_secret = config_manager.get_credential("bitunix_api_secret")
-            use_testnet = config_manager.get_setting("bitunix_testnet", True)  # DEFAULT: TESTNET!
-            max_bars = getattr(market_config, "bitunix_max_bars", 15000)
-            max_batches = getattr(market_config, "bitunix_max_batches", 120)
-
-            if api_key and api_secret:
-                from src.core.market_data.providers.bitunix_provider import BitunixProvider
-                self.register_provider(
-                    DataSource.BITUNIX,
-                    BitunixProvider(
-                        api_key,
-                        api_secret,
-                        use_testnet,
-                        max_bars=max_bars,
-                        max_batches=max_batches,
-                    )
-                )
-                logger.info(f"Registered Bitunix provider (testnet: {use_testnet}, key: {api_key[:8]}...)")
-            else:
-                logger.warning("Bitunix provider enabled but API credentials not found")
-
     async def fetch_data(
         self,
         request: DataRequest
@@ -199,70 +170,18 @@ class HistoryManager:
         """
         needs_fresh_data = self._needs_fresh_data(request)
 
-        # If a specific source is requested, try ONLY that source.
-        # This prevents unwanted fallbacks (e.g. Bitunix -> Alpaca) when the user
-        # explicitly wants a specific provider or the default logic selected one.
-        if request.source:
-            bars, source_used = await self._try_specific_source(request)
-            if not bars:
-                logger.warning(
-                    f"No data from requested source {request.source.value} for {request.symbol}. "
-                    "Fallback disabled for explicit source request."
-                )
-            return self._sanitize_bars(request.symbol, bars), source_used
+        bars, source_used = await self._try_specific_source(request)
+        if bars:
+            return bars, source_used
 
-        # Only use priority order if NO source was specified (auto-mode)
+        # Try providers in priority order
         for source in self.priority_order:
             bars = await self._try_provider_source(request, source, needs_fresh_data)
             if bars:
-                return self._sanitize_bars(request.symbol, bars), source.value
+                return bars, source.value
 
         logger.warning(f"No data available for {request.symbol}")
         return [], "none"
-
-    def _sanitize_bars(self, symbol: str, bars: list[HistoricalBar]) -> list[HistoricalBar]:
-        """Apply validation/sanitization rules to fetched bars."""
-        if not bars:
-            return bars
-
-        def getter(bar: HistoricalBar):
-            return (
-                bar.timestamp,
-                float(bar.open),
-                float(bar.high),
-                float(bar.low),
-                float(bar.close),
-                int(bar.volume or 0),
-            )
-
-        def builder(ts, open_, high, low, close, volume, source, vwap, trades, low_reliability):
-            hb = HistoricalBar(
-                timestamp=ts,
-                open=Decimal(str(open_)),
-                high=Decimal(str(high)),
-                low=Decimal(str(low)),
-                close=Decimal(str(close)),
-                volume=volume,
-                vwap=Decimal(str(vwap)) if vwap is not None else None,
-                trades=trades,
-                source=source,
-            )
-            # attach low reliability marker for consumers (chart / strategies)
-            setattr(hb, "low_reliability", low_reliability)
-            return hb
-
-        cleaned = self.bar_validator.validate_historical_bars(
-            symbol=symbol,
-            bars=bars,
-            getter=getter,
-            builder=builder,
-        )
-
-        dropped = len(bars) - len(cleaned)
-        if dropped:
-            logger.warning("Dropped %s anomalous bars for %s during load", dropped, symbol)
-
-        return cleaned
 
     def _needs_fresh_data(self, request: DataRequest) -> bool:
         if not request.end_date:
@@ -347,11 +266,11 @@ class HistoryManager:
             return True
 
         if request.asset_class == AssetClass.CRYPTO:
-            if source not in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX, DataSource.DATABASE]:
+            if source not in [DataSource.ALPACA_CRYPTO, DataSource.DATABASE]:
                 logger.debug(f"Skipping {source.value} for crypto asset class")
                 return True
         elif request.asset_class == AssetClass.STOCK:
-            if source in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX]:
+            if source == DataSource.ALPACA_CRYPTO:
                 logger.debug(f"Skipping {source.value} for stock asset class")
                 return True
 
@@ -403,13 +322,7 @@ class HistoryManager:
         try:
             db_manager = get_db_manager()
             with db_manager.session() as session:
-                def _normalize_ts(ts: datetime) -> datetime:
-                    if ts.tzinfo is not None:
-                        ts = ts.astimezone(timezone.utc)
-                        ts = ts.replace(tzinfo=None)
-                    return ts
-
-                timestamps = [_normalize_ts(bar.timestamp) for bar in bars]
+                timestamps = [bar.timestamp for bar in bars]
                 min_ts = min(timestamps)
                 max_ts = max(timestamps)
 
@@ -418,18 +331,15 @@ class HistoryManager:
                     MarketBar.timestamp >= min_ts,
                     MarketBar.timestamp <= max_ts
                 ).all()
-                existing_timestamps = {_normalize_ts(row[0]) for row in existing_rows}
+                existing_timestamps = {row[0] for row in existing_rows}
 
                 new_bars = []
-                seen_new_timestamps: set[datetime] = set()
                 for bar in bars:
-                    ts = _normalize_ts(bar.timestamp)
-                    if ts in existing_timestamps or ts in seen_new_timestamps:
+                    if bar.timestamp in existing_timestamps:
                         continue
-                    seen_new_timestamps.add(ts)
                     new_bars.append(MarketBar(
                         symbol=symbol,
-                        timestamp=ts,
+                        timestamp=bar.timestamp,
                         open=bar.open,
                         high=bar.high,
                         low=bar.low,
@@ -479,30 +389,6 @@ class HistoryManager:
             logger.warning(f"📡 STOCK STREAM: start_realtime_stream called for {symbols}")
             logger.warning(f"📡 Available providers: {list(self.providers.keys())}")
             logger.info(f"Starting real-time stream for {len(symbols)} symbols. Available providers: {list(self.providers.keys())}")
-
-            profile = config_manager.load_profile()
-
-            # Priority 0: Bitunix (if enabled)
-            if DataSource.BITUNIX in self.providers:
-                try:
-                    from src.core.market_data.bitunix_stream import BitunixStreamClient
-
-                    use_testnet = getattr(profile.market_data, "bitunix_testnet", True)
-                    if not self.stream_client or not isinstance(self.stream_client, BitunixStreamClient):
-                        self.stream_client = BitunixStreamClient(use_testnet=use_testnet)
-
-                    connected = await self.stream_client.connect()
-                    if connected:
-                        await self.stream_client.subscribe(symbols)
-                        logger.info(f"Started Bitunix WebSocket stream for {len(symbols)} symbols (testnet={use_testnet})")
-                        return True
-                    else:
-                        logger.warning("Failed to connect Bitunix stream, trying fallback...")
-                except MarketDataAccessBlocked:
-                    # Surface upstream so UI can show immediate popup
-                    raise
-                except Exception as e:
-                    logger.warning(f"Bitunix streaming failed: {e}, trying fallback...")
 
             # Priority 1: Try Alpaca WebSocket
             if DataSource.ALPACA in self.providers:

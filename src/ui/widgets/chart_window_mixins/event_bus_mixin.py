@@ -13,8 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 def _ts_to_chart_time(timestamp) -> int:
-    """Convert timestamp to chart time (with local timezone offset)."""
-    return int(timestamp.timestamp()) + get_local_timezone_offset_seconds()
+    """Convert timestamp to chart time (UTC).
+
+    Handles both timezone-aware and naive datetimes.
+    Naive datetimes are interpreted as UTC.
+    """
+    from datetime import timezone
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return int(timestamp.timestamp())
 
 
 class EventBusMixin:

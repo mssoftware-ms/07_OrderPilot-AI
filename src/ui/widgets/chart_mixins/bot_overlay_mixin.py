@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable
 
 from .bot_overlay_types import (
@@ -72,13 +72,14 @@ class BotOverlayMixin:
             text: Optional text to display
             score: Optional score value
         """
-        # Convert to Unix timestamp and add local timezone offset
-        # to match chart data which is also shifted to local time
-        local_offset = get_local_timezone_offset_seconds()
+        # Convert to Unix timestamp (UTC)
+        # Handle both timezone-aware and naive datetimes
         if isinstance(timestamp, datetime):
-            ts = int(timestamp.timestamp()) + local_offset
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            ts = int(timestamp.timestamp())
         else:
-            ts = timestamp + local_offset
+            ts = timestamp
 
         marker = BotMarker(
             timestamp=ts,

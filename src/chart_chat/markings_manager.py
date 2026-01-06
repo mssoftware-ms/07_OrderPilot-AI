@@ -6,6 +6,7 @@ Extracts markings from chart, sends to AI, receives updates, applies to chart.
 from __future__ import annotations
 
 import logging
+from datetime import timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -179,11 +180,14 @@ class MarkingsManager:
                     num_candles = min(50, len(df))
                     start_timestamp = df.index[-num_candles]
 
-                    # Convert to Unix timestamps (with timezone adjustment)
-                    from src.core.market_data.timezone_utils import get_local_timezone_offset_seconds
-                    local_offset = get_local_timezone_offset_seconds()
+                    # Convert to Unix timestamps (UTC)
+                    # Handle both timezone-aware and naive datetimes
+                    if start_timestamp.tzinfo is None:
+                        start_timestamp = start_timestamp.replace(tzinfo=timezone.utc)
+                    if last_timestamp.tzinfo is None:
+                        last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
 
-                    start_time = int(start_timestamp.timestamp()) + local_offset
+                    start_time = int(start_timestamp.timestamp())
 
                     # ✅ EXTENDED CANVAS: Extend zone into the future (rightOffset area)
                     # Calculate time per bar based on chart timeframe
@@ -194,7 +198,7 @@ class MarkingsManager:
 
                     # Extend zone 30 bars into the future (into rightOffset=50 area)
                     future_extension_bars = 30
-                    end_time = int(last_timestamp.timestamp()) + local_offset + int(time_diff * future_extension_bars)
+                    end_time = int(last_timestamp.timestamp()) + int(time_diff * future_extension_bars)
 
                     logger.debug(f"Zone time range: {start_time} to {end_time} ({num_candles} candles + {future_extension_bars} future bars)")
                     return start_time, end_time
@@ -221,11 +225,11 @@ class MarkingsManager:
                     # DataFrame index is the timestamp
                     last_timestamp = df.index[-1]
 
-                    # Convert to Unix timestamp (with timezone adjustment)
-                    from src.core.market_data.timezone_utils import get_local_timezone_offset_seconds
-                    local_offset = get_local_timezone_offset_seconds()
-
-                    return int(last_timestamp.timestamp()) + local_offset
+                    # Convert to Unix timestamp (UTC)
+                    # Handle both timezone-aware and naive datetimes
+                    if last_timestamp.tzinfo is None:
+                        last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
+                    return int(last_timestamp.timestamp())
         except Exception as e:
             logger.warning(f"Could not get timestamp from chart data: {e}", exc_info=True)
 

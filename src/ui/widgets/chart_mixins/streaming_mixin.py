@@ -6,29 +6,21 @@ Contains live streaming and market event handling methods.
 import asyncio
 import json
 import logging
-import time
 from datetime import datetime, timezone
 
 import pandas as pd
 from PyQt6.QtCore import pyqtSlot
-from PyQt6.QtWidgets import QMessageBox
 
 from src.common.event_bus import Event
-from src.core.market_data.errors import MarketDataAccessBlocked
-from src.core.market_data.types import AssetClass, DataSource
 from .data_loading_mixin import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
 
 
 class StreamingMixin:
-    """Mixin providing streaming functionality for EmbeddedTradingViewChart.
-    
-    This mixin is intended to be used with EmbeddedTradingViewChart.
-    Event handling is decoupled via Qt Signals in the main class to ensure
-    thread-safe UI updates.
-    """
+    """Mixin providing streaming functionality for EmbeddedTradingViewChart."""
 
+    @pyqtSlot(object)
     def _on_market_bar(self, event: Event):
         """Handle market bar event."""
         try:
@@ -49,15 +41,26 @@ class StreamingMixin:
     def _is_valid_tick(self, price: float, reference_price: float | None) -> bool:
         """
         Prüfe ob Tick-Preis plausibel ist (Bad Tick Filter).
+
+        Filtert extreme Ausreißer die durch fehlerhafte Daten entstehen.
+
+        Args:
+            price: Neuer Tick-Preis
+            reference_price: Referenzpreis (letzter bekannter gültiger Preis)
+
+        Returns:
+            True wenn Tick plausibel, False wenn Bad Tick
         """
         if price <= 0:
             return False
 
         if reference_price is None or reference_price <= 0:
-            return True
+            return True  # Kein Referenzpreis - akzeptiere
 
         # Maximale erlaubte Abweichung vom Referenzpreis (5%)
+        # Bei sehr volatilen Assets könnte man das erhöhen
         max_deviation_pct = 5.0
+
         deviation_pct = abs((price - reference_price) / reference_price) * 100
 
         if deviation_pct > max_deviation_pct:
@@ -69,11 +72,9 @@ class StreamingMixin:
 
         return True
 
+    @pyqtSlot(object)
     def _on_market_tick(self, event: Event):
-        """Handle market tick event - update current candle in real-time.
-        
-        This method is called in the MAIN UI THREAD via Qt signals.
-        """
+        """Handle market tick event - update current candle in real-time."""
         try:
             tick_data = self._validate_tick_event(event)
             if not tick_data:
@@ -81,28 +82,26 @@ class StreamingMixin:
 
             price, volume = self._extract_tick_price_volume(tick_data)
             if not price:
+                logger.warning(f"Received tick for {self.current_symbol} but no price data")
                 return
 
             reference_price = self._resolve_reference_price()
             if not self._is_valid_tick(price, reference_price):
                 return
 
-            # Throttling: Update chart max 4 times per second (250ms)
-            # Critical to prevent UI freezes during high-frequency bursts
-            current_time = time.time()
-            if not hasattr(self, '_last_chart_update_time'):
-                self._last_chart_update_time = 0
-                
-            if (current_time - self._last_chart_update_time) < 0.25:
-                # Still update internal state even if we skip the visual update
-                self._update_internal_state(event, tick_data, price, volume)
-                return
+            self._log_tick(price, volume)
 
-            self._last_chart_update_time = current_time
+            ts = self._resolve_tick_timestamp(event, tick_data)
+            current_tick_time, current_minute_start = self._resolve_tick_time(ts, tick_data)
 
-            # Full update
-            self._update_internal_state(event, tick_data, price, volume)
-            
+            if not hasattr(self, '_current_candle_time'):
+                self._initialize_candle(current_minute_start, price)
+
+            self._update_candle_for_tick(current_minute_start, price)
+            self._accumulate_volume(volume)
+            self._current_candle_close = price
+            self._last_price = price
+
             candle = self._build_candle_payload(price)
             volume_bar = self._build_volume_payload(price)
 
@@ -111,29 +110,12 @@ class StreamingMixin:
             self._emit_tick_price_updated(price)
 
         except Exception as e:
-            logger.error(f"Error handling market tick: {e}")
-
-    def _update_internal_state(self, event, tick_data, price, volume):
-        """Update internal candle state without necessarily updating the chart."""
-        ts = self._resolve_tick_timestamp(event, tick_data)
-        _, current_minute_start = self._resolve_tick_time(ts, tick_data)
-
-        if not hasattr(self, '_current_candle_time'):
-            self._initialize_candle(current_minute_start, price)
-
-        self._update_candle_for_tick(current_minute_start, price, tick_data)
-        self._accumulate_volume(volume)
-        self._current_candle_close = price
-        self._last_price = price
-        
-        # Fast UI label update
-        if hasattr(self, 'info_label'):
-            self.info_label.setText(f"Last: ${price:.2f}")
+            logger.error(f"Error handling market tick: {e}", exc_info=True)
 
     def _validate_tick_event(self, event: Event) -> dict | None:
         if not getattr(self, 'live_streaming_enabled', False):
             return None
-        tick_data = getattr(event, 'data', {})
+        tick_data = event.data
         if tick_data.get('symbol') != self.current_symbol:
             return None
         return tick_data
@@ -141,23 +123,26 @@ class StreamingMixin:
     def _extract_tick_price_volume(self, tick_data: dict) -> tuple[float, float]:
         price = tick_data.get('price', 0)
         volume = tick_data.get('volume', tick_data.get('size', 0))
-        return float(price), float(volume)
+        return price, volume
 
     def _resolve_reference_price(self) -> float | None:
         reference_price = getattr(self, '_current_candle_close', None)
         if reference_price is None and hasattr(self, 'data') and self.data is not None:
-            if not self.data.empty and 'close' in self.data.columns:
+            if len(self.data) > 0 and 'close' in self.data.columns:
                 reference_price = float(self.data['close'].iloc[-1])
         return reference_price
 
     def _log_tick(self, price: float, volume: float) -> None:
-        """Deprecated: Logging moved to DEBUG or removed for performance."""
-        pass
+        self.info_label.setText(f"Last: ${price:.2f}")
+        print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
+        logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
 
     def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
         ts = tick_data.get('timestamp')
         if ts is None:
-            ts = getattr(event, 'timestamp', datetime.now(timezone.utc))
+            ts = event.timestamp
+        if ts is None:
+            ts = datetime.now(timezone.utc)
         if isinstance(ts, str):
             try:
                 ts = pd.to_datetime(ts).to_pydatetime()
@@ -165,14 +150,18 @@ class StreamingMixin:
                 ts = datetime.now(timezone.utc)
         elif isinstance(ts, (int, float)):
             ts = datetime.fromtimestamp(ts, tz=timezone.utc)
-        if ts and ts.tzinfo is None:
+        if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        return ts or datetime.now(timezone.utc)
+        return ts
 
     def _resolve_tick_time(self, ts, tick_data: dict) -> tuple[int, int]:
         local_offset = get_local_timezone_offset_seconds()
         current_tick_time = int(ts.timestamp()) + local_offset
         current_minute_start = current_tick_time - (current_tick_time % 60)
+        logger.info(
+            f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
+            f"TickUnix: {current_tick_time} | MinStart: {current_minute_start}"
+        )
         return current_tick_time, current_minute_start
 
     def _initialize_candle(self, current_minute_start: int, price: float) -> None:
@@ -182,10 +171,7 @@ class StreamingMixin:
         self._current_candle_low = price
         self._current_candle_volume = 0
 
-    def _update_candle_for_tick(self, current_minute_start: int, price: float, tick_data: dict = None) -> None:
-        if not hasattr(self, '_current_candle_time'):
-            self._current_candle_time = current_minute_start
-
+    def _update_candle_for_tick(self, current_minute_start: int, price: float) -> None:
         if current_minute_start > self._current_candle_time:
             prev_open = getattr(self, '_current_candle_open', price)
             prev_high = getattr(self, '_current_candle_high', price)
@@ -193,9 +179,14 @@ class StreamingMixin:
             prev_close = getattr(self, '_current_candle_close', price)
             prev_volume = getattr(self, '_current_candle_volume', 0)
 
+            self._prev_candle_volume = prev_volume
+
             if hasattr(self, 'candle_closed'):
                 self.candle_closed.emit(prev_open, prev_high, prev_low, prev_close, price)
-                logger.info(f"🕯️ Candle closed: C={prev_close:.2f} -> new_open={price:.2f}")
+                logger.info(
+                    f"🕯️ Candle closed: O={prev_open:.2f} H={prev_high:.2f} "
+                    f"L={prev_low:.2f} C={prev_close:.2f} V={prev_volume:.0f} -> new_open={price:.2f}"
+                )
 
             self._current_candle_time = current_minute_start
             self._current_candle_open = price
@@ -204,35 +195,27 @@ class StreamingMixin:
             self._current_candle_volume = 0
             return
 
-        # OHLC update
-        if tick_data and 'high' in tick_data and 'low' in tick_data:
-            self._current_candle_high = max(self._current_candle_high, float(tick_data['high']))
-            self._current_candle_low = min(self._current_candle_low, float(tick_data['low']))
-        else:
-            self._current_candle_high = max(self._current_candle_high, price)
-            self._current_candle_low = min(self._current_candle_low, price)
+        self._current_candle_high = max(self._current_candle_high, price)
+        self._current_candle_low = min(self._current_candle_low, price)
 
     def _accumulate_volume(self, volume: float) -> None:
         if volume:
-            if not hasattr(self, '_current_candle_volume'):
-                self._current_candle_volume = 0
             self._current_candle_volume += volume
 
     def _build_candle_payload(self, price: float) -> dict:
         return {
-            'time': getattr(self, '_current_candle_time', int(time.time())),
-            'open': float(getattr(self, '_current_candle_open', price)),
-            'high': float(getattr(self, '_current_candle_high', price)),
-            'low': float(getattr(self, '_current_candle_low', price)),
+            'time': self._current_candle_time,
+            'open': float(self._current_candle_open),
+            'high': float(self._current_candle_high),
+            'low': float(self._current_candle_low),
             'close': float(price),
         }
 
     def _build_volume_payload(self, price: float) -> dict:
-        open_price = getattr(self, '_current_candle_open', price)
         return {
-            'time': getattr(self, '_current_candle_time', int(time.time())),
-            'value': float(getattr(self, '_current_candle_volume', 0)),
-            'color': '#26a69a' if price >= open_price else '#ef5350'
+            'time': self._current_candle_time,
+            'value': float(self._current_candle_volume),
+            'color': '#26a69a' if price >= self._current_candle_open else '#ef5350'
         }
 
     def _execute_chart_updates(self, candle: dict, volume_bar: dict) -> None:
@@ -244,6 +227,11 @@ class StreamingMixin:
     def _emit_tick_price_updated(self, price: float) -> None:
         if hasattr(self, 'tick_price_updated'):
             self.tick_price_updated.emit(price)
+            if not hasattr(self, '_tick_emit_count'):
+                self._tick_emit_count = 0
+            self._tick_emit_count += 1
+            if self._tick_emit_count % 100 == 1:
+                logger.info(f"📡 tick_price_updated emitted #{self._tick_emit_count}: {price:.2f}")
 
     def _process_pending_updates(self):
         """Process pending bar updates (batched for performance)."""
@@ -251,16 +239,24 @@ class StreamingMixin:
             return
 
         try:
+            # Process all pending bars
             while self.pending_bars:
                 bar_data = self.pending_bars.popleft()
+
                 ts_raw = bar_data.get('timestamp', datetime.now())
+                # Robust parsing: handle str/np datetime/pandas Timestamp
                 local_offset = get_local_timezone_offset_seconds()
                 try:
-                    unix_time = int(pd.Timestamp(ts_raw).timestamp()) + local_offset
-                    unix_time = unix_time - (unix_time % 60)
+                    if isinstance(ts_raw, str):
+                        ts_parsed = pd.to_datetime(ts_raw)
+                        ts_value = ts_parsed.to_pydatetime() if hasattr(ts_parsed, "to_pydatetime") else datetime.now()
+                    elif hasattr(ts_raw, "to_pydatetime"):
+                        ts_value = ts_raw.to_pydatetime()
+                    else:
+                        ts_value = ts_raw
+                    unix_time = int(pd.Timestamp(ts_value).timestamp()) + local_offset
                 except Exception:
-                    unix_time = int(time.time()) + local_offset
-                    unix_time = unix_time - (unix_time % 60)
+                    unix_time = int(datetime.now().timestamp()) + local_offset
 
                 candle = {
                     'time': unix_time,
@@ -276,31 +272,58 @@ class StreamingMixin:
                     'color': '#26a69a' if candle['close'] >= candle['open'] else '#ef5350'
                 }
 
-                self._execute_js(f"window.chartAPI.updateCandle({json.dumps(candle)});")
-                self._execute_js(f"window.chartAPI.updatePanelData('volume', {json.dumps(volume)});")
+                # Update chart
+                candle_json = json.dumps(candle)
+                volume_json = json.dumps(volume)
+
+                self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
+                self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
 
         except Exception as e:
-            logger.error(f"Error processing updates: {e}")
+            logger.error(f"Error processing updates: {e}", exc_info=True)
 
     def _toggle_live_stream(self):
         """Toggle live streaming on/off."""
+        # Get current button state
         is_checked = self.live_stream_button.isChecked()
+
+        logger.info(f"🔄 Live stream toggle clicked: button_checked={is_checked}, current_enabled={self.live_streaming_enabled}")
+
+        # Update enabled flag
         self.live_streaming_enabled = is_checked
 
         if self.live_streaming_enabled:
+            # Start live stream - schedule async without blocking
+            logger.info(f"Starting live stream for {self.current_symbol}...")
             asyncio.ensure_future(self._start_live_stream_async())
         else:
+            # Stop live stream - schedule async without blocking
+            logger.info("Stopping live stream...")
             asyncio.ensure_future(self._stop_live_stream_async())
 
     async def _start_live_stream_async(self):
         """Async wrapper for starting live stream."""
         try:
             await self._start_live_stream()
-            self.live_stream_button.setStyleSheet("background-color: #00FF00; color: black; font-weight: bold;")
+
+            # Update button style after successful start
+            self.live_stream_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #00FF00;
+                    color: black;
+                    border: 2px solid #00AA00;
+                    border-radius: 3px;
+                    padding: 5px 10px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #00CC00;
+                }
+            """)
             self.live_stream_button.setText("🟢 Live")
             self.market_status_label.setText("🔴 Streaming...")
-        except MarketDataAccessBlocked as e:
-            self._handle_stream_blocked(e)
+            self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
+
         except Exception as e:
             logger.error(f"Failed to start live stream: {e}")
 
@@ -308,63 +331,96 @@ class StreamingMixin:
         """Async wrapper for stopping live stream."""
         try:
             await self._stop_live_stream()
-            self.live_stream_button.setStyleSheet("")
+
+            # Reset button style after successful stop
+            self.live_stream_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #2a2a2a;
+                    color: #aaa;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    padding: 5px 10px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #3a3a3a;
+                    color: #fff;
+                }
+            """)
             self.live_stream_button.setText("🔴 Live")
             self.market_status_label.setText("Ready")
+            self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
         except Exception as e:
             logger.error(f"Failed to stop live stream: {e}")
 
     async def _start_live_stream(self):
         """Start live streaming for current symbol."""
-        if not self.history_manager or not self.current_symbol:
+        if not self.history_manager:
+            logger.warning("No history manager available")
+            self.market_status_label.setText("⚠ No data source")
+            return
+
+        if not self.current_symbol:
+            logger.warning("No symbol selected")
+            self.market_status_label.setText("⚠ No symbol")
             return
 
         try:
-            asset_class = getattr(self, "current_asset_class", AssetClass.STOCK)
-            if "/" in self.current_symbol or self.current_symbol.endswith("USDT"):
-                asset_class = AssetClass.CRYPTO
+            # Detect if crypto symbol (contains "/" like BTC/USD)
+            is_crypto = "/" in self.current_symbol
+            logger.warning(f"🔍 START STREAM: symbol={self.current_symbol}, is_crypto={is_crypto}")
 
-            success = await self.history_manager.start_realtime_stream([self.current_symbol])
-            if success:
-                self.market_status_label.setText(f"🟢 Live: {self.current_symbol}")
+            # Start appropriate real-time stream via HistoryManager
+            if is_crypto:
+                logger.warning(f"📡 Starting CRYPTO stream for {self.current_symbol}")
+                success = await self.history_manager.start_crypto_realtime_stream([self.current_symbol])
+                logger.info(f"✓ Live crypto stream started for {self.current_symbol}")
             else:
+                logger.warning(f"📡 Starting STOCK stream for {self.current_symbol}")
+                success = await self.history_manager.start_realtime_stream([self.current_symbol])
+                logger.info(f"✓ Live stock stream started for {self.current_symbol}")
+
+            if success:
+                asset_type = "Crypto" if is_crypto else "Stock"
+                self.market_status_label.setText(f"🟢 Live ({asset_type}): {self.current_symbol}")
+                self.market_status_label.setStyleSheet("color: #00FF00; font-weight: bold; padding: 5px;")
+            else:
+                logger.error("Failed to start live stream")
+                self.market_status_label.setText("⚠ Stream failed")
+                self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
+                # Uncheck button
                 self.live_stream_button.setChecked(False)
                 self._toggle_live_stream()
-        except MarketDataAccessBlocked:
-            # Re-raise to outer handler so UI popup can be shown
-            self.live_stream_button.setChecked(False)
-            self.live_streaming_enabled = False
-            raise
+
         except Exception as e:
             logger.error(f"Error starting live stream: {e}")
-
-    def _handle_stream_blocked(self, exc: MarketDataAccessBlocked) -> None:
-        """Show UI popup when Bitunix blocks access (e.g., HTTP 403)."""
-        self.live_streaming_enabled = False
-        self.live_stream_button.setChecked(False)
-        self.live_stream_button.setStyleSheet("")
-        self.live_stream_button.setText("🔴 Live")
-        label_reason = exc.reason or "Bitunix blockiert"
-        self.market_status_label.setText(label_reason)
-        self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
-
-        details = exc.details()
-        message = (
-            "Bitunix WebSocket hat den Zugriff blockiert.\n\n"
-            f"Grund: {label_reason}\n"
-            "Maßnahmen:\n"
-            "- VPN/IP wechseln oder gültigen API-Key mit ausreichenden Rechten nutzen.\n"
-            "- Falls Cloudflare-Challenge: Browser-Cookie/clearance übertragen.\n\n"
-            f"Provider: {exc.provider}\n{details}"
-        )
-        QMessageBox.critical(self, "Bitunix blockiert", message, QMessageBox.StandardButton.Ok)
+            self.market_status_label.setText(f"⚠ Error: {str(e)[:20]}")
+            self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
+            # Uncheck button
+            self.live_stream_button.setChecked(False)
+            self._toggle_live_stream()
 
     async def _stop_live_stream(self):
-        """Stop live streaming."""
+        """Stop live streaming - disconnect WebSocket to free connection slot."""
         if not self.history_manager:
             return
+
         try:
-            if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
-                await self.history_manager.stream_client.disconnect()
+            is_crypto = "/" in self.current_symbol if self.current_symbol else False
+
+            if is_crypto:
+                # Disconnect crypto stream completely to free connection
+                if hasattr(self.history_manager, 'crypto_stream_client') and self.history_manager.crypto_stream_client:
+                    await self.history_manager.crypto_stream_client.disconnect()
+                    logger.info(f"✓ Disconnected crypto stream")
+            else:
+                # Disconnect stock stream completely to free connection
+                if hasattr(self.history_manager, 'stream_client') and self.history_manager.stream_client:
+                    await self.history_manager.stream_client.disconnect()
+                    logger.info(f"✓ Disconnected stock stream")
+
+            self.market_status_label.setText("Ready")
+            self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
+
         except Exception as e:
             logger.error(f"Error disconnecting stream: {e}")

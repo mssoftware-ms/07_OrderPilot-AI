@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -170,16 +170,6 @@ class DataLoadingMixin:
 
     def _finalize_chart_load(self, data: pd.DataFrame, candle_data: list[dict]) -> None:
         self._update_indicators()
-        
-        # Restore any existing chart markings (markers, zones, lines)
-        # setData() in JS wipes all custom drawings, so we must re-apply them.
-        if hasattr(self, '_update_chart_markers'):
-            self._update_chart_markers()
-        if hasattr(self, '_update_chart_zones'):
-            self._update_chart_zones()
-        if hasattr(self, '_update_chart_lines'):
-            self._update_chart_lines()
-            
         first_date = data.index[0].strftime('%Y-%m-%d %H:%M')
         last_date = data.index[-1].strftime('%Y-%m-%d %H:%M')
         self.info_label.setText(
@@ -224,26 +214,21 @@ class DataLoadingMixin:
             # Stock symbols don't (e.g., AAPL, MSFT)
             asset_class = self._resolve_asset_class(symbol, AssetClass)
 
-            # Determine lookback period based on selected time period
-            lookback_days = self._resolve_lookback_days()
-            start_date, end_date = self._calculate_date_range(
-                asset_class, lookback_days, AssetClass
-            )
+            # Map timeframe
+            timeframe = self._resolve_timeframe(Timeframe)
 
             # Map provider (single Alpaca option auto-selects crypto vs stocks)
             provider_source = self._resolve_provider_source(
                 data_provider, asset_class, DataSource, AssetClass
             )
 
-            # Map timeframe (with adaptive downsampling for long crypto ranges)
-            timeframe = self._resolve_timeframe(
-                Timeframe, lookback_days, provider_source, asset_class, DataSource, AssetClass
+            # Determine lookback period based on selected time period
+            lookback_days = self._resolve_lookback_days()
+            start_date, end_date = self._calculate_date_range(
+                asset_class, lookback_days, AssetClass
             )
 
-            logger.info(
-                f"Loading {symbol} - Candles: {self.current_timeframe} (effective {timeframe.name}), "
-                f"Period: {self.current_period} ({lookback_days} days)"
-            )
+            logger.info(f"Loading {symbol} - Candles: {self.current_timeframe}, Period: {self.current_period} ({lookback_days} days)")
             logger.info(f"Date range: {start_date.strftime('%Y-%m-%d %H:%M:%S %Z')} to {end_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
 
@@ -261,10 +246,6 @@ class DataLoadingMixin:
             self._log_request_details(symbol, start_date, end_date, asset_class, provider_source)
 
             bars, source_used = await self.history_manager.fetch_data(request)
-
-            # Track asset class and data source for downstream streaming decisions
-            self.current_asset_class = asset_class
-            self.current_data_source = source_used
 
             # Log fetched data range
             if bars:
@@ -301,20 +282,9 @@ class DataLoadingMixin:
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold;")
 
     def _resolve_asset_class(self, symbol: str, AssetClass) -> AssetClass:
-        """
-        Determine asset class from symbol format.
-        
-        Rules:
-        - Contains "/": Crypto pair (e.g. BTC/USD)
-        - Ends with "USDT": Crypto Perpetual/Spot (e.g. BTCUSDT)
-        - Otherwise: Stock (default)
-        """
-        if "/" in symbol or symbol.endswith("USDT"):
-            return AssetClass.CRYPTO
-        return AssetClass.STOCK
+        return AssetClass.CRYPTO if "/" in symbol else AssetClass.STOCK
 
-    def _resolve_timeframe(self, Timeframe, lookback_days: int, provider_source, asset_class, DataSource, AssetClass) -> Timeframe:
-        """Map UI timeframe with adaptive downsampling for long crypto ranges."""
+    def _resolve_timeframe(self, Timeframe) -> Timeframe:
         timeframe_map = {
             "1T": Timeframe.MINUTE_1,
             "5T": Timeframe.MINUTE_5,
@@ -324,21 +294,7 @@ class DataLoadingMixin:
             "4H": Timeframe.HOUR_4,
             "1D": Timeframe.DAY_1,
         }
-        base_tf = timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
-
-        # Adaptive rule: for Bitunix crypto and long ranges, downsample to keep dataset manageable
-        if provider_source == DataSource.BITUNIX and asset_class == AssetClass.CRYPTO:
-            if lookback_days > 180:
-                logger.info("Downsampling crypto timeframe to 1D for >180d range (Bitunix cap).")
-                return Timeframe.DAY_1
-            if lookback_days > 60:
-                logger.info("Downsampling crypto timeframe to 4H for >60d range (Bitunix cap).")
-                return Timeframe.HOUR_4
-            if lookback_days > 7 and base_tf in {Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15}:
-                logger.info("Downsampling crypto timeframe to 1H for >7d range (Bitunix cap).")
-                return Timeframe.HOUR_1
-
-        return base_tf
+        return timeframe_map.get(self.current_timeframe, Timeframe.MINUTE_1)
 
     def _resolve_provider_source(self, data_provider, asset_class, DataSource, AssetClass):
         if data_provider:
@@ -350,13 +306,12 @@ class DataLoadingMixin:
                 "alpha_vantage": DataSource.ALPHA_VANTAGE,
                 "ibkr": DataSource.IBKR,
                 "finnhub": DataSource.FINNHUB,
-                "bitunix": DataSource.BITUNIX,
             }
             return provider_map.get(data_provider)
 
         if asset_class == AssetClass.CRYPTO:
-            logger.info("No provider specified, defaulting to Bitunix for crypto")
-            return DataSource.BITUNIX
+            logger.info("No provider specified, using Alpaca Crypto for live data")
+            return DataSource.ALPACA_CRYPTO
         logger.info("No provider specified, using Alpaca for live data")
         return DataSource.ALPACA
 
@@ -375,22 +330,61 @@ class DataLoadingMixin:
         return period_to_days.get(self.current_period, 30)
 
     def _calculate_date_range(self, asset_class, lookback_days: int, AssetClass):
-        """
-        Calculate date range for fetching historical data.
-        Uses current time to ensure data is up-to-date with live stream.
-        """
-        # Use current UTC time as end date to align with live stream timestamps
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=lookback_days)
+        ny_tz = pytz.timezone('America/New_York')
+        now_ny = datetime.now(ny_tz)
+        end_date = now_ny
 
         if asset_class == AssetClass.CRYPTO:
-            logger.info("Crypto asset: Using current date for 24/7 data fetching")
-            # Crypto is 24/7, so we can safely use the current time.
-        else:
-            # Stock market hours are complex (weekends, holidays, pre-market)
-            # Using current time; providers should handle market hours if needed.
-            logger.info("Stock asset: Using current date for data fetching")
+            start_date = end_date - timedelta(days=lookback_days)
+            logger.info("Crypto asset: Using current time (24/7 trading)")
+            return start_date, end_date
 
+        market_open_hour = 9
+        market_open_minute = 30
+        use_previous_trading_day = False
+
+        weekday = end_date.weekday()
+        current_hour = end_date.hour
+        current_minute = end_date.minute
+        is_before_market_open = (
+            current_hour < market_open_hour
+            or (current_hour == market_open_hour and current_minute < market_open_minute)
+        )
+
+        if weekday == 5:  # Saturday
+            end_date = end_date - timedelta(days=1)
+            use_previous_trading_day = True
+            logger.info("Weekend detected (Saturday), using Friday's data")
+        elif weekday == 6:  # Sunday
+            end_date = end_date - timedelta(days=2)
+            use_previous_trading_day = True
+            logger.info("Weekend detected (Sunday), using Friday's data")
+        elif weekday == 0 and is_before_market_open:  # Monday before market open
+            end_date = end_date - timedelta(days=3)
+            use_previous_trading_day = True
+            logger.info(
+                f"Monday pre-market ({current_hour:02d}:{current_minute:02d} EST), using Friday's data"
+            )
+        elif weekday < 5 and is_before_market_open:
+            end_date = end_date - timedelta(days=1)
+            use_previous_trading_day = True
+            logger.info(
+                f"Pre-market hours ({current_hour:02d}:{current_minute:02d} EST), using previous trading day"
+            )
+
+        if self.current_period == "1D" and use_previous_trading_day:
+            last_trading_day = end_date.date()
+            start_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.min.time())).replace(
+                hour=4, minute=0
+            )
+            end_date = ny_tz.localize(datetime.combine(last_trading_day, datetime.max.time())).replace(
+                hour=20, minute=0
+            )
+            logger.info(
+                f"Intraday non-trading period: fetching data for {last_trading_day} (4:00 - 20:00 EST)"
+            )
+        else:
+            start_date = end_date - timedelta(days=lookback_days)
         return start_date, end_date
 
     def _log_request_details(self, symbol: str, start_date, end_date, asset_class, provider_source) -> None:
