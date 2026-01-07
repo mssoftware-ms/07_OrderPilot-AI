@@ -222,6 +222,10 @@ class DataLoadingMixin:
                 data_provider, asset_class, DataSource, AssetClass
             )
 
+            # Store for AI Analysis and other components
+            self.current_asset_class = asset_class
+            self.current_data_source = provider_source
+
             # Determine lookback period based on selected time period
             lookback_days = self._resolve_lookback_days()
             start_date, end_date = self._calculate_date_range(

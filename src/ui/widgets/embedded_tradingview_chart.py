@@ -21,6 +21,7 @@ except ImportError:
 from src.chart_marking import ChartMarkingMixin
 from src.common.event_bus import EventType, event_bus
 from src.core.indicators.engine import IndicatorEngine
+from src.core.market_data.types import AssetClass, DataSource
 
 from .chart_mixins import (
     ToolbarMixin,
@@ -98,6 +99,8 @@ class EmbeddedTradingViewChart(
         self.current_timeframe = "1T"
         self.current_period = "1D"
         self.current_data_provider: Optional[str] = None
+        self.current_asset_class: Optional[AssetClass] = None
+        self.current_data_source: Optional[DataSource] = None
         self.data: Optional[pd.DataFrame] = None
         self.volume_data: list = []
         self.active_indicators: Dict[str, dict] = {}

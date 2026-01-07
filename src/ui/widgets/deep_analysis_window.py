@@ -13,6 +13,7 @@ from src.ui.widgets.analysis_tabs.strategy_tab import StrategyTab
 from src.ui.widgets.analysis_tabs.timeframes_tab import TimeframesTab
 from src.ui.widgets.analysis_tabs.indicators_tab import IndicatorsTab
 from src.ui.widgets.analysis_tabs.deep_run_tab import DeepRunTab
+from src.ui.widgets.analysis_tabs.log_viewer_tab import LogViewerTab
 
 class DeepAnalysisWidget(QWidget):
     """Container for the advanced analysis workflow."""
@@ -33,12 +34,14 @@ class DeepAnalysisWidget(QWidget):
         self.tab_timeframes = TimeframesTab(self.context)
         self.tab_indicators = IndicatorsTab(self.context)
         self.tab_run = DeepRunTab(self.context)
+        self.tab_logs = LogViewerTab(self.context)
 
         # Add to TabWidget
         self.tabs.addTab(self.tab_strategy, "1. Strategie")
         self.tabs.addTab(self.tab_timeframes, "2. Timeframes")
         self.tabs.addTab(self.tab_indicators, "3. Indikatoren")
         self.tabs.addTab(self.tab_run, "4. Deep Run")
+        self.tabs.addTab(self.tab_logs, "5. Logs")
 
         layout.addWidget(self.tabs)
 

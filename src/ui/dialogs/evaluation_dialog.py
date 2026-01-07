@@ -387,12 +387,23 @@ class EvaluationDialog(QDialog):
             chart.web_view.page().runJavaScript(js)
 
     def _draw_line(self, chart, price: float, label: str, color: str):
-        """Draw horizontal line on chart."""
+        """Draw horizontal line on chart.
+
+        Args:
+            chart: Chart widget with add_horizontal_line method
+            price: Price level for the line
+            label: Label text for the line (e.g., "SL", "TP", "Entry")
+            color: Line color in hex format
+        """
         if hasattr(chart, "add_horizontal_line"):
-            chart.add_horizontal_line(price, label, color)
+            # Signature: add_horizontal_line(price, color, label)
+            chart.add_horizontal_line(price, color, label)
         elif hasattr(chart, "web_view"):
+            # JS signature: addHorizontalLine(price, color, label, lineStyle, customId)
+            # Escape single quotes in label to prevent JS injection
+            safe_label = label.replace("'", "\\'")
             js = (
                 "window.chartAPI && window.chartAPI.addHorizontalLine("
-                f"{price}, '{color}', '{label}');"
+                f"{price}, '{color}', '{safe_label}');"
             )
             chart.web_view.page().runJavaScript(js)

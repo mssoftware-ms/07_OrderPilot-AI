@@ -1,6 +1,8 @@
 import json
 from typing import Optional
+from pathlib import Path
 
+import logging
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QComboBox, QProgressBar, QApplication, QMessageBox,
@@ -18,6 +20,9 @@ from src.ai.model_constants import (
     GEMINI_MODELS,
 )
 from src.ui.widgets.deep_analysis_window import DeepAnalysisWidget
+
+# Use dedicated analysis logger
+analysis_logger = logging.getLogger('ai_analysis')
 
 class AnalysisWorker(QThread):
     """
@@ -86,13 +91,18 @@ class AnalysisWorker(QThread):
             else:
                 source_enum = self.data_source
 
-            # Debug logging
+            # Analysis logging
             import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"AI Analysis: Requesting data for {self.symbol}")
-            logger.info(f"  Timeframe: {self.timeframe} -> {tf_enum}")
-            logger.info(f"  Asset Class: {self.asset_class}")
-            logger.info(f"  Data Source: {self.data_source} -> {source_enum}")
+            analysis_logger = logging.getLogger('ai_analysis')
+            analysis_logger.info("Worker requesting data", extra={
+                'symbol': self.symbol,
+                'timeframe': self.timeframe,
+                'timeframe_enum': str(tf_enum),
+                'asset_class': self.asset_class,
+                'data_source': str(self.data_source),
+                'data_source_enum': str(source_enum),
+                'step': 'data_request'
+            })
 
             request = DataRequest(
                 symbol=self.symbol,
@@ -107,9 +117,23 @@ class AnalysisWorker(QThread):
                 self.history_manager.fetch_data(request)
             )
 
-            logger.info(f"AI Analysis: Received {len(bars) if bars else 0} bars from {source_used}")
+            # Determine data type
+            data_type = "HISTORICAL" if bars else "NONE"
+
+            analysis_logger.info("Data fetched", extra={
+                'symbol': self.symbol,
+                'bars_count': len(bars) if bars else 0,
+                'data_source_used': str(source_used),
+                'data_type': data_type,
+                'step': 'data_fetch'
+            })
 
             if not bars:
+                analysis_logger.error("No data received", extra={
+                    'symbol': self.symbol,
+                    'data_source': str(source_used),
+                    'step': 'data_fetch_error'
+                })
                 self.error.emit(f"Failed to fetch data from {source_used}")
                 loop.close()
                 return
@@ -130,10 +154,24 @@ class AnalysisWorker(QThread):
             df = pd.DataFrame(data)
             df.set_index('time', inplace=True)
 
+            # Tag DataFrame with data source type for logging
+            df._data_source_type = data_type
+
             if df.empty:
+                analysis_logger.error("DataFrame conversion resulted in empty DataFrame", extra={
+                    'symbol': self.symbol,
+                    'step': 'dataframe_conversion_error'
+                })
                 self.error.emit("Converted DataFrame is empty")
                 loop.close()
                 return
+
+            analysis_logger.info("DataFrame prepared for analysis", extra={
+                'symbol': self.symbol,
+                'df_shape': df.shape,
+                'data_type': data_type,
+                'step': 'dataframe_ready'
+            })
 
             # Run analysis with fresh data
             result = loop.run_until_complete(
@@ -143,6 +181,12 @@ class AnalysisWorker(QThread):
             loop.close()
         except Exception as e:
             import traceback
+            analysis_logger.error("Worker exception", extra={
+                'symbol': self.symbol,
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'step': 'worker_error'
+            }, exc_info=True)
             self.error.emit(f"{str(e)}\n{traceback.format_exc()}")
 
 
@@ -157,6 +201,16 @@ class AIAnalysisWindow(QDialog):
         self.setWindowTitle(f"AI Analysis - {symbol}")
         self.resize(800, 800)
         self.settings = QSettings("OrderPilot", "TradingApp")
+
+        # Clear Analyse.log for fresh analysis session
+        try:
+            analyse_log_path = Path("logs/Analyse.log")
+            if analyse_log_path.exists():
+                analyse_log_path.write_text("")  # Clear the file
+                analysis_logger.info("Analyse.log cleared for new analysis session")
+        except Exception as e:
+            # Don't fail if log clearing fails
+            print(f"Warning: Could not clear Analyse.log: {e}")
 
         self.engine: Optional[AIAnalysisEngine] = None
         try:
@@ -242,10 +296,14 @@ class AIAnalysisWindow(QDialog):
 
         # --- Footer Actions ---
         footer_layout = QHBoxLayout()
-        
+
         self.btn_copy = QPushButton("Copy JSON")
         self.btn_copy.clicked.connect(self._copy_to_clipboard)
         footer_layout.addWidget(self.btn_copy)
+
+        self.btn_open_log = QPushButton("Logdatei öffnen")
+        self.btn_open_log.clicked.connect(self._open_analyse_log)
+        footer_layout.addWidget(self.btn_open_log)
 
         self.btn_close = QPushButton("Close")
         self.btn_close.clicked.connect(self.close)
@@ -323,6 +381,11 @@ class AIAnalysisWindow(QDialog):
         """
         # 1. Get chart context
         if not hasattr(self.parent(), 'chart_widget'):
+             analysis_logger.error("Start analysis failed: chart widget not accessible", extra={
+                 'tab': 'overview',
+                 'action': 'start_analysis',
+                 'step': 'context_error'
+             })
              self.lbl_status.setText("Error: Could not access chart widget.")
              return
 
@@ -337,19 +400,43 @@ class AIAnalysisWindow(QDialog):
             data_source = getattr(chart_widget, 'current_data_source', None)
 
             if not history_manager:
+                analysis_logger.error("History manager not available", extra={
+                    'tab': 'overview',
+                    'action': 'start_analysis',
+                    'step': 'validation_error'
+                })
                 self.lbl_status.setText("Error: History manager not available.")
                 return
 
             if not asset_class or not data_source:
+                analysis_logger.error("Asset class or data source not configured", extra={
+                    'tab': 'overview',
+                    'action': 'start_analysis',
+                    'asset_class': asset_class,
+                    'data_source': data_source,
+                    'step': 'validation_error'
+                })
                 self.lbl_status.setText("Error: Asset class or data source not configured.")
                 return
 
         except Exception as e:
+             analysis_logger.error("Failed to access chart context", extra={
+                 'tab': 'overview',
+                 'action': 'start_analysis',
+                 'error': str(e),
+                 'error_type': type(e).__name__,
+                 'step': 'context_error'
+             }, exc_info=True)
              self.lbl_status.setText(f"Error: Could not access chart context: {str(e)}")
              return
 
         # 2. Validate Engine
         if not self.engine:
+            analysis_logger.error("Analysis engine not initialized", extra={
+                'tab': 'overview',
+                'action': 'start_analysis',
+                'step': 'engine_error'
+            })
             self.lbl_status.setText("Error: OpenAI API key missing or not configured")
             return
 
@@ -367,6 +454,19 @@ class AIAnalysisWindow(QDialog):
 
         # 4. Start Worker (will fetch fresh data async)
         selected_model = self.combo_model.currentText()
+        selected_provider = self.combo_provider.currentText()
+
+        analysis_logger.info("Starting analysis from UI", extra={
+            'tab': 'overview',
+            'action': 'start_analysis',
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'asset_class': asset_class,
+            'data_source': str(data_source),
+            'model': selected_model,
+            'provider': selected_provider,
+            'step': 'worker_start'
+        })
 
         self.worker = AnalysisWorker(
             self.engine, symbol, timeframe,
@@ -381,20 +481,45 @@ class AIAnalysisWindow(QDialog):
         self.btn_analyze.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.lbl_status.setText("Analysis complete.")
-        
+
         if result:
+            analysis_logger.info("Analysis results received in UI", extra={
+                'tab': 'overview',
+                'action': 'results_received',
+                'result_type': type(result).__name__,
+                'step': 'ui_update'
+            })
             # Pretty print the Pydantic model
             try:
                 # Convert to dict for DeepAnalysisWidget
                 result_dict = result.model_dump()
                 self.deep_analysis_tab.update_from_initial_analysis(result_dict)
-                
+
                 json_str = result.model_dump_json(indent=2)
                 self.txt_output.setText(json_str)
+
+                analysis_logger.info("Analysis results displayed", extra={
+                    'tab': 'overview',
+                    'action': 'results_displayed',
+                    'result_length': len(json_str),
+                    'step': 'ui_update'
+                })
             except Exception as e:
+                analysis_logger.error("Error processing results", extra={
+                    'tab': 'overview',
+                    'action': 'results_processing',
+                    'error': str(e),
+                    'error_type': type(e).__name__,
+                    'step': 'ui_error'
+                }, exc_info=True)
                 self.txt_output.setText(str(result))
                 print(f"Error transferring data to DeepAnalysis: {e}")
         else:
+            analysis_logger.warning("Analysis returned None", extra={
+                'tab': 'overview',
+                'action': 'results_received',
+                'step': 'ui_warning'
+            })
             self.txt_output.setText("Analysis failed (returned None). Check logs.")
 
     def _on_analysis_error(self, error_msg):
@@ -402,6 +527,13 @@ class AIAnalysisWindow(QDialog):
         self.progress_bar.setVisible(False)
         self.lbl_status.setText("Error occurred.")
         self.txt_output.setText(f"Error: {error_msg}")
+
+        analysis_logger.error("Analysis error reported to UI", extra={
+            'tab': 'overview',
+            'action': 'error_received',
+            'error_message': error_msg,
+            'step': 'ui_error'
+        })
 
         # Show popup ONLY for data source/provider errors
         if "Ungültiger Datenquellen-Typ" in error_msg or "Datenquelle" in error_msg:
@@ -411,6 +543,37 @@ class AIAnalysisWindow(QDialog):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.txt_output.toPlainText())
         self.lbl_status.setText("Copied to clipboard!")
+
+    def _open_analyse_log(self):
+        """Open Analyse.log file in default text editor."""
+        import os
+        import platform
+
+        log_file = Path("logs/Analyse.log")
+
+        if not log_file.exists():
+            QMessageBox.warning(
+                self,
+                "Logdatei nicht gefunden",
+                "Die Analyse.log Datei existiert noch nicht. Führen Sie erst eine Analyse durch."
+            )
+            return
+
+        try:
+            # Open file with default application
+            if platform.system() == 'Windows':
+                os.startfile(str(log_file))
+            elif platform.system() == 'Darwin':  # macOS
+                os.system(f'open "{log_file}"')
+            else:  # Linux
+                os.system(f'xdg-open "{log_file}"')
+            self.lbl_status.setText("Logdatei geöffnet.")
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Fehler beim Öffnen",
+                f"Konnte Logdatei nicht öffnen: {e}"
+            )
 
     def _open_prompt_editor(self):
         """Popup dialog allowing the user to edit system and task prompts."""

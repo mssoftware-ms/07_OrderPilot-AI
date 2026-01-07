@@ -493,6 +493,7 @@ class BitunixAdapter(BrokerAdapter):
                 market_value=Decimal(str(pos.get('positionValue', 0))),
                 unrealized_pnl=Decimal(str(pos.get('unrealizedPnl', 0))),
                 pnl_percentage=float(pos.get('pnlPercentage', 0)),
+                leverage=int(pos.get('leverage', 1)),
                 exchange="bitunix",
                 currency="USDT"
             ))

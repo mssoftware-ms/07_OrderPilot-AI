@@ -48,12 +48,23 @@ class BotCallbacksLogOrderMixin:
             self._update_signals_table()
 
     def _extract_order_info(self, order: Any) -> dict[str, Any]:
+        # Helper to safely get enum value or string
+        def get_enum_or_str(obj, attr: str, default: str) -> str:
+            if not hasattr(obj, attr):
+                return default
+            val = getattr(obj, attr)
+            # If it's already a string (from use_enum_values=True), return it
+            if isinstance(val, str):
+                return val
+            # Otherwise try to get .value from enum
+            return getattr(val, "value", default)
+
         return {
             "order_id": getattr(order, "order_id", getattr(order, "id", "unknown")),
-            "side": order.side.value if hasattr(order, "side") else "unknown",
+            "side": get_enum_or_str(order, "side", "unknown"),
             "quantity": getattr(order, "quantity", 0),
             "fill_price": getattr(order, "fill_price", 0),
-            "status": order.status.value if hasattr(order, "status") else "pending",
+            "status": get_enum_or_str(order, "status", "pending"),
             "symbol": getattr(order, "symbol", "unknown"),
         }
 

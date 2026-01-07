@@ -44,6 +44,7 @@ class EmbeddedTradingViewChartUIMixin:
         # Setup WebChannel for JavaScript to Python communication
         self._chart_bridge = ChartBridge(self)
         self._chart_bridge.stop_line_moved.connect(self._on_bridge_stop_line_moved)
+        self._chart_bridge.zone_deleted.connect(self._on_bridge_zone_deleted)
         self._web_channel = QWebChannel(self.web_view.page())
         self._web_channel.registerObject("pyBridge", self._chart_bridge)
         self.web_view.page().setWebChannel(self._web_channel)

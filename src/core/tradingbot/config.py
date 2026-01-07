@@ -299,22 +299,10 @@ class RiskConfig(BaseModel):
 class LLMPolicyConfig(BaseModel):
     """LLM/KI call policy configuration.
 
-    Defines when and how LLM is called, with budget and safety limits.
+    WICHTIG: Provider und Model werden aus QSettings geladen!
+             Einstellbar über: File -> Settings -> AI
+             KEINE hardcodierten Modelle oder Limits hier!
     """
-    # Call policy
-    daily_calls_max: int = Field(
-        default=5,
-        ge=1,
-        le=50,
-        description="Maximum LLM calls per day"
-    )
-    intraday_cooldown_minutes: int = Field(
-        default=15,
-        ge=1,
-        le=120,
-        description="Minimum minutes between intraday calls"
-    )
-
     # Call triggers (for FULL_KI mode)
     call_on_regime_flip: bool = Field(
         default=True,
@@ -329,11 +317,8 @@ class LLMPolicyConfig(BaseModel):
         description="Call LLM on entry signal changes"
     )
 
-    # Model settings
-    model: str = Field(
-        default="gpt-4o-mini",
-        description="OpenAI model to use"
-    )
+    # Model settings - KEINE hardcodierten Modelle!
+    # Model wird aus QSettings geladen (File -> Settings -> AI)
     temperature: float = Field(
         default=0.1,
         ge=0.0,
@@ -347,19 +332,7 @@ class LLMPolicyConfig(BaseModel):
         description="Maximum response tokens"
     )
 
-    # Budget/Safety
-    monthly_budget_eur: float = Field(
-        default=10.0,
-        ge=0.0,
-        le=1000.0,
-        description="Monthly LLM budget in EUR"
-    )
-    retry_limit: int = Field(
-        default=2,
-        ge=0,
-        le=5,
-        description="Retry limit for failed calls"
-    )
+    # Fallback
     fallback_on_failure: bool = Field(
         default=True,
         description="Use rule-based fallback on LLM failure"

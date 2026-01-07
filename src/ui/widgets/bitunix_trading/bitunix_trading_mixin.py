@@ -66,6 +66,13 @@ class BitunixTradingMixin:
                 parent=self,  # type: ignore
             )
 
+            # Connect chart's real-time price signal to trading widget
+            if hasattr(chart_widget, 'tick_price_updated'):
+                chart_widget.tick_price_updated.connect(
+                    self._bitunix_widget._on_tick_price_updated
+                )
+                logger.debug("Connected chart tick_price_updated to trading widget")
+
             # Inject HistoryManager for Paper Trading
             if hasattr(chart_widget, 'history_manager') and chart_widget.history_manager:
                 self._bitunix_widget.set_history_manager(chart_widget.history_manager)
@@ -87,6 +94,10 @@ class BitunixTradingMixin:
             if hasattr(chart_widget, "data_loaded"):
                 chart_widget.data_loaded.connect(
                     lambda: self._update_bitunix_button_visibility(chart_widget)
+                )
+                # Forward chart data to trading bot when data is loaded
+                chart_widget.data_loaded.connect(
+                    lambda: self._forward_chart_data_to_bot(chart_widget)
                 )
 
             # Perform initial button visibility check
@@ -276,6 +287,44 @@ class BitunixTradingMixin:
                 provider,
                 asset_class,
             )
+
+    def _forward_chart_data_to_bot(self, chart_widget: "EmbeddedTradingViewChart") -> None:
+        """Forward chart data to trading bot when data is loaded.
+
+        Args:
+            chart_widget: The chart widget with loaded data
+        """
+        if not self._bitunix_widget:
+            return
+
+        # Get bot_tab from widget
+        bot_tab = getattr(self._bitunix_widget, 'bot_tab', None)
+        if not bot_tab:
+            logger.debug("No bot_tab found in bitunix_widget, skipping chart data forward")
+            return
+
+        # Get chart data
+        data = getattr(chart_widget, 'data', None)
+        symbol = getattr(chart_widget, 'current_symbol', None)
+        timeframe = getattr(chart_widget, 'current_timeframe', '5m')
+
+        if data is None or data.empty:
+            logger.debug("No chart data to forward to bot")
+            return
+
+        if not symbol:
+            logger.debug("No symbol in chart, skipping chart data forward")
+            return
+
+        # Forward to bot
+        try:
+            bot_tab.set_chart_data(data, symbol, timeframe)
+            logger.info(
+                f"Chart data forwarded to trading bot: {symbol} {timeframe}, "
+                f"{len(data)} bars"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to forward chart data to bot: {e}")
 
     def toggle_bitunix_widget(self) -> None:
         """Toggle visibility of the Bitunix trading widget."""

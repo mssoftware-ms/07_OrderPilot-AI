@@ -1782,13 +1782,14 @@
                     }
                     else if (currentTool === 'delete') {
                         let nearest = null;
+                        let nearestZoneId = null;
                         let minDist = 20;
                         drawings.forEach(d => {
                             if (d.type === 'hline') {
                                 const lineY = priceSeries.priceToCoordinate(d.price);
                                 if (lineY !== null) {
                                     const dist = Math.abs(y - lineY);
-                                    if (dist < minDist) { minDist = dist; nearest = d; }
+                                    if (dist < minDist) { minDist = dist; nearest = d; nearestZoneId = null; }
                                 }
                             } else if (d.type === 'trendline' || d.type === 'ray') {
                                 const ts = chart.timeScale();
@@ -1798,7 +1799,7 @@
                                 const dy2 = priceSeries.priceToCoordinate(d.p2.price);
                                 if (dx1 !== null && dy1 !== null && dx2 !== null && dy2 !== null) {
                                     const dist = pointToSegmentDist(x, y, dx1, dy1, dx2, dy2);
-                                    if (dist < minDist) { minDist = dist; nearest = d; }
+                                    if (dist < minDist) { minDist = dist; nearest = d; nearestZoneId = null; }
                                 }
                             } else if (d.type === 'percent-rect') {
                                 const ts = chart.timeScale();
@@ -1810,7 +1811,7 @@
                                     const minX = Math.min(dx1, dx2), maxX = Math.max(dx1, dx2);
                                     const minY = Math.min(dy1, dy2), maxY = Math.max(dy1, dy2);
                                     if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-                                        nearest = d; minDist = 0;
+                                        nearest = d; nearestZoneId = null; minDist = 0;
                                     }
                                 }
                             } else if (d.type === 'fibonacci') {
@@ -1821,7 +1822,7 @@
                                     const minY = Math.min(dy1, dy2), maxY = Math.max(dy1, dy2);
                                     // Hit-detection across full chart width (consistent with rendering)
                                     if (y >= minY && y <= maxY) {
-                                        nearest = d; minDist = 0;
+                                        nearest = d; nearestZoneId = null; minDist = 0;
                                     }
                                 }
                             } else if (d.type === 'rect-range') {
@@ -1830,12 +1831,36 @@
                                 if (y1 !== null && y2 !== null) {
                                     const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
                                     if (y >= minY && y <= maxY) {
-                                        nearest = d; minDist = 0;
+                                        nearest = d; nearestZoneId = null; minDist = 0;
                                     }
                                 }
                             }
                         });
-                        if (nearest) removeDrawing(nearest);
+                        // Also check zones (Python-managed zones stored separately)
+                        Object.entries(zones).forEach(([zoneId, z]) => {
+                            // Zone is a RectRangePrimitive with pLow/pHigh
+                            const y1 = priceSeries.priceToCoordinate(z.pLow);
+                            const y2 = priceSeries.priceToCoordinate(z.pHigh);
+                            if (y1 !== null && y2 !== null) {
+                                const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+                                if (y >= minY && y <= maxY) {
+                                    // Zone hit - prefer zones over drawings at same distance
+                                    nearest = null;
+                                    nearestZoneId = zoneId;
+                                    minDist = 0;
+                                }
+                            }
+                        });
+                        if (nearestZoneId) {
+                            // Remove zone via API
+                            window.chartAPI.removeZone(nearestZoneId);
+                            // Also notify Python bridge if available
+                            if (pyBridge && pyBridge.onZoneDeleted) {
+                                pyBridge.onZoneDeleted(nearestZoneId);
+                            }
+                        } else if (nearest) {
+                            removeDrawing(nearest);
+                        }
                     }
                 });
 
@@ -1974,6 +1999,21 @@
                         return zoneId;
                     } catch(e){ console.error('addZone error:', e); return null; }
                 };
+                window.chartAPI.removeZone = (id) => {
+                    try {
+                        const zone = zones[id];
+                        if (!zone) {
+                            console.warn('removeZone: zone not found:', id);
+                            return false;
+                        }
+                        priceSeries.detachPrimitive(zone);
+                        delete zones[id];
+                        console.log('removeZone:', id);
+                        return true;
+                    } catch(e) { console.error('removeZone error:', e); return false; }
+                };
+                window.chartAPI.getZoneIds = () => Object.keys(zones);
+                window.chartAPI.hasZone = (id) => id in zones;
                 window.chartAPI.addHorizontalLine = (price, color, label = '', lineStyle = 'solid', customId = null) => {
                     // Use custom ID if provided, otherwise generate one
                     const lineId = customId || genId();

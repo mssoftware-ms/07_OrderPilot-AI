@@ -186,6 +186,7 @@ class BitunixPaperAdapter(BrokerAdapter):
                 current_price=price,
                 market_value=qty * price,
                 unrealized_pnl=Decimal("0"),
+                leverage=1,
                 exchange="bitunix_paper",
                 currency="USDT"
             )
@@ -261,3 +262,99 @@ class BitunixPaperAdapter(BrokerAdapter):
         self.balance_usdt = self.start_balance
         self.positions.clear()
         self.orders.clear()
+
+    # --- Market Data Methods (Delegation to HistoryManager) -------------------
+    async def get_historical_bars(
+        self,
+        symbol: str,
+        timeframe: str = "5m",
+        limit: int = 200,
+    ) -> list[dict] | None:
+        """Get historical bars for the given symbol.
+
+        Delegates to the HistoryManager if available.
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTCUSDT')
+            timeframe: Bar timeframe (e.g., '1m', '5m', '1h')
+            limit: Maximum number of bars to return
+
+        Returns:
+            List of bar dictionaries with OHLCV data, or None if unavailable
+        """
+        if not self.history_manager:
+            logger.warning(
+                "BitunixPaperAdapter.get_historical_bars called but no history_manager set. "
+                "Use set_history_manager() to enable market data."
+            )
+            return None
+
+        try:
+            from datetime import datetime, timedelta, timezone
+            from src.core.market_data.types import DataRequest, Timeframe, AssetClass
+
+            # Map timeframe string to Timeframe enum
+            tf_map = {
+                "1m": Timeframe.MINUTE_1,
+                "5m": Timeframe.MINUTE_5,
+                "15m": Timeframe.MINUTE_15,
+                "30m": Timeframe.MINUTE_30,
+                "1h": Timeframe.HOUR_1,
+                "4h": Timeframe.HOUR_4,
+                "1d": Timeframe.DAY_1,
+            }
+            tf = tf_map.get(timeframe, Timeframe.MINUTE_5)
+
+            # Calculate time range based on limit and timeframe
+            minutes_per_bar = {
+                "1m": 1, "5m": 5, "15m": 15, "30m": 30,
+                "1h": 60, "4h": 240, "1d": 1440,
+            }
+            minutes = minutes_per_bar.get(timeframe, 5) * limit
+
+            end_date = datetime.now(timezone.utc)
+            start_date = end_date - timedelta(minutes=minutes)
+
+            # Create request for Bitunix-style symbol (BTCUSDT)
+            request = DataRequest(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                timeframe=tf,
+                asset_class=AssetClass.CRYPTO,
+            )
+
+            # Fetch data through HistoryManager
+            bars, source = await self.history_manager.fetch_data(request)
+
+            if not bars:
+                logger.warning(f"No bars returned for {symbol} from {source}")
+                return None
+
+            # Convert HistoricalBar objects to dict format expected by TradingBotEngine
+            result = []
+            for bar in bars[-limit:]:  # Take last 'limit' bars
+                result.append({
+                    "timestamp": bar.timestamp,
+                    "open": float(bar.open),
+                    "high": float(bar.high),
+                    "low": float(bar.low),
+                    "close": float(bar.close),
+                    "volume": bar.volume,
+                })
+
+            logger.debug(f"get_historical_bars: Returned {len(result)} bars for {symbol}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to get historical bars for {symbol}: {e}")
+            return None
+
+    def set_history_manager(self, history_manager: "HistoryManager") -> None:
+        """Set or update the HistoryManager for market data access.
+
+        Args:
+            history_manager: HistoryManager instance for fetching market data
+        """
+        self.history_manager = history_manager
+        logger.info("BitunixPaperAdapter: HistoryManager set/updated")

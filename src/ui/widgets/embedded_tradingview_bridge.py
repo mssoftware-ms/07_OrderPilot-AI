@@ -18,6 +18,8 @@ class ChartBridge(QObject):
     stop_line_moved = pyqtSignal(str, float)  # (line_id, new_price)
     # Signal emitted when crosshair moves (for cursor position tracking)
     crosshair_moved = pyqtSignal(float, float)  # (time, price)
+    # Signal emitted when a zone is deleted via JavaScript delete tool
+    zone_deleted = pyqtSignal(str)  # (zone_id)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,6 +57,16 @@ class ChartBridge(QObject):
             Tuple of (time, price) or (None, None) if not available
         """
         return (self._last_crosshair_time, self._last_crosshair_price)
+
+    @pyqtSlot(str)
+    def onZoneDeleted(self, zone_id: str):
+        """Called from JavaScript when a zone is deleted via the delete tool.
+
+        Args:
+            zone_id: ID of the deleted zone
+        """
+        logger.info(f"[ChartBridge] Zone deleted via JS: {zone_id}")
+        self.zone_deleted.emit(zone_id)
 
     @pyqtSlot(str, result=str)
     def pickColor(self, current_color: str = "rgba(13,110,253,0.18)") -> str:

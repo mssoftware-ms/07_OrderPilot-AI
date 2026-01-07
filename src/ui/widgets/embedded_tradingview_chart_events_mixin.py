@@ -28,3 +28,17 @@ class EmbeddedTradingViewChartEventsMixin:
         """
         logger.info(f"Chart line moved: {line_id} -> {new_price:.4f}")
         self.stop_line_moved.emit(line_id, new_price)
+
+    def _on_bridge_zone_deleted(self, zone_id: str):
+        """Handle zone deletion from JavaScript delete tool.
+
+        This is called when the user deletes a zone using the chart's
+        delete tool (clicking on a zone with the trash tool selected).
+        We need to sync this deletion back to the Python ZoneManager.
+        """
+        logger.info(f"Zone deleted via JS delete tool: {zone_id}")
+        # Remove from Python manager (without triggering JS update since JS already removed it)
+        if hasattr(self, "_zones") and zone_id in self._zones:
+            # Directly remove from internal dict without callback to avoid re-clearing JS
+            del self._zones._zones[zone_id]
+            logger.info(f"Zone {zone_id} removed from Python manager")

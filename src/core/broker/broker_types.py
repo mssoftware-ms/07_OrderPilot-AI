@@ -142,6 +142,9 @@ class Position(BaseModel):
     # Percentages
     pnl_percentage: float | None = None
 
+    # Leverage
+    leverage: int = 1
+
     # Additional info
     exchange: str | None = None
     currency: str = "EUR"

@@ -66,6 +66,9 @@ VOLLSTÄNDIGER_TEST_REPORT.md
 # AI Exchange (temporäre Notizen)
 .ai_exchange/
 
+# Issues directory
+issues/
+
 # OS
 .DS_Store
 Thumbs.db

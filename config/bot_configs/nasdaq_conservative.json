@@ -30,11 +30,7 @@
 
   "llm_policy": {
     "enabled": true,
-    "model": "gpt-4o-mini",
-    "max_daily_calls": 1,
-    "daily_budget_usd": 0.10,
-    "rate_limit_per_minute": 1,
-    "max_retries": 2
+    "_note": "Model wird aus QSettings geladen (File -> Settings -> AI)"
   },
 
   "trading_hours": {

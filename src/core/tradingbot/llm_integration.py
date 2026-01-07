@@ -4,9 +4,12 @@ Provides controlled AI integration with:
 - Call policy (daily + intraday events)
 - Structured prompt format
 - JSON schema validation
-- Budget & safety controls
 - Fallback on errors
 - Audit trail
+
+WICHTIG: Provider und Model werden aus QSettings geladen!
+         Einstellbar über: File -> Settings -> AI
+         KEINE hardcodierten Modelle oder Limits!
 
 Uses OpenAI Structured Outputs for guaranteed valid responses.
 
@@ -46,21 +49,33 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def _get_model_from_settings() -> str:
+    """Holt das Model aus den QSettings."""
+    try:
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("OrderPilot", "OrderPilot-AI")
+        model_display = settings.value("openai_model", "gpt-4.1-mini")
+        if model_display:
+            model_id = model_display.split(" ")[0].split("(")[0].strip()
+            if model_id:
+                return model_id
+        return "gpt-4.1-mini"
+    except Exception:
+        return "gpt-4.1-mini"
+
+
 class LLMIntegration:
     """Main LLM integration class for tradingbot.
 
     Manages:
     - Call policy enforcement
-    - Budget tracking
     - OpenAI API calls with structured outputs
     - Response validation
     - Fallback handling
     - Audit trail
-    """
 
-    # Cost estimates (USD per 1K tokens)
-    COST_PER_1K_INPUT = 0.0025  # GPT-4o-mini input
-    COST_PER_1K_OUTPUT = 0.01   # GPT-4o-mini output
+    WICHTIG: Model wird aus QSettings geladen (File -> Settings -> AI)!
+    """
 
     def __init__(
         self,
@@ -83,10 +98,8 @@ class LLMIntegration:
         self._call_history: list[LLMCallRecord] = []
         self._client = None
 
-        logger.info(
-            f"LLMIntegration initialized: model={config.model}, "
-            f"max_calls={config.max_daily_calls}"
-        )
+        model = _get_model_from_settings()
+        logger.info(f"LLMIntegration initialized: model={model} (from Settings)")
 
     def _get_client(self):
         """Get or create OpenAI client."""
@@ -113,30 +126,19 @@ class LLMIntegration:
 
         Returns:
             (allowed, reason)
+
+        HINWEIS: Keine Budget-Limits mehr - unbegrenzte Aufrufe erlaubt.
+                 Model wird aus QSettings geladen.
         """
         self._check_day_rollover()
 
-        # Budget limits
-        if self._budget.calls_today >= self.config.max_daily_calls:
-            return False, f"Daily call limit reached ({self.config.max_daily_calls})"
-
-        if self._budget.cost_today_usd >= self.config.daily_budget_usd:
-            return False, f"Daily budget exceeded (${self.config.daily_budget_usd:.2f})"
-
-        # Rate limiting
-        if self._budget.last_call_time:
-            elapsed = (datetime.utcnow() - self._budget.last_call_time).total_seconds()
-            min_interval = 60 / self.config.rate_limit_per_minute
-            if elapsed < min_interval:
-                return False, f"Rate limit: wait {min_interval - elapsed:.1f}s"
-
-        # Type-specific limits
+        # Type-specific limits (nur für Daily Strategy)
         type_count = self._budget.daily_calls_by_type.get(call_type.value, 0)
         if call_type == LLMCallType.DAILY_STRATEGY and type_count >= 1:
             return False, "Daily strategy call already made"
 
-        # Error backoff
-        if self._budget.consecutive_errors >= self.config.max_retries:
+        # Error backoff (max 5 consecutive errors)
+        if self._budget.consecutive_errors >= 5:
             return False, f"Too many consecutive errors ({self._budget.consecutive_errors})"
 
         return True, "OK"
@@ -279,12 +281,25 @@ class LLMIntegration:
                 {"role": "user", "content": prompt}
             ]
 
+            # Model aus QSettings holen
+            model = _get_model_from_settings()
+            logger.info(f"[LLM] Using model: {model}")
+
             kwargs = {
-                "model": self.config.model,
+                "model": model,
                 "messages": messages,
                 "max_tokens": self.config.max_tokens,
-                "temperature": self.config.temperature,
             }
+
+            # GPT-5.x sind Reasoning Models - setze reasoning_effort für schnelle Antworten
+            # GPT-5.2 und GPT-5.1 unterstützen: none, low, medium, high, xhigh
+            # Für JSON-Responses brauchen wir kein Reasoning -> "none" für Geschwindigkeit
+            if model.startswith("gpt-5"):
+                kwargs["reasoning_effort"] = "none"
+                logger.info(f"[LLM] Reasoning model detected, setting reasoning_effort=none")
+            else:
+                # Non-reasoning models (gpt-4.1, etc.) use temperature
+                kwargs["temperature"] = self.config.temperature
 
             if response_format:
                 kwargs["response_format"] = response_format
@@ -386,6 +401,8 @@ class LLMIntegration:
 
         Returns:
             Stats dict
+
+        HINWEIS: Keine Budget-Limits mehr - unbegrenzte Aufrufe erlaubt.
         """
         self._check_day_rollover()
 
@@ -396,12 +413,7 @@ class LLMIntegration:
             "cost_today_usd": self._budget.cost_today_usd,
             "calls_by_type": self._budget.daily_calls_by_type.copy(),
             "consecutive_errors": self._budget.consecutive_errors,
-            "budget_remaining_usd": max(
-                0, self.config.daily_budget_usd - self._budget.cost_today_usd
-            ),
-            "calls_remaining": max(
-                0, self.config.max_daily_calls - self._budget.calls_today
-            )
+            "model": _get_model_from_settings(),
         }
 
     def get_audit_trail(

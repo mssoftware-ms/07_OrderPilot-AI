@@ -30,8 +30,7 @@
 
   "llm_policy": {
     "enabled": false,
-    "max_daily_calls": 0,
-    "daily_budget_usd": 0.0
+    "_note": "Model wird aus QSettings geladen (File -> Settings -> AI)"
   },
 
   "trading_hours": {

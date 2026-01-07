@@ -154,6 +154,19 @@ def configure_logging(
         ai_logger.setLevel(logging.INFO)
         ai_logger.propagate = False
 
+        # AI Analysis dedicated logger for Analyse.log
+        analysis_logger = logging.getLogger('ai_analysis')
+        analysis_log_path = log_dir / "Analyse.log"
+        analysis_handler = logging.handlers.RotatingFileHandler(
+            analysis_log_path,
+            maxBytes=max_bytes,
+            backupCount=backup_count
+        )
+        analysis_handler.setFormatter(formatter)
+        analysis_logger.addHandler(analysis_handler)
+        analysis_logger.setLevel(logging.INFO)
+        analysis_logger.propagate = False  # Dedicated file, don't propagate to root
+
     # Configure specific loggers
     configure_module_loggers()
 

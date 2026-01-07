@@ -11,7 +11,7 @@ from src.core.ai_analysis.features import FeatureEngineer
 from src.core.ai_analysis.prompt import PromptComposer
 from src.core.ai_analysis.openai_client import OpenAIClient
 
-logger = logging.getLogger(__name__)
+analysis_logger = logging.getLogger('ai_analysis')
 
 class AIAnalysisEngine:
     """
@@ -57,40 +57,87 @@ class AIAnalysisEngine:
     async def run_analysis(self, symbol: str, timeframe: str, df: pd.DataFrame, model: Optional[str] = None) -> Optional[AIAnalysisOutput]:
         """
         Main entry point.
-        
+
         Args:
             symbol: Ticker symbol
             timeframe: Chart timeframe
             df: OHLCV Data
             model: Optional model override
-            
+
         Returns:
             Analysis result or None if failed.
         """
         if self._is_running:
-            logger.warning("Analysis already running for this engine instance.")
+            analysis_logger.warning("Analysis already running for this engine instance.", extra={
+                'symbol': symbol,
+                'timeframe': timeframe
+            })
             return None # Or wait
 
         self._is_running = True
+
+        # Determine data type for logging
+        data_type = "UNKNOWN"
+        if hasattr(df, '_data_source_type'):
+            data_type = df._data_source_type
+        elif len(df) > 0:
+            # Heuristic: if we have real data, it's likely historical
+            data_type = "HISTORICAL"
+
         try:
+            analysis_logger.info("Analysis started", extra={
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'data_type': data_type,
+                'bars_count': len(df),
+                'model': model or 'default'
+            })
+
             # 1. Validate
             interval_minutes = self._timeframe_to_minutes(timeframe)
             is_valid, error = self.validator.validate_data(df, interval_minutes=interval_minutes)
             if not is_valid:
-                logger.warning(f"Validation failed: {error}")
+                analysis_logger.warning(f"Data validation failed", extra={
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'validation_error': error,
+                    'step': 'validation'
+                })
                 raise ValueError(error)
+
+            analysis_logger.info("Data validation passed", extra={
+                'symbol': symbol,
+                'step': 'validation'
+            })
 
             # 1b. Clean (Optional per checklist, but good practice)
             df_clean = self.validator.clean_data(df)
+            analysis_logger.info("Data cleaned", extra={
+                'symbol': symbol,
+                'step': 'cleaning',
+                'bars_after_cleaning': len(df_clean)
+            })
 
             # 2. Regime
             regime = self.regime_detector.detect_regime(df_clean)
-            logger.info(f"Detected Regime for {symbol}: {regime}")
+            analysis_logger.info(f"Regime detection completed", extra={
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'regime': regime,
+                'step': 'regime_detection'
+            })
 
             # 3. Features
             technicals = self.feature_engineer.extract_technicals(df_clean)
             structure = self.feature_engineer.extract_structure(df_clean)
             summary = self.feature_engineer.summarize_candles(df_clean)
+
+            analysis_logger.info("Feature engineering completed", extra={
+                'symbol': symbol,
+                'step': 'feature_engineering',
+                'technicals_count': len(technicals.model_fields) if technicals else 0,
+                'structure_keys': list(structure.model_fields.keys()) if structure else []
+            })
 
             # 4. Input Construction
             last_ts = df_clean.index[-1]
@@ -116,13 +163,48 @@ class AIAnalysisEngine:
             sys_prompt = self.prompt_composer.compose_system_prompt()
             user_prompt = self.prompt_composer.compose_user_prompt(analysis_input)
 
+            analysis_logger.info("Prompts composed", extra={
+                'symbol': symbol,
+                'step': 'prompt_composition',
+                'system_prompt_length': len(sys_prompt),
+                'user_prompt_length': len(user_prompt)
+            })
+
             # 6. Call LLM
+            analysis_logger.info("Calling LLM", extra={
+                'symbol': symbol,
+                'step': 'llm_call',
+                'model': model or 'default'
+            })
+
             result = await self.client.analyze(sys_prompt, user_prompt, model=model)
-            
+
+            if result:
+                analysis_logger.info("Analysis completed successfully", extra={
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'step': 'completion',
+                    'result_available': True
+                })
+            else:
+                analysis_logger.warning("Analysis completed but returned None", extra={
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'step': 'completion',
+                    'result_available': False
+                })
+
             return result
 
         except Exception as e:
-            logger.error(f"Analysis run failed: {e}", exc_info=True)
+            analysis_logger.error(f"Analysis run failed", extra={
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'data_type': data_type,
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'step': 'error'
+            }, exc_info=True)
             raise
         finally:
             self._is_running = False

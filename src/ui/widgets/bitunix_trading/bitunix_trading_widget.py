@@ -6,12 +6,16 @@ Provides order entry, position management, and account information for Bitunix.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import qasync
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QDockWidget,
     QWidget,
@@ -29,7 +33,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QHeaderView,
     QCheckBox,
-    QFrame
+    QFrame,
+    QTabWidget,
 )
 
 from src.core.broker.broker_types import OrderRequest, OrderSide
@@ -72,27 +77,38 @@ class BitunixTradingWidget(QDockWidget):
         self._setup_ui()
         self._setup_timers()
         self._update_mode_ui() # Set initial visual state
+        self._load_positions_from_file() # Load saved positions on startup
 
         if self.adapter:
             self._start_updates()
 
     def set_history_manager(self, history_manager: HistoryManager):
-        """Inject history manager into paper adapter for price feeds."""
-        self.paper_adapter.history_manager = history_manager
+        """Inject history manager into paper adapter for price feeds and bot data."""
+        self._history_manager = history_manager
+
+        # Use the new set_history_manager method if available, else direct assignment
+        if hasattr(self.paper_adapter, 'set_history_manager'):
+            self.paper_adapter.set_history_manager(history_manager)
+        else:
+            self.paper_adapter.history_manager = history_manager
+
+        # Also update bot tab if it exists
+        if hasattr(self, 'bot_tab') and self.bot_tab is not None:
+            self.bot_tab.set_history_manager(history_manager)
 
     def _setup_ui(self) -> None:
-        """Set up the widget UI."""
+        """Set up the widget UI with tabs for manual and bot trading."""
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
-        self.setMinimumWidth(350)
+        self.setMinimumWidth(380)
 
         container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        main_layout = QVBoxLayout(container)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
 
-        # --- Mode Switch & Banner ---
+        # --- Mode Switch & Banner (above tabs) ---
         mode_layout = QHBoxLayout()
-        
+
         self.mode_toggle = QCheckBox("Paper Trading Mode")
         self.mode_toggle.setChecked(True)
         self.mode_toggle.toggled.connect(self._toggle_mode)
@@ -102,32 +118,90 @@ class BitunixTradingWidget(QDockWidget):
         """)
         mode_layout.addWidget(self.mode_toggle)
         mode_layout.addStretch()
-        layout.addLayout(mode_layout)
+        main_layout.addLayout(mode_layout)
 
         self.mode_banner = QLabel("PAPER TRADING - SIMULATION")
         self.mode_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mode_banner.setStyleSheet("""
-            background-color: #4CAF50; 
-            color: white; 
-            font-weight: bold; 
-            padding: 8px; 
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+            padding: 8px;
             border-radius: 4px;
             font-size: 12px;
         """)
-        layout.addWidget(self.mode_banner)
-        # ----------------------------
+        main_layout.addWidget(self.mode_banner)
+
+        # --- Tab Widget ---
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #333;
+                border-radius: 4px;
+            }
+            QTabBar::tab {
+                background-color: #2a2a2a;
+                color: #888;
+                padding: 8px 16px;
+                margin-right: 2px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: #1a1a2e;
+                color: white;
+            }
+            QTabBar::tab:hover {
+                background-color: #333;
+            }
+        """)
+
+        # Tab 0: Manual Trading
+        manual_tab = QWidget()
+        manual_layout = QVBoxLayout(manual_tab)
+        manual_layout.setContentsMargins(4, 8, 4, 4)
+        manual_layout.setSpacing(10)
 
         # Account info section
-        layout.addWidget(self._build_account_section())
+        manual_layout.addWidget(self._build_account_section())
 
         # Order entry section
-        layout.addWidget(self._build_order_entry_section())
+        manual_layout.addWidget(self._build_order_entry_section())
 
         # Positions section
-        layout.addWidget(self._build_positions_section())
+        manual_layout.addWidget(self._build_positions_section())
 
-        layout.addStretch()
+        manual_layout.addStretch()
+        self.tab_widget.addTab(manual_tab, "📝 Manual Trading")
+
+        # Tab 1: Bot Trading
+        self._setup_bot_tab()
+
+        main_layout.addWidget(self.tab_widget)
         self.setWidget(container)
+
+    def _setup_bot_tab(self) -> None:
+        """Set up the bot trading tab."""
+        try:
+            from .bot_tab import BotTab
+
+            self.bot_tab = BotTab(
+                paper_adapter=self.paper_adapter,
+                history_manager=getattr(self, '_history_manager', None),
+                parent=self,
+            )
+            self.tab_widget.addTab(self.bot_tab, "🤖 Auto Trading")
+        except ImportError as e:
+            # Fallback: Placeholder wenn BotTab nicht verfügbar
+            logger.warning(f"BotTab konnte nicht geladen werden: {e}")
+            placeholder = QWidget()
+            layout = QVBoxLayout(placeholder)
+            label = QLabel("🤖 Auto Trading Bot\n\nKommt bald...")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet("color: #666; font-size: 14px;")
+            layout.addWidget(label)
+            self.tab_widget.addTab(placeholder, "🤖 Auto Trading")
+            self.bot_tab = None
 
     def _toggle_mode(self, is_paper: bool):
         """Switch between Live and Paper adapters."""
@@ -261,6 +335,7 @@ class BitunixTradingWidget(QDockWidget):
         self.quantity_spin.setMinimum(0.0001)
         self.quantity_spin.setMaximum(1000000)
         self.quantity_spin.setValue(0.01)
+        self.quantity_spin.valueChanged.connect(self._on_quantity_changed)
         qty_layout.addWidget(self.quantity_spin)
         layout.addLayout(qty_layout)
 
@@ -272,8 +347,22 @@ class BitunixTradingWidget(QDockWidget):
         self.price_spin.setMinimum(0)
         self.price_spin.setMaximum(1000000)
         self.price_spin.setEnabled(False)  # Disabled by default (Market order)
+        self.price_spin.valueChanged.connect(self._on_price_changed)
         price_layout.addWidget(self.price_spin)
         layout.addLayout(price_layout)
+
+        # Investment Amount (USDT) - NEW FIELD
+        investment_layout = QHBoxLayout()
+        investment_layout.addWidget(QLabel("Investment (USDT):"))
+        self.investment_spin = QDoubleSpinBox()
+        self.investment_spin.setRange(0, 1000000)
+        self.investment_spin.setDecimals(2)
+        self.investment_spin.setValue(100.0)  # Default $100
+        self.investment_spin.setSingleStep(10.0)
+        self.investment_spin.setMinimumWidth(150)
+        self.investment_spin.valueChanged.connect(self._on_investment_changed)
+        investment_layout.addWidget(self.investment_spin)
+        layout.addLayout(investment_layout)
 
         # Leverage
         leverage_layout = QHBoxLayout()
@@ -314,6 +403,27 @@ class BitunixTradingWidget(QDockWidget):
         self.take_profit_spin.setToolTip("0 = kein Take Profit. Preis in USDT.")
         tp_layout.addWidget(self.take_profit_spin)
         layout.addLayout(tp_layout)
+
+        # Position Direction Selector (Long/Short)
+        direction_layout = QHBoxLayout()
+        direction_layout.addWidget(QLabel("Position Direction:"))
+        self.position_direction_combo = QComboBox()
+        self.position_direction_combo.addItems(["🔵 LONG", "🔴 SHORT"])
+        self.position_direction_combo.setStyleSheet("""
+            QComboBox {
+                font-weight: bold;
+                font-size: 12px;
+                padding: 4px 8px;
+                border-radius: 3px;
+                background-color: #2a2a2a;
+                min-width: 100px;
+            }
+            QComboBox:focus { border: 1px solid #4CAF50; }
+        """)
+        self.position_direction_combo.currentIndexChanged.connect(self._on_direction_changed)
+        direction_layout.addWidget(self.position_direction_combo)
+        direction_layout.addStretch()
+        layout.addLayout(direction_layout)
 
         # Buy/Sell buttons
         button_layout = QHBoxLayout()
@@ -361,6 +471,31 @@ class BitunixTradingWidget(QDockWidget):
 
         return group
 
+    def _on_direction_changed(self, index: int) -> None:
+        """Handle position direction change.
+
+        Args:
+            index: 0 = LONG, 1 = SHORT
+
+        Position Direction bestimmt die Wettrichtung:
+        - LONG = Wette auf steigende Kurse
+        - SHORT = Wette auf fallende Kurse
+
+        BUY/SELL sind die Aktionen:
+        - BUY = Position kaufen/eröffnen (in gewählter Richtung)
+        - SELL = Position verkaufen/schließen
+        """
+        direction = "LONG" if index == 0 else "SHORT"
+        logger.debug(f"Position direction changed to: {direction}")
+
+    def get_selected_direction(self) -> str:
+        """Returns the selected position direction.
+
+        Returns:
+            'LONG' or 'SHORT'
+        """
+        return "LONG" if self.position_direction_combo.currentIndex() == 0 else "SHORT"
+
     def _build_positions_section(self) -> QGroupBox:
         """Build positions table.
 
@@ -371,9 +506,9 @@ class BitunixTradingWidget(QDockWidget):
         layout = QVBoxLayout(group)
 
         self.positions_table = QTableWidget()
-        self.positions_table.setColumnCount(5)
+        self.positions_table.setColumnCount(7)
         self.positions_table.setHorizontalHeaderLabels([
-            "Symbol", "Qty", "Entry", "Current", "PnL"
+            "Symbol", "Direction", "Qty", "Entry", "Current", "Leverage", "PnL"
         ])
         self.positions_table.horizontalHeader().setStretchLastSection(True)
         self.positions_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -386,13 +521,24 @@ class BitunixTradingWidget(QDockWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
 
         layout.addWidget(self.positions_table)
 
-        # Refresh button
+        # Buttons: Refresh and Delete
+        buttons_layout = QHBoxLayout()
+
         refresh_button = QPushButton("🔄 Refresh Positions")
         refresh_button.clicked.connect(self._load_positions)
-        layout.addWidget(refresh_button)
+        buttons_layout.addWidget(refresh_button)
+
+        delete_button = QPushButton("🗑️ Delete Row")
+        delete_button.clicked.connect(self._delete_selected_row)
+        delete_button.setStyleSheet("background-color: #d32f2f; color: white;")
+        buttons_layout.addWidget(delete_button)
+
+        layout.addLayout(buttons_layout)
 
         return group
 
@@ -458,6 +604,106 @@ class BitunixTradingWidget(QDockWidget):
         enabled = self.adapter is not None and self._current_symbol is not None
         self.buy_button.setEnabled(enabled)
         self.sell_button.setEnabled(enabled)
+
+    def _on_investment_changed(self, value: float) -> None:
+        """When investment amount changes, calculate quantity.
+
+        Args:
+            value: Investment amount in USDT
+        """
+        if value <= 0:
+            return
+
+        price = self._get_current_price()
+
+        if price <= 0:
+            # Show warning if no price available
+            if value > 0:  # Only warn if user actually entered an amount
+                QMessageBox.warning(
+                    self,
+                    "Keine Kurs-Daten",
+                    f"Kurs für {self._current_symbol or 'Symbol'} nicht verfügbar.\n\n"
+                    "Bitte:\n"
+                    "• Öffnen Sie einen Chart mit dem Symbol, oder\n"
+                    "• Wählen Sie 'Limit' Order und geben Sie einen Preis ein"
+                )
+            return
+
+        # Calculate quantity = investment / price
+        quantity = value / price
+        self.quantity_spin.blockSignals(True)
+        self.quantity_spin.setValue(quantity)
+        self.quantity_spin.blockSignals(False)
+
+    def _on_quantity_changed(self, value: float) -> None:
+        """When quantity changes, calculate investment amount.
+
+        Args:
+            value: Quantity amount
+        """
+        if value <= 0:
+            return
+
+        price = self._get_current_price()
+
+        if price <= 0:
+            return  # Silent for quantity changes (price will be shown when investment entered)
+
+        # Calculate investment = quantity * price
+        investment = value * price
+        self.investment_spin.blockSignals(True)
+        self.investment_spin.setValue(investment)
+        self.investment_spin.blockSignals(False)
+
+    def _on_price_changed(self, value: float) -> None:
+        """When price changes, recalculate investment from quantity.
+
+        Args:
+            value: Price value
+        """
+        if value > 0:
+            self._on_quantity_changed(self.quantity_spin.value())
+
+    def _get_current_price(self) -> float:
+        """Get current market price with 4-tier fallback strategy.
+
+        Returns:
+            float: Current price or 0.0 if unavailable
+        """
+        # Tier 1: Limit price (explicit user input)
+        if self.order_type_combo.currentText() == "Limit":
+            limit_price = self.price_spin.value()
+            if limit_price > 0:
+                return limit_price
+
+        # Tier 2: Live chart price (streaming)
+        try:
+            parent = self.parent()
+            if parent and hasattr(parent, 'chart_widget'):
+                chart = parent.chart_widget
+
+                # Try to get real-time streaming price
+                if hasattr(chart, '_last_price'):
+                    last_price = getattr(chart, '_last_price', 0)
+                    if last_price > 0:
+                        return last_price
+
+                # Tier 3: Historical close price
+                if hasattr(chart, 'data') and chart.data is not None and not chart.data.empty:
+                    try:
+                        last_close = float(chart.data['close'].iloc[-1])
+                        if last_close > 0:
+                            return last_close
+                    except (IndexError, KeyError, TypeError, ValueError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Error getting chart price: {e}")
+
+        # Tier 4: No price available - warn user
+        if self._current_symbol:
+            logger.warning(f"No price data available for {self._current_symbol}")
+
+        return 0.0
 
     def _current_leverage(self) -> int:
         """Return leverage value from slider (treat 0 as 1 for safety)."""
@@ -537,22 +783,82 @@ class BitunixTradingWidget(QDockWidget):
             self.positions_table.setRowCount(len(positions))
 
             for row, pos in enumerate(positions):
+                # Symbol (Column 0)
                 self.positions_table.setItem(row, 0, QTableWidgetItem(pos.symbol))
-                self.positions_table.setItem(row, 1, QTableWidgetItem(f"{pos.quantity:.4f}"))
-                self.positions_table.setItem(row, 2, QTableWidgetItem(f"{pos.average_cost:.2f}"))
-                self.positions_table.setItem(row, 3, QTableWidgetItem(f"{pos.current_price:.2f}"))
 
-                # PnL with color
+                # Direction (Column 1)
+                direction_text = "🔵 LONG" if pos.is_long else "🔴 SHORT"
+                direction_color = "#4CAF50" if pos.is_long else "#f44336"
+                direction_item = QTableWidgetItem(direction_text)
+                direction_item.setForeground(QColor(direction_color))
+                self.positions_table.setItem(row, 1, direction_item)
+
+                # Quantity (Column 2)
+                self.positions_table.setItem(row, 2, QTableWidgetItem(f"{pos.quantity:.4f}"))
+
+                # Entry Price (Column 3)
+                self.positions_table.setItem(row, 3, QTableWidgetItem(f"{pos.average_cost:.2f}"))
+
+                # Current Price (Column 4)
+                self.positions_table.setItem(row, 4, QTableWidgetItem(f"{pos.current_price:.2f}"))
+
+                # Leverage (Column 5)
+                self.positions_table.setItem(row, 5, QTableWidgetItem(f"{pos.leverage}x"))
+
+                # PnL with color (Column 6)
                 pnl_value = float(pos.unrealized_pnl)
                 pnl_color = "#4CAF50" if pnl_value >= 0 else "#f44336"
                 pnl_sign = "+" if pnl_value >= 0 else ""
                 pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_value:.2f}")
                 pnl_item.setForeground(Qt.GlobalColor.white)
                 pnl_item.setBackground(Qt.GlobalColor.green if pnl_value >= 0 else Qt.GlobalColor.red)
-                self.positions_table.setItem(row, 4, pnl_item)
+                self.positions_table.setItem(row, 6, pnl_item)
 
         except Exception as e:
             logger.error(f"Failed to load positions: {e}")
+
+    def _on_tick_price_updated(self, price: float) -> None:
+        """Update current price in positions table in real-time.
+
+        Connected to chart's tick_price_updated signal for live updates.
+
+        Args:
+            price: Current market price from streaming ticker
+        """
+        if not self._current_symbol:
+            return
+
+        # Update all rows where symbol matches current symbol
+        for row in range(self.positions_table.rowCount()):
+            symbol_item = self.positions_table.item(row, 0)
+            if symbol_item and symbol_item.text() == self._current_symbol:
+                # Update Current price (Column 4 - shifted by 1 due to Direction column)
+                self.positions_table.setItem(
+                    row, 4,
+                    QTableWidgetItem(f"{price:.2f}")
+                )
+
+                # Recalculate PnL (Column 6 - shifted by 2 due to Direction and Leverage columns)
+                try:
+                    entry_price = float(self.positions_table.item(row, 3).text())
+                    quantity = float(self.positions_table.item(row, 2).text())
+                    leverage_text = self.positions_table.item(row, 5).text() if self.positions_table.item(row, 5) else "1x"
+                    leverage = float(leverage_text.rstrip('x'))
+
+                    pnl_value = (price - entry_price) * quantity * leverage
+                    pnl_color = "#4CAF50" if pnl_value >= 0 else "#f44336"
+                    pnl_sign = "+" if pnl_value >= 0 else ""
+
+                    pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_value:.2f}")
+                    pnl_item.setForeground(QColor(pnl_color))
+
+                    self.positions_table.setItem(row, 6, pnl_item)
+                except (ValueError, AttributeError, TypeError):
+                    pass  # Silently ignore calculation errors
+
+        # Forward tick price to Bot Tab for position monitoring
+        if hasattr(self, 'bot_tab') and self.bot_tab is not None:
+            self.bot_tab.on_tick_price_updated(price)
 
     async def _place_order(self, side: OrderSide) -> None:
         """Place an order.
@@ -591,6 +897,7 @@ class BitunixTradingWidget(QDockWidget):
             take_profit_val = Decimal(str(self.take_profit_spin.value()))
             take_profit = take_profit_val if take_profit_val > 0 else None
             leverage_val = self._current_leverage()
+            position_direction = self.get_selected_direction()  # LONG oder SHORT
 
             order = OrderRequest(
                 symbol=self._current_symbol,
@@ -600,11 +907,12 @@ class BitunixTradingWidget(QDockWidget):
                 limit_price=limit_price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                notes=f"leverage={leverage_val}x"
+                notes=f"leverage={leverage_val}x,direction={position_direction}"
             )
 
             # Confirm order
             side_text = "BUY" if side == OrderSide.BUY else "SELL"
+            direction_emoji = "🔵" if position_direction == "LONG" else "🔴"
             type_text = "Market" if order_type == DBOrderType.MARKET else f"Limit @ {limit_price}"
             stop_text = f"{stop_loss} (price)" if stop_loss else "—"
             tp_text = f"{take_profit} (price)" if take_profit else "—"
@@ -613,6 +921,7 @@ class BitunixTradingWidget(QDockWidget):
                 "Confirm Order",
                 f"Place {side_text} order?\n\n"
                 f"Symbol: {self._current_symbol}\n"
+                f"Direction: {direction_emoji} {position_direction}\n"
                 f"Type: {type_text}\n"
                 f"Quantity: {quantity}\n"
                 f"Leverage: {leverage_val}x\n"
@@ -633,7 +942,7 @@ class BitunixTradingWidget(QDockWidget):
                     "Order Placed",
                     f"Order placed successfully!\n\n"
                     f"Order ID: {response.broker_order_id}\n"
-                    f"Status: {response.status.value}"
+                    f"Status: {response.status}"
                 )
                 logger.info(f"Bitunix order placed: {response.broker_order_id}")
 
@@ -654,7 +963,154 @@ class BitunixTradingWidget(QDockWidget):
                 f"Error placing order:\n\n{str(e)}"
             )
 
+    def _save_positions_to_file(self) -> None:
+        """Save current positions table to JSON file."""
+        try:
+            # Create data directory if not exists
+            data_dir = Path("data")
+            data_dir.mkdir(exist_ok=True)
+
+            positions_file = data_dir / "bitunix_positions.json"
+
+            # Extract table data
+            positions_data = []
+            for row in range(self.positions_table.rowCount()):
+                row_data = {}
+                # Column 0: Symbol
+                symbol_item = self.positions_table.item(row, 0)
+                row_data["symbol"] = symbol_item.text() if symbol_item else ""
+
+                # Column 1: Direction
+                direction_item = self.positions_table.item(row, 1)
+                row_data["direction"] = direction_item.text() if direction_item else ""
+
+                # Column 2: Quantity
+                qty_item = self.positions_table.item(row, 2)
+                row_data["quantity"] = qty_item.text() if qty_item else "0"
+
+                # Column 3: Entry Price
+                entry_item = self.positions_table.item(row, 3)
+                row_data["entry_price"] = entry_item.text() if entry_item else "0"
+
+                # Column 4: Current Price
+                current_item = self.positions_table.item(row, 4)
+                row_data["current_price"] = current_item.text() if current_item else "0"
+
+                # Column 5: Leverage
+                leverage_item = self.positions_table.item(row, 5)
+                row_data["leverage"] = leverage_item.text() if leverage_item else "1x"
+
+                # Column 6: PnL
+                pnl_item = self.positions_table.item(row, 6)
+                row_data["pnl"] = pnl_item.text() if pnl_item else "0"
+
+                positions_data.append(row_data)
+
+            # Save to JSON
+            with open(positions_file, 'w', encoding='utf-8') as f:
+                json.dump(positions_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Saved {len(positions_data)} positions to {positions_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to save positions: {e}")
+
+    def _load_positions_from_file(self) -> None:
+        """Load positions from JSON file into table."""
+        try:
+            positions_file = Path("data/bitunix_positions.json")
+
+            if not positions_file.exists():
+                logger.debug("No saved positions file found")
+                return
+
+            # Load from JSON
+            with open(positions_file, 'r', encoding='utf-8') as f:
+                positions_data = json.load(f)
+
+            if not positions_data:
+                return
+
+            # Populate table
+            self.positions_table.setRowCount(len(positions_data))
+
+            for row, data in enumerate(positions_data):
+                # Symbol (Column 0)
+                self.positions_table.setItem(row, 0, QTableWidgetItem(data.get("symbol", "")))
+
+                # Direction (Column 1)
+                direction_text = data.get("direction", "")
+                direction_item = QTableWidgetItem(direction_text)
+                if "LONG" in direction_text:
+                    direction_item.setForeground(QColor("#4CAF50"))
+                elif "SHORT" in direction_text:
+                    direction_item.setForeground(QColor("#f44336"))
+                self.positions_table.setItem(row, 1, direction_item)
+
+                # Quantity (Column 2)
+                self.positions_table.setItem(row, 2, QTableWidgetItem(data.get("quantity", "0")))
+
+                # Entry Price (Column 3)
+                self.positions_table.setItem(row, 3, QTableWidgetItem(data.get("entry_price", "0")))
+
+                # Current Price (Column 4)
+                self.positions_table.setItem(row, 4, QTableWidgetItem(data.get("current_price", "0")))
+
+                # Leverage (Column 5)
+                self.positions_table.setItem(row, 5, QTableWidgetItem(data.get("leverage", "1x")))
+
+                # PnL (Column 6)
+                pnl_text = data.get("pnl", "0")
+                pnl_item = QTableWidgetItem(pnl_text)
+                # Parse PnL value for color
+                try:
+                    pnl_value = float(pnl_text.replace("+", "").replace(",", ""))
+                    if pnl_value >= 0:
+                        pnl_item.setForeground(Qt.GlobalColor.white)
+                        pnl_item.setBackground(Qt.GlobalColor.green)
+                    else:
+                        pnl_item.setForeground(Qt.GlobalColor.white)
+                        pnl_item.setBackground(Qt.GlobalColor.red)
+                except:
+                    pass
+                self.positions_table.setItem(row, 6, pnl_item)
+
+            logger.info(f"Loaded {len(positions_data)} positions from {positions_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to load positions: {e}")
+
+    def _delete_selected_row(self) -> None:
+        """Delete the selected row from positions table."""
+        current_row = self.positions_table.currentRow()
+
+        if current_row < 0:
+            QMessageBox.warning(
+                self,
+                "Keine Auswahl",
+                "Bitte wählen Sie eine Zeile zum Löschen aus."
+            )
+            return
+
+        # Get symbol for confirmation
+        symbol_item = self.positions_table.item(current_row, 0)
+        symbol = symbol_item.text() if symbol_item else "Unknown"
+
+        # Confirm deletion
+        confirm = QMessageBox.question(
+            self,
+            "Position löschen",
+            f"Position für {symbol} wirklich löschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.positions_table.removeRow(current_row)
+            self._save_positions_to_file()  # Auto-save after deletion
+            logger.info(f"Deleted position row {current_row} ({symbol})")
+
     def closeEvent(self, event) -> None:
         """Handle widget close event."""
+        self._save_positions_to_file()  # Save positions before closing
         self._stop_updates()
         super().closeEvent(event)
