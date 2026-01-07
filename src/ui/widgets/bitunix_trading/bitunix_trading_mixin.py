@@ -359,9 +359,24 @@ class BitunixTradingMixin:
         """Clean up Bitunix resources.
 
         Call this when closing the window.
+        Issue #20: Ensures trading bot positions are saved before shutdown.
         """
+        import asyncio
+
+        # First, save any active bot positions (Issue #20)
+        if self._bitunix_widget:
+            # Get bot_tab and call its cleanup method to save positions
+            bot_tab = getattr(self._bitunix_widget, 'bot_tab', None)
+            if bot_tab and hasattr(bot_tab, 'cleanup'):
+                logger.info("Saving trading bot positions before cleanup...")
+                bot_tab.cleanup()
+
+            # Also save manual positions from the trading widget
+            if hasattr(self._bitunix_widget, '_save_positions_to_file'):
+                logger.info("Saving manual positions before cleanup...")
+                self._bitunix_widget._save_positions_to_file()
+
         if self._bitunix_adapter:
-            import asyncio
             # Schedule disconnect task without blocking
             asyncio.create_task(self._bitunix_adapter.disconnect())
 

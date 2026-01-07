@@ -652,6 +652,9 @@ class BotTab(QWidget):
         self._is_initialized = True
         self._log("✅ Bot Engine initialisiert")
 
+        # Issue #20: Versuche gespeicherte Position wiederherzustellen
+        self._restore_saved_position()
+
     def _get_current_config(self) -> BotConfig:
         """Gibt aktuelle Bot-Konfiguration zurück (lädt aus Datei wenn vorhanden)."""
         return self._load_settings()
@@ -991,6 +994,24 @@ class BotTab(QWidget):
                 logger.info("BotTab cleanup: Position saved for next start")
             # Bot stoppen (Position ist bereits gespeichert)
             asyncio.create_task(self._bot_engine.stop(close_position=False))
+
+    def _restore_saved_position(self) -> None:
+        """Issue #20: Stellt gespeicherte Position beim Start wieder her."""
+        if not self._bot_engine:
+            return
+
+        try:
+            # Versuche Position zu laden
+            if self._bot_engine.load_position():
+                self._log("📂 Gespeicherte Position wiederhergestellt")
+                logger.info("BotTab: Restored saved position on startup")
+                # UI aktualisieren
+                self._update_display()
+            else:
+                logger.debug("BotTab: No saved position found to restore")
+        except Exception as e:
+            logger.warning(f"BotTab: Failed to restore saved position: {e}")
+            self._log(f"⚠️ Position konnte nicht wiederhergestellt werden: {e}")
 
 
 class BotSettingsDialog(QDialog):

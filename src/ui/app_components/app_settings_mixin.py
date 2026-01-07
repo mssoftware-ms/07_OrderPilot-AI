@@ -83,15 +83,64 @@ class AppSettingsMixin:
         else:
             self.live_data_toggle.setText("Live Data: OFF")
 
-        # Load window geometry
-        geometry = self.settings.value("geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
+        # Load window geometry with validation to prevent resize loops
+        # Issue #22: Corrupted geometry/state can cause infinite resize loops
+        self._restoring_state = True  # Flag to prevent resize events during restore
+        try:
+            geometry = self.settings.value("geometry")
+            state = self.settings.value("windowState")
 
-        state = self.settings.value("windowState")
-        if state:
-            self.restoreState(state)
+            # Validate geometry before restoring
+            if geometry:
+                # Try to restore geometry
+                restore_ok = self.restoreGeometry(geometry)
+                if not restore_ok:
+                    logger.warning("Failed to restore window geometry, using defaults")
+                    self.setGeometry(100, 100, 1400, 900)
+
+            # Restore window state (docks, toolbars) separately
+            # Do NOT restore if geometry failed to prevent conflicts
+            if state and geometry:
+                self.restoreState(state)
+
+            # Validate final geometry is reasonable
+            screen = QApplication.primaryScreen()
+            if screen:
+                screen_rect = screen.availableGeometry()
+                current_rect = self.geometry()
+                # Check if window is visible on screen
+                if (current_rect.width() < 200 or current_rect.height() < 200 or
+                    current_rect.x() < -100 or current_rect.y() < -100 or
+                    current_rect.x() > screen_rect.width() or
+                    current_rect.y() > screen_rect.height()):
+                    logger.warning("Invalid window geometry detected, resetting to defaults")
+                    self.setGeometry(100, 100, 1400, 900)
+                    self.settings.remove("geometry")
+                    self.settings.remove("windowState")
+        except Exception as e:
+            logger.error(f"Error restoring window state: {e}, using defaults")
+            self.setGeometry(100, 100, 1400, 900)
+            self.settings.remove("geometry")
+            self.settings.remove("windowState")
+        finally:
+            # Re-enable resize events after a short delay to let Qt settle
+            QTimer.singleShot(100, self._enable_resize_events)
+    def _enable_resize_events(self):
+        """Re-enable resize events after state restoration."""
+        self._restoring_state = False
+
     def save_settings(self):
         """Save application settings."""
+        # Only save if window is in a stable state (not minimized or during restoration)
+        if getattr(self, '_restoring_state', False):
+            logger.debug("Skipping settings save during state restoration")
+            return
+
+        # Check if window is in valid state to save
+        if self.isMinimized():
+            # Don't save minimized geometry - would restore as tiny window
+            logger.debug("Skipping geometry save - window is minimized")
+            return
+
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("windowState", self.saveState())

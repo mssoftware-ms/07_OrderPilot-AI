@@ -41,10 +41,13 @@ class ExitReason(str, Enum):
     STOP_LOSS = "STOP_LOSS"
     TAKE_PROFIT = "TAKE_PROFIT"
     TRAILING_STOP = "TRAILING_STOP"
-    SIGNAL_REVERSAL = "SIGNAL_REVERSAL"
+    SIGNAL_EXIT = "SIGNAL_EXIT"  # Von ExitTrigger - Signal-basierter Exit
+    SIGNAL_REVERSAL = "SIGNAL_REVERSAL"  # Alias für Kompatibilität
     SESSION_END = "SESSION_END"
-    MANUAL_CLOSE = "MANUAL_CLOSE"
-    MAX_DAILY_LOSS = "MAX_DAILY_LOSS"
+    MANUAL = "MANUAL"  # Von ExitTrigger
+    MANUAL_CLOSE = "MANUAL_CLOSE"  # Alias für Kompatibilität
+    DAILY_LOSS_LIMIT = "DAILY_LOSS_LIMIT"  # Von ExitTrigger
+    MAX_DAILY_LOSS = "MAX_DAILY_LOSS"  # Alias für Kompatibilität
     BOT_STOPPED = "BOT_STOPPED"
 
 

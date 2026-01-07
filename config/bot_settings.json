@@ -21,5 +21,31 @@
     "_note": "Provider und Model werden aus QSettings geladen (File -> Settings -> AI)",
     "confidence_threshold": 60,
     "min_confluence_for_ai": 4
+  },
+  "BTCUSDT": {
+    "ki_mode": "LOW_KI",
+    "trailing_mode": "PCT",
+    "initial_sl_pct": 2.0,
+    "bot_capital": 10000.0,
+    "risk_per_trade_pct": 10.0,
+    "max_trades_per_day": 10,
+    "max_daily_loss_pct": 3.0,
+    "disable_restrictions": true,
+    "disable_macd_exit": false,
+    "disable_rsi_exit": false,
+    "enable_derivathandel": false,
+    "regime_adaptive": true,
+    "atr_multiplier": 2.5,
+    "atr_trending": 2.0,
+    "atr_ranging": 3.5,
+    "volatility_bonus": 0.5,
+    "min_step_pct": 0.3,
+    "trailing_activation_pct": 0.0,
+    "trailing_pct_distance": 1.4,
+    "min_score_pct": 60,
+    "use_pattern_check": false,
+    "pattern_similarity": 0.7,
+    "pattern_min_matches": 5,
+    "pattern_min_winrate_pct": 55
   }
 }
