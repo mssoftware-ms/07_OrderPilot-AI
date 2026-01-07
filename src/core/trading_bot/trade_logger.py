@@ -301,24 +301,26 @@ class TradeLogEntry:
         """Konvertiert zu Dictionary (für JSON Export)."""
 
         def convert_value(v: Any) -> Any:
+            """Rekursiv konvertiert Werte zu JSON-serialisierbaren Typen."""
             if isinstance(v, Decimal):
                 return str(v)
             if isinstance(v, datetime):
                 return v.isoformat()
             if isinstance(v, Enum):
                 return v.value
+            if isinstance(v, dict):
+                # Rekursiv durch verschachtelte Dicts gehen
+                return {k: convert_value(val) for k, val in v.items()}
+            if isinstance(v, list):
+                # Rekursiv durch Listen gehen
+                return [convert_value(item) for item in v]
             if hasattr(v, "to_dict"):
                 return v.to_dict()
             return v
 
         result = {}
         for key, value in asdict(self).items():
-            if isinstance(value, list):
-                result[key] = [convert_value(item) for item in value]
-            elif isinstance(value, dict):
-                result[key] = {k: convert_value(v) for k, v in value.items()}
-            else:
-                result[key] = convert_value(value)
+            result[key] = convert_value(value)
 
         return result
 

@@ -616,6 +616,9 @@ class PromptEditorDialog(QDialog):
         self.default_system = default_system
         self.default_tasks = default_tasks
 
+        # Issue #25: Fenster in der Mitte des Bildschirms positionieren
+        self._center_on_screen()
+
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel("<b>System Prompt</b> (Role & global constraints)"))
@@ -645,6 +648,16 @@ class PromptEditorDialog(QDialog):
     def _reset_defaults(self):
         self.txt_system.setPlainText(self.default_system)
         self.txt_tasks.setPlainText(self.default_tasks)
+
+    def _center_on_screen(self) -> None:
+        """Issue #25: Zentriert das Fenster auf dem Bildschirm."""
+        from PyQt6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            x = (screen_geometry.width() - self.width()) // 2 + screen_geometry.x()
+            y = (screen_geometry.height() - self.height()) // 2 + screen_geometry.y()
+            self.move(x, y)
 
     def get_values(self):
         return self.txt_system.toPlainText(), self.txt_tasks.toPlainText()
