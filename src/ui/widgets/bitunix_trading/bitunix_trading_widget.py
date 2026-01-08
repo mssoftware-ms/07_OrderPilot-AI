@@ -190,7 +190,7 @@ class BitunixTradingWidget(QDockWidget):
                 history_manager=getattr(self, '_history_manager', None),
                 parent=self,
             )
-            self.tab_widget.addTab(self.bot_tab, "🤖 Auto Trading")
+            self.tab_widget.addTab(self.bot_tab, "🤖 Trading Bot")
         except ImportError as e:
             # Fallback: Placeholder wenn BotTab nicht verfügbar
             logger.warning(f"BotTab konnte nicht geladen werden: {e}")

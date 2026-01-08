@@ -44,6 +44,11 @@ class PanelsMixin:
             self.bot_ki_tab = self._create_ki_logs_tab()
             self.panel_tabs.addTab(self.bot_ki_tab, "KI Logs")
 
+            # Tab 5: Engine Settings
+            if hasattr(self, '_create_engine_settings_tab'):
+                self.bot_engine_settings_tab = self._create_engine_settings_tab()
+                self.panel_tabs.addTab(self.bot_engine_settings_tab, "Engine Settings")
+
             # Initialize bot panel state
             if hasattr(self, '_init_bot_panels'):
                 self._init_bot_panels()

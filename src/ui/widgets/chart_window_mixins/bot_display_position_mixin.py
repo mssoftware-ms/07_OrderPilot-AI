@@ -124,6 +124,9 @@ class BotDisplayPositionMixin:
         self.position_pnl_label.setText("-")
         self.position_bars_held_label.setText("-")
         self._reset_position_right_column()
+        # Reset SL/TP Progress Bar
+        if hasattr(self, 'sltp_progress_bar'):
+            self.sltp_progress_bar.reset_bar()
 
     def _set_position_side(self, side: str) -> None:
         self.position_side_label.setText(side)

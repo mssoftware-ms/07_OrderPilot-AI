@@ -223,6 +223,18 @@ class BotPanelsMixin(
         side = sig.get("side", "long")
         pnl_pct = sig.get("pnl_percent", 0)
         pnl_currency = sig.get("pnl_currency", 0)
+        stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
+        take_profit = sig.get("take_profit_price", sig.get("tp_price", 0))
+
+        # Update SL/TP Progress Bar
+        if hasattr(self, 'sltp_progress_bar') and entry_price > 0:
+            self.sltp_progress_bar.set_prices(
+                entry=entry_price,
+                sl=stop_price,
+                tp=take_profit,
+                current=current_price,
+                side=side
+            )
 
         if hasattr(self, 'position_side_label'):
             side_upper = side.upper()

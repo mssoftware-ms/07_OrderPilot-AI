@@ -62,6 +62,23 @@ from src.core.trading_bot import (
     MonitoredPosition,
     ExitResult,
     TradeLogEntry,
+    # Phase 1-4: New Engines
+    MarketContextBuilder,
+    MarketContextBuilderConfig,
+    RegimeDetectorService,
+    RegimeConfig,
+    LevelEngine,
+    LevelEngineConfig,
+    EntryScoreEngine,
+    EntryScoreConfig,
+    LLMValidationService,
+    LLMValidationConfig,
+    TriggerExitEngine,
+    TriggerExitConfig,
+    LeverageRulesEngine,
+    LeverageRulesConfig,
+    MarketContext,
+    RegimeType,
 )
 
 # Phase 5 - Trading Status Panel Integration
@@ -132,8 +149,38 @@ class BotTab(QWidget):
 
         self._adapter = paper_adapter
         self._history_manager = history_manager
-        self._bot_engine: TradingBotEngine | None = None
+        # OLD: self._bot_engine removed - using new engine pipeline now
         self._is_initialized = False
+
+        # Phase 1-4: New Engines (initialized on demand)
+        self._context_builder: MarketContextBuilder | None = None
+        self._regime_detector: RegimeDetectorService | None = None
+        self._level_engine: LevelEngine | None = None
+        self._entry_score_engine: EntryScoreEngine | None = None
+        self._llm_validation: LLMValidationService | None = None
+        self._trigger_exit_engine: TriggerExitEngine | None = None
+        self._leverage_engine: LeverageRulesEngine | None = None
+
+        # Latest engine results (for Status Panel display)
+        self._last_market_context: MarketContext | None = None
+        self._last_regime_result = None
+        self._last_levels_result = None
+        self._last_entry_score = None
+        self._last_llm_result = None
+        self._last_trigger_result = None
+        self._last_leverage_result = None
+
+        # Current open position (managed by new engine pipeline)
+        self._current_position: dict | None = None
+        self._position_entry_price: float = 0.0
+        self._position_side: str = ""  # "long" or "short"
+        self._position_quantity: float = 0.0
+        self._position_stop_loss: float = 0.0
+        self._position_take_profit: float = 0.0
+
+        # Performance: Pipeline nur bei neuen Bars ausführen (Punkt 4)
+        self._last_bar_timestamp: int = 0  # Letzter Bar-Timestamp
+        self._pipeline_timeframe: str = "1m"  # Einstellbar: "1m", "5m", "15m", etc.
 
         # Connect history_manager to adapter for market data access
         if history_manager and hasattr(paper_adapter, 'set_history_manager'):
@@ -366,6 +413,57 @@ class BotTab(QWidget):
         row2.addWidget(self.signal_conditions, 1)
         layout.addLayout(row2)
 
+        # SL/TP Visual Bar (nur sichtbar wenn Position offen)
+        self.sltp_container = QWidget()
+        sltp_layout = QVBoxLayout(self.sltp_container)
+        sltp_layout.setContentsMargins(0, 10, 0, 0)
+
+        # Labels für SL / Current / TP
+        sltp_labels_row = QHBoxLayout()
+        self.sltp_sl_label = QLabel("SL: —")
+        self.sltp_sl_label.setStyleSheet("color: #ef5350; font-weight: bold; font-size: 11px;")
+        sltp_labels_row.addWidget(self.sltp_sl_label)
+        sltp_labels_row.addStretch()
+        self.sltp_current_label = QLabel("—")
+        self.sltp_current_label.setStyleSheet("color: #fff; font-weight: bold; font-size: 12px;")
+        sltp_labels_row.addWidget(self.sltp_current_label)
+        sltp_labels_row.addStretch()
+        self.sltp_tp_label = QLabel("TP: —")
+        self.sltp_tp_label.setStyleSheet("color: #26a69a; font-weight: bold; font-size: 11px;")
+        sltp_labels_row.addWidget(self.sltp_tp_label)
+        sltp_layout.addLayout(sltp_labels_row)
+
+        # Progress Bar (simuliert Balken zwischen SL und TP)
+        self.sltp_bar = QProgressBar()
+        self.sltp_bar.setTextVisible(False)
+        self.sltp_bar.setMinimum(0)
+        self.sltp_bar.setMaximum(100)
+        self.sltp_bar.setValue(50)  # Default: Mitte
+        self.sltp_bar.setMaximumHeight(20)
+        # Grün-Rot Gradient: Rot=0% (SL), Grün=100% (TP)
+        self.sltp_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #444;
+                border-radius: 3px;
+                background-color: #222;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #ef5350, stop:0.5 #ffa726, stop:1 #26a69a);
+                border-radius: 2px;
+            }
+        """)
+        sltp_layout.addWidget(self.sltp_bar)
+
+        # P&L Display unter dem Balken
+        self.sltp_pnl_label = QLabel("P&L: —")
+        self.sltp_pnl_label.setStyleSheet("color: #888; font-size: 11px; margin-top: 5px;")
+        self.sltp_pnl_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sltp_layout.addWidget(self.sltp_pnl_label)
+
+        layout.addWidget(self.sltp_container)
+        self.sltp_container.setVisible(True)  # Immer sichtbar, zeigt "keine Position" wenn nicht aktiv
+
         # Last Update
         row3 = QHBoxLayout()
         self.signal_timestamp = QLabel("Letztes Update: —")
@@ -591,26 +689,20 @@ class BotTab(QWidget):
 
     @qasync.asyncSlot()
     async def _on_start_clicked(self) -> None:
-        """Startet den Bot."""
-        if self._bot_engine and self._bot_engine.state != BotState.IDLE:
-            return
-
+        """Startet den Bot (neue Engine-Pipeline)."""
         try:
-            self._log("🚀 Starte Trading Bot...")
+            self._log("🚀 Starte Trading Bot (neue Engine-Pipeline)...")
 
-            # Bot Engine erstellen wenn nötig
-            if not self._bot_engine:
-                self._initialize_bot_engine()
-
-            # Bot starten
-            await self._bot_engine.start()
+            # Neue Engines initialisieren (Phase 1-4)
+            if not self._context_builder:
+                self._initialize_new_engines()
 
             # UI aktualisieren
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.update_timer.start()
 
-            self._log("✅ Bot gestartet!")
+            self._log("✅ Bot gestartet! Pipeline läuft jede Sekunde.")
 
         except Exception as e:
             self._log(f"❌ Fehler beim Starten: {e}")
@@ -619,22 +711,18 @@ class BotTab(QWidget):
 
     @qasync.asyncSlot()
     async def _on_stop_clicked(self) -> None:
-        """Stoppt den Bot."""
-        if not self._bot_engine:
-            return
-
+        """Stoppt den Bot (neue Engine-Pipeline)."""
         try:
             self._log("⏹ Stoppe Trading Bot...")
 
-            # Bot stoppen
-            await self._bot_engine.stop()
+            # Timer stoppen (Pipeline stoppt automatisch)
+            self.update_timer.stop()
 
             # UI aktualisieren
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
-            self.update_timer.stop()
 
-            self._log("✅ Bot gestoppt!")
+            self._log("✅ Bot gestoppt! Pipeline wurde angehalten.")
 
         except Exception as e:
             self._log(f"❌ Fehler beim Stoppen: {e}")
@@ -642,8 +730,9 @@ class BotTab(QWidget):
 
     @qasync.asyncSlot()
     async def _on_close_position_clicked(self) -> None:
-        """Schließt die aktuelle Position manuell."""
-        if not self._bot_engine:
+        """Schließt die aktuelle Position manuell (neue Pipeline)."""
+        if not self._current_position:
+            QMessageBox.warning(self, "Keine Position", "Es ist keine Position geöffnet.")
             return
 
         confirm = QMessageBox.question(
@@ -656,10 +745,19 @@ class BotTab(QWidget):
         if confirm == QMessageBox.StandardButton.Yes:
             try:
                 self._log("🔄 Schließe Position manuell...")
-                await self._bot_engine.manual_close_position()
+                # Hole aktuellen Preis aus letztem MarketContext
+                current_price = self._last_market_context.current_price if self._last_market_context else self._position_entry_price
+                context_id = self._last_market_context.context_id if self._last_market_context else "manual_close"
+
+                await self._close_position(
+                    exit_price=current_price,
+                    exit_reason="Manual Close (User)",
+                    context_id=context_id,
+                )
                 self._log("✅ Position geschlossen!")
             except Exception as e:
                 self._log(f"❌ Fehler: {e}")
+                logger.exception("Manual position close failed")
 
     def _handle_settings_click(self) -> None:
         """Handler für Settings-Button mit Debug-Output."""
@@ -726,28 +824,35 @@ class BotTab(QWidget):
         self._update_status_panel()
 
     def _update_status_panel(self) -> None:
-        """Aktualisiert das Status Panel mit aktuellen Engine-Ergebnissen."""
-        if not self._status_panel or not self._bot_engine:
+        """Aktualisiert das Status Panel mit aktuellen Engine-Ergebnissen.
+
+        Nutzt die Ergebnisse aus der neuen Engine-Pipeline:
+        - self._last_regime_result (von RegimeDetectorService)
+        - self._last_entry_score (von EntryScoreEngine)
+        - self._last_llm_result (von LLMValidationService)
+        - self._last_trigger_result (von TriggerExitEngine)
+        - self._last_leverage_result (von LeverageRulesEngine)
+        """
+        if not self._status_panel:
             return
 
         try:
-            # Hole letzte Engine-Ergebnisse wenn verfügbar
-            engine = self._bot_engine
+            # Regime Result
+            regime_result = None
+            if self._last_market_context and self._last_market_context.regime:
+                regime_result = self._last_market_context.regime
 
-            # Regime-Ergebnis (falls im Engine gecached)
-            regime_result = getattr(engine, '_last_regime_result', None)
+            # Entry Score Result
+            score_result = self._last_entry_score
 
-            # Entry Score (falls vorhanden)
-            score_result = getattr(engine, '_last_entry_score', None)
+            # LLM Validation Result
+            llm_result = self._last_llm_result
 
-            # LLM Validation (falls vorhanden)
-            llm_result = getattr(engine, '_last_llm_result', None)
+            # Trigger Result
+            trigger_result = self._last_trigger_result
 
-            # Trigger Result (falls vorhanden)
-            trigger_result = getattr(engine, '_last_trigger_result', None)
-
-            # Leverage Result (falls vorhanden)
-            leverage_result = getattr(engine, '_last_leverage_result', None)
+            # Leverage Result
+            leverage_result = self._last_leverage_result
 
             # Update all at once
             self._status_panel.update_all(
@@ -757,6 +862,9 @@ class BotTab(QWidget):
                 trigger_result=trigger_result,
                 leverage_result=leverage_result,
             )
+
+            logger.debug("Status Panel updated with new engine results")
+
         except Exception as e:
             logger.warning(f"Failed to update status panel: {e}")
 
@@ -816,29 +924,667 @@ class BotTab(QWidget):
 
     # === Bot Engine ===
 
-    def _initialize_bot_engine(self) -> None:
-        """Initialisiert die Bot Engine."""
-        from src.core.trading_bot import BotConfig, TradingBotEngine
+    # OLD: _initialize_bot_engine() REMOVED - using new engine pipeline
+    # def _initialize_bot_engine(): DELETED
 
-        config = self._get_current_config()
-        self._bot_engine = TradingBotEngine(
-            adapter=self._adapter,
-            config=config,
-        )
+    def _initialize_new_engines(self) -> None:
+        """Initialisiert die neuen Engines (Phase 1-4).
 
-        # Callbacks registrieren
-        self._bot_engine.set_state_callback(self._on_state_changed)
-        self._bot_engine.set_signal_callback(self._on_signal_updated)
-        self._bot_engine.set_position_opened_callback(self._on_position_opened)
-        self._bot_engine.set_position_closed_callback(self._on_position_closed)
-        self._bot_engine.set_error_callback(self._on_bot_error)
-        self._bot_engine.set_log_callback(self._on_bot_log)
+        Diese Methode erstellt alle neuen Trading-Engines:
+        - MarketContextBuilder: Baut MarketContext aus DataFrame
+        - RegimeDetectorService: Erkennt Markt-Regime
+        - LevelEngine: Erkennt Support/Resistance Levels
+        - EntryScoreEngine: Berechnet normalisierten Entry-Score
+        - LLMValidationService: AI-Validierung (Quick→Deep)
+        - TriggerExitEngine: Entry-Trigger + Exit-Management
+        - LeverageRulesEngine: Dynamisches Leverage-Regelwerk
+        """
+        try:
+            # 1. MarketContextBuilder - Single Source of Truth
+            builder_config = MarketContextBuilderConfig(
+                enable_caching=True,
+                enable_preflight=True,
+                require_regime=True,
+                require_levels=True,
+            )
+            self._context_builder = MarketContextBuilder(config=builder_config)
+            logger.info("✅ MarketContextBuilder initialized")
 
-        self._is_initialized = True
-        self._log("✅ Bot Engine initialisiert")
+            # 2. RegimeDetectorService
+            regime_config = RegimeConfig(
+                trend_lookback=50,
+                volatility_lookback=20,
+                threshold_strong_trend=0.7,
+                threshold_weak_trend=0.4,
+                threshold_chop=0.3,
+            )
+            self._regime_detector = RegimeDetectorService(config=regime_config)
+            logger.info("✅ RegimeDetectorService initialized")
 
-        # Issue #20: Versuche gespeicherte Position wiederherzustellen
-        self._restore_saved_position()
+            # 3. LevelEngine
+            level_config = LevelEngineConfig(
+                swing_lookback=20,
+                min_touches=2,
+                price_tolerance_pct=0.5,
+                enable_daily_levels=True,
+                enable_weekly_levels=True,
+            )
+            self._level_engine = LevelEngine(config=level_config)
+            logger.info("✅ LevelEngine initialized")
+
+            # 4. EntryScoreEngine
+            entry_config = EntryScoreConfig(
+                # Weights
+                weight_trend=0.25,
+                weight_rsi=0.15,
+                weight_macd=0.15,
+                weight_adx=0.15,
+                weight_volatility=0.15,
+                weight_volume=0.15,
+                # Quality thresholds
+                score_excellent=0.8,
+                score_good=0.6,
+                score_acceptable=0.4,
+            )
+            self._entry_score_engine = EntryScoreEngine(config=entry_config)
+            logger.info("✅ EntryScoreEngine initialized")
+
+            # 5. LLMValidationService
+            llm_config = LLMValidationConfig(
+                quick_threshold_score=0.7,
+                deep_threshold_score=0.5,
+                veto_modifier=-0.3,
+                boost_modifier=0.2,
+                enable_quick=True,
+                enable_deep=True,
+            )
+            self._llm_validation = LLMValidationService(config=llm_config)
+            logger.info("✅ LLMValidationService initialized")
+
+            # 6. TriggerExitEngine
+            trigger_config = TriggerExitConfig(
+                # Entry triggers
+                enable_breakout=True,
+                enable_pullback=True,
+                enable_sfp=True,
+                # Exit settings
+                use_atr_stops=True,
+                atr_sl_multiplier=2.0,
+                atr_tp_multiplier=3.0,
+                enable_trailing=True,
+            )
+            self._trigger_exit_engine = TriggerExitEngine(config=trigger_config)
+            logger.info("✅ TriggerExitEngine initialized")
+
+            # 7. LeverageRulesEngine
+            leverage_config = LeverageRulesConfig(
+                # Asset tiers
+                tier_blue_chip_max=5.0,
+                tier_mid_cap_max=3.0,
+                tier_small_cap_max=2.0,
+                # Regime modifiers
+                strong_trend_modifier=1.0,
+                weak_trend_modifier=0.7,
+                chop_range_modifier=0.5,
+                volatility_explosive_modifier=0.3,
+            )
+            self._leverage_engine = LeverageRulesEngine(config=leverage_config)
+            logger.info("✅ LeverageRulesEngine initialized")
+
+            self._log("✅ Alle neuen Engines initialisiert (Phase 1-4)")
+
+        except Exception as e:
+            logger.exception("Failed to initialize new engines")
+            self._log(f"❌ Fehler bei Engine-Initialisierung: {e}")
+            raise
+
+    def update_engine_configs(self) -> None:
+        """Aktualisiert die Konfiguration aller laufenden Engines.
+
+        Lädt Config-Files und wendet sie auf die laufenden Engine-Instanzen an.
+        WICHTIG: Sofort wirksam, kein Bot-Neustart nötig (Punkt 2).
+        """
+        if not self._context_builder:
+            logger.warning("Engines not initialized yet - skipping config update")
+            return
+
+        try:
+            from src.core.trading_bot import (
+                load_entry_score_config,
+                load_trigger_exit_config,
+                load_leverage_config,
+                load_llm_validation_config,
+            )
+
+            # 1. Entry Score Config laden und anwenden
+            if self._entry_score_engine:
+                entry_config = load_entry_score_config()
+                self._entry_score_engine.config = entry_config
+                logger.info(f"✅ EntryScoreEngine config updated: weights={entry_config.weight_trend}/{entry_config.weight_rsi}/{entry_config.weight_macd}")
+
+            # 2. Trigger/Exit Config laden und anwenden
+            if self._trigger_exit_engine:
+                trigger_config = load_trigger_exit_config()
+                self._trigger_exit_engine.config = trigger_config
+                logger.info(f"✅ TriggerExitEngine config updated: breakout={trigger_config.enable_breakout}, pullback={trigger_config.enable_pullback}")
+
+            # 3. Leverage Config laden und anwenden
+            if self._leverage_engine:
+                leverage_config = load_leverage_config()
+                self._leverage_engine.config = leverage_config
+                logger.info(f"✅ LeverageRulesEngine config updated: blue_chip_max={leverage_config.tier_blue_chip_max}x")
+
+            # 4. LLM Validation Config laden und anwenden
+            if self._llm_validation:
+                llm_config = load_llm_validation_config()
+                self._llm_validation.config = llm_config
+                logger.info(f"✅ LLMValidationService config updated: quick_threshold={llm_config.quick_threshold_score}")
+
+            # Note: RegimeDetector und LevelEngine haben keine Config-Files
+            # (nutzen Builder-Config bzw. fest codierte Werte)
+
+            self._log("⚙️ Engine-Konfigurationen aktualisiert (sofort wirksam)")
+            logger.info("All engine configs reloaded and applied to running instances")
+
+        except Exception as e:
+            logger.exception(f"Failed to update engine configs: {e}")
+            self._log(f"❌ Fehler beim Aktualisieren der Engine-Configs: {e}")
+
+    async def _process_market_data_through_engines(self, symbol: str, timeframe: str = "1m") -> None:
+        """Holt Marktdaten und schickt sie durch die Engine-Pipeline.
+
+        Pipeline:
+        1. DataFrame von HistoryManager holen
+        2. MarketContext bauen (via MarketContextBuilder)
+        3. EntryScore berechnen
+        4. LLM Validation (Quick→Deep)
+        5. Trigger prüfen
+        6. Leverage berechnen
+        7. Ergebnisse speichern für Status Panel
+
+        Args:
+            symbol: Trading-Symbol (z.B. "BTCUSDT")
+            timeframe: Timeframe (z.B. "1m", "5m")
+        """
+        if not self._context_builder or not self._history_manager:
+            logger.warning("Engines or history_manager not initialized - skipping pipeline")
+            return
+
+        try:
+            # 1. DataFrame holen (letzten 200 Kerzen für Indikatoren)
+            import pandas as pd
+            df = await self._history_manager.get_historical_data(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=200,
+            )
+
+            if df is None or df.empty:
+                logger.warning(f"No data available for {symbol} {timeframe}")
+                return
+
+            # 2. MarketContext bauen
+            context = self._context_builder.build(df, symbol=symbol, timeframe=timeframe)
+            self._last_market_context = context
+            logger.debug(f"MarketContext built: {context.context_id}")
+
+            # 3. EntryScore berechnen
+            if self._entry_score_engine:
+                entry_result = self._entry_score_engine.calculate(context)
+                self._last_entry_score = entry_result
+                logger.debug(f"Entry Score: {entry_result.final_score:.3f} ({entry_result.quality.value})")
+
+            # 4. LLM Validation (Quick→Deep)
+            if self._llm_validation and self._last_entry_score:
+                llm_result = await self._llm_validation.validate(
+                    context=context,
+                    entry_score=self._last_entry_score.final_score,
+                    direction="long" if self._last_entry_score.direction.value == "long" else "short",
+                )
+                self._last_llm_result = llm_result
+                logger.debug(f"LLM Validation: {llm_result.action.value} (tier={llm_result.tier.value})")
+
+            # 5. Trigger prüfen
+            if self._trigger_exit_engine and self._last_entry_score:
+                trigger_result = self._trigger_exit_engine.check_trigger(
+                    context=context,
+                    direction="long" if self._last_entry_score.direction.value == "long" else "short",
+                )
+                self._last_trigger_result = trigger_result
+                logger.debug(f"Trigger: {trigger_result.status.value} (type={trigger_result.trigger_type.value if trigger_result.trigger_type else 'None'})")
+
+            # 6. Leverage berechnen
+            if self._leverage_engine:
+                leverage_result = self._leverage_engine.calculate(
+                    symbol=symbol,
+                    regime=context.regime.regime_type,
+                )
+                self._last_leverage_result = leverage_result
+                logger.debug(f"Leverage: {leverage_result.final_leverage:.1f}x (action={leverage_result.action.value})")
+
+            # 7. Trade-Ausführung (falls Trigger aktiv und keine offene Position)
+            await self._execute_trade_if_triggered(symbol=symbol, context=context)
+
+            # 8. Position Monitoring (falls offene Position)
+            await self._monitor_open_position(context=context)
+
+            # 9. Status Panel aktualisieren (falls sichtbar)
+            if self._status_panel and self.status_panel_btn.isChecked():
+                self._update_status_panel()
+
+            # 10. Journal Log (mit MarketContext ID)
+            self._log_engine_results_to_journal()
+
+        except Exception as e:
+            logger.exception(f"Failed to process market data through engines: {e}")
+            self._log(f"❌ Engine-Pipeline Fehler: {e}")
+
+    async def _execute_trade_if_triggered(self, symbol: str, context: MarketContext) -> None:
+        """Führt Trade aus wenn alle Bedingungen erfüllt sind.
+
+        Bedingungen für Entry:
+        1. Kein offener Trade (self._current_position is None)
+        2. Trigger-Status = TRIGGERED
+        3. Entry Score Quality >= ACCEPTABLE
+        4. LLM Validation != VETO
+
+        Args:
+            symbol: Trading-Symbol
+            context: Aktueller MarketContext
+        """
+        # 1. Prüfen ob bereits Position offen
+        if self._current_position is not None:
+            logger.debug("Position already open - skipping entry")
+            return
+
+        # 2. Prüfen ob Trigger aktiv
+        if not self._last_trigger_result or self._last_trigger_result.status.value != "triggered":
+            logger.debug(f"No trigger - status: {self._last_trigger_result.status.value if self._last_trigger_result else 'None'}")
+            return
+
+        # 3. Prüfen ob Entry Score gut genug
+        if not self._last_entry_score or self._last_entry_score.quality.value not in ["excellent", "good", "acceptable"]:
+            logger.warning(f"Entry score quality too low: {self._last_entry_score.quality.value if self._last_entry_score else 'None'}")
+            self._log(f"⚠️ Entry Score zu niedrig: {self._last_entry_score.quality.value if self._last_entry_score else 'None'}")
+            return
+
+        # 4. Prüfen ob LLM Veto
+        if self._last_llm_result and self._last_llm_result.action.value == "veto":
+            logger.warning(f"LLM VETO - blocking trade: {self._last_llm_result.reasoning[:100]}")
+            self._log(f"🚫 LLM VETO: {self._last_llm_result.reasoning[:50]}...")
+            return
+
+        # Alle Bedingungen erfüllt → Trade ausführen
+        try:
+            direction = self._last_entry_score.direction.value  # "long" or "short"
+            entry_price = context.current_price
+
+            # Position Size berechnen (mit Leverage)
+            leverage = self._last_leverage_result.final_leverage if self._last_leverage_result else 1.0
+
+            # Hole Risk-Settings aus Config
+            config = self._get_current_config()
+            risk_per_trade_pct = config.risk_per_trade_pct  # z.B. 1.0 = 1% des Kapitals
+
+            # Hole Kontogröße vom Adapter
+            account_balance = await self._adapter.get_balance()
+
+            # Berechne Position Size
+            risk_amount = account_balance * (risk_per_trade_pct / 100.0)
+
+            # Stop Loss Distanz aus TriggerExitEngine
+            exit_levels = self._last_trigger_result.exit_levels
+            if not exit_levels:
+                logger.error("No exit levels from TriggerExitEngine")
+                return
+
+            sl_price = exit_levels.stop_loss
+            tp_price = exit_levels.take_profit
+
+            # SL-Distanz in %
+            if direction == "long":
+                sl_distance_pct = abs((entry_price - sl_price) / entry_price)
+            else:
+                sl_distance_pct = abs((sl_price - entry_price) / entry_price)
+
+            # Quantity berechnen: Risk / SL-Distanz
+            quantity = (risk_amount / (entry_price * sl_distance_pct)) * leverage
+
+            # Position öffnen über Adapter
+            self._log(f"🚀 Opening {direction.upper()} position: {quantity:.4f} {symbol} @ {entry_price:.2f}")
+            self._log(f"   SL: {sl_price:.2f} | TP: {tp_price:.2f} | Leverage: {leverage:.1f}x")
+
+            order_result = await self._adapter.place_order(
+                symbol=symbol,
+                side="buy" if direction == "long" else "sell",
+                quantity=quantity,
+                order_type="market",
+            )
+
+            if order_result and order_result.get("status") == "filled":
+                # Position erfolgreich eröffnet
+                self._current_position = {
+                    "symbol": symbol,
+                    "side": direction,
+                    "entry_price": entry_price,
+                    "quantity": quantity,
+                    "stop_loss": sl_price,
+                    "take_profit": tp_price,
+                    "leverage": leverage,
+                    "entry_time": datetime.now(timezone.utc),
+                    "context_id": context.context_id,
+                    "trigger_type": self._last_trigger_result.trigger_type.value if self._last_trigger_result.trigger_type else "unknown",
+                }
+
+                self._position_entry_price = entry_price
+                self._position_side = direction
+                self._position_quantity = quantity
+                self._position_stop_loss = sl_price
+                self._position_take_profit = tp_price
+
+                self._log(f"✅ Position opened: {direction.upper()} {quantity:.4f} @ {entry_price:.2f}")
+
+                # Show SL/TP Visual Bar
+                self.sltp_container.setVisible(True)
+                self._update_sltp_bar(entry_price)
+
+                # Journal Log
+                if self._journal_widget:
+                    trade_data = {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "context_id": context.context_id,
+                        "action": "ENTRY",
+                        "side": direction,
+                        "price": entry_price,
+                        "quantity": quantity,
+                        "stop_loss": sl_price,
+                        "take_profit": tp_price,
+                        "leverage": leverage,
+                        "trigger": self._last_trigger_result.trigger_type.value if self._last_trigger_result.trigger_type else "unknown",
+                        "entry_score": self._last_entry_score.final_score,
+                        "llm_action": self._last_llm_result.action.value if self._last_llm_result else "none",
+                    }
+                    self._journal_widget.add_trade(trade_data)
+            else:
+                logger.error(f"Order failed: {order_result}")
+                self._log(f"❌ Order failed: {order_result}")
+
+        except Exception as e:
+            logger.exception(f"Failed to execute trade: {e}")
+            self._log(f"❌ Trade execution error: {e}")
+
+    async def _monitor_open_position(self, context: MarketContext) -> None:
+        """Überwacht offene Position und managed Exit.
+
+        Exit-Bedingungen:
+        1. Stop Loss hit
+        2. Take Profit hit
+        3. Trailing Stop triggered
+        4. Exit-Signal von TriggerExitEngine
+
+        Args:
+            context: Aktueller MarketContext
+        """
+        if not self._current_position:
+            return  # Keine offene Position
+
+        try:
+            current_price = context.current_price
+            side = self._current_position["side"]
+            entry_price = self._current_position["entry_price"]
+
+            # Prüfe SL/TP
+            should_exit = False
+            exit_reason = ""
+
+            if side == "long":
+                # Long Position
+                if current_price <= self._position_stop_loss:
+                    should_exit = True
+                    exit_reason = "Stop Loss hit"
+                elif current_price >= self._position_take_profit:
+                    should_exit = True
+                    exit_reason = "Take Profit hit"
+            else:
+                # Short Position
+                if current_price >= self._position_stop_loss:
+                    should_exit = True
+                    exit_reason = "Stop Loss hit"
+                elif current_price <= self._position_take_profit:
+                    should_exit = True
+                    exit_reason = "Take Profit hit"
+
+            # Trailing Stop Update (falls aktiviert)
+            if self._trigger_exit_engine and not should_exit:
+                # Hole neue Exit-Levels (mit Trailing)
+                exit_signal = self._trigger_exit_engine.check_exit(
+                    context=context,
+                    entry_price=entry_price,
+                    side=side,
+                )
+
+                if exit_signal and exit_signal.exit_type.value == "trailing_stop":
+                    # Trailing Stop wurde getriggert
+                    should_exit = True
+                    exit_reason = "Trailing Stop triggered"
+                elif exit_signal and exit_signal.updated_levels:
+                    # SL/TP Update (Trailing)
+                    new_sl = exit_signal.updated_levels.stop_loss
+                    new_tp = exit_signal.updated_levels.take_profit
+
+                    if new_sl != self._position_stop_loss or new_tp != self._position_take_profit:
+                        logger.info(f"Updating SL/TP: SL {self._position_stop_loss:.2f} → {new_sl:.2f}, TP {self._position_take_profit:.2f} → {new_tp:.2f}")
+                        self._position_stop_loss = new_sl
+                        self._position_take_profit = new_tp
+                        self._current_position["stop_loss"] = new_sl
+                        self._current_position["take_profit"] = new_tp
+                        self._log(f"📊 Trailing Update: SL={new_sl:.2f} TP={new_tp:.2f}")
+
+            # Exit ausführen falls nötig
+            if should_exit:
+                await self._close_position(
+                    exit_price=current_price,
+                    exit_reason=exit_reason,
+                    context_id=context.context_id,
+                )
+            else:
+                # Update SL/TP Visual Bar
+                self._update_sltp_bar(current_price)
+
+        except Exception as e:
+            logger.exception(f"Failed to monitor position: {e}")
+            self._log(f"❌ Position monitoring error: {e}")
+
+    async def _close_position(self, exit_price: float, exit_reason: str, context_id: str) -> None:
+        """Schließt die offene Position.
+
+        Args:
+            exit_price: Exit-Preis
+            exit_reason: Grund für Exit
+            context_id: MarketContext ID
+        """
+        if not self._current_position:
+            return
+
+        try:
+            symbol = self._current_position["symbol"]
+            side = self._current_position["side"]
+            quantity = self._current_position["quantity"]
+            entry_price = self._current_position["entry_price"]
+
+            # Order platzieren (gegenläufig)
+            close_side = "sell" if side == "long" else "buy"
+
+            self._log(f"🔴 Closing {side.upper()} position: {quantity:.4f} {symbol} @ {exit_price:.2f}")
+            self._log(f"   Reason: {exit_reason}")
+
+            order_result = await self._adapter.place_order(
+                symbol=symbol,
+                side=close_side,
+                quantity=quantity,
+                order_type="market",
+            )
+
+            if order_result and order_result.get("status") == "filled":
+                # P&L berechnen
+                if side == "long":
+                    pnl = (exit_price - entry_price) * quantity
+                else:
+                    pnl = (entry_price - exit_price) * quantity
+
+                pnl_pct = (pnl / (entry_price * quantity)) * 100
+
+                self._log(f"✅ Position closed: P&L = ${pnl:.2f} ({pnl_pct:+.2f}%)")
+
+                # Journal Log
+                if self._journal_widget:
+                    trade_data = {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "context_id": context_id,
+                        "action": "EXIT",
+                        "side": side,
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                        "quantity": quantity,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "exit_reason": exit_reason,
+                        "hold_time": str(datetime.now(timezone.utc) - self._current_position["entry_time"]),
+                    }
+                    self._journal_widget.add_trade(trade_data)
+
+                # Position löschen
+                self._current_position = None
+                self._position_entry_price = 0.0
+                self._position_side = ""
+                self._position_quantity = 0.0
+                self._position_stop_loss = 0.0
+                self._position_take_profit = 0.0
+
+                # Reset SL/TP Visual Bar (bleibt sichtbar, zeigt nur "keine Position")
+                self._reset_sltp_bar()
+            else:
+                logger.error(f"Close order failed: {order_result}")
+                self._log(f"❌ Close order failed: {order_result}")
+
+        except Exception as e:
+            logger.exception(f"Failed to close position: {e}")
+            self._log(f"❌ Position close error: {e}")
+
+    def _update_sltp_bar(self, current_price: float) -> None:
+        """Aktualisiert den visuellen SL/TP Balken im Signals-Tab.
+
+        Der Balken zeigt die Position zwischen SL (0%) und TP (100%):
+        - Rot (links) = Stop Loss
+        - Orange (mitte) = aktueller Preis
+        - Grün (rechts) = Take Profit
+
+        Args:
+            current_price: Aktueller Marktpreis
+        """
+        if not self._current_position:
+            return
+
+        try:
+            sl_price = self._position_stop_loss
+            tp_price = self._position_take_profit
+            entry_price = self._position_entry_price
+            side = self._position_side
+
+            # Berechne Position zwischen SL und TP (0-100%)
+            if side == "long":
+                # Long: SL < Entry < Current < TP
+                price_range = tp_price - sl_price
+                current_offset = current_price - sl_price
+            else:
+                # Short: TP < Current < Entry < SL
+                price_range = sl_price - tp_price
+                current_offset = sl_price - current_price
+
+            # Position in % (0 = SL, 100 = TP)
+            if price_range > 0:
+                position_pct = (current_offset / price_range) * 100
+                position_pct = max(0, min(100, position_pct))  # Clamp 0-100
+            else:
+                position_pct = 50  # Fallback
+
+            # Update Bar
+            self.sltp_bar.setValue(int(position_pct))
+
+            # Update Labels
+            self.sltp_sl_label.setText(f"SL: {sl_price:.2f}")
+            self.sltp_current_label.setText(f"{current_price:.2f}")
+            self.sltp_tp_label.setText(f"TP: {tp_price:.2f}")
+
+            # Berechne P&L
+            quantity = self._position_quantity
+            if side == "long":
+                pnl = (current_price - entry_price) * quantity
+            else:
+                pnl = (entry_price - current_price) * quantity
+
+            pnl_pct = (pnl / (entry_price * quantity)) * 100
+
+            # Update P&L Label mit Farbe
+            pnl_color = "#26a69a" if pnl >= 0 else "#ef5350"
+            pnl_sign = "+" if pnl >= 0 else ""
+            self.sltp_pnl_label.setText(f"P&L: {pnl_sign}${pnl:.2f} ({pnl_sign}{pnl_pct:.2f}%)")
+            self.sltp_pnl_label.setStyleSheet(f"color: {pnl_color}; font-weight: bold; font-size: 12px; margin-top: 5px;")
+
+        except Exception as e:
+            logger.exception(f"Failed to update SL/TP bar: {e}")
+
+    def _reset_sltp_bar(self) -> None:
+        """Setzt den SL/TP Visual Bar auf Default-Werte zurück (keine aktive Position)."""
+        try:
+            # Reset Labels
+            self.sltp_sl_label.setText("SL: —")
+            self.sltp_current_label.setText("—")
+            self.sltp_tp_label.setText("TP: —")
+            self.sltp_pnl_label.setText("P&L: —")
+            self.sltp_pnl_label.setStyleSheet("color: #888; font-size: 11px; margin-top: 5px;")
+
+            # Reset Bar
+            self.sltp_bar.setValue(50)  # Mitte
+
+            logger.debug("SL/TP bar reset to default state (no position)")
+        except Exception as e:
+            logger.exception(f"Failed to reset SL/TP bar: {e}")
+
+    def _log_engine_results_to_journal(self) -> None:
+        """Loggt Engine-Ergebnisse ins Trading Journal mit MarketContext ID."""
+        if not self._journal_widget or not self._last_market_context:
+            return
+
+        try:
+            # Entry Score
+            if self._last_entry_score:
+                entry_data = {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "context_id": self._last_market_context.context_id,
+                    "score": self._last_entry_score.final_score,
+                    "quality": self._last_entry_score.quality.value,
+                    "direction": self._last_entry_score.direction.value,
+                    "components": {
+                        comp.name: comp.value
+                        for comp in self._last_entry_score.components
+                    },
+                }
+                self._journal_widget.add_entry_score(entry_data)
+
+            # LLM Result
+            if self._last_llm_result:
+                llm_data = {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "context_id": self._last_market_context.context_id,
+                    "action": self._last_llm_result.action.value,
+                    "tier": self._last_llm_result.tier.value,
+                    "reasoning": self._last_llm_result.reasoning[:200] if self._last_llm_result.reasoning else "",
+                }
+                self._journal_widget.add_llm_output(llm_data)
+
+        except Exception as e:
+            logger.exception(f"Failed to log engine results to journal: {e}")
 
     def _get_current_config(self) -> BotConfig:
         """Gibt aktuelle Bot-Konfiguration zurück (lädt aus Datei wenn vorhanden)."""
@@ -1083,14 +1829,98 @@ class BotTab(QWidget):
         self.stats_drawdown.setText(f"-${abs(dd):,.2f}")
 
     def _periodic_update(self) -> None:
-        """Periodisches UI Update."""
-        if self._bot_engine:
-            # Force refresh stats
-            self.stats_updated.emit(self._bot_engine.statistics)
+        """Periodisches UI Update (Punkt 4: Performance-Tuning).
 
-            # Phase 5: Status Panel auch aktualisieren wenn sichtbar
-            if self._status_panel and self._status_panel.isVisible():
-                self._update_status_panel()
+        Läuft die Engine-Pipeline NUR wenn ein neuer Bar verfügbar ist.
+        Bei gleichen Bars: nur lightweight SL/TP Bar Update.
+        """
+        if self._context_builder:
+            # Get current symbol from bot config
+            config = self._get_current_config()
+
+            # Performance: Prüfe ob neuer Bar existiert
+            asyncio.create_task(
+                self._check_and_run_pipeline(
+                    symbol=config.symbol,
+                    timeframe=self._pipeline_timeframe,
+                )
+            )
+
+        # Phase 5: Status Panel auch aktualisieren wenn sichtbar
+        if self._status_panel and self._status_panel.isVisible():
+            self._update_status_panel()
+
+    async def _check_and_run_pipeline(self, symbol: str, timeframe: str) -> None:
+        """Prüft ob neuer Bar existiert und startet Pipeline nur dann (Performance).
+
+        Args:
+            symbol: Trading-Symbol (z.B. "BTCUSDT")
+            timeframe: Zeiteinheit (z.B. "1m", "5m", "15m")
+        """
+        try:
+            # Check if new bar exists
+            has_new_bar = await self._has_new_bar(symbol, timeframe)
+
+            if has_new_bar:
+                # Neuer Bar → Full Pipeline ausführen
+                logger.debug(f"New bar detected at {symbol} {timeframe} - running pipeline")
+                await self._process_market_data_through_engines(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                )
+            else:
+                # Kein neuer Bar → nur lightweight P&L Update
+                if self._current_position and self._last_market_context:
+                    # Get latest tick price for P&L update
+                    if self._history_manager:
+                        df = await self._history_manager.get_historical_data(
+                            symbol=symbol,
+                            timeframe="1s",  # Latest tick
+                            limit=1,
+                        )
+                        if df is not None and not df.empty and 'close' in df.columns:
+                            current_price = float(df['close'].iloc[-1])
+                            self._update_sltp_bar(current_price)
+        except Exception as e:
+            logger.exception(f"Failed to check and run pipeline: {e}")
+
+    async def _has_new_bar(self, symbol: str, timeframe: str) -> bool:
+        """Prüft ob ein neuer Bar vorhanden ist (Performance-Optimierung).
+
+        Args:
+            symbol: Trading-Symbol
+            timeframe: Zeiteinheit
+
+        Returns:
+            True wenn neuer Bar existiert, False sonst
+        """
+        try:
+            if not self._history_manager:
+                return False
+
+            # Get latest 2 bars
+            df = await self._history_manager.get_historical_data(
+                symbol=symbol,
+                timeframe=timeframe,
+                limit=2,
+            )
+
+            if df is None or df.empty or 'time' not in df.columns:
+                return False
+
+            # Get latest bar timestamp
+            latest_timestamp = int(df['time'].iloc[-1])
+
+            # Compare with last processed timestamp
+            if latest_timestamp != self._last_bar_timestamp:
+                self._last_bar_timestamp = latest_timestamp
+                logger.debug(f"New bar timestamp: {latest_timestamp} (previous: {self._last_bar_timestamp})")
+                return True
+
+            return False
+        except Exception as e:
+            logger.exception(f"Failed to check for new bar: {e}")
+            return False  # Skip pipeline on error
 
     def _log(self, message: str) -> None:
         """Fügt Log-Nachricht hinzu."""
@@ -1375,25 +2205,89 @@ class BotSettingsDialog(QDialog):
 
         layout.addWidget(ai_group)
 
+        # Performance Settings (Punkt 4: Pipeline Timeframe)
+        perf_group = QGroupBox("⚡ Performance")
+        perf_layout = QFormLayout(perf_group)
+
+        self.pipeline_timeframe_combo = QComboBox()
+        self.pipeline_timeframe_combo.addItems(["1m", "5m", "15m", "30m", "1h"])
+        # Default auf "1m" wenn parent nicht existiert
+        if self.parent() and hasattr(self.parent(), '_pipeline_timeframe'):
+            current_tf = self.parent()._pipeline_timeframe
+            idx = self.pipeline_timeframe_combo.findText(current_tf)
+            if idx >= 0:
+                self.pipeline_timeframe_combo.setCurrentIndex(idx)
+        else:
+            self.pipeline_timeframe_combo.setCurrentText("1m")
+
+        perf_layout.addRow("Pipeline Timeframe:", self.pipeline_timeframe_combo)
+
+        info_label = QLabel(
+            "Pipeline läuft nur bei neuen Bars dieser Zeiteinheit.\n"
+            "Kürzere Timeframes = mehr Updates, höhere CPU-Last.\n"
+            "Längere Timeframes = weniger Updates, weniger CPU-Last."
+        )
+        info_label.setStyleSheet("color: #888; font-size: 10px;")
+        info_label.setWordWrap(True)
+        perf_layout.addRow(info_label)
+
+        layout.addWidget(perf_group)
+
     def _apply_all_engine_settings(self) -> None:
-        """Wendet alle Engine-Settings an ohne zu speichern."""
+        """Wendet alle Engine-Settings an ohne zu speichern.
+
+        Settings werden in Config-Files gespeichert UND laufende Engines aktualisiert.
+        """
+        # Apply Basic Performance Settings (Pipeline Timeframe)
+        if self.parent() and hasattr(self.parent(), '_pipeline_timeframe'):
+            new_timeframe = self.pipeline_timeframe_combo.currentText()
+            self.parent()._pipeline_timeframe = new_timeframe
+            logger.info(f"Pipeline timeframe updated to: {new_timeframe}")
+
+        # Apply Engine Settings
         if HAS_ENGINE_SETTINGS:
             self._entry_score_widget.apply_settings()
             self._trigger_exit_widget.apply_settings()
             self._leverage_widget.apply_settings()
             self._llm_widget.apply_settings()
             self._levels_widget.apply_settings()
-            QMessageBox.information(self, "Settings Applied", "All engine settings have been applied.")
+
+            # Update laufende Engines im Parent (BotTab)
+            if self.parent() and hasattr(self.parent(), 'update_engine_configs'):
+                self.parent().update_engine_configs()
+                QMessageBox.information(self, "Settings Applied", "All settings (Basic + Engines) have been applied and engines updated.")
+            else:
+                QMessageBox.information(self, "Settings Applied", "All settings have been applied.\n(Engines will be updated on next bot start)")
+        else:
+            QMessageBox.information(self, "Settings Applied", "Performance settings have been applied.")
 
     def _save_all_engine_settings(self) -> None:
-        """Speichert alle Engine-Settings."""
+        """Speichert alle Engine-Settings.
+
+        Settings werden in Config-Files gespeichert UND laufende Engines aktualisiert.
+        """
+        # Apply Basic Performance Settings (Pipeline Timeframe) - Runtime only
+        if self.parent() and hasattr(self.parent(), '_pipeline_timeframe'):
+            new_timeframe = self.pipeline_timeframe_combo.currentText()
+            self.parent()._pipeline_timeframe = new_timeframe
+            logger.info(f"Pipeline timeframe saved to: {new_timeframe}")
+
+        # Save Engine Settings to Config Files
         if HAS_ENGINE_SETTINGS:
             self._entry_score_widget.save_settings()
             self._trigger_exit_widget.save_settings()
             self._leverage_widget.save_settings()
             self._llm_widget.save_settings()
             self._levels_widget.save_settings()
-            QMessageBox.information(self, "Settings Saved", "All engine settings have been saved.")
+
+            # Update laufende Engines im Parent (BotTab)
+            if self.parent() and hasattr(self.parent(), 'update_engine_configs'):
+                self.parent().update_engine_configs()
+                QMessageBox.information(self, "Settings Saved", "All settings (Basic + Engines) have been saved and engines updated.")
+            else:
+                QMessageBox.information(self, "Settings Saved", "All settings have been saved.\n(Engines will be updated on next bot start)")
+        else:
+            QMessageBox.information(self, "Settings Saved", "Performance settings have been saved.")
 
     def get_config(self) -> BotConfig:
         """Gibt die aktualisierten Einstellungen zurück."""

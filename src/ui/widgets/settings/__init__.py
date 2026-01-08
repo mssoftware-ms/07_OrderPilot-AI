@@ -1,26 +1,18 @@
-"""
-Settings Widgets Package - UI-Widgets für alle Engine-Konfigurationen.
+"""Engine Settings Widgets Package.
 
-Phase 5 der Bot-Integration.
-
-Enthält Settings-Widgets für:
-- LevelEngine (Level-Detection Einstellungen)
-- EntryScoreEngine (Score-Gewichte, Quality Thresholds, Gates)
-- TriggerExitEngine (Entry Triggers, SL/TP, Trailing)
-- LeverageRulesEngine (Asset Tiers, Regime Modifier, Safety)
-- LLMValidationService (Thresholds, Modifiers, Prompt Settings)
+Provides QWidget-based settings editors for each trading bot engine.
 """
 
-from .level_settings_widget import LevelSettingsWidget
-from .entry_score_settings_widget import EntryScoreSettingsWidget
-from .trigger_exit_settings_widget import TriggerExitSettingsWidget
-from .leverage_settings_widget import LeverageSettingsWidget
-from .llm_validation_settings_widget import LLMValidationSettingsWidget
+from .entry_score_settings import EntryScoreSettingsWidget
+from .trigger_exit_settings import TriggerExitSettingsWidget
+from .leverage_settings import LeverageSettingsWidget
+from .llm_validation_settings import LLMValidationSettingsWidget
+from .level_settings import LevelSettingsWidget
 
 __all__ = [
-    "LevelSettingsWidget",
     "EntryScoreSettingsWidget",
     "TriggerExitSettingsWidget",
     "LeverageSettingsWidget",
     "LLMValidationSettingsWidget",
+    "LevelSettingsWidget",
 ]
