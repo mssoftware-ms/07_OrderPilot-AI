@@ -45,6 +45,11 @@ class EmbeddedTradingViewChartUIMixin:
         self._chart_bridge = ChartBridge(self)
         self._chart_bridge.stop_line_moved.connect(self._on_bridge_stop_line_moved)
         self._chart_bridge.zone_deleted.connect(self._on_bridge_zone_deleted)
+        # Phase 5.7: Connect zone click handler for level interactions
+        if hasattr(self._chart_bridge, "zone_clicked"):
+            self._chart_bridge.zone_clicked.connect(self._on_zone_clicked)
+        # Also expose as self.bridge for compatibility
+        self.bridge = self._chart_bridge
         self._web_channel = QWebChannel(self.web_view.page())
         self._web_channel.registerObject("pyBridge", self._chart_bridge)
         self.web_view.page().setWebChannel(self._web_channel)

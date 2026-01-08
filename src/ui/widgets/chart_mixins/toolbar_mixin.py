@@ -48,9 +48,13 @@ class ToolbarMixin:
     def _build_toolbar_row2(self, toolbar: QToolBar) -> None:
         self._add_live_stream_toggle(toolbar)
         toolbar.addSeparator()
+        self._add_regime_badge_to_toolbar(toolbar)  # Phase 2.2: Regime Badge
+        toolbar.addSeparator()
         self._add_chart_marking_button(toolbar)
+        self._add_levels_button(toolbar)  # Phase 5.5: Levels Toggle
         self._add_ai_chat_button(toolbar)
         self._add_ai_analysis_button(toolbar)
+        self._add_export_context_button(toolbar)  # Phase 5.5: Export Context
         self._add_bitunix_trading_button(toolbar)
         toolbar.addSeparator()
         self._add_bot_toggle_button(toolbar)
@@ -334,6 +338,55 @@ class ToolbarMixin:
         self.zoom_back_button.clicked.connect(self._on_zoom_back)
         toolbar.addWidget(self.zoom_back_button)
 
+    def _add_regime_badge_to_toolbar(self, toolbar: QToolBar) -> None:
+        """Add regime badge to toolbar (Phase 2.2)."""
+        try:
+            from src.ui.widgets.regime_badge_widget import RegimeBadgeWidget
+
+            toolbar.addWidget(QLabel("Regime:"))
+            self._regime_badge = RegimeBadgeWidget(compact=True, show_icon=True)
+            self._regime_badge.clicked.connect(self._on_regime_badge_clicked)
+            toolbar.addWidget(self._regime_badge)
+            logger.debug("Regime badge added to toolbar")
+        except ImportError as e:
+            logger.warning(f"Could not add regime badge: {e}")
+            # Fallback: simple label
+            self._regime_label = QLabel("N/A")
+            self._regime_label.setStyleSheet("color: #888; padding: 5px;")
+            toolbar.addWidget(QLabel("Regime:"))
+            toolbar.addWidget(self._regime_label)
+
+    def _on_regime_badge_clicked(self) -> None:
+        """Handle regime badge click - show regime details dialog."""
+        logger.debug("Regime badge clicked")
+        # TODO: Open regime details dialog in Phase 5
+
+    def update_regime_badge(self, regime: str, adx: float | None = None,
+                            gate_reason: str = "", allows_entry: bool = True) -> None:
+        """
+        Update the regime badge display.
+
+        Args:
+            regime: Regime type string
+            adx: ADX value
+            gate_reason: Reason for gate
+            allows_entry: Whether entry is allowed
+        """
+        if hasattr(self, "_regime_badge") and self._regime_badge:
+            self._regime_badge.set_regime(regime, adx, gate_reason, allows_entry)
+        elif hasattr(self, "_regime_label"):
+            self._regime_label.setText(regime[:10])
+
+    def update_regime_from_result(self, result) -> None:
+        """
+        Update regime badge from RegimeResult.
+
+        Args:
+            result: RegimeResult from RegimeDetectorService
+        """
+        if hasattr(self, "_regime_badge") and self._regime_badge:
+            self._regime_badge.set_regime_from_result(result)
+
     def _add_live_stream_toggle(self, toolbar: QToolBar) -> None:
         self.live_stream_button = QPushButton("🔴 Live")
         self.live_stream_button.setCheckable(True)
@@ -604,3 +657,203 @@ class ToolbarMixin:
                 logger.warning("zoom_back_to_previous_view not available on chart widget")
         except Exception as e:
             logger.error("Zoom-Back failed: %s", e, exc_info=True)
+
+    # =========================================================================
+    # PHASE 5.5: LEVELS BUTTON
+    # =========================================================================
+
+    def _add_levels_button(self, toolbar: QToolBar) -> None:
+        """Add levels toggle button to toolbar (Phase 5.5)."""
+        self.levels_button = QPushButton("📊 Levels")
+        self.levels_button.setCheckable(True)
+        self.levels_button.setChecked(False)
+        self.levels_button.setToolTip(
+            "Support/Resistance Levels im Chart anzeigen/verbergen"
+        )
+        self.levels_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #4CAF50;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+            QPushButton:checked {
+                background-color: #4CAF50;
+                color: #000;
+            }
+        """
+        )
+
+        # Add dropdown menu for level options
+        levels_menu = QMenu(self)
+        self._build_levels_menu(levels_menu)
+        self.levels_button.setMenu(levels_menu)
+
+        toolbar.addWidget(self.levels_button)
+        logger.debug("Levels button added to toolbar")
+
+    def _build_levels_menu(self, menu: QMenu) -> None:
+        """Build the levels dropdown menu."""
+        # Refresh/Detect action
+        detect_action = QAction("🔍 Levels erkennen", self)
+        detect_action.triggered.connect(self._on_detect_levels)
+        menu.addAction(detect_action)
+
+        menu.addSeparator()
+
+        # Level type toggles
+        self._level_type_actions = {}
+        level_types = [
+            ("support", "🟢 Support Levels", True),
+            ("resistance", "🔴 Resistance Levels", True),
+            ("pivot", "🟣 Pivot Points", False),
+            ("swing", "🟠 Swing Highs/Lows", False),
+            ("daily", "📈 Daily H/L", False),
+        ]
+
+        for level_type, label, default in level_types:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(default)
+            action.triggered.connect(
+                lambda checked, lt=level_type: self._on_level_type_toggle(lt, checked)
+            )
+            menu.addAction(action)
+            self._level_type_actions[level_type] = action
+
+        menu.addSeparator()
+
+        # Key levels only
+        key_only_action = QAction("⭐ Nur Key Levels", self)
+        key_only_action.setCheckable(True)
+        menu.addAction(key_only_action)
+        self._key_only_action = key_only_action
+
+        menu.addSeparator()
+
+        # Clear levels
+        clear_action = QAction("🗑️ Levels entfernen", self)
+        clear_action.triggered.connect(self._on_clear_levels)
+        menu.addAction(clear_action)
+
+    def _on_detect_levels(self) -> None:
+        """Trigger level detection."""
+        logger.debug("Level detection requested via toolbar")
+        # Signal wird in chart_window.py verbunden
+        if hasattr(self, "levels_detect_requested"):
+            self.levels_detect_requested.emit()
+
+    def _on_level_type_toggle(self, level_type: str, checked: bool) -> None:
+        """Handle level type toggle."""
+        logger.debug(f"Level type {level_type} toggled: {checked}")
+        if hasattr(self, "level_type_toggled"):
+            self.level_type_toggled.emit(level_type, checked)
+
+    def _on_clear_levels(self) -> None:
+        """Clear all level zones from chart."""
+        logger.debug("Clear levels requested")
+        if hasattr(self, "clear_zones"):
+            self.clear_zones()
+
+    # =========================================================================
+    # PHASE 5.5: EXPORT CONTEXT BUTTON
+    # =========================================================================
+
+    def _add_export_context_button(self, toolbar: QToolBar) -> None:
+        """Add export context button to toolbar (Phase 5.5)."""
+        self.export_context_button = QPushButton("📤 Context")
+        self.export_context_button.setToolTip(
+            "MarketContext exportieren (JSON/Clipboard)"
+        )
+        self.export_context_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #00BCD4;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+        """
+        )
+
+        # Add dropdown menu for export options
+        export_menu = QMenu(self)
+        self._build_export_context_menu(export_menu)
+        self.export_context_button.setMenu(export_menu)
+
+        toolbar.addWidget(self.export_context_button)
+        logger.debug("Export context button added to toolbar")
+
+    def _build_export_context_menu(self, menu: QMenu) -> None:
+        """Build the export context dropdown menu."""
+        # View Inspector
+        inspect_action = QAction("🔍 Context Inspector öffnen", self)
+        inspect_action.triggered.connect(self._on_open_context_inspector)
+        menu.addAction(inspect_action)
+
+        menu.addSeparator()
+
+        # Copy to clipboard
+        copy_json_action = QAction("📋 Als JSON kopieren", self)
+        copy_json_action.triggered.connect(self._on_copy_context_json)
+        menu.addAction(copy_json_action)
+
+        copy_prompt_action = QAction("📝 Als AI Prompt kopieren", self)
+        copy_prompt_action.triggered.connect(self._on_copy_context_prompt)
+        menu.addAction(copy_prompt_action)
+
+        menu.addSeparator()
+
+        # Export to file
+        export_file_action = QAction("💾 Als JSON exportieren...", self)
+        export_file_action.triggered.connect(self._on_export_context_file)
+        menu.addAction(export_file_action)
+
+        menu.addSeparator()
+
+        # Refresh context
+        refresh_action = QAction("🔄 Context aktualisieren", self)
+        refresh_action.triggered.connect(self._on_refresh_context)
+        menu.addAction(refresh_action)
+
+    def _on_open_context_inspector(self) -> None:
+        """Open the MarketContext Inspector dialog."""
+        logger.debug("Context inspector requested")
+        # Wird in chart_window.py implementiert
+        if hasattr(self, "context_inspector_requested"):
+            self.context_inspector_requested.emit()
+
+    def _on_copy_context_json(self) -> None:
+        """Copy MarketContext as JSON to clipboard."""
+        logger.debug("Copy context JSON requested")
+        if hasattr(self, "context_copy_json_requested"):
+            self.context_copy_json_requested.emit()
+
+    def _on_copy_context_prompt(self) -> None:
+        """Copy MarketContext as AI prompt to clipboard."""
+        logger.debug("Copy context prompt requested")
+        if hasattr(self, "context_copy_prompt_requested"):
+            self.context_copy_prompt_requested.emit()
+
+    def _on_export_context_file(self) -> None:
+        """Export MarketContext to JSON file."""
+        logger.debug("Export context file requested")
+        if hasattr(self, "context_export_file_requested"):
+            self.context_export_file_requested.emit()
+
+    def _on_refresh_context(self) -> None:
+        """Refresh MarketContext."""
+        logger.debug("Refresh context requested")
+        if hasattr(self, "context_refresh_requested"):
+            self.context_refresh_requested.emit()

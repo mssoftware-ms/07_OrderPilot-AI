@@ -10,13 +10,19 @@ Contains dataclasses and enums for backtesting:
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from .config import TrailingMode
 from .models import TradeSide
+
+logger = logging.getLogger(__name__)
 
 class BacktestMode(str, Enum):
     """Backtest execution modes."""

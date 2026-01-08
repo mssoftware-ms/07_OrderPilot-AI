@@ -2091,6 +2091,49 @@
                     }
                 });
 
+                // ==================== ZONE CLICK HANDLING (Phase 5.7) ====================
+                // Track zones for click detection
+                window._zoneRegistry = window._zoneRegistry || {};
+
+                // Register zone for click detection
+                window.chartAPI.registerZoneForClick = (zoneId, top, bottom, label) => {
+                    window._zoneRegistry[zoneId] = { top, bottom, label };
+                    console.log('Zone registered for click:', zoneId);
+                };
+
+                // Unregister zone from click detection
+                window.chartAPI.unregisterZoneFromClick = (zoneId) => {
+                    delete window._zoneRegistry[zoneId];
+                };
+
+                // Find zone at price level
+                window.chartAPI.findZoneAtPrice = (price) => {
+                    for (const [zoneId, zone] of Object.entries(window._zoneRegistry)) {
+                        if (price >= zone.bottom && price <= zone.top) {
+                            return { id: zoneId, ...zone };
+                        }
+                    }
+                    return null;
+                };
+
+                // Add click handler to chart container
+                container.addEventListener('click', (e) => {
+                    // Get price at click position
+                    const rect = container.getBoundingClientRect();
+                    const y = e.clientY - rect.top;
+                    const price = priceSeries.coordinateToPrice(y);
+
+                    if (price !== null && pyBridge) {
+                        // Check if click is on a zone
+                        const zone = window.chartAPI.findZoneAtPrice(price);
+                        if (zone) {
+                            console.log('Zone clicked:', zone.id, 'at price:', price);
+                            pyBridge.onZoneClicked(zone.id, price, zone.top, zone.bottom, zone.label || '');
+                        }
+                    }
+                });
+                // ==================== END ZONE CLICK HANDLING ====================
+
                 window.addEventListener('resize', () => {
                     if (window.chartAPI?.resizeToContainer) {
                         window.chartAPI.resizeToContainer();

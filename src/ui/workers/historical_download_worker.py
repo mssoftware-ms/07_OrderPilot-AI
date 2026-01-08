@@ -152,6 +152,13 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
+            # Create progress callback that emits detailed updates
+            def make_progress_callback(sym: str, base_pct: int):
+                def callback(batch_num: int, total_bars: int, status_msg: str):
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
+                return callback
+
             try:
                 symbol_results = await manager.bulk_download(
                     provider=provider,
@@ -161,6 +168,7 @@ class HistoricalDownloadWorker(QObject):
                     source=DataSource.ALPACA_CRYPTO,
                     batch_size=100,
                     replace_existing=True,  # Delete old data first (removes bad ticks)
+                    progress_callback=make_progress_callback(symbol, progress_pct),
                 )
                 results.update(symbol_results)
             except Exception as e:
@@ -198,6 +206,13 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
+            # Create progress callback that emits detailed updates
+            def make_progress_callback(sym: str, base_pct: int):
+                def callback(batch_num: int, total_bars: int, status_msg: str):
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
+                return callback
+
             try:
                 symbol_results = await manager.bulk_download(
                     provider=provider,
@@ -207,6 +222,7 @@ class HistoricalDownloadWorker(QObject):
                     source=DataSource.BITUNIX,
                     batch_size=100,
                     replace_existing=True,  # Delete old data first (removes bad ticks)
+                    progress_callback=make_progress_callback(symbol, progress_pct),
                 )
                 results.update(symbol_results)
             except Exception as e:

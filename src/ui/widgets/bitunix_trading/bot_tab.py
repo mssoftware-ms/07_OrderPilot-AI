@@ -64,6 +64,33 @@ from src.core.trading_bot import (
     TradeLogEntry,
 )
 
+# Phase 5 - Trading Status Panel Integration
+try:
+    from src.ui.widgets.trading_status_panel import TradingStatusPanel
+    HAS_STATUS_PANEL = True
+except ImportError:
+    HAS_STATUS_PANEL = False
+
+# Phase 5.4 - Trading Journal Integration
+try:
+    from src.ui.widgets.trading_journal_widget import TradingJournalWidget
+    HAS_JOURNAL = True
+except ImportError:
+    HAS_JOURNAL = False
+
+# Phase 5 - Engine Settings Widgets
+try:
+    from src.ui.widgets.settings import (
+        EntryScoreSettingsWidget,
+        TriggerExitSettingsWidget,
+        LeverageSettingsWidget,
+        LLMValidationSettingsWidget,
+        LevelSettingsWidget,
+    )
+    HAS_ENGINE_SETTINGS = True
+except ImportError:
+    HAS_ENGINE_SETTINGS = False
+
 logger = logging.getLogger(__name__)
 
 # Pfad für persistente Bot-Einstellungen
@@ -128,6 +155,23 @@ class BotTab(QWidget):
         header = self._create_header_section()
         layout.addWidget(header)
         print(f"DEBUG BotTab: Settings button created, enabled={self.settings_btn.isEnabled()}")
+
+        # --- Phase 5: Trading Status Panel (Engine Results) ---
+        if HAS_STATUS_PANEL:
+            self._status_panel = TradingStatusPanel()
+            self._status_panel.setVisible(False)  # Initial versteckt
+            self._status_panel.refresh_requested.connect(self._on_status_panel_refresh)
+            layout.addWidget(self._status_panel)
+        else:
+            self._status_panel = None
+
+        # --- Phase 5.4: Trading Journal ---
+        if HAS_JOURNAL:
+            self._journal_widget = TradingJournalWidget()
+            self._journal_widget.setVisible(False)  # Initial versteckt
+            layout.addWidget(self._journal_widget)
+        else:
+            self._journal_widget = None
 
         # --- Splitter für Signal/Position und Log ---
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -222,6 +266,42 @@ class BotTab(QWidget):
         self.stop_btn.clicked.connect(self._on_stop_clicked)
         layout.addWidget(self.stop_btn)
 
+        # Phase 5: Toggle für Status Panel
+        self.status_panel_btn = QPushButton("📊")
+        self.status_panel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #1976D2; }
+            QPushButton:checked { background-color: #1565C0; }
+        """)
+        self.status_panel_btn.setToolTip("Engine Status Panel ein/ausblenden")
+        self.status_panel_btn.setCheckable(True)
+        self.status_panel_btn.clicked.connect(self._toggle_status_panel)
+        layout.addWidget(self.status_panel_btn)
+
+        # Phase 5.4: Toggle für Journal
+        self.journal_btn = QPushButton("📔")
+        self.journal_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9C27B0;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #7B1FA2; }
+            QPushButton:checked { background-color: #6A1B9A; }
+        """)
+        self.journal_btn.setToolTip("Trading Journal ein/ausblenden")
+        self.journal_btn.setCheckable(True)
+        self.journal_btn.clicked.connect(self._toggle_journal)
+        layout.addWidget(self.journal_btn)
+
         self.settings_btn = QPushButton("⚙")
         self.settings_btn.setStyleSheet("""
             QPushButton {
@@ -235,9 +315,8 @@ class BotTab(QWidget):
         """)
         self.settings_btn.setToolTip("Bot Settings")
         self.settings_btn.setEnabled(True)
-        self.settings_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # Sicherstellen dass Button Focus bekommt
+        self.settings_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # Debug: Überprüfe Signal-Verbindung
         print(f"DEBUG: Connecting settings button clicked signal...")
         self.settings_btn.clicked.connect(lambda checked=False: self._handle_settings_click())
         receiver_count = self.settings_btn.receivers(self.settings_btn.clicked)
@@ -629,6 +708,112 @@ class BotTab(QWidget):
             self._log(f"❌ Settings Fehler: {e}")
             QMessageBox.critical(self, "Fehler", f"Settings konnten nicht geöffnet werden:\n{e}")
 
+    # === Phase 5: Status Panel Methods ===
+
+    def _toggle_status_panel(self) -> None:
+        """Togglet die Sichtbarkeit des Status Panels."""
+        if self._status_panel:
+            visible = self.status_panel_btn.isChecked()
+            self._status_panel.setVisible(visible)
+            if visible:
+                self._log("📊 Status Panel eingeblendet")
+                self._update_status_panel()
+            else:
+                self._log("📊 Status Panel ausgeblendet")
+
+    def _on_status_panel_refresh(self) -> None:
+        """Callback wenn Status Panel Refresh angefordert wird."""
+        self._update_status_panel()
+
+    def _update_status_panel(self) -> None:
+        """Aktualisiert das Status Panel mit aktuellen Engine-Ergebnissen."""
+        if not self._status_panel or not self._bot_engine:
+            return
+
+        try:
+            # Hole letzte Engine-Ergebnisse wenn verfügbar
+            engine = self._bot_engine
+
+            # Regime-Ergebnis (falls im Engine gecached)
+            regime_result = getattr(engine, '_last_regime_result', None)
+
+            # Entry Score (falls vorhanden)
+            score_result = getattr(engine, '_last_entry_score', None)
+
+            # LLM Validation (falls vorhanden)
+            llm_result = getattr(engine, '_last_llm_result', None)
+
+            # Trigger Result (falls vorhanden)
+            trigger_result = getattr(engine, '_last_trigger_result', None)
+
+            # Leverage Result (falls vorhanden)
+            leverage_result = getattr(engine, '_last_leverage_result', None)
+
+            # Update all at once
+            self._status_panel.update_all(
+                regime_result=regime_result,
+                score_result=score_result,
+                llm_result=llm_result,
+                trigger_result=trigger_result,
+                leverage_result=leverage_result,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update status panel: {e}")
+
+    # === Phase 5.4: Journal Methods ===
+
+    def _toggle_journal(self) -> None:
+        """Togglet die Sichtbarkeit des Trading Journals."""
+        if self._journal_widget:
+            visible = self.journal_btn.isChecked()
+            self._journal_widget.setVisible(visible)
+            if visible:
+                self._log("📔 Trading Journal eingeblendet")
+                self._journal_widget.refresh_trades()
+            else:
+                self._log("📔 Trading Journal ausgeblendet")
+
+    def _log_signal_to_journal(self, signal: TradeSignal) -> None:
+        """Loggt ein Signal ins Journal."""
+        if not self._journal_widget:
+            return
+
+        signal_data = {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "symbol": getattr(self._bot_engine, '_config', {}).symbol if self._bot_engine else "-",
+            "direction": signal.direction.value if hasattr(signal.direction, 'value') else str(signal.direction),
+            "score": getattr(signal, 'entry_score', 0) or len(signal.conditions_met) / 5,
+            "quality": getattr(signal, 'quality', 'MODERATE'),
+            "gate_status": getattr(signal, 'gate_status', 'PASSED'),
+            "trigger": signal.regime or "-",
+        }
+        self._journal_widget.add_signal(signal_data)
+
+    def _log_llm_to_journal(self, llm_result: dict) -> None:
+        """Loggt ein LLM-Ergebnis ins Journal."""
+        if not self._journal_widget:
+            return
+
+        llm_data = {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "symbol": getattr(self._bot_engine, '_config', {}).symbol if self._bot_engine else "-",
+            **llm_result,
+        }
+        self._journal_widget.add_llm_output(llm_data)
+
+    def _log_error_to_journal(self, error_msg: str, context: str = "") -> None:
+        """Loggt einen Fehler ins Journal."""
+        if not self._journal_widget:
+            return
+
+        error_data = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "type": "ERROR",
+            "message": error_msg,
+            "context": context,
+        }
+        self._journal_widget.add_error(error_data)
+
     # === Bot Engine ===
 
     def _initialize_bot_engine(self) -> None:
@@ -705,6 +890,8 @@ class BotTab(QWidget):
     def _on_signal_updated(self, signal: TradeSignal) -> None:
         """Callback wenn ein neues Signal generiert wurde."""
         self.signal_updated.emit(signal)
+        # Phase 5.4: Log to journal
+        self._log_signal_to_journal(signal)
 
     def _on_position_opened(self, position: MonitoredPosition) -> None:
         """Callback wenn eine Position geöffnet wurde."""
@@ -721,6 +908,8 @@ class BotTab(QWidget):
     def _on_bot_error(self, error: str) -> None:
         """Callback für Bot-Fehler."""
         self._log(f"❌ Fehler: {error}")
+        # Phase 5.4: Log to journal
+        self._log_error_to_journal(error, context="Bot Engine")
 
     def _on_bot_log(self, message: str) -> None:
         """Callback für Bot-Log-Nachrichten."""
@@ -899,6 +1088,10 @@ class BotTab(QWidget):
             # Force refresh stats
             self.stats_updated.emit(self._bot_engine.statistics)
 
+            # Phase 5: Status Panel auch aktualisieren wenn sichtbar
+            if self._status_panel and self._status_panel.isVisible():
+                self._update_status_panel()
+
     def _log(self, message: str) -> None:
         """Fügt Log-Nachricht hinzu."""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -1015,19 +1208,83 @@ class BotTab(QWidget):
 
 
 class BotSettingsDialog(QDialog):
-    """Dialog für Bot-Einstellungen."""
+    """Tab-basierter Dialog für Bot-Einstellungen.
+
+    Tabs:
+    - Basic: Grundeinstellungen (Risk, SL/TP, Signal, AI)
+    - Entry Score: Gewichte und Quality Thresholds
+    - Trigger/Exit: SL/TP-Modi, Trailing
+    - Leverage: Tiers, Regime-Anpassung, Safety
+    - LLM Validation: Thresholds, Modifiers
+    - Levels: Level-Detection Settings
+    """
 
     def __init__(self, config: BotConfig, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setWindowTitle("⚙ Bot Einstellungen")
-        self.setMinimumWidth(400)
+        self.setWindowTitle("⚙ Trading Bot Settings")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(500)
 
         self._config = config
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Erstellt das Dialog-Layout."""
+        """Erstellt das Tab-basierte Dialog-Layout."""
         layout = QVBoxLayout(self)
+
+        # Tab Widget für verschiedene Settings-Bereiche
+        tabs = QTabWidget()
+
+        # Tab 1: Basic Settings (bisherige Inhalte)
+        basic_tab = QWidget()
+        basic_layout = QVBoxLayout(basic_tab)
+        self._create_basic_settings(basic_layout)
+        tabs.addTab(basic_tab, "⚙ Basic")
+
+        # Tab 2-6: Engine Settings (nur wenn verfügbar)
+        if HAS_ENGINE_SETTINGS:
+            self._entry_score_widget = EntryScoreSettingsWidget()
+            tabs.addTab(self._entry_score_widget, "📊 Entry Score")
+
+            self._trigger_exit_widget = TriggerExitSettingsWidget()
+            tabs.addTab(self._trigger_exit_widget, "🎯 Trigger/Exit")
+
+            self._leverage_widget = LeverageSettingsWidget()
+            tabs.addTab(self._leverage_widget, "⚡ Leverage")
+
+            self._llm_widget = LLMValidationSettingsWidget()
+            tabs.addTab(self._llm_widget, "🤖 LLM Validation")
+
+            self._levels_widget = LevelSettingsWidget()
+            tabs.addTab(self._levels_widget, "📈 Levels")
+
+        layout.addWidget(tabs)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        if HAS_ENGINE_SETTINGS:
+            apply_all_btn = QPushButton("Alle übernehmen")
+            apply_all_btn.clicked.connect(self._apply_all_engine_settings)
+            button_layout.addWidget(apply_all_btn)
+
+            save_all_btn = QPushButton("Alle speichern")
+            save_all_btn.clicked.connect(self._save_all_engine_settings)
+            button_layout.addWidget(save_all_btn)
+
+        button_layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        button_layout.addWidget(buttons)
+
+        layout.addLayout(button_layout)
+
+    def _create_basic_settings(self, layout: QVBoxLayout) -> None:
+        """Erstellt die Basic Settings (bisheriger Dialog-Inhalt)."""
 
         # Risk Management - KEINE Begrenzungen, User entscheidet
         risk_group = QGroupBox("Risk Management")
@@ -1118,13 +1375,25 @@ class BotSettingsDialog(QDialog):
 
         layout.addWidget(ai_group)
 
-        # Buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+    def _apply_all_engine_settings(self) -> None:
+        """Wendet alle Engine-Settings an ohne zu speichern."""
+        if HAS_ENGINE_SETTINGS:
+            self._entry_score_widget.apply_settings()
+            self._trigger_exit_widget.apply_settings()
+            self._leverage_widget.apply_settings()
+            self._llm_widget.apply_settings()
+            self._levels_widget.apply_settings()
+            QMessageBox.information(self, "Settings Applied", "All engine settings have been applied.")
+
+    def _save_all_engine_settings(self) -> None:
+        """Speichert alle Engine-Settings."""
+        if HAS_ENGINE_SETTINGS:
+            self._entry_score_widget.save_settings()
+            self._trigger_exit_widget.save_settings()
+            self._leverage_widget.save_settings()
+            self._llm_widget.save_settings()
+            self._levels_widget.save_settings()
+            QMessageBox.information(self, "Settings Saved", "All engine settings have been saved.")
 
     def get_config(self) -> BotConfig:
         """Gibt die aktualisierten Einstellungen zurück."""

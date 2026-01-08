@@ -177,7 +177,8 @@ class BitunixProvider(HistoricalDataProvider):
         symbol: str,
         start_date: datetime,
         end_date: datetime,
-        timeframe: Timeframe
+        timeframe: Timeframe,
+        progress_callback: callable = None,
     ) -> list[HistoricalBar]:
         """Fetch historical klines from Bitunix.
 
@@ -189,6 +190,7 @@ class BitunixProvider(HistoricalDataProvider):
             start_date: Start date for data
             end_date: End date for data
             timeframe: Bar timeframe
+            progress_callback: Optional callback(batch_num, total_bars, status_msg) for progress updates
 
         Returns:
             List of historical bars
@@ -210,6 +212,12 @@ class BitunixProvider(HistoricalDataProvider):
         logger.info(f"📡 Bitunix Provider: Start={start_date}, End={end_date}")
         logger.debug(f"📡 Bitunix Provider: Base URL={self.base_url}")
 
+        # Calculate estimated total batches for progress
+        total_period_ms = current_end_ms - start_ms
+        bars_per_batch = limit
+        estimated_total_bars = int(total_period_ms / interval_ms)
+        estimated_batches = max(1, estimated_total_bars // bars_per_batch)
+
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
                 batches = 0
@@ -225,6 +233,17 @@ class BitunixProvider(HistoricalDataProvider):
 
                     # Build headers (no auth needed for public market data)
                     headers = self._build_headers(params)
+
+                    # Progress callback with detailed info
+                    if progress_callback:
+                        # Calculate current date being fetched
+                        current_date = datetime.fromtimestamp(current_end_ms / 1000, tz=timezone.utc)
+                        progress_callback(
+                            batches + 1,
+                            len(all_bars),
+                            f"Batch {batches + 1}: {len(all_bars):,} Bars geladen, "
+                            f"aktuell bei {current_date.strftime('%d.%m.%Y %H:%M')}"
+                        )
 
                     if batches % 50 == 0:
                         logger.info(f"📡 Bitunix Provider: Batch #{batches + 1}, bars so far: {len(all_bars)}")

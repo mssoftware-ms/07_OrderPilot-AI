@@ -30,6 +30,7 @@ from .chart_mixins import (
     DataLoadingMixin,
     ChartStateMixin,
     BotOverlayMixin,
+    LevelZonesMixin,
 )
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
@@ -47,6 +48,7 @@ logger = logging.getLogger(__name__)
 class EmbeddedTradingViewChart(
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
+    LevelZonesMixin,  # Phase 5.5: Level zones support
     BotOverlayMixin,
     ToolbarMixin,
     IndicatorMixin,
@@ -139,6 +141,9 @@ class EmbeddedTradingViewChart(
 
         # Setup UI
         self._setup_ui()
+
+        # Initialize level zones (from LevelZonesMixin)
+        self._setup_level_zones()
 
         # Connect thread-safe signals to handlers (runs in main thread)
         self._tick_received.connect(self._handle_tick_main_thread)

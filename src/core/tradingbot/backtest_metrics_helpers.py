@@ -24,9 +24,17 @@ def convert_trades_to_results(trades: list[BacktestTrade]) -> list[TradeResult]:
     """
     return [
         TradeResult(
-            entry_time=t.entry_time, exit_time=t.exit_time, side=t.side,
-            entry_price=t.entry_price, exit_price=t.exit_price,
-            pnl=t.pnl, pnl_pct=t.pnl_pct, bars_held=t.bars_held
+            entry_time=t.entry_time,
+            exit_time=t.exit_time,
+            side=t.side.value if hasattr(t.side, 'value') else str(t.side),
+            entry_price=t.entry_price,
+            exit_price=t.exit_price,
+            quantity=t.entry_size,
+            pnl=t.pnl,
+            pnl_pct=t.pnl_pct,
+            bars_held=t.bars_held,
+            exit_reason=t.exit_reason,
+            strategy_name="backtest",
         )
         for t in trades
     ]

@@ -20,6 +20,8 @@ class ChartBridge(QObject):
     crosshair_moved = pyqtSignal(float, float)  # (time, price)
     # Signal emitted when a zone is deleted via JavaScript delete tool
     zone_deleted = pyqtSignal(str)  # (zone_id)
+    # Phase 5.7: Signal emitted when a zone is clicked
+    zone_clicked = pyqtSignal(str, float, float, float, str)  # (zone_id, price, top, bottom, label)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -67,6 +69,20 @@ class ChartBridge(QObject):
         """
         logger.info(f"[ChartBridge] Zone deleted via JS: {zone_id}")
         self.zone_deleted.emit(zone_id)
+
+    @pyqtSlot(str, float, float, float, str)
+    def onZoneClicked(self, zone_id: str, price: float, top: float, bottom: float, label: str):
+        """Called from JavaScript when a zone is clicked (Phase 5.7).
+
+        Args:
+            zone_id: ID of the clicked zone
+            price: Price at click position
+            top: Zone top price
+            bottom: Zone bottom price
+            label: Zone label
+        """
+        logger.info(f"[ChartBridge] Zone clicked: {zone_id} @ {price:.2f} ({bottom:.2f}-{top:.2f}) [{label}]")
+        self.zone_clicked.emit(zone_id, price, top, bottom, label)
 
     @pyqtSlot(str, result=str)
     def pickColor(self, current_color: str = "rgba(13,110,253,0.18)") -> str:

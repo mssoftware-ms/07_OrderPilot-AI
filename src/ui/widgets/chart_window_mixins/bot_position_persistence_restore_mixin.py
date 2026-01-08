@@ -41,8 +41,8 @@ class BotPositionPersistenceRestoreMixin:
             self._start_pnl_update_timer()
 
             # Restore right column (Score, TR Kurs, Derivative info)
-            if hasattr(self, '_update_position_right_column'):
-                self._update_position_right_column(position)
+            if hasattr(self, '_update_position_right_column_from_signal'):
+                self._update_position_right_column_from_signal(position)
 
             logger.info(f"Position restored: {side} @ {entry_price:.2f}")
 

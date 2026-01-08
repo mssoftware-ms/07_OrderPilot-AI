@@ -6,7 +6,7 @@ import logging
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QComboBox, QProgressBar, QApplication, QMessageBox,
-    QDialogButtonBox, QTabWidget, QWidget
+    QDialogButtonBox, QTabWidget, QWidget, QFrame
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
 
@@ -246,6 +246,9 @@ class AIAnalysisWindow(QDialog):
         header_layout.addWidget(self.lbl_header)
         layout.addLayout(header_layout)
 
+        # --- Regime Info Panel (Phase 2.2) ---
+        self._setup_regime_info_panel(layout)
+
         # --- Controls ---
         controls_layout = QHBoxLayout()
         
@@ -360,6 +363,8 @@ class AIAnalysisWindow(QDialog):
         """Refresh settings when window is shown."""
         super().showEvent(event)
         self._load_settings()
+        # Phase 5.8: Update AI Chat Tab with MarketContext
+        self._update_chat_context()
 
     def _apply_prompt_overrides(self):
         """Read prompt overrides from settings and push into the engine."""
@@ -369,6 +374,112 @@ class AIAnalysisWindow(QDialog):
         sys_override = self.settings.value("ai_analysis_system_prompt_override", "")
         tasks_override = self.settings.value("ai_analysis_tasks_prompt_override", "")
         self.engine.apply_prompt_overrides(sys_override, tasks_override)
+
+    def _update_chat_context(self) -> None:
+        """Update AI Chat Tab with MarketContext (Phase 5.8)."""
+        try:
+            if not hasattr(self.parent(), 'chart_widget'):
+                return
+
+            chart_widget = self.parent().chart_widget
+
+            # Get chart data
+            df = getattr(chart_widget, 'data', None)
+            symbol = getattr(chart_widget, 'symbol', getattr(chart_widget, 'current_symbol', self.symbol))
+            timeframe = getattr(chart_widget, 'current_timeframe', '1H')
+
+            if df is None or df.empty:
+                analysis_logger.debug("No chart data available for chat context")
+                return
+
+            # Build MarketContext
+            from src.core.trading_bot.market_context_builder import MarketContextBuilder
+
+            builder = MarketContextBuilder()
+            context = builder.build(
+                symbol=symbol,
+                timeframe=timeframe,
+                df=df,
+            )
+
+            # Update chat tab
+            if hasattr(self, 'deep_analysis_tab') and hasattr(self.deep_analysis_tab, 'set_market_context'):
+                self.deep_analysis_tab.set_market_context(context)
+                analysis_logger.info(f"Chat context updated: {symbol} {timeframe}")
+
+            # Connect draw signal to chart (Phase 5.9)
+            self._connect_chat_draw_signal()
+
+        except Exception as e:
+            analysis_logger.warning(f"Failed to update chat context: {e}")
+
+    def _connect_chat_draw_signal(self) -> None:
+        """Connect AI Chat draw signal to chart widget (Phase 5.9)."""
+        try:
+            if not hasattr(self, 'deep_analysis_tab'):
+                return
+
+            draw_signal = self.deep_analysis_tab.get_draw_zone_signal()
+            if draw_signal is None:
+                return
+
+            # Disconnect existing connection if any
+            try:
+                draw_signal.disconnect(self._on_chat_draw_zone)
+            except TypeError:
+                pass  # Not connected yet
+
+            # Connect to chart draw handler
+            draw_signal.connect(self._on_chat_draw_zone)
+            analysis_logger.debug("Chat draw signal connected")
+
+        except Exception as e:
+            analysis_logger.warning(f"Failed to connect chat draw signal: {e}")
+
+    def _on_chat_draw_zone(self, zone_type: str, top: float, bottom: float, label: str) -> None:
+        """Handle draw zone request from AI Chat (Phase 5.9).
+
+        Args:
+            zone_type: "support" or "resistance"
+            top: Zone top price
+            bottom: Zone bottom price
+            label: Zone label
+        """
+        try:
+            if not hasattr(self.parent(), 'chart_widget'):
+                return
+
+            chart_widget = self.parent().chart_widget
+
+            # Use the chart's add_zone method if available
+            if hasattr(chart_widget, 'add_zone'):
+                import time
+                start_time = int(time.time()) - 86400 * 7  # Last 7 days
+                end_time = int(time.time()) + 86400  # Tomorrow
+
+                # Map zone type to color
+                color_map = {
+                    "support": "rgba(46, 125, 50, 0.25)",
+                    "resistance": "rgba(198, 40, 40, 0.25)",
+                }
+                color = color_map.get(zone_type.lower(), "rgba(100, 100, 100, 0.25)")
+
+                zone_id = f"ai_chat_{zone_type}_{int(time.time())}"
+
+                chart_widget.add_zone(
+                    start_time=start_time,
+                    end_time=end_time,
+                    top_price=top,
+                    bottom_price=bottom,
+                    zone_type=zone_type,
+                    label=f"AI: {label}",
+                    color=color,
+                    zone_id=zone_id,
+                )
+                analysis_logger.info(f"Chat zone drawn: {zone_type} {bottom:.2f}-{top:.2f}")
+
+        except Exception as e:
+            analysis_logger.error(f"Failed to draw chat zone: {e}")
 
     def _show_error(self, title: str, message: str):
         """Show error message box popup."""
@@ -476,6 +587,54 @@ class AIAnalysisWindow(QDialog):
         self.worker.finished.connect(self._on_analysis_finished)
         self.worker.error.connect(self._on_analysis_error)
         self.worker.start()
+
+    def _setup_regime_info_panel(self, layout: QVBoxLayout) -> None:
+        """Setup the regime info panel (Phase 2.2)."""
+        try:
+            from src.ui.widgets.regime_badge_widget import RegimeInfoPanel
+
+            self._regime_panel = RegimeInfoPanel()
+            layout.addWidget(self._regime_panel)
+
+            # Add separator
+            separator = QFrame()
+            separator.setFrameShape(QFrame.Shape.HLine)
+            separator.setStyleSheet("color: #444;")
+            layout.addWidget(separator)
+
+            analysis_logger.debug("Regime info panel added to overview tab")
+        except ImportError as e:
+            analysis_logger.warning(f"Could not add regime info panel: {e}")
+            self._regime_panel = None
+
+    def update_regime_info(self, result) -> None:
+        """
+        Update the regime info panel with detection results.
+
+        Args:
+            result: RegimeResult from RegimeDetectorService
+        """
+        if hasattr(self, "_regime_panel") and self._regime_panel:
+            self._regime_panel.set_regime_result(result)
+
+    def _detect_and_update_regime(self, df) -> None:
+        """
+        Detect regime from DataFrame and update panel.
+
+        Args:
+            df: DataFrame with OHLCV data
+        """
+        if df is None or df.empty:
+            return
+
+        try:
+            from src.core.trading_bot.regime_detector import get_regime_detector
+
+            detector = get_regime_detector()
+            result = detector.detect(df)
+            self.update_regime_info(result)
+        except Exception as e:
+            analysis_logger.warning(f"Failed to detect regime: {e}")
 
     def _on_analysis_finished(self, result):
         self.btn_analyze.setEnabled(True)

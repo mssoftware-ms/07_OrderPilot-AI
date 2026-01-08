@@ -88,6 +88,7 @@ class HistoricalDataManager:
         batch_size: int = 100,
         filter_config: FilterConfig | None = None,
         replace_existing: bool = True,
+        progress_callback: callable = None,
     ) -> dict[str, int]:
         """Download historical data for multiple symbols in bulk.
 
@@ -101,6 +102,7 @@ class HistoricalDataManager:
             filter_config: Override filter configuration for this download
             replace_existing: Delete existing data before downloading (default: True)
                              This ensures clean data without old bad ticks.
+            progress_callback: Optional callback(batch_num, total_bars, status_msg) for UI updates
 
         Returns:
             Dictionary mapping symbols to number of bars saved
@@ -151,8 +153,22 @@ class HistoricalDataManager:
 
                 logger.info(f"📡 Downloading {symbol} from {source.value}...")
 
-                # Fetch bars from provider
-                bars = await provider.fetch_bars(symbol, start_date, end_date, timeframe)
+                # Fetch bars from provider with progress callback
+                # Check if provider supports progress_callback (BitunixProvider does)
+                fetch_kwargs = {
+                    'symbol': symbol,
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'timeframe': timeframe,
+                }
+                # Add progress_callback if provider supports it
+                if progress_callback is not None:
+                    import inspect
+                    sig = inspect.signature(provider.fetch_bars)
+                    if 'progress_callback' in sig.parameters:
+                        fetch_kwargs['progress_callback'] = progress_callback
+
+                bars = await provider.fetch_bars(**fetch_kwargs)
 
                 if not bars:
                     logger.warning(f"⚠️ No data received for {symbol}")

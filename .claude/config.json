@@ -113,8 +113,8 @@
     "topology": "hierarchical",
     "max_agents": 11,
     "queen_type": "strategic",
-    "task": "Erstelle mir eine detaillierte Beschreibung über die genauen funktionen des Popups 'AI Analyse' mit den vor und nachteilen bei der chartanalyse und dem mehrwert zur marktanalyse. in docs als .md"
+    "task": "Ich möchte die beiden Trading bots zusammenführen, in der projektdoku wird der  'Trading Bot' 'Alpaca Bot' genannt und der 'Auto Agent' Bitunix Bot genannt. Bitte lies dir die Projektdoku unter \\01_Projectplan\\Zusammenfuehren_Trading_Bots durch und verwende die checklist zum abhaken bei umgesetzen punkten und arbeite diese von oben bis unten durch. Noch Fragen dazu? Brauchen wir erst einen erneuten Planungsmodus?"
   },
-  "created_at": "2026-01-08T01:01:22.978469",
+  "created_at": "2026-01-08T02:56:01.703591",
   "last_session": null
 }

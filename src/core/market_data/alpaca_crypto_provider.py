@@ -59,7 +59,8 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         symbol: str,
         start_date: datetime,
         end_date: datetime,
-        timeframe: Timeframe
+        timeframe: Timeframe,
+        progress_callback: callable = None,
     ) -> list[HistoricalBar]:
         """Fetch historical crypto bars from Alpaca.
 
@@ -68,6 +69,7 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             start_date: Start date for data
             end_date: End date for data
             timeframe: Bar timeframe
+            progress_callback: Optional callback(batch_num, total_bars, status_msg) for progress updates
 
         Returns:
             List of historical bars
@@ -130,6 +132,15 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
                     logger.debug(
                         f"Chunk {chunk_num}: {current_start.date()} to {current_end.date()}"
                     )
+
+                    # Progress callback with detailed info
+                    if progress_callback:
+                        progress_callback(
+                            chunk_num,
+                            len(all_bars),
+                            f"Chunk {chunk_num}: {len(all_bars):,} Bars geladen, "
+                            f"aktuell bei {current_end.strftime('%d.%m.%Y')}"
+                        )
 
                     request = CryptoBarsRequest(
                         symbol_or_symbols=symbol,

@@ -32,6 +32,7 @@ from .chart_mixins import (
     DataLoadingMixin,
     ChartStateMixin,
     BotOverlayMixin,
+    LevelZonesMixin,
 )
 from .chart_mixins.bitunix_streaming_mixin import BitunixStreamingMixin
 from .chart_js_template import get_chart_html_template
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 class BitunixTradingViewChart(
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
+    LevelZonesMixin,  # Phase 5.5: Level zones support
     BotOverlayMixin,
     ToolbarMixin,
     IndicatorMixin,
@@ -84,6 +86,17 @@ class BitunixTradingViewChart(
     candle_closed = pyqtSignal(float, float, float, float, float)  # (prev_open, prev_high, prev_low, prev_close, new_open)
     # Tick price signal - emitted on every valid tick for real-time P&L updates
     tick_price_updated = pyqtSignal(float)  # (current_price)
+
+    # Phase 5.5: Toolbar button signals
+    levels_detect_requested = pyqtSignal()  # Request level detection
+    level_type_toggled = pyqtSignal(str, bool)  # (level_type, checked)
+    context_inspector_requested = pyqtSignal()  # Open context inspector
+    context_copy_json_requested = pyqtSignal()  # Copy context as JSON
+    context_copy_prompt_requested = pyqtSignal()  # Copy context as AI prompt
+    context_export_file_requested = pyqtSignal()  # Export context to file
+    context_refresh_requested = pyqtSignal()  # Refresh context
+    # Phase 5.7: Level interaction signals
+    level_target_suggested = pyqtSignal(str, float)  # (target_type, price) - for Set TP/SL
 
     def __init__(self, history_manager=None):
         """Initialize Bitunix chart widget.
@@ -123,6 +136,9 @@ class BitunixTradingViewChart(
         # Initialize bot overlay state
         self._bot_overlay_data = {}
         self._bot_price_line_id = None
+
+        # Phase 5.7: Initialize level zones and click handling
+        self._setup_level_zones()
 
         logger.info("✅ BitunixTradingViewChart initialized (Bitunix-only)")
 
