@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from PyQt6.QtWidgets import QInputDialog
 
 logger = logging.getLogger(__name__)
 
@@ -42,3 +43,37 @@ class EmbeddedTradingViewChartEventsMixin:
             # Directly remove from internal dict without callback to avoid re-clearing JS
             del self._zones._zones[zone_id]
             logger.info(f"Zone {zone_id} removed from Python manager")
+
+    def _on_line_draw_requested(self, line_id: str, price: float, color: str, line_type: str):
+        """Handle line draw request from JavaScript (Issue #24).
+
+        Shows a label input dialog and creates the line with the label.
+
+        Args:
+            line_id: Unique ID for the line
+            price: Price level for the line
+            color: Line color (hex)
+            line_type: Type of line ('green' or 'red')
+        """
+        logger.info(f"Line draw requested: {line_id} @ {price:.4f} ({line_type})")
+
+        # Show dialog to get label
+        line_type_text = "Grüne Linie" if line_type == "green" else "Rote Linie"
+        label, ok = QInputDialog.getText(
+            self,
+            f"{line_type_text} - Beschriftung",
+            f"Bezeichnung für Linie bei {price:.4f}:",
+            text=""
+        )
+
+        if ok:
+            # Create line via JavaScript with the label
+            label_escaped = label.replace("'", "\\'").replace('"', '\\"')
+            js_code = f"window.chartAPI?.addHorizontalLine({price}, '{color}', '{label_escaped}', 'solid', '{line_id}');"
+            self._execute_js(js_code)
+            logger.info(f"Line created with label: '{label}' @ {price:.4f}")
+        else:
+            # User cancelled - create line without label (fallback)
+            js_code = f"window.chartAPI?.addHorizontalLine({price}, '{color}', '', 'solid', '{line_id}');"
+            self._execute_js(js_code)
+            logger.info(f"Line created without label @ {price:.4f} (user cancelled dialog)")

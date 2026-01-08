@@ -223,10 +223,27 @@ class ChartChatActionsMixin:
 
     def _on_open_evaluation_popup(self):
         """Open last evaluation table if available."""
-        if not getattr(self, "_last_eval_entries", None):
+        # First check in-memory cache
+        entries = getattr(self, "_last_eval_entries", None)
+
+        # If not in memory, try loading from QSettings (Issue #25)
+        if not entries:
+            import json
+            settings = QSettings()
+            saved = settings.value("evaluation/last_entries", "")
+            if saved:
+                try:
+                    entries = json.loads(saved)
+                    self._last_eval_entries = entries  # Cache in memory
+                    logger.info(f"Loaded {len(entries)} evaluation entries from QSettings")
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to load evaluation entries: {e}")
+                    entries = None
+
+        if not entries:
             QMessageBox.information(self, "Auswertung", "Keine Auswertung vorhanden.")
             return
-        self._show_evaluation_popup(entries=self._last_eval_entries)
+        self._show_evaluation_popup(entries=entries)
 
     def _show_evaluation_popup(self, content: str | None = None, entries: list | None = None) -> None:
         """Show evaluation popup (simplified - logic moved to EvaluationDialog)."""

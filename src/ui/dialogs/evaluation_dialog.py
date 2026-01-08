@@ -226,8 +226,15 @@ class EvaluationDialog(QDialog):
         self.save_btn.setDisabled(True)
 
         # Update parent's cached entries
+        entries_as_tuples = [e.to_tuple() for e in entries]
         if hasattr(self.parent_window, '_last_eval_entries'):
-            self.parent_window._last_eval_entries = [e.to_tuple() for e in entries]
+            self.parent_window._last_eval_entries = entries_as_tuples
+
+        # Persist to QSettings (Issue #25)
+        import json
+        settings = QSettings()
+        settings.setValue("evaluation/last_entries", json.dumps(entries_as_tuples))
+        logger.info(f"Saved {len(entries)} evaluation entries to QSettings")
 
         QMessageBox.information(self, "Gespeichert", "Auswertung gespeichert.")
 
@@ -245,6 +252,9 @@ class EvaluationDialog(QDialog):
         self.entries = []
         if hasattr(self.parent_window, '_last_eval_entries'):
             self.parent_window._last_eval_entries = []
+        # Also clear from QSettings (Issue #25)
+        settings = QSettings()
+        settings.remove("evaluation/last_entries")
         self._on_cell_changed()
 
     def _on_auto_assign_colors(self):
@@ -396,8 +406,8 @@ class EvaluationDialog(QDialog):
             color: Line color in hex format
         """
         if hasattr(chart, "add_horizontal_line"):
-            # Signature: add_horizontal_line(price, color, label)
-            chart.add_horizontal_line(price, color, label)
+            # Signature: add_horizontal_line(price, label, color) - Issue #26 fix
+            chart.add_horizontal_line(price, label, color)
         elif hasattr(chart, "web_view"):
             # JS signature: addHorizontalLine(price, color, label, lineStyle, customId)
             # Escape single quotes in label to prevent JS injection

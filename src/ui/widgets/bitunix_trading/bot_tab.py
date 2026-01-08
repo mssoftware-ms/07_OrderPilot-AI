@@ -1,14 +1,17 @@
 """
 Bot Tab - UI Widget für den Trading Bot
 
-Integriert den TradingBotEngine in das Bitunix Trading Widget als Tab.
+Verwendet die neue Engine-Pipeline (MarketContext → Regime → Levels →
+EntryScore → LLM Validation → Trigger/Exit → Leverage) für automatisiertes Trading.
 
 Features:
 - Start/Stop Steuerung
 - Live Status-Anzeige (State, Signal, Position)
 - Statistiken (Trades, Win Rate, PnL)
 - Log-Viewer mit Echtzeit-Updates
-- Settings Dialog
+- Settings Dialog mit 6 Sub-Tabs für Engine-Konfiguration
+- Trading Status Panel mit Live Engine-Ergebnissen
+- Trading Journal für Audit Trail
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ if TYPE_CHECKING:
     from src.core.market_data.history_provider import HistoryManager
 
 from src.core.trading_bot import (
-    TradingBotEngine,
+    # Core Types (ohne TradingBotEngine - neue Pipeline wird direkt verwendet)
     BotState,
     BotConfig,
     BotStatistics,
@@ -62,7 +65,7 @@ from src.core.trading_bot import (
     MonitoredPosition,
     ExitResult,
     TradeLogEntry,
-    # Phase 1-4: New Engines
+    # Phase 1-4: New Engines - Unified Pipeline
     MarketContextBuilder,
     MarketContextBuilderConfig,
     RegimeDetectorService,
@@ -107,6 +110,9 @@ try:
     HAS_ENGINE_SETTINGS = True
 except ImportError:
     HAS_ENGINE_SETTINGS = False
+
+# NOTE: WhatsApp Integration wurde in das ChartWindow Trading Bot Panel verschoben
+# (siehe panels_mixin.py)
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +225,8 @@ class BotTab(QWidget):
             layout.addWidget(self._journal_widget)
         else:
             self._journal_widget = None
+
+        # NOTE: WhatsApp Widget wurde in das ChartWindow Trading Bot Panel verschoben
 
         # --- Splitter für Signal/Position und Log ---
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -348,6 +356,8 @@ class BotTab(QWidget):
         self.journal_btn.setCheckable(True)
         self.journal_btn.clicked.connect(self._toggle_journal)
         layout.addWidget(self.journal_btn)
+
+        # NOTE: WhatsApp Button wurde in das ChartWindow Trading Bot Panel verschoben
 
         self.settings_btn = QPushButton("⚙")
         self.settings_btn.setStyleSheet("""
@@ -881,14 +891,19 @@ class BotTab(QWidget):
             else:
                 self._log("📔 Trading Journal ausgeblendet")
 
+    # NOTE: WhatsApp Methods wurden in das ChartWindow Trading Bot Panel verschoben
+    # (siehe panels_mixin.py und whatsapp_widget.py)
+
     def _log_signal_to_journal(self, signal: TradeSignal) -> None:
         """Loggt ein Signal ins Journal."""
         if not self._journal_widget:
             return
 
+        # Symbol aus Config laden (neue Pipeline)
+        config = self._get_current_config()
         signal_data = {
             "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "symbol": getattr(self._bot_engine, '_config', {}).symbol if self._bot_engine else "-",
+            "symbol": config.symbol if config else "-",
             "direction": signal.direction.value if hasattr(signal.direction, 'value') else str(signal.direction),
             "score": getattr(signal, 'entry_score', 0) or len(signal.conditions_met) / 5,
             "quality": getattr(signal, 'quality', 'MODERATE'),
@@ -902,9 +917,11 @@ class BotTab(QWidget):
         if not self._journal_widget:
             return
 
+        # Symbol aus Config laden (neue Pipeline)
+        config = self._get_current_config()
         llm_data = {
             "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "symbol": getattr(self._bot_engine, '_config', {}).symbol if self._bot_engine else "-",
+            "symbol": config.symbol if config else "-",
             **llm_result,
         }
         self._journal_widget.add_llm_output(llm_data)
@@ -1305,6 +1322,8 @@ class BotTab(QWidget):
                         "llm_action": self._last_llm_result.action.value if self._last_llm_result else "none",
                     }
                     self._journal_widget.add_trade(trade_data)
+
+                # NOTE: WhatsApp Notification erfolgt über das ChartWindow Trading Bot Panel
             else:
                 logger.error(f"Order failed: {order_result}")
                 self._log(f"❌ Order failed: {order_result}")
@@ -1453,6 +1472,8 @@ class BotTab(QWidget):
                     }
                     self._journal_widget.add_trade(trade_data)
 
+                # NOTE: WhatsApp Notification erfolgt über das ChartWindow Trading Bot Panel
+
                 # Position löschen
                 self._current_position = None
                 self._position_entry_price = 0.0
@@ -1593,8 +1614,8 @@ class BotTab(QWidget):
     def _apply_config(self, config: BotConfig) -> None:
         """Wendet neue Konfiguration an und speichert sie."""
         self._save_settings(config)
-        if self._bot_engine:
-            self._bot_engine.update_config(config)
+        # Neue Pipeline: Engine-Configs sofort aktualisieren
+        self.update_engine_configs()
 
     def _save_settings(self, config: BotConfig) -> None:
         """Speichert Bot-Einstellungen in JSON-Datei."""
@@ -1647,9 +1668,8 @@ class BotTab(QWidget):
         """Callback wenn eine Position geschlossen wurde."""
         # Position ist jetzt None (geschlossen)
         self.position_updated.emit(None)
-        # Statistiken aktualisieren
-        if self._bot_engine:
-            self.stats_updated.emit(self._bot_engine.statistics)
+        # Statistiken werden über _update_stats_display() aktualisiert
+        # (alte _bot_engine.statistics entfernt - neue Pipeline hat eigene Stats)
 
     def _on_bot_error(self, error: str) -> None:
         """Callback für Bot-Fehler."""
@@ -1940,8 +1960,8 @@ class BotTab(QWidget):
     def set_history_manager(self, manager: "HistoryManager") -> None:
         """Setzt den History Manager und verbindet ihn mit dem Adapter.
 
-        Der TradingBotEngine erhält Marktdaten über den Adapter, der diese
-        vom HistoryManager bezieht.
+        Die Engine-Pipeline erhält Marktdaten über den Adapter, der diese
+        vom HistoryManager bezieht. Wird für MarketContextBuilder benötigt.
         """
         self._history_manager = manager
 
@@ -1960,78 +1980,163 @@ class BotTab(QWidget):
         """
         Übergibt Chart-Daten an den Bot Engine.
 
-        Wird aufgerufen wenn der Chart neue Daten lädt. Der Bot verwendet
-        diese Daten anstatt eigene API-Calls zu machen.
+        NOTE: Die neue Engine-Pipeline holt Daten über den HistoryManager.
+        Diese Methode bleibt für Kompatibilität, triggert aber ggf. ein
+        Pipeline-Update wenn Engines initialisiert sind.
 
         Args:
             data: DataFrame mit OHLCV-Daten
             symbol: Symbol (z.B. 'BTCUSDT')
             timeframe: Timeframe (z.B. '5m', '1H')
         """
-        if self._bot_engine:
-            self._bot_engine.set_chart_data(data, symbol, timeframe)
-            logger.debug(f"BotTab: Chart data forwarded to engine ({symbol} {timeframe})")
+        # Neue Pipeline: Daten werden über _process_market_data_through_engines() verarbeitet
+        # Diese Methode bleibt für Chart-Signale, triggert optionales Update
+        if self._context_builder and data is not None and not data.empty:
+            logger.debug(f"BotTab: Chart data received ({symbol} {timeframe}), pipeline uses HistoryManager")
 
     def clear_chart_data(self) -> None:
         """Löscht Chart-Daten im Engine (z.B. bei Symbol-Wechsel)."""
-        if self._bot_engine:
-            self._bot_engine.clear_chart_data()
+        # Neue Pipeline: Cached Context invalidieren
+        self._last_market_context = None
+        self._last_entry_score = None
+        self._last_llm_result = None
+        self._last_trigger_result = None
+        self._last_leverage_result = None
+        logger.debug("BotTab: Chart data cleared, cache invalidated")
 
     def on_tick_price_updated(self, price: float) -> None:
         """
         Empfängt Live-Tick-Preise vom Chart-Streaming.
 
-        Aktualisiert die Position im Bot Engine und refresht die UI.
+        Aktualisiert die Position und refresht die UI (neue Pipeline).
 
         Args:
             price: Aktueller Marktpreis vom Streaming
         """
-        if not self._bot_engine:
+        # Neue Pipeline: Position direkt in self._current_position
+        if not self._current_position:
             return
 
-        # Nur updaten wenn Bot läuft und Position offen ist
-        if self._bot_engine.state != BotState.IN_POSITION:
-            return
+        # SL/TP Bar aktualisieren
+        self._update_sltp_bar(price)
 
-        # Price Update an Engine senden (async)
-        from decimal import Decimal
-        asyncio.create_task(
-            self._bot_engine.on_price_update(Decimal(str(price)))
-        )
+        # Position P&L aktualisieren
+        entry = self._position_entry_price
+        side = self._position_side
+        qty = self._position_quantity
 
-        # UI aktualisieren - Position vom Monitor holen
-        if self._bot_engine.position_monitor.has_position:
-            position = self._bot_engine.position_monitor.position
-            if position:
-                # current_price aktualisieren
-                position.current_price = Decimal(str(price))
-                self.position_updated.emit(position)
+        if entry > 0 and qty > 0:
+            if side == "long":
+                pnl = (price - entry) * qty
+                pnl_pct = ((price - entry) / entry) * 100
+            else:  # short
+                pnl = (entry - price) * qty
+                pnl_pct = ((entry - price) / entry) * 100
+
+            # P&L Label aktualisieren
+            color = "#4CAF50" if pnl >= 0 else "#f44336"
+            sign = "+" if pnl >= 0 else ""
+            self.sltp_pnl_label.setText(f"P&L: {sign}${pnl:.2f} ({sign}{pnl_pct:.2f}%)")
+            self.sltp_pnl_label.setStyleSheet(f"color: {color}; font-size: 11px; margin-top: 5px;")
 
     def cleanup(self) -> None:
         """Cleanup bei Widget-Zerstörung (App schließt)."""
         self.update_timer.stop()
-        if self._bot_engine:
-            # Position speichern, NICHT schließen!
-            if self._bot_engine.has_position:
-                self._bot_engine.save_position()
-                logger.info("BotTab cleanup: Position saved for next start")
-            # Bot stoppen (Position ist bereits gespeichert)
-            asyncio.create_task(self._bot_engine.stop(close_position=False))
+        # Neue Pipeline: Position direkt speichern
+        if self._current_position:
+            self._save_position_to_file()
+            logger.info("BotTab cleanup: Position saved for next start")
+        # Bot-State zurücksetzen
+        self._bot_running = False
+        logger.debug("BotTab cleanup completed")
+
+    def _save_position_to_file(self) -> bool:
+        """Speichert aktive Position in Datei (für Wiederherstellung beim Neustart)."""
+        import json
+        from pathlib import Path
+
+        position_file = Path("config/trading_bot/active_position.json")
+        try:
+            position_file.parent.mkdir(parents=True, exist_ok=True)
+
+            if self._current_position:
+                # entry_time zu ISO-String konvertieren
+                pos_data = self._current_position.copy()
+                if "entry_time" in pos_data and hasattr(pos_data["entry_time"], "isoformat"):
+                    pos_data["entry_time"] = pos_data["entry_time"].isoformat()
+
+                data = {
+                    "position": pos_data,
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                }
+                position_file.write_text(json.dumps(data, indent=2))
+                logger.info(f"Position saved: {pos_data.get('symbol')} {pos_data.get('side')}")
+                return True
+            else:
+                # Keine Position - Datei löschen falls vorhanden
+                if position_file.exists():
+                    position_file.unlink()
+                    logger.debug("No position to save, removed old file")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to save position: {e}")
+            return False
 
     def _restore_saved_position(self) -> None:
         """Issue #20: Stellt gespeicherte Position beim Start wieder her."""
-        if not self._bot_engine:
-            return
+        import json
+        from pathlib import Path
+        from datetime import datetime
+
+        position_file = Path("config/trading_bot/active_position.json")
 
         try:
-            # Versuche Position zu laden
-            if self._bot_engine.load_position():
-                self._log("📂 Gespeicherte Position wiederhergestellt")
-                logger.info("BotTab: Restored saved position on startup")
-                # UI aktualisieren
-                self._update_display()
-            else:
-                logger.debug("BotTab: No saved position found to restore")
+            if not position_file.exists():
+                logger.debug("BotTab: No saved position file found")
+                return
+
+            data = json.loads(position_file.read_text())
+            position_data = data.get("position")
+
+            if not position_data:
+                logger.debug("BotTab: Saved position file is empty")
+                return
+
+            # Position wiederherstellen
+            self._current_position = position_data
+
+            # entry_time von ISO-String zurück konvertieren
+            if "entry_time" in self._current_position:
+                entry_time_str = self._current_position["entry_time"]
+                if isinstance(entry_time_str, str):
+                    self._current_position["entry_time"] = datetime.fromisoformat(entry_time_str)
+
+            # UI-Variablen setzen
+            self._position_entry_price = position_data.get("entry_price", 0)
+            self._position_side = position_data.get("side", "long")
+            self._position_quantity = position_data.get("quantity", 0)
+            self._position_stop_loss = position_data.get("stop_loss")
+            self._position_take_profit = position_data.get("take_profit")
+
+            self._log("📂 Gespeicherte Position wiederhergestellt")
+            logger.info(
+                f"BotTab: Restored saved position: {position_data.get('symbol')} "
+                f"{position_data.get('side')} @ {position_data.get('entry_price')}"
+            )
+
+            # UI aktualisieren
+            self._update_display()
+
+            # SL/TP Bar anzeigen
+            if self._position_entry_price:
+                self.sltp_container.setVisible(True)
+                self._update_sltp_bar(self._position_entry_price)
+
+            # Position-Datei nach erfolgreichem Laden löschen (wird beim nächsten Save neu erstellt)
+            position_file.unlink()
+            logger.debug("BotTab: Removed position file after successful restore")
+
         except Exception as e:
             logger.warning(f"BotTab: Failed to restore saved position: {e}")
             self._log(f"⚠️ Position konnte nicht wiederhergestellt werden: {e}")

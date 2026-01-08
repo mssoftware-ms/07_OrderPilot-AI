@@ -276,7 +276,7 @@ class EntryScoreSettingsWidget(QWidget):
 
         # Block in CHOP
         self._block_in_chop = QCheckBox("Block bei CHOP/RANGE Regime")
-        self._block_in_chop.setChecked(True)
+        self._block_in_chop.setChecked(False)  # Micro-Account: auch in Chop traden
         self._block_in_chop.setToolTip(
             "Blockiert Market-Entries wenn Markt in Seitwärtsbewegung ist."
         )
@@ -313,7 +313,7 @@ class EntryScoreSettingsWidget(QWidget):
         # Chop penalty
         self._chop_penalty = QDoubleSpinBox()
         self._chop_penalty.setRange(0.0, 0.5)
-        self._chop_penalty.setValue(0.15)
+        self._chop_penalty.setValue(0.10)  # Micro-Account: weniger Strafe
         self._chop_penalty.setSingleStep(0.05)
         self._chop_penalty.setDecimals(2)
         self._chop_penalty.setPrefix("-")
@@ -344,7 +344,7 @@ class EntryScoreSettingsWidget(QWidget):
         # Min score for entry
         self._min_score_entry = QDoubleSpinBox()
         self._min_score_entry.setRange(0.1, 0.9)
-        self._min_score_entry.setValue(0.50)
+        self._min_score_entry.setValue(0.45)  # Micro-Account: niedrigere Schwelle
         self._min_score_entry.setSingleStep(0.05)
         self._min_score_entry.setDecimals(2)
         self._min_score_entry.setToolTip(
@@ -577,7 +577,7 @@ class EntryScoreSettingsWidget(QWidget):
             )
 
     def _reset_to_defaults(self) -> None:
-        """Reset to default settings."""
+        """Reset to default settings (Micro-Account optimiert)."""
         self.set_settings({
             "weights": {
                 "trend_alignment": 0.25,
@@ -594,14 +594,14 @@ class EntryScoreSettingsWidget(QWidget):
                 "weak": 0.35,
             },
             "gates": {
-                "block_in_chop": True,
+                "block_in_chop": False,  # Micro-Account: auch in Chop traden
                 "block_against_strong_trend": True,
                 "allow_counter_trend_sfp": True,
                 "trend_boost": 0.10,
-                "chop_penalty": 0.15,
+                "chop_penalty": 0.10,  # Micro-Account: weniger Strafe
                 "volatile_penalty": 0.10,
             },
-            "min_score_for_entry": 0.50,
+            "min_score_for_entry": 0.45,  # Micro-Account: niedrigere Schwelle
         })
         self._emit_settings_changed()
         logger.info("Entry score settings reset to defaults")

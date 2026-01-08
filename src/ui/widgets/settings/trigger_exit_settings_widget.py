@@ -225,7 +225,7 @@ class TriggerExitSettingsWidget(QWidget):
         # ATR SL
         self._sl_atr_mult = QDoubleSpinBox()
         self._sl_atr_mult.setRange(0.5, 5.0)
-        self._sl_atr_mult.setValue(1.5)
+        self._sl_atr_mult.setValue(1.2)  # Micro-Account: enger SL
         self._sl_atr_mult.setSingleStep(0.1)
         self._sl_atr_mult.setDecimals(1)
         self._sl_atr_mult.setSuffix("x ATR")
@@ -235,7 +235,7 @@ class TriggerExitSettingsWidget(QWidget):
         # Percent SL
         self._sl_percent = QDoubleSpinBox()
         self._sl_percent.setRange(0.1, 10.0)
-        self._sl_percent.setValue(2.0)
+        self._sl_percent.setValue(1.5)  # Micro-Account: enger SL
         self._sl_percent.setSingleStep(0.5)
         self._sl_percent.setDecimals(1)
         self._sl_percent.setSuffix("%")
@@ -262,7 +262,7 @@ class TriggerExitSettingsWidget(QWidget):
         # Risk/Reward Target
         self._tp_rr_ratio = QDoubleSpinBox()
         self._tp_rr_ratio.setRange(1.0, 10.0)
-        self._tp_rr_ratio.setValue(2.0)
+        self._tp_rr_ratio.setValue(1.5)  # Micro-Account: realistisches RR
         self._tp_rr_ratio.setSingleStep(0.5)
         self._tp_rr_ratio.setDecimals(1)
         self._tp_rr_ratio.setPrefix("1:")
@@ -299,7 +299,7 @@ class TriggerExitSettingsWidget(QWidget):
         # Activation threshold
         self._trailing_activation = QDoubleSpinBox()
         self._trailing_activation.setRange(0.5, 5.0)
-        self._trailing_activation.setValue(1.0)
+        self._trailing_activation.setValue(0.5)  # Micro-Account: früher aktivieren
         self._trailing_activation.setSingleStep(0.1)
         self._trailing_activation.setDecimals(1)
         self._trailing_activation.setSuffix("x R")
@@ -309,7 +309,7 @@ class TriggerExitSettingsWidget(QWidget):
         # Trailing distance
         self._trailing_distance = QDoubleSpinBox()
         self._trailing_distance.setRange(0.3, 2.0)
-        self._trailing_distance.setValue(0.5)
+        self._trailing_distance.setValue(0.3)  # Micro-Account: enger Trailing
         self._trailing_distance.setSingleStep(0.1)
         self._trailing_distance.setDecimals(1)
         self._trailing_distance.setSuffix("x ATR")
@@ -568,18 +568,18 @@ class TriggerExitSettingsWidget(QWidget):
             )
 
     def _reset_to_defaults(self) -> None:
-        """Reset to default settings."""
+        """Reset to default settings (Micro-Account optimiert)."""
         defaults = {
             "triggers": {
                 "breakout": {"enabled": True, "volume_multiplier": 1.5, "close_threshold_atr": 0.5},
                 "pullback": {"enabled": True, "max_distance_atr": 1.0, "rejection_wick_atr": 0.3},
                 "sfp": {"enabled": True, "wick_body_ratio": 2.0, "min_penetration_atr": 0.2},
             },
-            "stop_loss": {"type": "atr", "atr_multiplier": 1.5, "percent": 2.0, "structure_buffer_atr": 0.2},
-            "take_profit": {"rr_ratio": 2.0, "atr_multiplier": 3.0, "use_level": True},
-            "trailing": {"enabled": True, "activation_r": 1.0, "distance_atr": 0.5, "step_atr": 0.2, "move_to_be": True},
+            "stop_loss": {"type": "atr", "atr_multiplier": 1.2, "percent": 1.5, "structure_buffer_atr": 0.2},  # Micro: enger SL
+            "take_profit": {"rr_ratio": 1.5, "atr_multiplier": 2.5, "use_level": True},  # Micro: realistisches RR
+            "trailing": {"enabled": True, "activation_r": 0.5, "distance_atr": 0.3, "step_atr": 0.15, "move_to_be": True},  # Micro: eng
             "time_stop": {"enabled": False, "max_hold_hours": 24},
-            "partial_tp": {"enabled": True, "tp1_r": 1.0, "tp1_size_percent": 50, "move_sl_after_tp1": True},
+            "partial_tp": {"enabled": True, "tp1_r": 0.75, "tp1_size_percent": 50, "move_sl_after_tp1": True},  # Micro: früher TP1
         }
         self.set_settings(defaults)
         self._emit_settings_changed()

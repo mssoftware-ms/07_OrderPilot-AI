@@ -32,7 +32,7 @@ class StateMixin:
         if geometry:
             self.restoreGeometry(geometry)
         else:
-            self.resize(1200, 800)
+            self.resize(1200, 700)  # -100px Höhe für kompakteres Layout
             screen = self.screen().geometry()
             x = (screen.width() - self.width()) // 2
             y = (screen.height() - self.height()) // 2

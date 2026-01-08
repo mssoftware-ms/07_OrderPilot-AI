@@ -4,7 +4,7 @@ import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QColorDialog, QApplication
+from PyQt6.QtWidgets import QColorDialog, QApplication, QInputDialog
 
 logger = logging.getLogger(__name__)
 class ChartBridge(QObject):
@@ -22,6 +22,8 @@ class ChartBridge(QObject):
     zone_deleted = pyqtSignal(str)  # (zone_id)
     # Phase 5.7: Signal emitted when a zone is clicked
     zone_clicked = pyqtSignal(str, float, float, float, str)  # (zone_id, price, top, bottom, label)
+    # Issue #24: Signal emitted when a line draw is requested (for label input)
+    line_draw_requested = pyqtSignal(str, float, str, str)  # (line_id, price, color, line_type)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,6 +85,21 @@ class ChartBridge(QObject):
         """
         logger.info(f"[ChartBridge] Zone clicked: {zone_id} @ {price:.2f} ({bottom:.2f}-{top:.2f}) [{label}]")
         self.zone_clicked.emit(zone_id, price, top, bottom, label)
+
+    @pyqtSlot(str, float, str, str)
+    def onLineDrawRequest(self, line_id: str, price: float, color: str, line_type: str):
+        """Called from JavaScript when user draws a horizontal line (Issue #24).
+
+        Shows a label input dialog and emits signal for chart widget to handle.
+
+        Args:
+            line_id: Unique ID for the line
+            price: Price level for the line
+            color: Line color (hex)
+            line_type: Type of line ('green' or 'red')
+        """
+        logger.info(f"[ChartBridge] Line draw request: {line_id} @ {price:.2f} ({line_type})")
+        self.line_draw_requested.emit(line_id, price, color, line_type)
 
     @pyqtSlot(str, result=str)
     def pickColor(self, current_color: str = "rgba(13,110,253,0.18)") -> str:

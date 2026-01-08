@@ -138,7 +138,7 @@ class LeverageSettingsWidget(QWidget):
         # Tier 1 (BTC, ETH)
         self._tier1_leverage = QSpinBox()
         self._tier1_leverage.setRange(1, 50)
-        self._tier1_leverage.setValue(20)
+        self._tier1_leverage.setValue(25)  # Micro-Account: höher für BTC/ETH
         self._tier1_leverage.setSuffix("x")
         self._tier1_leverage.setToolTip("Max Leverage für BTC, ETH")
         layout.addRow("TIER 1 (BTC/ETH):", self._tier1_leverage)
@@ -146,7 +146,7 @@ class LeverageSettingsWidget(QWidget):
         # Tier 2
         self._tier2_leverage = QSpinBox()
         self._tier2_leverage.setRange(1, 40)
-        self._tier2_leverage.setValue(15)
+        self._tier2_leverage.setValue(20)  # Micro-Account: höher
         self._tier2_leverage.setSuffix("x")
         self._tier2_leverage.setToolTip("Max Leverage für SOL, XRP, ADA, etc.")
         layout.addRow("TIER 2 (Large Cap):", self._tier2_leverage)
@@ -267,7 +267,7 @@ class LeverageSettingsWidget(QWidget):
         # Max position risk %
         self._max_position_risk = QDoubleSpinBox()
         self._max_position_risk.setRange(0.5, 10.0)
-        self._max_position_risk.setValue(2.0)
+        self._max_position_risk.setValue(3.0)  # Micro-Account: höheres Risiko ok
         self._max_position_risk.setSingleStep(0.5)
         self._max_position_risk.setDecimals(1)
         self._max_position_risk.setSuffix("% Account")
@@ -276,8 +276,8 @@ class LeverageSettingsWidget(QWidget):
 
         # Max daily exposure
         self._max_daily_exposure = QDoubleSpinBox()
-        self._max_daily_exposure.setRange(5.0, 50.0)
-        self._max_daily_exposure.setValue(20.0)
+        self._max_daily_exposure.setRange(5.0, 100.0)
+        self._max_daily_exposure.setValue(50.0)  # Micro-Account: höhere Exposure ok
         self._max_daily_exposure.setSingleStep(5.0)
         self._max_daily_exposure.setDecimals(0)
         self._max_daily_exposure.setSuffix("% Account")
@@ -287,7 +287,7 @@ class LeverageSettingsWidget(QWidget):
         # Max concurrent positions
         self._max_positions = QSpinBox()
         self._max_positions.setRange(1, 10)
-        self._max_positions.setValue(3)
+        self._max_positions.setValue(1)  # Micro-Account: nur eine Position
         self._max_positions.setToolTip("Maximale gleichzeitige Positionen")
         layout.addRow("Max. Positionen:", self._max_positions)
 
@@ -425,9 +425,9 @@ class LeverageSettingsWidget(QWidget):
             )
 
     def _reset_to_defaults(self) -> None:
-        """Reset to default settings."""
+        """Reset to default settings (Micro-Account optimiert)."""
         defaults = {
-            "tier_limits": {"tier_1": 20, "tier_2": 15, "tier_3": 10, "tier_4": 5},
+            "tier_limits": {"tier_1": 25, "tier_2": 20, "tier_3": 10, "tier_4": 5},  # Micro: höher für BTC/ETH
             "regime_multipliers": {
                 "strong_trend": 1.0, "weak_trend": 0.75, "neutral": 0.60,
                 "chop": 0.40, "volatile": 0.30,
@@ -438,9 +438,9 @@ class LeverageSettingsWidget(QWidget):
                 "auto_reduce_leverage": True,
             },
             "account_limits": {
-                "max_position_risk_pct": 2.0,
-                "max_daily_exposure_pct": 20.0,
-                "max_concurrent_positions": 3,
+                "max_position_risk_pct": 3.0,  # Micro: höheres Risiko ok
+                "max_daily_exposure_pct": 50.0,  # Micro: höhere Exposure ok
+                "max_concurrent_positions": 1,  # Micro: nur eine Position
             },
         }
         self.set_settings(defaults)

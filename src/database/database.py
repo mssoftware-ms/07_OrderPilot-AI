@@ -238,6 +238,70 @@ class DatabaseManager:
 
         return stats
 
+    def get_bars(
+        self,
+        symbol: str,
+        start_ts: int,
+        end_ts: int,
+        limit: int | None = None,
+    ) -> list[MarketBar]:
+        """Get market bars from database.
+
+        Args:
+            symbol: Trading symbol
+            start_ts: Start timestamp in milliseconds
+            end_ts: End timestamp in milliseconds
+            limit: Maximum number of bars to return (None for all)
+
+        Returns:
+            List of MarketBar objects
+        """
+        from datetime import datetime
+
+        start_dt = datetime.fromtimestamp(start_ts / 1000)
+        end_dt = datetime.fromtimestamp(end_ts / 1000)
+
+        with self.session() as session:
+            query = session.query(MarketBar).filter(
+                MarketBar.symbol == symbol,
+                MarketBar.timestamp >= start_dt,
+                MarketBar.timestamp <= end_dt,
+            ).order_by(MarketBar.timestamp.asc())
+
+            if limit:
+                query = query.limit(limit)
+
+            bars = query.all()
+            # Detach from session before returning
+            session.expunge_all()
+            return bars
+
+    async def get_bars_async(
+        self,
+        symbol: str,
+        start_ts: int,
+        end_ts: int,
+        limit: int | None = None,
+    ) -> list[MarketBar]:
+        """Async wrapper for get_bars.
+
+        Args:
+            symbol: Trading symbol
+            start_ts: Start timestamp in milliseconds
+            end_ts: End timestamp in milliseconds
+            limit: Maximum number of bars to return (None for all)
+
+        Returns:
+            List of MarketBar objects
+        """
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.get_bars(symbol, start_ts, end_ts, limit)
+        )
+
     def cleanup_old_data(self, days_to_keep: int = 30) -> None:
         """Clean up old data from the database.
 

@@ -5,7 +5,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QLinearGradient
 from PyQt6.QtWidgets import (
     QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-    QProgressBar, QSplitter, QTableWidget, QVBoxLayout, QWidget,
+    QProgressBar, QPushButton, QSplitter, QTableWidget, QVBoxLayout, QWidget,
+    QMessageBox,
 )
 
 
@@ -125,23 +126,29 @@ class BotUISignalsMixin:
         """Create signals & trade management tab."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # Current Position direkt oben ohne Splitter
+        layout.addWidget(self._build_current_position_widget())
 
-        splitter.addWidget(self._build_current_position_widget())
-        splitter.addWidget(self._build_signals_widget())
-        layout.addWidget(splitter)
+        # 20px Abstand vor Recent Signals
+        layout.addSpacing(20)
+
+        # Recent Signals expandiert den Rest
+        layout.addWidget(self._build_signals_widget(), stretch=1)
         return widget
 
     def _build_current_position_widget(self) -> QWidget:
         position_widget = QWidget()
         position_layout = QVBoxLayout(position_widget)
         position_layout.setContentsMargins(0, 0, 0, 0)
+        position_layout.setSpacing(0)
 
         position_group = QGroupBox("Current Position")
         group_layout = QVBoxLayout()
-        group_layout.setContentsMargins(8, 8, 8, 8)
-        group_layout.setSpacing(8)
+        group_layout.setContentsMargins(6, 6, 6, 6)
+        group_layout.setSpacing(4)
 
         # Add SL/TP Progress Bar at the top
         self.sltp_progress_bar = SLTPProgressBar()
@@ -250,11 +257,61 @@ class BotUISignalsMixin:
 
         signals_group = QGroupBox("Recent Signals")
         signals_inner = QVBoxLayout()
+
+        # === TOOLBAR mit Clear-Buttons ===
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(0, 0, 0, 4)
+
+        self.clear_selected_btn = QPushButton("🗑️ Zeile löschen")
+        self.clear_selected_btn.setFixedHeight(24)
+        self.clear_selected_btn.setStyleSheet("font-size: 10px; padding: 2px 8px;")
+        self.clear_selected_btn.setToolTip("Ausgewählte Zeile löschen")
+        self.clear_selected_btn.clicked.connect(self._on_clear_selected_signal)
+        toolbar.addWidget(self.clear_selected_btn)
+
+        self.clear_all_signals_btn = QPushButton("🧹 Alle löschen")
+        self.clear_all_signals_btn.setFixedHeight(24)
+        self.clear_all_signals_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 8px; color: #ef5350;"
+        )
+        self.clear_all_signals_btn.setToolTip("Alle Signale aus der Tabelle löschen")
+        self.clear_all_signals_btn.clicked.connect(self._on_clear_all_signals)
+        toolbar.addWidget(self.clear_all_signals_btn)
+
+        toolbar.addStretch()
+
+        signals_inner.addLayout(toolbar)
         self._build_signals_table()
         signals_inner.addWidget(self.signals_table)
         signals_group.setLayout(signals_inner)
         signals_layout.addWidget(signals_group)
         return signals_widget
+
+    def _on_clear_selected_signal(self) -> None:
+        """Löscht die ausgewählte Zeile aus der Signals-Tabelle."""
+        selected_rows = self.signals_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+
+        # Von unten nach oben löschen, um Index-Verschiebung zu vermeiden
+        rows_to_delete = sorted([idx.row() for idx in selected_rows], reverse=True)
+        for row in rows_to_delete:
+            self.signals_table.removeRow(row)
+
+    def _on_clear_all_signals(self) -> None:
+        """Löscht alle Zeilen aus der Signals-Tabelle."""
+        if self.signals_table.rowCount() == 0:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Alle Signale löschen",
+            f"Alle {self.signals_table.rowCount()} Signale aus der Tabelle löschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.signals_table.setRowCount(0)
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()

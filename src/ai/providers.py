@@ -98,6 +98,8 @@ class OpenAIProvider(AIProviderBase):
             await self.initialize()
 
         schema = response_model.model_json_schema()
+        # OpenAI strict mode requires inlined $defs and no additionalProperties
+        schema = self._prepare_schema_for_openai(schema)
 
         # Build request
         request_data = {
@@ -136,6 +138,56 @@ class OpenAIProvider(AIProviderBase):
             # Parse JSON and create model
             parsed = json.loads(content)
             return response_model(**parsed)
+
+    def _prepare_schema_for_openai(self, schema: dict) -> dict:
+        """Prepare JSON schema for OpenAI strict mode compatibility.
+
+        OpenAI's strict mode requires:
+        - No $ref references (must be inlined)
+        - additionalProperties: false on all objects
+        - All properties must be required
+
+        Args:
+            schema: Pydantic JSON schema
+
+        Returns:
+            OpenAI-compatible schema
+        """
+        import copy
+        schema = copy.deepcopy(schema)
+        defs = schema.pop("$defs", {})
+
+        def inline_refs(obj):
+            """Recursively inline $ref references."""
+            if isinstance(obj, dict):
+                if "$ref" in obj:
+                    ref_path = obj["$ref"]
+                    ref_name = ref_path.split("/")[-1]
+                    if ref_name in defs:
+                        # Replace $ref with inlined definition
+                        inlined = inline_refs(copy.deepcopy(defs[ref_name]))
+                        return inlined
+                    return obj
+                # Process all dict values
+                result = {}
+                for k, v in obj.items():
+                    result[k] = inline_refs(v)
+                # Add additionalProperties: false to object types
+                if result.get("type") == "object" and "additionalProperties" not in result:
+                    result["additionalProperties"] = False
+                # Make all properties required if not already specified
+                if result.get("type") == "object" and "properties" in result and "required" not in result:
+                    result["required"] = list(result["properties"].keys())
+                return result
+            elif isinstance(obj, list):
+                return [inline_refs(item) for item in obj]
+            return obj
+
+        schema = inline_refs(schema)
+        # Ensure top-level additionalProperties is false
+        if schema.get("type") == "object":
+            schema["additionalProperties"] = False
+        return schema
 
     async def stream_completion(
         self,

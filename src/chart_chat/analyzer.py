@@ -122,8 +122,10 @@ class ChartAnalyzer:
             return self._parse_analysis_response(response, context)
 
         except Exception as e:
-            logger.error("Chart analysis failed: %s", e)
-            return self._create_error_result(context, str(e))
+            import traceback
+            error_msg = str(e) if str(e) else type(e).__name__
+            logger.error("Chart analysis failed: %s\n%s", error_msg, traceback.format_exc())
+            return self._create_error_result(context, error_msg)
 
     async def answer_question(
         self,

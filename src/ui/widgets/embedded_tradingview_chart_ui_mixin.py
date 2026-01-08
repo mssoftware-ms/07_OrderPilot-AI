@@ -48,6 +48,9 @@ class EmbeddedTradingViewChartUIMixin:
         # Phase 5.7: Connect zone click handler for level interactions
         if hasattr(self._chart_bridge, "zone_clicked"):
             self._chart_bridge.zone_clicked.connect(self._on_zone_clicked)
+        # Issue #24: Connect line draw request handler for label input
+        if hasattr(self._chart_bridge, "line_draw_requested"):
+            self._chart_bridge.line_draw_requested.connect(self._on_line_draw_requested)
         # Also expose as self.bridge for compatibility
         self.bridge = self._chart_bridge
         self._web_channel = QWebChannel(self.web_view.page())
@@ -261,16 +264,34 @@ class EmbeddedTradingViewChartUIMixin:
         menu.addAction(clear_markers_action)
 
         clear_zones_action = QAction("Clear All Zones", self)
-        clear_zones_action.triggered.connect(self.clear_zones)
+        clear_zones_action.triggered.connect(self._clear_zones_with_js)
         menu.addAction(clear_zones_action)
 
         clear_lines_action = QAction("Clear All Lines", self)
-        clear_lines_action.triggered.connect(self.clear_stop_loss_lines)
+        clear_lines_action.triggered.connect(self._clear_lines_with_js)
         menu.addAction(clear_lines_action)
+
+        clear_drawings_action = QAction("Clear All Drawings", self)
+        clear_drawings_action.triggered.connect(self._clear_all_drawings)
+        menu.addAction(clear_drawings_action)
 
         clear_all_action = QAction("Clear Everything", self)
         clear_all_action.triggered.connect(self._clear_all_markings)
         menu.addAction(clear_all_action)
+
+    def _clear_zones_with_js(self):
+        """Clear all zones (Python-managed and JS-side)."""
+        self.clear_zones()
+        # Also explicitly call JS clearZones for any orphaned zones
+        if hasattr(self, '_execute_js'):
+            self._execute_js("window.chartAPI?.clearZones();")
+
+    def _clear_lines_with_js(self):
+        """Clear all lines (Python-managed and JS-side hlines)."""
+        self.clear_stop_loss_lines()
+        # Also explicitly call JS clearLines for drawing tool lines
+        if hasattr(self, '_execute_js'):
+            self._execute_js("window.chartAPI?.clearLines();")
 
     def _show_markings_manager(self):
         """Show the Chart Markings Manager dialog."""

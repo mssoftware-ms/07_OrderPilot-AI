@@ -249,13 +249,26 @@ class EmbeddedTradingViewChartMarkingMixin:
         """Clear all entry and structure markers."""
         self.clear_entry_markers()
         self.clear_structure_breaks()
+        # Also clear JavaScript-side markers
+        if hasattr(self, '_execute_js'):
+            self._execute_js("window.chartAPI?.clearMarkers();")
         logger.info("Cleared all markers")
+
     def _clear_all_markings(self):
-        """Clear all chart markings."""
+        """Clear all chart markings (both Python-managed and JS drawings)."""
         self._clear_all_markers()
         self.clear_zones()
         self.clear_stop_loss_lines()
+        # Also clear ALL JavaScript-side drawings (lines, rects, fibonaccis, etc.)
+        if hasattr(self, '_execute_js'):
+            self._execute_js("window.chartAPI?.clearAllDrawings();")
         logger.info("Cleared all chart markings")
+
+    def _clear_all_drawings(self):
+        """Clear only the JavaScript-side drawings (from drawing tools)."""
+        if hasattr(self, '_execute_js'):
+            self._execute_js("window.chartAPI?.clearAllDrawings();")
+        logger.info("Cleared all JS drawings")
     def _edit_zone(self, zone):
         """Open the zone edit dialog.
 

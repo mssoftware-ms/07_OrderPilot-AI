@@ -261,16 +261,17 @@ class ChartChatUIMixin:
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
-                border: 1px solid #888;
+                border: 2px solid #666;
                 border-radius: 3px;
-                background: transparent;
+                background: #2a2a2a;
             }
             QCheckBox::indicator:checked {
-                background: transparent;
-                border: 1px solid #0d6efd;
+                background: #0d6efd;
+                border: 2px solid #0d6efd;
+                image: url(none);
             }
             QCheckBox::indicator:hover {
-                border-color: #c0c0c0;
+                border-color: #888;
             }
         """
         )
@@ -290,16 +291,17 @@ class ChartChatUIMixin:
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
-                border: 1px solid #888;
+                border: 2px solid #666;
                 border-radius: 3px;
-                background: transparent;
+                background: #2a2a2a;
             }
             QCheckBox::indicator:checked {
-                background: transparent;
-                border: 1px solid #0d6efd;
+                background: #0d6efd;
+                border: 2px solid #0d6efd;
+                image: url(none);
             }
             QCheckBox::indicator:hover {
-                border-color: #c0c0c0;
+                border-color: #888;
             }
         """
         )

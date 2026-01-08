@@ -207,7 +207,14 @@ class ChartWindow(
 
     def _setup_window(self) -> None:
         self.setWindowTitle(f"Chart - {self.symbol}")
-        self.setMinimumSize(800, 600)
+        # Fenster als vollwertiges Fenster mit Minimize/Maximize/Close (kein Tool Window)
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint |
+            Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setMinimumSize(700, 450)  # Kompakter (war 800x600)
 
     def _setup_chart_widget(self) -> None:
         self.chart_widget = EmbeddedTradingViewChart(history_manager=self.history_manager)
@@ -552,21 +559,53 @@ class ChartWindow(
             logger.debug("Dock minimized")
 
     def _toggle_dock_maximized(self):
-        """Toggle dock widget between maximized and normal state."""
+        """Toggle dock widget between maximized and normal state.
+
+        When dock is floating (undocked), maximize on the screen where the
+        dock is currently visible, not where the parent window is.
+        """
         if self._dock_maximized:
             # Restore from maximized state
             self._dock_maximized = False
-            self.chart_widget.setVisible(True)
-            self.bottom_panel.setMaximumHeight(16777215)
-            self.bottom_panel.setMinimumHeight(0)
+            if self.dock_widget.isFloating():
+                # Restore floating dock to saved geometry
+                if hasattr(self, '_saved_floating_geometry'):
+                    self.dock_widget.setGeometry(self._saved_floating_geometry)
+            else:
+                self.chart_widget.setVisible(True)
+                self.bottom_panel.setMaximumHeight(16777215)
+                self.bottom_panel.setMinimumHeight(0)
             logger.debug("Dock restored from maximized state")
         else:
-            # Maximize - hide chart and expand dock
+            # Maximize
             self._dock_maximized = True
             self._dock_minimized = False
-            self.bottom_panel.setVisible(True)
-            self.chart_widget.setVisible(False)
-            logger.debug("Dock maximized")
+
+            if self.dock_widget.isFloating():
+                # Save current geometry before maximizing
+                self._saved_floating_geometry = self.dock_widget.geometry()
+
+                # Get the screen where the dock widget is currently shown
+                from PyQt6.QtGui import QGuiApplication
+                dock_center = self.dock_widget.geometry().center()
+                current_screen = None
+                for screen in QGuiApplication.screens():
+                    if screen.geometry().contains(dock_center):
+                        current_screen = screen
+                        break
+
+                if current_screen is None:
+                    current_screen = self.dock_widget.screen()
+
+                # Maximize on the dock's current screen
+                screen_geom = current_screen.availableGeometry()
+                self.dock_widget.setGeometry(screen_geom)
+                logger.debug(f"Dock maximized on screen: {current_screen.name()}")
+            else:
+                # Docked mode: hide chart and expand dock
+                self.bottom_panel.setVisible(True)
+                self.chart_widget.setVisible(False)
+                logger.debug("Dock maximized (docked mode)")
 
     def _reset_layout(self):
         """Reset window layout to default state.
@@ -598,8 +637,8 @@ class ChartWindow(
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_widget)
 
         # Reset window size if too small
-        if self.width() < 800 or self.height() < 600:
-            self.resize(1200, 800)
+        if self.width() < 700 or self.height() < 450:
+            self.resize(1000, 600)  # Kompakter (-100px Höhe)
             # Center on screen
             screen = self.screen().geometry()
             x = (screen.width() - self.width()) // 2
@@ -897,6 +936,10 @@ class ChartWindow(
             if self._context_inspector and self._context_inspector.isVisible():
                 if hasattr(self._context_inspector, '_update_display'):
                     self._context_inspector._update_display(context)
+
+            # Issue #36: Update AI Chat Tab with new context
+            if hasattr(self, 'update_ai_chat_context'):
+                self.update_ai_chat_context(context)
 
             logger.info("Context refreshed")
 

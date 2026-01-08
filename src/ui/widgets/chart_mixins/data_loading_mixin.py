@@ -200,7 +200,8 @@ class DataLoadingMixin:
 
             self.current_symbol = symbol
             self.current_data_provider = data_provider
-            self.symbol_combo.setCurrentText(symbol)
+            if hasattr(self, 'symbol_combo'):
+                self.symbol_combo.setCurrentText(symbol)
 
             self.market_status_label.setText(f"Loading {symbol}...")
             self.market_status_label.setStyleSheet("color: #FFA500; font-weight: bold;")
@@ -455,7 +456,8 @@ class DataLoadingMixin:
         # Ignore separator line
         if symbol == "───────" or not symbol.strip():
             # Revert to previous symbol
-            self.symbol_combo.setCurrentText(self.current_symbol)
+            if hasattr(self, 'symbol_combo'):
+                self.symbol_combo.setCurrentText(self.current_symbol)
             return
 
         self.current_symbol = symbol

@@ -22,30 +22,35 @@ logger = logging.getLogger(__name__)
 class ChartAIMarkingsMixin:
     """Mixin for AI-driven chart markings via ChartMarkingMixin."""
 
-    def add_horizontal_line(self, price: float, color: str, label: str) -> str:
+    def add_horizontal_line(self, price: float, label: str = "", color: str = "#0d6efd") -> str:
         """Add a horizontal line at specified price.
 
         Args:
             price: Price level for the line
+            label: Label text for the line (e.g., "SL", "TP", "Entry")
             color: Line color (hex format, e.g., '#ff0000')
-            label: Label text for the line
 
         Returns:
             ID of the created line
+
+        Note:
+            Parameter order is (price, label, color) to match EmbeddedTradingViewChart
+            and evaluation_dialog.py usage. Issue #26 fix.
         """
-        line_id = f"ai_{label.lower().replace(' ', '_')}_{int(price)}"
-        
+        safe_label = label or ""
+        line_id = f"ai_{safe_label.lower().replace(' ', '_')}_{int(price)}"
+
         # Delegate to ChartMarkingMixin's generic add_line
         if hasattr(self, "add_line"):
             return self.add_line(
                 line_id=line_id,
                 price=price,
                 color=color,
-                label=label,
+                label=safe_label,
                 line_style="solid",
                 show_risk=False
             )
-        
+
         logger.error("add_line not found in parent class")
         return ""
 

@@ -286,7 +286,7 @@ class IndicatorMixin:
             )
             self._add_oscillator_reference_lines(display_name, panel_id)
 
-        logger.info(f"Created panel for {ind_id}")
+        logger.info(f"Created panel for {panel_id}")
 
     def _add_oscillator_reference_lines(self, ind_display_name, panel_id):
         """Add indicator-specific reference lines to oscillator panel.

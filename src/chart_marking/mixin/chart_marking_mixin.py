@@ -536,23 +536,9 @@ class ChartMarkingMixin:
 
     def _update_chart_lines(self) -> None:
         """Update all horizontal lines on the chart."""
-        # Remove all horizontal lines using safe iteration
-        # We cannot assume clearHorizontalLines exists in the JS API
-        clear_js = """
-            (function() {
-                try {
-                    if (window.chartAPI && window.chartAPI.getDrawings && window.chartAPI.removeDrawingById) {
-                        const drawings = window.chartAPI.getDrawings();
-                        drawings.forEach(d => {
-                            if (d.type === 'hline') {
-                                window.chartAPI.removeDrawingById(d.id);
-                            }
-                        });
-                    }
-                } catch(e) { console.error('Error clearing lines:', e); }
-            })();
-        """
-        self._execute_js(clear_js)
+        # Remove all horizontal lines using the dedicated clearLines API
+        self._execute_js("window.chartAPI?.clearLines();")
+        logger.debug("Cleared all horizontal lines from chart")
 
         # Add each line
         for line_data in self._sl_lines.get_chart_lines():

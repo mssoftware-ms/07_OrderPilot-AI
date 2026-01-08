@@ -179,14 +179,46 @@ class AnalysisWorker(QThread):
         try:
             from src.ai.ai_provider_factory import AIProviderFactory
             from src.ai.prompts import PromptTemplates
+            from src.config.loader import config_manager
 
             # Check if AI is enabled
             if not AIProviderFactory.is_ai_enabled():
                 logger.info("AI features are disabled in settings")
                 return None
 
-            # Create AI service
-            logger.info("Creating AI service for deep analysis...")
+            # First try direct API call (same as ai_chat_tab.py) for consistency
+            api_key = config_manager.get_credential("openai_api_key")
+            if api_key:
+                logger.info("Using direct OpenAI API call (via config_manager)")
+                try:
+                    import openai
+                    client = openai.AsyncOpenAI(api_key=api_key)
+
+                    technical_data = self._format_features_for_prompt(features)
+                    sr_levels = self._format_sr_levels_for_prompt(features)
+
+                    prompt = PromptTemplates.DEEP_ANALYSIS.format(
+                        symbol=symbol,
+                        strategy=strategy,
+                        technical_data=technical_data,
+                        sr_levels=sr_levels
+                    )
+
+                    response = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "Du bist ein erfahrener Trading-Analyst für Kryptowährungen. Antworte auf Deutsch im Markdown-Format."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        max_tokens=4000,
+                    )
+                    return response.choices[0].message.content
+                except Exception as e:
+                    logger.warning(f"Direct OpenAI call failed: {e}, falling back to AIProviderFactory")
+
+            # Fallback: Use AIProviderFactory
+            logger.info("Creating AI service for deep analysis via AIProviderFactory...")
             self._ai_service = AIProviderFactory.create_service()
             await self._ai_service.initialize()
 

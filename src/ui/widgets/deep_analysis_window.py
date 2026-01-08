@@ -15,6 +15,7 @@ from src.ui.widgets.analysis_tabs.indicators_tab import IndicatorsTab
 from src.ui.widgets.analysis_tabs.deep_run_tab import DeepRunTab
 from src.ui.widgets.analysis_tabs.log_viewer_tab import LogViewerTab
 from src.ui.widgets.analysis_tabs.ai_chat_tab import AIChatTab
+from src.ui.widgets.analysis_tabs.data_overview_tab import DataOverviewTab
 
 class DeepAnalysisWidget(QWidget):
     """Container for the advanced analysis workflow."""
@@ -37,14 +38,16 @@ class DeepAnalysisWidget(QWidget):
         self.tab_run = DeepRunTab(self.context)
         self.tab_logs = LogViewerTab(self.context)
         self.tab_chat = AIChatTab(self.context)  # Phase 5.8-5.10
+        self.tab_data_overview = DataOverviewTab(self.context)  # KI-Datenübersicht
 
         # Add to TabWidget
         self.tabs.addTab(self.tab_strategy, "1. Strategie")
         self.tabs.addTab(self.tab_timeframes, "2. Timeframes")
         self.tabs.addTab(self.tab_indicators, "3. Indikatoren")
         self.tabs.addTab(self.tab_run, "4. Deep Run")
-        self.tabs.addTab(self.tab_logs, "5. Logs")
-        self.tabs.addTab(self.tab_chat, "6. 🤖 AI Chat")  # Phase 5.8-5.10
+        self.tabs.addTab(self.tab_data_overview, "5. 📊 Datenübersicht")  # Neuer Tab
+        self.tabs.addTab(self.tab_logs, "6. Logs")
+        self.tabs.addTab(self.tab_chat, "7. 🤖 AI Chat")  # Phase 5.8-5.10
 
         layout.addWidget(self.tabs)
 
@@ -67,13 +70,15 @@ class DeepAnalysisWidget(QWidget):
             print(f"Error updating deep analysis context: {e}")
 
     def set_market_context(self, context) -> None:
-        """Set MarketContext for AI Chat Tab (Phase 5.8).
+        """Set MarketContext for AI Chat Tab and Data Overview (Phase 5.8).
 
         Args:
             context: MarketContext instance
         """
         if hasattr(self, 'tab_chat'):
             self.tab_chat.set_market_context(context)
+        if hasattr(self, 'tab_data_overview'):
+            self.tab_data_overview.set_market_context(context)
 
     def get_draw_zone_signal(self):
         """Get the draw_zone_requested signal from AI Chat Tab (Phase 5.9).

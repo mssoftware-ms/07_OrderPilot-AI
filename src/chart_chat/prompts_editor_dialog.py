@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -34,7 +35,7 @@ class PromptsEditorDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Chatbot Prompts bearbeiten")
-        self.resize(900, 720)
+        self.setMinimumSize(900, 720)  # Set minimum size
         self.settings = QSettings("OrderPilot", "TradingApp")
 
         layout = QVBoxLayout(self)
@@ -55,6 +56,19 @@ class PromptsEditorDialog(QDialog):
         footer.addStretch()
         footer.addWidget(buttons)
         layout.addLayout(footer)
+
+        # Issue #28: Center on screen AFTER layout is complete
+        self.resize(900, 720)
+        self._center_on_screen()
+
+    def _center_on_screen(self):
+        """Center the dialog on the primary screen (Issue #28)."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.availableGeometry()
+            x = (screen_geometry.width() - self.width()) // 2 + screen_geometry.x()
+            y = (screen_geometry.height() - self.height()) // 2 + screen_geometry.y()
+            self.move(x, y)
 
     def _build_system_tab(self):
         tab = QDialog()

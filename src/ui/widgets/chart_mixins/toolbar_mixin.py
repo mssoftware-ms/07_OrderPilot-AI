@@ -35,8 +35,7 @@ class ToolbarMixin:
         return (toolbar1, toolbar2)
 
     def _build_toolbar_row1(self, toolbar: QToolBar) -> None:
-        self._add_symbol_selector(toolbar)
-        toolbar.addSeparator()
+        # Symbol-Selector entfernt (Issue #20, #30) - Symbol wird über ChartWindow gesteuert
         self._add_timeframe_selector(toolbar)
         toolbar.addSeparator()
         self._add_period_selector(toolbar)
@@ -508,11 +507,14 @@ class ToolbarMixin:
         clear_markers.triggered.connect(self._clear_all_markers)
         self.chart_marking_menu.addAction(clear_markers)
         clear_zones = QAction("🗑️ Alle Zonen löschen", self)
-        clear_zones.triggered.connect(self.clear_zones)
+        clear_zones.triggered.connect(self._clear_zones_with_js)
         self.chart_marking_menu.addAction(clear_zones)
         clear_lines = QAction("🗑️ Alle Linien löschen", self)
-        clear_lines.triggered.connect(self.clear_stop_loss_lines)
+        clear_lines.triggered.connect(self._clear_lines_with_js)
         self.chart_marking_menu.addAction(clear_lines)
+        clear_drawings = QAction("🗑️ Alle Zeichnungen löschen", self)
+        clear_drawings.triggered.connect(self._clear_all_drawings)
+        self.chart_marking_menu.addAction(clear_drawings)
         self.chart_marking_menu.addSeparator()
         clear_all = QAction("🗑️ Alles löschen", self)
         clear_all.triggered.connect(self._clear_all_markings)

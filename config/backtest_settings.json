@@ -1,0 +1,21 @@
+{
+  "symbol": "bitunix:BTCUSDT",
+  "initial_capital": 10000.0,
+  "risk_per_trade": 1.0,
+  "max_daily_loss": 3.0,
+  "max_trades_day": 10,
+  "fee_maker": 0.02,
+  "fee_taker": 0.06,
+  "slippage_bps": 5.0,
+  "slippage_method": 0,
+  "max_leverage": 20,
+  "liq_buffer": 5.0,
+  "assume_taker": true,
+  "batch_method": 0,
+  "batch_iterations": 50,
+  "batch_target": 0,
+  "wf_train_days": 90,
+  "wf_test_days": 30,
+  "wf_step_days": 30,
+  "wf_reoptimize": true
+}

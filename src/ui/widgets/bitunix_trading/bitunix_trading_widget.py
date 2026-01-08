@@ -92,9 +92,12 @@ class BitunixTradingWidget(QDockWidget):
         else:
             self.paper_adapter.history_manager = history_manager
 
-        # Also update bot tab if it exists
-        if hasattr(self, 'bot_tab') and self.bot_tab is not None:
-            self.bot_tab.set_history_manager(history_manager)
+        # NOTE: bot_tab und backtest_tab wurden in das ChartWindow Trading Bot Panel verschoben
+        # Die History-Manager-Verknüpfung erfolgt dort über panels_mixin.py
+
+        # Legacy: Backtest tab if it still exists locally
+        if hasattr(self, 'backtest_tab') and self.backtest_tab is not None:
+            self.backtest_tab.set_history_manager(history_manager)
 
     def _setup_ui(self) -> None:
         """Set up the widget UI with tabs for manual and bot trading."""
@@ -174,8 +177,11 @@ class BitunixTradingWidget(QDockWidget):
         manual_layout.addStretch()
         self.tab_widget.addTab(manual_tab, "📝 Manual Trading")
 
-        # Tab 1: Bot Trading
-        self._setup_bot_tab()
+        # NOTE: Bot Trading und Backtesting Tabs wurden in das "Trading Bot" Panel
+        # im ChartWindow verschoben (panels_mixin.py)
+        # Die folgenden Calls wurden entfernt:
+        # - self._setup_bot_tab()
+        # - self._setup_backtest_tab()
 
         main_layout.addWidget(self.tab_widget)
         self.setWidget(container)
@@ -203,17 +209,39 @@ class BitunixTradingWidget(QDockWidget):
             self.tab_widget.addTab(placeholder, "🤖 Auto Trading")
             self.bot_tab = None
 
+    def _setup_backtest_tab(self) -> None:
+        """Set up the backtesting tab."""
+        try:
+            from .backtest_tab import BacktestTab
+
+            self.backtest_tab = BacktestTab(
+                history_manager=getattr(self, '_history_manager', None),
+                parent=self,
+            )
+            self.tab_widget.addTab(self.backtest_tab, "🧪 Backtesting")
+        except ImportError as e:
+            # Fallback: Placeholder wenn BacktestTab nicht verfügbar
+            logger.warning(f"BacktestTab konnte nicht geladen werden: {e}")
+            placeholder = QWidget()
+            layout = QVBoxLayout(placeholder)
+            label = QLabel("🧪 Backtesting\n\nKommt bald...")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet("color: #666; font-size: 14px;")
+            layout.addWidget(label)
+            self.tab_widget.addTab(placeholder, "🧪 Backtesting")
+            self.backtest_tab = None
+
     def _toggle_mode(self, is_paper: bool):
         """Switch between Live and Paper adapters."""
         self.is_paper_mode = is_paper
-        
+
         if is_paper:
             self.adapter = self.paper_adapter
         else:
             self.adapter = self.live_adapter
-            
+
         self._update_mode_ui()
-        
+
         # Trigger immediate refresh
         self._load_account_info()
         self._load_positions()
@@ -856,9 +884,8 @@ class BitunixTradingWidget(QDockWidget):
                 except (ValueError, AttributeError, TypeError):
                     pass  # Silently ignore calculation errors
 
-        # Forward tick price to Bot Tab for position monitoring
-        if hasattr(self, 'bot_tab') and self.bot_tab is not None:
-            self.bot_tab.on_tick_price_updated(price)
+        # NOTE: bot_tab wurde in das ChartWindow Trading Bot Panel verschoben
+        # Tick-Price-Updates erfolgen dort über das ChartWindow
 
     async def _place_order(self, side: OrderSide) -> None:
         """Place an order.
