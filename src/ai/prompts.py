@@ -103,6 +103,59 @@ Analyze:
 
 Provide objective technical analysis without emotional bias."""
 
+    # Deep Analysis (Multi-Timeframe) Prompts
+    DEEP_ANALYSIS = """Du bist ein erfahrener Trading-Analyst für Kryptowährungen. Analysiere die folgenden Multi-Timeframe-Daten und erstelle einen umfassenden Marktreport.
+
+## Asset
+**Symbol:** {symbol}
+**Strategie:** {strategy}
+
+## Technische Daten (Multi-Timeframe)
+{technical_data}
+
+## Support/Resistance Level
+{sr_levels}
+
+## Aufgabe
+Erstelle einen vollständigen Marktanalysereport mit folgenden Abschnitten:
+
+### 1. Marktübersicht
+- Aktueller Trend über alle Timeframes (Trendharmonie vs. Divergenz)
+- Dominierendes Momentum (bullish/bearish/neutral)
+- Volatilitätseinschätzung basierend auf ATR
+
+### 2. Technische Analyse
+- Multi-Timeframe Trend-Alignment (MTF-Konfluenz)
+- RSI Divergenzen oder Bestätigungen
+- EMA-Positionierung und Crossovers
+- Bollinger Band Position und Squeeze-Situationen
+
+### 3. Support/Resistance Analyse
+- Wichtigste Levels mit Begründung
+- Potentielle Breakout/Breakdown Zonen
+- Liquiditätszonen
+
+### 4. Trading Setup (wenn vorhanden)
+Nur wenn ein klares Setup existiert:
+- **Richtung:** LONG/SHORT/NEUTRAL
+- **Entry Zone:** Preisbereich
+- **Target 1:** erstes Kursziel
+- **Target 2:** zweites Kursziel (optional)
+- **Stop Loss:** mit Begründung
+- **Risk/Reward:** Verhältnis
+- **Konfidenz:** 1-5 (5 = sehr hoch)
+
+### 5. Risikofaktoren
+- Gegenläufige Signale
+- Wichtige Warnsignale
+- Marktbedingungen die gegen das Setup sprechen
+
+### 6. Fazit
+- Zusammenfassung in 2-3 Sätzen
+- Handlungsempfehlung
+
+**WICHTIG:** Antworte auf Deutsch. Formatiere als Markdown. Sei präzise und datenbasiert."""
+
     # Risk Assessment Prompts
     RISK_ASSESSMENT = """Assess the risk profile of the following trading position.
 

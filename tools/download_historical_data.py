@@ -102,6 +102,9 @@ async def download_bitunix(
 ) -> dict:
     """Download historical data from Bitunix Futures API.
 
+    Public market data (kline) does NOT require API keys.
+    Only trading operations require authentication.
+
     Args:
         symbols: List of crypto symbols (e.g., ["BTCUSDT", "ETHUSDT"])
         days_back: Number of days of history to download
@@ -111,22 +114,17 @@ async def download_bitunix(
         Dictionary with download results
     """
     try:
-        # Get Bitunix credentials
-        api_key = config_manager.get_credential("bitunix_api_key")
-        api_secret = config_manager.get_credential("bitunix_api_secret")
+        # Bitunix public kline API does NOT require API keys
+        # Keys are only needed for trading operations
+        logger.info("ℹ️  Using Bitunix public market data API (no API keys required)")
 
-        if not api_key or not api_secret:
-            logger.error("Bitunix API keys not found in environment variables!")
-            logger.error("Please set BITUNIX_API_KEY and BITUNIX_API_SECRET")
-            return {}
-
-        # Create provider
+        # Create provider without API keys for public market data
         provider = BitunixProvider(
-            api_key=api_key,
-            api_secret=api_secret,
+            api_key=None,  # Not required for public kline data
+            api_secret=None,
             use_testnet=False,  # Use mainnet for historical data
             max_bars=525600,  # 1 year of 1min bars
-            max_batches=2628,  # 525600 / 200 bars per batch
+            max_batches=3000,  # 525600 / 200 = 2628, using 3000 for safety
         )
 
         # Create manager

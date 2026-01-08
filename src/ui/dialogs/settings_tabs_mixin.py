@@ -3,13 +3,21 @@
 Contains tab creation methods for SettingsDialog.
 """
 
+import logging
+
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -23,6 +31,8 @@ from src.ai.model_constants import (
     ANTHROPIC_MODELS,
     GEMINI_MODELS,
 )
+
+logger = logging.getLogger(__name__)
 
 class SettingsTabsMixin:
     """Mixin providing tab creation methods for SettingsDialog."""
@@ -235,47 +245,212 @@ class SettingsTabsMixin:
 
     def _build_alpaca_tab(self) -> QWidget:
         alpaca_tab = QWidget()
-        alpaca_layout = QFormLayout(alpaca_tab)
+        alpaca_layout = QVBoxLayout(alpaca_tab)
+
+        # API Settings Group
+        api_group = QGroupBox("API Settings")
+        api_layout = QFormLayout(api_group)
 
         self.alpaca_enabled = QCheckBox("Enable Alpaca provider")
-        alpaca_layout.addRow(self.alpaca_enabled)
+        api_layout.addRow(self.alpaca_enabled)
 
         self.alpaca_api_key = QLineEdit()
         self.alpaca_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.alpaca_api_key.setPlaceholderText("Enter Alpaca API key")
-        alpaca_layout.addRow("API Key:", self.alpaca_api_key)
+        api_layout.addRow("API Key:", self.alpaca_api_key)
 
         self.alpaca_api_secret = QLineEdit()
         self.alpaca_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
         self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
-        alpaca_layout.addRow("API Secret:", self.alpaca_api_secret)
+        api_layout.addRow("API Secret:", self.alpaca_api_secret)
 
         alpaca_info = QLabel(
-            "Alpaca provides real-time and historical market data for US stocks. "
-            "Free tier includes IEX real-time data with 200 requests/minute. "
-            "Paper trading API keys can be used for testing."
+            "Alpaca provides real-time and historical market data for US stocks and crypto. "
+            "Free tier includes IEX real-time data. Crypto market data works without API keys."
         )
         alpaca_info.setWordWrap(True)
-        alpaca_layout.addRow(alpaca_info)
+        api_layout.addRow(alpaca_info)
+        alpaca_layout.addWidget(api_group)
+
+        # Historical Data Download Group
+        download_group = QGroupBox("Historical Data Download")
+        download_layout = QFormLayout(download_group)
+
+        # Symbol input
+        self.alpaca_dl_symbol = QComboBox()
+        self.alpaca_dl_symbol.setEditable(True)
+        self.alpaca_dl_symbol.addItems(["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"])
+        self.alpaca_dl_symbol.setToolTip("Enter crypto symbol (e.g., BTC/USD, ETH/USD)")
+        download_layout.addRow("Symbol:", self.alpaca_dl_symbol)
+
+        # Time period
+        period_layout = QHBoxLayout()
+        self.alpaca_dl_days = QSpinBox()
+        self.alpaca_dl_days.setRange(1, 730)
+        self.alpaca_dl_days.setValue(365)
+        self.alpaca_dl_days.setSuffix(" days")
+        period_layout.addWidget(self.alpaca_dl_days)
+        download_layout.addRow("Period:", period_layout)
+
+        # Timeframe
+        self.alpaca_dl_timeframe = QComboBox()
+        self.alpaca_dl_timeframe.addItems(["1min", "5min", "15min", "1h", "4h", "1d"])
+        self.alpaca_dl_timeframe.setCurrentText("1min")
+        download_layout.addRow("Timeframe:", self.alpaca_dl_timeframe)
+
+        # Estimated info
+        self.alpaca_dl_estimate = QLabel("")
+        self._update_alpaca_estimate()
+        self.alpaca_dl_days.valueChanged.connect(self._update_alpaca_estimate)
+        self.alpaca_dl_timeframe.currentTextChanged.connect(self._update_alpaca_estimate)
+        download_layout.addRow("Estimated:", self.alpaca_dl_estimate)
+
+        # Download button and progress
+        btn_layout = QHBoxLayout()
+        self.alpaca_dl_btn = QPushButton("Download Historical Data")
+        self.alpaca_dl_btn.clicked.connect(self._start_alpaca_download)
+        btn_layout.addWidget(self.alpaca_dl_btn)
+
+        self.alpaca_dl_cancel_btn = QPushButton("Cancel")
+        self.alpaca_dl_cancel_btn.setEnabled(False)
+        self.alpaca_dl_cancel_btn.clicked.connect(self._cancel_alpaca_download)
+        btn_layout.addWidget(self.alpaca_dl_cancel_btn)
+        download_layout.addRow(btn_layout)
+
+        # Progress bar
+        self.alpaca_dl_progress = QProgressBar()
+        self.alpaca_dl_progress.setRange(0, 100)
+        self.alpaca_dl_progress.setValue(0)
+        download_layout.addRow(self.alpaca_dl_progress)
+
+        # Status label
+        self.alpaca_dl_status = QLabel("Ready to download")
+        self.alpaca_dl_status.setWordWrap(True)
+        download_layout.addRow(self.alpaca_dl_status)
+
+        alpaca_layout.addWidget(download_group)
+        alpaca_layout.addStretch()
+
+        # Worker reference
+        self._alpaca_download_thread = None
+        self._alpaca_download_worker = None
+
         return alpaca_tab
+
+    def _start_alpaca_download(self):
+        """Start Alpaca historical data download."""
+        from src.ui.workers.historical_download_worker import (
+            DownloadThread,
+            HistoricalDownloadWorker,
+        )
+
+        symbol = self.alpaca_dl_symbol.currentText().strip()
+        if not symbol:
+            QMessageBox.warning(self, "Input Error", "Please enter a symbol.")
+            return
+
+        days = self.alpaca_dl_days.value()
+        timeframe = self.alpaca_dl_timeframe.currentText()
+
+        # Create worker
+        self._alpaca_download_worker = HistoricalDownloadWorker(
+            provider_type="alpaca",
+            symbols=[symbol],
+            days=days,
+            timeframe=timeframe,
+        )
+
+        # Connect signals
+        self._alpaca_download_worker.progress.connect(self._on_alpaca_progress)
+        self._alpaca_download_worker.finished.connect(self._on_alpaca_finished)
+        self._alpaca_download_worker.error.connect(self._on_alpaca_error)
+
+        # Create and start thread
+        self._alpaca_download_thread = DownloadThread(self._alpaca_download_worker)
+        self._alpaca_download_thread.start()
+
+        # Update UI
+        self.alpaca_dl_btn.setEnabled(False)
+        self.alpaca_dl_cancel_btn.setEnabled(True)
+        self.alpaca_dl_progress.setValue(0)
+        self.alpaca_dl_status.setText(f"Starting download for {symbol}...")
+
+    def _cancel_alpaca_download(self):
+        """Cancel Alpaca download."""
+        if self._alpaca_download_worker:
+            self._alpaca_download_worker.cancel()
+        self.alpaca_dl_status.setText("Cancelling...")
+
+    def _on_alpaca_progress(self, percentage: int, message: str):
+        """Handle Alpaca download progress."""
+        self.alpaca_dl_progress.setValue(percentage)
+        self.alpaca_dl_status.setText(message)
+
+    def _on_alpaca_finished(self, success: bool, message: str, results: dict):
+        """Handle Alpaca download completion."""
+        self.alpaca_dl_btn.setEnabled(True)
+        self.alpaca_dl_cancel_btn.setEnabled(False)
+        self.alpaca_dl_progress.setValue(100 if success else 0)
+        self.alpaca_dl_status.setText(message)
+
+        if success:
+            QMessageBox.information(self, "Download Complete", message)
+        else:
+            QMessageBox.warning(self, "Download Failed", message)
+
+        self._alpaca_download_thread = None
+        self._alpaca_download_worker = None
+
+    def _on_alpaca_error(self, error_message: str):
+        """Handle Alpaca download error."""
+        self.alpaca_dl_btn.setEnabled(True)
+        self.alpaca_dl_cancel_btn.setEnabled(False)
+        self.alpaca_dl_progress.setValue(0)
+        self.alpaca_dl_status.setText(f"Error: {error_message}")
+        QMessageBox.critical(self, "Download Error", error_message)
+        self._alpaca_download_thread = None
+        self._alpaca_download_worker = None
+
+    def _update_alpaca_estimate(self):
+        """Update Alpaca download estimate label."""
+        days = self.alpaca_dl_days.value()
+        timeframe = self.alpaca_dl_timeframe.currentText()
+
+        # Calculate bars per day
+        bars_per_day = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bpd = bars_per_day.get(timeframe, 1440)
+        total_bars = days * bpd
+
+        self.alpaca_dl_estimate.setText(f"~{total_bars:,} bars")
 
     def _build_bitunix_tab(self) -> QWidget:
         """Create Bitunix Futures settings tab."""
         bitunix_tab = QWidget()
-        bitunix_layout = QFormLayout(bitunix_tab)
+        bitunix_layout = QVBoxLayout(bitunix_tab)
+
+        # API Settings Group
+        api_group = QGroupBox("API Settings (only for trading)")
+        api_layout = QFormLayout(api_group)
 
         self.bitunix_enabled = QCheckBox("Enable Bitunix Futures provider")
-        bitunix_layout.addRow(self.bitunix_enabled)
+        api_layout.addRow(self.bitunix_enabled)
 
         self.bitunix_api_key = QLineEdit()
         self.bitunix_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.bitunix_api_key.setPlaceholderText("Enter Bitunix API key")
-        bitunix_layout.addRow("API Key:", self.bitunix_api_key)
+        self.bitunix_api_key.setPlaceholderText("Enter Bitunix API key (not required for market data)")
+        api_layout.addRow("API Key:", self.bitunix_api_key)
 
         self.bitunix_api_secret = QLineEdit()
         self.bitunix_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
         self.bitunix_api_secret.setPlaceholderText("Enter Bitunix API secret")
-        bitunix_layout.addRow("API Secret:", self.bitunix_api_secret)
+        api_layout.addRow("API Secret:", self.bitunix_api_secret)
 
         self.bitunix_testnet = QCheckBox("Use Testnet (Recommended for testing)")
         self.bitunix_testnet.setChecked(True)
@@ -283,23 +458,181 @@ class SettingsTabsMixin:
             "When enabled, uses Bitunix testnet environment for safe testing. "
             "Uncheck only when you want to trade with real money!"
         )
-        bitunix_layout.addRow(self.bitunix_testnet)
+        api_layout.addRow(self.bitunix_testnet)
 
         bitunix_info = QLabel(
             "<b>Bitunix Futures Trading</b><br>"
-            "Provides crypto futures (perpetual contracts) trading and market data.<br>"
-            "<br>"
-            "<b>⚠️ IMPORTANT:</b><br>"
-            "• Testnet is enabled by default for safety<br>"
-            "• Get API keys from: <a href='https://www.bitunix.com/api'>https://www.bitunix.com/api</a><br>"
-            "• Supports USDT-margined perpetual contracts<br>"
-            "• Trading fees: 0.02% maker / 0.06% taker"
+            "API keys are only needed for trading. Market data (kline) is public.<br>"
+            "Get keys from: <a href='https://www.bitunix.com/api'>bitunix.com/api</a>"
         )
         bitunix_info.setWordWrap(True)
         bitunix_info.setOpenExternalLinks(True)
-        bitunix_layout.addRow(bitunix_info)
+        api_layout.addRow(bitunix_info)
+        bitunix_layout.addWidget(api_group)
+
+        # Historical Data Download Group
+        download_group = QGroupBox("Historical Data Download (no API key required)")
+        download_layout = QFormLayout(download_group)
+
+        # Symbol input
+        self.bitunix_dl_symbol = QComboBox()
+        self.bitunix_dl_symbol.setEditable(True)
+        self.bitunix_dl_symbol.addItems([
+            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
+            "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"
+        ])
+        self.bitunix_dl_symbol.setToolTip("Enter Bitunix futures symbol (e.g., BTCUSDT)")
+        download_layout.addRow("Symbol:", self.bitunix_dl_symbol)
+
+        # Time period
+        period_layout = QHBoxLayout()
+        self.bitunix_dl_days = QSpinBox()
+        self.bitunix_dl_days.setRange(1, 730)
+        self.bitunix_dl_days.setValue(365)
+        self.bitunix_dl_days.setSuffix(" days")
+        period_layout.addWidget(self.bitunix_dl_days)
+        download_layout.addRow("Period:", period_layout)
+
+        # Timeframe
+        self.bitunix_dl_timeframe = QComboBox()
+        self.bitunix_dl_timeframe.addItems(["1min", "5min", "15min", "1h", "4h", "1d"])
+        self.bitunix_dl_timeframe.setCurrentText("1min")
+        download_layout.addRow("Timeframe:", self.bitunix_dl_timeframe)
+
+        # Estimated info
+        self.bitunix_dl_estimate = QLabel("")
+        self._update_bitunix_estimate()
+        self.bitunix_dl_days.valueChanged.connect(self._update_bitunix_estimate)
+        self.bitunix_dl_timeframe.currentTextChanged.connect(self._update_bitunix_estimate)
+        download_layout.addRow("Estimated:", self.bitunix_dl_estimate)
+
+        # Download button and progress
+        btn_layout = QHBoxLayout()
+        self.bitunix_dl_btn = QPushButton("Download Historical Data")
+        self.bitunix_dl_btn.clicked.connect(self._start_bitunix_download)
+        btn_layout.addWidget(self.bitunix_dl_btn)
+
+        self.bitunix_dl_cancel_btn = QPushButton("Cancel")
+        self.bitunix_dl_cancel_btn.setEnabled(False)
+        self.bitunix_dl_cancel_btn.clicked.connect(self._cancel_bitunix_download)
+        btn_layout.addWidget(self.bitunix_dl_cancel_btn)
+        download_layout.addRow(btn_layout)
+
+        # Progress bar
+        self.bitunix_dl_progress = QProgressBar()
+        self.bitunix_dl_progress.setRange(0, 100)
+        self.bitunix_dl_progress.setValue(0)
+        download_layout.addRow(self.bitunix_dl_progress)
+
+        # Status label
+        self.bitunix_dl_status = QLabel("Ready to download (public API, no keys needed)")
+        self.bitunix_dl_status.setWordWrap(True)
+        download_layout.addRow(self.bitunix_dl_status)
+
+        bitunix_layout.addWidget(download_group)
+        bitunix_layout.addStretch()
+
+        # Worker reference
+        self._bitunix_download_thread = None
+        self._bitunix_download_worker = None
 
         return bitunix_tab
+
+    def _update_bitunix_estimate(self):
+        """Update download estimate label."""
+        days = self.bitunix_dl_days.value()
+        timeframe = self.bitunix_dl_timeframe.currentText()
+
+        # Calculate bars per day
+        bars_per_day = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bpd = bars_per_day.get(timeframe, 1440)
+        total_bars = days * bpd
+        requests = (total_bars // 200) + 1
+
+        self.bitunix_dl_estimate.setText(
+            f"~{total_bars:,} bars, ~{requests:,} API requests"
+        )
+
+    def _start_bitunix_download(self):
+        """Start Bitunix historical data download."""
+        from src.ui.workers.historical_download_worker import (
+            DownloadThread,
+            HistoricalDownloadWorker,
+        )
+
+        symbol = self.bitunix_dl_symbol.currentText().strip()
+        if not symbol:
+            QMessageBox.warning(self, "Input Error", "Please enter a symbol.")
+            return
+
+        days = self.bitunix_dl_days.value()
+        timeframe = self.bitunix_dl_timeframe.currentText()
+
+        # Create worker
+        self._bitunix_download_worker = HistoricalDownloadWorker(
+            provider_type="bitunix",
+            symbols=[symbol],
+            days=days,
+            timeframe=timeframe,
+        )
+
+        # Connect signals
+        self._bitunix_download_worker.progress.connect(self._on_bitunix_progress)
+        self._bitunix_download_worker.finished.connect(self._on_bitunix_finished)
+        self._bitunix_download_worker.error.connect(self._on_bitunix_error)
+
+        # Create and start thread
+        self._bitunix_download_thread = DownloadThread(self._bitunix_download_worker)
+        self._bitunix_download_thread.start()
+
+        # Update UI
+        self.bitunix_dl_btn.setEnabled(False)
+        self.bitunix_dl_cancel_btn.setEnabled(True)
+        self.bitunix_dl_progress.setValue(0)
+        self.bitunix_dl_status.setText(f"Starting download for {symbol}...")
+
+    def _cancel_bitunix_download(self):
+        """Cancel Bitunix download."""
+        if self._bitunix_download_worker:
+            self._bitunix_download_worker.cancel()
+        self.bitunix_dl_status.setText("Cancelling...")
+
+    def _on_bitunix_progress(self, percentage: int, message: str):
+        """Handle Bitunix download progress."""
+        self.bitunix_dl_progress.setValue(percentage)
+        self.bitunix_dl_status.setText(message)
+
+    def _on_bitunix_finished(self, success: bool, message: str, results: dict):
+        """Handle Bitunix download completion."""
+        self.bitunix_dl_btn.setEnabled(True)
+        self.bitunix_dl_cancel_btn.setEnabled(False)
+        self.bitunix_dl_progress.setValue(100 if success else 0)
+        self.bitunix_dl_status.setText(message)
+
+        if success:
+            QMessageBox.information(self, "Download Complete", message)
+        else:
+            QMessageBox.warning(self, "Download Failed", message)
+
+        self._bitunix_download_thread = None
+        self._bitunix_download_worker = None
+
+    def _on_bitunix_error(self, error_message: str):
+        """Handle Bitunix download error."""
+        self.bitunix_dl_btn.setEnabled(True)
+        self.bitunix_dl_cancel_btn.setEnabled(False)
+        self.bitunix_dl_progress.setValue(0)
+        self.bitunix_dl_status.setText(f"Error: {error_message}")
+        QMessageBox.critical(self, "Download Error", error_message)
+        self._bitunix_download_thread = None
+        self._bitunix_download_worker = None
 
     def _build_general_ai_layout(self) -> QFormLayout:
         general_ai_layout = QFormLayout()

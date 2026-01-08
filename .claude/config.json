@@ -113,8 +113,8 @@
     "topology": "hierarchical",
     "max_agents": 11,
     "queen_type": "strategic",
-    "task": "Bearbeite alle offenen Issues im Ordner Root->issues. Stelle sicher, dass WIRKLICH ALLE AUFGABEN, einschließlich aller Teilaufgaben im jeweiligen Issue, vollständig durchgeführt, abgeschlossen und getestet sind, bevor du das Issue auf \"closed\" setzt. Bei Fehlern oder nicht lösbaren Aufgaben melde dies im CMD-Fenster und lasse das Issue auf \"open\". Beachte dabei die Anweisungen in der Description sowie in den Feldern Additional und Comments. Arbeite die Issues Schritt für Schritt ab, z.B. Issue_1.json, Issue_2.json usw. Nach Abschluss jeder Aufgabe setze den Status auf \"closed\". Die Änderungen werden live vom AI-Modell direkt im vorhandenen lokalen Python 3.12 Code umgesetzt."
+    "task": "Erstelle mir eine detaillierte Beschreibung über die genauen funktionen des Popups 'AI Analyse' mit den vor und nachteilen bei der chartanalyse und dem mehrwert zur marktanalyse. in docs als .md"
   },
-  "created_at": "2026-01-07T17:03:40.545155",
+  "created_at": "2026-01-08T01:01:22.978469",
   "last_session": null
 }

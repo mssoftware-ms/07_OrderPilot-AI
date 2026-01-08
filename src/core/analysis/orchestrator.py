@@ -4,10 +4,11 @@ Coordinates:
 1. Data Collection (Multi-TF) using HistoryManager
 2. Feature Calculation
 3. Payload Assembly
-4. LLM Request (simulated for now)
+4. LLM Request (real AI integration)
 """
 
 import asyncio
+import logging
 import time
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,8 @@ from src.core.analysis.context import AnalysisContext
 from src.core.market_data.types import DataRequest, Timeframe
 from src.core.indicators.engine import IndicatorEngine
 from src.core.indicators.types import IndicatorConfig, IndicatorType
+
+logger = logging.getLogger(__name__)
 
 class AnalysisWorker(QThread):
     """Background worker for the analysis process."""
@@ -30,6 +33,8 @@ class AnalysisWorker(QThread):
         self.context = context
         self._loop = None
         self.indicator_engine = IndicatorEngine()
+        self._ai_service = None
+        self._llm_analysis: str | None = None  # Stores LLM response
 
     def run(self):
         try:
@@ -105,10 +110,20 @@ class AnalysisWorker(QThread):
             features = self._calculate_features(fetched_data)
             self.progress_update.emit(70)
 
-            # 4. LLM Generation (Still Simulated/Stub)
+            # 4. LLM Generation (Real AI Integration)
             self.status_update.emit("Generiere KI-Analyse (Deep Reasoning)...")
-            # Here we would build the payload and call AIAnalysisEngine
-            time.sleep(1.0) 
+            try:
+                self._llm_analysis = self._loop.run_until_complete(
+                    self._call_llm(strat.name, symbol, features)
+                )
+                if self._llm_analysis:
+                    logger.info("LLM analysis completed successfully")
+                else:
+                    logger.warning("LLM returned empty response, using fallback report")
+            except Exception as e:
+                logger.error(f"LLM analysis failed: {e}", exc_info=True)
+                self._llm_analysis = None
+                self.status_update.emit(f"LLM-Analyse fehlgeschlagen: {e}")
             self.progress_update.emit(90)
 
             # 5. Finalize
@@ -149,6 +164,133 @@ class AnalysisWorker(QThread):
         if "W" in tf_str: return 10080
         if "M" in tf_str: return 43200
         return 1
+
+    async def _call_llm(self, strategy: str, symbol: str, features: dict) -> str | None:
+        """Call the configured LLM for deep market analysis.
+
+        Args:
+            strategy: Strategy name
+            symbol: Trading symbol
+            features: Dict of timeframe -> feature data
+
+        Returns:
+            LLM analysis as markdown string, or None if failed
+        """
+        try:
+            from src.ai.ai_provider_factory import AIProviderFactory
+            from src.ai.prompts import PromptTemplates
+
+            # Check if AI is enabled
+            if not AIProviderFactory.is_ai_enabled():
+                logger.info("AI features are disabled in settings")
+                return None
+
+            # Create AI service
+            logger.info("Creating AI service for deep analysis...")
+            self._ai_service = AIProviderFactory.create_service()
+            await self._ai_service.initialize()
+
+            # Build the prompt
+            technical_data = self._format_features_for_prompt(features)
+            sr_levels = self._format_sr_levels_for_prompt(features)
+
+            prompt = PromptTemplates.DEEP_ANALYSIS.format(
+                symbol=symbol,
+                strategy=strategy,
+                technical_data=technical_data,
+                sr_levels=sr_levels
+            )
+
+            # Call LLM
+            logger.info(f"Calling LLM for deep analysis ({symbol})...")
+            messages = [
+                {"role": "system", "content": "Du bist ein erfahrener Trading-Analyst für Kryptowährungen. Antworte auf Deutsch im Markdown-Format."},
+                {"role": "user", "content": prompt}
+            ]
+
+            response = await self._ai_service.chat_completion(
+                messages=messages,
+                temperature=0.3  # Lower temperature for more focused analysis
+            )
+
+            # Cleanup
+            await self._ai_service.close()
+            self._ai_service = None
+
+            logger.info(f"LLM response received ({len(response)} chars)")
+            return response
+
+        except ValueError as e:
+            # AI disabled or no API key
+            logger.warning(f"AI service not available: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}", exc_info=True)
+            if self._ai_service:
+                try:
+                    await self._ai_service.close()
+                except Exception:
+                    pass
+                self._ai_service = None
+            return None
+
+    def _format_features_for_prompt(self, features: dict) -> str:
+        """Format feature data for LLM prompt."""
+        lines = []
+
+        # Sort timeframes by duration (smallest first)
+        tf_order = {"1m": 1, "5m": 2, "15m": 3, "30m": 4, "1h": 5, "4h": 6, "1D": 7, "1W": 8, "1M": 9}
+        sorted_tfs = sorted(features.keys(), key=lambda x: tf_order.get(x, 99))
+
+        for tf in sorted_tfs:
+            data = features[tf]
+            role = self._get_tf_role(tf)
+
+            lines.append(f"### {tf} ({role})")
+            lines.append(f"- **Anzahl Bars:** {data.get('bars', 'N/A')}")
+            lines.append(f"- **Letzter Preis:** {data.get('last_price', 'N/A')}")
+            lines.append(f"- **Periode Änderung:** {data.get('period_change_pct', 0)}%")
+            lines.append(f"- **Trend:** {data.get('trend_state', 'Neutral')}")
+            lines.append(f"- **EMA(20):** {data.get('ema20', 'N/A')} (Distanz: {data.get('ema20_distance_pct', 0)}%)")
+            lines.append(f"- **RSI(14):** {data.get('rsi', 50)} - {data.get('rsi_state', 'Neutral')}")
+            lines.append(f"- **BB %B:** {data.get('bb_percent', 50)}%")
+            lines.append(f"- **ATR(14):** {data.get('atr', 0)} ({data.get('atr_pct', 0)}% des Preises)")
+            lines.append(f"- **ADX(14):** {data.get('adx', 0)} (Trendstärke)")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _format_sr_levels_for_prompt(self, features: dict) -> str:
+        """Format support/resistance levels for LLM prompt."""
+        all_support = []
+        all_resistance = []
+
+        for tf, data in features.items():
+            support = data.get('support_levels', [])
+            resistance = data.get('resistance_levels', [])
+
+            if support:
+                all_support.extend([(tf, level) for level in support])
+            if resistance:
+                all_resistance.extend([(tf, level) for level in resistance])
+
+        lines = []
+
+        if all_resistance:
+            lines.append("**Resistance:**")
+            for tf, level in sorted(all_resistance, key=lambda x: x[1], reverse=True)[:5]:
+                lines.append(f"- {level} ({tf})")
+            lines.append("")
+
+        if all_support:
+            lines.append("**Support:**")
+            for tf, level in sorted(all_support, key=lambda x: x[1], reverse=True)[:5]:
+                lines.append(f"- {level} ({tf})")
+
+        if not lines:
+            lines.append("*Keine signifikanten Support/Resistance Levels erkannt.*")
+
+        return "\n".join(lines)
 
     def _bars_to_dataframe(self, bars) -> pd.DataFrame:
         data = []
@@ -426,8 +568,37 @@ class AnalysisWorker(QThread):
         return lines
 
     def _generate_report(self, strategy: str, symbol: str, features: dict) -> str:
-        """Generate comprehensive markdown report."""
+        """Generate comprehensive markdown report.
+
+        If LLM analysis is available, it will be used as the primary content.
+        Otherwise, falls back to the rule-based technical analysis report.
+        """
+        # If we have LLM analysis, use it as the primary report
+        if self._llm_analysis:
+            lines = [f"# Deep Market Analysis: {symbol}", f"**Strategy:** {strategy}", ""]
+            lines.append("---")
+            lines.append("")
+            lines.append(self._llm_analysis)
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+            # Add data collection summary at the end
+            lines.append("## Datengrundlage")
+            for tf, stat in features.items():
+                bars = stat.get('bars', 0)
+                price = stat.get('last_price', 'N/A')
+                change = stat.get('period_change_pct', 0)
+                lines.append(f"- **{tf}:** {bars} Bars geladen. Preis: {price} ({change}%)")
+            lines.append("")
+            lines.append(f"*Analyse generiert mit KI-Unterstützung ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})*")
+
+            return "\n".join(lines)
+
+        # Fallback: Rule-based report (no LLM available)
         lines = [f"# Deep Market Analysis: {symbol}", f"**Strategy:** {strategy}", ""]
+        lines.append("*Hinweis: LLM-Analyse nicht verfügbar. Fallback auf regelbasierte Analyse.*")
+        lines.append("")
 
         # Data Collection Summary
         lines.append("## Data Collection Report")
@@ -454,6 +625,11 @@ class AnalysisWorker(QThread):
 
         # Footer
         lines.append("## Analysis Context")
-        lines.append("Daten wurden erfolgreich live von der API abgerufen. Die vollständige LLM-Integration folgt in der nächsten Ausbaustufe.")
+        lines.append("Daten wurden erfolgreich live von der API abgerufen. LLM-Analyse war nicht verfügbar (API-Key fehlt oder AI deaktiviert).")
+        lines.append("")
+        lines.append("**Zur Aktivierung der KI-Analyse:**")
+        lines.append("1. Settings → AI → AI Provider wählen")
+        lines.append("2. API-Key als Umgebungsvariable setzen (z.B. OPENAI_API_KEY)")
+        lines.append("3. AI aktivieren (Checkbox)")
 
         return "\n".join(lines)

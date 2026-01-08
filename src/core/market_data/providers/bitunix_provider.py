@@ -27,41 +27,41 @@ class BitunixProvider(HistoricalDataProvider):
     Supports Crypto Futures (Perpetual) contracts only.
 
     Authentication:
-        Uses HMAC-SHA256 signature for API requests.
+        Public market data endpoints (kline) do NOT require API keys.
+        API keys are only needed for trading operations.
 
     Rate Limiting:
-        Conservative 0.1s delay (~600 calls/min) to avoid rate limits.
+        Rate limit: 10 req/s per IP. Using 0.15s delay to stay safe.
 
-    Environments:
-        - Testnet: https://testnet-api.bitunix.com (default)
-        - Mainnet: https://api.bitunix.com
+    Endpoints:
+        - Market Data (public): https://fapi.bitunix.com/api/v1/futures/market/kline
     """
 
     def __init__(
         self,
-        api_key: str,
-        api_secret: str,
-        use_testnet: bool = True,
+        api_key: str | None = None,
+        api_secret: str | None = None,
+        use_testnet: bool = False,
         enable_cache: bool = True,
-        max_bars: int = 15000,
-        max_batches: int = 120,
+        max_bars: int = 525600,  # 1 year of 1min bars
+        max_batches: int = 3000,  # 525600 / 200 = 2628 batches for 1 year
     ):
         """Initialize Bitunix provider.
 
         Args:
-            api_key: Bitunix API key
-            api_secret: Bitunix API secret
-            use_testnet: Use testnet environment (default: True for safety)
+            api_key: Bitunix API key (optional for public market data)
+            api_secret: Bitunix API secret (optional for public market data)
+            use_testnet: Use testnet environment (default: False for market data)
             enable_cache: Enable response caching
-            max_bars: Safety cap for total bars fetched in one request sequence
-            max_batches: Safety cap for request batches (pagination)
+            max_bars: Safety cap for total bars fetched (default: 525600 = 1 year 1min)
+            max_batches: Safety cap for request batches (default: 3000 for 1 year)
         """
         super().__init__("Bitunix Futures", enable_cache)
         self.api_key = api_key
         self.api_secret = api_secret
         self.use_testnet = use_testnet
         self.base_url = self._get_base_url()
-        self.rate_limit_delay = 0.1  # Conservative: ~600 calls/min
+        self.rate_limit_delay = 0.15  # 10 req/s limit → 0.1s, use 0.15s to be safe
         self.max_bars = max_bars
         self.max_batches = max_batches
 
@@ -111,25 +111,28 @@ class BitunixProvider(HistoricalDataProvider):
     def _build_headers(self, params: dict) -> dict:
         """Build request headers with API key and signature.
 
-        Adds timestamp to params and generates signature.
+        For public market data endpoints (kline), no authentication is required.
+        Only adds auth headers if API keys are provided.
 
         Args:
-            params: Request parameters (will be modified with timestamp)
+            params: Request parameters (may be modified with timestamp if auth)
 
         Returns:
             Headers dictionary for HTTP request
         """
-        # Add timestamp (required for signature)
-        params['timestamp'] = int(time.time() * 1000)
+        headers = {'Content-Type': 'application/json'}
 
-        # Generate signature
-        signature = self._generate_signature(params)
+        # Only add authentication if API keys are provided
+        # Public market data endpoints don't require authentication
+        if self.api_key and self.api_secret:
+            # Add timestamp (required for signature)
+            params['timestamp'] = int(time.time() * 1000)
+            # Generate signature
+            signature = self._generate_signature(params)
+            headers['X-API-KEY'] = self.api_key
+            headers['X-SIGNATURE'] = signature
 
-        return {
-            'X-API-KEY': self.api_key,
-            'X-SIGNATURE': signature,
-            'Content-Type': 'application/json'
-        }
+        return headers
 
     def _timeframe_to_bitunix(self, tf: Timeframe) -> str:
         """Convert Timeframe enum to Bitunix interval string.
@@ -178,6 +181,9 @@ class BitunixProvider(HistoricalDataProvider):
     ) -> list[HistoricalBar]:
         """Fetch historical klines from Bitunix.
 
+        Bitunix API returns data in DESCENDING order (newest first).
+        We paginate backwards from end_date to start_date.
+
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT', 'ETHUSDT')
             start_date: Start date for data
@@ -193,34 +199,36 @@ class BitunixProvider(HistoricalDataProvider):
         interval = self._timeframe_to_bitunix(timeframe)
         interval_ms = self._interval_ms(interval)
         start_ms = int(start_date.timestamp() * 1000)
-        end_ms = int(end_date.timestamp() * 1000)
+        current_end_ms = int(end_date.timestamp() * 1000)
         limit = 200  # API spec: max 200 per call
 
         all_bars: list[HistoricalBar] = []
         max_batches = self.max_batches or 120
 
         logger.info(f"📡 Bitunix Provider: Fetching {symbol} bars...")
-        logger.debug(f"📡 Bitunix Provider: Timeframe={timeframe.value}, Interval={interval}")
-        logger.debug(f"📡 Bitunix Provider: Start={start_date}, End={end_date}")
+        logger.info(f"📡 Bitunix Provider: Timeframe={timeframe.value}, Interval={interval}")
+        logger.info(f"📡 Bitunix Provider: Start={start_date}, End={end_date}")
         logger.debug(f"📡 Bitunix Provider: Base URL={self.base_url}")
 
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
                 batches = 0
-                while start_ms < end_ms and batches < max_batches:
+                # Paginate BACKWARDS: from end_date towards start_date
+                while current_end_ms > start_ms and batches < max_batches:
                     params = {
                         'symbol': symbol,
                         'interval': interval,
                         'limit': limit,
                         'startTime': start_ms,
-                        'endTime': end_ms,
-                        'type': 'LAST_PRICE',
+                        'endTime': current_end_ms,
                     }
 
-                    # Build authenticated headers (adds timestamp and signature)
+                    # Build headers (no auth needed for public market data)
                     headers = self._build_headers(params)
 
-                    logger.debug(f"📡 Bitunix Provider: Request #{batches + 1}, params={params}")
+                    if batches % 50 == 0:
+                        logger.info(f"📡 Bitunix Provider: Batch #{batches + 1}, bars so far: {len(all_bars)}")
+                    logger.debug(f"📡 Bitunix Provider: Request #{batches + 1}, endTime={current_end_ms}")
 
                     async with session.get(
                         f"{self.base_url}/api/v1/futures/market/kline",
@@ -244,11 +252,12 @@ class BitunixProvider(HistoricalDataProvider):
                         if data.get('code') != 0:
                             logger.error(f"❌ Bitunix API Error Response:")
                             logger.error(f"   Error Code: {data.get('code')}")
-                            logger.error(f"   Error Message: {data.get('message', 'Unknown')}")
+                            logger.error(f"   Error Message: {data.get('msg', data.get('message', 'Unknown'))}")
                             logger.error(f"   Symbol: {symbol}")
                             logger.error(f"   Full Response: {data}")
                             break
 
+                        # Parse klines (returns sorted ascending)
                         batch = self._parse_klines(data, symbol)
 
                         if not batch:
@@ -262,9 +271,12 @@ class BitunixProvider(HistoricalDataProvider):
                             )
                             break
 
-                        # Advance window: next start = last bar timestamp + interval
-                        last_ts_ms = int(batch[-1].timestamp.timestamp() * 1000)
-                        start_ms = last_ts_ms + interval_ms
+                        # IMPORTANT: Bitunix returns data in DESCENDING order (newest first)
+                        # After sorting ascending, batch[0] is the OLDEST bar
+                        # Next request: end_ms = oldest_timestamp - 1ms (go further back in time)
+                        oldest_ts_ms = int(batch[0].timestamp.timestamp() * 1000)
+                        current_end_ms = oldest_ts_ms - 1  # Move endTime backwards
+
                         batches += 1
                         if batches >= max_batches:
                             logger.warning(
@@ -272,7 +284,7 @@ class BitunixProvider(HistoricalDataProvider):
                             )
                             break
 
-                        # Respect rate limits
+                        # Respect rate limits (10 req/s)
                         await asyncio.sleep(self.rate_limit_delay)
 
             # Deduplicate and sort
@@ -377,10 +389,10 @@ class BitunixProvider(HistoricalDataProvider):
     async def is_available(self) -> bool:
         """Check if Bitunix provider is available.
 
-        Verifies that API credentials are configured.
-        Does NOT make an API call (use minimal resources).
+        For public market data (kline), no API keys are required.
+        Always returns True as the public endpoint is accessible.
 
         Returns:
-            True if API key and secret are configured
+            True (public market data is always available)
         """
-        return bool(self.api_key and self.api_secret)
+        return True
