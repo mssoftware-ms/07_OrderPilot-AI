@@ -159,6 +159,7 @@ class BatchRunner:
         self._is_running = False
         self._should_stop = False
         self._progress_callback: Callable[[int, str], None] | None = None
+        self._shared_replay_provider = None
 
         # Batch ID
         self.batch_id = f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -263,7 +264,10 @@ class BatchRunner:
 
         try:
             # 1. Parameter-Kombinationen generieren
-            self._emit_progress(0, "Generiere Parameter-Kombinationen...")
+            self._emit_progress(0, "Lade Daten (Batch-Cache)...")
+            await self._prepare_replay_provider()
+
+            self._emit_progress(5, "Generiere Parameter-Kombinationen...")
             combinations = self.generate_parameter_combinations()
 
             # Limitiere auf max_iterations
@@ -348,7 +352,11 @@ class BatchRunner:
         config = self._create_config_with_params(params)
 
         # Runner erstellen und ausführen
-        runner = BacktestRunner(config, signal_callback=self.signal_callback)
+        runner = BacktestRunner(
+            config,
+            replay_provider=self._shared_replay_provider,
+            signal_callback=self.signal_callback,
+        )
 
         try:
             result = await runner.run()
@@ -401,6 +409,20 @@ class BatchRunner:
         config = replace(config, parameter_overrides=params)
 
         return config
+
+    async def _prepare_replay_provider(self) -> None:
+        """Lädt Replay-Daten einmalig für den Batch."""
+        if self._shared_replay_provider is None:
+            from .replay_provider import ReplayMarketDataProvider
+
+            self._shared_replay_provider = ReplayMarketDataProvider(history_window=200)
+
+        base_config = self.config.base_config
+        await self._shared_replay_provider.load_data(
+            symbol=base_config.symbol,
+            start_date=base_config.start_date,
+            end_date=base_config.end_date,
+        )
 
     def _rank_results(self) -> None:
         """Rankt Ergebnisse nach Zielmetrik."""

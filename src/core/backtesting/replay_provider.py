@@ -310,6 +310,15 @@ class ReplayMarketDataProvider:
         Raises:
             ValueError: Wenn keine Daten gefunden
         """
+        if self._matches_request(symbol, start_date, end_date):
+            if self._iterator is None and self._data is not None:
+                self._iterator = CandleIterator(
+                    data=self._data,
+                    history_window=self.history_window,
+                )
+            logger.info(f"Using cached data for {symbol}: {start_date} to {end_date}")
+            return len(self._data) if self._data is not None else 0
+
         self._symbol = symbol
         self._start_date = start_date
         self._end_date = end_date
@@ -336,6 +345,16 @@ class ReplayMarketDataProvider:
 
         logger.info(f"Loaded {len(self._data)} bars for {symbol}")
         return len(self._data)
+
+    def _matches_request(self, symbol: str, start_date: datetime, end_date: datetime) -> bool:
+        """Prüft, ob die aktuellen Daten zur Anfrage passen."""
+        if self._data is None or self._data.empty:
+            return False
+        return (
+            self._symbol == symbol
+            and self._start_date == start_date
+            and self._end_date == end_date
+        )
 
     async def _load_from_db(
         self,
