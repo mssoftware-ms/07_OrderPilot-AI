@@ -29,6 +29,8 @@ Engine Config Integration:
 
 from __future__ import annotations
 
+print(">>> BACKTEST_TAB.PY LOADED (2026-01-09 FIX) <<<", flush=True)
+
 import asyncio
 import json
 import logging
@@ -1076,7 +1078,7 @@ class BacktestTab(QWidget):
             QPushButton:hover { background-color: #45a049; }
             QPushButton:disabled { background-color: #333; color: #666; }
         """)
-        self.start_btn.clicked.connect(self._on_start_clicked)
+        self.start_btn.clicked.connect(self._on_start_btn_clicked)
         row1.addWidget(self.start_btn)
 
         # Stop Button
@@ -1590,6 +1592,7 @@ class BacktestTab(QWidget):
 
         # --- Batch Settings (links) ---
         batch_group = QGroupBox("🔄 Batch Testing")
+        batch_group.setMaximumHeight(150)  # Issue #36: Höhe begrenzen für Log-Sichtbarkeit
         batch_layout = QFormLayout(batch_group)
         batch_layout.setContentsMargins(6, 6, 6, 6)
         batch_layout.setSpacing(4)
@@ -1609,7 +1612,7 @@ class BacktestTab(QWidget):
 
         # Parameter Space (simplified)
         self.param_space_text = QTextEdit()
-        self.param_space_text.setMaximumHeight(60)
+        self.param_space_text.setMaximumHeight(40)  # Issue #36: Reduziert für mehr Platz
         self.param_space_text.setPlaceholderText(
             '{"risk_per_trade": [0.5, 1.0, 1.5, 2.0]}'
         )
@@ -1619,6 +1622,7 @@ class BacktestTab(QWidget):
 
         # --- Walk-Forward (rechts) ---
         wf_group = QGroupBox("🚶 Walk-Forward Analyse")
+        wf_group.setMaximumHeight(150)  # Issue #36: Höhe begrenzen für Log-Sichtbarkeit
         wf_layout = QFormLayout(wf_group)
         wf_layout.setContentsMargins(6, 6, 6, 6)
         wf_layout.setSpacing(4)
@@ -1663,7 +1667,7 @@ class BacktestTab(QWidget):
             }
             QPushButton:hover { background-color: #F57C00; }
         """)
-        self.run_batch_btn.clicked.connect(self._on_batch_clicked)
+        self.run_batch_btn.clicked.connect(self._on_batch_btn_clicked)
         btn_layout.addWidget(self.run_batch_btn)
 
         self.run_wf_btn = QPushButton("🚶 Run Walk-Forward")
@@ -1677,7 +1681,7 @@ class BacktestTab(QWidget):
             }
             QPushButton:hover { background-color: #7B1FA2; }
         """)
-        self.run_wf_btn.clicked.connect(self._on_wf_clicked)
+        self.run_wf_btn.clicked.connect(self._on_wf_btn_clicked)
         btn_layout.addWidget(self.run_wf_btn)
 
         btn_layout.addStretch()
@@ -1909,10 +1913,29 @@ class BacktestTab(QWidget):
 
         return config
 
-    @qasync.asyncSlot()
+    @pyqtSlot()
+    def _on_start_btn_clicked(self) -> None:
+        """Synchroner Button-Handler, startet async Backtest."""
+        logger.info("🚀 _on_start_btn_clicked() - scheduling async backtest")
+        self._log("🚀 Backtest wird gestartet...")
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._on_start_clicked())
+            else:
+                logger.warning("Event loop not running, trying qasync")
+                asyncio.ensure_future(self._on_start_clicked())
+        except Exception as e:
+            logger.exception(f"Failed to schedule backtest: {e}")
+            self._log(f"❌ Fehler beim Starten des Backtests: {e}")
+
     async def _on_start_clicked(self) -> None:
-        """Startet den Backtest."""
+        """Startet den Backtest (async)."""
+        logger.info("🚀 _on_start_clicked() called")
+
         if self._is_running:
+            logger.info("Already running, returning")
             return
 
         self._is_running = True
@@ -1925,7 +1948,7 @@ class BacktestTab(QWidget):
         self.progress_bar.setValue(0)
 
         self._save_settings()
-        self._log("🚀 Backtest gestartet...")
+        self._log("🚀 Backtest läuft...")
 
         try:
             # Build config from UI
@@ -1982,13 +2005,37 @@ class BacktestTab(QWidget):
         self.status_detail.setText("Abbrechen...")
         self.stop_btn.setEnabled(False)
 
-    @qasync.asyncSlot()
+    @pyqtSlot()
+    def _on_batch_btn_clicked(self) -> None:
+        """Synchroner Button-Handler, startet async Batch-Test."""
+        print(">>> _on_batch_btn_clicked CALLED <<<", flush=True)
+        logger.info("🔄 _on_batch_btn_clicked() - scheduling async batch test")
+        self._log("🔄 Batch-Test wird gestartet...")
+
+        try:
+            # Schedule async task on the event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._on_batch_clicked())
+            else:
+                logger.warning("Event loop not running, trying qasync")
+                # Fallback: try to run via qasync
+                asyncio.ensure_future(self._on_batch_clicked())
+        except Exception as e:
+            logger.exception(f"Failed to schedule batch test: {e}")
+            self._log(f"❌ Fehler beim Starten des Batch-Tests: {e}")
+
     async def _on_batch_clicked(self) -> None:
-        """Startet Batch-Test mit Parameter-Optimierung."""
+        """Startet Batch-Test mit Parameter-Optimierung (async)."""
+        logger.info("🔄 _on_batch_clicked() called")
+        self._log("🔄 Batch-Test async gestartet...")
+
         if self._is_running:
+            logger.info("Already running, returning")
             return
 
         self._is_running = True
+        logger.info("Starting batch test...")
         self.run_batch_btn.setEnabled(False)
         self.run_wf_btn.setEnabled(False)
         self.start_btn.setEnabled(False)
@@ -2094,10 +2141,29 @@ class BacktestTab(QWidget):
             self.status_label.setText("IDLE")
             self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #888;")
 
-    @qasync.asyncSlot()
+    @pyqtSlot()
+    def _on_wf_btn_clicked(self) -> None:
+        """Synchroner Button-Handler, startet async Walk-Forward Test."""
+        logger.info("🚶 _on_wf_btn_clicked() - scheduling async walk-forward")
+        self._log("🚶 Walk-Forward wird gestartet...")
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._on_wf_clicked())
+            else:
+                logger.warning("Event loop not running, trying qasync")
+                asyncio.ensure_future(self._on_wf_clicked())
+        except Exception as e:
+            logger.exception(f"Failed to schedule walk-forward: {e}")
+            self._log(f"❌ Fehler beim Starten des Walk-Forward: {e}")
+
     async def _on_wf_clicked(self) -> None:
-        """Startet Walk-Forward Analyse mit Rolling Windows."""
+        """Startet Walk-Forward Analyse mit Rolling Windows (async)."""
+        logger.info("🚶 _on_wf_clicked() called")
+
         if self._is_running:
+            logger.info("Already running, returning")
             return
 
         self._is_running = True

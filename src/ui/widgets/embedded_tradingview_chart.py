@@ -139,6 +139,9 @@ class EmbeddedTradingViewChart(
         # Initialize chart marking (from ChartMarkingMixin)
         self._init_chart_marking()
 
+        # Initialize data loading (from DataLoadingMixin) - CRITICAL: Must be called before _setup_ui
+        self._setup_data_loading()
+
         # Setup UI
         self._setup_ui()
 

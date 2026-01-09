@@ -67,7 +67,7 @@ load_windows_env_vars_in_wsl()
 def check_ai_api_keys() -> None:
     """Check and display status of AI API keys from environment."""
     print("\n" + "=" * 50)
-    print("🔑 API Keys Status (from Windows Environment)")
+    print("[KEY] API Keys Status (from Windows Environment)")
     print("=" * 50)
 
     keys = [
@@ -84,13 +84,13 @@ def check_ai_api_keys() -> None:
         if value:
             # Show first 10 chars for verification
             masked = value[:10] + "..." if len(value) > 10 else value
-            print(f"  ✅ {name}: {masked}")
+            print(f"  [OK] {name}: {masked}")
             found_any = True
         else:
-            print(f"  ❌ {name}: NOT FOUND")
+            print(f"  [ERROR] {name}: NOT FOUND")
 
     if not found_any:
-        print("\n⚠️  WARNUNG: Keine AI API Keys gefunden!")
+        print("\n[WARNING] WARNUNG: Keine AI API Keys gefunden!")
         print("   Die Keys müssen als Windows-Systemumgebungsvariablen gesetzt sein.")
         print("   Nach dem Setzen: Terminal/CMD neu starten!")
 
@@ -133,18 +133,18 @@ def check_dependencies() -> bool:
     for module_name, display_name in required_modules:
         try:
             __import__(module_name)
-            print(f"✅ {display_name} is installed")
+            print(f"[OK] {display_name} is installed")
         except ImportError:
-            print(f"❌ {display_name} is missing")
+            print(f"[ERROR] {display_name} is missing")
             missing.append(display_name)
 
     if missing:
-        print(f"\n❌ Missing dependencies: {', '.join(missing)}")
+        print(f"\n[ERROR] Missing dependencies: {', '.join(missing)}")
         print("\nInstall missing dependencies with:")
         print("pip install -r requirements.txt")
         return False
 
-    print("\n✅ All dependencies are installed")
+    print("\n[OK] All dependencies are installed")
     return True
 
 
@@ -160,9 +160,9 @@ def check_database() -> None:
         )
 
         initialize_database(config)
-        print("✅ Database initialized successfully")
+        print("[OK] Database initialized successfully")
     except Exception as e:
-        print(f"⚠️ Database initialization warning: {e}")
+        print(f"[WARNING] Database initialization warning: {e}")
 
 
 def print_startup_banner() -> None:
@@ -194,7 +194,7 @@ async def main_with_args(args: argparse.Namespace) -> None:
 
     if args.mock:
         os.environ['USE_MOCK_BROKER'] = 'true'
-        print("🎭 Using Mock Broker for testing")
+        print("[MOCK] Using Mock Broker for testing")
 
     # Run the application
     await app_main()
@@ -265,8 +265,8 @@ def main() -> int:
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
 
-        logging.error("❌ UNCAUGHT EXCEPTION:", exc_info=(exc_type, exc_value, exc_traceback))
-        print(f"\n❌ CRITICAL ERROR: {exc_type.__name__}: {exc_value}")
+        logging.error("[ERROR] UNCAUGHT EXCEPTION:", exc_info=(exc_type, exc_value, exc_traceback))
+        print(f"\n[ERROR] CRITICAL ERROR: {exc_type.__name__}: {exc_value}")
         print("Check logs for full traceback")
 
     sys.excepthook = global_exception_handler
@@ -286,21 +286,21 @@ def main() -> int:
         check_ai_api_keys()
 
         # Check dependencies
-        print("\n🔍 Checking dependencies...")
+        print("\n[CHECK] Checking dependencies...")
         if not check_dependencies():
             return 1
 
         # If only checking, exit here
         if args.check:
-            print("\n✅ Dependency check complete")
+            print("\n[OK] Dependency check complete")
             return 0
 
         # Check database
-        print("\n🗄️ Checking database...")
+        print("\n[DB] Checking database...")
         check_database()
 
         # Start application
-        print(f"\n🚀 Starting OrderPilot-AI in {args.env} mode with profile '{args.profile}'...")
+        print(f"\n[START] Starting OrderPilot-AI in {args.env} mode with profile '{args.profile}'...")
         print("=" * 70)
 
         # Run the async main function
@@ -309,11 +309,11 @@ def main() -> int:
         return 0
 
     except KeyboardInterrupt:
-        print("\n\n⚠️ Application terminated by user")
+        print("\n\n[WARNING] Application terminated by user")
         return 0
     except Exception as e:
         logging.error(f"Fatal error: {e}", exc_info=True)
-        print(f"\n❌ Fatal error: {e}")
+        print(f"\n[ERROR] Fatal error: {e}")
         print("\nCheck the log file for details")
         return 1
 

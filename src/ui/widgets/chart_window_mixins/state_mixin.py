@@ -120,6 +120,10 @@ class StateMixin:
                 })
             self.settings.setValue(f"{settings_key}/indicator_instances", instances)
 
+        # Save Bitunix widget visibility (created after restoreState, so needs separate save)
+        if getattr(self, "_bitunix_widget", None):
+            self.settings.setValue(f"{settings_key}/bitunix_visible", self._bitunix_widget.isVisible())
+
         logger.debug(f"Saved window state for {self.symbol}")
 
     def _restore_chart_state(self):

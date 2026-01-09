@@ -1,4 +1,7 @@
-"""Strategy Selector for Tradingbot.
+"""
+Strategy Selector for Tradingbot (REFACTORED).
+
+REFACTORED: Split into focused helper modules using composition pattern.
 
 Handles daily strategy selection based on market regime,
 historical performance, and walk-forward validation.
@@ -6,88 +9,34 @@ historical performance, and walk-forward validation.
 
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+# Import models and helpers
+from .models import RegimeState
+from .strategy_catalog import StrategyCatalog
+from .strategy_evaluator import StrategyEvaluator, TradeResult
+from .strategy_selector_guards import StrategySelectorGuards
+from .strategy_selector_history import StrategySelectorHistory
+from .strategy_selector_models import SelectionResult, SelectionSnapshot
+from .strategy_selector_query import StrategySelectorQuery
+from .strategy_selector_selection import StrategySelectorSelection
 
-from .models import RegimeState, RegimeType, VolatilityLevel
-from .strategy_catalog import StrategyCatalog, StrategyDefinition, StrategyType
-from .strategy_evaluator import (
-    PerformanceMetrics,
-    RobustnessGate,
-    StrategyEvaluator,
-    TradeResult,
-    WalkForwardConfig,
-    WalkForwardResult,
-)
+# Re-export models for backward compatibility
+__all__ = ["StrategySelector", "SelectionResult", "SelectionSnapshot"]
 
 logger = logging.getLogger(__name__)
 
 
-class SelectionResult(BaseModel):
-    """Result of strategy selection."""
-    selected_strategy: str | None = None
-    fallback_used: bool = False
-    fallback_reason: str | None = None
-
-    # Selection context
-    regime: RegimeType
-    volatility: VolatilityLevel
-    selection_date: datetime = Field(default_factory=datetime.utcnow)
-
-    # Candidate info
-    candidates_evaluated: int = 0
-    candidates_passed: int = 0
-
-    # Scores
-    strategy_scores: dict[str, float] = Field(default_factory=dict)
-
-    # Walk-forward summary
-    wf_result: dict | None = None
-
-    # Lock info
-    locked_until: datetime | None = None
-
-
-class SelectionSnapshot(BaseModel):
-    """Snapshot of strategy selection for persistence."""
-    selection_date: datetime
-    symbol: str
-    selected_strategy: str
-    regime: str
-    volatility: str
-
-    # Performance at selection time
-    in_sample_pf: float
-    in_sample_wr: float
-    oos_pf: float | None
-
-    # Scores
-    composite_score: float
-    robustness_score: float
-
-    # Configuration used
-    training_window_days: int
-    test_window_days: int
-
-
 class StrategySelector:
-    """Daily strategy selector.
+    """Daily strategy selector (REFACTORED).
 
     Selects the best strategy for current market conditions
     using walk-forward validation and regime matching.
-    """
 
-    # Fallback strategy per regime when no strategy passes validation
-    DEFAULT_FALLBACK = {
-        RegimeType.TREND_UP: "trend_following_conservative",
-        RegimeType.TREND_DOWN: "trend_following_conservative",
-        RegimeType.RANGE: "mean_reversion_bb",
-        RegimeType.UNKNOWN: None,  # No trading in unknown regime
-    }
+    Delegiert spezifische Aufgaben an Helper-Klassen.
+    """
 
     def __init__(
         self,
@@ -95,7 +44,7 @@ class StrategySelector:
         evaluator: StrategyEvaluator | None = None,
         snapshot_dir: Path | str | None = None,
         allow_intraday_switch: bool = False,
-        require_regime_flip_for_switch: bool = True
+        require_regime_flip_for_switch: bool = True,
     ):
         """Initialize strategy selector.
 
@@ -124,6 +73,12 @@ class StrategySelector:
         # Trade history cache (for walk-forward)
         self._trade_history: dict[str, list[TradeResult]] = {}
 
+        # Create helpers (composition pattern)
+        self._selection = StrategySelectorSelection(self)
+        self._guards = StrategySelectorGuards(self)
+        self._history = StrategySelectorHistory(self)
+        self._query = StrategySelectorQuery(self)
+
         logger.info(
             f"StrategySelector initialized "
             f"(intraday_switch={allow_intraday_switch}, "
@@ -131,12 +86,9 @@ class StrategySelector:
         )
 
     def select_strategy(
-        self,
-        regime: RegimeState,
-        symbol: str,
-        force: bool = False
+        self, regime: RegimeState, symbol: str, force: bool = False
     ) -> SelectionResult:
-        """Select best strategy for current conditions (refactored).
+        """Select best strategy for current conditions.
 
         Args:
             regime: Current market regime
@@ -147,7 +99,7 @@ class StrategySelector:
             SelectionResult with selected strategy
         """
         # Guard: Check if we should re-select
-        if not force and not self._should_reselect(regime, datetime.utcnow()):
+        if not force and not self._guards.should_reselect(regime, datetime.utcnow()):
             if self._current_selection:
                 return self._current_selection
 
@@ -159,439 +111,67 @@ class StrategySelector:
         # Get candidates
         candidates = self.catalog.get_strategies_for_regime(regime)
         if not candidates:
-            return self._create_fallback_result(
-                regime,
-                "No strategies applicable for current regime"
+            return self._guards.create_fallback_result(
+                regime, "No strategies applicable for current regime"
             )
 
-        # Evaluate and filter
-        evaluated = self._evaluate_candidates(candidates)
-        robust = self._filter_robust_strategies(evaluated)
+        # Evaluate and filter (delegiert)
+        evaluated = self._selection.evaluate_candidates(candidates)
+        robust = self._selection.filter_robust_strategies(evaluated)
 
         if not robust:
-            return self._create_fallback_result(
-                regime,
-                "No strategies passed robustness validation"
+            return self._guards.create_fallback_result(
+                regime, "No strategies passed robustness validation"
             )
 
-        # Select best
-        result = self._select_best_strategy(robust, regime, candidates, symbol)
-        return result if result else self._create_fallback_result(regime, "Selection logic error")
-
-    def _evaluate_candidates(
-        self,
-        candidates: list
-    ) -> list[tuple]:
-        """Evaluate each candidate strategy with walk-forward analysis."""
-        evaluated = []
-        for strategy in candidates:
-            trades = self._trade_history.get(strategy.profile.name, [])
-            if trades:
-                wf_result = self.evaluator.run_walk_forward(strategy, trades)
-                evaluated.append((strategy, wf_result))
-            else:
-                evaluated.append((strategy, None))
-        return evaluated
-
-    def _filter_robust_strategies(self, evaluated: list[tuple]) -> list[tuple]:
-        """Filter to strategies that pass robustness validation."""
-        return [
-            (s, r) for s, r in evaluated
-            if r is None or r.is_robust
-        ]
-
-    def _select_best_strategy(
-        self,
-        robust: list[tuple],
-        regime: RegimeState,
-        candidates: list,
-        symbol: str
-    ) -> SelectionResult | None:
-        """Select best strategy from robust list."""
-        # Try ranking approach first
-        if any(r for _, r in robust if r is not None):
-            result = self._rank_and_select_best(robust, regime, candidates)
-            if result:
-                self._save_selection(result, symbol)
-                return result
-
-        # Fallback: use first applicable
-        return self._select_first_applicable(robust, regime, candidates, symbol)
-
-    def _rank_and_select_best(
-        self,
-        robust: list[tuple],
-        regime: RegimeState,
-        candidates: list
-    ) -> SelectionResult | None:
-        """Rank strategies and select best."""
-        wf_results = [r for _, r in robust if r is not None]
-        rankings = self.evaluator.compare_strategies(wf_results)
-
-        # Find best that's in our robust list
-        for strategy_name, score in rankings:
-            for strategy, wf_result in robust:
-                if strategy.profile.name == strategy_name:
-                    return self._create_selection_result(
-                        strategy,
-                        regime,
-                        wf_result,
-                        {name: sc for name, sc in rankings},
-                        len(candidates),
-                        len(robust)
-                    )
-        return None
-
-    def _select_first_applicable(
-        self,
-        robust: list[tuple],
-        regime: RegimeState,
-        candidates: list,
-        symbol: str
-    ) -> SelectionResult:
-        """Select first applicable strategy (no historical data)."""
-        strategy, _ = robust[0]
-        result = self._create_selection_result(
-            strategy,
-            regime,
-            None,
-            {strategy.profile.name: 0.5},
-            len(candidates),
-            len(robust)
-        )
-        self._save_selection(result, symbol)
-        return result
-
-    def _should_reselect(
-        self,
-        regime: RegimeState,
-        now: datetime
-    ) -> bool:
-        """Check if we should re-select strategy."""
-        # First selection
-        if self._current_selection is None:
-            return True
-
-        # Check lock
-        if self._current_selection.locked_until:
-            if now < self._current_selection.locked_until:
-                return False
-
-        # Daily selection - new day
-        if self._selection_date:
-            if now.date() > self._selection_date.date():
-                return True
-
-        # Intraday switch allowed?
-        if not self.allow_intraday_switch:
-            return False
-
-        # Regime flip check
-        if self.require_regime_flip_for_switch and self._last_regime:
-            # Only re-select on significant regime change
-            prev = self._last_regime
-            significant_change = (
-                (prev.is_trending and not regime.is_trending) or
-                (not prev.is_trending and regime.is_trending) or
-                (prev.regime != regime.regime and
-                 prev.regime != RegimeType.UNKNOWN and
-                 regime.regime != RegimeType.UNKNOWN) or
-                (prev.volatility == VolatilityLevel.EXTREME and
-                 regime.volatility != VolatilityLevel.EXTREME)
-            )
-            return significant_change
-
-        return False
-
-    def _create_selection_result(
-        self,
-        strategy: StrategyDefinition,
-        regime: RegimeState,
-        wf_result: WalkForwardResult | None,
-        scores: dict[str, float],
-        candidates_count: int,
-        passed_count: int
-    ) -> SelectionResult:
-        """Create selection result."""
-        # Calculate lock until (end of current day UTC)
-        now = datetime.utcnow()
-        lock_until = datetime(
-            now.year, now.month, now.day, 23, 59, 59
+        # Select best (delegiert)
+        result = self._selection.select_best_strategy(robust, regime, candidates, symbol)
+        return (
+            result
+            if result
+            else self._guards.create_fallback_result(regime, "Selection logic error")
         )
 
-        result = SelectionResult(
-            selected_strategy=strategy.profile.name,
-            regime=regime.regime,
-            volatility=regime.volatility,
-            candidates_evaluated=candidates_count,
-            candidates_passed=passed_count,
-            strategy_scores=scores,
-            locked_until=lock_until,
-        )
+    # ==================== Trade History Management (Delegiert) ====================
 
-        if wf_result:
-            result.wf_result = {
-                "in_sample_pf": wf_result.in_sample_metrics.profit_factor,
-                "in_sample_wr": wf_result.in_sample_metrics.win_rate,
-                "oos_pf": wf_result.out_of_sample_metrics.profit_factor,
-                "robustness_score": wf_result.robustness_score,
-            }
+    def record_trade(self, strategy_name: str, trade: TradeResult) -> None:
+        """Record a trade result for strategy evaluation (delegiert)."""
+        return self._history.record_trade(strategy_name, trade)
 
-        # Update state
-        self._current_selection = result
-        self._selection_date = now
-        self._last_regime = regime
+    def load_trade_history(self, strategy_name: str, trades: list[TradeResult]) -> None:
+        """Load historical trades for a strategy (delegiert)."""
+        return self._history.load_trade_history(strategy_name, trades)
 
-        logger.info(
-            f"Selected strategy: {strategy.profile.name} "
-            f"(score={scores.get(strategy.profile.name, 0):.3f})"
-        )
+    def get_trade_history(self, strategy_name: str) -> list[TradeResult]:
+        """Get trade history for a strategy (delegiert)."""
+        return self._history.get_trade_history(strategy_name)
 
-        return result
-
-    def _create_fallback_result(
-        self,
-        regime: RegimeState,
-        reason: str
-    ) -> SelectionResult:
-        """Create fallback selection result."""
-        fallback = self.DEFAULT_FALLBACK.get(regime.regime)
-
-        result = SelectionResult(
-            selected_strategy=fallback,
-            fallback_used=True,
-            fallback_reason=reason,
-            regime=regime.regime,
-            volatility=regime.volatility,
-        )
-
-        self._current_selection = result
-        self._selection_date = datetime.utcnow()
-        self._last_regime = regime
-
-        logger.warning(
-            f"Using fallback strategy: {fallback} "
-            f"(reason: {reason})"
-        )
-
-        return result
-
-    def _save_selection(
-        self,
-        result: SelectionResult,
-        symbol: str
-    ) -> None:
-        """Save selection snapshot."""
-        if not self.snapshot_dir:
-            return
-
-        snapshot = SelectionSnapshot(
-            selection_date=result.selection_date,
-            symbol=symbol,
-            selected_strategy=result.selected_strategy or "none",
-            regime=result.regime.value,
-            volatility=result.volatility.value,
-            in_sample_pf=result.wf_result.get("in_sample_pf", 0) if result.wf_result else 0,
-            in_sample_wr=result.wf_result.get("in_sample_wr", 0) if result.wf_result else 0,
-            oos_pf=result.wf_result.get("oos_pf") if result.wf_result else None,
-            composite_score=result.strategy_scores.get(result.selected_strategy, 0) if result.selected_strategy else 0,
-            robustness_score=result.wf_result.get("robustness_score", 0) if result.wf_result else 0,
-            training_window_days=self.evaluator.walk_forward_config.training_window_days,
-            test_window_days=self.evaluator.walk_forward_config.test_window_days,
-        )
-
-        filename = f"{symbol}_{result.selection_date.strftime('%Y%m%d_%H%M%S')}.json"
-        filepath = self.snapshot_dir / filename
-
-        with open(filepath, 'w') as f:
-            f.write(snapshot.model_dump_json(indent=2))
-
-        logger.debug(f"Saved selection snapshot: {filepath}")
-
-    # ==================== Trade History Management ====================
-
-    def record_trade(
-        self,
-        strategy_name: str,
-        trade: TradeResult
-    ) -> None:
-        """Record a trade result for strategy evaluation.
-
-        Args:
-            strategy_name: Name of strategy that generated trade
-            trade: Trade result
-        """
-        if strategy_name not in self._trade_history:
-            self._trade_history[strategy_name] = []
-
-        self._trade_history[strategy_name].append(trade)
-
-        # Keep bounded history (last 1000 trades per strategy)
-        if len(self._trade_history[strategy_name]) > 1000:
-            self._trade_history[strategy_name] = \
-                self._trade_history[strategy_name][-500:]
-
-        logger.debug(
-            f"Recorded trade for {strategy_name}: "
-            f"PnL={trade.pnl:.2f} ({trade.pnl_pct:.2f}%)"
-        )
-
-    def load_trade_history(
-        self,
-        strategy_name: str,
-        trades: list[TradeResult]
-    ) -> None:
-        """Load historical trades for a strategy.
-
-        Args:
-            strategy_name: Strategy name
-            trades: Historical trades
-        """
-        self._trade_history[strategy_name] = trades
-        logger.info(
-            f"Loaded {len(trades)} historical trades for {strategy_name}"
-        )
-
-    def get_trade_history(
-        self,
-        strategy_name: str
-    ) -> list[TradeResult]:
-        """Get trade history for a strategy.
-
-        Args:
-            strategy_name: Strategy name
-
-        Returns:
-            List of trade results
-        """
-        return self._trade_history.get(strategy_name, [])
-
-    # ==================== Query Methods ====================
+    # ==================== Query Methods (Delegiert) ====================
 
     def get_current_selection(self) -> SelectionResult | None:
-        """Get current strategy selection.
+        """Get current strategy selection (delegiert)."""
+        return self._query.get_current_selection()
 
-        Returns:
-            Current selection or None
-        """
-        return self._current_selection
-
-    def get_current_strategy(self) -> StrategyDefinition | None:
-        """Get current selected strategy definition.
-
-        Returns:
-            StrategyDefinition or None
-        """
-        if not self._current_selection or not self._current_selection.selected_strategy:
-            return None
-        return self.catalog.get_strategy(self._current_selection.selected_strategy)
+    def get_current_strategy(self):
+        """Get current selected strategy definition (delegiert)."""
+        return self._query.get_current_strategy()
 
     def is_trading_allowed(self) -> bool:
-        """Check if trading is allowed with current selection.
+        """Check if trading is allowed with current selection (delegiert)."""
+        return self._query.is_trading_allowed()
 
-        Returns:
-            True if a strategy is selected
-        """
-        return (
-            self._current_selection is not None and
-            self._current_selection.selected_strategy is not None
-        )
+    def get_applicable_strategies(self, regime: RegimeState) -> list[str]:
+        """Get strategies applicable for regime (delegiert)."""
+        return self._query.get_applicable_strategies(regime)
 
-    def get_applicable_strategies(
-        self,
-        regime: RegimeState
-    ) -> list[str]:
-        """Get strategies applicable for regime.
-
-        Args:
-            regime: Market regime
-
-        Returns:
-            List of strategy names
-        """
-        strategies = self.catalog.get_strategies_for_regime(regime)
-        return [s.profile.name for s in strategies]
-
-    def get_strategy_info(
-        self,
-        strategy_name: str
-    ) -> dict | None:
-        """Get detailed info about a strategy.
-
-        Args:
-            strategy_name: Strategy name
-
-        Returns:
-            Strategy info dict or None
-        """
-        strategy = self.catalog.get_strategy(strategy_name)
-        if not strategy:
-            return None
-
-        trades = self._trade_history.get(strategy_name, [])
-        metrics = self.evaluator.calculate_metrics(trades) if trades else None
-
-        return {
-            "name": strategy.profile.name,
-            "type": strategy.strategy_type.value,
-            "description": strategy.profile.description,
-            "applicable_regimes": [r.value for r in strategy.profile.regimes],
-            "applicable_volatility": [v.value for v in strategy.profile.volatility_levels],
-            "entry_threshold": strategy.min_entry_score,
-            "trailing_mode": strategy.trailing_mode.value,
-            "stop_loss_pct": strategy.stop_loss_pct,
-            "historical_trades": len(trades),
-            "metrics": {
-                "profit_factor": metrics.profit_factor if metrics else None,
-                "win_rate": metrics.win_rate if metrics else None,
-                "max_drawdown_pct": metrics.max_drawdown_pct if metrics else None,
-                "expectancy": metrics.expectancy if metrics else None,
-            } if metrics else None
-        }
-
-    # ==================== Regime Mapping ====================
+    def get_strategy_info(self, strategy_name: str) -> dict | None:
+        """Get detailed info about a strategy (delegiert)."""
+        return self._query.get_strategy_info(strategy_name)
 
     def get_regime_strategies(self) -> dict[str, list[str]]:
-        """Get strategy mapping per regime.
+        """Get strategy mapping per regime (delegiert)."""
+        return self._query.get_regime_strategies()
 
-        Returns:
-            Dict mapping regime to applicable strategies
-        """
-        mapping = {}
-        for regime_type in RegimeType:
-            # Create dummy regime state
-            dummy_regime = RegimeState(regime=regime_type)
-            strategies = self.catalog.get_strategies_for_regime(dummy_regime)
-            mapping[regime_type.value] = [s.profile.name for s in strategies]
-        return mapping
-
-    def suggest_strategy(
-        self,
-        regime: RegimeState
-    ) -> str | None:
-        """Quick suggestion without full evaluation.
-
-        Args:
-            regime: Current regime
-
-        Returns:
-            Suggested strategy name or None
-        """
-        candidates = self.catalog.get_strategies_for_regime(regime)
-
-        if not candidates:
-            return self.DEFAULT_FALLBACK.get(regime.regime)
-
-        # Return highest-rated by historical performance
-        best = None
-        best_pf = 0
-
-        for strategy in candidates:
-            trades = self._trade_history.get(strategy.profile.name, [])
-            if trades:
-                metrics = self.evaluator.calculate_metrics(trades)
-                if metrics.profit_factor > best_pf:
-                    best_pf = metrics.profit_factor
-                    best = strategy.profile.name
-
-        return best or candidates[0].profile.name
+    def suggest_strategy(self, regime: RegimeState) -> str | None:
+        """Quick suggestion without full evaluation (delegiert)."""
+        return self._query.suggest_strategy(regime)

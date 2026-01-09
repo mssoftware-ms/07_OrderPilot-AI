@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QTreeWidget, QTreeWidgetItem, QSplitter,
     QGroupBox, QScrollArea, QFrame,
 )
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QColor
 
 if TYPE_CHECKING:
     from src.core.analysis.context import AnalysisContext
@@ -342,9 +342,11 @@ class DataOverviewTab(QWidget):
             data["market_context"] = {
                 "symbol": ctx.symbol,
                 "timeframe": ctx.timeframe,
-                "regime": ctx.regime.value if ctx.regime else None,
-                "trend": ctx.trend.value if ctx.trend else None,
+                "regime": ctx.regime.value if hasattr(ctx.regime, 'value') else str(ctx.regime) if ctx.regime else None,
+                "trend": ctx.trend.value if hasattr(ctx.trend, 'value') else str(ctx.trend) if ctx.trend else None,
             }
+
+            logger.debug(f"Market context found: {ctx.symbol}, regime={ctx.regime}, trend={ctx.trend}")
 
             # Candle summary
             if ctx.candle_summary:
@@ -356,16 +358,33 @@ class DataOverviewTab(QWidget):
                     "close": cs.close,
                 }
 
-            # Indicators
-            if ctx.indicators:
-                ind = ctx.indicators
+            # Indicators - Issue #37: Ensure all indicator values are displayed
+            # Try to get indicators from the primary timeframe (usually 5m)
+            ind = None
+            if hasattr(ctx, 'indicators_5m') and ctx.indicators_5m:
+                ind = ctx.indicators_5m
+            elif hasattr(ctx, 'indicators_1h') and ctx.indicators_1h:
+                ind = ctx.indicators_1h
+            elif hasattr(ctx, 'indicators_4h') and ctx.indicators_4h:
+                ind = ctx.indicators_4h
+            elif hasattr(ctx, 'indicators_1d') and ctx.indicators_1d:
+                ind = ctx.indicators_1d
+
+            if ind:
                 data["indicators"] = {
-                    "rsi": ind.rsi,
-                    "atr": ind.atr,
-                    "adx": ind.adx,
-                    "ema_fast": ind.ema_fast,
-                    "ema_slow": ind.ema_slow,
+                    "timeframe": ind.timeframe if hasattr(ind, 'timeframe') else "unknown",
+                    "rsi": ind.rsi_14 if hasattr(ind, 'rsi_14') else None,
+                    "atr": ind.atr_14 if hasattr(ind, 'atr_14') else None,
+                    "atr_percent": ind.atr_percent if hasattr(ind, 'atr_percent') else None,
+                    "adx": ind.adx_14 if hasattr(ind, 'adx_14') else None,
+                    "di_plus": ind.plus_di if hasattr(ind, 'plus_di') else None,  # DI+ (Plus Directional Indicator)
+                    "di_minus": ind.minus_di if hasattr(ind, 'minus_di') else None,  # DI- (Minus Directional Indicator)
+                    "ema_fast": ind.ema_20 if hasattr(ind, 'ema_20') else None,
+                    "ema_slow": ind.ema_50 if hasattr(ind, 'ema_50') else None,
                 }
+                logger.debug(f"Indicators found from {ind.timeframe}: ADX={data['indicators']['adx']}, DI+={data['indicators']['di_plus']}, DI-={data['indicators']['di_minus']}, ATR={data['indicators']['atr']}")
+            else:
+                logger.warning("No indicators found in market context")
 
             # Levels
             if ctx.levels and ctx.levels.levels:
@@ -373,7 +392,7 @@ class DataOverviewTab(QWidget):
                     "count": len(ctx.levels.levels),
                     "items": [
                         {
-                            "type": lvl.level_type.value,
+                            "type": lvl.level_type.value if hasattr(lvl.level_type, 'value') else str(lvl.level_type),
                             "price_low": lvl.price_low,
                             "price_high": lvl.price_high,
                             "strength": lvl.strength,
@@ -381,6 +400,8 @@ class DataOverviewTab(QWidget):
                         for lvl in ctx.levels.levels[:10]  # Limit to 10
                     ]
                 }
+        else:
+            logger.warning("No market context available for data overview")
 
         return data
 
@@ -435,13 +456,39 @@ class DataOverviewTab(QWidget):
                     mc_item.addChild(child)
             self.data_tree.addTopLevelItem(mc_item)
 
-        # Indicators section
+        # Indicators section - Issue #37: Display all indicators including DI+/DI-
         if data.get("indicators"):
-            ind_item = QTreeWidgetItem(["📊 Indikatoren", "", ""])
+            timeframe = data["indicators"].get("timeframe", "unknown")
+            ind_item = QTreeWidgetItem(["📊 Indikatoren", f"Timeframe: {timeframe}", ""])
             ind_item.setExpanded(True)
+
+            # Define display names for better readability
+            indicator_names = {
+                "timeframe": "Timeframe",
+                "rsi": "RSI (14)",
+                "atr": "ATR (14)",
+                "atr_percent": "ATR %",
+                "adx": "ADX (14)",
+                "di_plus": "DI+ (Plus Directional Indicator)",
+                "di_minus": "DI- (Minus Directional Indicator)",
+                "ema_fast": "EMA Fast (20)",
+                "ema_slow": "EMA Slow (50)"
+            }
+
             for key, value in data["indicators"].items():
+                # Skip timeframe as it's already shown in the parent
+                if key == "timeframe":
+                    continue
+
+                display_name = indicator_names.get(key, key)
                 if value is not None:
-                    child = QTreeWidgetItem([str(key), f"{value:.4f}" if isinstance(value, float) else str(value), ""])
+                    value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
+                    child = QTreeWidgetItem([display_name, value_str, ""])
+                    ind_item.addChild(child)
+                else:
+                    # Show indicator with "N/A" if not available
+                    child = QTreeWidgetItem([display_name, "N/A", ""])
+                    child.setForeground(1, QColor(128, 128, 128))  # Gray color for unavailable values
                     ind_item.addChild(child)
             self.data_tree.addTopLevelItem(ind_item)
 

@@ -1,807 +1,111 @@
-"""Settings Dialog Tab Creation Mixin.
+"""Settings Dialog Tab Creation Mixin - Refactored Orchestrator.
 
-Contains tab creation methods for SettingsDialog.
+Refactored from 820 LOC monolith using composition pattern.
+
+Module 7/7 - Main Orchestrator.
+
+Delegates to 6 specialized helper modules:
+- SettingsTabsBasic: General, Trading, Broker tabs
+- SettingsTabsMarketBasic: Alpha Vantage, Finnhub, Yahoo Finance tabs
+- SettingsTabsAlpaca: Alpaca API + Historical Download
+- SettingsTabsBitunix: Bitunix API + Historical Download
+- SettingsTabsMarketMain: Market Data tab orchestrator
+- SettingsTabsAI: AI provider tabs (OpenAI, Anthropic, Gemini)
+
+Provides:
+- Tab creation delegation methods (_create_general_tab, _create_ai_tab, etc.)
+- _create_notifications_tab(): Notifications settings (order fills, alerts, connections)
 """
 
-import logging
-
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QSpinBox,
-    QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
+from src.ui.dialogs.settings_tabs_basic import SettingsTabsBasic
+from src.ui.dialogs.settings_tabs_market_basic import SettingsTabsMarketBasic
+from src.ui.dialogs.settings_tabs_alpaca import SettingsTabsAlpaca
+from src.ui.dialogs.settings_tabs_bitunix import SettingsTabsBitunix
+from src.ui.dialogs.settings_tabs_market_main import SettingsTabsMarketMain
+from src.ui.dialogs.settings_tabs_ai import SettingsTabsAI
 
-from src.ai.model_constants import (
-    AI_PROVIDERS,
-    OPENAI_MODELS,
-    ANTHROPIC_MODELS,
-    GEMINI_MODELS,
-)
-
-logger = logging.getLogger(__name__)
 
 class SettingsTabsMixin:
-    """Mixin providing tab creation methods for SettingsDialog."""
+    """Mixin providing tab creation methods for SettingsDialog.
+
+    Refactored using composition pattern with 6 specialized helpers.
+    """
+
+    def __init__(self):
+        """Initialize all helper modules for tab creation."""
+        # Instantiate helper modules (composition pattern)
+        self._basic_helper = SettingsTabsBasic(parent=self)
+        self._market_basic_helper = SettingsTabsMarketBasic(parent=self)
+        self._alpaca_helper = SettingsTabsAlpaca(parent=self)
+        self._bitunix_helper = SettingsTabsBitunix(parent=self)
+        self._market_main_helper = SettingsTabsMarketMain(parent=self)
+        self._ai_helper = SettingsTabsAI(parent=self)
+
+    # ========================================================================
+    # Basic Settings Tabs (General, Trading, Broker)
+    # ========================================================================
 
     def _create_general_tab(self) -> QWidget:
-        """Create general settings tab."""
-        tab = QWidget()
-        layout = QFormLayout(tab)
+        """Create general settings tab.
 
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark", "Light"])
-        layout.addRow("Theme:", self.theme_combo)
-
-        # Auto-connect broker
-        self.auto_connect_check = QCheckBox("Auto-connect to broker on startup")
-        layout.addRow(self.auto_connect_check)
-
-        # Default broker
-        self.default_broker_combo = QComboBox()
-        self.default_broker_combo.addItems(["Mock Broker", "Interactive Brokers", "Trade Republic"])
-        layout.addRow("Default Broker:", self.default_broker_combo)
-
-        return tab
+        Delegates to SettingsTabsBasic.create_general_tab().
+        """
+        return self._basic_helper.create_general_tab()
 
     def _create_trading_tab(self) -> QWidget:
-        """Create trading settings tab."""
-        tab = QWidget()
-        layout = QFormLayout(tab)
+        """Create trading settings tab.
 
-        self.manual_approval = QCheckBox("Require manual approval for orders")
-        self.manual_approval.setChecked(True)
-        layout.addRow(self.manual_approval)
-
-        self.confirm_cancel = QCheckBox("Confirm before canceling orders")
-        self.confirm_cancel.setChecked(True)
-        layout.addRow(self.confirm_cancel)
-
-        # Max order size
-        self.max_order_size = QDoubleSpinBox()
-        self.max_order_size.setRange(100, 100000)
-        self.max_order_size.setValue(10000)
-        self.max_order_size.setPrefix("€")
-        layout.addRow("Max Order Size:", self.max_order_size)
-
-        # Risk tolerance
-        self.risk_combo = QComboBox()
-        self.risk_combo.addItems(["Conservative", "Moderate", "Aggressive"])
-        layout.addRow("Risk Tolerance:", self.risk_combo)
-
-        return tab
+        Delegates to SettingsTabsBasic.create_trading_tab().
+        """
+        return self._basic_helper.create_trading_tab()
 
     def _create_broker_tab(self) -> QWidget:
-        """Create broker settings tab."""
-        tab = QWidget()
-        layout = QFormLayout(tab)
+        """Create broker settings tab.
 
-        # IBKR Settings
-        layout.addRow(QLabel("<b>Interactive Brokers (IBKR)</b>"))
+        Delegates to SettingsTabsBasic.create_broker_tab().
+        """
+        return self._basic_helper.create_broker_tab()
 
-        self.ibkr_host = QLineEdit()
-        self.ibkr_host.setPlaceholderText("localhost or IP address")
-        layout.addRow("IBKR Host:", self.ibkr_host)
-
-        self.ibkr_port = QComboBox()
-        self.ibkr_port.addItems(["7497 (Paper)", "7496 (Live)"])
-        layout.addRow("IBKR Port:", self.ibkr_port)
-
-        self.ibkr_client_id = QComboBox()
-        self.ibkr_client_id.addItems(["1", "2", "3", "4", "5"])
-        layout.addRow("IBKR Client ID:", self.ibkr_client_id)
-
-        # Trade Republic Settings
-        layout.addRow(QLabel("<b>Trade Republic</b>"))
-
-        self.tr_phone = QLineEdit()
-        self.tr_phone.setPlaceholderText("+49...")
-        layout.addRow("Phone Number:", self.tr_phone)
-
-        self.tr_pin = QLineEdit()
-        self.tr_pin.setEchoMode(QLineEdit.EchoMode.Password)
-        self.tr_pin.setPlaceholderText("4-digit PIN")
-        self.tr_pin.setMaxLength(4)
-        layout.addRow("PIN:", self.tr_pin)
-
-        # Bitunix Settings
-        layout.addRow(QLabel(""))  # Spacer
-        layout.addRow(QLabel("<b>Bitunix Futures</b>"))
-
-        self.bitunix_broker_enabled = QCheckBox("Enable Bitunix for trading")
-        layout.addRow(self.bitunix_broker_enabled)
-
-        bitunix_note = QLabel(
-            "<i>Note: Configure API keys in Market Data → Bitunix tab</i>"
-        )
-        bitunix_note.setWordWrap(True)
-        layout.addRow(bitunix_note)
-
-        return tab
+    # ========================================================================
+    # Market Data Tab
+    # ========================================================================
 
     def _create_market_data_tab(self) -> QWidget:
-        """Create market data settings tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        """Create market data settings tab with provider sub-tabs.
 
-        self.market_tabs = QTabWidget()
-        layout.addWidget(self.market_tabs)
-        self._add_market_provider_tabs()
+        Delegates to SettingsTabsMarketMain.create_market_data_tab().
+        """
+        return self._market_main_helper.create_market_data_tab()
 
-        # Preferred data source behavior
-        self.prefer_live_broker = QCheckBox(
-            "Prefer live broker market data when connected"
-        )
-        layout.addWidget(self.prefer_live_broker)
-
-        # Live data in paper mode
-        self.enable_live_data_paper = QCheckBox(
-            "Enable live market data in paper trading mode"
-        )
-        self.enable_live_data_paper.setToolTip(
-            "When enabled, live market data from configured providers "
-            "will be used even in paper trading mode"
-        )
-        layout.addWidget(self.enable_live_data_paper)
-
-        layout.addStretch()
-
-        return tab
+    # ========================================================================
+    # AI Settings Tab
+    # ========================================================================
 
     def _create_ai_tab(self) -> QWidget:
-        """Create AI settings tab."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        layout.addLayout(self._build_general_ai_layout())
-        layout.addWidget(self._build_ai_provider_tabs())
-
-        # Task routing info
-        routing_info = QLabel(
-            "<b>Note:</b> Task routing is configured in config/ai_providers.yaml. "
-            "Different tasks can use different models automatically."
-        )
-        routing_info.setWordWrap(True)
-        layout.addWidget(routing_info)
-
-        layout.addStretch()
-
-        return tab
-
-    def _add_market_provider_tabs(self) -> None:
-        self.market_tabs.addTab(self._build_alpha_tab(), "Alpha Vantage")
-        self.market_tabs.addTab(self._build_finnhub_tab(), "Finnhub")
-        self.market_tabs.addTab(self._build_yahoo_tab(), "Yahoo Finance")
-        self.market_tabs.addTab(self._build_alpaca_tab(), "Alpaca")
-        self.market_tabs.addTab(self._build_bitunix_tab(), "Bitunix")
-
-    def _build_alpha_tab(self) -> QWidget:
-        alpha_tab = QWidget()
-        alpha_layout = QFormLayout(alpha_tab)
-
-        self.alpha_enabled = QCheckBox("Enable Alpha Vantage provider")
-        alpha_layout.addRow(self.alpha_enabled)
-
-        self.alpha_api_key = QLineEdit()
-        self.alpha_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.alpha_api_key.setPlaceholderText("Enter Alpha Vantage API key")
-        alpha_layout.addRow("API Key:", self.alpha_api_key)
-
-        alpha_info = QLabel(
-            "Alpha Vantage free tier allows up to 5 requests per minute. "
-            "Enable only if you entered a valid API key."
-        )
-        alpha_info.setWordWrap(True)
-        alpha_layout.addRow(alpha_info)
-        return alpha_tab
-
-    def _build_finnhub_tab(self) -> QWidget:
-        finnhub_tab = QWidget()
-        finnhub_layout = QFormLayout(finnhub_tab)
-
-        self.finnhub_enabled = QCheckBox("Enable Finnhub provider")
-        finnhub_layout.addRow(self.finnhub_enabled)
-
-        self.finnhub_api_key = QLineEdit()
-        self.finnhub_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.finnhub_api_key.setPlaceholderText("Enter Finnhub API key")
-        finnhub_layout.addRow("API Key:", self.finnhub_api_key)
-
-        finnhub_info = QLabel(
-            "Finnhub offers real-time and historical market data. "
-            "Free plans provide limited intraday history."
-        )
-        finnhub_info.setWordWrap(True)
-        finnhub_layout.addRow(finnhub_info)
-        return finnhub_tab
-
-    def _build_yahoo_tab(self) -> QWidget:
-        yahoo_tab = QWidget()
-        yahoo_layout = QFormLayout(yahoo_tab)
-
-        self.yahoo_enabled = QCheckBox("Enable Yahoo Finance provider")
-        yahoo_layout.addRow(self.yahoo_enabled)
-
-        yahoo_info = QLabel(
-            "Yahoo Finance data is fetched anonymously via public endpoints. "
-            "No API key required."
-        )
-        yahoo_info.setWordWrap(True)
-        yahoo_layout.addRow(yahoo_info)
-        return yahoo_tab
-
-    def _build_alpaca_tab(self) -> QWidget:
-        alpaca_tab = QWidget()
-        alpaca_layout = QVBoxLayout(alpaca_tab)
-
-        # API Settings Group
-        api_group = QGroupBox("API Settings")
-        api_layout = QFormLayout(api_group)
-
-        self.alpaca_enabled = QCheckBox("Enable Alpaca provider")
-        api_layout.addRow(self.alpaca_enabled)
-
-        self.alpaca_api_key = QLineEdit()
-        self.alpaca_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.alpaca_api_key.setPlaceholderText("Enter Alpaca API key")
-        api_layout.addRow("API Key:", self.alpaca_api_key)
-
-        self.alpaca_api_secret = QLineEdit()
-        self.alpaca_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self.alpaca_api_secret.setPlaceholderText("Enter Alpaca API secret")
-        api_layout.addRow("API Secret:", self.alpaca_api_secret)
-
-        alpaca_info = QLabel(
-            "Alpaca provides real-time and historical market data for US stocks and crypto. "
-            "Free tier includes IEX real-time data. Crypto market data works without API keys."
-        )
-        alpaca_info.setWordWrap(True)
-        api_layout.addRow(alpaca_info)
-        alpaca_layout.addWidget(api_group)
-
-        # Historical Data Download Group
-        download_group = QGroupBox("Historical Data Download")
-        download_layout = QFormLayout(download_group)
-
-        # Symbol input
-        self.alpaca_dl_symbol = QComboBox()
-        self.alpaca_dl_symbol.setEditable(True)
-        self.alpaca_dl_symbol.addItems(["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"])
-        self.alpaca_dl_symbol.setToolTip("Enter crypto symbol (e.g., BTC/USD, ETH/USD)")
-        download_layout.addRow("Symbol:", self.alpaca_dl_symbol)
-
-        # Time period
-        period_layout = QHBoxLayout()
-        self.alpaca_dl_days = QSpinBox()
-        self.alpaca_dl_days.setRange(1, 730)
-        self.alpaca_dl_days.setValue(365)
-        self.alpaca_dl_days.setSuffix(" days")
-        period_layout.addWidget(self.alpaca_dl_days)
-        download_layout.addRow("Period:", period_layout)
-
-        # Timeframe
-        self.alpaca_dl_timeframe = QComboBox()
-        self.alpaca_dl_timeframe.addItems(["1min", "5min", "15min", "1h", "4h", "1d"])
-        self.alpaca_dl_timeframe.setCurrentText("1min")
-        download_layout.addRow("Timeframe:", self.alpaca_dl_timeframe)
-
-        # Estimated info
-        self.alpaca_dl_estimate = QLabel("")
-        self._update_alpaca_estimate()
-        self.alpaca_dl_days.valueChanged.connect(self._update_alpaca_estimate)
-        self.alpaca_dl_timeframe.currentTextChanged.connect(self._update_alpaca_estimate)
-        download_layout.addRow("Estimated:", self.alpaca_dl_estimate)
-
-        # Download button and progress
-        btn_layout = QHBoxLayout()
-        self.alpaca_dl_btn = QPushButton("Download Historical Data")
-        self.alpaca_dl_btn.clicked.connect(self._start_alpaca_download)
-        btn_layout.addWidget(self.alpaca_dl_btn)
-
-        self.alpaca_dl_cancel_btn = QPushButton("Cancel")
-        self.alpaca_dl_cancel_btn.setEnabled(False)
-        self.alpaca_dl_cancel_btn.clicked.connect(self._cancel_alpaca_download)
-        btn_layout.addWidget(self.alpaca_dl_cancel_btn)
-        download_layout.addRow(btn_layout)
-
-        # Progress bar
-        self.alpaca_dl_progress = QProgressBar()
-        self.alpaca_dl_progress.setRange(0, 100)
-        self.alpaca_dl_progress.setValue(0)
-        download_layout.addRow(self.alpaca_dl_progress)
-
-        # Status label
-        self.alpaca_dl_status = QLabel("Ready to download")
-        self.alpaca_dl_status.setWordWrap(True)
-        download_layout.addRow(self.alpaca_dl_status)
-
-        alpaca_layout.addWidget(download_group)
-        alpaca_layout.addStretch()
-
-        # Worker reference
-        self._alpaca_download_thread = None
-        self._alpaca_download_worker = None
-
-        return alpaca_tab
-
-    def _start_alpaca_download(self):
-        """Start Alpaca historical data download."""
-        from src.ui.workers.historical_download_worker import (
-            DownloadThread,
-            HistoricalDownloadWorker,
-        )
-
-        symbol = self.alpaca_dl_symbol.currentText().strip()
-        if not symbol:
-            QMessageBox.warning(self, "Input Error", "Please enter a symbol.")
-            return
-
-        days = self.alpaca_dl_days.value()
-        timeframe = self.alpaca_dl_timeframe.currentText()
-
-        # Create worker
-        self._alpaca_download_worker = HistoricalDownloadWorker(
-            provider_type="alpaca",
-            symbols=[symbol],
-            days=days,
-            timeframe=timeframe,
-        )
-
-        # Connect signals
-        self._alpaca_download_worker.progress.connect(self._on_alpaca_progress)
-        self._alpaca_download_worker.finished.connect(self._on_alpaca_finished)
-        self._alpaca_download_worker.error.connect(self._on_alpaca_error)
-
-        # Create and start thread
-        self._alpaca_download_thread = DownloadThread(self._alpaca_download_worker)
-        self._alpaca_download_thread.start()
-
-        # Update UI
-        self.alpaca_dl_btn.setEnabled(False)
-        self.alpaca_dl_cancel_btn.setEnabled(True)
-        self.alpaca_dl_progress.setValue(0)
-        self.alpaca_dl_status.setText(f"Starting download for {symbol}...")
-
-    def _cancel_alpaca_download(self):
-        """Cancel Alpaca download."""
-        if self._alpaca_download_worker:
-            self._alpaca_download_worker.cancel()
-        self.alpaca_dl_status.setText("Cancelling...")
-
-    def _on_alpaca_progress(self, percentage: int, message: str):
-        """Handle Alpaca download progress."""
-        self.alpaca_dl_progress.setValue(percentage)
-        self.alpaca_dl_status.setText(message)
-
-    def _on_alpaca_finished(self, success: bool, message: str, results: dict):
-        """Handle Alpaca download completion."""
-        self.alpaca_dl_btn.setEnabled(True)
-        self.alpaca_dl_cancel_btn.setEnabled(False)
-        self.alpaca_dl_progress.setValue(100 if success else 0)
-        self.alpaca_dl_status.setText(message)
-
-        if success:
-            QMessageBox.information(self, "Download Complete", message)
-        else:
-            QMessageBox.warning(self, "Download Failed", message)
-
-        self._alpaca_download_thread = None
-        self._alpaca_download_worker = None
-
-    def _on_alpaca_error(self, error_message: str):
-        """Handle Alpaca download error."""
-        self.alpaca_dl_btn.setEnabled(True)
-        self.alpaca_dl_cancel_btn.setEnabled(False)
-        self.alpaca_dl_progress.setValue(0)
-        self.alpaca_dl_status.setText(f"Error: {error_message}")
-        QMessageBox.critical(self, "Download Error", error_message)
-        self._alpaca_download_thread = None
-        self._alpaca_download_worker = None
-
-    def _update_alpaca_estimate(self):
-        """Update Alpaca download estimate label."""
-        days = self.alpaca_dl_days.value()
-        timeframe = self.alpaca_dl_timeframe.currentText()
-
-        # Calculate bars per day
-        bars_per_day = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        bpd = bars_per_day.get(timeframe, 1440)
-        total_bars = days * bpd
-
-        self.alpaca_dl_estimate.setText(f"~{total_bars:,} bars")
-
-    def _build_bitunix_tab(self) -> QWidget:
-        """Create Bitunix Futures settings tab."""
-        bitunix_tab = QWidget()
-        bitunix_layout = QVBoxLayout(bitunix_tab)
-
-        # API Settings Group
-        api_group = QGroupBox("API Settings (only for trading)")
-        api_layout = QFormLayout(api_group)
-
-        self.bitunix_enabled = QCheckBox("Enable Bitunix Futures provider")
-        api_layout.addRow(self.bitunix_enabled)
-
-        self.bitunix_api_key = QLineEdit()
-        self.bitunix_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.bitunix_api_key.setPlaceholderText("Enter Bitunix API key (not required for market data)")
-        api_layout.addRow("API Key:", self.bitunix_api_key)
-
-        self.bitunix_api_secret = QLineEdit()
-        self.bitunix_api_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self.bitunix_api_secret.setPlaceholderText("Enter Bitunix API secret")
-        api_layout.addRow("API Secret:", self.bitunix_api_secret)
-
-        self.bitunix_testnet = QCheckBox("Use Testnet (Recommended for testing)")
-        self.bitunix_testnet.setChecked(True)
-        self.bitunix_testnet.setToolTip(
-            "When enabled, uses Bitunix testnet environment for safe testing. "
-            "Uncheck only when you want to trade with real money!"
-        )
-        api_layout.addRow(self.bitunix_testnet)
-
-        bitunix_info = QLabel(
-            "<b>Bitunix Futures Trading</b><br>"
-            "API keys are only needed for trading. Market data (kline) is public.<br>"
-            "Get keys from: <a href='https://www.bitunix.com/api'>bitunix.com/api</a>"
-        )
-        bitunix_info.setWordWrap(True)
-        bitunix_info.setOpenExternalLinks(True)
-        api_layout.addRow(bitunix_info)
-        bitunix_layout.addWidget(api_group)
-
-        # Historical Data Download Group
-        download_group = QGroupBox("Historical Data Download (no API key required)")
-        download_layout = QFormLayout(download_group)
-
-        # Symbol input
-        self.bitunix_dl_symbol = QComboBox()
-        self.bitunix_dl_symbol.setEditable(True)
-        self.bitunix_dl_symbol.addItems([
-            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
-            "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"
-        ])
-        self.bitunix_dl_symbol.setToolTip("Enter Bitunix futures symbol (e.g., BTCUSDT)")
-        download_layout.addRow("Symbol:", self.bitunix_dl_symbol)
-
-        # Time period
-        period_layout = QHBoxLayout()
-        self.bitunix_dl_days = QSpinBox()
-        self.bitunix_dl_days.setRange(1, 730)
-        self.bitunix_dl_days.setValue(365)
-        self.bitunix_dl_days.setSuffix(" days")
-        period_layout.addWidget(self.bitunix_dl_days)
-        download_layout.addRow("Period:", period_layout)
-
-        # Timeframe
-        self.bitunix_dl_timeframe = QComboBox()
-        self.bitunix_dl_timeframe.addItems(["1min", "5min", "15min", "1h", "4h", "1d"])
-        self.bitunix_dl_timeframe.setCurrentText("1min")
-        download_layout.addRow("Timeframe:", self.bitunix_dl_timeframe)
-
-        # Estimated info
-        self.bitunix_dl_estimate = QLabel("")
-        self._update_bitunix_estimate()
-        self.bitunix_dl_days.valueChanged.connect(self._update_bitunix_estimate)
-        self.bitunix_dl_timeframe.currentTextChanged.connect(self._update_bitunix_estimate)
-        download_layout.addRow("Estimated:", self.bitunix_dl_estimate)
-
-        # Download button and progress
-        btn_layout = QHBoxLayout()
-        self.bitunix_dl_btn = QPushButton("Download Historical Data")
-        self.bitunix_dl_btn.clicked.connect(self._start_bitunix_download)
-        btn_layout.addWidget(self.bitunix_dl_btn)
-
-        self.bitunix_dl_cancel_btn = QPushButton("Cancel")
-        self.bitunix_dl_cancel_btn.setEnabled(False)
-        self.bitunix_dl_cancel_btn.clicked.connect(self._cancel_bitunix_download)
-        btn_layout.addWidget(self.bitunix_dl_cancel_btn)
-        download_layout.addRow(btn_layout)
-
-        # Progress bar
-        self.bitunix_dl_progress = QProgressBar()
-        self.bitunix_dl_progress.setRange(0, 100)
-        self.bitunix_dl_progress.setValue(0)
-        download_layout.addRow(self.bitunix_dl_progress)
-
-        # Status label
-        self.bitunix_dl_status = QLabel("Ready to download (public API, no keys needed)")
-        self.bitunix_dl_status.setWordWrap(True)
-        download_layout.addRow(self.bitunix_dl_status)
-
-        bitunix_layout.addWidget(download_group)
-        bitunix_layout.addStretch()
-
-        # Worker reference
-        self._bitunix_download_thread = None
-        self._bitunix_download_worker = None
-
-        return bitunix_tab
-
-    def _update_bitunix_estimate(self):
-        """Update download estimate label."""
-        days = self.bitunix_dl_days.value()
-        timeframe = self.bitunix_dl_timeframe.currentText()
-
-        # Calculate bars per day
-        bars_per_day = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        bpd = bars_per_day.get(timeframe, 1440)
-        total_bars = days * bpd
-        requests = (total_bars // 200) + 1
-
-        self.bitunix_dl_estimate.setText(
-            f"~{total_bars:,} bars, ~{requests:,} API requests"
-        )
-
-    def _start_bitunix_download(self):
-        """Start Bitunix historical data download."""
-        from src.ui.workers.historical_download_worker import (
-            DownloadThread,
-            HistoricalDownloadWorker,
-        )
-
-        symbol = self.bitunix_dl_symbol.currentText().strip()
-        if not symbol:
-            QMessageBox.warning(self, "Input Error", "Please enter a symbol.")
-            return
-
-        days = self.bitunix_dl_days.value()
-        timeframe = self.bitunix_dl_timeframe.currentText()
-
-        # Create worker
-        self._bitunix_download_worker = HistoricalDownloadWorker(
-            provider_type="bitunix",
-            symbols=[symbol],
-            days=days,
-            timeframe=timeframe,
-        )
-
-        # Connect signals
-        self._bitunix_download_worker.progress.connect(self._on_bitunix_progress)
-        self._bitunix_download_worker.finished.connect(self._on_bitunix_finished)
-        self._bitunix_download_worker.error.connect(self._on_bitunix_error)
-
-        # Create and start thread
-        self._bitunix_download_thread = DownloadThread(self._bitunix_download_worker)
-        self._bitunix_download_thread.start()
-
-        # Update UI
-        self.bitunix_dl_btn.setEnabled(False)
-        self.bitunix_dl_cancel_btn.setEnabled(True)
-        self.bitunix_dl_progress.setValue(0)
-        self.bitunix_dl_status.setText(f"Starting download for {symbol}...")
-
-    def _cancel_bitunix_download(self):
-        """Cancel Bitunix download."""
-        if self._bitunix_download_worker:
-            self._bitunix_download_worker.cancel()
-        self.bitunix_dl_status.setText("Cancelling...")
-
-    def _on_bitunix_progress(self, percentage: int, message: str):
-        """Handle Bitunix download progress."""
-        self.bitunix_dl_progress.setValue(percentage)
-        self.bitunix_dl_status.setText(message)
-
-    def _on_bitunix_finished(self, success: bool, message: str, results: dict):
-        """Handle Bitunix download completion."""
-        self.bitunix_dl_btn.setEnabled(True)
-        self.bitunix_dl_cancel_btn.setEnabled(False)
-        self.bitunix_dl_progress.setValue(100 if success else 0)
-        self.bitunix_dl_status.setText(message)
-
-        if success:
-            QMessageBox.information(self, "Download Complete", message)
-        else:
-            QMessageBox.warning(self, "Download Failed", message)
-
-        self._bitunix_download_thread = None
-        self._bitunix_download_worker = None
-
-    def _on_bitunix_error(self, error_message: str):
-        """Handle Bitunix download error."""
-        self.bitunix_dl_btn.setEnabled(True)
-        self.bitunix_dl_cancel_btn.setEnabled(False)
-        self.bitunix_dl_progress.setValue(0)
-        self.bitunix_dl_status.setText(f"Error: {error_message}")
-        QMessageBox.critical(self, "Download Error", error_message)
-        self._bitunix_download_thread = None
-        self._bitunix_download_worker = None
-
-    def _build_general_ai_layout(self) -> QFormLayout:
-        general_ai_layout = QFormLayout()
-
-        self.ai_enabled = QCheckBox("Enable AI features")
-        self.ai_enabled.setChecked(True)
-        general_ai_layout.addRow(self.ai_enabled)
-
-        self.ai_default_provider = QComboBox()
-        self.ai_default_provider.addItems(AI_PROVIDERS)
-        general_ai_layout.addRow("Default Provider:", self.ai_default_provider)
-
-        self.ai_budget = QDoubleSpinBox()
-        self.ai_budget.setRange(1, 1000)
-        self.ai_budget.setValue(50)
-        self.ai_budget.setPrefix("€")
-        general_ai_layout.addRow("Monthly Budget:", self.ai_budget)
-        return general_ai_layout
-
-    def _build_ai_provider_tabs(self) -> QTabWidget:
-        provider_tabs = QTabWidget()
-        provider_tabs.addTab(self._build_openai_tab(), "OpenAI")
-        provider_tabs.addTab(self._build_anthropic_tab(), "Anthropic")
-        provider_tabs.addTab(self._build_gemini_tab(), "Gemini")
-        return provider_tabs
-
-    def _build_openai_tab(self) -> QWidget:
-        from src.ai.model_constants import OPENAI_REASONING_EFFORTS
-
-        openai_tab = QWidget()
-        openai_layout = QFormLayout(openai_tab)
-
-        self.openai_api_key = QLineEdit()
-        self.openai_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.openai_api_key.setPlaceholderText("Enter OpenAI API Key")
-        openai_layout.addRow("API Key:", self.openai_api_key)
-
-        self.openai_model = QComboBox()
-        self.openai_model.addItems(OPENAI_MODELS)
-        self.openai_model.currentTextChanged.connect(self._on_openai_model_changed)
-        openai_layout.addRow("Default Model:", self.openai_model)
-
-        # Reasoning Effort (nur für GPT-5.x)
-        self.openai_reasoning_effort = QComboBox()
-        openai_layout.addRow("Reasoning Effort:", self.openai_reasoning_effort)
-
-        # Max Completion Tokens
-        self.openai_max_tokens = QSpinBox()
-        self.openai_max_tokens.setRange(100, 128000)
-        self.openai_max_tokens.setValue(3000)
-        self.openai_max_tokens.setToolTip("Maximum tokens for completion (includes reasoning tokens for GPT-5.x)")
-        openai_layout.addRow("Max Completion Tokens:", self.openai_max_tokens)
-
-        # Temperature (nur wenn reasoning_effort = none)
-        self.openai_temperature = QDoubleSpinBox()
-        self.openai_temperature.setRange(0.0, 2.0)
-        self.openai_temperature.setSingleStep(0.1)
-        self.openai_temperature.setValue(0.1)
-        self.openai_temperature.setToolTip("Only active when reasoning_effort = none")
-        openai_layout.addRow("Temperature:", self.openai_temperature)
-
-        # Top P (nur wenn reasoning_effort = none)
-        self.openai_top_p = QDoubleSpinBox()
-        self.openai_top_p.setRange(0.0, 1.0)
-        self.openai_top_p.setSingleStep(0.1)
-        self.openai_top_p.setValue(1.0)
-        self.openai_top_p.setToolTip("Only active when reasoning_effort = none")
-        openai_layout.addRow("Top P:", self.openai_top_p)
-
-        # Info Label
-        openai_info = QLabel(
-            "<b>GPT-5.2:</b> Latest reasoning model (none|low|medium|high|xhigh)<br>"
-            "<b>GPT-5.1:</b> Reasoning model (none|low|medium|high)<br>"
-            "<b>GPT-4.1:</b> 1M token context, excellent for coding (no reasoning)<br>"
-            "<b>GPT-4.1 Nano:</b> Fastest and cheapest<br><br>"
-            "⚠️ <i>temperature/top_p only work when reasoning_effort = none</i><br>"
-            "Set OPENAI_API_KEY environment variable for automatic configuration."
-        )
-        openai_info.setWordWrap(True)
-        openai_layout.addRow(openai_info)
-
-        # Connect reasoning effort change to update sampling controls
-        self.openai_reasoning_effort.currentTextChanged.connect(self._on_openai_reasoning_changed)
-
-        return openai_tab
-
-    def _on_openai_model_changed(self, model_text: str):
-        """Update reasoning effort options based on selected model."""
-        from src.ai.model_constants import OPENAI_REASONING_EFFORTS
-
-        # Extract model name (remove description in parentheses)
-        import re
-        model_name = re.sub(r'\s*\(.*?\)\s*', '', model_text).strip()
-
-        # Get reasoning efforts for this model
-        efforts = OPENAI_REASONING_EFFORTS.get(model_name, [])
-
-        # Update combo box
-        self.openai_reasoning_effort.blockSignals(True)
-        self.openai_reasoning_effort.clear()
-
-        if efforts:
-            self.openai_reasoning_effort.addItems(efforts)
-            self.openai_reasoning_effort.setCurrentText("medium")  # Default to medium
-            self.openai_reasoning_effort.setEnabled(True)
-        else:
-            self.openai_reasoning_effort.addItem("N/A (non-reasoning model)")
-            self.openai_reasoning_effort.setEnabled(False)
-            # Enable sampling controls for non-reasoning models
-            self.openai_temperature.setEnabled(True)
-            self.openai_top_p.setEnabled(True)
-
-        self.openai_reasoning_effort.blockSignals(False)
-        self._on_openai_reasoning_changed(self.openai_reasoning_effort.currentText())
-
-    def _on_openai_reasoning_changed(self, reasoning_effort: str):
-        """Enable/disable sampling controls based on reasoning effort."""
-        # Temperature and top_p only work when reasoning_effort = none
-        is_none = reasoning_effort == "none"
-        self.openai_temperature.setEnabled(is_none)
-        self.openai_top_p.setEnabled(is_none)
-
-    def _build_anthropic_tab(self) -> QWidget:
-        anthropic_tab = QWidget()
-        anthropic_layout = QFormLayout(anthropic_tab)
-
-        self.anthropic_api_key = QLineEdit()
-        self.anthropic_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.anthropic_api_key.setPlaceholderText("Enter Anthropic API Key")
-        anthropic_layout.addRow("API Key:", self.anthropic_api_key)
-
-        self.anthropic_model = QComboBox()
-        self.anthropic_model.addItems(ANTHROPIC_MODELS)
-        anthropic_layout.addRow("Default Model:", self.anthropic_model)
-
-        anthropic_info = QLabel(
-            "Anthropic Claude Sonnet 4.5 excels at complex reasoning, code analysis, "
-            "and technical tasks. 1M token context window. "
-            "Set ANTHROPIC_API_KEY environment variable for automatic configuration."
-        )
-        anthropic_info.setWordWrap(True)
-        anthropic_layout.addRow(anthropic_info)
-        return anthropic_tab
-
-    def _build_gemini_tab(self) -> QWidget:
-        gemini_tab = QWidget()
-        gemini_layout = QFormLayout(gemini_tab)
-
-        self.gemini_api_key = QLineEdit()
-        self.gemini_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.gemini_api_key.setPlaceholderText("Enter Gemini API Key")
-        gemini_layout.addRow("API Key:", self.gemini_api_key)
-
-        self.gemini_model = QComboBox()
-        self.gemini_model.addItems(GEMINI_MODELS)
-        gemini_layout.addRow("Default Model:", self.gemini_model)
-
-        gemini_info = QLabel(
-            "Google Gemini offers excellent performance at competitive pricing. "
-            "gemini-2.0-flash-exp is the latest experimental model. "
-            "gemini-1.5-pro has the largest context (2M tokens). "
-            "Set GEMINI_API_KEY environment variable for automatic configuration."
-        )
-        gemini_info.setWordWrap(True)
-        gemini_layout.addRow(gemini_info)
-        return gemini_tab
+        """Create AI settings tab with provider sub-tabs.
+
+        Delegates to SettingsTabsAI.create_ai_tab().
+        """
+        return self._ai_helper.create_ai_tab()
+
+    # ========================================================================
+    # Notifications Tab
+    # ========================================================================
 
     def _create_notifications_tab(self) -> QWidget:
-        """Create notifications settings tab."""
+        """Create notifications settings tab.
+
+        Contains:
+            - Order fills notifications
+            - Alert notifications
+            - Connection change notifications
+        """
         tab = QWidget()
         layout = QFormLayout(tab)
 
@@ -818,3 +122,7 @@ class SettingsTabsMixin:
         layout.addRow(self.connection_notif)
 
         return tab
+
+
+# Re-export für backward compatibility
+__all__ = ["SettingsTabsMixin"]

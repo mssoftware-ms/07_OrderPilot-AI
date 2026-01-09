@@ -189,14 +189,24 @@ class PanelsMixin:
             self.ai_chat_tab.set_market_context(market_context)
 
     def _toggle_bottom_panel(self):
-        """Toggle visibility of bottom panel dock widget."""
+        """Toggle visibility of Trading Bot window."""
         if not hasattr(self.chart_widget, 'toggle_panel_button'):
             return
 
         button = self.chart_widget.toggle_panel_button
         should_show = button.isChecked()
 
-        self.dock_widget.setVisible(should_show)
+        # Use TradingBotWindow if available, otherwise fall back to dock_widget
+        if hasattr(self, '_trading_bot_window') and self._trading_bot_window is not None:
+            if should_show:
+                self._trading_bot_window.show()
+                self._trading_bot_window.raise_()
+                self._trading_bot_window.activateWindow()
+            else:
+                self._trading_bot_window.hide()
+        elif hasattr(self, 'dock_widget') and self.dock_widget is not None:
+            self.dock_widget.setVisible(should_show)
+
         self._update_toggle_button_text()
 
     def _on_dock_visibility_changed(self, visible: bool):

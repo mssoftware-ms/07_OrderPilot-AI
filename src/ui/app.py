@@ -99,6 +99,10 @@ async def main():
     """Main application entry point."""
     _hide_console_window()
 
+    # CRITICAL: Set Qt.AA_ShareOpenGLContexts BEFORE creating QApplication
+    # This is required for QtWebEngineWidgets to work properly
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+
     app = QApplication(sys.argv)
     app.setApplicationName("OrderPilot-AI")
     app.setOrganizationName("OrderPilot")

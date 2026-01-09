@@ -145,12 +145,17 @@ class BitunixTradingMixin:
     def _dock_bitunix_widget(self) -> None:
         """Add Bitunix widget as dock widget."""
         if hasattr(self, "addDockWidget"):
+            logger.info("📌 Adding Bitunix widget as dock widget to RightDockWidgetArea...")
             self.addDockWidget(  # type: ignore
                 Qt.DockWidgetArea.RightDockWidgetArea,
                 self._bitunix_widget,
             )
+            # Ensure it's docked, not floating
+            self._bitunix_widget.setFloating(False)
             self._bitunix_widget.hide()
-            logger.info("Bitunix widget added as dock widget (initially hidden)")
+            logger.info("📌 Bitunix widget added as dock widget (initially hidden, floating=False)")
+        else:
+            logger.warning("❌ addDockWidget not available - Bitunix widget cannot be docked!")
 
     def _connect_bitunix_chart_signals(self, chart_widget: "EmbeddedTradingViewChart") -> None:
         """Connect to chart signals to update symbol.
@@ -337,8 +342,16 @@ class BitunixTradingMixin:
     def show_bitunix_widget(self) -> None:
         """Show the Bitunix trading widget."""
         if self._bitunix_widget:
+            logger.info(f"📌 show_bitunix_widget: showing widget (floating={self._bitunix_widget.isFloating()})")
+            # Ensure it's docked on the right, not floating
+            if self._bitunix_widget.isFloating():
+                logger.info("   Widget was floating, re-docking to right area...")
+                self._bitunix_widget.setFloating(False)
+                if hasattr(self, "addDockWidget"):
+                    self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._bitunix_widget)
             self._bitunix_widget.show()
             self._bitunix_widget.raise_()
+            logger.info(f"   Widget shown, isVisible={self._bitunix_widget.isVisible()}")
 
     def hide_bitunix_widget(self) -> None:
         """Hide the Bitunix trading widget."""
