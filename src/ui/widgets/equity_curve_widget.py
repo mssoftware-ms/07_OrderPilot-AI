@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, pyqtSlot, QObject
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class EquityCurveBridge(QWidget):
+class EquityCurveBridge(QObject):
     """Bridge für Python ↔ JavaScript Kommunikation."""
 
     # Signals
@@ -51,11 +51,13 @@ class EquityCurveBridge(QWidget):
         super().__init__(parent)
         self._data = {}
 
+    @pyqtSlot(str)
     def setEquityData(self, json_str: str) -> None:
         """Setzt Equity-Daten für JavaScript."""
         self._data = json.loads(json_str)
         self.dataReady.emit(json_str)
 
+    @pyqtSlot(result=str)
     def getData(self) -> str:
         """Gibt aktuelle Daten als JSON zurück."""
         return json.dumps(self._data)
