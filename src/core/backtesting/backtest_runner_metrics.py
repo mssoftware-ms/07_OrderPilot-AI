@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from .config import BacktestMetrics, BacktestResult, Bar, EquityPoint, Trade
+    from src.core.models.backtest_models import BacktestMetrics, BacktestResult, Bar, EquityPoint, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class BacktestRunnerMetrics:
 
     def _calculate_result(self) -> "BacktestResult":
         """Berechnet das finale BacktestResult."""
-        from .config import BacktestResult, Bar
+        from src.core.models.backtest_models import BacktestResult, Bar
 
         trades = self.parent.state.closed_trades
         equity_curve = self.parent.state.equity_curve
@@ -50,9 +50,15 @@ class BacktestRunnerMetrics:
         bars = []
         if self.parent.replay_provider.data is not None:
             for _, row in self.parent.replay_provider.data.iloc[::60].iterrows():  # Jede Stunde
+                # Timestamp sicher zu int konvertieren (kann pd.Timestamp oder int sein)
+                ts = row["timestamp"]
+                if hasattr(ts, 'timestamp'):  # pandas Timestamp
+                    ts_ms = int(ts.timestamp() * 1000)
+                else:
+                    ts_ms = int(ts)
                 bars.append(
                     Bar(
-                        time=datetime.fromtimestamp(row["timestamp"] / 1000, tz=timezone.utc),
+                        time=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
                         open=float(row["open"]),
                         high=float(row["high"]),
                         low=float(row["low"]),
@@ -84,7 +90,7 @@ class BacktestRunnerMetrics:
         equity_curve: list["EquityPoint"],
     ) -> "BacktestMetrics":
         """Berechnet Performance-Metriken."""
-        from .config import BacktestMetrics
+        from src.core.models.backtest_models import BacktestMetrics
 
         if not trades:
             return BacktestMetrics()

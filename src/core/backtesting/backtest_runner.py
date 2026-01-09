@@ -42,10 +42,11 @@ from .backtest_runner_signals import BacktestRunnerSignals
 from .backtest_runner_metrics import BacktestRunnerMetrics
 
 if TYPE_CHECKING:
-    from .config import BacktestConfig, BacktestResult, CandleSnapshot
+    from .config import BacktestConfig
+    from src.core.models.backtest_models import BacktestResult
     from .execution_simulator import ExecutionSimulator
     from .mtf_resampler import MTFResampler
-    from .replay_provider import ReplayMarketDataProvider
+    from .replay_provider import ReplayMarketDataProvider, CandleSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -150,12 +151,25 @@ class BacktestRunner:
 
     def set_signal_callback(
         self,
-        callback: Callable[["CandleSnapshot", list["CandleSnapshot"], dict], dict | None],
+        callback: Callable,  # (CandleSnapshot, pd.DataFrame, dict) -> dict | None
     ) -> None:
         """Setzt Callback für Signal-Generierung.
 
-        Callback bekommt: (candle, history_1m, mtf_data)
-        Callback gibt zurück: Signal-Dict oder None
+        Callback-Signatur:
+            (candle: CandleSnapshot, history_1m: pd.DataFrame, mtf_data: dict) -> dict | None
+
+        Args:
+            callback: Signal-Callback Funktion
+
+        Erwartetes Return-Dict:
+            {
+                "action": "buy" | "sell",
+                "stop_loss": float,
+                "take_profit": float,
+                "sl_distance": float,
+                "leverage": int,
+                "reason": str,
+            }
         """
         self.signal_callback = callback
 

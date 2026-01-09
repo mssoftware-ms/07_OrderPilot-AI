@@ -28,6 +28,52 @@ from src.database.models import MarketBar
 logger = logging.getLogger(__name__)
 
 
+def _safe_timestamp_to_int(value) -> int:
+    """Konvertiert verschiedene Timestamp-Typen sicher zu int (Millisekunden).
+
+    Unterstützt: int, float, pd.Timestamp, datetime, np.datetime64
+
+    Args:
+        value: Timestamp in verschiedenen Formaten
+
+    Returns:
+        Unix timestamp in Millisekunden als int
+    """
+    if value is None:
+        return 0
+
+    # Bereits int
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+
+    # Float (z.B. Unix timestamp in Sekunden)
+    if isinstance(value, (float, np.floating)):
+        # Wenn > 1e12, ist es bereits in ms
+        if value > 1e12:
+            return int(value)
+        return int(value * 1000)
+
+    # pandas Timestamp
+    if isinstance(value, pd.Timestamp):
+        return int(value.timestamp() * 1000)
+
+    # datetime
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+
+    # numpy datetime64
+    if isinstance(value, np.datetime64):
+        # Konvertiere zu pandas Timestamp dann zu int
+        return int(pd.Timestamp(value).timestamp() * 1000)
+
+    # Fallback: Versuche direkte Konvertierung
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        logger.warning(f"Konnte Timestamp nicht konvertieren: {type(value)} = {value}")
+        return 0
+
+
 @dataclass
 class CandleSnapshot:
     """Einzelne Candle mit Metadaten.
@@ -157,7 +203,7 @@ class CandleIterator:
         # Aktuelle Candle
         row = self.data.iloc[self.current_index]
         current_candle = CandleSnapshot(
-            timestamp=int(row["timestamp"]),
+            timestamp=_safe_timestamp_to_int(row["timestamp"]),
             open=float(row["open"]),
             high=float(row["high"]),
             low=float(row["low"]),
@@ -198,7 +244,7 @@ class CandleIterator:
             return None
         row = self.data.iloc[self.current_index]
         return CandleSnapshot(
-            timestamp=int(row["timestamp"]),
+            timestamp=_safe_timestamp_to_int(row["timestamp"]),
             open=float(row["open"]),
             high=float(row["high"]),
             low=float(row["low"]),

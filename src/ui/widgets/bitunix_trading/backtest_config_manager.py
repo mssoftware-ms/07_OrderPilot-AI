@@ -113,6 +113,19 @@ class BacktestConfigManager:
         """
         return self._variants.generate_ai_test_variants(base_spec, num_variants)
 
+    def get_signal_callback(self):
+        """
+        Gibt den Signal-Callback für Backtests zurück.
+
+        Delegiert an BacktestTab._get_signal_callback().
+
+        Returns:
+            Callable: Signal-Callback Funktion oder None
+        """
+        if hasattr(self.parent, '_get_signal_callback'):
+            return self.parent._get_signal_callback()
+        return None
+
 
 # Re-export für backward compatibility
 __all__ = [

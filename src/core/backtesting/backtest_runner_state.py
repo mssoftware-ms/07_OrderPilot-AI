@@ -18,9 +18,8 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.core.backtesting.execution_simulator import SimulatedFill
-    from src.core.trading_bot.bot_config import OrderSide
-    from .config import EquityPoint, Trade
+    from src.core.backtesting.execution_simulator import SimulatedFill, OrderSide
+    from src.core.models.backtest_models import EquityPoint, Trade
 
 
 class TradeStatus(Enum):
@@ -56,7 +55,7 @@ class OpenPosition:
     @property
     def trade_side(self) -> str:
         """Gibt 'long' oder 'short' zurück."""
-        from src.core.trading_bot.bot_config import OrderSide
+        from src.core.backtesting.execution_simulator import OrderSide
 
         return "long" if self.side == OrderSide.BUY else "short"
 

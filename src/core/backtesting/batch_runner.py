@@ -196,13 +196,35 @@ class BatchRunner:
             return self._generate_grid_combinations(param_space)
 
     def _generate_grid_combinations(self, param_space: dict[str, list[Any]]) -> list[dict[str, Any]]:
-        """Generiert alle Grid-Kombinationen."""
+        """Generiert Grid-Kombinationen mit Speicherschutz.
+
+        Bei zu vielen Kombinationen wird automatisch auf Random-Sampling umgeschaltet.
+        """
         keys = list(param_space.keys())
         values = [param_space[k] for k in keys]
 
+        # KRITISCH: Berechne theoretische Anzahl VORHER um MemoryError zu vermeiden
+        import math
+        theoretical_count = math.prod(len(v) for v in values)
+        max_combinations = self.config.max_iterations
+
+        logger.info(f"Grid search: {len(keys)} params, theoretical {theoretical_count:,} combinations, limit {max_combinations}")
+
+        # Wenn theoretische Anzahl zu groß, verwende Random-Sampling statt volles Grid
+        if theoretical_count > max_combinations * 10:  # 10x Buffer für Sicherheit
+            logger.warning(
+                f"⚠️ Grid würde {theoretical_count:,} Kombinationen erzeugen - "
+                f"wechsle zu Random-Sampling mit {max_combinations} Iterationen"
+            )
+            return self._generate_random_combinations(param_space)
+
+        # Generiere mit Limit - stoppe früh wenn max erreicht
         combinations = []
         for combo in itertools.product(*values):
             combinations.append(dict(zip(keys, combo)))
+            if len(combinations) >= max_combinations:
+                logger.info(f"Grid generation stopped at limit: {max_combinations}")
+                break
 
         logger.info(f"Generated {len(combinations)} grid combinations")
         return combinations

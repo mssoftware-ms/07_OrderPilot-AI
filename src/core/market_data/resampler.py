@@ -207,7 +207,11 @@ class MarketDataResampler:
         self.price_buffers: dict[str, deque[Decimal]] = defaultdict(
             lambda: deque(maxlen=filter_window * 2)
         )
-        self.bar_buffers: dict[str, list[OHLCV]] = defaultdict(list)
+        # Issue #41: Use deque with maxlen to prevent unbounded memory growth
+        # Keep max 1000 bars per symbol (enough for most analysis needs)
+        self.bar_buffers: dict[str, deque[OHLCV]] = defaultdict(
+            lambda: deque(maxlen=1000)
+        )
 
         # Last bar timestamps
         self.last_bar_time: dict[str, datetime] = {}

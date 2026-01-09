@@ -20,7 +20,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from .backtest_runner_state import OpenPosition
-    from .config import CandleSnapshot
+    from .replay_provider import CandleSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +38,18 @@ class BacktestRunnerSignals:
     async def _generate_signal(
         self,
         candle: "CandleSnapshot",
-        history_1m: list["CandleSnapshot"],
+        history_1m,  # pd.DataFrame mit 1m OHLCV History
         mtf_data: dict,
     ) -> dict | None:
         """Generiert ein Trading-Signal via Callback oder Strategy.
 
+        Args:
+            candle: Aktuelle CandleSnapshot
+            history_1m: pd.DataFrame mit 1m OHLCV History
+            mtf_data: Dict mit Multi-Timeframe DataFrames
+
         Returns:
-            Signal-Dict mit: action, side, sl, tp, leverage, reason
+            Signal-Dict mit: action, stop_loss, take_profit, sl_distance, leverage, reason
             oder None
         """
         if self.parent.signal_callback:
@@ -55,8 +60,7 @@ class BacktestRunnerSignals:
 
     async def _execute_signal(self, signal: dict, candle: "CandleSnapshot") -> None:
         """Führt ein Signal aus."""
-        from src.core.trading_bot.bot_config import OrderSide, OrderType
-        from src.core.backtesting.execution_simulator import SimulatedOrder
+        from src.core.backtesting.execution_simulator import OrderSide, OrderType, SimulatedOrder
         from .backtest_runner_state import OpenPosition
 
         if not signal:
@@ -77,8 +81,28 @@ class BacktestRunnerSignals:
         if sl_distance <= 0:
             sl_distance = candle.close * 0.01
 
+        # WICHTIG: Mindest-SL-Distance = 0.5% vom Preis (verhindert zu große Positionen bei kleiner ATR)
+        min_sl_distance = candle.close * 0.005  # 0.5%
+        sl_distance = max(sl_distance, min_sl_distance)
+
         leverage = min(signal.get("leverage", 1), self.parent.config.execution.max_leverage)
         position_size = (risk_amount * leverage) / sl_distance
+
+        # Position Size auf verfügbare Margin begrenzen
+        # Formel: margin_required = (price * quantity) / leverage
+        # Also: max_quantity = (available_margin * leverage) / price
+        max_position_size = (self.parent.state.cash * leverage * 0.95) / candle.close  # 95% der Margin nutzen
+        if position_size > max_position_size:
+            logger.debug(
+                f"Position size capped: {position_size:.6f} -> {max_position_size:.6f} "
+                f"(margin limit: {self.parent.state.cash:.2f})"
+            )
+            position_size = max_position_size
+
+        # Minimale Position Size prüfen
+        if position_size <= 0:
+            logger.debug("Position size too small, skipping trade")
+            return
 
         # Order erstellen
         side = OrderSide.BUY if action == "buy" else OrderSide.SELL

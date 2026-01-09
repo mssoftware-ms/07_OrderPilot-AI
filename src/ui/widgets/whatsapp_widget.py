@@ -356,6 +356,16 @@ class WhatsAppWidget(QWidget):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.append(f"[{timestamp}] {message}")
 
+        # Issue #41: Limit log size to prevent memory growth
+        # Keep only last 200 lines
+        doc = self.log_text.document()
+        if doc.blockCount() > 200:
+            cursor = self.log_text.textCursor()
+            cursor.movePosition(cursor.MoveOperation.Start)
+            cursor.movePosition(cursor.MoveOperation.Down, cursor.MoveMode.KeepAnchor, doc.blockCount() - 200)
+            cursor.removeSelectedText()
+            self.log_text.setTextCursor(cursor)
+
     # --- Public API ---
 
     def set_phone_number(self, phone: str) -> None:

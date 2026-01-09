@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING
 from .backtest_runner_state import BacktestState
 
 if TYPE_CHECKING:
-    from .config import BacktestResult, CandleSnapshot
+    from src.core.models.backtest_models import BacktestResult
+    from .replay_provider import CandleSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,8 @@ class BacktestRunnerLoop:
             self._emit_progress(10, "Lade Daten...")
             bar_count = await self.parent.replay_provider.load_data(
                 symbol=self.parent.config.symbol,
-                start=self.parent.config.start_date,
-                end=self.parent.config.end_date,
-                timeframe=self.parent.config.base_timeframe,
+                start_date=self.parent.config.start_date,
+                end_date=self.parent.config.end_date,
             )
 
             if bar_count == 0:
@@ -103,13 +103,19 @@ class BacktestRunnerLoop:
         )
         logger.info(f"Backtest-State initialisiert: ${self.parent.config.initial_capital:,.2f}")
 
-    async def _process_candle(self, candle: "CandleSnapshot", history_1m: list["CandleSnapshot"]) -> None:
-        """Verarbeitet eine einzelne Candle."""
+    async def _process_candle(self, candle: "CandleSnapshot", history_1m) -> None:
+        """Verarbeitet eine einzelne Candle.
+
+        Args:
+            candle: Aktuelle CandleSnapshot
+            history_1m: pd.DataFrame mit 1m OHLCV History
+        """
         # Daily Reset Check
         self._check_daily_reset(candle.datetime)
 
-        # MTF Daten holen
-        mtf_data = self.parent.mtf_resampler.get_current_timeframes(candle.bar_index)
+        # MTF Daten aktualisieren und holen
+        # WICHTIG: Update muss VOR get_current_timeframes aufgerufen werden!
+        mtf_data = self.parent.mtf_resampler.update(candle.timestamp, history_1m)
 
         # Positions managen (SL/TP Check)
         await self.parent._positions_helper._manage_positions(candle, history_1m, mtf_data)
@@ -144,21 +150,25 @@ class BacktestRunnerLoop:
 
     def _risk_check_passed(self) -> bool:
         """Prüft Risk-Limits (Daily Loss, Max Trades, Cooldown)."""
-        # Max Daily Loss Check
-        if self.parent.state.daily_pnl < -self.parent.config.risk.max_daily_loss:
+        # Max Daily Loss Check (berechne max loss in absoluten Werten)
+        max_daily_loss_abs = self.parent.config.initial_capital * (self.parent.config.max_daily_loss_pct / 100)
+        if self.parent.state.daily_pnl < -max_daily_loss_abs:
             return False
 
         # Max Trades per Day
-        if self.parent.state.trade_count_today >= self.parent.config.risk.max_trades_per_day:
+        if self.parent.state.trade_count_today >= self.parent.config.max_trades_per_day:
             return False
 
         # Loss Streak Cooldown
-        if self.parent.state.loss_streak >= self.parent.config.risk.max_loss_streak:
+        if self.parent.state.loss_streak >= self.parent.config.max_loss_streak:
             if self.parent.state.cooldown_until is None:
                 # Setze Cooldown (1 Tag)
                 if self.parent.replay_provider.data is not None and not self.parent.replay_provider.data.empty:
                     last_row = self.parent.replay_provider.data.iloc[-1]
-                    current_time = datetime.fromtimestamp(last_row["timestamp"] / 1000, tz=timezone.utc)
+                    # Timestamp sicher zu int konvertieren (kann pd.Timestamp oder int sein)
+                    ts = last_row["timestamp"]
+                    ts_ms = int(ts.timestamp() * 1000) if hasattr(ts, 'timestamp') else int(ts)
+                    current_time = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
                     from datetime import timedelta
 
                     self.parent.state.cooldown_until = current_time + timedelta(days=1)
@@ -168,7 +178,10 @@ class BacktestRunnerLoop:
             if self.parent.state.cooldown_until:
                 if self.parent.replay_provider.data is not None and not self.parent.replay_provider.data.empty:
                     last_row = self.parent.replay_provider.data.iloc[-1]
-                    current_time = datetime.fromtimestamp(last_row["timestamp"] / 1000, tz=timezone.utc)
+                    # Timestamp sicher zu int konvertieren
+                    ts = last_row["timestamp"]
+                    ts_ms = int(ts.timestamp() * 1000) if hasattr(ts, 'timestamp') else int(ts)
+                    current_time = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
                     if current_time < self.parent.state.cooldown_until:
                         return False
 

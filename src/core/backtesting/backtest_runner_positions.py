@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.core.trading_bot.bot_config import OrderSide, OrderType
+    from .execution_simulator import OrderSide, OrderType
     from .backtest_runner_state import OpenPosition
-    from .config import CandleSnapshot, EquityPoint, Trade
+    from .replay_provider import CandleSnapshot
+    from src.core.models.backtest_models import EquityPoint, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,19 @@ class BacktestRunnerPositions:
     async def _manage_positions(
         self,
         candle: "CandleSnapshot",
-        history_1m: list["CandleSnapshot"],
+        history_1m,  # pd.DataFrame mit 1m OHLCV History
         mtf_data: dict,
     ) -> None:
-        """Managed offene Positionen (SL/TP Check)."""
+        """Managed offene Positionen (SL/TP Check).
+
+        Args:
+            candle: Aktuelle CandleSnapshot
+            history_1m: pd.DataFrame mit 1m OHLCV History
+            mtf_data: Dict mit Multi-Timeframe DataFrames
+        """
         for position in list(self.parent.state.open_positions):
             # Unrealized PnL updaten
-            from src.core.trading_bot.bot_config import OrderSide
+            from .execution_simulator import OrderSide
 
             if position.side == OrderSide.BUY:
                 pnl = (candle.close - position.entry_price) * position.size * position.leverage
@@ -83,8 +90,7 @@ class BacktestRunnerPositions:
         exit_reason: str,
     ) -> None:
         """Schließt eine Position und erstellt Trade-Record."""
-        from src.core.trading_bot.bot_config import OrderSide, OrderType
-        from src.core.backtesting.execution_simulator import SimulatedOrder
+        from .execution_simulator import OrderSide, OrderType, SimulatedOrder
 
         # Exit Order
         exit_side = OrderSide.SELL if position.side == OrderSide.BUY else OrderSide.BUY
@@ -120,7 +126,7 @@ class BacktestRunnerPositions:
         net_pnl = pnl_data["net_pnl"]
 
         # Trade erstellen
-        from .config import Trade
+        from src.core.models.backtest_models import Trade
 
         trade = Trade(
             id=position.id,
@@ -169,7 +175,10 @@ class BacktestRunnerPositions:
         if self.parent.replay_provider.data is not None and not self.parent.replay_provider.data.empty:
             last_row = self.parent.replay_provider.data.iloc[-1]
             exit_price = float(last_row["close"])
-            exit_time = datetime.fromtimestamp(last_row["timestamp"] / 1000, tz=timezone.utc)
+            # Timestamp sicher zu int konvertieren (kann pd.Timestamp oder int sein)
+            ts = last_row["timestamp"]
+            ts_ms = int(ts.timestamp() * 1000) if hasattr(ts, 'timestamp') else int(ts)
+            exit_time = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
         else:
             return
 
@@ -178,7 +187,7 @@ class BacktestRunnerPositions:
 
     def _calculate_unrealized_pnl(self, current_price: float) -> float:
         """Berechnet unrealized PnL aller offenen Positionen."""
-        from src.core.trading_bot.bot_config import OrderSide
+        from .execution_simulator import OrderSide
 
         total = 0.0
         for position in self.parent.state.open_positions:
@@ -191,7 +200,7 @@ class BacktestRunnerPositions:
 
     def _update_equity_curve(self, time: datetime, current_price: float) -> None:
         """Fügt Punkt zur Equity Curve hinzu."""
-        from .config import EquityPoint
+        from src.core.models.backtest_models import EquityPoint
 
         unrealized = self._calculate_unrealized_pnl(current_price)
         equity = self.parent.state.cash + unrealized

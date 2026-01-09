@@ -25,6 +25,52 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _safe_timestamp_to_int(value) -> int:
+    """Konvertiert verschiedene Timestamp-Typen sicher zu int (Millisekunden).
+
+    Unterstützt: int, float, pd.Timestamp, datetime, np.datetime64
+
+    Args:
+        value: Timestamp in verschiedenen Formaten
+
+    Returns:
+        Unix timestamp in Millisekunden als int
+    """
+    if value is None:
+        return 0
+
+    # Bereits int
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+
+    # Float (z.B. Unix timestamp in Sekunden)
+    if isinstance(value, (float, np.floating)):
+        # Wenn > 1e12, ist es bereits in ms
+        if value > 1e12:
+            return int(value)
+        return int(value * 1000)
+
+    # pandas Timestamp
+    if isinstance(value, pd.Timestamp):
+        return int(value.timestamp() * 1000)
+
+    # datetime
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+
+    # numpy datetime64
+    if isinstance(value, np.datetime64):
+        # Konvertiere zu pandas Timestamp dann zu int
+        return int(pd.Timestamp(value).timestamp() * 1000)
+
+    # Fallback: Versuche direkte Konvertierung
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        logger.warning(f"Konnte Timestamp nicht konvertieren: {type(value)} = {value}")
+        return 0
+
+
 # Timeframe-Definitionen in Minuten
 TIMEFRAME_MINUTES = {
     "1m": 1,
@@ -213,6 +259,15 @@ class MTFResampler:
 
         # Kopie erstellen und Bar-Start berechnen
         df = history_1m.copy()
+
+        # Konvertiere timestamp zu int (ms) falls es DatetimeArray ist
+        if pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
+            # Konvertiere datetime zu Unix timestamp in ms
+            df["timestamp"] = df["timestamp"].astype('int64') // 10**6
+        elif not pd.api.types.is_numeric_dtype(df["timestamp"]):
+            # Versuche Konvertierung über _safe_timestamp_to_int
+            df["timestamp"] = df["timestamp"].apply(_safe_timestamp_to_int)
+
         df["bar_start"] = (df["timestamp"] // period_ms) * period_ms
 
         # Gruppiere und aggregiere
@@ -269,7 +324,7 @@ class MTFResampler:
 
             # Update last complete timestamp
             if not resampled.empty:
-                self._last_complete_ts[tf] = int(resampled["bar_start"].iloc[-1])
+                self._last_complete_ts[tf] = _safe_timestamp_to_int(resampled["bar_start"].iloc[-1])
 
         return result
 
@@ -292,14 +347,14 @@ class MTFResampler:
         row = df.iloc[-1]
         return ResampledBar(
             timeframe=timeframe,
-            timestamp=int(row["bar_start"]),
-            timestamp_end=int(row["bar_end"]),
+            timestamp=_safe_timestamp_to_int(row["bar_start"]),
+            timestamp_end=_safe_timestamp_to_int(row["bar_end"]),
             open=float(row["open"]),
             high=float(row["high"]),
             low=float(row["low"]),
             close=float(row["close"]),
             volume=float(row["volume"]),
-            bar_count=int(row.get("bar_count", 0)),
+            bar_count=int(row.get("bar_count", 0)) if pd.notna(row.get("bar_count", 0)) else 0,
             is_complete=True,
         )
 
@@ -323,14 +378,14 @@ class MTFResampler:
         for _, row in df.iterrows():
             bars.append(ResampledBar(
                 timeframe=timeframe,
-                timestamp=int(row["bar_start"]),
-                timestamp_end=int(row["bar_end"]),
+                timestamp=_safe_timestamp_to_int(row["bar_start"]),
+                timestamp_end=_safe_timestamp_to_int(row["bar_end"]),
                 open=float(row["open"]),
                 high=float(row["high"]),
                 low=float(row["low"]),
                 close=float(row["close"]),
                 volume=float(row["volume"]),
-                bar_count=int(row.get("bar_count", 0)),
+                bar_count=int(row.get("bar_count", 0)) if pd.notna(row.get("bar_count", 0)) else 0,
                 is_complete=True,
             ))
 
@@ -345,3 +400,17 @@ class MTFResampler:
     def get_cache_statistics(self) -> dict[str, int]:
         """Gibt Cache-Statistiken zurück."""
         return {tf: len(df) for tf, df in self._cache.items()}
+
+    def get_current_timeframes(self, bar_index: int = 0) -> dict[str, pd.DataFrame]:
+        """Gibt die aktuellen gecachten MTF-Daten zurück.
+
+        Diese Methode wird vom BacktestRunner verwendet, um die aktuellen
+        Multi-Timeframe Daten für Signal-Generierung abzurufen.
+
+        Args:
+            bar_index: Aktueller Bar-Index (für zukünftige Erweiterungen)
+
+        Returns:
+            Dictionary mit Timeframe → DataFrame der vollständigen Bars
+        """
+        return {tf: df.copy() for tf, df in self._cache.items()}

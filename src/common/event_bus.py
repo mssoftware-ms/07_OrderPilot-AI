@@ -150,9 +150,11 @@ class EventBus:
 
     def __init__(self):
         """Initialize the event bus with namespaced signals."""
+        from collections import deque  # Issue #41: Use deque for O(1) append/pop
         self._signals = Namespace()
         self._signal_cache = {}
-        self._event_history = []
+        # Issue #41: Use deque with maxlen for O(1) operations instead of list.pop(0) which is O(n)
+        self._event_history = deque(maxlen=10000)
         self._max_history_size = 10000
 
     def get_signal(self, event_type: EventType):
@@ -195,10 +197,8 @@ class EventBus:
                         handler_err,
                     )
 
-            # Store in history (with size limit)
+            # Store in history (deque handles size limit automatically with O(1) operations)
             self._event_history.append(event)
-            if len(self._event_history) > self._max_history_size:
-                self._event_history.pop(0)
 
             logger.debug(f"Event emitted: {event.type.value} from {event.source}")
         except Exception as e:

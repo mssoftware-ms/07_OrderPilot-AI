@@ -1044,7 +1044,7 @@ class BacktestTab(QWidget):
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(120)
+        self.log_text.setMaximumHeight(240)  # Issue #40: Doubled height for better log visibility
         self.log_text.setStyleSheet("""
             QTextEdit {
                 background-color: #1a1a1a;
@@ -1294,7 +1294,7 @@ class BacktestTab(QWidget):
 
         # Quick-Select Buttons
         quick_layout = QHBoxLayout()
-        for days, label in [(7, "1W"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")]:
+        for days, label in [(1, "1T"), (2, "2T"), (7, "1W"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")]:
             btn = QPushButton(label)
             btn.setMaximumWidth(40)
             btn.clicked.connect(lambda checked, d=days: self._set_date_range(d))
@@ -1727,6 +1727,7 @@ class BacktestTab(QWidget):
 
         # --- Results Summary ---
         results_group = QGroupBox("📊 Batch/WF Ergebnisse")
+        results_group.setMaximumHeight(200)  # Issue #40: Limit height to make room for larger log
         results_layout = QVBoxLayout(results_group)
 
         self.batch_results_table = QTableWidget()
@@ -2870,75 +2871,178 @@ class BacktestTab(QWidget):
                 sl_atr_mult = te.get('sl_atr_multiplier', 1.5)
 
             # Erstelle konfigurierte Signal-Pipeline für Backtest
-            def backtest_signal_callback(candles, symbol, timeframe):
-                """
-                Generiert Signal basierend auf Candle-Daten mit Engine-Configs.
+            # WICHTIG: Signatur muss (candle, history_1m, mtf_data) sein!
+            # - candle: CandleSnapshot (einzelne Candle)
+            # - history_1m: pd.DataFrame mit OHLCV History
+            # - mtf_data: dict mit Multi-Timeframe DataFrames
 
-                Verwendet die konfigurierten Engines aus Engine Settings.
+            # =================================================================
+            # ULTRA-LIGHT BACKTEST SIGNAL CALLBACK
+            # =================================================================
+            # Optimiert für maximale Performance:
+            # 1. Indikatoren nur EINMAL berechnen (via IndicatorEngine mit Cache)
+            # 2. KEINE redundante Level-Berechnung
+            # 3. Entry Score mit vorberechneten Indikatoren
+            # =================================================================
+
+            from src.core.indicators import IndicatorEngine, IndicatorConfig, IndicatorType
+            import pandas as pd
+
+            # Indicator Engine mit Cache (EINMAL erstellt, wiederverwendet)
+            indicator_engine = IndicatorEngine(cache_size=500)
+            entry_engine = EntryScoreEngine(config=entry_config) if entry_config else EntryScoreEngine()
+
+            # Cache für Performance
+            cache_state = {
+                'last_price': 0.0,
+                'last_df_with_indicators': None,
+                'last_df_hash': None,
+                'candle_count': 0,
+            }
+
+            logger.info("🚀 ULTRA-LIGHT Backtest-Callback erstellt (keine redundanten Berechnungen)")
+
+            def _calculate_indicators_fast(df: pd.DataFrame) -> pd.DataFrame:
+                """Berechnet nur die MINIMAL notwendigen Indikatoren."""
+                if df is None or df.empty:
+                    return df
+
+                # Prüfe ob bereits berechnet (via Hash)
+                df_hash = hash((len(df), df.iloc[-1]['close'] if 'close' in df.columns else 0))
+                if cache_state['last_df_hash'] == df_hash and cache_state['last_df_with_indicators'] is not None:
+                    return cache_state['last_df_with_indicators']
+
+                result_df = df.copy()
+
+                try:
+                    # Nur die wichtigsten Indikatoren für Entry-Score
+                    # EMA 20, 50 für Trend
+                    for period in [20, 50]:
+                        config = IndicatorConfig(
+                            indicator_type=IndicatorType.EMA,
+                            params={"period": period, "price": "close"},
+                            use_talib=True,
+                            cache_results=True,
+                        )
+                        res = indicator_engine.calculate(result_df, config)
+                        result_df[f"ema_{period}"] = res.values
+
+                    # RSI für Momentum
+                    rsi_config = IndicatorConfig(
+                        indicator_type=IndicatorType.RSI,
+                        params={"period": 14},
+                        use_talib=True,
+                        cache_results=True,
+                    )
+                    result_df["rsi_14"] = indicator_engine.calculate(result_df, rsi_config).values
+
+                    # ADX für Trend-Stärke
+                    adx_config = IndicatorConfig(
+                        indicator_type=IndicatorType.ADX,
+                        params={"period": 14},
+                        use_talib=True,
+                        cache_results=True,
+                    )
+                    adx_result = indicator_engine.calculate(result_df, adx_config)
+                    if isinstance(adx_result.values, pd.DataFrame):
+                        result_df["adx_14"] = adx_result.values["adx"]
+                        result_df["plus_di"] = adx_result.values["plus_di"]
+                        result_df["minus_di"] = adx_result.values["minus_di"]
+
+                    # ATR für SL/TP
+                    atr_config = IndicatorConfig(
+                        indicator_type=IndicatorType.ATR,
+                        params={"period": 14},
+                        use_talib=True,
+                        cache_results=True,
+                    )
+                    result_df["atr_14"] = indicator_engine.calculate(result_df, atr_config).values
+
+                    # Cache das Ergebnis
+                    cache_state['last_df_with_indicators'] = result_df
+                    cache_state['last_df_hash'] = df_hash
+
+                except Exception as e:
+                    logger.warning(f"Indicator calculation error: {e}")
+
+                return result_df
+
+            def backtest_signal_callback(candle, history_1m, mtf_data):
                 """
-                if not candles or len(candles) < 50:
+                ULTRA-LIGHT Signal Callback für Backtest.
+
+                Optimiert für Speed:
+                - Nur minimale Indikatoren
+                - Kein MarketContextBuilder (zu teuer!)
+                - Kein LevelEngine (nicht für Entry benötigt)
+                - Direkter Entry-Score mit vorberechneten Indikatoren
+                """
+                if history_1m is None or history_1m.empty or len(history_1m) < 50:
                     return None
 
                 try:
-                    # MarketContext aufbauen
-                    context_builder = MarketContextBuilder()
-                    context = context_builder.build_from_candles(candles, symbol)
+                    cache_state['candle_count'] += 1
+                    current_price = candle.close
 
-                    # Levels berechnen mit Config
-                    level_engine = LevelEngine(config=level_config) if level_config else LevelEngine()
-                    levels = level_engine.detect_levels(candles)
+                    # Indikatoren berechnen (mit Cache!)
+                    df_with_indicators = _calculate_indicators_fast(history_1m)
 
-                    # Entry Score berechnen mit Config
-                    entry_engine = EntryScoreEngine(config=entry_config) if entry_config else EntryScoreEngine()
-                    score_result = entry_engine.calculate_score(context, levels)
+                    # Entry Score berechnen (nutzt die vorberechneten Indikatoren)
+                    score_result = entry_engine.calculate(
+                        df_with_indicators,
+                        regime_result=None,  # Skip regime für Speed
+                        symbol="BTCUSDT",
+                        timeframe="1m"
+                    )
 
-                    # Score normalisieren (0-100 -> 0-1)
+                    # Update cache
+                    cache_state['last_price'] = current_price
+
+                    # Score verwenden (final_score ist bereits 0.0-1.0)
                     if score_result:
-                        total_score = score_result.total_score
-                        if isinstance(total_score, (int, float)):
-                            # Normalisieren falls Score > 1
-                            if total_score > 1:
-                                total_score = total_score / 100.0
-                        else:
+                        total_score = score_result.final_score
+                        if not isinstance(total_score, (int, float)):
                             total_score = 0.0
 
                         # Signal generieren wenn Score hoch genug
                         if total_score >= min_score_for_signal:
-                            # ATR für TP/SL berechnen
-                            atr = context.atr if hasattr(context, 'atr') else None
-                            if not atr and len(candles) > 14:
-                                # Berechne ATR
-                                import pandas as pd
-                                df = pd.DataFrame([c.__dict__ for c in candles[-20:]])
-                                if 'high' in df and 'low' in df and 'close' in df:
-                                    df['tr'] = df[['high', 'low']].max(axis=1) - df[['high', 'low']].min(axis=1)
-                                    atr = df['tr'].mean()
+                            # ATR aus vorberechneten Indikatoren nehmen
+                            atr = None
+                            if 'atr_14' in df_with_indicators.columns:
+                                atr_series = df_with_indicators['atr_14'].dropna()
+                                if not atr_series.empty:
+                                    atr = float(atr_series.iloc[-1])
 
-                            current_price = candles[-1].close
+                            current_price = candle.close
                             atr = atr or (current_price * 0.02)  # Fallback: 2%
 
-                            # Bestimme Richtung
-                            bias = getattr(score_result, 'bias', 'neutral')
-                            if bias == 'bullish' or (hasattr(score_result, 'direction') and score_result.direction == 'LONG'):
-                                signal_dir = "LONG"
+                            # Bestimme Richtung (direction ist ScoreDirection enum mit .value = "LONG"/"SHORT"/"NEUTRAL")
+                            direction = score_result.direction
+                            direction_str = direction.value if hasattr(direction, 'value') else str(direction)
+
+                            if direction_str == "LONG":
+                                action = "buy"
                                 sl = current_price - (atr * sl_atr_mult)
                                 tp = current_price + (atr * tp_atr_mult)
-                            elif bias == 'bearish' or (hasattr(score_result, 'direction') and score_result.direction == 'SHORT'):
-                                signal_dir = "SHORT"
+                                sl_distance = atr * sl_atr_mult
+                            elif direction_str == "SHORT":
+                                action = "sell"
                                 sl = current_price + (atr * sl_atr_mult)
                                 tp = current_price - (atr * tp_atr_mult)
+                                sl_distance = atr * sl_atr_mult
                             else:
                                 return None
 
+                            # Return Format für BacktestRunner
                             return {
-                                "signal": signal_dir,
-                                "confidence": total_score,
-                                "entry_price": current_price,
+                                "action": action,  # "buy" oder "sell"
                                 "stop_loss": sl,
                                 "take_profit": tp,
+                                "sl_distance": sl_distance,
+                                "leverage": 1,  # Default leverage
+                                "reason": f"Score: {total_score:.2f}, Quality: {getattr(score_result, 'quality', 'UNKNOWN')}",
+                                "confidence": total_score,
                                 "atr": atr,
-                                "score_quality": getattr(score_result, 'quality', 'UNKNOWN'),
-                                "regime": getattr(context, 'regime', None),
                             }
 
                 except Exception as e:
@@ -3367,17 +3471,28 @@ class BacktestTab(QWidget):
             with open(filename, 'r', encoding='utf-8') as f:
                 template = json.load(f)
 
-            # Validiere Template-Struktur
-            if 'parameters' not in template:
+            # Validiere Template-Struktur - Unterstütze V1 (parameters) UND V2 (entry_score, etc.) Format
+            is_v1_format = 'parameters' in template
+            is_v2_format = 'version' in template and ('entry_score' in template or 'strategy_profile' in template)
+
+            if not is_v1_format and not is_v2_format:
                 QMessageBox.warning(
                     self, "Ungültiges Template",
-                    "Die ausgewählte Datei ist kein gültiges Backtest-Template."
+                    "Die ausgewählte Datei ist kein gültiges Backtest-Template.\n\n"
+                    "Erwartet: V1-Format mit 'parameters' oder V2-Format mit 'entry_score'/'strategy_profile'."
                 )
                 return
 
             meta = template.get('meta', {})
-            params = template.get('parameters', {})
-            full_specs = template.get('full_specs', [])
+
+            # V2-Format: Konvertiere zu V1-kompatiblem Format für die UI
+            if is_v2_format:
+                params = self._convert_v2_to_parameters(template)
+                full_specs = []  # V2 hat keine full_specs
+                self._log(f"📦 V2-Format erkannt (version: {template.get('version', 'unknown')})")
+            else:
+                params = template.get('parameters', {})
+                full_specs = template.get('full_specs', [])
 
             # Falls full_specs vorhanden, diese für Tabelle verwenden
             if full_specs:
@@ -3486,6 +3601,137 @@ class BacktestTab(QWidget):
             logger.exception("Failed to load template")
             self._log(f"❌ Template-Laden fehlgeschlagen: {e}")
             QMessageBox.critical(self, "Fehler", f"Template-Laden fehlgeschlagen:\n{e}")
+
+    def _convert_v2_to_parameters(self, template: dict) -> dict:
+        """Konvertiert V2-Format Template zu V1-kompatiblem parameters-Dict.
+
+        V2-Format hat verschachtelte Struktur wie:
+        - entry_score.weights, entry_score.thresholds, entry_score.gates
+        - exit_management.stop_loss, exit_management.take_profit
+        - risk_leverage.risk_per_trade_pct, risk_leverage.base_leverage
+
+        Args:
+            template: Das V2-Format Template
+
+        Returns:
+            Dict im V1-parameters-Format für die UI-Anzeige
+        """
+        params = {}
+
+        # Mapping von V2-Pfaden zu V1-Parameter-Namen und Kategorien
+        v2_mappings = [
+            # Entry Score - Weights
+            ('entry_score.weights.use_preset', 'weight_preset', 'Entry Score', 'Weights', 'Preset für Gewichtungen'),
+            # Entry Score - Thresholds
+            ('entry_score.thresholds.min_score_for_entry', 'min_score_for_entry', 'Entry Score', 'Thresholds', 'Minimum Entry Score'),
+            # Entry Score - Gates
+            ('entry_score.gates.block_in_chop', 'block_in_chop', 'Entry Score', 'Gates', 'Im Chop-Regime blocken'),
+            ('entry_score.gates.block_against_strong_trend', 'block_against_strong_trend', 'Entry Score', 'Gates', 'Gegen starken Trend blocken'),
+            ('entry_score.gates.allow_counter_trend_sfp', 'allow_counter_trend_sfp', 'Entry Score', 'Gates', 'Counter-Trend SFP erlauben'),
+            # Entry Score - Indicator Params
+            ('entry_score.indicator_params.ema_short', 'ema_short', 'Entry Score', 'Indicators', 'EMA Short Periode'),
+            ('entry_score.indicator_params.ema_medium', 'ema_medium', 'Entry Score', 'Indicators', 'EMA Medium Periode'),
+            ('entry_score.indicator_params.ema_long', 'ema_long', 'Entry Score', 'Indicators', 'EMA Long Periode'),
+            ('entry_score.indicator_params.rsi_period', 'rsi_period', 'Entry Score', 'Indicators', 'RSI Periode'),
+            ('entry_score.indicator_params.adx_strong_trend', 'adx_strong_trend', 'Entry Score', 'Indicators', 'ADX Schwelle für starken Trend'),
+            # Entry Triggers
+            ('entry_triggers.breakout.enabled', 'breakout_enabled', 'Entry Triggers', 'Breakout', 'Breakout-Trigger aktiv'),
+            ('entry_triggers.breakout.volume_multiplier', 'breakout_volume_multiplier', 'Entry Triggers', 'Breakout', 'Volumen-Multiplikator'),
+            ('entry_triggers.pullback.enabled', 'pullback_enabled', 'Entry Triggers', 'Pullback', 'Pullback-Trigger aktiv'),
+            ('entry_triggers.pullback.max_distance_atr', 'pullback_max_distance_atr', 'Entry Triggers', 'Pullback', 'Max Distanz in ATR'),
+            ('entry_triggers.sfp.enabled', 'sfp_enabled', 'Entry Triggers', 'SFP', 'SFP-Trigger aktiv'),
+            # Exit Management - Stop Loss
+            ('exit_management.stop_loss.type', 'sl_type', 'Exit Management', 'Stop Loss', 'Stop-Loss Typ'),
+            ('exit_management.stop_loss.atr_multiplier', 'sl_atr_multiplier', 'Exit Management', 'Stop Loss', 'ATR-Multiplikator für SL'),
+            # Exit Management - Take Profit
+            ('exit_management.take_profit.type', 'tp_type', 'Exit Management', 'Take Profit', 'Take-Profit Typ'),
+            ('exit_management.take_profit.atr_multiplier', 'tp_atr_multiplier', 'Exit Management', 'Take Profit', 'ATR-Multiplikator für TP'),
+            ('exit_management.take_profit.use_level', 'tp_use_level', 'Exit Management', 'Take Profit', 'Level für TP verwenden'),
+            # Exit Management - Trailing Stop
+            ('exit_management.trailing_stop.enabled', 'trailing_enabled', 'Exit Management', 'Trailing', 'Trailing Stop aktiv'),
+            ('exit_management.trailing_stop.move_to_breakeven', 'trailing_move_to_breakeven', 'Exit Management', 'Trailing', 'Move to Breakeven'),
+            ('exit_management.trailing_stop.activation_atr', 'trailing_activation_atr', 'Exit Management', 'Trailing', 'Aktivierung in ATR'),
+            ('exit_management.trailing_stop.distance_atr', 'trailing_distance_atr', 'Exit Management', 'Trailing', 'Trailing-Distanz in ATR'),
+            # Risk & Leverage
+            ('risk_leverage.risk_per_trade_pct', 'risk_per_trade_pct', 'Risk/Leverage', 'Risk', 'Risiko pro Trade in %'),
+            ('risk_leverage.base_leverage', 'base_leverage', 'Risk/Leverage', 'Leverage', 'Basis-Hebel'),
+            ('risk_leverage.max_leverage', 'max_leverage', 'Risk/Leverage', 'Leverage', 'Maximaler Hebel'),
+            ('risk_leverage.min_liquidation_distance_pct', 'min_liquidation_distance_pct', 'Risk/Leverage', 'Risk', 'Min. Liquidations-Distanz %'),
+            ('risk_leverage.max_daily_loss_pct', 'max_daily_loss_pct', 'Risk/Leverage', 'Risk', 'Max. täglicher Verlust %'),
+            ('risk_leverage.max_trades_per_day', 'max_trades_per_day', 'Risk/Leverage', 'Limits', 'Max. Trades pro Tag'),
+            ('risk_leverage.max_concurrent_positions', 'max_concurrent_positions', 'Risk/Leverage', 'Limits', 'Max. gleichzeitige Positionen'),
+            # Execution Simulation
+            ('execution_simulation.initial_capital', 'initial_capital', 'Simulation', 'Capital', 'Startkapital'),
+            ('execution_simulation.fee_maker_pct', 'fee_maker_pct', 'Simulation', 'Fees', 'Maker-Fee %'),
+            ('execution_simulation.fee_taker_pct', 'fee_taker_pct', 'Simulation', 'Fees', 'Taker-Fee %'),
+            ('execution_simulation.slippage_bps', 'slippage_bps', 'Simulation', 'Slippage', 'Slippage in BPS'),
+            # Strategy Profile
+            ('strategy_profile.type', 'strategy_type', 'Strategy', 'Profile', 'Strategie-Typ'),
+            ('strategy_profile.preset', 'strategy_preset', 'Strategy', 'Profile', 'Strategie-Preset'),
+            ('strategy_profile.direction_bias', 'direction_bias', 'Strategy', 'Profile', 'Richtungs-Bias'),
+            # Walk Forward
+            ('walk_forward.enabled', 'wf_enabled', 'Walk Forward', 'Settings', 'Walk-Forward aktiv'),
+            ('walk_forward.train_window_days', 'wf_train_window_days', 'Walk Forward', 'Settings', 'Training-Fenster (Tage)'),
+            ('walk_forward.test_window_days', 'wf_test_window_days', 'Walk Forward', 'Settings', 'Test-Fenster (Tage)'),
+        ]
+
+        for v2_path, param_name, category, subcategory, description in v2_mappings:
+            value = self._get_nested_value(template, v2_path)
+            if value is not None:
+                # Extrahiere optimize und range falls vorhanden (V2-Format für optimierbare Parameter)
+                if isinstance(value, dict) and 'value' in value:
+                    actual_value = value.get('value')
+                    variations = value.get('range', [])
+                    optimize = value.get('optimize', False)
+                else:
+                    actual_value = value
+                    variations = []
+                    optimize = False
+
+                # Bestimme Typ
+                if isinstance(actual_value, bool):
+                    param_type = 'bool'
+                elif isinstance(actual_value, int):
+                    param_type = 'int'
+                elif isinstance(actual_value, float):
+                    param_type = 'float'
+                elif isinstance(actual_value, str):
+                    param_type = 'str'
+                else:
+                    param_type = 'unknown'
+
+                params[param_name] = {
+                    'value': actual_value,
+                    'type': param_type,
+                    'category': category,
+                    'subcategory': subcategory,
+                    'description': description,
+                    'min': None,
+                    'max': None,
+                    'variations': variations if variations else [actual_value] if actual_value is not None else [],
+                    'optimize': optimize,
+                }
+
+        return params
+
+    def _get_nested_value(self, data: dict, path: str):
+        """Holt einen verschachtelten Wert aus einem Dict via Punkt-Notation.
+
+        Args:
+            data: Das Source-Dictionary
+            path: Punkt-separierter Pfad (z.B. 'entry_score.weights.use_preset')
+
+        Returns:
+            Der Wert am Pfad oder None wenn nicht gefunden
+        """
+        keys = path.split('.')
+        current = data
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return None
+        return current
 
     def _on_derive_variant_clicked(self) -> None:
         """

@@ -224,17 +224,28 @@ class BacktestTemplateManager:
             with open(filename, 'r', encoding='utf-8') as f:
                 template = json.load(f)
 
-            # Validiere Template-Struktur
-            if 'parameters' not in template:
+            # Validiere Template-Struktur - Unterstütze V1 (parameters) UND V2 (entry_score, etc.) Format
+            is_v1_format = 'parameters' in template
+            is_v2_format = 'version' in template and ('entry_score' in template or 'strategy_profile' in template)
+
+            if not is_v1_format and not is_v2_format:
                 QMessageBox.warning(
                     self.parent, "Ungültiges Template",
-                    "Die ausgewählte Datei ist kein gültiges Backtest-Template."
+                    "Die ausgewählte Datei ist kein gültiges Backtest-Template.\n\n"
+                    "Erwartet: V1-Format mit 'parameters' oder V2-Format mit 'entry_score'/'strategy_profile'."
                 )
                 return
 
             meta = template.get('meta', {})
-            params = template.get('parameters', {})
-            full_specs = template.get('full_specs', [])
+
+            # V2-Format: Konvertiere zu V1-kompatiblem Format für die UI
+            if is_v2_format:
+                params = self._convert_v2_to_parameters(template)
+                full_specs = []  # V2 hat keine full_specs
+                self.parent._log(f"📦 V2-Format erkannt (version: {template.get('version', 'unknown')})")
+            else:
+                params = template.get('parameters', {})
+                full_specs = template.get('full_specs', [])
 
             # Falls full_specs vorhanden, diese für Tabelle verwenden
             if full_specs:
@@ -557,3 +568,134 @@ class BacktestTemplateManager:
                 checkbox = checkbox_widget.findChild(QCheckBox)
                 if checkbox:
                     checkbox.setChecked(checked)
+
+    def _convert_v2_to_parameters(self, template: dict[str, Any]) -> dict[str, Any]:
+        """Konvertiert V2-Format Template zu V1-kompatiblem parameters-Dict.
+
+        V2-Format hat verschachtelte Struktur wie:
+        - entry_score.weights, entry_score.thresholds, entry_score.gates
+        - exit_management.stop_loss, exit_management.take_profit
+        - risk_leverage.risk_per_trade_pct, risk_leverage.base_leverage
+
+        Args:
+            template: Das V2-Format Template
+
+        Returns:
+            Dict im V1-parameters-Format für die UI-Anzeige
+        """
+        params: dict[str, Any] = {}
+
+        # Mapping von V2-Pfaden zu V1-Parameter-Namen und Kategorien
+        v2_mappings = [
+            # Entry Score - Weights
+            ('entry_score.weights.use_preset', 'weight_preset', 'Entry Score', 'Weights', 'Preset für Gewichtungen'),
+            # Entry Score - Thresholds
+            ('entry_score.thresholds.min_score_for_entry', 'min_score_for_entry', 'Entry Score', 'Thresholds', 'Minimum Entry Score'),
+            # Entry Score - Gates
+            ('entry_score.gates.block_in_chop', 'block_in_chop', 'Entry Score', 'Gates', 'Im Chop-Regime blocken'),
+            ('entry_score.gates.block_against_strong_trend', 'block_against_strong_trend', 'Entry Score', 'Gates', 'Gegen starken Trend blocken'),
+            ('entry_score.gates.allow_counter_trend_sfp', 'allow_counter_trend_sfp', 'Entry Score', 'Gates', 'Counter-Trend SFP erlauben'),
+            # Entry Score - Indicator Params
+            ('entry_score.indicator_params.ema_short', 'ema_short', 'Entry Score', 'Indicators', 'EMA Short Periode'),
+            ('entry_score.indicator_params.ema_medium', 'ema_medium', 'Entry Score', 'Indicators', 'EMA Medium Periode'),
+            ('entry_score.indicator_params.ema_long', 'ema_long', 'Entry Score', 'Indicators', 'EMA Long Periode'),
+            ('entry_score.indicator_params.rsi_period', 'rsi_period', 'Entry Score', 'Indicators', 'RSI Periode'),
+            ('entry_score.indicator_params.adx_strong_trend', 'adx_strong_trend', 'Entry Score', 'Indicators', 'ADX Schwelle für starken Trend'),
+            # Entry Triggers
+            ('entry_triggers.breakout.enabled', 'breakout_enabled', 'Entry Triggers', 'Breakout', 'Breakout-Trigger aktiv'),
+            ('entry_triggers.breakout.volume_multiplier', 'breakout_volume_multiplier', 'Entry Triggers', 'Breakout', 'Volumen-Multiplikator'),
+            ('entry_triggers.pullback.enabled', 'pullback_enabled', 'Entry Triggers', 'Pullback', 'Pullback-Trigger aktiv'),
+            ('entry_triggers.pullback.max_distance_atr', 'pullback_max_distance_atr', 'Entry Triggers', 'Pullback', 'Max Distanz in ATR'),
+            ('entry_triggers.sfp.enabled', 'sfp_enabled', 'Entry Triggers', 'SFP', 'SFP-Trigger aktiv'),
+            # Exit Management - Stop Loss
+            ('exit_management.stop_loss.type', 'sl_type', 'Exit Management', 'Stop Loss', 'Stop-Loss Typ'),
+            ('exit_management.stop_loss.atr_multiplier', 'sl_atr_multiplier', 'Exit Management', 'Stop Loss', 'ATR-Multiplikator für SL'),
+            # Exit Management - Take Profit
+            ('exit_management.take_profit.type', 'tp_type', 'Exit Management', 'Take Profit', 'Take-Profit Typ'),
+            ('exit_management.take_profit.atr_multiplier', 'tp_atr_multiplier', 'Exit Management', 'Take Profit', 'ATR-Multiplikator für TP'),
+            ('exit_management.take_profit.use_level', 'tp_use_level', 'Exit Management', 'Take Profit', 'Level für TP verwenden'),
+            # Exit Management - Trailing Stop
+            ('exit_management.trailing_stop.enabled', 'trailing_enabled', 'Exit Management', 'Trailing', 'Trailing Stop aktiv'),
+            ('exit_management.trailing_stop.move_to_breakeven', 'trailing_move_to_breakeven', 'Exit Management', 'Trailing', 'Move to Breakeven'),
+            ('exit_management.trailing_stop.activation_atr', 'trailing_activation_atr', 'Exit Management', 'Trailing', 'Aktivierung in ATR'),
+            ('exit_management.trailing_stop.distance_atr', 'trailing_distance_atr', 'Exit Management', 'Trailing', 'Trailing-Distanz in ATR'),
+            # Risk & Leverage
+            ('risk_leverage.risk_per_trade_pct', 'risk_per_trade_pct', 'Risk/Leverage', 'Risk', 'Risiko pro Trade in %'),
+            ('risk_leverage.base_leverage', 'base_leverage', 'Risk/Leverage', 'Leverage', 'Basis-Hebel'),
+            ('risk_leverage.max_leverage', 'max_leverage', 'Risk/Leverage', 'Leverage', 'Maximaler Hebel'),
+            ('risk_leverage.min_liquidation_distance_pct', 'min_liquidation_distance_pct', 'Risk/Leverage', 'Risk', 'Min. Liquidations-Distanz %'),
+            ('risk_leverage.max_daily_loss_pct', 'max_daily_loss_pct', 'Risk/Leverage', 'Risk', 'Max. täglicher Verlust %'),
+            ('risk_leverage.max_trades_per_day', 'max_trades_per_day', 'Risk/Leverage', 'Limits', 'Max. Trades pro Tag'),
+            ('risk_leverage.max_concurrent_positions', 'max_concurrent_positions', 'Risk/Leverage', 'Limits', 'Max. gleichzeitige Positionen'),
+            # Execution Simulation
+            ('execution_simulation.initial_capital', 'initial_capital', 'Simulation', 'Capital', 'Startkapital'),
+            ('execution_simulation.fee_maker_pct', 'fee_maker_pct', 'Simulation', 'Fees', 'Maker-Fee %'),
+            ('execution_simulation.fee_taker_pct', 'fee_taker_pct', 'Simulation', 'Fees', 'Taker-Fee %'),
+            ('execution_simulation.slippage_bps', 'slippage_bps', 'Simulation', 'Slippage', 'Slippage in BPS'),
+            # Strategy Profile
+            ('strategy_profile.type', 'strategy_type', 'Strategy', 'Profile', 'Strategie-Typ'),
+            ('strategy_profile.preset', 'strategy_preset', 'Strategy', 'Profile', 'Strategie-Preset'),
+            ('strategy_profile.direction_bias', 'direction_bias', 'Strategy', 'Profile', 'Richtungs-Bias'),
+            # Walk Forward
+            ('walk_forward.enabled', 'wf_enabled', 'Walk Forward', 'Settings', 'Walk-Forward aktiv'),
+            ('walk_forward.train_window_days', 'wf_train_window_days', 'Walk Forward', 'Settings', 'Training-Fenster (Tage)'),
+            ('walk_forward.test_window_days', 'wf_test_window_days', 'Walk Forward', 'Settings', 'Test-Fenster (Tage)'),
+        ]
+
+        for v2_path, param_name, category, subcategory, description in v2_mappings:
+            value = self._get_nested_value(template, v2_path)
+            if value is not None:
+                # Extrahiere optimize und range falls vorhanden (V2-Format für optimierbare Parameter)
+                if isinstance(value, dict) and 'value' in value:
+                    actual_value = value.get('value')
+                    variations = value.get('range', [])
+                    optimize = value.get('optimize', False)
+                else:
+                    actual_value = value
+                    variations = []
+                    optimize = False
+
+                # Bestimme Typ
+                if isinstance(actual_value, bool):
+                    param_type = 'bool'
+                elif isinstance(actual_value, int):
+                    param_type = 'int'
+                elif isinstance(actual_value, float):
+                    param_type = 'float'
+                elif isinstance(actual_value, str):
+                    param_type = 'str'
+                else:
+                    param_type = 'unknown'
+
+                params[param_name] = {
+                    'value': actual_value,
+                    'type': param_type,
+                    'category': category,
+                    'subcategory': subcategory,
+                    'description': description,
+                    'min': None,
+                    'max': None,
+                    'variations': variations if variations else [actual_value] if actual_value is not None else [],
+                    'optimize': optimize,
+                }
+
+        return params
+
+    def _get_nested_value(self, data: dict[str, Any], path: str) -> Any:
+        """Holt einen verschachtelten Wert aus einem Dict via Punkt-Notation.
+
+        Args:
+            data: Das Source-Dictionary
+            path: Punkt-separierter Pfad (z.B. 'entry_score.weights.use_preset')
+
+        Returns:
+            Der Wert am Pfad oder None wenn nicht gefunden
+        """
+        keys = path.split('.')
+        current = data
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return None
+        return current

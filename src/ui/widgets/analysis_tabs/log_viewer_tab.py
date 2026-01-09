@@ -126,9 +126,17 @@ class LogViewerTab(QWidget):
                 self.status_label.setText("Log-Datei: Nicht vorhanden")
                 return
 
-            # Read log file
+            # Issue #41: Only read last 100KB of log file to prevent memory issues
+            file_size = self.log_file_path.stat().st_size
+            max_read_bytes = 100 * 1024  # 100KB limit
+
             with open(self.log_file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+                if file_size > max_read_bytes:
+                    f.seek(file_size - max_read_bytes)
+                    f.readline()  # Skip partial line
+                    content = "... (ältere Einträge ausgeblendet, Datei > 100KB) ...\n\n" + f.read()
+                else:
+                    content = f.read()
 
             # Update display
             self.log_view.setText(content)
