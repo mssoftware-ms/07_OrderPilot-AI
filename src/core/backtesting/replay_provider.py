@@ -13,6 +13,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -389,6 +390,21 @@ class ReplayMarketDataProvider:
 
         self._iterator.reset()
         return self._iterator
+
+    async def replay_iter(
+        self,
+        yield_every: int = 200,
+    ) -> AsyncIterator[tuple[CandleSnapshot, pd.DataFrame]]:
+        """Async-Iterator für Candle-by-Candle Replay.
+
+        Args:
+            yield_every: Anzahl Candles zwischen Event-Loop-Yields.
+        """
+        iterator = self.iterate()
+        for index, (candle, history) in enumerate(iterator, start=1):
+            yield candle, history
+            if yield_every > 0 and index % yield_every == 0:
+                await asyncio.sleep(0)
 
     @property
     def data(self) -> pd.DataFrame | None:
