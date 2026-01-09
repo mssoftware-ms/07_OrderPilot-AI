@@ -76,6 +76,43 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class BatchTestWorker(QThread):
+    """Worker thread to run batch tests without blocking the UI."""
+
+    progress = pyqtSignal(int, str)
+    log = pyqtSignal(str)
+    finished = pyqtSignal(object, list)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        batch_config,
+        *,
+        signal_callback: Callable | None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._batch_config = batch_config
+        self._signal_callback = signal_callback
+
+    def run(self) -> None:
+        try:
+            self.log.emit("🧵 Batch-Worker gestartet (separater Thread)")
+            from src.core.backtesting import BatchRunner
+
+            runner = BatchRunner(
+                self._batch_config,
+                signal_callback=self._signal_callback,
+            )
+            runner.set_progress_callback(lambda p, m: self.progress.emit(p, m))
+
+            summary = asyncio.run(runner.run())
+            self.finished.emit(summary, runner.results)
+        except Exception as exc:
+            logger.exception("Batch worker failed")
+            self.error.emit(str(exc))
+
 # =============================================================================
 # ENGINE CONFIG IMPORTS
 # =============================================================================
@@ -162,6 +199,7 @@ class BacktestTab(QWidget):
         self._is_running = False
         self._current_result = None
         self._current_runner = None
+        self._batch_worker: BatchTestWorker | None = None
 
         # Engine configs (collected from Engine Settings tabs)
         self._engine_configs: Dict[str, Any] = {}
@@ -2008,22 +2046,92 @@ class BacktestTab(QWidget):
     @pyqtSlot()
     def _on_batch_btn_clicked(self) -> None:
         """Synchroner Button-Handler, startet async Batch-Test."""
-        print(">>> _on_batch_btn_clicked CALLED <<<", flush=True)
-        logger.info("🔄 _on_batch_btn_clicked() - scheduling async batch test")
+        logger.info("🔄 _on_batch_btn_clicked() - starting batch worker")
         self._log("🔄 Batch-Test wird gestartet...")
 
+        if self._is_running:
+            self._log("⚠️ Batch läuft bereits")
+            return
+
+        # Parse parameter space aus UI
+        param_space_text = self.param_space_text.toPlainText().strip()
+        if not param_space_text:
+            param_space = {
+                "risk_per_trade_pct": [0.5, 1.0, 1.5, 2.0],
+                "max_leverage": [5, 10, 20],
+            }
+            self._log("⚠️ Kein Parameter Space angegeben, verwende Standard")
+        else:
+            try:
+                param_space = json.loads(param_space_text)
+            except json.JSONDecodeError as exc:
+                self._log(f"❌ Ungültiges JSON: {exc}")
+                QMessageBox.critical(self, "Fehler", f"Ungültiges JSON für Parameter Space:\n{exc}")
+                return
+
         try:
-            # Schedule async task on the event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(self._on_batch_clicked())
-            else:
-                logger.warning("Event loop not running, trying qasync")
-                # Fallback: try to run via qasync
-                asyncio.ensure_future(self._on_batch_clicked())
-        except Exception as e:
-            logger.exception(f"Failed to schedule batch test: {e}")
-            self._log(f"❌ Fehler beim Starten des Batch-Tests: {e}")
+            base_config = self._build_backtest_config()
+        except Exception as exc:
+            logger.exception("Failed to build backtest config")
+            self._log(f"❌ Fehler beim Erstellen der Backtest-Config: {exc}")
+            QMessageBox.critical(self, "Backtest Fehler", str(exc))
+            return
+
+        # Determine search method
+        method_text = self.batch_method.currentText()
+        from src.core.backtesting import BatchConfig, SearchMethod
+
+        if "Grid" in method_text:
+            search_method = SearchMethod.GRID
+        elif "Random" in method_text:
+            search_method = SearchMethod.RANDOM
+        else:
+            search_method = SearchMethod.BAYESIAN
+
+        # Determine target metric
+        target_text = self.batch_target.currentText()
+        target_map = {
+            "Expectancy": "expectancy",
+            "Profit Factor": "profit_factor",
+            "Sharpe Ratio": "sharpe_ratio",
+            "Min Drawdown": "max_drawdown_pct",
+        }
+        target_metric = target_map.get(target_text, "expectancy")
+        minimize = "Drawdown" in target_text
+
+        batch_config = BatchConfig(
+            base_config=base_config,
+            parameter_space=param_space,
+            search_method=search_method,
+            target_metric=target_metric,
+            minimize=minimize,
+            max_iterations=self.batch_iterations.value(),
+        )
+
+        self._log("🧭 Batch-Konfiguration erstellt")
+        self._log(f"🔄 Methode: {search_method.value}")
+        self._log(f"📊 Zielmetrik: {target_metric}, Iterationen: {batch_config.max_iterations}")
+        self._log(f"📋 Parameter Space: {list(param_space.keys()) or ['default']}")
+
+        self._is_running = True
+        self.run_batch_btn.setEnabled(False)
+        self.run_wf_btn.setEnabled(False)
+        self.start_btn.setEnabled(False)
+        self.status_label.setText("BATCH")
+        self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF9800;")
+
+        self._batch_worker = BatchTestWorker(
+            batch_config,
+            signal_callback=self._get_signal_callback(),
+            parent=self,
+        )
+        self._batch_worker.progress.connect(self.progress_updated.emit)
+        self._batch_worker.log.connect(self._log)
+        self._batch_worker.finished.connect(self._on_batch_worker_finished)
+        self._batch_worker.error.connect(self._on_batch_worker_error)
+        self._batch_worker.finished.connect(self._batch_worker.deleteLater)
+        self._batch_worker.error.connect(self._batch_worker.deleteLater)
+        self._batch_worker.start()
 
     async def _on_batch_clicked(self) -> None:
         """Startet Batch-Test mit Parameter-Optimierung (async)."""
@@ -2140,6 +2248,117 @@ class BacktestTab(QWidget):
             self.start_btn.setEnabled(True)
             self.status_label.setText("IDLE")
             self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #888;")
+
+    @pyqtSlot(object, list)
+    def _on_batch_worker_finished(self, summary, results: list) -> None:
+        """Verarbeitet Abschluss des Batch-Workers."""
+        self._update_batch_results_table(results)
+
+        self._log(f"✅ Batch abgeschlossen: {summary.successful_runs}/{summary.total_runs} erfolgreich")
+        if summary.best_run and summary.best_run.metrics:
+            best = summary.best_run
+            target_metric = summary.config_summary.get("target_metric", "expectancy")
+            self._log(f"🏆 Bester Run: {best.parameters}")
+            self._log(f"   {target_metric}: {getattr(best.metrics, target_metric, 'N/A')}")
+
+        reply = QMessageBox.question(
+            self, "Export",
+            f"Batch abgeschlossen!\n\n{summary.successful_runs} erfolgreiche Runs.\n\nErgebnisse exportieren?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            output_dir = Path("data/backtest_results") / summary.batch_id
+            self._export_batch_results(summary, results, output_dir)
+            self._log(f"📁 Exportiert nach: {output_dir}")
+
+        self._finalize_batch_ui()
+
+    @pyqtSlot(str)
+    def _on_batch_worker_error(self, message: str) -> None:
+        """Verarbeitet Fehler im Batch-Worker."""
+        self._log(f"❌ Batch Fehler: {message}")
+        QMessageBox.critical(self, "Batch Fehler", message)
+        self._finalize_batch_ui()
+
+    def _finalize_batch_ui(self) -> None:
+        """Setzt UI nach Batch-Run zurück."""
+        self._is_running = False
+        self.run_batch_btn.setEnabled(True)
+        self.run_wf_btn.setEnabled(True)
+        self.start_btn.setEnabled(True)
+        self.status_label.setText("IDLE")
+        self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #888;")
+        self._batch_worker = None
+
+    def _export_batch_results(self, summary, results: list, output_dir: Path) -> dict[str, Path]:
+        """Exportiert Batch-Ergebnisse basierend auf Worker-Resultaten."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        exports: dict[str, Path] = {}
+
+        summary_path = output_dir / f"{summary.batch_id}_summary.json"
+        summary_data = {
+            "batch_id": summary.batch_id,
+            "total_runs": summary.total_runs,
+            "target_metric": summary.config_summary.get("target_metric"),
+            "search_method": summary.config_summary.get("search_method"),
+        }
+        with open(summary_path, "w") as file:
+            json.dump(summary_data, file, indent=2, default=str)
+        exports["summary"] = summary_path
+
+        results_path = output_dir / f"{summary.batch_id}_results.csv"
+        runs_to_export = results[:20]
+        with open(results_path, "w", newline="") as file:
+            import csv
+
+            writer = csv.writer(file)
+            if runs_to_export:
+                param_keys = list(runs_to_export[0].parameters.keys())
+                metric_keys = [
+                    "total_trades",
+                    "win_rate",
+                    "profit_factor",
+                    "expectancy",
+                    "max_drawdown_pct",
+                    "total_return_pct",
+                ]
+                writer.writerow(["rank", "run_id"] + param_keys + metric_keys + ["error"])
+
+                for rank, run in enumerate(runs_to_export, 1):
+                    param_values = [run.parameters.get(k, "") for k in param_keys]
+                    if run.metrics:
+                        metric_values = [
+                            run.metrics.total_trades,
+                            f"{run.metrics.win_rate:.3f}",
+                            f"{run.metrics.profit_factor:.2f}",
+                            f"{run.metrics.expectancy:.2f}" if run.metrics.expectancy else "",
+                            f"{run.metrics.max_drawdown_pct:.2f}",
+                            f"{run.metrics.total_return_pct:.2f}",
+                        ]
+                    else:
+                        metric_values = [""] * len(metric_keys)
+                    writer.writerow([rank, run.run_id] + param_values + metric_values + [run.error or ""])
+        exports["results"] = results_path
+
+        if results:
+            top_path = output_dir / f"{summary.batch_id}_top_params.json"
+            top_data = []
+            for run in results[:5]:
+                if run.metrics:
+                    top_data.append({
+                        "parameters": run.parameters,
+                        "expectancy": run.metrics.expectancy,
+                        "profit_factor": run.metrics.profit_factor,
+                        "win_rate": run.metrics.win_rate,
+                        "total_return_pct": run.metrics.total_return_pct,
+                    })
+            with open(top_path, "w") as file:
+                json.dump(top_data, file, indent=2)
+            exports["top_params"] = top_path
+
+        return exports
 
     @pyqtSlot()
     def _on_wf_btn_clicked(self) -> None:
