@@ -81,6 +81,11 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.default_broker_combo,
             self.settings.value("default_broker", "Trade Republic"),
         )
+        # Console Debug Level
+        self._set_combo_value(
+            self.console_debug_level,
+            self.settings.value("console_debug_level", "INFO"),
+        )
 
         # Trading
         self.manual_approval.setChecked(
@@ -277,6 +282,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("theme", self.theme_combo.currentText())
             self.settings.setValue("auto_connect", self.auto_connect_check.isChecked())
             self.settings.setValue("default_broker", self.default_broker_combo.currentText())
+            self.settings.setValue("console_debug_level", self.console_debug_level.currentText())
+
+            # Apply console debug level immediately
+            self._apply_console_debug_level()
 
             # Trading
             self.settings.setValue("manual_approval", self.manual_approval.isChecked())
@@ -349,6 +358,49 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
                 self, "Save Error",
                 f"Failed to save settings:\n{str(e)}"
             )
+
+    def _apply_console_debug_level(self):
+        """Apply console debug level to all loggers immediately."""
+        import logging
+
+        level_str = self.console_debug_level.currentText()
+        level = getattr(logging, level_str, logging.INFO)
+
+        # Set root logger level
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+
+        # Also set console handler level
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setLevel(level)
+
+        # Special handling for stream/chart provider loggers at WARNING level
+        # These are suppressed unless DEBUG is selected
+        stream_loggers = [
+            'src.core.market_data.bitunix_stream',
+            'src.core.market_data.bitunix_stream_connection',
+            'src.core.market_data.bitunix_stream_handlers',
+            'src.core.market_data.bitunix_stream_messages',
+            'src.core.market_data.bitunix_stream_subscription',
+            'src.core.market_data.history_provider',
+            'src.core.market_data.history_provider_streaming',
+            'src.ui.widgets.chart_mixins',
+            'urllib3',
+            'websockets',
+            'aiohttp',
+        ]
+
+        # If WARNING or higher, suppress stream loggers to WARNING
+        if level >= logging.WARNING:
+            for logger_name in stream_loggers:
+                logging.getLogger(logger_name).setLevel(logging.WARNING)
+        else:
+            # For DEBUG/INFO, let stream loggers use the global level
+            for logger_name in stream_loggers:
+                logging.getLogger(logger_name).setLevel(level)
+
+        logger.info(f"Console debug level set to: {level_str}")
 
     def _save_api_keys(self):
         """Save API keys to secure keyring."""

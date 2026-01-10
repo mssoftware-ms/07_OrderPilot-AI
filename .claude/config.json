@@ -113,8 +113,8 @@
     "topology": "hierarchical",
     "max_agents": 11,
     "queen_type": "strategic",
-    "task": "Fehlermeldung im Tab Backtesting bei dem Button Load: Die ausgewählte Datei ist kein gültiges Backtest-Template.\n\"\\config\\backtest_templates\\base_trendfollowing - Kopie.json\"\n\"\\Help\\HELP.md\"\n\n\\config\\backtest_templates\\ da liegen auch noch die ganzen varianten ki generiert.\n\nFinde bitte heraus warum das Format nicht passt und die test json nicht eingeölesen werden kann."
+    "task": "Bearbeite alle offenen Issues im Ordner Root->issues. Stelle sicher, dass WIRKLICH ALLE AUFGABEN, einschließlich aller Teilaufgaben im jeweiligen Issue, vollständig durchgeführt, abgeschlossen und getestet sind, bevor du das Issue auf \"closed\" setzt. Bei Fehlern oder nicht lösbaren Aufgaben melde dies im CMD-Fenster und lasse das Issue auf \"open\". Beachte dabei die Anweisungen in der Description sowie in den Feldern Additional und Comments. Arbeite die Issues Schritt für Schritt ab, z.B. Issue_1.json, Issue_2.json usw. Nach Abschluss jeder Aufgabe setze den Status auf \"closed\". Die Änderungen werden live vom AI-Modell direkt im vorhandenen lokalen Python 3.12 Code umgesetzt."
   },
-  "created_at": "2026-01-09T19:30:39.556431",
+  "created_at": "2026-01-10T13:52:57.347819",
   "last_session": null
 }

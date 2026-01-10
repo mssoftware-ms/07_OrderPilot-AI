@@ -107,10 +107,9 @@ class ToolbarMixin:
         if self._toolbar_row1_helper:
             self._toolbar_row1_helper.on_refresh()
 
-    def _toggle_live_stream(self) -> None:
-        """Toggle live streaming. Delegates to row2 helper."""
-        if self._toolbar_row2_helper:
-            self._toolbar_row2_helper.toggle_live_stream()
+    # NOTE: _toggle_live_stream is NOT defined here.
+    # The streaming mixins (BitunixStreamingMixin, AlpacaStreamingMixin, etc.)
+    # provide the correct implementation. Python's MRO ensures the right one is called.
 
     def _clear_all_markers(self) -> None:
         """Clear all chart markers. Delegates to row2 helper."""

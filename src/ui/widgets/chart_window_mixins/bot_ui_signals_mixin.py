@@ -295,8 +295,27 @@ class BotUISignalsMixin:
 
         # Von unten nach oben löschen, um Index-Verschiebung zu vermeiden
         rows_to_delete = sorted([idx.row() for idx in selected_rows], reverse=True)
+
+        # Map table rows (latest on top) back to _signal_history indices
+        history_len = len(self._signal_history)
+        indices_to_delete = {
+            history_len - 1 - row for row in rows_to_delete
+            if 0 <= history_len - 1 - row < history_len
+        }
+
+        # Remove from history and UI
+        if indices_to_delete:
+            self._signal_history = [
+                sig for i, sig in enumerate(self._signal_history)
+                if i not in indices_to_delete
+            ]
+            self._save_signal_history()
+
         for row in rows_to_delete:
             self.signals_table.removeRow(row)
+
+        # Refresh to ensure P&L / selection stays consistent
+        self._update_signals_table()
 
     def _on_clear_all_signals(self) -> None:
         """Löscht alle Zeilen aus der Signals-Tabelle."""
@@ -311,7 +330,10 @@ class BotUISignalsMixin:
         )
 
         if reply == QMessageBox.StandardButton.Yes:
+            self._signal_history.clear()
+            self._save_signal_history()
             self.signals_table.setRowCount(0)
+            self._update_signals_table()
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()

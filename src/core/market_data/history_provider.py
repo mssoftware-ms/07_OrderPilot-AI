@@ -208,3 +208,108 @@ class HistoryManager:
         Delegates to HistoryProviderStreaming.fetch_realtime_indicators().
         """
         return await self._streaming.fetch_realtime_indicators(symbol, interval)
+
+    async def get_historical_data(
+        self,
+        symbol: str,
+        timeframe: str = "1m",
+        limit: int = 200,
+    ):
+        """Convenience method to get historical data as DataFrame.
+
+        This method wraps fetch_data() for simpler usage in trading bot pipelines.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT", "BTC/USD")
+            timeframe: Candle timeframe (e.g., "1m", "5m", "15m", "1h", "1d")
+            limit: Number of candles to fetch (default 200)
+
+        Returns:
+            pandas DataFrame with OHLCV columns, or None if fetch fails
+        """
+        import pandas as pd
+
+        try:
+            # Map timeframe string to Timeframe enum
+            timeframe_map = {
+                "1s": Timeframe.SECOND_1,
+                "1m": Timeframe.MINUTE_1,
+                "5m": Timeframe.MINUTE_5,
+                "15m": Timeframe.MINUTE_15,
+                "30m": Timeframe.MINUTE_30,
+                "1h": Timeframe.HOUR_1,
+                "4h": Timeframe.HOUR_4,
+                "1d": Timeframe.DAY_1,
+                "1w": Timeframe.WEEK_1,
+            }
+            tf = timeframe_map.get(timeframe.lower(), Timeframe.MINUTE_1)
+
+            # Calculate date range based on limit
+            end_date = datetime.now()
+            # Estimate bars needed (rough calculation)
+            if tf == Timeframe.MINUTE_1:
+                delta = timedelta(minutes=limit)
+            elif tf == Timeframe.MINUTE_5:
+                delta = timedelta(minutes=limit * 5)
+            elif tf == Timeframe.MINUTE_15:
+                delta = timedelta(minutes=limit * 15)
+            elif tf == Timeframe.MINUTE_30:
+                delta = timedelta(minutes=limit * 30)
+            elif tf == Timeframe.HOUR_1:
+                delta = timedelta(hours=limit)
+            elif tf == Timeframe.HOUR_4:
+                delta = timedelta(hours=limit * 4)
+            elif tf == Timeframe.DAY_1:
+                delta = timedelta(days=limit)
+            elif tf == Timeframe.WEEK_1:
+                delta = timedelta(weeks=limit)
+            else:
+                delta = timedelta(minutes=limit)  # Default 1m
+
+            start_date = end_date - delta
+
+            # Determine asset class from symbol
+            asset_class = AssetClass.CRYPTO if "USDT" in symbol.upper() or "/" in symbol else AssetClass.STOCK
+
+            # Create data request
+            request = DataRequest(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                timeframe=tf,
+                asset_class=asset_class,
+            )
+
+            # Fetch data
+            bars, source_used = await self.fetch_data(request)
+
+            if not bars:
+                logger.warning(f"No bars returned for {symbol} {timeframe}")
+                return None
+
+            # Convert to DataFrame
+            data = []
+            for bar in bars:
+                data.append({
+                    "time": int(bar.timestamp.timestamp()) if hasattr(bar.timestamp, 'timestamp') else bar.timestamp,
+                    "open": float(bar.open),
+                    "high": float(bar.high),
+                    "low": float(bar.low),
+                    "close": float(bar.close),
+                    "volume": float(bar.volume),
+                })
+
+            df = pd.DataFrame(data)
+            if not df.empty:
+                # Sort by time ascending
+                df = df.sort_values("time").reset_index(drop=True)
+                # Limit to requested number of bars
+                if len(df) > limit:
+                    df = df.tail(limit).reset_index(drop=True)
+
+            logger.debug(f"get_historical_data: {symbol} {timeframe} - {len(df)} bars from {source_used}")
+            return df
+
+        except Exception as e:
+            logger.exception(f"get_historical_data failed for {symbol} {timeframe}: {e}")
+            return None

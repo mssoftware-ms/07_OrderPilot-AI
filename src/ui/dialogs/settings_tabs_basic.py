@@ -49,6 +49,21 @@ class SettingsTabsBasic:
         self.parent.default_broker_combo.addItems(["Mock Broker", "Interactive Brokers", "Trade Republic"])
         layout.addRow("Default Broker:", self.parent.default_broker_combo)
 
+        # Separator
+        layout.addRow(QLabel(""))
+        layout.addRow(QLabel("<b>Logging & Debug</b>"))
+
+        # Console Debug Level
+        self.parent.console_debug_level = QComboBox()
+        self.parent.console_debug_level.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
+        self.parent.console_debug_level.setToolTip(
+            "DEBUG: Alle Nachrichten inkl. Stream-Daten\n"
+            "INFO: Normale Nachrichten\n"
+            "WARNING: Nur Warnungen und Fehler (ohne Stream-Infos)\n"
+            "ERROR: Nur Fehlermeldungen"
+        )
+        layout.addRow("Console Log Level:", self.parent.console_debug_level)
+
         return tab
 
     def create_trading_tab(self) -> QWidget:

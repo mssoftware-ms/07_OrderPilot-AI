@@ -142,6 +142,7 @@ class BatchRunner:
         config: BatchConfig,
         signal_callback: Callable | None = None,
         save_full_results: bool = False,
+        initial_data: Any | None = None,  # pd.DataFrame
     ):
         """Initialisiert den Batch-Runner.
 
@@ -149,10 +150,12 @@ class BatchRunner:
             config: Batch-Konfiguration
             signal_callback: Signal-Callback für Backtests
             save_full_results: Vollständige Results speichern (mehr Speicher)
+            initial_data: Optionales DataFrame mit vorgeladenen Daten (vermeidet DB-Calls)
         """
         self.config = config
         self.signal_callback = signal_callback
         self.save_full_results = save_full_results
+        self.initial_data = initial_data
 
         # State
         self._results: list[BatchRunResult] = []
@@ -416,6 +419,12 @@ class BatchRunner:
             from .replay_provider import ReplayMarketDataProvider
 
             self._shared_replay_provider = ReplayMarketDataProvider(history_window=200)
+
+        # Wenn initial_data vorhanden, nutze diese direkt
+        if self.initial_data is not None and not self.initial_data.empty:
+            logger.info("Using provided initial_data for batch test (skipping DB fetch)")
+            self._shared_replay_provider.load_from_dataframe(self.initial_data)
+            return
 
         base_config = self.config.base_config
         await self._shared_replay_provider.load_data(

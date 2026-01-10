@@ -150,6 +150,9 @@ class BotController(
         self._trading_blocked: bool = False
         self._last_block_reasons: list[str] = []
 
+        # Initialize state handler helpers (dispatcher, flat/manage/signal/exit)
+        self.__init_state_handlers__()
+
         logger.info(
             f"BotController initialized: symbol={self.symbol}, "
             f"timeframe={self.timeframe}, run_id={self._run_id}"

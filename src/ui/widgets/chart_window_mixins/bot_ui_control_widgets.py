@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -193,110 +194,9 @@ class BotUIControlWidgets:
         self.parent.max_daily_loss_spin.setDecimals(2)
         settings_layout.addRow("Max Daily Loss %:", self.parent.max_daily_loss_spin)
 
-        # Disable Restrictions
-        self.parent.disable_restrictions_cb = QCheckBox("Restriktionen deaktivieren")
-        self.parent.disable_restrictions_cb.setChecked(True)
-        self.parent.disable_restrictions_cb.setToolTip(
-            "Deaktiviert Max Trades/Day und Max Daily Loss Limits.\n"
-            "Empfohlen fuer Paper Trading und Strategie-Tests.\n"
-            "Im Live-Modus sollten Restriktionen AKTIVIERT sein!"
-        )
-        self.parent.disable_restrictions_cb.setStyleSheet("color: #ff9800; font-weight: bold;")
-        settings_layout.addRow("Paper Mode:", self.parent.disable_restrictions_cb)
-
-        # MACD Exit
-        self.parent.disable_macd_exit_cb = QCheckBox("MACD-Exit deaktivieren")
-        self.parent.disable_macd_exit_cb.setChecked(False)
-        self.parent.disable_macd_exit_cb.setToolTip(
-            "Deaktiviert den automatischen Verkauf bei MACD-Kreuzungen.\n"
-            "Position wird nur durch Stop-Loss geschlossen.\n"
-            "MACD-Signale werden trotzdem im Chart angezeigt."
-        )
-        settings_layout.addRow("MACD-Exit:", self.parent.disable_macd_exit_cb)
-
-        # RSI Exit
-        self.parent.disable_rsi_exit_cb = QCheckBox("RSI-Extrem-Exit deaktivieren")
-        self.parent.disable_rsi_exit_cb.setChecked(False)
-        self.parent.disable_rsi_exit_cb.setToolTip(
-            "Deaktiviert den automatischen Verkauf bei RSI-Extremwerten.\n"
-            "Position wird nur durch Stop-Loss geschlossen.\n"
-            "RSI-Extrem-Signale werden trotzdem im Chart angezeigt."
-        )
-        settings_layout.addRow("RSI-Exit:", self.parent.disable_rsi_exit_cb)
-
-        # Derivathandel
-        self.parent.enable_derivathandel_cb = QCheckBox("Derivathandel aktivieren")
-        self.parent.enable_derivathandel_cb.setChecked(False)
-        self.parent.enable_derivathandel_cb.setToolTip(
-            "Bei aktiviert: Automatische KO-Produkt-Suche bei Signal-Bestaetigung.\n"
-            "Das beste Derivat wird basierend auf Score ausgewaehlt.\n"
-            "ACHTUNG: KO-Produkte haben hoeheres Risiko (Hebel, Totalverlust)!"
-        )
-        self.parent.enable_derivathandel_cb.setStyleSheet("color: #ff5722; font-weight: bold;")
-        self.parent.enable_derivathandel_cb.stateChanged.connect(
-            self.parent._on_derivathandel_changed
-        )
-        settings_layout.addRow("Derivathandel:", self.parent.enable_derivathandel_cb)
-
-        # === LEVERAGE OVERRIDE SECTION ===
-        leverage_separator = QLabel("─── Leverage Override ───")
-        leverage_separator.setStyleSheet("color: #FF9800; font-weight: bold; margin-top: 10px;")
-        settings_layout.addRow(leverage_separator)
-
-        self.parent.leverage_override_cb = QCheckBox("Manueller Hebel aktivieren")
-        self.parent.leverage_override_cb.setChecked(True)
-        self.parent.leverage_override_cb.setToolTip(
-            "Aktiviert manuelle Hebel-Überschreibung.\n"
-            "Überschreibt die automatische Leverage-Berechnung.\n"
-            "WICHTIG für Micro-Accounts (<500€)!"
-        )
-        self.parent.leverage_override_cb.setStyleSheet("color: #FF9800; font-weight: bold;")
-        self.parent.leverage_override_cb.stateChanged.connect(
-            self.parent._on_leverage_override_changed
-        )
-        settings_layout.addRow("Override:", self.parent.leverage_override_cb)
-
-        # Leverage Slider mit Wert-Anzeige
-        leverage_widget = QWidget()
-        leverage_layout = QHBoxLayout(leverage_widget)
-        leverage_layout.setContentsMargins(0, 0, 0, 0)
-        leverage_layout.setSpacing(8)
-
-        self.parent.leverage_slider = QSlider(Qt.Orientation.Horizontal)
-        self.parent.leverage_slider.setRange(1, 100)
-        self.parent.leverage_slider.setValue(20)
-        self.parent.leverage_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.parent.leverage_slider.setTickInterval(10)
-        self.parent.leverage_slider.setToolTip(
-            "Manueller Hebel (1x - 100x).\n"
-            "Empfohlen für 100€ Kapital: 15-25x\n"
-            "ACHTUNG: Hoher Hebel = hohes Risiko!"
-        )
-        self.parent.leverage_slider.valueChanged.connect(self.parent._on_leverage_slider_changed)
-        leverage_layout.addWidget(self.parent.leverage_slider, stretch=3)
-
-        self.parent.leverage_value_label = QLabel("20x")
-        self.parent.leverage_value_label.setStyleSheet(
-            "font-weight: bold; font-size: 14px; color: #FF9800; min-width: 50px;"
-        )
-        leverage_layout.addWidget(self.parent.leverage_value_label)
-
-        settings_layout.addRow("Hebel:", leverage_widget)
-
-        # Quick-Select Buttons für Leverage
-        quick_lev_widget = QWidget()
-        quick_lev_layout = QHBoxLayout(quick_lev_widget)
-        quick_lev_layout.setContentsMargins(0, 0, 0, 0)
-        quick_lev_layout.setSpacing(4)
-
-        for lev in [5, 10, 20, 50, 75, 100]:
-            btn = QPushButton(f"{lev}x")
-            btn.setFixedWidth(40)
-            btn.setStyleSheet("padding: 3px; font-size: 10px;")
-            btn.clicked.connect(lambda checked, l=lev: self.parent._set_leverage(l))
-            quick_lev_layout.addWidget(btn)
-
-        settings_layout.addRow("Schnellwahl:", quick_lev_widget)
+        # NOTE: Paper Mode, MACD Exit, RSI Exit, Derivathandel und Leverage Override
+        # wurden in eine separate GroupBox "Quick Toggles & Leverage" verschoben (Issue #43)
+        # Siehe build_quick_toggles_group()
 
         # === SAVE/LOAD DEFAULTS SECTION ===
         defaults_separator = QLabel("─── Einstellungen ───")
@@ -336,6 +236,137 @@ class BotUIControlWidgets:
 
         settings_group.setLayout(settings_layout)
         return settings_group
+
+    def build_quick_toggles_group(self) -> QGroupBox:
+        """Create combined Quick Toggles & Leverage Override group (Issue #43).
+
+        Combines Paper Mode, MACD Exit, RSI Exit, Derivathandel and Leverage Override
+        in a compact two-column layout.
+        """
+        group = QGroupBox("⚡ Quick Toggles & Leverage")
+        main_layout = QHBoxLayout(group)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(12)
+
+        # === LEFT COLUMN: Toggles ===
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(4)
+
+        # Paper Mode
+        self.parent.disable_restrictions_cb = QCheckBox("Paper Mode")
+        self.parent.disable_restrictions_cb.setChecked(True)
+        self.parent.disable_restrictions_cb.setToolTip(
+            "Deaktiviert Max Trades/Day und Max Daily Loss Limits.\n"
+            "Empfohlen fuer Paper Trading und Strategie-Tests.\n"
+            "Im Live-Modus sollten Restriktionen AKTIVIERT sein!"
+        )
+        self.parent.disable_restrictions_cb.setStyleSheet("color: #ff9800; font-weight: bold;")
+        left_layout.addWidget(self.parent.disable_restrictions_cb)
+
+        # MACD Exit
+        self.parent.disable_macd_exit_cb = QCheckBox("MACD-Exit deaktiv.")
+        self.parent.disable_macd_exit_cb.setChecked(False)
+        self.parent.disable_macd_exit_cb.setToolTip(
+            "Deaktiviert den automatischen Verkauf bei MACD-Kreuzungen.\n"
+            "Position wird nur durch Stop-Loss geschlossen."
+        )
+        left_layout.addWidget(self.parent.disable_macd_exit_cb)
+
+        # RSI Exit
+        self.parent.disable_rsi_exit_cb = QCheckBox("RSI-Exit deaktiv.")
+        self.parent.disable_rsi_exit_cb.setChecked(False)
+        self.parent.disable_rsi_exit_cb.setToolTip(
+            "Deaktiviert den automatischen Verkauf bei RSI-Extremwerten.\n"
+            "Position wird nur durch Stop-Loss geschlossen."
+        )
+        left_layout.addWidget(self.parent.disable_rsi_exit_cb)
+
+        # Derivathandel
+        self.parent.enable_derivathandel_cb = QCheckBox("Derivathandel")
+        self.parent.enable_derivathandel_cb.setChecked(False)
+        self.parent.enable_derivathandel_cb.setToolTip(
+            "Bei aktiviert: Automatische KO-Produkt-Suche bei Signal-Bestaetigung.\n"
+            "ACHTUNG: KO-Produkte haben hoeheres Risiko!"
+        )
+        self.parent.enable_derivathandel_cb.setStyleSheet("color: #ff5722; font-weight: bold;")
+        self.parent.enable_derivathandel_cb.stateChanged.connect(
+            self.parent._on_derivathandel_changed
+        )
+        left_layout.addWidget(self.parent.enable_derivathandel_cb)
+
+        left_layout.addStretch()
+        main_layout.addWidget(left_widget)
+
+        # === VERTICAL SEPARATOR ===
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setStyleSheet("color: #444;")
+        main_layout.addWidget(separator)
+
+        # === RIGHT COLUMN: Leverage Override ===
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(4)
+
+        # Leverage Override Checkbox
+        self.parent.leverage_override_cb = QCheckBox("Manueller Hebel")
+        self.parent.leverage_override_cb.setChecked(True)
+        self.parent.leverage_override_cb.setToolTip(
+            "Aktiviert manuelle Hebel-Überschreibung.\n"
+            "WICHTIG für Micro-Accounts (<500€)!"
+        )
+        self.parent.leverage_override_cb.setStyleSheet("color: #FF9800; font-weight: bold;")
+        self.parent.leverage_override_cb.stateChanged.connect(
+            self.parent._on_leverage_override_changed
+        )
+        right_layout.addWidget(self.parent.leverage_override_cb)
+
+        # Leverage Slider mit Wert-Anzeige
+        slider_widget = QWidget()
+        slider_layout = QHBoxLayout(slider_widget)
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.setSpacing(4)
+
+        self.parent.leverage_slider = QSlider(Qt.Orientation.Horizontal)
+        self.parent.leverage_slider.setRange(1, 100)
+        self.parent.leverage_slider.setValue(20)
+        self.parent.leverage_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.parent.leverage_slider.setTickInterval(20)
+        self.parent.leverage_slider.setToolTip(
+            "Manueller Hebel (1x - 100x).\n"
+            "Empfohlen für 100€ Kapital: 15-25x"
+        )
+        self.parent.leverage_slider.valueChanged.connect(self.parent._on_leverage_slider_changed)
+        slider_layout.addWidget(self.parent.leverage_slider, stretch=2)
+
+        self.parent.leverage_value_label = QLabel("20x")
+        self.parent.leverage_value_label.setStyleSheet(
+            "font-weight: bold; font-size: 13px; color: #FF9800; min-width: 40px;"
+        )
+        slider_layout.addWidget(self.parent.leverage_value_label)
+        right_layout.addWidget(slider_widget)
+
+        # Quick-Select Buttons für Leverage
+        quick_widget = QWidget()
+        quick_layout = QHBoxLayout(quick_widget)
+        quick_layout.setContentsMargins(0, 0, 0, 0)
+        quick_layout.setSpacing(2)
+
+        for lev in [5, 10, 20, 50, 75, 100]:
+            btn = QPushButton(f"{lev}x")
+            btn.setFixedWidth(32)
+            btn.setStyleSheet("padding: 2px; font-size: 9px;")
+            btn.clicked.connect(lambda checked, l=lev: self.parent._set_leverage(l))
+            quick_layout.addWidget(btn)
+
+        right_layout.addWidget(quick_widget)
+        right_layout.addStretch()
+        main_layout.addWidget(right_widget)
+
+        return group
 
     def build_trailing_group(self) -> QGroupBox:
         """Create trailing stop settings group."""

@@ -80,10 +80,29 @@ class BotTabControl:
         """Startet den Bot (neue Engine-Pipeline)."""
         try:
             self._log("🚀 Starte Trading Bot (neue Engine-Pipeline)...")
+            logger.info("Bot start clicked - initializing pipeline...")
+
+            # KRITISCH: Prüfe ob HistoryManager verfügbar ist
+            if not self.parent._history_manager:
+                error_msg = (
+                    "❌ HistoryManager nicht verfügbar!\n\n"
+                    "Die Pipeline benötigt einen HistoryManager für Marktdaten.\n"
+                    "Bitte öffne zuerst einen Chart mit einem Symbol."
+                )
+                self._log(error_msg)
+                logger.error("Bot start failed: HistoryManager is None")
+                QMessageBox.warning(
+                    self.parent,
+                    "HistoryManager fehlt",
+                    error_msg,
+                )
+                return
 
             # Neue Engines initialisieren (Phase 1-4)
             if not self.parent._context_builder:
+                self._log("🔧 Initialisiere Trading Engines...")
                 self._engine_init_helper._initialize_new_engines()
+                self._log("✅ Engines initialisiert")
 
             # UI aktualisieren
             self.parent.start_btn.setEnabled(False)
@@ -91,6 +110,7 @@ class BotTabControl:
             self.parent.update_timer.start()
 
             self._log("✅ Bot gestartet! Pipeline läuft jede Sekunde.")
+            logger.info("Bot started successfully - pipeline running every second")
 
         except Exception as e:
             self._log(f"❌ Fehler beim Starten: {e}")
@@ -174,6 +194,10 @@ class BotTabControl:
         self._engine_init_helper.update_engine_configs()
 
     # === Settings Management (delegate to persistence_helper) ===
+
+    def _get_current_config(self):
+        """Gibt aktuelle Bot-Konfiguration zurück (delegiert zu persistence_helper)."""
+        return self._persistence_helper._get_current_config()
 
     def apply_config(self, config) -> None:
         """Wendet neue Konfiguration an."""

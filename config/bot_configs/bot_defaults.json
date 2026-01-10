@@ -1,6 +1,6 @@
 {
   "meta": {
-    "saved_at": "2026-01-09T21:04:26.682321",
+    "saved_at": "2026-01-10T04:50:35.157778",
     "version": "1.0",
     "type": "bot_control_settings"
   },
@@ -8,8 +8,8 @@
     "ki_mode": "LOW_KI",
     "trade_direction": "AUTO",
     "trailing_mode": "PCT",
-    "initial_sl": 2.0,
-    "capital": 100000.0,
+    "initial_sl": 0.4,
+    "capital": 10000.0,
     "risk_per_trade": 10.0,
     "max_trades": 10,
     "max_daily_loss": 3.0,

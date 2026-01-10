@@ -14,6 +14,16 @@ class BotCallbacksSignalMixin:
         signal_type, side, entry_price, score, strategy_name, signal_stop_price = self._extract_signal_fields(signal)
         status = self._map_signal_status(signal_type)
 
+        # Gate: only one open position allowed. Ignore new signals while open.
+        if self._has_open_signal() and signal_type in {"candidate", "confirmed"}:
+            msg = (
+                "Signal ignoriert – bereits offene Position vorhanden. "
+                "Neue Trades erst nach Exit/SL."
+            )
+            self._add_ki_log_entry("WARN", msg)
+            logger.warning(msg)
+            return
+
         self._add_ki_log_entry(
             "SIGNAL",
             f"Signal empfangen: type={signal_type} strategy={strategy_name} side={side} @ {entry_price:.4f} SL={signal_stop_price:.4f} -> status={status}"
@@ -63,6 +73,8 @@ class BotCallbacksSignalMixin:
                     trailing_pct,
                     trailing_activation,
                 )
+            # Enforce single open position after confirming/adding
+            self._enforce_single_open_signal(refresh=False)
         else:
             self._update_or_add_candidate(
                 signal_type, side, score, strategy_name, entry_price, status
@@ -80,6 +92,9 @@ class BotCallbacksSignalMixin:
                 signal_stop_price,
                 initial_sl_pct,
             )
+
+    def _has_open_signal(self) -> bool:
+        return any(sig.get("is_open") for sig in self._signal_history)
 
     def _extract_signal_fields(self, signal: Any) -> tuple[str, str, float, float, str, float]:
         signal_type = signal.signal_type.value if hasattr(signal, 'signal_type') else "unknown"
@@ -203,6 +218,9 @@ class BotCallbacksSignalMixin:
             "tr_active": False,
             "tr_lock_active": True,
         })
+
+        # Ensure we never keep more than one open position
+        self._enforce_single_open_signal(refresh=False)
 
     def _update_or_add_candidate(
         self,
@@ -330,6 +348,27 @@ class BotCallbacksSignalMixin:
                         self._add_ki_log_entry("DERIV", "KO-Suche (Fallback bei Bestätigung)")
                         self._fetch_derivative_for_signal(sig)
                     break
+    def _enforce_single_open_signal(self, refresh: bool = True) -> None:
+        """Ensure at most one open position; drop newer duplicates instead of closing existing."""
+        open_indices = [i for i, sig in enumerate(self._signal_history) if sig.get("is_open")]
+        if len(open_indices) <= 1:
+            return
+
+        # Keep the oldest open signal (first in history), discard later ones
+        keep_idx = open_indices[0]
+        if len(open_indices) > 1:
+            dropped = []
+            # remove from newest to oldest except keep_idx
+            for idx in sorted(open_indices[1:], reverse=True):
+                dropped.append(idx)
+                del self._signal_history[idx]
+            self._add_ki_log_entry(
+                "WARN",
+                f"Neue offene Signale verworfen (bestehende Position bleibt): entfernt {len(dropped)} weitere."
+            )
+            self._save_signal_history()
+            if refresh and hasattr(self, "_update_signals_table"):
+                self._update_signals_table()
     def _on_bot_decision(self, decision: Any) -> None:
         """Handle bot decision event."""
         from src.core.tradingbot.models import BotAction
@@ -356,6 +395,12 @@ class BotCallbacksSignalMixin:
         self._add_ki_log_entry("DEBUG", f"ENTER: stop_price_after={stop_price}")
         if not stop_price:
             self._add_ki_log_entry("ERROR", "stop_price_after ist None - keine Stop-Line!")
+            return
+
+        # Prevent entering if an open position already exists
+        if self._has_open_signal():
+            self._add_ki_log_entry("WARN", "ENTER ignoriert – bereits offene Position. Erst nach Exit/SL neue Trades.")
+            logger.warning("ENTER ignored: open position exists")
             return
 
         initial_sl_pct = self.initial_sl_spin.value() if hasattr(self, 'initial_sl_spin') else 0.0

@@ -95,6 +95,50 @@ class TradingApplication(
         asyncio.create_task(self.initialize_services())
 
 
+def _apply_saved_debug_level(level_str: str) -> None:
+    """Apply saved console debug level to all loggers.
+
+    Args:
+        level_str: Log level string (DEBUG, INFO, WARNING, ERROR)
+    """
+    import logging
+
+    level = getattr(logging, level_str.upper(), logging.INFO)
+
+    # Set root logger level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    # Set console handler level
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setLevel(level)
+
+    # Stream/chart provider loggers - suppress at WARNING level unless DEBUG
+    stream_loggers = [
+        'src.core.market_data.bitunix_stream',
+        'src.core.market_data.bitunix_stream_connection',
+        'src.core.market_data.bitunix_stream_handlers',
+        'src.core.market_data.bitunix_stream_messages',
+        'src.core.market_data.bitunix_stream_subscription',
+        'src.core.market_data.history_provider',
+        'src.core.market_data.history_provider_streaming',
+        'src.ui.widgets.chart_mixins',
+        'urllib3',
+        'websockets',
+        'aiohttp',
+    ]
+
+    if level >= logging.WARNING:
+        for logger_name in stream_loggers:
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
+    else:
+        for logger_name in stream_loggers:
+            logging.getLogger(logger_name).setLevel(level)
+
+    logging.getLogger(__name__).info(f"Console debug level applied: {level_str}")
+
+
 async def main():
     """Main application entry point."""
     _hide_console_window()
@@ -124,6 +168,11 @@ async def main():
 
     configure_logging()
     logger.info("Starting OrderPilot-AI Trading Application")
+
+    # Load and apply saved console debug level from QSettings
+    settings = QSettings("OrderPilot", "TradingApp")
+    saved_level = settings.value("console_debug_level", "INFO")
+    _apply_saved_debug_level(saved_level)
 
     root_logger = logging.getLogger()
     root_logger.addHandler(ConsoleOnErrorHandler())

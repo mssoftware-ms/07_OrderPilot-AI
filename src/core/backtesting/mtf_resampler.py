@@ -303,6 +303,10 @@ class MTFResampler:
     ) -> dict[str, pd.DataFrame]:
         """Update mit neuer 1m Candle, gibt alle MTF Daten zurück.
 
+        Optimierung:
+        - Wenn current_candle_ts in der gleichen Minute liegt wie der letzte Update, skip.
+        - Nur Timeframes aktualisieren, deren Bar-Ende durch die neue Candle erreicht wurde.
+
         Args:
             current_candle_ts: Timestamp der aktuellen 1m Candle
             history_1m: DataFrame mit 1m OHLCV History (inkl. vorheriger Candles)
@@ -310,9 +314,30 @@ class MTFResampler:
         Returns:
             Dictionary mit TF → DataFrame von vollständigen Bars
         """
+        # Wenn wir den gleichen Timestamp schon verarbeitet haben, skip
+        if hasattr(self, "_last_candle_ts") and current_candle_ts <= self._last_candle_ts:
+            return {tf: df.copy() for tf, df in self._cache.items()}
+        
+        self._last_candle_ts = current_candle_ts
         result = {}
 
         for tf in self.timeframes:
+            minutes = TIMEFRAME_MINUTES[tf]
+            period_ms = minutes * 60 * 1000
+            
+            # Prüfen ob wir für diesen TF ein Update brauchen
+            # Wir brauchen ein Update wenn:
+            # 1. Cache leer ist
+            # 2. current_candle_ts >= nächstes Bar-Ende
+            last_complete = self._last_complete_ts[tf]
+            next_bar_end = last_complete + period_ms if last_complete > 0 else 0
+            
+            if next_bar_end > 0 and current_candle_ts < next_bar_end:
+                # Noch in der gleichen Bar, keine neue Bar fertig
+                result[tf] = self._cache[tf]
+                continue
+
+            # Full resample nur wenn nötig
             resampled = self.resample_history(history_1m, current_candle_ts, tf)
 
             # Limitiere auf history_bars_per_tf

@@ -48,7 +48,10 @@ class BotTabControlPipeline:
             timeframe: Timeframe (z.B. "1m", "5m")
         """
         if not self.parent.parent._context_builder or not self.parent.parent._history_manager:
-            logger.warning("Engines or history_manager not initialized - skipping pipeline")
+            logger.warning(
+                f"Pipeline skipped - context_builder={self.parent.parent._context_builder is not None}, "
+                f"history_manager={self.parent.parent._history_manager is not None}"
+            )
             return
 
         try:

@@ -147,23 +147,35 @@ class BotUIControlMixin:
 
     def _update_bot_display(self) -> None:
         """Update bot status display (QTimer callback). Delegates to widgets helper."""
-        if self._widgets_helper:
-            self._widgets_helper.update_bot_display()
+        # Forward to downstream display mixins (BotDisplayManagerMixin chain)
+        try:
+            super()._update_bot_display()
+        except AttributeError:
+            # Fallback: no downstream mixin implemented the method
+            pass
 
     def _on_bot_start_clicked(self) -> None:
-        """Handle bot start button click. Delegates to handlers helper."""
-        if self._handlers_helper:
-            self._handlers_helper.on_bot_start_clicked()
+        """Handle bot start button click."""
+        logger.info("Bot start clicked (handled by mixin)")
+        # Delegate to next mixin (BotEventHandlersMixin) for actual start logic
+        try:
+            super()._on_bot_start_clicked()
+        except AttributeError:
+            logger.warning("No downstream _on_bot_start_clicked implementation found")
 
     def _on_bot_stop_clicked(self) -> None:
-        """Handle bot stop button click. Delegates to handlers helper."""
-        if self._handlers_helper:
-            self._handlers_helper.on_bot_stop_clicked()
+        """Handle bot stop button click."""
+        logger.info("Bot stop clicked (handled by mixin)")
+        try:
+            super()._on_bot_stop_clicked()
+        except AttributeError:
+            logger.warning("No downstream _on_bot_stop_clicked implementation found")
 
     def _on_bot_settings_clicked(self) -> None:
-        """Handle bot settings button click. Delegates to settings helper."""
-        if self._settings_helper:
-            self._settings_helper.on_bot_settings_clicked()
+        """Handle bot settings button click."""
+        logger.info("Bot settings clicked (handled by mixin)")
+        if hasattr(super(), "_on_bot_settings_clicked"):
+            super()._on_bot_settings_clicked()
 
     # =========================================================================
     # SETTINGS MANAGEMENT (Delegated to BotSettingsManager)

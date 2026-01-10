@@ -16,14 +16,17 @@ class BotPositionPersistenceStorageMixin:
         return f"SignalHistory/{safe_symbol}"
     def _save_signal_history(self) -> None:
         """Save signal history to settings for the current symbol."""
-        if not self._signal_history:
-            return
-
         key = self._get_signal_history_key()
         if not key or key == "SignalHistory/":
             return
 
         try:
+            if not self._signal_history:
+                # Clearing history should also clear persisted storage
+                self._bot_settings.remove(key)
+                logger.info(f"Cleared signal history for {key}")
+                return
+
             history_json = json.dumps(self._signal_history)
             self._bot_settings.setValue(key, history_json)
             logger.info(f"Saved {len(self._signal_history)} signals for {key}")
@@ -42,6 +45,10 @@ class BotPositionPersistenceStorageMixin:
                     self._signal_history = json.loads(history_json)
                 else:
                     self._signal_history = history_json
+
+                # Ensure only one open position after loading; drop newer duplicates
+                if hasattr(self, "_enforce_single_open_signal"):
+                    self._enforce_single_open_signal(refresh=False)
 
                 logger.info(f"Loaded {len(self._signal_history)} signals for {key}")
 

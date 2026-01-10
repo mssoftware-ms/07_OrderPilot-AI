@@ -702,10 +702,29 @@ class BotTab(QWidget):
         """Startet den Bot (neue Engine-Pipeline)."""
         try:
             self._log("🚀 Starte Trading Bot (neue Engine-Pipeline)...")
+            logger.info("Bot start clicked - initializing pipeline...")
+
+            # KRITISCH: Prüfe ob HistoryManager verfügbar ist
+            if not self._history_manager:
+                error_msg = (
+                    "❌ HistoryManager nicht verfügbar!\n\n"
+                    "Die Pipeline benötigt einen HistoryManager für Marktdaten.\n"
+                    "Bitte öffne zuerst einen Chart mit einem Symbol."
+                )
+                self._log(error_msg)
+                logger.error("Bot start failed: HistoryManager is None")
+                QMessageBox.warning(
+                    self,
+                    "HistoryManager fehlt",
+                    error_msg,
+                )
+                return
 
             # Neue Engines initialisieren (Phase 1-4)
             if not self._context_builder:
+                self._log("🔧 Initialisiere Trading Engines...")
                 self._initialize_new_engines()
+                self._log("✅ Engines initialisiert")
 
             # UI aktualisieren
             self.start_btn.setEnabled(False)
@@ -713,6 +732,7 @@ class BotTab(QWidget):
             self.update_timer.start()
 
             self._log("✅ Bot gestartet! Pipeline läuft jede Sekunde.")
+            logger.info("Bot started successfully - pipeline running every second")
 
         except Exception as e:
             self._log(f"❌ Fehler beim Starten: {e}")
@@ -1124,7 +1144,10 @@ class BotTab(QWidget):
             timeframe: Timeframe (z.B. "1m", "5m")
         """
         if not self._context_builder or not self._history_manager:
-            logger.warning("Engines or history_manager not initialized - skipping pipeline")
+            logger.warning(
+                f"Pipeline skipped - context_builder={self._context_builder is not None}, "
+                f"history_manager={self._history_manager is not None}"
+            )
             return
 
         try:

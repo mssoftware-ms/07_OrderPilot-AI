@@ -11,6 +11,7 @@ from .strategy_params import (
     StrategyParameterConfig,
     get_strategy_parameters,
     get_default_parameters,
+    filter_entry_only_params,
     STRATEGY_PARAMETER_REGISTRY,
 )
 from .result_types import (
@@ -48,6 +49,7 @@ __all__ = [
     "StrategyParameterConfig",
     "get_strategy_parameters",
     "get_default_parameters",
+    "filter_entry_only_params",
     "STRATEGY_PARAMETER_REGISTRY",
     # Result Types
     "TradeRecord",

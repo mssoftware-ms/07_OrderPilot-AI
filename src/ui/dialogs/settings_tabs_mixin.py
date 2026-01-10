@@ -37,8 +37,15 @@ class SettingsTabsMixin:
     Refactored using composition pattern with 6 specialized helpers.
     """
 
-    def __init__(self):
-        """Initialize all helper modules for tab creation."""
+    def __init__(self, *args, **kwargs):
+        """Initialize all helper modules for tab creation.
+
+        Args:
+            *args, **kwargs: Passed to next class in MRO (e.g., QDialog)
+        """
+        # Pass arguments to next class in MRO (cooperative multiple inheritance)
+        super().__init__(*args, **kwargs)
+
         # Instantiate helper modules (composition pattern)
         self._basic_helper = SettingsTabsBasic(parent=self)
         self._market_basic_helper = SettingsTabsMarketBasic(parent=self)
@@ -122,6 +129,17 @@ class SettingsTabsMixin:
         layout.addRow(self.connection_notif)
 
         return tab
+
+    # -------------------------------------------------------------------- #
+    # AI slot delegates (backward compatibility for SettingsDialog)
+    # -------------------------------------------------------------------- #
+    def _on_openai_model_changed(self, model_text: str):
+        """Forward model change events to the AI helper."""
+        return self._ai_helper._on_openai_model_changed(model_text)
+
+    def _on_openai_reasoning_changed(self, reasoning_effort: str):
+        """Forward reasoning effort changes to the AI helper."""
+        return self._ai_helper._on_openai_reasoning_changed(reasoning_effort)
 
 
 # Re-export für backward compatibility
