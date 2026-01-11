@@ -41,6 +41,7 @@ class ToolbarMixinRow2:
         toolbar.addSeparator()
         self.add_chart_marking_button(toolbar)
         # Levels + Export buttons are in ToolbarMixinFeatures
+        self.add_entry_analyzer_button(toolbar)  # Phase 5: Entry Analyzer
         self.add_ai_chat_button(toolbar)
         self.add_ai_analysis_button(toolbar)
         self.add_bitunix_trading_button(toolbar)
@@ -232,6 +233,39 @@ class ToolbarMixinRow2:
         clear_all = QAction("🗑️ Alles löschen", self.parent)
         clear_all.triggered.connect(self.parent._clear_all_markings)
         self.parent.chart_marking_menu.addAction(clear_all)
+
+    def add_entry_analyzer_button(self, toolbar: QToolBar) -> None:
+        """Add Entry Analyzer button to toolbar (Phase 5)."""
+        self.parent.entry_analyzer_button = QPushButton("🎯 Entry Analyzer")
+        self.parent.entry_analyzer_button.setToolTip(
+            "Entry Analyzer öffnen - Findet optimale Einstiegspunkte"
+        )
+        self.parent.entry_analyzer_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #10B981;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                color: #34D399;
+            }
+        """
+        )
+        self.parent.entry_analyzer_button.clicked.connect(self._on_entry_analyzer_clicked)
+        toolbar.addWidget(self.parent.entry_analyzer_button)
+        logger.info("Toolbar: Entry Analyzer button added")
+
+    def _on_entry_analyzer_clicked(self) -> None:
+        """Handle Entry Analyzer button click."""
+        if hasattr(self.parent, "show_entry_analyzer"):
+            self.parent.show_entry_analyzer()
+        else:
+            logger.warning("show_entry_analyzer not available on chart widget")
 
     def add_ai_chat_button(self, toolbar: QToolBar) -> None:
         self.parent.ai_chat_button = QPushButton("🤖 AI Chat")
