@@ -201,6 +201,9 @@ class EntryAnalyzerMixin:
     def _draw_entry_markers(self, entries: list[EntryEvent]) -> None:
         """Draw entry markers on the chart.
 
+        LONG entries are displayed in GREEN (below bar, arrow up).
+        SHORT entries are displayed in RED (above bar, arrow down).
+
         Args:
             entries: List of entry events to draw.
         """
@@ -208,25 +211,35 @@ class EntryAnalyzerMixin:
             logger.warning("Chart widget has no add_bot_marker method")
             return
 
+        from src.analysis.visible_chart.types import EntrySide
         from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 
         for entry in entries:
-            marker_type = (
-                MarkerType.ENTRY_CONFIRMED
-                if entry.confidence > 0.7
-                else MarkerType.ENTRY_CANDIDATE
-            )
+            # Always use ENTRY_CONFIRMED for clear LONG=green, SHORT=red display
+            # The to_chart_marker() method handles colors:
+            # - LONG: #26a69a (green), arrowUp, belowBar
+            # - SHORT: #ef5350 (red), arrowDown, aboveBar
+            marker_type = MarkerType.ENTRY_CONFIRMED
+
+            # Build descriptive text with confidence and reason
+            reasons_str = ", ".join(entry.reason_tags[:2]) if entry.reason_tags else ""
+            text = f"{entry.side.value.upper()} {entry.confidence:.0%}"
+            if reasons_str:
+                text = f"{text} [{reasons_str}]"
 
             self.add_bot_marker(
                 timestamp=entry.timestamp,
                 price=entry.price,
                 marker_type=marker_type,
                 side=entry.side.value,
-                text=f"{entry.side.value.upper()} ({entry.confidence:.0%})",
+                text=text,
                 score=entry.confidence,
             )
 
-        logger.info("Drew %d entry markers on chart", len(entries))
+        logger.info(
+            "Drew %d entry markers on chart (LONG=green, SHORT=red)",
+            len(entries),
+        )
 
     def _clear_entry_markers(self) -> None:
         """Clear all entry markers from the chart."""
