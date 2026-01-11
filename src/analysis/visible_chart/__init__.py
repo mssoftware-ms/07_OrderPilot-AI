@@ -7,6 +7,7 @@ Phase 1: MVP with rules-based detection
 Phase 2: FastOptimizer with caching and overfitting protection
 Phase 3: Live background analysis with scheduler
 Phase 4: Walk-forward validation, trade filters, report generation
+Phase 5: AI Copilot for intelligent entry analysis
 """
 
 from __future__ import annotations
@@ -14,6 +15,16 @@ from __future__ import annotations
 from .analyzer import VisibleChartAnalyzer
 from .background_runner import BackgroundRunner, RunnerConfig, PerformanceMetrics
 from .cache import AnalyzerCache, get_analyzer_cache, reset_analyzer_cache
+from .entry_copilot import (
+    CopilotConfig,
+    CopilotResponse,
+    EntryAssessment,
+    EntryCopilot,
+    SignalQuality,
+    ValidationReview,
+    get_entry_analysis,
+    run_entry_analysis_sync,
+)
 from .report_generator import (
     ReportConfig,
     ReportData,
@@ -75,6 +86,15 @@ __all__ = [
     "ReportData",
     "ReportGenerator",
     "create_report_from_analysis",
+    # AI Copilot (Phase 5)
+    "CopilotConfig",
+    "CopilotResponse",
+    "EntryAssessment",
+    "EntryCopilot",
+    "SignalQuality",
+    "ValidationReview",
+    "get_entry_analysis",
+    "run_entry_analysis_sync",
     # Types
     "AnalysisResult",
     "EntryEvent",
