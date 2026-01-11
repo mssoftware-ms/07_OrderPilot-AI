@@ -33,6 +33,7 @@ class AnalysisWorker(QThread):
         visible_range: dict,
         symbol: str,
         timeframe: str,
+        candles: list[dict],
         use_optimizer: bool = True,
         parent: Any = None,
     ) -> None:
@@ -42,6 +43,7 @@ class AnalysisWorker(QThread):
             visible_range: Dict with 'from' and 'to' timestamps.
             symbol: Trading symbol.
             timeframe: Chart timeframe.
+            candles: Pre-loaded candle data from chart.
             use_optimizer: If True, run FastOptimizer (Phase 2).
             parent: Parent QObject.
         """
@@ -49,6 +51,7 @@ class AnalysisWorker(QThread):
         self._visible_range = visible_range
         self._symbol = symbol
         self._timeframe = timeframe
+        self._candles = candles
         self._use_optimizer = use_optimizer
 
     def run(self) -> None:
@@ -65,6 +68,10 @@ class AnalysisWorker(QThread):
                 self.error.emit("Invalid visible range")
                 return
 
+            if not self._candles:
+                self.error.emit("No candle data available")
+                return
+
             visible_range = VisibleRange(
                 from_ts=from_ts,
                 to_ts=to_ts,
@@ -72,12 +79,13 @@ class AnalysisWorker(QThread):
                 to_idx=self._visible_range.get("to_idx"),
             )
 
-            # Run analysis (with or without optimizer)
+            # Run analysis with pre-loaded candles
             analyzer = VisibleChartAnalyzer(use_optimizer=self._use_optimizer)
-            result = analyzer.analyze(
+            result = analyzer.analyze_with_candles(
                 visible_range=visible_range,
                 symbol=self._symbol,
                 timeframe=self._timeframe,
+                candles=self._candles,
             )
 
             self.finished.emit(result)
@@ -378,16 +386,36 @@ class EntryAnalyzerMixin:
         logger.info("Visible range received: %s", range_data)
 
         # Get symbol and timeframe
-        symbol = getattr(self, "_symbol", None) or getattr(self, "symbol", "UNKNOWN")
+        symbol = getattr(self, "_symbol", None) or getattr(self, "current_symbol", "UNKNOWN")
         timeframe = getattr(self, "_timeframe", None) or getattr(
-            self, "timeframe", "1m"
+            self, "current_timeframe", "1m"
         )
+
+        # Get candles from chart data
+        candles = self._get_candles_for_validation()
+        if not candles:
+            logger.error("No candle data available in chart")
+            QMessageBox.warning(
+                self,
+                "Error",
+                "No chart data available. Please load data first.",
+            )
+            if self._entry_analyzer_popup:
+                self._entry_analyzer_popup.set_analyzing(False)
+            return
+
+        logger.info("Starting analysis with %d candles", len(candles))
+
+        # Update popup context
+        if self._entry_analyzer_popup:
+            self._entry_analyzer_popup.set_context(symbol, timeframe, candles)
 
         # Start background analysis
         self._analysis_worker = AnalysisWorker(
             visible_range=range_data,
             symbol=symbol,
             timeframe=timeframe,
+            candles=candles,
             parent=self,
         )
         self._analysis_worker.finished.connect(self._on_analysis_finished)

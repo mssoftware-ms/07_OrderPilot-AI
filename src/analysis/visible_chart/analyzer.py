@@ -70,12 +70,41 @@ class VisibleChartAnalyzer:
         symbol: str,
         timeframe: str = "1m",
     ) -> AnalysisResult:
-        """Analyze the visible chart range.
+        """Analyze the visible chart range (loads candles from database).
 
         Args:
             visible_range: The visible time range.
             symbol: Trading symbol.
             timeframe: Chart timeframe (default 1m).
+
+        Returns:
+            AnalysisResult with entries and indicator set info.
+        """
+        # Load candles from database/mock
+        candles = self._candle_loader.load(
+            symbol=symbol,
+            from_ts=visible_range.from_ts,
+            to_ts=visible_range.to_ts,
+            timeframe=timeframe,
+        )
+        return self.analyze_with_candles(visible_range, symbol, timeframe, candles)
+
+    def analyze_with_candles(
+        self,
+        visible_range: VisibleRange,
+        symbol: str,
+        timeframe: str,
+        candles: list[dict],
+    ) -> AnalysisResult:
+        """Analyze with pre-loaded candle data.
+
+        Use this when candles are already available (e.g., from chart widget).
+
+        Args:
+            visible_range: The visible time range.
+            symbol: Trading symbol.
+            timeframe: Chart timeframe.
+            candles: Pre-loaded candle data.
 
         Returns:
             AnalysisResult with entries and indicator set info.
@@ -91,19 +120,12 @@ class VisibleChartAnalyzer:
         self._last_symbol = symbol
 
         logger.info(
-            "Starting analysis for %s [%d - %d] (%d min)",
+            "Starting analysis for %s [%d - %d] (%d min) with %d candles",
             symbol,
             visible_range.from_ts,
             visible_range.to_ts,
             visible_range.duration_minutes,
-        )
-
-        # Step 1: Load candle data
-        candles = self._candle_loader.load(
-            symbol=symbol,
-            from_ts=visible_range.from_ts,
-            to_ts=visible_range.to_ts,
-            timeframe=timeframe,
+            len(candles) if candles else 0,
         )
 
         if not candles:
