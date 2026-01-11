@@ -3,6 +3,9 @@
 Orchestrates the analysis of the visible chart range,
 generating entry signals using features, regime detection,
 and signal scoring.
+
+Phase 1: MVP with rules-based detection.
+Phase 2: FastOptimizer integration for parameter optimization.
 """
 
 from __future__ import annotations
@@ -38,11 +41,17 @@ class VisibleChartAnalyzer:
     Later phases will add optimization and ML components.
     """
 
-    def __init__(self) -> None:
-        """Initialize the analyzer."""
+    def __init__(self, use_optimizer: bool = False) -> None:
+        """Initialize the analyzer.
+
+        Args:
+            use_optimizer: If True, use FastOptimizer for parameter tuning.
+        """
         self._feature_cache: dict[str, Any] = {}
         self._regime_cache: dict[str, RegimeType] = {}
         self._candle_loader = CandleLoader()
+        self._use_optimizer = use_optimizer
+        self._optimizer = None
 
     def analyze(
         self,
@@ -91,28 +100,34 @@ class VisibleChartAnalyzer:
         # Step 3: Detect regime
         regime = self._detect_regime(features)
 
-        # Step 4: Create default indicator set (MVP)
-        active_set = self._create_default_set(regime)
-
-        # Step 5: Score entries across all candles
-        entries = self._score_entries(candles, features, regime)
-
-        # Step 6: Postprocess (cooldown, clustering)
-        entries = self._postprocess_entries(entries)
+        # Step 4 & 5: Generate entries (with or without optimization)
+        if self._use_optimizer:
+            # Phase 2: Use FastOptimizer
+            result = self._run_optimizer(candles, regime, features)
+            active_set = result.get("active_set")
+            alternatives = result.get("alternatives", [])
+            entries = result.get("entries", [])
+        else:
+            # Phase 1: Default rules-based
+            active_set = self._create_default_set(regime)
+            entries = self._score_entries(candles, features, regime)
+            entries = self._postprocess_entries(entries)
+            alternatives = []
 
         analysis_time = (time.perf_counter() - start_time) * 1000
 
         logger.info(
-            "Analysis complete: %d entries, regime=%s, took %.1fms",
+            "Analysis complete: %d entries, regime=%s, optimized=%s, took %.1fms",
             len(entries),
             regime.value,
+            self._use_optimizer,
             analysis_time,
         )
 
         return AnalysisResult(
             entries=entries,
             active_set=active_set,
-            alternative_sets=[],
+            alternative_sets=alternatives,
             regime=regime,
             visible_range=visible_range,
             analysis_time_ms=analysis_time,
@@ -391,3 +406,40 @@ class VisibleChartAnalyzer:
         )
 
         return filtered
+
+    def _run_optimizer(
+        self,
+        candles: list[dict],
+        regime: RegimeType,
+        features: dict[str, list[float]],
+    ) -> dict[str, Any]:
+        """Run FastOptimizer to find optimal indicator set.
+
+        Args:
+            candles: Candle data.
+            regime: Detected regime.
+            features: Pre-calculated features.
+
+        Returns:
+            Dict with active_set, alternatives, and entries.
+        """
+        from .optimizer import FastOptimizer, OptimizerConfig
+
+        # Lazy init optimizer
+        if self._optimizer is None:
+            config = OptimizerConfig(
+                time_budget_ms=2000,  # 2 seconds
+                max_iterations=50,
+                early_stop_no_improve=15,
+                top_k=3,
+            )
+            self._optimizer = FastOptimizer(config)
+
+        # Run optimization
+        opt_result = self._optimizer.optimize(candles, regime, features)
+
+        return {
+            "active_set": opt_result.best_set,
+            "alternatives": opt_result.alternatives,
+            "entries": opt_result.entries,
+        }

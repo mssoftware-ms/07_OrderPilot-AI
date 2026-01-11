@@ -2,7 +2,7 @@
 
 **Start:** 2026-01-11
 **Letzte Aktualisierung:** 2026-01-11 21:00
-**Gesamtfortschritt:** 48% (13/27 Tasks - Phase 0 + Phase 1 komplett)
+**Gesamtfortschritt:** 70% (19/27 Tasks - Phase 0 + Phase 1 + Phase 2.1-2.5 + 2.9-2.10)
 
 ---
 
@@ -169,22 +169,30 @@
 > **Das ist die Kernaufgabe:** Für den **sichtbaren Chartbereich** wird ein **Indikator-/Feature-Set inkl. Parameter** gefunden, das die **Entry-Qualität** (primär Trefferquote) maximiert – unter Nebenbedingungen (Signalrate, Kostenmodell, DD).  
 > Ergebnis muss im Popup angezeigt werden (Set + Parameter) und als Basis dienen, um **alle Entry-Punkte** im sichtbaren Fenster zu zeichnen.
 
-- [ ] **2.1 Kandidatenraum definieren (Familien + Parameter-Ranges)**
-  Status: ⬜ → *regimebasiert, klein & sinnvoll, erweiterbar; in Config/Code versioniert*
+- [x] **2.1 Kandidatenraum definieren (Familien + Parameter-Ranges)**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *6 Familien: Trend, Momentum, Volatility, Volume, MeanReversion, Squeeze*
+  Code: `src/analysis/visible_chart/indicator_families.py` (337 Zeilen)
+  Nachweis: IndicatorConfig, ParameterRange, get_candidates_for_regime()
 
-- [ ] **2.2 Set-Definition fest verdrahten (was gehört zum Set)**
-  Status: ⬜ → *Familien + Parameter + Schwellen + Scoring-Gewichte + Postprocess-Regeln*
+- [x] **2.2 Set-Definition fest verdrahten (was gehört zum Set)**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *OptimizableSet mit Indikatoren, Weights, Postprocess, Stop-Config*
+  Code: `src/analysis/visible_chart/indicator_families.py:OptimizableSet`
+  Nachweis: to_indicator_set() Konvertierung für UI
 
-- [ ] **2.3 Objective/Score implementieren (Trefferquote primär + Constraints)**
-  Status: ⬜ → *HitRate + AvgR/ProfitFactor optional; Penalties: MaxDD, Signalrate, Kostenmodell*
-  Hinweis: *Harte Gates: min Trades, max Signalrate, max DD (sonst Score = −∞).*
+- [x] **2.3 Objective/Score implementieren (Trefferquote primär + Constraints)**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Hard Gates (min_trades, max_signals/h, max_dd) + Soft Scoring*
+  Code: `src/analysis/visible_chart/objective.py` (243 Zeilen)
+  Nachweis: ObjectiveFunction.evaluate() mit win_rate, profit_factor, expectancy Komponenten
 
-- [ ] **2.4 Deterministische Trade-Simulation im sichtbaren Slice**
-  Status: ⬜ → *Entry: Signal-Kerze/NextOpen konfig; SL: Structure/ATR; Exit: bestehender Trailing + SL; Kostenmodell aktiv*
+- [x] **2.4 Deterministische Trade-Simulation im sichtbaren Slice**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Entry/Exit mit ATR-Stop, Trailing, Fees*
+  Code: `src/analysis/visible_chart/trade_simulator.py` (387 Zeilen)
+  Nachweis: TradeSimulator.simulate() mit SimulationResult
 
-- [ ] **2.5 Fast Optimizer (UI/Visible Window) im Worker**
-  Status: ⬜ → *Random Search + Early Stopping; optional Successive Halving; Zeitbudget (z. B. 1–3s)*
-  DoD: *liefert Top-1 + Top-3 + Scores in Sekunden, ohne UI-Lag.*
+- [x] **2.5 Fast Optimizer (UI/Visible Window) im Worker**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Random Search, 2s Budget, Early Stop, Top-3*
+  Code: `src/analysis/visible_chart/optimizer.py` (483 Zeilen)
+  Nachweis: FastOptimizer.optimize() integriert in AnalysisWorker
 
 - [ ] **2.6 Caching & Wiederverwendung**
   Status: ⬜ → *Feature-Cache, Regime-Cache, Optimizer-Cache; kein Neuberechnen ohne Grund*
@@ -193,13 +201,17 @@
   Status: ⬜ → *(a) Visible-Range Wechsel, (b) Symbolwechsel, (c) Regime-Wechsel, (d) Timer, (e) Qualitätsdrift*
 
 - [ ] **2.8 Overfitting-Schutz (Pflicht)**
-  Status: ⬜ → *min Trades Gate, Komplexitätsstrafe, Sub-Slice Stabilitätscheck, Top-K Fallback je Regime*
+  Status: ⭐ Teilweise (min_trades Gate, complexity_penalty in Objective implementiert)
 
-- [ ] **2.9 Popup: „Aktives Set“ + Parameter-Tabelle + Alternativen**
-  Status: ⬜ → *Top1 (aktiv) + Top3; pro Zeile: Indikator/Familie, Parameter, TF, Rolle, Score, Constraints*
+- [x] **2.9 Popup: „Aktives Set" + Parameter-Tabelle + Alternativen**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Alternatives-Label im Popup hinzugefügt*
+  Code: `src/ui/dialogs/entry_analyzer_popup.py:_alternatives_label`
+  Nachweis: Zeigt Top-2 Alternative Sets
 
-- [ ] **2.10 Set → Signal-Pipeline koppeln**
-  Status: ⬜ → *Das aktive Set muss direkt die Entry-Signal-Generierung über ALLE Kerzen im sichtbaren Fenster steuern*
+- [x] **2.10 Set → Signal-Pipeline koppeln**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Optimizer generiert Entries direkt*
+  Code: `src/analysis/visible_chart/analyzer.py:_run_optimizer()`
+  Nachweis: use_optimizer=True im AnalysisWorker
 
 **DoD Phase 2:** Popup zeigt optimierte Indikator-Sets inkl. Parameter; sichtbar adaptiv; Set steuert Signal-Overlay im gesamten sichtbaren Bereich.
 

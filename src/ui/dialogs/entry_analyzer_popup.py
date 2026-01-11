@@ -141,6 +141,12 @@ class EntryAnalyzerPopup(QDialog):
         self._score_label = QLabel("Score: --")
         layout.addWidget(self._score_label)
 
+        # Alternatives info (Phase 2)
+        self._alternatives_label = QLabel("Alternatives: --")
+        self._alternatives_label.setStyleSheet("color: #888; font-size: 10pt;")
+        self._alternatives_label.setVisible(False)
+        layout.addWidget(self._alternatives_label)
+
         return group
 
     def _create_entries_group(self) -> QGroupBox:
@@ -253,10 +259,19 @@ class EntryAnalyzerPopup(QDialog):
             self._set_name_label.setText(f"Active Set: {result.active_set.name}")
             self._score_label.setText(f"Score: {result.active_set.score:.3f}")
             self._update_params_table(result.active_set.parameters)
+
+            # Show alternatives if available
+            if result.alternative_sets:
+                alt_names = [s.name for s in result.alternative_sets[:2]]
+                self._alternatives_label.setText(f"Alternatives: {', '.join(alt_names)}")
+                self._alternatives_label.setVisible(True)
+            else:
+                self._alternatives_label.setVisible(False)
         else:
             self._set_name_label.setText("Active Set: Default (no optimization)")
             self._score_label.setText("Score: --")
             self._params_table.setRowCount(0)
+            self._alternatives_label.setVisible(False)
 
         # Update entries table
         self._update_entries_table(result.entries)

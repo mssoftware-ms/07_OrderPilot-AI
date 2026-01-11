@@ -29,6 +29,7 @@ class AnalysisWorker(QThread):
         visible_range: dict,
         symbol: str,
         timeframe: str,
+        use_optimizer: bool = True,
         parent: Any = None,
     ) -> None:
         """Initialize the analysis worker.
@@ -37,12 +38,14 @@ class AnalysisWorker(QThread):
             visible_range: Dict with 'from' and 'to' timestamps.
             symbol: Trading symbol.
             timeframe: Chart timeframe.
+            use_optimizer: If True, run FastOptimizer (Phase 2).
             parent: Parent QObject.
         """
         super().__init__(parent)
         self._visible_range = visible_range
         self._symbol = symbol
         self._timeframe = timeframe
+        self._use_optimizer = use_optimizer
 
     def run(self) -> None:
         """Execute the analysis in background thread."""
@@ -65,8 +68,8 @@ class AnalysisWorker(QThread):
                 to_idx=self._visible_range.get("to_idx"),
             )
 
-            # Run analysis
-            analyzer = VisibleChartAnalyzer()
+            # Run analysis (with or without optimizer)
+            analyzer = VisibleChartAnalyzer(use_optimizer=self._use_optimizer)
             result = analyzer.analyze(
                 visible_range=visible_range,
                 symbol=self._symbol,
