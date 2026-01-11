@@ -4,11 +4,13 @@ Implements the scoring function that evaluates indicator sets
 based on trade simulation results.
 
 Phase 2.3: Objective/Score implementieren (Trefferquote primär + Constraints)
+Phase 2.8: Overfitting-Schutz (Variance, Consistency, Temporal Stability)
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +33,10 @@ class ObjectiveConfig:
         expectancy_weight: Weight for expectancy component.
         drawdown_penalty: Penalty factor for drawdown.
         complexity_penalty: Penalty per indicator in set.
+        variance_penalty: Penalty for high variance in trade results.
+        consistency_weight: Weight for result consistency bonus.
+        temporal_spread_min: Min fraction of time period covered (anti-clustering).
+        overfit_detection: Enable advanced overfitting detection.
     """
 
     primary_metric: str = "win_rate"
@@ -42,6 +48,11 @@ class ObjectiveConfig:
     expectancy_weight: float = 0.2
     drawdown_penalty: float = 0.1
     complexity_penalty: float = 0.02
+    # Phase 2.8: Overfitting protection
+    variance_penalty: float = 0.05
+    consistency_weight: float = 0.1
+    temporal_spread_min: float = 0.3  # At least 30% of time period covered
+    overfit_detection: bool = True
 
 
 @dataclass
@@ -153,6 +164,25 @@ class ObjectiveFunction:
         complexity_penalty = n_indicators * self.config.complexity_penalty
         components["complexity_penalty"] = -complexity_penalty
 
+        # ====== OVERFITTING PROTECTION (Phase 2.8) ======
+
+        if self.config.overfit_detection:
+            overfit_metrics = self._calculate_overfit_metrics(sim_result, hours_analyzed)
+
+            # Variance penalty: High variance in trade results = less reliable
+            variance_penalty = overfit_metrics["variance_score"] * self.config.variance_penalty
+            components["variance_penalty"] = -variance_penalty
+
+            # Consistency bonus: Steady performance across time
+            consistency_bonus = overfit_metrics["consistency_score"] * self.config.consistency_weight
+            components["consistency_bonus"] = consistency_bonus
+
+            # Temporal spread check: trades shouldn't cluster in one period
+            if overfit_metrics["temporal_spread"] < self.config.temporal_spread_min:
+                # Soft penalty, not hard gate
+                spread_penalty = (self.config.temporal_spread_min - overfit_metrics["temporal_spread"])
+                components["temporal_penalty"] = -spread_penalty * 0.1
+
         # ====== FINAL SCORE ======
 
         base_score = sum(components.values())
@@ -179,6 +209,70 @@ class ObjectiveFunction:
             components=components,
             simulation_result=sim_result,
         )
+
+    def _calculate_overfit_metrics(
+        self, sim_result: SimulationResult, hours_analyzed: float
+    ) -> dict[str, float]:
+        """Calculate overfitting detection metrics.
+
+        Args:
+            sim_result: Trade simulation result.
+            hours_analyzed: Duration of analyzed period.
+
+        Returns:
+            Dict with variance_score, consistency_score, temporal_spread.
+        """
+        trades = sim_result.trades
+
+        if not trades or len(trades) < 2:
+            return {
+                "variance_score": 0.0,
+                "consistency_score": 0.5,
+                "temporal_spread": 0.0,
+            }
+
+        # 1. Variance in trade PnL (normalized by mean)
+        pnl_values = [t.pnl_r for t in trades]
+        mean_pnl = sum(pnl_values) / len(pnl_values)
+        variance = sum((x - mean_pnl) ** 2 for x in pnl_values) / len(pnl_values)
+        std_dev = math.sqrt(variance)
+
+        # Normalize variance to 0-1 scale (std_dev of 2R = max penalty)
+        variance_score = min(std_dev / 2.0, 1.0)
+
+        # 2. Consistency: Check if wins/losses are evenly distributed
+        # Using runs test approximation
+        win_loss_sequence = [1 if t.pnl_r > 0 else 0 for t in trades]
+        runs = 1
+        for i in range(1, len(win_loss_sequence)):
+            if win_loss_sequence[i] != win_loss_sequence[i - 1]:
+                runs += 1
+
+        # Expected runs for random sequence
+        n_wins = sum(win_loss_sequence)
+        n_losses = len(win_loss_sequence) - n_wins
+        if n_wins > 0 and n_losses > 0:
+            expected_runs = (2 * n_wins * n_losses) / (n_wins + n_losses) + 1
+            # Higher ratio = more consistent (less streaky)
+            consistency_score = min(runs / expected_runs, 1.0) if expected_runs > 0 else 0.5
+        else:
+            consistency_score = 0.5  # All wins or all losses
+
+        # 3. Temporal spread: Check trade distribution across time
+        if hours_analyzed > 0 and len(trades) >= 2:
+            timestamps = [t.entry_time for t in trades]
+            min_ts = min(timestamps)
+            max_ts = max(timestamps)
+            trade_span_hours = (max_ts - min_ts) / 3600
+            temporal_spread = trade_span_hours / hours_analyzed if hours_analyzed > 0 else 0
+        else:
+            temporal_spread = 0.0
+
+        return {
+            "variance_score": variance_score,
+            "consistency_score": consistency_score,
+            "temporal_spread": min(temporal_spread, 1.0),
+        }
 
     def compare(self, result_a: ObjectiveResult, result_b: ObjectiveResult) -> int:
         """Compare two objective results.
