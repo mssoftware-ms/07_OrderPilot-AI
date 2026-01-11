@@ -85,6 +85,10 @@ class EmbeddedTradingViewChartUIMixin:
         if zones_at_price:
             self._add_zone_management_menu(menu, zones_at_price)
 
+        # Entry Analyzer (new feature)
+        self._add_entry_analyzer_menu(menu)
+        menu.addSeparator()
+
         self._add_entry_menu(menu)
         self._add_zone_menu(menu)
         self._add_structure_menu(menu)
@@ -299,3 +303,24 @@ class EmbeddedTradingViewChartUIMixin:
 
         dialog = ChartMarkingsManagerDialog(self, self)
         dialog.exec()
+
+    def _add_entry_analyzer_menu(self, menu):
+        """Add Entry Analyzer menu item to context menu."""
+        from PyQt6.QtGui import QAction
+
+        analyzer_action = QAction("🎯 Analyze Visible Range...", self)
+        analyzer_action.triggered.connect(self._show_entry_analyzer)
+        menu.addAction(analyzer_action)
+
+    def _show_entry_analyzer(self):
+        """Show the Entry Analyzer popup."""
+        if hasattr(self, "show_entry_analyzer"):
+            self.show_entry_analyzer()
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self,
+                "Feature Not Available",
+                "Entry Analyzer mixin not loaded.",
+            )
