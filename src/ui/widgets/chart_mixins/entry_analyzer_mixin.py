@@ -125,9 +125,41 @@ class EntryAnalyzerMixin:
                 self._clear_entry_markers
             )
 
+        # Set context for AI/Validation
+        symbol = getattr(self, "_symbol", None) or getattr(self, "current_symbol", "UNKNOWN")
+        timeframe = getattr(self, "_timeframe", None) or getattr(self, "current_timeframe", "1m")
+        candles = self._get_candles_for_validation()
+        self._entry_analyzer_popup.set_context(symbol, timeframe, candles)
+
         self._entry_analyzer_popup.show()
         self._entry_analyzer_popup.raise_()
         self._entry_analyzer_popup.activateWindow()
+
+    def _get_candles_for_validation(self) -> list[dict]:
+        """Get candle data for validation from chart data.
+
+        Returns:
+            List of candle dicts with OHLCV data.
+        """
+        candles = []
+        data = getattr(self, "data", None)
+
+        if data is not None and hasattr(data, "iterrows"):
+            try:
+                for _, row in data.iterrows():
+                    candle = {
+                        "timestamp": int(row.get("time", 0)),
+                        "open": float(row.get("open", 0)),
+                        "high": float(row.get("high", 0)),
+                        "low": float(row.get("low", 0)),
+                        "close": float(row.get("close", 0)),
+                        "volume": float(row.get("volume", 0)),
+                    }
+                    candles.append(candle)
+            except Exception as e:
+                logger.warning("Failed to extract candles: %s", e)
+
+        return candles
 
     # ─────────────────────────────────────────────────────────────────
     # Live Mode API (Phase 3)
