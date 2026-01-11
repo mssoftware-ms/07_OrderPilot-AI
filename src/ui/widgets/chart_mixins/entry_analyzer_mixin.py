@@ -2,6 +2,8 @@
 
 Provides integration of the Entry Analyzer popup
 with the embedded TradingView chart.
+
+Phase 3: Added BackgroundRunner for live analysis.
 """
 
 from __future__ import annotations
@@ -12,8 +14,10 @@ from typing import TYPE_CHECKING, Any
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox
 
+from .live_analysis_bridge import LiveAnalysisBridge
+
 if TYPE_CHECKING:
-    from src.analysis.visible_chart.types import AnalysisResult, EntryEvent
+    from src.analysis.visible_chart.types import AnalysisResult, EntryEvent, RegimeType
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +96,18 @@ class EntryAnalyzerMixin:
     - clear_bot_markers() method
     - _symbol attribute
     - _timeframe attribute
+
+    Phase 3 additions:
+    - Live mode with BackgroundRunner
+    - Incremental updates on new candles
+    - Auto-reanalysis on schedule
     """
 
     _entry_analyzer_popup = None
     _analysis_worker = None
+    _live_bridge: LiveAnalysisBridge | None = None
+    _live_mode_enabled: bool = False
+    _auto_draw_entries: bool = True
 
     def show_entry_analyzer(self) -> None:
         """Show the Entry Analyzer popup dialog."""
@@ -116,6 +128,187 @@ class EntryAnalyzerMixin:
         self._entry_analyzer_popup.show()
         self._entry_analyzer_popup.raise_()
         self._entry_analyzer_popup.activateWindow()
+
+    # ─────────────────────────────────────────────────────────────────
+    # Live Mode API (Phase 3)
+    # ─────────────────────────────────────────────────────────────────
+
+    def start_live_entry_analysis(
+        self,
+        reanalyze_interval_sec: float = 60.0,
+        use_optimizer: bool = True,
+        auto_draw: bool = True,
+    ) -> None:
+        """Start continuous live entry analysis.
+
+        Args:
+            reanalyze_interval_sec: Interval for scheduled reanalysis.
+            use_optimizer: Whether to use the optimizer.
+            auto_draw: Automatically draw new entries on chart.
+        """
+        if self._live_bridge is None:
+            self._live_bridge = LiveAnalysisBridge(self)
+            self._live_bridge.result_ready.connect(self._on_live_result)
+            self._live_bridge.new_entry.connect(self._on_live_new_entry)
+            self._live_bridge.regime_changed.connect(self._on_live_regime_change)
+            self._live_bridge.error_occurred.connect(self._on_live_error)
+
+        self._auto_draw_entries = auto_draw
+        self._live_bridge.start_live_analysis(reanalyze_interval_sec, use_optimizer)
+        self._live_mode_enabled = True
+
+        # Trigger initial analysis
+        self._request_live_analysis()
+
+        logger.info("Live entry analysis started")
+
+    def stop_live_entry_analysis(self) -> None:
+        """Stop continuous live entry analysis."""
+        if self._live_bridge:
+            self._live_bridge.stop_live_analysis()
+        self._live_mode_enabled = False
+        logger.info("Live entry analysis stopped")
+
+    def is_live_analysis_running(self) -> bool:
+        """Check if live analysis is running.
+
+        Returns:
+            True if live mode is active.
+        """
+        return self._live_mode_enabled and (
+            self._live_bridge is not None and self._live_bridge.is_running()
+        )
+
+    def on_new_candle_received(self, candle: dict) -> None:
+        """Handle new candle data for incremental update.
+
+        Call this from chart's streaming data handler.
+
+        Args:
+            candle: New candle dict with OHLCV data.
+        """
+        if not self._live_mode_enabled or not self._live_bridge:
+            return
+
+        if not hasattr(self, "get_visible_range"):
+            return
+
+        # Get current visible range and push update
+        def on_range(range_data: dict | None) -> None:
+            if range_data and self._live_bridge:
+                symbol = getattr(self, "_symbol", None) or getattr(self, "symbol", "UNKNOWN")
+                timeframe = getattr(self, "_timeframe", None) or getattr(self, "timeframe", "1m")
+                self._live_bridge.push_new_candle(candle, range_data, symbol, timeframe)
+
+        self.get_visible_range(on_range)
+
+    def get_live_metrics(self) -> dict:
+        """Get live analysis performance metrics.
+
+        Returns:
+            Dict with performance statistics.
+        """
+        if self._live_bridge:
+            return self._live_bridge.get_metrics()
+        return {}
+
+    def _request_live_analysis(self) -> None:
+        """Request live analysis of current visible range."""
+        if not self._live_bridge or not hasattr(self, "get_visible_range"):
+            return
+
+        def on_range(range_data: dict | None) -> None:
+            if range_data and self._live_bridge:
+                symbol = getattr(self, "_symbol", None) or getattr(self, "symbol", "UNKNOWN")
+                timeframe = getattr(self, "_timeframe", None) or getattr(self, "timeframe", "1m")
+                self._live_bridge.request_analysis(range_data, symbol, timeframe)
+
+        self.get_visible_range(on_range)
+
+    def _on_live_result(self, result: Any) -> None:
+        """Handle live analysis result.
+
+        Args:
+            result: AnalysisResult from background runner.
+        """
+        # Update popup if open
+        if self._entry_analyzer_popup and self._entry_analyzer_popup.isVisible():
+            self._entry_analyzer_popup.set_result(result)
+
+        # Auto-draw entries
+        if self._auto_draw_entries and result.entries:
+            self._clear_entry_markers()
+            self._draw_entry_markers(result.entries)
+
+        logger.debug(
+            "Live result: %d entries, regime=%s",
+            len(result.entries),
+            result.regime.value,
+        )
+
+    def _on_live_new_entry(self, entry: Any) -> None:
+        """Handle new entry detected in live mode.
+
+        Args:
+            entry: New EntryEvent.
+        """
+        if self._auto_draw_entries:
+            self._draw_single_entry(entry)
+
+        logger.info(
+            "New live entry: %s @ %.2f (confidence=%.0f%%)",
+            entry.side.value,
+            entry.price,
+            entry.confidence * 100,
+        )
+
+    def _on_live_regime_change(self, old: Any, new: Any) -> None:
+        """Handle regime change in live mode.
+
+        Args:
+            old: Previous RegimeType.
+            new: New RegimeType.
+        """
+        logger.info("Live regime change: %s -> %s", old.value, new.value)
+
+        # Update popup if open
+        if self._entry_analyzer_popup and self._entry_analyzer_popup.isVisible():
+            # Trigger refresh to show new regime
+            self._request_live_analysis()
+
+    def _on_live_error(self, error_msg: str) -> None:
+        """Handle live analysis error.
+
+        Args:
+            error_msg: Error message.
+        """
+        logger.error("Live analysis error: %s", error_msg)
+
+    def _draw_single_entry(self, entry: Any) -> None:
+        """Draw a single entry marker on the chart.
+
+        Args:
+            entry: EntryEvent to draw.
+        """
+        if not hasattr(self, "add_bot_marker"):
+            return
+
+        from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+
+        marker_type = MarkerType.ENTRY_CONFIRMED
+        reasons_str = ", ".join(entry.reason_tags[:2]) if entry.reason_tags else ""
+        text = f"{entry.side.value.upper()} {entry.confidence:.0%}"
+        if reasons_str:
+            text = f"{text} [{reasons_str}]"
+
+        self.add_bot_marker(
+            timestamp=entry.timestamp,
+            price=entry.price,
+            marker_type=marker_type,
+            side=entry.side.value,
+            text=text,
+            score=entry.confidence,
+        )
 
     def _start_visible_range_analysis(self) -> None:
         """Start analysis of the visible chart range."""
