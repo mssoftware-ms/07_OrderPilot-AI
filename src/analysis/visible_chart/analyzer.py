@@ -6,6 +6,7 @@ and signal scoring.
 
 Phase 1: MVP with rules-based detection.
 Phase 2: FastOptimizer integration for parameter optimization.
+Phase 2.6: Caching & Wiederverwendung.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import logging
 import time
 from typing import Any
 
+from .cache import AnalyzerCache, get_analyzer_cache
 from .candle_loader import CandleLoader
 from .types import (
     AnalysisResult,
@@ -41,17 +43,26 @@ class VisibleChartAnalyzer:
     Later phases will add optimization and ML components.
     """
 
-    def __init__(self, use_optimizer: bool = False) -> None:
+    def __init__(
+        self,
+        use_optimizer: bool = False,
+        use_cache: bool = True,
+        cache: AnalyzerCache | None = None,
+    ) -> None:
         """Initialize the analyzer.
 
         Args:
             use_optimizer: If True, use FastOptimizer for parameter tuning.
+            use_cache: If True, use caching for features/regime/optimizer.
+            cache: Optional custom cache instance. Uses global if None.
         """
-        self._feature_cache: dict[str, Any] = {}
-        self._regime_cache: dict[str, RegimeType] = {}
         self._candle_loader = CandleLoader()
         self._use_optimizer = use_optimizer
+        self._use_cache = use_cache
+        self._cache = cache if cache else get_analyzer_cache()
         self._optimizer = None
+        self._last_symbol: str | None = None
+        self._last_regime: RegimeType | None = None
 
     def analyze(
         self,
@@ -70,6 +81,14 @@ class VisibleChartAnalyzer:
             AnalysisResult with entries and indicator set info.
         """
         start_time = time.perf_counter()
+
+        # Check for re-optimize trigger (symbol or regime change)
+        symbol_changed = self._last_symbol is not None and self._last_symbol != symbol
+        if symbol_changed:
+            logger.info("Symbol changed: %s -> %s, invalidating cache", self._last_symbol, symbol)
+            if self._use_cache:
+                self._cache.invalidate_symbol(self._last_symbol)
+        self._last_symbol = symbol
 
         logger.info(
             "Starting analysis for %s [%d - %d] (%d min)",
@@ -94,16 +113,28 @@ class VisibleChartAnalyzer:
                 analysis_time_ms=(time.perf_counter() - start_time) * 1000,
             )
 
-        # Step 2: Calculate features
-        features = self._calculate_features(candles)
+        # Step 2: Calculate features (with cache)
+        features = self._get_or_calculate_features(
+            candles, symbol, timeframe, visible_range
+        )
 
-        # Step 3: Detect regime
-        regime = self._detect_regime(features)
+        # Step 3: Detect regime (with cache)
+        regime = self._get_or_detect_regime(
+            features, symbol, timeframe, visible_range
+        )
+
+        # Check for regime change trigger
+        regime_changed = self._last_regime is not None and self._last_regime != regime
+        if regime_changed:
+            logger.info("Regime changed: %s -> %s", self._last_regime.value, regime.value)
+        self._last_regime = regime
 
         # Step 4 & 5: Generate entries (with or without optimization)
         if self._use_optimizer:
-            # Phase 2: Use FastOptimizer
-            result = self._run_optimizer(candles, regime, features)
+            # Check optimizer cache first
+            result = self._get_or_run_optimizer(
+                candles, regime, features, symbol, timeframe, visible_range
+            )
             active_set = result.get("active_set")
             alternatives = result.get("alternatives", [])
             entries = result.get("entries", [])
@@ -115,6 +146,17 @@ class VisibleChartAnalyzer:
             alternatives = []
 
         analysis_time = (time.perf_counter() - start_time) * 1000
+
+        # Log cache stats periodically
+        if self._use_cache:
+            stats = self._cache.get_stats()
+            if (stats.hits + stats.misses) % 10 == 0:
+                logger.debug(
+                    "Cache stats: hit_rate=%.1f%%, hits=%d, misses=%d",
+                    stats.hit_rate * 100,
+                    stats.hits,
+                    stats.misses,
+                )
 
         logger.info(
             "Analysis complete: %d entries, regime=%s, optimized=%s, took %.1fms",
@@ -133,6 +175,104 @@ class VisibleChartAnalyzer:
             analysis_time_ms=analysis_time,
             candle_count=len(candles),
         )
+
+    def _get_or_calculate_features(
+        self,
+        candles: list[dict],
+        symbol: str,
+        timeframe: str,
+        visible_range: VisibleRange,
+    ) -> dict[str, list[float]]:
+        """Get features from cache or calculate them.
+
+        Args:
+            candles: Candle data.
+            symbol: Trading symbol.
+            timeframe: Chart timeframe.
+            visible_range: Visible time range.
+
+        Returns:
+            Feature dictionary.
+        """
+        if self._use_cache:
+            cached = self._cache.get_features(symbol, timeframe, visible_range)
+            if cached is not None:
+                return cached
+
+        features = self._calculate_features(candles)
+
+        if self._use_cache and features:
+            self._cache.set_features(symbol, timeframe, visible_range, features)
+
+        return features
+
+    def _get_or_detect_regime(
+        self,
+        features: dict[str, list[float]],
+        symbol: str,
+        timeframe: str,
+        visible_range: VisibleRange,
+    ) -> RegimeType:
+        """Get regime from cache or detect it.
+
+        Args:
+            features: Calculated features.
+            symbol: Trading symbol.
+            timeframe: Chart timeframe.
+            visible_range: Visible time range.
+
+        Returns:
+            Detected regime type.
+        """
+        if self._use_cache:
+            cached = self._cache.get_regime(symbol, timeframe, visible_range)
+            if cached is not None:
+                return cached
+
+        regime = self._detect_regime(features)
+
+        if self._use_cache:
+            self._cache.set_regime(symbol, timeframe, visible_range, regime)
+
+        return regime
+
+    def _get_or_run_optimizer(
+        self,
+        candles: list[dict],
+        regime: RegimeType,
+        features: dict[str, list[float]],
+        symbol: str,
+        timeframe: str,
+        visible_range: VisibleRange,
+    ) -> dict[str, Any]:
+        """Get optimizer result from cache or run it.
+
+        Args:
+            candles: Candle data.
+            regime: Detected regime.
+            features: Calculated features.
+            symbol: Trading symbol.
+            timeframe: Chart timeframe.
+            visible_range: Visible time range.
+
+        Returns:
+            Dict with active_set, alternatives, and entries.
+        """
+        if self._use_cache:
+            cached = self._cache.get_optimizer_result(
+                symbol, timeframe, visible_range, regime
+            )
+            if cached is not None:
+                return cached
+
+        result = self._run_optimizer(candles, regime, features)
+
+        if self._use_cache:
+            self._cache.set_optimizer_result(
+                symbol, timeframe, visible_range, regime, result
+            )
+
+        return result
 
     def _calculate_features(self, candles: list[dict]) -> dict[str, list[float]]:
         """Calculate technical features from candles.
