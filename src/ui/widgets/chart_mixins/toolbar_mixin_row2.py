@@ -350,3 +350,51 @@ class ToolbarMixinRow2:
             "color: #888; font-weight: bold; padding: 5px;"
         )
         toolbar.addWidget(self.parent.market_status_label)
+
+    # =========================================================================
+    # Issue #12: Clear Methods (called by ToolbarMixin delegation)
+    # =========================================================================
+
+    def clear_all_markers(self) -> None:
+        """Clear all entry and structure markers."""
+        # Use methods from ChartMarkingMixin
+        if hasattr(self.parent, 'clear_entry_markers'):
+            self.parent.clear_entry_markers()
+        if hasattr(self.parent, 'clear_structure_breaks'):
+            self.parent.clear_structure_breaks()
+        # Also clear JavaScript-side markers
+        if hasattr(self.parent, '_execute_js'):
+            self.parent._execute_js("window.chartAPI?.clearMarkers();")
+        logger.info("Cleared all markers")
+
+    def clear_zones_with_js(self) -> None:
+        """Clear all zones (Python-managed and JS-side)."""
+        if hasattr(self.parent, 'clear_zones'):
+            self.parent.clear_zones()
+        # Also explicitly call JS clearZones for any orphaned zones
+        if hasattr(self.parent, '_execute_js'):
+            self.parent._execute_js("window.chartAPI?.clearZones();")
+        logger.info("Cleared all zones")
+
+    def clear_lines_with_js(self) -> None:
+        """Clear all lines (Python-managed and JS-side hlines)."""
+        if hasattr(self.parent, 'clear_stop_loss_lines'):
+            self.parent.clear_stop_loss_lines()
+        # Also explicitly call JS clearLines for drawing tool lines
+        if hasattr(self.parent, '_execute_js'):
+            self.parent._execute_js("window.chartAPI?.clearLines();")
+        logger.info("Cleared all lines")
+
+    def clear_all_drawings(self) -> None:
+        """Clear only the JavaScript-side drawings (from drawing tools)."""
+        if hasattr(self.parent, '_execute_js'):
+            self.parent._execute_js("window.chartAPI?.clearAllDrawings();")
+        logger.info("Cleared all JS drawings")
+
+    def clear_all_markings(self) -> None:
+        """Clear all chart markings (both Python-managed and JS drawings)."""
+        self.clear_all_markers()
+        self.clear_zones_with_js()
+        self.clear_lines_with_js()
+        self.clear_all_drawings()
+        logger.info("Cleared all chart markings")

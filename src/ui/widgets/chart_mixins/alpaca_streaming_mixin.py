@@ -156,15 +156,34 @@ class AlpacaStreamingMixin:
             ts = ts.replace(tzinfo=timezone.utc)
         return ts
 
+    def _get_resolution_seconds(self) -> int:
+        """Get current chart timeframe resolution in seconds.
+
+        Maps timeframe string (e.g., "5T") to seconds (e.g., 300).
+        """
+        timeframe_to_seconds = {
+            "1T": 60,      # 1 minute
+            "5T": 300,     # 5 minutes
+            "15T": 900,    # 15 minutes
+            "30T": 1800,   # 30 minutes
+            "1H": 3600,    # 1 hour
+            "4H": 14400,   # 4 hours
+            "1D": 86400,   # 1 day
+        }
+        current_tf = getattr(self, 'current_timeframe', '1T')
+        return timeframe_to_seconds.get(current_tf, 60)
+
     def _resolve_tick_time(self, ts, tick_data: dict) -> tuple[int, int]:
         local_offset = get_local_timezone_offset_seconds()
         current_tick_time = int(ts.timestamp()) + local_offset
-        current_minute_start = current_tick_time - (current_tick_time % 60)
+        # Use chart's actual resolution instead of hardcoded 60 seconds
+        resolution_seconds = self._get_resolution_seconds()
+        current_candle_start = current_tick_time - (current_tick_time % resolution_seconds)
         logger.debug(
             f"ALPACA TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
-            f"TickUnix: {current_tick_time} | MinStart: {current_minute_start}"
+            f"TickUnix: {current_tick_time} | CandleStart: {current_candle_start} | Resolution: {resolution_seconds}s"
         )
-        return current_tick_time, current_minute_start
+        return current_tick_time, current_candle_start
 
     def _initialize_candle(self, current_minute_start: int, price: float) -> None:
         self._current_candle_time = current_minute_start
@@ -241,13 +260,16 @@ class AlpacaStreamingMixin:
             return
 
         try:
+            # Get resolution for time alignment
+            resolution_seconds = self._get_resolution_seconds()
+            local_offset = get_local_timezone_offset_seconds()
+
             # Process all pending bars
             while self.pending_bars:
                 bar_data = self.pending_bars.popleft()
 
                 ts_raw = bar_data.get('timestamp', datetime.now())
                 # Robust parsing: handle str/np datetime/pandas Timestamp
-                local_offset = get_local_timezone_offset_seconds()
                 try:
                     if isinstance(ts_raw, str):
                         ts_parsed = pd.to_datetime(ts_raw)
@@ -260,8 +282,12 @@ class AlpacaStreamingMixin:
                 except Exception:
                     unix_time = int(datetime.now().timestamp()) + local_offset
 
+                # CRITICAL FIX: Align time to candle boundaries (clock time)
+                # e.g., for 5-minute candles: 15:07 -> 15:05, 15:03 -> 15:00
+                aligned_time = unix_time - (unix_time % resolution_seconds)
+
                 candle = {
-                    'time': unix_time,
+                    'time': aligned_time,
                     'open': float(bar_data.get('open', 0)),
                     'high': float(bar_data.get('high', 0)),
                     'low': float(bar_data.get('low', 0)),
@@ -269,7 +295,7 @@ class AlpacaStreamingMixin:
                 }
 
                 volume = {
-                    'time': unix_time,
+                    'time': aligned_time,
                     'value': float(bar_data.get('volume', 0)),
                     'color': '#26a69a' if candle['close'] >= candle['open'] else '#ef5350'
                 }

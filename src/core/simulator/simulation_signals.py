@@ -16,6 +16,7 @@ from .simulation_signals_momentum import momentum_signals
 from .simulation_signals_opening_range import opening_range_signals
 from .simulation_signals_regime_hybrid import regime_hybrid_signals
 from .simulation_signals_scalping import scalping_signals
+from .simulation_signals_sideways_range import sideways_range_signals
 from .simulation_signals_trend_following import trend_following_signals
 from .simulation_signals_trend_pullback import trend_pullback_signals
 
@@ -60,6 +61,7 @@ class StrategySignalGenerator:
             StrategyName.TREND_PULLBACK: self._trend_pullback_signals,
             StrategyName.OPENING_RANGE: self._opening_range_signals,
             StrategyName.REGIME_HYBRID: self._regime_hybrid_signals,
+            StrategyName.SIDEWAYS_RANGE: self._sideways_range_signals,
         }
         handler = handlers.get(strategy_name)
         if not handler:
@@ -83,7 +85,7 @@ class StrategySignalGenerator:
         return scalping_signals(df, params, calculate_rsi=calculate_rsi)
 
     def _bollinger_squeeze_signals(self, df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
-        return bollinger_squeeze_signals(df, params, calculate_rsi=calculate_rsi)
+        return bollinger_squeeze_signals(df, params, true_range=true_range)
 
     def _trend_pullback_signals(self, df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
         return trend_pullback_signals(df, params, calculate_rsi=calculate_rsi)
@@ -99,6 +101,9 @@ class StrategySignalGenerator:
             calculate_obv=calculate_obv,
             true_range=true_range,
         )
+
+    def _sideways_range_signals(self, df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
+        return sideways_range_signals(df, params, calculate_rsi=calculate_rsi)
 
     def _true_range(self, df: pd.DataFrame) -> pd.Series:
         return true_range(df)

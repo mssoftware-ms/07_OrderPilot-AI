@@ -52,6 +52,17 @@ class VolatilityLevel(str, Enum):
     EXTREME = "extreme"
 
 
+class DirectionalBias(str, Enum):
+    """Daily directional bias (long/short tendency).
+
+    Used instead of fixed daily strategy selection.
+    Provides only directional guidance, not strategy lock-in.
+    """
+    LONG = "long"    # Daily trend favors long trades
+    SHORT = "short"  # Daily trend favors short trades
+    NEUTRAL = "neutral"  # No clear directional bias
+
+
 class SignalType(str, Enum):
     """Signal confirmation level."""
     CANDIDATE = "candidate"   # Potential signal, not confirmed

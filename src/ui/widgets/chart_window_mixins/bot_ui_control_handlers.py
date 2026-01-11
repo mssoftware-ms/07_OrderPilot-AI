@@ -64,6 +64,10 @@ class BotUIControlHandlers:
             )
             logger.info("Leverage Override deaktiviert - automatischer Hebel aktiv")
 
+        # Issue #1: Update leverage column visibility in signals table
+        if hasattr(self.parent, '_update_leverage_column_visibility'):
+            self.parent._update_leverage_column_visibility()
+
     def on_leverage_slider_changed(self, value: int) -> None:
         """Handler für Leverage Slider Wertänderung."""
         self.parent.leverage_value_label.setText(f"{value}x")

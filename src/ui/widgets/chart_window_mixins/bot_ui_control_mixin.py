@@ -76,6 +76,14 @@ class BotUIControlMixin:
         # Control Group (Start/Stop/Pause)
         layout.addWidget(self._build_control_group())
 
+        # Quick Toggles & Leverage & Fees Row (Issues #43, #3)
+        toggles_row = QHBoxLayout()
+        toggles_row.setSpacing(10)
+        toggles_row.addWidget(self._build_quick_toggles_group())
+        toggles_row.addWidget(self._build_leverage_override_group())
+        toggles_row.addWidget(self._build_bitunix_fees_group())
+        layout.addLayout(toggles_row)
+
         # Settings Row (Bot Settings + Trailing Settings)
         settings_row = QHBoxLayout()
         settings_row.setSpacing(10)
@@ -103,6 +111,18 @@ class BotUIControlMixin:
     def _build_control_group(self):
         """Create control group (delegated to widgets helper)."""
         return self._widgets_helper.build_control_group()
+
+    def _build_quick_toggles_group(self):
+        """Create quick toggles group (delegated to widgets helper, Issue #43)."""
+        return self._widgets_helper.build_quick_toggles_group()
+
+    def _build_leverage_override_group(self):
+        """Create leverage override group (delegated to widgets helper, Issue #43)."""
+        return self._widgets_helper.build_leverage_override_group()
+
+    def _build_bitunix_fees_group(self):
+        """Create BitUnix fees group (delegated to widgets helper, Issue #3)."""
+        return self._widgets_helper.build_bitunix_fees_group()
 
     def _build_settings_group(self):
         """Create settings group (delegated to widgets helper)."""
@@ -144,6 +164,13 @@ class BotUIControlMixin:
     def _on_trade_direction_changed(self, direction: str) -> None:
         """Handle trade direction change (delegated to handlers helper)."""
         self._handlers_helper.on_trade_direction_changed(direction)
+
+    def _on_fee_changed(self, value: float) -> None:
+        """Handle BitUnix fee value change (Issue #3).
+
+        Updates internal fee tracking for P&L calculations.
+        """
+        logger.debug(f"Fee value changed: {value}%")
 
     def _update_bot_display(self) -> None:
         """Update bot status display (QTimer callback). Delegates to widgets helper."""
@@ -226,6 +253,20 @@ class BotUIControlMixin:
                 self.leverage_slider.value()
             )
         return (False, 1)
+
+    def get_bitunix_fees(self) -> tuple[float, float]:
+        """Get current BitUnix fee settings (Issue #3).
+
+        Returns:
+            Tuple of (maker_fee_pct, taker_fee_pct)
+        """
+        maker_fee = 0.02  # Default
+        taker_fee = 0.06  # Default
+        if hasattr(self, 'futures_maker_fee_spin'):
+            maker_fee = self.futures_maker_fee_spin.value()
+        if hasattr(self, 'futures_taker_fee_spin'):
+            taker_fee = self.futures_taker_fee_spin.value()
+        return (maker_fee, taker_fee)
 
     def get_trade_direction(self) -> str:
         """Get current trade direction.

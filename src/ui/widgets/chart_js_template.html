@@ -169,7 +169,7 @@
                         timeVisible: true,
                         secondsVisible: false,
                         borderColor: '#485c7b',
-                        shiftVisibleRangeOnNewBar: true,
+                        shiftVisibleRangeOnNewBar: false, // Issue: Chart springt zur Mitte - disabled
                         barSpacing: 6,
                     },
                     localization: {
@@ -235,12 +235,17 @@
                 }
 
                 function refitPriceScale() {
+                    // Issue #8: Reset user's manual Y-panning preference when explicitly refitting
+                    window._userDisabledAutoScale = false;
                     rightScale.applyOptions({ autoScale: true, scaleMargins });
                     chart.timeScale().fitContent();
                     // Use setTimeout to ensure fitContent has completed before extending
                     setTimeout(() => {
                         extendVisibleRange();
-                        rightScale.applyOptions({ autoScale: false, scaleMargins });
+                        // Issue #4 Fix: Keep autoScale ON if streaming is active
+                        if (window._streamingAutoScale !== true) {
+                            rightScale.applyOptions({ autoScale: false, scaleMargins });
+                        }
                     }, 50);
                 }
 
@@ -371,11 +376,24 @@
                             }
                             priceSeries.update(c);
                             window._lastCandleTime = c.time;
+
+                            // Issue #4: Auto-fit Y scale during streaming to prevent flat candles
+                            // Issue #8: BUT respect user's manual Y-panning - don't override if user disabled
+                            if (window._streamingAutoScale !== false && window._userDisabledAutoScale !== true) {
+                                rightScale.applyOptions({ autoScale: true });
+                            }
                             return true;
                         } catch(e){
                             if (e.message && e.message.includes('oldest data')) return false;
                             console.error(e);
                             return false;
+                        }
+                    },
+                    // Issue #4: Control auto-scaling during streaming
+                    setStreamingAutoScale: (enabled) => {
+                        window._streamingAutoScale = enabled;
+                        if (enabled) {
+                            rightScale.applyOptions({ autoScale: true });
                         }
                     },
                     setVolumeData: () => console.warn('setVolumeData is deprecated'),
@@ -1405,9 +1423,14 @@
                         e.stopPropagation();
                     } else if (e.button === 0) {
                         // Left click without drawing target - enable Y-panning
+                        // Issue #8 Fix: Allow Y-panning even during streaming
+                        // User should be able to manually scroll the chart vertically
                         // First disable autoScale to allow manual Y control
                         try {
+                            // Issue #8: Disable autoScale when user starts panning
+                            // This allows viewing stop-loss lines and other elements
                             rightScale.applyOptions({ autoScale: false });
+                            window._userDisabledAutoScale = true;  // Track that user manually disabled
                             // Try to get visible price range (may not exist in all versions)
                             const range = typeof rightScale.getVisiblePriceRange === 'function'
                                 ? rightScale.getVisiblePriceRange()
@@ -1630,6 +1653,11 @@
                     if (isYPanning) {
                         isYPanning = false;
                         yPanStartRange = null;
+                        // Issue #4 Fix: Restore autoScale if streaming is active
+                        // Issue #8 Fix: BUT NOT if user manually disabled it via panning
+                        if (window._streamingAutoScale === true && window._userDisabledAutoScale !== true) {
+                            rightScale.applyOptions({ autoScale: true });
+                        }
                     }
 
                     if (isDragging && dragTarget) {
@@ -1660,7 +1688,21 @@
                     if (isYPanning) {
                         isYPanning = false;
                         yPanStartRange = null;
+                        // Issue #4 Fix: Restore autoScale if streaming is active
+                        // Issue #8 Fix: BUT NOT if user manually disabled it via panning
+                        if (window._streamingAutoScale === true && window._userDisabledAutoScale !== true) {
+                            rightScale.applyOptions({ autoScale: true });
+                        }
                     }
+                });
+
+                // Issue #8: Double-click on chart to reset auto-scale
+                // This allows user to restore automatic Y-scaling after manual panning
+                container.addEventListener('dblclick', (e) => {
+                    // Reset user's manual preference and restore auto-scaling
+                    window._userDisabledAutoScale = false;
+                    rightScale.applyOptions({ autoScale: true });
+                    console.log('Double-click: Auto-scale restored');
                 });
 
                 // Helper: Get time from x-coordinate - works even in empty space

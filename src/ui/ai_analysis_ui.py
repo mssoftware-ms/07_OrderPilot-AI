@@ -102,6 +102,17 @@ class AIAnalysisUI:
         self.parent.btn_edit_prompt.clicked.connect(self.parent._handlers.open_prompt_editor)
         action_layout.addWidget(self.parent.btn_edit_prompt)
 
+        # Button to show full AI payload data
+        self.parent.btn_show_payload = QPushButton("📋 Payload anzeigen")
+        self.parent.btn_show_payload.setToolTip(
+            "Zeigt alle Daten an, die bei der letzten Analyse an die KI gesendet wurden.\n"
+            "Führen Sie zuerst 'Start Analysis' aus."
+        )
+        self.parent.btn_show_payload.setStyleSheet("padding: 8px;")
+        self.parent.btn_show_payload.clicked.connect(self.parent._handlers.show_payload_popup)
+        self.parent.btn_show_payload.setEnabled(False)  # Disabled until analysis is run
+        action_layout.addWidget(self.parent.btn_show_payload)
+
         action_layout.addStretch()
         layout.addLayout(action_layout)
 

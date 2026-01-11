@@ -27,6 +27,7 @@ class PromptComposer:
         "3. Check for Divergences between Price and RSI/Momentum.\n"
         "4. Determine a structural 'invalidation_level' (Stop Loss area).\n"
         "5. Assign a 'confidence_score' (0-100) based on confluence.\n"
+        "6. If 'strategy_configs' is provided, evaluate which strategy (and its parameters) best fits the current market conditions.\n"
     )
 
     def __init__(

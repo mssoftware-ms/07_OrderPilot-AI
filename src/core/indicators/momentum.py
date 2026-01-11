@@ -38,15 +38,18 @@ class MomentumIndicators(BaseIndicatorCalculator):
         elif PANDAS_TA_AVAILABLE:
             values = ta.rsi(data['close'], length=period)
         else:
-            # Manual calculation
+            # Manual calculation using Wilder's Smoothing Method
+            # Reference: https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/relative-strength-index-rsi
             delta = data['close'].diff()
-            gain = delta.where(delta > 0, 0)
-            loss = -delta.where(delta < 0, 0)
+            gain = delta.where(delta > 0, 0.0)
+            loss = -delta.where(delta < 0, 0.0)
 
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
+            # Use Wilder's smoothing (EMA with alpha = 1/period)
+            alpha = 1.0 / period
+            avg_gain = gain.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+            avg_loss = loss.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
 
-            rs = avg_gain / avg_loss
+            rs = avg_gain / avg_loss.replace(0, np.nan)
             values = 100 - (100 / (1 + rs))
 
         return MomentumIndicators.create_result(

@@ -500,4 +500,31 @@ STRATEGY_PARAMETER_REGISTRY: dict[StrategyName, StrategyParameterConfig] = {
             ParameterDefinition("bb_std", "BB Std", "float", 2.0, 1.5, 2.5, 0.1, "Bollinger Std Dev"),
         ],
     ),
+    # -------------------------------------------------------------------------
+    # SIDEWAYS RANGE MARKET (Issue #45)
+    # -------------------------------------------------------------------------
+    StrategyName.SIDEWAYS_RANGE: StrategyParameterConfig(
+        strategy_name=StrategyName.SIDEWAYS_RANGE,
+        display_name="Sideways Range",
+        description="Specialized strategy for sideways markets with max 0.6% range. Uses SMA 20/50, RSI, Bollinger Bands, Stochastic, Volume, MACD, and ADX.",
+        parameters=[
+            ParameterDefinition("sma_short", "SMA Short", "int", 20, 10, 30, 5, "Short SMA Period"),
+            ParameterDefinition("sma_long", "SMA Long", "int", 50, 30, 100, 10, "Long SMA Period"),
+            ParameterDefinition("rsi_period", "RSI Period", "int", 14, 7, 21, 1, "RSI Period"),
+            ParameterDefinition("rsi_oversold", "RSI Oversold", "int", 30, 20, 40, 5, "RSI Oversold Threshold"),
+            ParameterDefinition("rsi_overbought", "RSI Overbought", "int", 70, 60, 80, 5, "RSI Overbought Threshold"),
+            ParameterDefinition("bb_period", "BB Period", "int", 20, 10, 40, 5, "Bollinger Bands Period"),
+            ParameterDefinition("bb_std", "BB Std Dev", "float", 2.0, 1.5, 3.0, 0.25, "Bollinger Bands Std Dev"),
+            ParameterDefinition("stoch_k", "Stoch K", "int", 14, 7, 21, 1, "Stochastic K Period"),
+            ParameterDefinition("stoch_d", "Stoch D", "int", 3, 2, 5, 1, "Stochastic D Period"),
+            ParameterDefinition("stoch_oversold", "Stoch Oversold", "int", 20, 10, 30, 5, "Stochastic Oversold"),
+            ParameterDefinition("stoch_overbought", "Stoch Overbought", "int", 80, 70, 90, 5, "Stochastic Overbought"),
+            ParameterDefinition("adx_period", "ADX Period", "int", 14, 7, 21, 1, "ADX Period"),
+            ParameterDefinition("adx_threshold", "ADX Threshold", "int", 20, 15, 30, 5, "Max ADX for Sideways Market"),
+            ParameterDefinition("macd_fast", "MACD Fast", "int", 12, 8, 16, 1, "MACD Fast Period"),
+            ParameterDefinition("macd_slow", "MACD Slow", "int", 26, 20, 32, 2, "MACD Slow Period"),
+            ParameterDefinition("macd_signal", "MACD Signal", "int", 9, 7, 12, 1, "MACD Signal Period"),
+            ParameterDefinition("max_range_pct", "Max Range %", "float", 0.6, 0.3, 1.0, 0.1, "Max Price Range % for Entry"),
+        ],
+    ),
 }

@@ -307,3 +307,25 @@ class TradingBotEngine:
             f"SL={config.sl_atr_multiplier}x ATR"
         )
         logger.info("Bot config updated")
+
+    def update_indicator_config(
+        self,
+        indicator_updates: dict,
+        save: bool = True,
+    ) -> None:
+        """
+        Aktualisiert Indikator-Konfiguration (für Strategy Bridge).
+
+        Ermöglicht das Übernehmen von optimierten Parametern aus dem
+        Strategy Simulator in die aktive Trading-Strategie.
+
+        Args:
+            indicator_updates: Dict mit Indikator-Parametern
+                Format: {"rsi_period": 14, "adx_threshold": 25, ...}
+            save: Ob Konfiguration gespeichert werden soll
+        """
+        self.strategy_config.update_indicator_config(indicator_updates, save)
+        self._callbacks._log(
+            f"Indicator config updated: {list(indicator_updates.keys())}"
+        )
+        logger.info(f"Indicator config updated via Strategy Bridge: {indicator_updates}")

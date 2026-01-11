@@ -31,7 +31,8 @@ class AnalysisWorker(QThread):
     error = pyqtSignal(str)
 
     def __init__(self, engine: "AIAnalysisEngine", symbol: str, timeframe: str,
-                 history_manager, asset_class, data_source, model: Optional[str] = None):
+                 history_manager, asset_class, data_source, model: Optional[str] = None,
+                 strategy_configs: Optional[list] = None):
         super().__init__()
         self.engine = engine
         self.symbol = symbol
@@ -40,6 +41,8 @@ class AnalysisWorker(QThread):
         self.asset_class = asset_class
         self.data_source = data_source
         self.model = model
+        # Issue #20: Strategy configurations from Strategy Simulator
+        self.strategy_configs = strategy_configs
 
     def run(self):
         from datetime import datetime, timedelta, timezone
@@ -168,9 +171,13 @@ class AnalysisWorker(QThread):
                 'step': 'dataframe_ready'
             })
 
-            # Run analysis with fresh data
+            # Issue #20: Run analysis with fresh data and strategy configs
             result = loop.run_until_complete(
-                self.engine.run_analysis(self.symbol, self.timeframe, df, model=self.model)
+                self.engine.run_analysis(
+                    self.symbol, self.timeframe, df,
+                    model=self.model,
+                    strategy_configs=self.strategy_configs
+                )
             )
             self.finished.emit(result)
             loop.close()

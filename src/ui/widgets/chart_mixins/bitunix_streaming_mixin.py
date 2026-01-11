@@ -115,22 +115,109 @@ class BitunixStreamingMixin:
             ts = ts.replace(tzinfo=timezone.utc)
         return ts
 
+    def _get_resolution_seconds(self) -> int:
+        """Get current chart timeframe resolution in seconds.
+
+        Maps timeframe string (e.g., "5T") to seconds (e.g., 300).
+        """
+        timeframe_to_seconds = {
+            "1T": 60,      # 1 minute
+            "5T": 300,     # 5 minutes
+            "15T": 900,    # 15 minutes
+            "30T": 1800,   # 30 minutes
+            "1H": 3600,    # 1 hour
+            "4H": 14400,   # 4 hours
+            "1D": 86400,   # 1 day
+        }
+        current_tf = getattr(self, 'current_timeframe', '1T')
+        return timeframe_to_seconds.get(current_tf, 60)
+
     def _resolve_tick_time(self, ts, tick_data: dict) -> tuple[int, int]:
         local_offset = get_local_timezone_offset_seconds()
         current_tick_time = int(ts.timestamp()) + local_offset
-        current_minute_start = current_tick_time - (current_tick_time % 60)
+        # Use chart's actual resolution instead of hardcoded 60 seconds
+        resolution_seconds = self._get_resolution_seconds()
+        current_candle_start = current_tick_time - (current_tick_time % resolution_seconds)
         logger.debug(
             f"BITUNIX TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
-            f"TickUnix: {current_tick_time} | MinStart: {current_minute_start}"
+            f"TickUnix: {current_tick_time} | CandleStart: {current_candle_start} | Resolution: {resolution_seconds}s"
         )
-        return current_tick_time, current_minute_start
+        return current_tick_time, current_candle_start
 
     def _initialize_candle(self, current_minute_start: int, price: float) -> None:
+        """Initialize candle state for streaming.
+
+        Issue #4 Fix: When starting streaming mid-candle, use the historical data's
+        OHLC values for the current candle time if available, instead of just using
+        the first tick price (which creates a "flat" candle).
+        """
         self._current_candle_time = current_minute_start
-        self._current_candle_open = price
-        self._current_candle_high = price
-        self._current_candle_low = price
-        self._current_candle_volume = 0
+
+        # Issue #4: Check if we have historical data for this candle time
+        # If so, use that candle's OHLC as the base instead of just the tick price
+        historical_candle = self._get_historical_candle_at_time(current_minute_start)
+        if historical_candle:
+            # Use historical OHLC as base, but update close with current price
+            self._current_candle_open = historical_candle['open']
+            self._current_candle_high = max(historical_candle['high'], price)
+            self._current_candle_low = min(historical_candle['low'], price)
+            self._current_candle_volume = historical_candle.get('volume', 0)
+            logger.info(
+                f"Issue #4: Initialized candle from historical data at {current_minute_start}: "
+                f"O={self._current_candle_open:.2f} H={self._current_candle_high:.2f} "
+                f"L={self._current_candle_low:.2f} (tick price={price:.2f})"
+            )
+        else:
+            # No historical data - use tick price as base (first candle scenario)
+            self._current_candle_open = price
+            self._current_candle_high = price
+            self._current_candle_low = price
+            self._current_candle_volume = 0
+
+    def _get_historical_candle_at_time(self, candle_time: int) -> dict | None:
+        """Get historical candle data for a specific time if available.
+
+        Issue #4: Used to merge streaming data with historical data.
+
+        Args:
+            candle_time: Unix timestamp of candle start
+
+        Returns:
+            Dict with 'open', 'high', 'low', 'close', 'volume' or None if not found
+        """
+        try:
+            if not hasattr(self, 'data') or self.data is None or len(self.data) == 0:
+                return None
+
+            # Convert DataFrame timestamps to check if we have this candle
+            if 'time' in self.data.columns:
+                # Data has 'time' column with unix timestamps
+                matching_rows = self.data[self.data['time'] == candle_time]
+                if not matching_rows.empty:
+                    row = matching_rows.iloc[-1]
+                    return {
+                        'open': float(row['open']),
+                        'high': float(row['high']),
+                        'low': float(row['low']),
+                        'close': float(row['close']),
+                        'volume': float(row.get('volume', 0))
+                    }
+            else:
+                # Data has timestamp index
+                from datetime import datetime, timezone
+                candle_dt = datetime.fromtimestamp(candle_time, tz=timezone.utc)
+                if candle_dt in self.data.index:
+                    row = self.data.loc[candle_dt]
+                    return {
+                        'open': float(row['open']),
+                        'high': float(row['high']),
+                        'low': float(row['low']),
+                        'close': float(row['close']),
+                        'volume': float(row.get('volume', 0))
+                    }
+        except Exception as e:
+            logger.debug(f"Could not get historical candle at {candle_time}: {e}")
+        return None
 
     def _update_candle_for_tick(self, current_minute_start: int, price: float) -> None:
         if current_minute_start > self._current_candle_time:
@@ -182,6 +269,7 @@ class BitunixStreamingMixin:
     def _execute_chart_updates(self, candle: dict, volume_bar: dict) -> None:
         candle_json = json.dumps(candle)
         volume_json = json.dumps(volume_bar)
+        # Issue #4: updateCandle now auto-scales the Y axis
         self._execute_js(f"window.chartAPI.updateCandle({candle_json});")
         self._execute_js(f"window.chartAPI.updatePanelData('volume', {volume_json});")
 
@@ -200,13 +288,16 @@ class BitunixStreamingMixin:
             return
 
         try:
+            # Get resolution for time alignment
+            resolution_seconds = self._get_resolution_seconds()
+            local_offset = get_local_timezone_offset_seconds()
+
             # Process all pending bars
             while self.pending_bars:
                 bar_data = self.pending_bars.popleft()
 
                 ts_raw = bar_data.get('timestamp', datetime.now())
                 # Robust parsing: handle str/np datetime/pandas Timestamp
-                local_offset = get_local_timezone_offset_seconds()
                 try:
                     if isinstance(ts_raw, str):
                         ts_parsed = pd.to_datetime(ts_raw)
@@ -219,8 +310,12 @@ class BitunixStreamingMixin:
                 except Exception:
                     unix_time = int(datetime.now().timestamp()) + local_offset
 
+                # CRITICAL FIX: Align time to candle boundaries (clock time)
+                # e.g., for 5-minute candles: 15:07 -> 15:05, 15:03 -> 15:00
+                aligned_time = unix_time - (unix_time % resolution_seconds)
+
                 candle = {
-                    'time': unix_time,
+                    'time': aligned_time,
                     'open': float(bar_data.get('open', 0)),
                     'high': float(bar_data.get('high', 0)),
                     'low': float(bar_data.get('low', 0)),
@@ -228,7 +323,7 @@ class BitunixStreamingMixin:
                 }
 
                 volume = {
-                    'time': unix_time,
+                    'time': aligned_time,
                     'value': float(bar_data.get('volume', 0)),
                     'color': '#26a69a' if candle['close'] >= candle['open'] else '#ef5350'
                 }
@@ -262,6 +357,9 @@ class BitunixStreamingMixin:
         try:
             await self._start_live_stream()
 
+            # Issue #4: Enable auto-scaling during streaming to prevent flat candles
+            self._execute_js("window.chartAPI.setStreamingAutoScale(true);")
+
             self.live_stream_button.setStyleSheet("""
                 QPushButton {
                     background-color: #00FF00;
@@ -286,6 +384,9 @@ class BitunixStreamingMixin:
         """Async wrapper for stopping live stream."""
         try:
             await self._stop_live_stream()
+
+            # Issue #4: Disable auto-scaling when streaming stops
+            self._execute_js("window.chartAPI.setStreamingAutoScale(false);")
 
             self.live_stream_button.setStyleSheet("""
                 QPushButton {

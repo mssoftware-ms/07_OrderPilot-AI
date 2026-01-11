@@ -84,6 +84,45 @@ class TradingJournalWidget(QWidget):
         """Fügt einen Fehler hinzu."""
         self._errors_tab.add_error(error_data)
 
+    # ==================== Bot Log Delegation Methods ====================
+
+    def append_bot_log(self, log_type: str, message: str) -> None:
+        """Fügt einen Bot-Log-Eintrag hinzu.
+
+        Args:
+            log_type: Log-Typ (z.B. "INFO", "SIGNAL", "TRADE", "ERROR")
+            message: Log-Nachricht
+        """
+        self._signals_tab.append_log(log_type, message)
+
+    def set_bot_running(self, is_running: bool) -> None:
+        """Setzt den Bot-Running-Status.
+
+        Args:
+            is_running: True wenn Bot läuft
+        """
+        self._signals_tab.set_bot_running(is_running)
+
+    def set_bot_current_task(self, task: str) -> None:
+        """Setzt die aktuelle Bot-Aufgabe.
+
+        Args:
+            task: Beschreibung der aktuellen Aufgabe
+        """
+        self._signals_tab.set_current_task(task)
+
+    def clear_bot_log(self) -> None:
+        """Löscht alle Bot-Log-Einträge."""
+        self._signals_tab.clear_log()
+
+    def get_bot_log_entries(self) -> list[str]:
+        """Gibt alle Bot-Log-Einträge zurück."""
+        return self._signals_tab.get_log_entries()
+
+    def is_bot_running(self) -> bool:
+        """Gibt zurück ob der Bot läuft."""
+        return self._signals_tab.is_bot_running()
+
     def _export(self, format_type: str) -> None:
         """Exportiert Journal-Daten als JSON oder CSV.
 

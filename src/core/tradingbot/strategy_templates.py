@@ -575,3 +575,145 @@ class StrategyTemplatesMixin:
             stop_loss_pct=0.8,
             min_entry_score=0.55,
         )
+
+    # ==================== Sideways/Range Market Strategy ====================
+
+    def _create_sideways_range_bounce(self) -> StrategyDefinition:
+        """Sideways market strategy for ranging markets with max 0.6% range.
+
+        Uses a comprehensive indicator set optimized for sideways markets:
+        - SMA 20/50 for short-term/medium-term trend identification
+        - RSI 14 for overbought/oversold conditions
+        - Bollinger Bands 20-period with 2 StdDev for volatility
+        - Stochastic Oscillator 14 for reversal points
+        - Volume indicators for market participant interest
+        - MACD 12/26/9 for buy/sell signals
+
+        Designed for markets in consolidation with low ADX (<20).
+        """
+        return StrategyDefinition(
+            profile=StrategyProfile(
+                name="sideways_range_bounce",
+                description=(
+                    "Range-bound trading strategy for sideways markets with max 0.6% range. "
+                    "Combines SMA 20/50, RSI 14, Bollinger Bands, Stochastic, Volume, and MACD "
+                    "for comprehensive analysis in consolidating markets."
+                ),
+                regimes=[RegimeType.RANGE],
+                volatility_levels=[VolatilityLevel.LOW, VolatilityLevel.NORMAL],
+                entry_threshold=0.55,
+                trailing_mode=TrailingMode.PCT,
+                trailing_multiplier=0.8,
+            ),
+            strategy_type=StrategyType.MEAN_REVERSION,
+            entry_rules=[
+                # Primary: Bollinger Bands touch for entry signal
+                EntryRule(
+                    name="bb_band_touch",
+                    description="Price touching upper/lower Bollinger Band (20, 2 StdDev)",
+                    weight=1.8,
+                    indicator="bb_pct",
+                    condition="extreme",
+                    threshold=0.05,  # within 5% of band
+                ),
+                # RSI confirmation for oversold/overbought
+                EntryRule(
+                    name="rsi_extreme",
+                    description="RSI 14 below 30 (oversold) or above 70 (overbought)",
+                    weight=1.5,
+                    indicator="rsi_14",
+                    condition="extreme",
+                    threshold=30.0,
+                ),
+                # Stochastic Oscillator for reversal timing
+                EntryRule(
+                    name="stoch_reversal",
+                    description="Stochastic 14 in extreme zone indicating reversal",
+                    weight=1.3,
+                    indicator="stoch_k",
+                    condition="extreme",
+                    threshold=20.0,
+                ),
+                # SMA proximity - price near SMA 20/50
+                EntryRule(
+                    name="sma_alignment",
+                    description="Price between SMA 20 and SMA 50 in ranging market",
+                    weight=1.0,
+                    indicator="sma_distance",
+                    condition="near",
+                    threshold=0.5,  # within 0.5% of MA
+                ),
+                # ADX low confirming sideways market
+                EntryRule(
+                    name="adx_sideways",
+                    description="ADX below 20 confirming ranging/sideways market",
+                    weight=1.2,
+                    indicator="adx",
+                    condition="below",
+                    threshold=20.0,
+                ),
+                # Volume analysis
+                EntryRule(
+                    name="volume_interest",
+                    description="Volume profile showing market interest at level",
+                    weight=0.8,
+                    indicator="volume_ratio",
+                    condition="above",
+                    threshold=0.7,  # at least 70% of average
+                ),
+                # MACD histogram direction
+                EntryRule(
+                    name="macd_direction",
+                    description="MACD 12/26/9 histogram confirming direction",
+                    weight=1.0,
+                    indicator="macd_hist",
+                    condition="direction_match",
+                ),
+            ],
+            exit_rules=[
+                # Exit at middle Bollinger Band (SMA 20)
+                ExitRule(
+                    name="bb_middle_exit",
+                    description="Exit when price reaches BB middle band (SMA 20)",
+                    priority=2,
+                    rule_type="indicator",
+                    params={"indicator": "bb_middle", "condition": "reached"},
+                ),
+                # Exit when RSI returns to neutral
+                ExitRule(
+                    name="rsi_neutral",
+                    description="Exit when RSI returns to 40-60 neutral zone",
+                    priority=3,
+                    rule_type="indicator",
+                    params={"indicator": "rsi_14", "condition": "between", "low": 40, "high": 60},
+                ),
+                # Exit on stochastic neutral
+                ExitRule(
+                    name="stoch_neutral",
+                    description="Exit when Stochastic returns to 40-60 zone",
+                    priority=4,
+                    rule_type="indicator",
+                    params={"indicator": "stoch_k", "condition": "between", "low": 40, "high": 60},
+                ),
+                # MACD cross against position
+                ExitRule(
+                    name="macd_cross_exit",
+                    description="Exit on MACD signal line cross against position",
+                    priority=2,
+                    rule_type="indicator",
+                    params={"indicator": "macd", "condition": "crosses_against"},
+                ),
+                # Percentage trailing stop
+                ExitRule(
+                    name="trailing_pct",
+                    description="Percentage-based trailing stop for range trading",
+                    priority=1,
+                    rule_type="trailing",
+                    params={"mode": "pct", "distance": 0.4},  # tight for ranging market
+                ),
+            ],
+            trailing_mode=TrailingMode.PCT,
+            trailing_params={"distance_pct": 0.4, "activation_profit_pct": 0.2},
+            stop_loss_pct=0.6,  # max 0.6% as specified for sideways range
+            min_entry_score=0.55,
+        )

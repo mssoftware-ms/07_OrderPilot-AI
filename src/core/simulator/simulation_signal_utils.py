@@ -11,11 +11,32 @@ def true_range(df: pd.DataFrame) -> pd.Series:
     return pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
 
 def calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
-    """Calculate RSI."""
+    """Calculate RSI using Wilder's Smoothing Method.
+
+    The RSI calculation uses exponential smoothing (Wilder's method) after
+    the initial SMA calculation for the first period. This matches the
+    standard RSI implementation used by TA-Lib and TradingView.
+
+    Formula:
+    - First avg_gain/avg_loss = SMA of first 'period' values
+    - Subsequent = (prev_avg * (period-1) + current) / period
+    - RS = avg_gain / avg_loss
+    - RSI = 100 - (100 / (1 + RS))
+
+    Reference: https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/relative-strength-index-rsi
+    """
     delta = prices.diff()
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
+    gain = delta.where(delta > 0, 0.0)
+    loss = (-delta.where(delta < 0, 0.0))
+
+    # Use Wilder's smoothing (EMA with alpha = 1/period)
+    # This is equivalent to: ewm(alpha=1/period, adjust=False)
+    # or ewm(span=2*period-1, adjust=False) for standard EMA
+    alpha = 1.0 / period
+    avg_gain = gain.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
     return rsi.fillna(50)
 

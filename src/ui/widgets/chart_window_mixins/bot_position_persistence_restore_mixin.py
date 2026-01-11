@@ -10,8 +10,62 @@ logger = logging.getLogger(__name__)
 
 class BotPositionPersistenceRestoreMixin:
     """BotPositionPersistenceRestoreMixin extracted from BotPositionPersistenceMixin."""
+
+    def _connect_chart_data_loaded_for_position_restore(self) -> None:
+        """Connect chart data_loaded signal to restore position lines on any chart refresh.
+
+        Issue #9: Ensures stop lines are restored at their persisted positions
+        after chart refreshes (timeframe changes, symbol changes, etc.)
+        """
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'data_loaded'):
+            # Use a persistent connection (not one-shot) so it works on every refresh
+            try:
+                self.chart_widget.data_loaded.disconnect(self._on_chart_data_loaded_restore_lines)
+            except (TypeError, RuntimeError):
+                pass  # Not connected yet
+            self.chart_widget.data_loaded.connect(self._on_chart_data_loaded_restore_lines)
+            logger.info("Connected data_loaded signal for position line restoration")
+
+    def _on_chart_data_loaded_restore_lines(self) -> None:
+        """Called when chart data is loaded - restore position lines from current signal history.
+
+        Issue #9: This ensures stop lines maintain their manually-adjusted positions
+        after any chart refresh, not just on application startup.
+        """
+        # Small delay to ensure chart is ready
+        QTimer.singleShot(300, self._restore_position_lines_from_history)
+
+    def _restore_position_lines_from_history(self) -> None:
+        """Restore stop lines from current signal_history for any open positions.
+
+        Issue #9: Uses the persisted stop_price from signal_history, ensuring
+        manually moved stop lines stay at their adjusted positions.
+        """
+        if not hasattr(self, '_signal_history') or not self._signal_history:
+            return
+
+        # Find active (open) positions
+        active_positions = [
+            s for s in self._signal_history
+            if s.get("status") == "ENTERED" and s.get("is_open", False)
+        ]
+
+        if not active_positions:
+            return
+
+        position = active_positions[-1]  # Most recent open position
+        logger.info(f"Restoring position lines from history: stop_price={position.get('stop_price')}")
+
+        # Restore using the stored (potentially manually adjusted) stop_price
+        self._restore_persisted_chart_elements(
+            position,
+            position.get("side", "long"),
+            position.get("price", 0),
+            position.get("stop_price", 0)  # This uses the persisted value!
+        )
+
     def _on_chart_data_loaded_restore_position(self) -> None:
-        """Called when chart data is loaded - restore persisted positions."""
+        """Called when chart data is loaded - restore persisted positions (startup only)."""
         if hasattr(self, '_pending_position_restore') and self._pending_position_restore:
             logger.info("Chart data loaded - restoring persisted positions")
             QTimer.singleShot(500, lambda: self._restore_persisted_position(self._pending_position_restore))
@@ -133,23 +187,39 @@ class BotPositionPersistenceRestoreMixin:
             logger.error(f"Failed to restore initial stop line: {e}")
 
     def _restore_trailing_stop_line(self, position: dict) -> None:
+        """Restore trailing stop line from position.
+
+        Issue #10: Draw trailing stop line whether active or not:
+        - Active: Orange color (#ff9800)
+        - Waiting: Gray color (#888888) with [wartend] suffix
+        """
         trailing_price = position.get("trailing_stop_price", 0)
         tr_is_active = position.get("tr_active", False)
-        if trailing_price > 0 and tr_is_active:
-            trailing_pct = position.get("trailing_stop_pct", 0)
+        trailing_pct = position.get("trailing_stop_pct", 0)
+
+        if trailing_price <= 0 or trailing_pct <= 0:
+            return
+
+        if tr_is_active:
+            # Active trailing stop - orange
             tr_label = f"TSL @ {trailing_price:.2f}"
             if trailing_pct > 0:
                 tr_label += f" ({trailing_pct:.2f}%)"
-            try:
-                self.chart_widget.add_stop_line(
-                    "trailing_stop",
-                    trailing_price,
-                    line_type="trailing",
-                    color="#ff9800",
-                    label=tr_label
-                )
-                logger.info(f"Restored trailing stop line @ {trailing_price:.2f}")
-            except Exception as e:
-                logger.error(f"Failed to restore trailing stop line: {e}")
-        elif trailing_price > 0:
-            logger.info("TR line not restored - not yet active (waiting for activation threshold)")
+            tr_color = "#ff9800"
+        else:
+            # Waiting trailing stop - gray (Issue #10)
+            tr_label = f"TSL @ {trailing_price:.2f} ({trailing_pct:.2f}%) [wartend]"
+            tr_color = "#888888"
+
+        try:
+            self.chart_widget.add_stop_line(
+                "trailing_stop",
+                trailing_price,
+                line_type="trailing",
+                color=tr_color,
+                label=tr_label
+            )
+            status = "aktiv" if tr_is_active else "wartend"
+            logger.info(f"Restored trailing stop line @ {trailing_price:.2f} ({status})")
+        except Exception as e:
+            logger.error(f"Failed to restore trailing stop line: {e}")

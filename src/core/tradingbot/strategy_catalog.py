@@ -71,6 +71,9 @@ class StrategyCatalog(StrategyTemplatesMixin):
         # 5. Scalping (for high frequency)
         self._strategies["scalping_range"] = self._create_scalping_range()
 
+        # 6. Sideways/Range Market (Issue #45)
+        self._strategies["sideways_range_bounce"] = self._create_sideways_range_bounce()
+
     # ==================== Query Methods ====================
 
     def get_strategy(self, name: str) -> StrategyDefinition | None:

@@ -85,14 +85,20 @@ class BotPositionPersistenceChartMixin:
                 self._update_signals_table()
                 break
     def _on_signals_table_cell_changed(self, row: int, column: int) -> None:
-        """Handle table cell editing - update chart lines when SL% or TR% changes (refactored)."""
-        # Guard clauses
-        if self._signals_table_updating or column not in (6, 7):
+        """Handle table cell editing - update SL%, TR%, or TRA% values.
+
+        Column mapping:
+        - 5: SL% (Stop Loss Percent from entry)
+        - 6: TR% (Trailing Stop Percent from entry)
+        - 7: TRA% (Trailing Activation Percent - when trailing activates)
+        """
+        # Guard clauses - allow columns 5, 6, and 7
+        if self._signals_table_updating or column not in (5, 6, 7):
             return
 
         # Parse and validate input
         new_pct = self._parse_percentage_input(row, column)
-        if new_pct is None or new_pct <= 0:
+        if new_pct is None or new_pct < 0:
             return
 
         # Get signal
@@ -100,7 +106,16 @@ class BotPositionPersistenceChartMixin:
         if not sig:
             return
 
-        # Calculate new stop price
+        logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%")
+
+        # Handle TRA% (column 7) separately - it's not a stop price calculation
+        if column == 7:  # TRA% (Trailing Activation)
+            self._update_trailing_activation(sig, new_pct)
+            self._save_signal_history()
+            self._refresh_signals_table()
+            return
+
+        # For SL% and TR%, calculate new stop price
         new_stop_price = self._calculate_stop_price(sig, new_pct)
         if new_stop_price is None:
             return
@@ -108,9 +123,9 @@ class BotPositionPersistenceChartMixin:
         logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%, new_stop={new_stop_price:.2f}")
 
         # Update based on column type
-        if column == 6:  # SL%
+        if column == 5:  # SL%
             self._update_stop_loss(sig, new_stop_price, new_pct)
-        elif column == 7:  # TR%
+        elif column == 6:  # TR%
             self._update_trailing_stop(sig, new_stop_price, new_pct)
 
         # Sync and save
@@ -191,6 +206,59 @@ class BotPositionPersistenceChartMixin:
                 label=label
             )
         self._add_ki_log_entry("TABLE", f"Trailing Stop geaendert -> {new_stop_price:.2f} ({new_pct:.2f}%)")
+
+    def _update_trailing_activation(self, sig: dict, new_tra_pct: float) -> None:
+        """Update trailing activation percentage on signal.
+
+        TRA% defines when the trailing stop becomes active:
+        - LONG: Trailing activates when price >= entry * (1 + TRA%/100)
+        - SHORT: Trailing activates when price <= entry * (1 - TRA%/100)
+
+        Args:
+            sig: Signal dictionary to update
+            new_tra_pct: New trailing activation percentage
+        """
+        old_tra_pct = sig.get("trailing_activation_pct", 0.0)
+        sig["trailing_activation_pct"] = new_tra_pct
+
+        # Calculate activation price for logging
+        entry_price = sig.get("price", 0)
+        side = sig.get("side", "long")
+
+        if entry_price > 0:
+            if side == "long":
+                activation_price = entry_price * (1 + new_tra_pct / 100)
+            else:
+                activation_price = entry_price * (1 - new_tra_pct / 100)
+
+            self._add_ki_log_entry(
+                "TABLE",
+                f"TRA% geaendert: {old_tra_pct:.2f}% -> {new_tra_pct:.2f}% "
+                f"(Aktivierung bei {activation_price:.2f})"
+            )
+        else:
+            self._add_ki_log_entry(
+                "TABLE",
+                f"TRA% geaendert: {old_tra_pct:.2f}% -> {new_tra_pct:.2f}%"
+            )
+
+        # Sync to bot controller if available
+        self._sync_trailing_activation_to_bot(new_tra_pct)
+
+    def _sync_trailing_activation_to_bot(self, new_tra_pct: float) -> None:
+        """Sync trailing activation percentage to bot controller."""
+        if not hasattr(self, '_bot_controller') or not self._bot_controller:
+            return
+
+        position = getattr(self._bot_controller, '_position', None)
+        if not position:
+            return
+
+        trailing = getattr(position, 'trailing', None)
+        if trailing and hasattr(trailing, 'activation_pct'):
+            old_pct = trailing.activation_pct
+            trailing.activation_pct = new_tra_pct
+            logger.info(f"[BOT SYNC] TRA% synced: {old_pct:.2f}% -> {new_tra_pct:.2f}%")
 
     def _refresh_signals_table(self) -> None:
         """Refresh signals table with update lock."""

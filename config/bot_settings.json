@@ -39,7 +39,7 @@
     "atr_trending": 2.0,
     "atr_ranging": 3.5,
     "volatility_bonus": 0.5,
-    "min_step_pct": 0.10000000000000002,
+    "min_step_pct": 0.1,
     "trailing_activation_pct": 0.0,
     "trailing_pct_distance": 1.4,
     "min_score_pct": 60,

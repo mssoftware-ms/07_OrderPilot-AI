@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from .models import BotAction, FeatureVector, SignalType, TradeSide
+from .models import BotAction, DirectionalBias, FeatureVector, SignalType, TradeSide
 
 if TYPE_CHECKING:
     from .bot_state_handlers import BotStateHandlersMixin
@@ -99,7 +99,11 @@ class BotStateHandlersFlat:
         )
 
     async def check_strategy_selection(self, features: FeatureVector) -> None:
-        """Check if strategy selection is needed (daily or forced).
+        """Check and update daily bias for daytrading mode.
+
+        NOTE: Fixed daily strategy selection is DISABLED.
+        Instead, calculates directional bias (long/short/neutral) from market regime.
+        Strategies change dynamically with market conditions.
 
         Args:
             features: Current feature vector
@@ -116,43 +120,123 @@ class BotStateHandlersFlat:
         if not needs_selection:
             return
 
-        # Select best strategy for current regime
+        # Select strategy and calculate daily bias
         try:
             result = self.parent._strategy_selector.select_strategy(
                 regime=self.parent._regime, symbol=self.parent.symbol
             )
 
+            # Calculate daily bias from market regime
+            daily_bias = self._calculate_daily_bias(features)
+            bias_confidence = self._calculate_bias_confidence(features)
+
+            # Update bias in selection result
+            result.daily_bias = daily_bias
+            result.bias_confidence = bias_confidence
+            result.bias_override_threshold = self.parent.config.bot.bias_override_threshold
+
+            self.parent._last_strategy_selection_date = now
+
+            # Log bias instead of fixed strategy
+            self.parent._log_activity(
+                "BIAS",
+                f"Tages-Bias: {daily_bias.value.upper()} | "
+                f"Konfidenz: {bias_confidence:.1%} | "
+                f"Override ab: {result.bias_override_threshold:.0%} | "
+                f"Regime: {self.parent._regime.regime.value}",
+            )
+
+            # Still select a strategy (but not locked - changes with regime)
             if result.selected_strategy:
-                # Look up StrategyProfile from catalog (result.selected_strategy is a string name)
                 strategy_def = self.parent._strategy_catalog.get_strategy(
                     result.selected_strategy
                 )
                 if strategy_def:
                     self.parent._active_strategy = strategy_def.profile
-                    self.parent._last_strategy_selection_date = now
-
                     self.parent._log_activity(
                         "STRATEGY",
-                        f"Tagesstrategie gewaehlt: {self.parent._active_strategy.name} | "
-                        f"Score: {result.strategy_scores.get(result.selected_strategy, 0):.2f} | "
-                        f"Regime: {self.parent._regime.regime.value}",
-                    )
-                else:
-                    self.parent._log_activity(
-                        "ERROR",
-                        f"Strategie '{result.selected_strategy}' nicht im Katalog gefunden",
+                        f"Aktuelle Strategie: {self.parent._active_strategy.name} "
+                        f"(wechselt mit Marktsituation)",
                     )
 
         except Exception as e:
-            self.parent._log_activity("ERROR", f"Strategie-Auswahl fehlgeschlagen: {e}")
+            self.parent._log_activity("ERROR", f"Bias/Strategie-Auswahl fehlgeschlagen: {e}")
             # Fallback to first available strategy
             strategies = self.parent._strategy_catalog.get_all_strategies()
             if strategies:
-                # strategies[0] is StrategyDefinition, need .profile for StrategyProfile
                 self.parent._active_strategy = strategies[0].profile
                 self.parent._log_activity(
                     "STRATEGY", f"Fallback-Strategie: {self.parent._active_strategy.name}"
                 )
+
+    def _calculate_daily_bias(self, features: FeatureVector) -> DirectionalBias:
+        """Calculate daily directional bias from market indicators.
+
+        Uses:
+        - Market regime (trend direction)
+        - Moving average alignment
+        - Price vs SMAs
+
+        Returns:
+            DirectionalBias (LONG, SHORT, or NEUTRAL)
+        """
+        regime = self.parent._regime
+
+        # Primary: Use regime direction
+        from .models import RegimeType
+
+        if regime.regime == RegimeType.TREND_UP:
+            # Uptrend regime -> LONG bias
+            return DirectionalBias.LONG
+        elif regime.regime == RegimeType.TREND_DOWN:
+            # Downtrend regime -> SHORT bias
+            return DirectionalBias.SHORT
+        elif regime.regime == RegimeType.RANGE:
+            # Range-bound -> NEUTRAL (trade both directions)
+            return DirectionalBias.NEUTRAL
+
+        # Unknown regime: try to determine from MAs
+        if features.sma_20 and features.sma_50:
+            if features.sma_20 > features.sma_50 and features.close > features.sma_20:
+                return DirectionalBias.LONG
+            elif features.sma_20 < features.sma_50 and features.close < features.sma_20:
+                return DirectionalBias.SHORT
+
+        return DirectionalBias.NEUTRAL
+
+    def _calculate_bias_confidence(self, features: FeatureVector) -> float:
+        """Calculate confidence in daily bias.
+
+        Higher confidence when:
+        - Strong ADX (trending market)
+        - Clear MA separation
+        - Regime confidence is high
+
+        Returns:
+            Confidence score (0.0 - 1.0)
+        """
+        confidence = 0.5  # Base confidence
+
+        regime = self.parent._regime
+
+        # Regime confidence component (0-0.3)
+        if regime.regime_confidence:
+            confidence += regime.regime_confidence * 0.3
+
+        # ADX component (0-0.2): strong trend = higher confidence
+        if features.adx is not None:
+            if features.adx > 30:
+                confidence += 0.2
+            elif features.adx > 20:
+                confidence += 0.1
+
+        # MA alignment component (0-0.1)
+        if features.sma_20 and features.sma_50:
+            ma_separation = abs(features.sma_20 - features.sma_50) / features.sma_50
+            if ma_separation > 0.02:  # 2% separation
+                confidence += 0.1
+
+        return min(confidence, 1.0)
 
     def _get_trade_block_reasons(self) -> list[str]:
         """Get reasons why trading is blocked."""
@@ -212,9 +296,82 @@ class BotStateHandlersFlat:
     def _select_entry_signal(
         self, long_score: float, short_score: float, threshold: float
     ) -> tuple[TradeSide | None, float]:
-        """Select best entry signal."""
-        if long_score > short_score and long_score >= threshold:
+        """Select best entry signal considering daily bias.
+
+        Daytrading mode: Signal direction can be influenced by daily bias.
+        - If bias is LONG: prefer long trades, but allow short if score > override threshold
+        - If bias is SHORT: prefer short trades, but allow long if score > override threshold
+        - If bias is NEUTRAL: select best signal regardless of direction
+
+        Strong signals (above bias_override_threshold) can trade against daily bias.
+        """
+        # Get daily bias and override threshold
+        selection = self.parent._strategy_selector.get_current_selection()
+        daily_bias = selection.daily_bias if selection else DirectionalBias.NEUTRAL
+        bias_override = self.parent.config.bot.bias_override_threshold
+
+        # Determine if signals meet minimum threshold
+        long_valid = long_score >= threshold
+        short_valid = short_score >= threshold
+
+        if not long_valid and not short_valid:
+            return None, 0.0
+
+        # NEUTRAL bias: simply select best signal (original logic)
+        if daily_bias == DirectionalBias.NEUTRAL:
+            if long_score > short_score and long_valid:
+                return TradeSide.LONG, long_score
+            if short_score > long_score and short_valid:
+                return TradeSide.SHORT, short_score
+            return None, 0.0
+
+        # LONG bias: prefer long, allow short only if score >= override threshold
+        if daily_bias == DirectionalBias.LONG:
+            if long_valid:
+                # Always take a valid long signal when bias is LONG
+                self.parent._log_activity(
+                    "BIAS", f"Tagestrend LONG -> Long-Signal bevorzugt (Score: {long_score:.3f})"
+                )
+                return TradeSide.LONG, long_score
+            if short_valid and short_score >= bias_override:
+                # Allow short against bias if score is very high
+                self.parent._log_activity(
+                    "BIAS",
+                    f"Short-Signal ueberschreibt LONG-Bias (Score: {short_score:.3f} >= {bias_override:.0%})"
+                )
+                return TradeSide.SHORT, short_score
+            # Short signal not strong enough to override LONG bias
+            self.parent._log_activity(
+                "BIAS",
+                f"Short-Signal ignoriert (Score {short_score:.3f} < {bias_override:.0%} Override-Threshold)"
+            )
+            return None, 0.0
+
+        # SHORT bias: prefer short, allow long only if score >= override threshold
+        if daily_bias == DirectionalBias.SHORT:
+            if short_valid:
+                # Always take a valid short signal when bias is SHORT
+                self.parent._log_activity(
+                    "BIAS", f"Tagestrend SHORT -> Short-Signal bevorzugt (Score: {short_score:.3f})"
+                )
+                return TradeSide.SHORT, short_score
+            if long_valid and long_score >= bias_override:
+                # Allow long against bias if score is very high
+                self.parent._log_activity(
+                    "BIAS",
+                    f"Long-Signal ueberschreibt SHORT-Bias (Score: {long_score:.3f} >= {bias_override:.0%})"
+                )
+                return TradeSide.LONG, long_score
+            # Long signal not strong enough to override SHORT bias
+            self.parent._log_activity(
+                "BIAS",
+                f"Long-Signal ignoriert (Score {long_score:.3f} < {bias_override:.0%} Override-Threshold)"
+            )
+            return None, 0.0
+
+        # Fallback to best signal
+        if long_score > short_score and long_valid:
             return TradeSide.LONG, long_score
-        if short_score > long_score and short_score >= threshold:
+        if short_valid:
             return TradeSide.SHORT, short_score
         return None, 0.0

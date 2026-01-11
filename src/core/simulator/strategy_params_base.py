@@ -21,6 +21,7 @@ class StrategyName(str, Enum):
     TREND_PULLBACK = "trend_pullback"
     OPENING_RANGE = "opening_range"
     REGIME_HYBRID = "regime_hybrid"
+    SIDEWAYS_RANGE = "sideways_range"
 
     @classmethod
     def display_names(cls) -> dict[str, str]:
@@ -35,6 +36,7 @@ class StrategyName(str, Enum):
             cls.TREND_PULLBACK.value: "Trend Pullback",
             cls.OPENING_RANGE.value: "Opening Range",
             cls.REGIME_HYBRID.value: "Regime Hybrid",
+            cls.SIDEWAYS_RANGE.value: "Sideways Range",
         }
 
 

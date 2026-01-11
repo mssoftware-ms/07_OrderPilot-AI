@@ -76,8 +76,13 @@ class DataLoadingSeries:
 
         return candle_data, volume_data
 
-    def update_chart_series(self, candle_data: list[dict]) -> None:
-        """Send candle data to JavaScript chart."""
+    def update_chart_series(self, candle_data: list[dict], volume_data: list[dict] = None) -> None:
+        """Send candle and volume data to JavaScript chart.
+
+        Args:
+            candle_data: List of OHLC candle dicts
+            volume_data: List of volume bar dicts (Issue #5)
+        """
         skip_fit = getattr(self.parent, '_skip_fit_content', False)
 
         if skip_fit:
@@ -90,6 +95,15 @@ class DataLoadingSeries:
             logger.info("Loaded data with skipFit=true - state restoration pending")
         else:
             self.parent._execute_js(f"window.chartAPI.setData({candle_json});")
+
+        # Issue #5: Create volume panel and set volume data
+        if volume_data:
+            self.parent._execute_js(
+                "window.chartAPI.createPanel('volume', 'Volume', 'histogram', '#26a69a', null, null);"
+            )
+            volume_json = json.dumps(volume_data)
+            self.parent._execute_js(f"window.chartAPI.setPanelData('volume', {volume_json});")
+            logger.info(f"📊 Volume panel created with {len(volume_data)} bars")
 
         if not skip_fit:
             self.parent._execute_js("window.chartAPI.fitContent();")

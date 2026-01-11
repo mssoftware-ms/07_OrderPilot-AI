@@ -28,6 +28,8 @@ class AIAnalysisEngine:
         self.prompt_composer = PromptComposer()
         self.client = OpenAIClient(api_key=api_key)
         self._is_running = False
+        # Store last analysis input for "Show Payload" feature
+        self._last_analysis_input: Optional[AIAnalysisInput] = None
 
     def apply_prompt_overrides(
         self,
@@ -54,7 +56,14 @@ class AIAnalysisEngine:
 
         return 5
 
-    async def run_analysis(self, symbol: str, timeframe: str, df: pd.DataFrame, model: Optional[str] = None) -> Optional[AIAnalysisOutput]:
+    async def run_analysis(
+        self,
+        symbol: str,
+        timeframe: str,
+        df: pd.DataFrame,
+        model: Optional[str] = None,
+        strategy_configs: Optional[list] = None
+    ) -> Optional[AIAnalysisOutput]:
         """
         Main entry point.
 
@@ -63,6 +72,7 @@ class AIAnalysisEngine:
             timeframe: Chart timeframe
             df: OHLCV Data
             model: Optional model override
+            strategy_configs: Issue #20 - Strategy configurations from Strategy Simulator
 
         Returns:
             Analysis result or None if failed.
@@ -147,6 +157,26 @@ class AIAnalysisEngine:
             else:
                  ts_str = str(last_ts)
 
+            # Issue #20: Convert strategy configs to StrategyConfig models
+            strategy_config_models = None
+            if strategy_configs:
+                from src.core.ai_analysis.types import StrategyConfig
+                strategy_config_models = []
+                for sc in strategy_configs:
+                    # Simplify parameters to just name: value for the prompt
+                    simple_params = {}
+                    for param_name, param_info in sc.get("parameters", {}).items():
+                        if isinstance(param_info, dict):
+                            simple_params[param_name] = param_info.get("value", param_info)
+                        else:
+                            simple_params[param_name] = param_info
+
+                    strategy_config_models.append(StrategyConfig(
+                        strategy_name=sc.get("strategy_name", "Unknown"),
+                        parameters=simple_params,
+                        description=sc.get("description")
+                    ))
+
             analysis_input = AIAnalysisInput(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -155,9 +185,13 @@ class AIAnalysisEngine:
                 technicals=technicals,
                 structure=structure,
                 last_candles_summary=summary,
-                funding_rate=None, # Optional
-                open_interest_change_pct=None # Optional
+                funding_rate=None,  # Optional
+                open_interest_change_pct=None,  # Optional
+                strategy_configs=strategy_config_models  # Issue #20
             )
+
+            # Store for "Show Payload" feature
+            self._last_analysis_input = analysis_input
 
             # 5. Prompt
             sys_prompt = self.prompt_composer.compose_system_prompt()

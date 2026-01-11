@@ -32,6 +32,12 @@ class BotUIStrategyMixin:
         self.next_selection_label = QLabel("-")
         current_layout.addRow("Next Selection:", self.next_selection_label)
 
+        # Issue #2: Add indicator set display
+        self.strategy_indicators_label = QLabel("-")
+        self.strategy_indicators_label.setStyleSheet("color: #888; font-size: 11px;")
+        self.strategy_indicators_label.setWordWrap(True)
+        current_layout.addRow("Indicators:", self.strategy_indicators_label)
+
         current_group.setLayout(current_layout)
         layout.addWidget(current_group)
 

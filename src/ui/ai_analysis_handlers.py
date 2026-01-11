@@ -23,7 +23,8 @@ import platform
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QMessageBox, QApplication
+from PyQt6.QtWidgets import QMessageBox, QApplication, QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel
+from PyQt6.QtCore import Qt
 
 from src.core.ai_analysis.prompt import PromptComposer
 
@@ -42,6 +43,8 @@ class AIAnalysisHandlers:
             parent: AIAnalysisWindow Instanz
         """
         self.parent = parent
+        # Storage for the last AI payload (for "Show Payload" feature)
+        self._last_payload_data: dict | None = None
 
     def show_error(self, title: str, message: str):
         """Show error message box popup."""
@@ -65,6 +68,8 @@ class AIAnalysisHandlers:
              return
 
         chart_widget = self.parent.parent().chart_widget
+        # Issue #20: Get parent chart window for strategy simulator access
+        chart_window = self.parent.parent()
 
         # Get required context from chart
         try:
@@ -93,6 +98,23 @@ class AIAnalysisHandlers:
                 })
                 self.parent.lbl_status.setText("Error: Asset class or data source not configured.")
                 return
+
+            # Issue #20: Extract strategy configurations from Strategy Simulator tab
+            strategy_configs = self._extract_strategy_configs(chart_window)
+
+            # Store pre-analysis data for "Show Payload" feature
+            self._last_payload_data = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "asset_class": str(asset_class) if asset_class else None,
+                "data_source": str(data_source) if data_source else None,
+                "strategy_configs": strategy_configs,
+                "timestamp": None,  # Will be set by engine
+                "regime": None,  # Will be set by engine
+                "technicals": None,  # Will be set by engine
+                "structure": None,  # Will be set by engine
+                "last_candles_summary": None,  # Will be set by engine
+            }
 
         except Exception as e:
              analysis_logger.error("Failed to access chart context", extra={
@@ -143,10 +165,12 @@ class AIAnalysisHandlers:
             'step': 'worker_start'
         })
 
+        # Issue #20: Pass strategy configs to worker
         self.parent.worker = AnalysisWorker(
             self.parent.engine, symbol, timeframe,
             history_manager, asset_class, data_source,
-            model=selected_model
+            model=selected_model,
+            strategy_configs=strategy_configs
         )
         self.parent.worker.finished.connect(self.on_analysis_finished)
         self.parent.worker.error.connect(self.on_analysis_error)
@@ -157,6 +181,10 @@ class AIAnalysisHandlers:
         self.parent.btn_analyze.setEnabled(True)
         self.parent.progress_bar.setVisible(False)
         self.parent.lbl_status.setText("Analysis complete.")
+
+        # Enable "Show Payload" button after successful analysis
+        if hasattr(self.parent, 'btn_show_payload'):
+            self.parent.btn_show_payload.setEnabled(True)
 
         if result:
             analysis_logger.info("Analysis results received in UI", extra={
@@ -290,3 +318,207 @@ class AIAnalysisHandlers:
         sys_override = self.parent.settings.value("ai_analysis_system_prompt_override", "")
         tasks_override = self.parent.settings.value("ai_analysis_tasks_prompt_override", "")
         self.parent.engine.apply_prompt_overrides(sys_override, tasks_override)
+
+    def show_payload_popup(self):
+        """
+        Show a popup dialog with all data that was sent to the AI.
+
+        Displays the full AIAnalysisInput payload in a formatted JSON view.
+        """
+        if not self.parent.engine:
+            QMessageBox.warning(
+                self.parent,
+                "Keine Daten",
+                "AI Engine nicht initialisiert."
+            )
+            return
+
+        # Get the last analysis input from the engine
+        last_input = getattr(self.parent.engine, '_last_analysis_input', None)
+
+        if not last_input:
+            QMessageBox.information(
+                self.parent,
+                "Keine Daten",
+                "Es wurden noch keine Daten an die KI gesendet.\n\n"
+                "Führen Sie zuerst 'Start Analysis' aus."
+            )
+            return
+
+        # Create popup dialog
+        dialog = QDialog(self.parent)
+        dialog.setWindowTitle("📋 AI Analysis Payload - Gesendete Daten")
+        dialog.setMinimumSize(800, 600)
+        dialog.resize(900, 700)
+
+        layout = QVBoxLayout(dialog)
+
+        # Header
+        header_label = QLabel(
+            "<h3>Alle Daten, die an die KI gesendet wurden:</h3>"
+            "<p style='color: gray;'>Diese Daten werden im JSON-Format an das LLM übermittelt.</p>"
+        )
+        layout.addWidget(header_label)
+
+        # JSON content
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setStyleSheet(
+            "font-family: 'Consolas', 'Monaco', monospace; "
+            "font-size: 11px; "
+            "background-color: #1e1e1e; "
+            "color: #d4d4d4; "
+            "padding: 10px;"
+        )
+
+        try:
+            # Serialize the AIAnalysisInput to pretty JSON
+            json_content = last_input.model_dump_json(indent=2)
+            text_edit.setPlainText(json_content)
+        except Exception as e:
+            text_edit.setPlainText(f"Fehler beim Serialisieren: {e}\n\nRohdaten:\n{str(last_input)}")
+
+        layout.addWidget(text_edit)
+
+        # Summary info
+        summary_parts = []
+        summary_parts.append(f"<b>Symbol:</b> {last_input.symbol}")
+        summary_parts.append(f"<b>Timeframe:</b> {last_input.timeframe}")
+        summary_parts.append(f"<b>Regime:</b> {last_input.regime.value if last_input.regime else 'N/A'}")
+        summary_parts.append(f"<b>Timestamp:</b> {last_input.timestamp}")
+
+        if last_input.strategy_configs:
+            summary_parts.append(f"<b>Strategien:</b> {len(last_input.strategy_configs)}")
+
+        if last_input.last_candles_summary:
+            summary_parts.append(f"<b>Kerzen:</b> {len(last_input.last_candles_summary)}")
+
+        summary_label = QLabel(" | ".join(summary_parts))
+        summary_label.setStyleSheet("color: #888; font-size: 10px; padding: 5px;")
+        layout.addWidget(summary_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        btn_copy = QPushButton("📋 In Zwischenablage kopieren")
+        btn_copy.clicked.connect(lambda: self._copy_payload_to_clipboard(text_edit.toPlainText()))
+        button_layout.addWidget(btn_copy)
+
+        button_layout.addStretch()
+
+        btn_close = QPushButton("Schließen")
+        btn_close.clicked.connect(dialog.accept)
+        button_layout.addWidget(btn_close)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec()
+
+    def _copy_payload_to_clipboard(self, text: str):
+        """Copy payload text to clipboard and show confirmation."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self.parent.lbl_status.setText("Payload in Zwischenablage kopiert!")
+
+    def _extract_strategy_configs(self, chart_window) -> list[dict] | None:
+        """
+        Issue #20: Extract strategy configurations from Strategy Simulator tab.
+
+        Extracts all available strategies with their current parameter values
+        from the Strategy Simulator UI.
+
+        Args:
+            chart_window: The parent chart window that contains Strategy Simulator mixin
+
+        Returns:
+            List of strategy config dicts or None if not available
+        """
+        try:
+            from src.core.simulator import (
+                StrategyName,
+                get_strategy_parameters,
+                STRATEGY_PARAMETER_REGISTRY,
+            )
+
+            strategy_configs = []
+
+            # Check if chart window has strategy simulator components
+            if not hasattr(chart_window, 'simulator_strategy_combo'):
+                analysis_logger.info("Strategy simulator not available in chart window", extra={
+                    'tab': 'overview',
+                    'action': 'extract_strategies',
+                    'step': 'skipped'
+                })
+                return None
+
+            # Get the currently selected strategy and its parameters from UI
+            current_strategy_name = None
+            current_params = {}
+
+            if hasattr(chart_window, '_get_simulator_strategy_name'):
+                current_strategy_name = chart_window._get_simulator_strategy_name()
+
+            if hasattr(chart_window, '_get_simulator_parameters'):
+                current_params = chart_window._get_simulator_parameters()
+
+            # Extract ALL strategies from registry with their definitions
+            for strategy_enum, param_config in STRATEGY_PARAMETER_REGISTRY.items():
+                strategy_data = {
+                    "strategy_name": param_config.display_name,
+                    "strategy_id": strategy_enum.value,
+                    "description": param_config.description,
+                    "parameters": {},
+                    "is_selected": False,
+                }
+
+                # Build parameters with defaults and descriptions
+                for param_def in param_config.parameters:
+                    param_info = {
+                        "value": param_def.default,
+                        "display_name": param_def.display_name,
+                        "type": param_def.param_type,
+                        "description": param_def.description,
+                    }
+                    if param_def.min_value is not None:
+                        param_info["min"] = param_def.min_value
+                    if param_def.max_value is not None:
+                        param_info["max"] = param_def.max_value
+
+                    strategy_data["parameters"][param_def.name] = param_info
+
+                # If this is the currently selected strategy, use the UI values
+                if current_strategy_name and (
+                    current_strategy_name == param_config.display_name or
+                    current_strategy_name == strategy_enum.value or
+                    current_strategy_name.lower().replace('_', ' ') == param_config.display_name.lower()
+                ):
+                    strategy_data["is_selected"] = True
+                    # Override defaults with current UI values
+                    for param_name, param_value in current_params.items():
+                        if param_name in strategy_data["parameters"]:
+                            strategy_data["parameters"][param_name]["value"] = param_value
+
+                strategy_configs.append(strategy_data)
+
+            # Sort: selected strategy first, then alphabetically
+            strategy_configs.sort(key=lambda x: (not x["is_selected"], x["strategy_name"]))
+
+            analysis_logger.info("Extracted strategy configurations", extra={
+                'tab': 'overview',
+                'action': 'extract_strategies',
+                'strategies_count': len(strategy_configs),
+                'selected_strategy': current_strategy_name,
+                'step': 'success'
+            })
+
+            return strategy_configs
+
+        except Exception as e:
+            analysis_logger.warning(f"Failed to extract strategy configs: {e}", extra={
+                'tab': 'overview',
+                'action': 'extract_strategies',
+                'error': str(e),
+                'error_type': type(e).__name__,
+                'step': 'error'
+            })
+            return None

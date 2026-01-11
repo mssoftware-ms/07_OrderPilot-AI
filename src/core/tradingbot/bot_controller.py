@@ -134,11 +134,13 @@ class BotController(
         self._consecutive_losses: int = 0
 
         # Strategy selection
+        # NOTE: Daytrading mode - no fixed daily strategy, only directional bias
+        # allow_intraday_switch=True allows strategy to change with market conditions
         self._strategy_catalog = StrategyCatalog()
         self._strategy_selector = StrategySelector(
             catalog=self._strategy_catalog,
-            allow_intraday_switch=False,
-            require_regime_flip_for_switch=True
+            allow_intraday_switch=True,  # Daytrading: allow strategy changes
+            require_regime_flip_for_switch=False  # No regime flip required
         )
         self._last_strategy_selection_date: datetime | None = None
 

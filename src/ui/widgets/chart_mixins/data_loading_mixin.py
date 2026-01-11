@@ -66,7 +66,8 @@ class DataLoadingMixin:
         try:
             data = self._series.prepare_chart_data(data)
             candle_data, volume_data = self._series.build_chart_series(data)
-            self._series.update_chart_series(candle_data)
+            # Issue #5: Pass volume_data to create volume panel
+            self._series.update_chart_series(candle_data, volume_data)
             self.volume_data = volume_data
             self._series.finalize_chart_load(data, candle_data)
 

@@ -32,6 +32,19 @@ class MarketStructure(BaseModel):
     recent_lows: List[float] = Field(default_factory=list)
     current_price: float
 
+class StrategyConfig(BaseModel):
+    """Strategy configuration from Strategy Simulator tab."""
+    strategy_name: str = Field(description="Name of the selected strategy")
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Current parameter values for the strategy"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Strategy description"
+    )
+
+
 class AIAnalysisInput(BaseModel):
     """The full context payload sent to the LLM."""
     symbol: str
@@ -46,6 +59,11 @@ class AIAnalysisInput(BaseModel):
     # Optional Bitunix/Advanced data
     funding_rate: Optional[float] = None
     open_interest_change_pct: Optional[float] = None
+    # Issue #20: Strategy Simulator configuration
+    strategy_configs: Optional[List[StrategyConfig]] = Field(
+        default=None,
+        description="Strategy configurations from Strategy Simulator tab with current parameters"
+    )
 
 class SetupType(str, Enum):
     PULLBACK_EMA20 = "PULLBACK_EMA20"

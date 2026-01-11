@@ -181,6 +181,7 @@ class BotDisplayPositionMixin:
 
         selection = self._get_strategy_selection()
         self._set_active_strategy_label(selection)
+        self._update_strategy_indicators_display()  # Issue #2
         self._update_regime_labels(selection)
         self._update_selection_timing_labels(selection)
         self._update_strategy_scores_table()
@@ -202,6 +203,25 @@ class BotDisplayPositionMixin:
             active_name = strategy.name if strategy else None
 
         self.active_strategy_label.setText(active_name if active_name else "None")
+
+    def _update_strategy_indicators_display(self) -> None:
+        """Issue #2: Update the indicators display for active strategy.
+
+        Gets the active strategy from selection/controller and displays
+        the indicators defined in the strategy catalog's entry_rules.
+        """
+        if not hasattr(self, 'update_strategy_indicators'):
+            return
+
+        # Get active strategy name
+        strategy_name = None
+        selection = self._get_strategy_selection()
+        if selection and selection.selected_strategy:
+            strategy_name = selection.selected_strategy
+        elif hasattr(self._bot_controller, 'active_strategy') and self._bot_controller.active_strategy:
+            strategy_name = self._bot_controller.active_strategy.name
+
+        self.update_strategy_indicators(strategy_name)
 
     def _update_regime_labels(self, selection) -> None:
         if selection:

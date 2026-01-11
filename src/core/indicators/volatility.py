@@ -250,13 +250,16 @@ class VolatilityIndicators(BaseIndicatorCalculator):
         elif PANDAS_TA_AVAILABLE:
             values = ta.atr(data['high'], data['low'], data['close'], length=period)
         else:
-            # Manual calculation
+            # Manual calculation using Wilder's Smoothing Method
+            # Reference: https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/average-true-range-atr
             high_low = data['high'] - data['low']
             high_close = np.abs(data['high'] - data['close'].shift())
             low_close = np.abs(data['low'] - data['close'].shift())
 
             true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            values = true_range.rolling(window=period).mean()
+            # Use Wilder's smoothing (EMA with alpha = 1/period)
+            alpha = 1.0 / period
+            values = true_range.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
 
         return VolatilityIndicators.create_result(
             IndicatorType.ATR, values, params

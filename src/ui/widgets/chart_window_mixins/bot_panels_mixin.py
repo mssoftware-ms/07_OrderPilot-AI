@@ -107,6 +107,8 @@ class BotPanelsMixin(
         QTimer.singleShot(400, self._connect_candle_closed_signal)
         # Connect tick_price_updated signal for real-time P&L updates
         QTimer.singleShot(500, self._connect_tick_price_signal)
+        # Issue #9: Connect data_loaded signal to restore position lines after chart refresh
+        QTimer.singleShot(600, self._connect_chart_data_loaded_for_position_restore)
 
         logger.info("Bot panels initialized")
 
@@ -175,6 +177,10 @@ class BotPanelsMixin(
             self._update_signals_table()
             if hasattr(self, 'signals_table') and hasattr(self.signals_table, 'viewport'):
                 self.signals_table.viewport().update()
+
+        # Issue #11: Update sell button state based on open position
+        if hasattr(self, '_update_sell_button_state'):
+            self._update_sell_button_state()
 
     def _is_signals_selection_active(self) -> bool:
         if hasattr(self, "_has_signals_table_selection"):

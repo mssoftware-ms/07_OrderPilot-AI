@@ -32,8 +32,32 @@ class SimulationWorker(QThread):
         opt_trials: int = 50,
         objective_metric: str = "score",
         entry_only: bool = False,
-        entry_lookahead_mode: str = "session_end",
-        entry_lookahead_bars: int | None = None,
+        # Auto-strategy mode
+        auto_strategy: bool = False,
+        # ATR-based SL/TP from Bot-Tab settings
+        sl_atr_multiplier: float = 0.0,
+        tp_atr_multiplier: float = 0.0,
+        atr_period: int = 14,
+        # Trailing Stop from Bot-Tab settings
+        trailing_stop_enabled: bool = False,
+        trailing_stop_atr_multiplier: float = 1.5,
+        trailing_stop_mode: str = "ATR",  # PCT, ATR, SWING
+        trailing_pct_distance: float = 1.0,  # Distance in % for PCT mode
+        trailing_activation_pct: float = 5.0,  # Activation threshold
+        # Regime-adaptive trailing
+        regime_adaptive: bool = True,
+        atr_trending_mult: float = 1.2,
+        atr_ranging_mult: float = 2.0,
+        # Trading fees
+        maker_fee_pct: float = 0.0002,
+        taker_fee_pct: float = 0.0006,
+        # Trade direction filter
+        trade_direction: str = "BOTH",
+        # Capital and position sizing
+        initial_capital: float = 1000.0,
+        position_size_pct: float = 1.0,
+        # Leverage
+        leverage: float = 1.0,
     ):
         super().__init__()
         self.data = data
@@ -44,8 +68,32 @@ class SimulationWorker(QThread):
         self.opt_trials = opt_trials
         self.objective_metric = objective_metric
         self.entry_only = entry_only
-        self.entry_lookahead_mode = entry_lookahead_mode
-        self.entry_lookahead_bars = entry_lookahead_bars
+        # Auto-strategy mode
+        self.auto_strategy = auto_strategy
+        # ATR-based SL/TP from Bot-Tab settings
+        self.sl_atr_multiplier = sl_atr_multiplier
+        self.tp_atr_multiplier = tp_atr_multiplier
+        self.atr_period = atr_period
+        # Trailing Stop from Bot-Tab settings
+        self.trailing_stop_enabled = trailing_stop_enabled
+        self.trailing_stop_atr_multiplier = trailing_stop_atr_multiplier
+        self.trailing_stop_mode = trailing_stop_mode  # PCT, ATR, SWING
+        self.trailing_pct_distance = trailing_pct_distance
+        self.trailing_activation_pct = trailing_activation_pct
+        # Regime-adaptive trailing
+        self.regime_adaptive = regime_adaptive
+        self.atr_trending_mult = atr_trending_mult
+        self.atr_ranging_mult = atr_ranging_mult
+        # Trading fees
+        self.maker_fee_pct = maker_fee_pct
+        self.taker_fee_pct = taker_fee_pct
+        # Trade direction filter
+        self.trade_direction = trade_direction
+        # Capital and position sizing
+        self.initial_capital = initial_capital
+        self.position_size_pct = position_size_pct
+        # Leverage
+        self.leverage = leverage
         self._cancelled = False
         self._optimizer = None  # type: ignore[var-annotated]
 
@@ -109,7 +157,34 @@ class SimulationWorker(QThread):
             self._optimizer = None
 
     def _resolve_strategies(self, StrategyName, is_all: bool):
-        return list(StrategyName) if is_all else [StrategyName(self.strategy_name)]
+        if is_all:
+            return list(StrategyName)
+        # Map catalog strategy name to StrategyName enum
+        strategy_enum = self._catalog_to_strategy_enum(StrategyName, self.strategy_name)
+        return [strategy_enum]
+
+    def _catalog_to_strategy_enum(self, StrategyName, catalog_name: str):
+        """Map catalog strategy name to StrategyName enum."""
+        # Mapping from catalog strategy names to simulator family enums
+        catalog_to_enum = {
+            "breakout_volatility": StrategyName.BREAKOUT,
+            "breakout_momentum": StrategyName.BREAKOUT,
+            "momentum_macd": StrategyName.MOMENTUM,
+            "mean_reversion_bb": StrategyName.MEAN_REVERSION,
+            "mean_reversion_rsi": StrategyName.MEAN_REVERSION,
+            "trend_following_conservative": StrategyName.TREND_FOLLOWING,
+            "trend_following_aggressive": StrategyName.TREND_FOLLOWING,
+            "scalping_range": StrategyName.SCALPING,
+            "sideways_range_bounce": StrategyName.SIDEWAYS_RANGE,
+        }
+        # Try catalog mapping first, then try direct enum conversion for legacy names
+        if catalog_name in catalog_to_enum:
+            return catalog_to_enum[catalog_name]
+        try:
+            return StrategyName(catalog_name)
+        except ValueError:
+            logger.warning(f"Unknown strategy name: {catalog_name}, defaulting to TREND_FOLLOWING")
+            return StrategyName.TREND_FOLLOWING
 
     def _resolve_sides(self) -> list[str]:
         return ["long", "short"] if self.entry_only else ["long"]
@@ -160,8 +235,30 @@ class SimulationWorker(QThread):
                             parameters=params,
                             entry_only=self.entry_only,
                             entry_side=side,
-                            entry_lookahead_mode=self.entry_lookahead_mode,
-                            entry_lookahead_bars=self.entry_lookahead_bars,
+                            # Capital and position sizing
+                            initial_capital=self.initial_capital,
+                            position_size_pct=self.position_size_pct,
+                            # ATR-based SL/TP from Bot-Tab settings
+                            sl_atr_multiplier=self.sl_atr_multiplier,
+                            tp_atr_multiplier=self.tp_atr_multiplier,
+                            atr_period=self.atr_period,
+                            # Trailing Stop from Bot-Tab settings
+                            trailing_stop_enabled=self.trailing_stop_enabled,
+                            trailing_stop_atr_multiplier=self.trailing_stop_atr_multiplier,
+                            trailing_stop_mode=self.trailing_stop_mode,
+                            trailing_pct_distance=self.trailing_pct_distance,
+                            trailing_activation_pct=self.trailing_activation_pct,
+                            # Regime-adaptive trailing
+                            regime_adaptive=self.regime_adaptive,
+                            atr_trending_mult=self.atr_trending_mult,
+                            atr_ranging_mult=self.atr_ranging_mult,
+                            # Trading fees
+                            maker_fee_pct=self.maker_fee_pct,
+                            taker_fee_pct=self.taker_fee_pct,
+                            # Trade direction filter
+                            trade_direction=self.trade_direction,
+                            # Leverage
+                            leverage=self.leverage,
                         )
                     )
                     results.append(result)
@@ -215,8 +312,6 @@ class SimulationWorker(QThread):
                     n_trials=self.opt_trials,
                     entry_only=self.entry_only,
                     entry_side=side,
-                    entry_lookahead_mode=self.entry_lookahead_mode,
-                    entry_lookahead_bars=self.entry_lookahead_bars,
                 )
 
                 optimizer = (

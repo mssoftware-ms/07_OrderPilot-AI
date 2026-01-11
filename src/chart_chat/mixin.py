@@ -106,6 +106,7 @@ class ChartChatMixin:
 
         self._chat_service = None
         self._chat_widget = QDockWidget("🤖 AI Chat (Nicht konfiguriert)", self)  # type: ignore
+        self._chat_widget.setObjectName("aiChatPlaceholderDock")
 
         content = QWidget()
         layout = QVBoxLayout(content)

@@ -14,11 +14,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from .models import RegimeType, VolatilityLevel
+from .models import DirectionalBias, RegimeType, VolatilityLevel
 
 
 class SelectionResult(BaseModel):
-    """Result of strategy selection."""
+    """Result of strategy selection.
+
+    NOTE: Daily strategy selection is DISABLED for daytrading.
+    Instead uses `daily_bias` for directional guidance only.
+    Current signal score can override bias if above threshold.
+    """
 
     selected_strategy: str | None = None
     fallback_used: bool = False
@@ -41,6 +46,25 @@ class SelectionResult(BaseModel):
 
     # Lock info
     locked_until: datetime | None = None
+
+    # Directional bias (replaces fixed daily strategy for daytrading)
+    daily_bias: DirectionalBias = Field(
+        default=DirectionalBias.NEUTRAL,
+        description="Daily directional tendency (long/short/neutral). "
+        "Does NOT lock strategy, only suggests preferred direction."
+    )
+    bias_confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in daily bias (0-1)"
+    )
+    bias_override_threshold: float = Field(
+        default=0.8,
+        ge=0.5,
+        le=1.0,
+        description="Signal score threshold to override daily bias (default 80%)"
+    )
 
 
 class SelectionSnapshot(BaseModel):

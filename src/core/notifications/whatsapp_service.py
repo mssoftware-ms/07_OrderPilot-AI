@@ -9,13 +9,18 @@ WICHTIG: Erfordert eingeloggtes WhatsApp Web im Browser!
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 logger = logging.getLogger(__name__)
+
+# Pfad zur Settings-Datei
+_SETTINGS_FILE = Path(__file__).parent.parent.parent.parent / "config" / "bot_settings.json"
 
 
 @dataclass
@@ -118,6 +123,37 @@ class WhatsAppService:
         except ImportError:
             logger.warning("WhatsAppService: pywhatkit nicht installiert - pip install pywhatkit")
 
+        # Lade gespeicherten Enabled-Status
+        self._load_enabled_state()
+
+    def _load_enabled_state(self) -> None:
+        """Lädt den gespeicherten Enabled-Status aus der Settings-Datei."""
+        try:
+            if _SETTINGS_FILE.exists():
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+                    self._enabled = settings.get("whatsapp_notifications_enabled", False)
+                    logger.info(f"WhatsAppService: Enabled-Status geladen: {self._enabled}")
+        except Exception as e:
+            logger.warning(f"WhatsAppService: Fehler beim Laden des Enabled-Status: {e}")
+            self._enabled = False
+
+    def _save_enabled_state(self) -> None:
+        """Speichert den Enabled-Status in der Settings-Datei."""
+        try:
+            settings = {}
+            if _SETTINGS_FILE.exists():
+                with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+
+            settings["whatsapp_notifications_enabled"] = self._enabled
+
+            with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2, ensure_ascii=False)
+            logger.info(f"WhatsAppService: Enabled-Status gespeichert: {self._enabled}")
+        except Exception as e:
+            logger.error(f"WhatsAppService: Fehler beim Speichern des Enabled-Status: {e}")
+
     @property
     def phone_number(self) -> str:
         return self._phone_number
@@ -138,6 +174,8 @@ class WhatsAppService:
     def enabled(self, value: bool) -> None:
         self._enabled = value
         logger.info(f"WhatsAppService: Benachrichtigungen {'aktiviert' if value else 'deaktiviert'}")
+        # Speichere Status persistent
+        self._save_enabled_state()
 
     @property
     def is_available(self) -> bool:

@@ -46,6 +46,7 @@ class ChartChatWidget(
             parent: Parent widget
         """
         super().__init__("Chart Analysis", parent)
+        self.setObjectName("chartAnalysisDock")
 
         self.service = service
         self._worker: AnalysisWorker | None = None

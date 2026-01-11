@@ -55,6 +55,10 @@ class BotPositionPersistenceStorageMixin:
                 if hasattr(self, 'signals_table'):
                     self._update_signals_table()
 
+                # Issue #11: Update sell button state
+                if hasattr(self, '_update_sell_button_state'):
+                    self._update_sell_button_state()
+
                 # Check for active positions
                 active_positions = [s for s in self._signal_history
                                    if s.get("status") == "ENTERED" and s.get("is_open", False)]

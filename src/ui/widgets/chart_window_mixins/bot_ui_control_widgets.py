@@ -238,21 +238,15 @@ class BotUIControlWidgets:
         return settings_group
 
     def build_quick_toggles_group(self) -> QGroupBox:
-        """Create combined Quick Toggles & Leverage Override group (Issue #43).
+        """Create Quick Toggles group (Issue #43).
 
-        Combines Paper Mode, MACD Exit, RSI Exit, Derivathandel and Leverage Override
-        in a compact two-column layout.
+        Contains Paper Mode, MACD Exit, RSI Exit, Derivathandel checkboxes.
+        Displayed as separate GroupBox next to Leverage Override.
         """
-        group = QGroupBox("⚡ Quick Toggles & Leverage")
-        main_layout = QHBoxLayout(group)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(12)
-
-        # === LEFT COLUMN: Toggles ===
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(4)
+        group = QGroupBox("⚡ Quick Toggles")
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
         # Paper Mode
         self.parent.disable_restrictions_cb = QCheckBox("Paper Mode")
@@ -263,7 +257,7 @@ class BotUIControlWidgets:
             "Im Live-Modus sollten Restriktionen AKTIVIERT sein!"
         )
         self.parent.disable_restrictions_cb.setStyleSheet("color: #ff9800; font-weight: bold;")
-        left_layout.addWidget(self.parent.disable_restrictions_cb)
+        layout.addWidget(self.parent.disable_restrictions_cb)
 
         # MACD Exit
         self.parent.disable_macd_exit_cb = QCheckBox("MACD-Exit deaktiv.")
@@ -272,7 +266,7 @@ class BotUIControlWidgets:
             "Deaktiviert den automatischen Verkauf bei MACD-Kreuzungen.\n"
             "Position wird nur durch Stop-Loss geschlossen."
         )
-        left_layout.addWidget(self.parent.disable_macd_exit_cb)
+        layout.addWidget(self.parent.disable_macd_exit_cb)
 
         # RSI Exit
         self.parent.disable_rsi_exit_cb = QCheckBox("RSI-Exit deaktiv.")
@@ -281,7 +275,7 @@ class BotUIControlWidgets:
             "Deaktiviert den automatischen Verkauf bei RSI-Extremwerten.\n"
             "Position wird nur durch Stop-Loss geschlossen."
         )
-        left_layout.addWidget(self.parent.disable_rsi_exit_cb)
+        layout.addWidget(self.parent.disable_rsi_exit_cb)
 
         # Derivathandel
         self.parent.enable_derivathandel_cb = QCheckBox("Derivathandel")
@@ -294,22 +288,21 @@ class BotUIControlWidgets:
         self.parent.enable_derivathandel_cb.stateChanged.connect(
             self.parent._on_derivathandel_changed
         )
-        left_layout.addWidget(self.parent.enable_derivathandel_cb)
+        layout.addWidget(self.parent.enable_derivathandel_cb)
 
-        left_layout.addStretch()
-        main_layout.addWidget(left_widget)
+        layout.addStretch()
+        return group
 
-        # === VERTICAL SEPARATOR ===
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setStyleSheet("color: #444;")
-        main_layout.addWidget(separator)
+    def build_leverage_override_group(self) -> QGroupBox:
+        """Create Leverage Override group (Issue #43).
 
-        # === RIGHT COLUMN: Leverage Override ===
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(4)
+        Contains Leverage Override checkbox, slider and quick-select buttons.
+        Displayed as separate GroupBox next to Quick Toggles.
+        """
+        group = QGroupBox("🔧 Leverage Override")
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
         # Leverage Override Checkbox
         self.parent.leverage_override_cb = QCheckBox("Manueller Hebel")
@@ -322,7 +315,7 @@ class BotUIControlWidgets:
         self.parent.leverage_override_cb.stateChanged.connect(
             self.parent._on_leverage_override_changed
         )
-        right_layout.addWidget(self.parent.leverage_override_cb)
+        layout.addWidget(self.parent.leverage_override_cb)
 
         # Leverage Slider mit Wert-Anzeige
         slider_widget = QWidget()
@@ -347,7 +340,7 @@ class BotUIControlWidgets:
             "font-weight: bold; font-size: 13px; color: #FF9800; min-width: 40px;"
         )
         slider_layout.addWidget(self.parent.leverage_value_label)
-        right_layout.addWidget(slider_widget)
+        layout.addWidget(slider_widget)
 
         # Quick-Select Buttons für Leverage
         quick_widget = QWidget()
@@ -362,9 +355,67 @@ class BotUIControlWidgets:
             btn.clicked.connect(lambda checked, l=lev: self.parent._set_leverage(l))
             quick_layout.addWidget(btn)
 
-        right_layout.addWidget(quick_widget)
-        right_layout.addStretch()
-        main_layout.addWidget(right_widget)
+        layout.addWidget(quick_widget)
+        layout.addStretch()
+        return group
+
+    def build_bitunix_fees_group(self) -> QGroupBox:
+        """Create BitUnix Fees group (Issue #3).
+
+        Displays BitUnix trading fees for inclusion in P&L calculations.
+        Based on BitUnix VIP 0 (default) tier:
+        - Futures: Maker 0.02%, Taker 0.06%
+        - Spot: Maker 0.08%, Taker 0.10%
+
+        Sources:
+        - https://support.bitunix.com/hc/en-us/articles/14042741811865
+        - https://www.bitunix.com/service/handling-fee
+        """
+        from PyQt6.QtWidgets import QLabel, QDoubleSpinBox, QFormLayout
+
+        group = QGroupBox("💰 BitUnix Gebühren")
+        layout = QFormLayout(group)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Futures Maker Fee
+        self.parent.futures_maker_fee_spin = QDoubleSpinBox()
+        self.parent.futures_maker_fee_spin.setRange(0.0, 1.0)
+        self.parent.futures_maker_fee_spin.setValue(0.02)  # BitUnix VIP 0 default
+        self.parent.futures_maker_fee_spin.setSingleStep(0.01)
+        self.parent.futures_maker_fee_spin.setDecimals(3)
+        self.parent.futures_maker_fee_spin.setSuffix(" %")
+        self.parent.futures_maker_fee_spin.setToolTip(
+            "BitUnix Futures Maker Fee\n"
+            "VIP 0 (Default): 0.02%\n"
+            "VIP 7 (Max): 0.006%"
+        )
+        self.parent.futures_maker_fee_spin.valueChanged.connect(
+            self.parent._on_fee_changed
+        )
+        layout.addRow("Futures Maker:", self.parent.futures_maker_fee_spin)
+
+        # Futures Taker Fee
+        self.parent.futures_taker_fee_spin = QDoubleSpinBox()
+        self.parent.futures_taker_fee_spin.setRange(0.0, 1.0)
+        self.parent.futures_taker_fee_spin.setValue(0.06)  # BitUnix VIP 0 default
+        self.parent.futures_taker_fee_spin.setSingleStep(0.01)
+        self.parent.futures_taker_fee_spin.setDecimals(3)
+        self.parent.futures_taker_fee_spin.setSuffix(" %")
+        self.parent.futures_taker_fee_spin.setToolTip(
+            "BitUnix Futures Taker Fee\n"
+            "VIP 0 (Default): 0.06%\n"
+            "VIP 7 (Max): 0.03%"
+        )
+        self.parent.futures_taker_fee_spin.valueChanged.connect(
+            self.parent._on_fee_changed
+        )
+        layout.addRow("Futures Taker:", self.parent.futures_taker_fee_spin)
+
+        # Info Label
+        info_label = QLabel("Gebühren werden in P&L eingerechnet")
+        info_label.setStyleSheet("color: #888; font-size: 9px; font-style: italic;")
+        layout.addRow(info_label)
 
         return group
 

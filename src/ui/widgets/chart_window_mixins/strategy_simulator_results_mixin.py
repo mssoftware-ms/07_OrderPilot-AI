@@ -63,8 +63,13 @@ class StrategySimulatorResultsMixin:
         if getattr(result, "entry_only", False):
             params_full = self._prefix_entry_params(result, params_full, entry_side)
 
+        # Get entry/exit times from trades (first/last trade)
+        entry_time_str, exit_time_str = self._get_first_last_trade_times(result)
+
         items = [
             result.strategy_name,
+            entry_time_str,  # Entry time (HH:MM)
+            exit_time_str,   # Exit time (HH:MM)
             str(result.total_trades),
             f"{result.win_rate * 100:.1f}",
             f"{result.profit_factor:.2f}",
@@ -81,7 +86,7 @@ class StrategySimulatorResultsMixin:
         for col, value in enumerate(items):
             item = self._create_result_item(result, col, value)
             table.setItem(row, col, item)
-            if col == 4:
+            if col == 6:  # P&L € column (was 4, now 6 with Entry/Exit columns)
                 self._color_pnl_item(item, value)
             last_col = col
             last_value = value
@@ -89,8 +94,8 @@ class StrategySimulatorResultsMixin:
         if was_sorting:
             table.setSortingEnabled(True)
 
-            # Color Score column
-            if last_col == 7:  # Score column
+            # Color Score column (was 7, now 9 with Entry/Exit columns)
+            if last_col == 9:  # Score column
                 try:
                     sc = int(last_value)
                     if sc > 0:
@@ -99,6 +104,50 @@ class StrategySimulatorResultsMixin:
                         item.setBackground(Qt.GlobalColor.red)
                 except ValueError:
                     pass
+
+    def _get_first_last_trade_times(self, result) -> tuple[str, str]:
+        """Get entry time of first trade and exit time of last trade.
+
+        Args:
+            result: SimulationResult with trades
+
+        Returns:
+            Tuple of (entry_time_str, exit_time_str) in HH:MM format
+        """
+        entry_time_str = "-"
+        exit_time_str = "-"
+
+        trades = getattr(result, "trades", None)
+        if not trades:
+            # Try entry_only data
+            entry_points = getattr(result, "entry_points", None)
+            if entry_points and len(entry_points) > 0:
+                first_entry = entry_points[0]
+                if len(first_entry) >= 2:
+                    ts = first_entry[1]
+                    if hasattr(ts, "strftime"):
+                        entry_time_str = ts.strftime("%H:%M")
+                last_entry = entry_points[-1]
+                if len(last_entry) >= 2:
+                    ts = last_entry[1]
+                    if hasattr(ts, "strftime"):
+                        exit_time_str = ts.strftime("%H:%M")
+            return entry_time_str, exit_time_str
+
+        # Get first trade entry time
+        if trades:
+            first_trade = trades[0]
+            if hasattr(first_trade, "entry_time") and first_trade.entry_time:
+                if hasattr(first_trade.entry_time, "strftime"):
+                    entry_time_str = first_trade.entry_time.strftime("%H:%M")
+
+            # Get last trade exit time
+            last_trade = trades[-1]
+            if hasattr(last_trade, "exit_time") and last_trade.exit_time:
+                if hasattr(last_trade.exit_time, "strftime"):
+                    exit_time_str = last_trade.exit_time.strftime("%H:%M")
+
+        return entry_time_str, exit_time_str
 
     def _format_params(self, params: dict) -> str:
         return ", ".join(f"{k}={v}" for k, v in params.items())
@@ -176,8 +225,13 @@ class StrategySimulatorResultsMixin:
         # P&L in Euro (assuming 1000€ initial capital, pnl_pct is already percentage)
         pnl_euro = pnl_pct * 10  # 1% of 1000€ = 10€
 
+        # Get entry/exit times from trial metrics
+        entry_time_str, exit_time_str = self._get_trial_times(metrics)
+
         items = [
             strategy_name,
+            entry_time_str,  # Entry time (HH:MM)
+            exit_time_str,   # Exit time (HH:MM)
             str(int(metrics.get("total_trades", 0))),
             f"{metrics.get('win_rate', 0) * 100:.1f}",
             f"{metrics.get('profit_factor', 0):.2f}",
@@ -194,7 +248,7 @@ class StrategySimulatorResultsMixin:
         for col, value in enumerate(items):
             item = self._create_trial_item(trial, col, value)
             table.setItem(row, col, item)
-            if col == 4:
+            if col == 6:  # P&L € column (was 4, now 6 with Entry/Exit columns)
                 self._color_pnl_item(item, value)
             last_col = col
             last_value = value
@@ -202,8 +256,8 @@ class StrategySimulatorResultsMixin:
         if was_sorting:
             table.setSortingEnabled(True)
 
-            # Color Score column
-            if last_col == 7:
+            # Color Score column (was 7, now 9 with Entry/Exit columns)
+            if last_col == 9:
                 try:
                     sc = int(last_value)
                     if sc > 0:
@@ -212,6 +266,62 @@ class StrategySimulatorResultsMixin:
                         item.setBackground(Qt.GlobalColor.red)
                 except ValueError:
                     pass
+
+    def _get_trial_times(self, metrics: dict) -> tuple[str, str]:
+        """Get entry/exit times from trial metrics.
+
+        Args:
+            metrics: Trial metrics dictionary
+
+        Returns:
+            Tuple of (entry_time_str, exit_time_str) in HH:MM format
+        """
+        entry_time_str = "-"
+        exit_time_str = "-"
+
+        # Try to get from entry_points
+        entry_points = metrics.get("entry_points")
+        if entry_points and len(entry_points) > 0:
+            first_entry = entry_points[0]
+            if len(first_entry) >= 2:
+                ts = first_entry[1]
+                if hasattr(ts, "strftime"):
+                    entry_time_str = ts.strftime("%H:%M")
+                elif isinstance(ts, str):
+                    # Try to extract HH:MM from string
+                    try:
+                        entry_time_str = ts.split(" ")[-1][:5]
+                    except Exception:
+                        pass
+            last_entry = entry_points[-1]
+            if len(last_entry) >= 2:
+                ts = last_entry[1]
+                if hasattr(ts, "strftime"):
+                    exit_time_str = ts.strftime("%H:%M")
+                elif isinstance(ts, str):
+                    try:
+                        exit_time_str = ts.split(" ")[-1][:5]
+                    except Exception:
+                        pass
+
+        # Also try direct time fields
+        if entry_time_str == "-":
+            entry_time = metrics.get("first_entry_time") or metrics.get("entry_best_time")
+            if entry_time:
+                if hasattr(entry_time, "strftime"):
+                    entry_time_str = entry_time.strftime("%H:%M")
+                elif isinstance(entry_time, str):
+                    entry_time_str = entry_time[:5] if len(entry_time) >= 5 else entry_time
+
+        if exit_time_str == "-":
+            exit_time = metrics.get("last_exit_time")
+            if exit_time:
+                if hasattr(exit_time, "strftime"):
+                    exit_time_str = exit_time.strftime("%H:%M")
+                elif isinstance(exit_time, str):
+                    exit_time_str = exit_time[:5] if len(exit_time) >= 5 else exit_time
+
+        return entry_time_str, exit_time_str
 
     def _resolve_trial_score(self, entry_score, pnl_pct: float) -> int:
         if entry_score is not None:

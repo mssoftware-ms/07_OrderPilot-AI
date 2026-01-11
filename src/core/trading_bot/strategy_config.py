@@ -241,6 +241,62 @@ class StrategyConfig:
             name for name, config in indicators.items() if config.get("enabled", True)
         ]
 
+    def update_indicator_config(
+        self,
+        indicator_updates: dict[str, Any],
+        save: bool = True,
+    ) -> None:
+        """Update indicator configuration with new parameters.
+
+        Used by Strategy Bridge to apply simulator-optimized parameters.
+
+        Args:
+            indicator_updates: Dict with indicator params to update
+                Format: {"rsi_period": 14, "adx_threshold": 25, ...}
+            save: Whether to save config to file after update
+        """
+        if "indicators" not in self._raw_config:
+            self._raw_config["indicators"] = {}
+
+        indicators = self._raw_config["indicators"]
+
+        # Map parameter names to indicator sections
+        param_to_indicator = {
+            "rsi_period": "rsi",
+            "rsi_oversold": "rsi",
+            "rsi_overbought": "rsi",
+            "adx_period": "adx",
+            "adx_threshold": "adx",
+            "bb_period": "bollinger",
+            "bb_std": "bollinger",
+            "macd_fast": "macd",
+            "macd_slow": "macd",
+            "macd_signal": "macd",
+            "atr_period": "atr",
+            "sma_fast": "sma",
+            "sma_slow": "sma",
+            "ema_period": "ema",
+            "volume_ratio": "volume",
+        }
+
+        for param_name, param_value in indicator_updates.items():
+            indicator_name = param_to_indicator.get(param_name)
+
+            if indicator_name:
+                # Update specific indicator section
+                if indicator_name not in indicators:
+                    indicators[indicator_name] = {"enabled": True}
+                indicators[indicator_name][param_name] = param_value
+            else:
+                # Store in general config
+                self._raw_config.setdefault("bridged_params", {})[param_name] = param_value
+
+        logger.info(f"Updated indicator config: {indicator_updates}")
+
+        if save:
+            self.save()
+            logger.info("Saved updated indicator config to file")
+
     # =========================================================================
     # ENTRY CONDITIONS
     # =========================================================================

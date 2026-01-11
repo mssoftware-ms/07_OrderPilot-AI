@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+from decimal import Decimal
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QLinearGradient
@@ -8,6 +11,8 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QSplitter, QTableWidget, QVBoxLayout, QWidget,
     QMessageBox,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SLTPProgressBar(QProgressBar):
@@ -278,6 +283,33 @@ class BotUISignalsMixin:
         self.clear_all_signals_btn.clicked.connect(self._on_clear_all_signals)
         toolbar.addWidget(self.clear_all_signals_btn)
 
+        # Issue #11: Sofort Verkaufen Button
+        self.sell_position_btn = QPushButton("💰 Sofort verkaufen")
+        self.sell_position_btn.setFixedHeight(24)
+        self.sell_position_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 8px; background-color: #ff5722; color: white; font-weight: bold;"
+        )
+        self.sell_position_btn.setToolTip(
+            "Aktuelle Position mit Limit-Order verkaufen (0.05% unter aktuellem Kurs)"
+        )
+        self.sell_position_btn.clicked.connect(self._on_sell_position_clicked)
+        self.sell_position_btn.setEnabled(False)  # Initially disabled
+        toolbar.addWidget(self.sell_position_btn)
+
+        # Issue #18: Chart-Elemente zeichnen Button
+        self.draw_chart_elements_btn = QPushButton("📊 Chart-Elemente")
+        self.draw_chart_elements_btn.setFixedHeight(24)
+        self.draw_chart_elements_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 8px; background-color: #2196f3; color: white;"
+        )
+        self.draw_chart_elements_btn.setToolTip(
+            "Zeichnet Entry, Stop-Loss und Trailing-Stop Linien für aktive Position im Chart.\n"
+            "Linien können im Chart verschoben werden - Werte werden automatisch aktualisiert."
+        )
+        self.draw_chart_elements_btn.clicked.connect(self._on_draw_chart_elements_clicked)
+        self.draw_chart_elements_btn.setEnabled(False)  # Initially disabled
+        toolbar.addWidget(self.draw_chart_elements_btn)
+
         toolbar.addStretch()
 
         signals_inner.addLayout(toolbar)
@@ -335,19 +367,352 @@ class BotUISignalsMixin:
             self.signals_table.setRowCount(0)
             self._update_signals_table()
 
+    def _on_sell_position_clicked(self) -> None:
+        """Issue #11: Sell current position with limit order 0.05% below current price."""
+        # Find active position
+        active_sig = None
+        if hasattr(self, '_find_active_signal'):
+            active_sig = self._find_active_signal()
+
+        if not active_sig:
+            QMessageBox.warning(
+                self,
+                "Keine offene Position",
+                "Es gibt keine offene Position zum Verkaufen.",
+            )
+            return
+
+        # Get current price
+        current_price = active_sig.get("current_price", 0)
+        if current_price <= 0:
+            current_price = active_sig.get("price", 0)
+
+        if current_price <= 0:
+            QMessageBox.warning(
+                self,
+                "Kein Kurs verfügbar",
+                "Aktueller Kurs ist nicht verfügbar.",
+            )
+            return
+
+        # Calculate limit price (0.05% below current for long, above for short)
+        side = active_sig.get("side", "long").lower()
+        current_price_decimal = Decimal(str(current_price))
+        if side == "long":
+            limit_price = current_price_decimal * Decimal("0.9995")  # 0.05% below
+            order_side = "SELL"
+        else:
+            limit_price = current_price_decimal * Decimal("1.0005")  # 0.05% above for short
+            order_side = "BUY"
+
+        quantity = active_sig.get("quantity", 0)
+        symbol = active_sig.get("symbol", "")
+
+        if not symbol:
+            # Try to get symbol from chart widget
+            if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'current_symbol'):
+                symbol = self.chart_widget.current_symbol
+
+        if quantity <= 0:
+            QMessageBox.warning(
+                self,
+                "Keine Positionsgröße",
+                "Die Positionsgröße ist nicht verfügbar.",
+            )
+            return
+
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Position verkaufen",
+            f"Position verkaufen?\n\n"
+            f"Symbol: {symbol}\n"
+            f"Side: {order_side}\n"
+            f"Menge: {quantity:.6f}\n"
+            f"Aktueller Kurs: {current_price:.4f}\n"
+            f"Limit-Preis: {limit_price:.4f} (0.05% {'unter' if side == 'long' else 'über'} Kurs)\n",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Execute the sell
+        asyncio.create_task(self._execute_sell_order(
+            symbol=symbol,
+            side=order_side,
+            quantity=quantity,
+            limit_price=limit_price,
+            signal=active_sig,
+        ))
+
+    async def _execute_sell_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        limit_price: Decimal,
+        signal: dict,
+    ) -> None:
+        """Execute the sell order via adapter.
+
+        Issue #11: Places a limit order to close the position.
+
+        Args:
+            symbol: Trading symbol
+            side: Order side (SELL for long, BUY for short)
+            quantity: Position quantity
+            limit_price: Limit price for the order
+            signal: The signal dict containing position info
+        """
+        try:
+            # Get adapter
+            adapter = getattr(self, '_bitunix_adapter', None)
+            if not adapter:
+                # Try from bitunix widget
+                bitunix_widget = getattr(self, '_bitunix_widget', None)
+                if bitunix_widget:
+                    adapter = getattr(bitunix_widget, 'adapter', None)
+
+            if not adapter:
+                logger.error("No adapter available for selling position")
+                QMessageBox.critical(
+                    self,
+                    "Fehler",
+                    "Kein Broker-Adapter verfügbar.",
+                )
+                return
+
+            # Import order types
+            from src.core.broker.broker_types import OrderRequest
+            from src.database.models import OrderSide, OrderType as DBOrderType
+
+            # Create order request
+            order = OrderRequest(
+                symbol=symbol,
+                side=OrderSide.SELL if side == "SELL" else OrderSide.BUY,
+                quantity=Decimal(str(quantity)),
+                order_type=DBOrderType.LIMIT,
+                limit_price=Decimal(str(limit_price)),
+            )
+
+            logger.info(
+                f"Issue #11: Placing limit {side} order: {symbol} qty={quantity} @ {limit_price}"
+            )
+
+            # Place order
+            response = await adapter.place_order(order)
+
+            if response and response.broker_order_id:
+                logger.info(f"Issue #11: Order placed successfully: {response.broker_order_id}")
+
+                # Update signal status
+                signal["status"] = "CLOSING"
+                signal["exit_order_id"] = response.broker_order_id
+                if hasattr(self, '_save_signal_history'):
+                    self._save_signal_history()
+                if hasattr(self, '_update_signals_table'):
+                    self._update_signals_table()
+
+                # Add to KI log
+                if hasattr(self, '_add_ki_log_entry'):
+                    self._add_ki_log_entry(
+                        "SELL",
+                        f"Limit-Order platziert: {symbol} {side} {quantity:.6f} @ {limit_price:.4f}"
+                    )
+
+                # Issue #13: Remove position lines from chart when selling
+                if hasattr(self, 'chart_widget'):
+                    try:
+                        self.chart_widget.remove_stop_line("initial_stop")
+                        self.chart_widget.remove_stop_line("trailing_stop")
+                        self.chart_widget.remove_stop_line("entry_line")
+                        if hasattr(self, '_add_ki_log_entry'):
+                            self._add_ki_log_entry("CHART", "Linien entfernt (Verkauf eingeleitet)")
+                    except Exception as e:
+                        logger.error(f"Error removing chart lines: {e}")
+
+                QMessageBox.information(
+                    self,
+                    "Order platziert",
+                    f"Limit-Order wurde platziert.\n\n"
+                    f"Order ID: {response.broker_order_id}\n"
+                    f"Preis: {limit_price:.4f}",
+                )
+            else:
+                logger.error("Issue #11: Order placement failed - no order ID returned")
+                QMessageBox.warning(
+                    self,
+                    "Order fehlgeschlagen",
+                    "Die Order konnte nicht platziert werden. Siehe Logs für Details.",
+                )
+
+        except Exception as e:
+            logger.exception(f"Issue #11: Failed to place sell order: {e}")
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler beim Platzieren der Order:\n{str(e)}",
+            )
+
+    def _update_sell_button_state(self) -> None:
+        """Update the sell button enabled state based on open positions.
+
+        Issue #11: Button is enabled only when there's an open position.
+        Issue #18: Also updates draw_chart_elements_btn state.
+        """
+        has_open_position = False
+        if hasattr(self, '_find_active_signal'):
+            active_sig = self._find_active_signal()
+            has_open_position = active_sig is not None
+
+        if hasattr(self, 'sell_position_btn'):
+            self.sell_position_btn.setEnabled(has_open_position)
+
+        # Issue #18: Update chart elements button state
+        if hasattr(self, 'draw_chart_elements_btn'):
+            self.draw_chart_elements_btn.setEnabled(has_open_position)
+
+    def _on_draw_chart_elements_clicked(self) -> None:
+        """Issue #18: Draw chart elements (Entry, SL, TR) for active position.
+
+        Zeichnet Entry-Linie, Stop-Loss und Trailing-Stop Linien im Chart.
+        Labels zeigen die Werte in Prozent an.
+        Linien können im Chart verschoben werden - Werte in Signals werden automatisch aktualisiert.
+        """
+        # Find active position
+        active_sig = None
+        if hasattr(self, '_find_active_signal'):
+            active_sig = self._find_active_signal()
+
+        if not active_sig:
+            QMessageBox.warning(
+                self,
+                "Keine offene Position",
+                "Es gibt keine offene Position für Chart-Elemente.",
+            )
+            return
+
+        # Get position details
+        entry_price = active_sig.get("price", 0)
+        stop_price = active_sig.get("stop_price", 0)
+        trailing_price = active_sig.get("trailing_stop_price", 0)
+        side = active_sig.get("side", "long")
+        initial_sl_pct = active_sig.get("initial_sl_pct", 0)
+        trailing_pct = active_sig.get("trailing_stop_pct", 0)
+        trailing_activation_pct = active_sig.get("trailing_activation_pct", 0)
+        current_price = active_sig.get("current_price", entry_price)
+
+        if entry_price <= 0:
+            QMessageBox.warning(
+                self,
+                "Keine Entry-Daten",
+                "Entry-Preis ist nicht verfügbar.",
+            )
+            return
+
+        # Check for chart widget
+        if not hasattr(self, 'chart_widget') or not self.chart_widget:
+            QMessageBox.warning(
+                self,
+                "Kein Chart",
+                "Chart-Widget ist nicht verfügbar.",
+            )
+            return
+
+        try:
+            # Calculate percentages if not available
+            if initial_sl_pct <= 0 and stop_price > 0 and entry_price > 0:
+                initial_sl_pct = abs((stop_price - entry_price) / entry_price) * 100
+
+            if trailing_pct <= 0 and trailing_price > 0 and entry_price > 0:
+                if side == "long":
+                    trailing_pct = abs((entry_price - trailing_price) / entry_price) * 100
+                else:
+                    trailing_pct = abs((trailing_price - entry_price) / entry_price) * 100
+
+            # Calculate TRA% (distance from current price)
+            tra_pct = 0
+            if trailing_price > 0 and current_price > 0:
+                tra_pct = abs((current_price - trailing_price) / current_price) * 100
+
+            # Draw Entry Line (blue)
+            entry_label = f"Entry @ {entry_price:.2f}"
+            self.chart_widget.add_stop_line(
+                line_id="entry_line",
+                price=entry_price,
+                line_type="initial",
+                color="#2196f3",  # Blue
+                label=entry_label
+            )
+
+            # Draw Stop-Loss Line (red) with percentage
+            if stop_price > 0:
+                sl_label = f"SL @ {stop_price:.2f} ({initial_sl_pct:.2f}%)"
+                self.chart_widget.add_stop_line(
+                    line_id="initial_stop",
+                    price=stop_price,
+                    line_type="initial",
+                    color="#ef5350",  # Red
+                    label=sl_label
+                )
+
+            # Draw Trailing-Stop Line (orange) with percentage
+            if trailing_price > 0:
+                tr_is_active = active_sig.get("tr_active", False)
+                if tr_is_active:
+                    tr_label = f"TSL @ {trailing_price:.2f} ({trailing_pct:.2f}% / TRA: {tra_pct:.2f}%)"
+                    color = "#ff9800"  # Orange when active
+                else:
+                    tr_label = f"TSL @ {trailing_price:.2f} ({trailing_pct:.2f}%) [inaktiv]"
+                    color = "#888888"  # Gray when inactive
+
+                self.chart_widget.add_stop_line(
+                    line_id="trailing_stop",
+                    price=trailing_price,
+                    line_type="trailing",
+                    color=color,
+                    label=tr_label
+                )
+
+            # Log action
+            if hasattr(self, '_add_ki_log_entry'):
+                lines_drawn = ["Entry"]
+                if stop_price > 0:
+                    lines_drawn.append(f"SL ({initial_sl_pct:.2f}%)")
+                if trailing_price > 0:
+                    lines_drawn.append(f"TR ({trailing_pct:.2f}%)")
+                self._add_ki_log_entry("CHART", f"Elemente gezeichnet: {', '.join(lines_drawn)}")
+
+            logger.info(
+                f"Issue #18: Chart elements drawn - Entry: {entry_price:.2f}, "
+                f"SL: {stop_price:.2f} ({initial_sl_pct:.2f}%), "
+                f"TR: {trailing_price:.2f} ({trailing_pct:.2f}%)"
+            )
+
+        except Exception as e:
+            logger.exception(f"Issue #18: Failed to draw chart elements: {e}")
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler beim Zeichnen der Chart-Elemente:\n{str(e)}",
+            )
+
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(19)
+        self.signals_table.setColumnCount(20)  # Issue #6: Added "Fees €" column
         self.signals_table.setHorizontalHeaderLabels(
             [
                 "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
                 "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
+                "Fees €",  # Issue #6: BitUnix fees in Euro
                 "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
             ]
         )
-        for col in [13, 14, 15, 16]:
+        # Hidden columns: D P&L € (14), D P&L % (15), Heb (16), WKN (17), Score (18)
+        for col in [14, 15, 16, 17]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(17, True)
+        self.signals_table.setColumnHidden(18, True)
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -364,3 +729,16 @@ class BotUISignalsMixin:
             self._on_signals_table_selection_changed
         )
         self._signals_table_updating = False
+
+    def _update_leverage_column_visibility(self) -> None:
+        """Issue #1: Show/hide leverage column based on leverage override state."""
+        if not hasattr(self, 'signals_table'):
+            return
+
+        show_leverage = False
+        if hasattr(self, 'get_leverage_override'):
+            override_enabled, _ = self.get_leverage_override()
+            show_leverage = override_enabled
+
+        # Column 16 is "Heb" (Leverage) - shifted by 1 due to Issue #6 Fees € column
+        self.signals_table.setColumnHidden(16, not show_leverage)

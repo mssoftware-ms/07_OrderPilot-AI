@@ -47,10 +47,29 @@ class BotDisplaySignalsMixin:
                     else:
                         pnl_pct = ((entry_price - current_price) / entry_price) * 100
 
+                    # Issue #1: Apply manual leverage override if enabled
+                    leverage = 1.0
+                    if hasattr(self, 'get_leverage_override'):
+                        override_enabled, override_value = self.get_leverage_override()
+                        if override_enabled and override_value > 1:
+                            leverage = float(override_value)
+                            pnl_pct = pnl_pct * leverage
+                            sig["leverage"] = leverage
+
+                    # Issue #3: Subtract BitUnix fees from P&L
+                    if hasattr(self, 'get_bitunix_fees'):
+                        maker_fee, taker_fee = self.get_bitunix_fees()
+                        # BitUnix Futures: both entry AND exit are market (taker) orders
+                        total_fees_pct = taker_fee * 2
+                        pnl_pct = pnl_pct - total_fees_pct
+                        sig["fees_pct"] = total_fees_pct
+
                     if invested > 0:
                         pnl_currency = invested * (pnl_pct / 100)
                     elif quantity > 0:
                         pnl_currency = quantity * (current_price - entry_price) if side.lower() == "long" else quantity * (entry_price - current_price)
+                        if leverage > 1:
+                            pnl_currency = pnl_currency * leverage
                     else:
                         pnl_currency = 0
 
@@ -123,11 +142,12 @@ class BotDisplaySignalsMixin:
     def _update_signals_table(self) -> None:
         """Update signals table with recent entries.
 
-        Column layout (19 columns):
+        Column layout (20 columns):
         0: Time, 1: Type, 2: Side, 3: Entry, 4: Stop, 5: SL%, 6: TR%,
         7: TRA%, 8: TR Lock, 9: Status, 10: Current, 11: P&L €, 12: P&L %,
-        13: D P&L € (hidden), 14: D P&L % (hidden), 15: Heb (hidden), 16: WKN (hidden),
-        17: Score (hidden), 18: TR Stop (visible - orange when active, gray when inactive)
+        13: Fees € (Issue #6: BitUnix fees in Euro),
+        14: D P&L € (hidden), 15: D P&L % (hidden), 16: Heb (hidden), 17: WKN (hidden),
+        18: Score (hidden), 19: TR Stop (visible - orange when active, gray when inactive)
         """
         self._signals_table_updating = True
 
@@ -146,6 +166,11 @@ class BotDisplaySignalsMixin:
             self._set_status_and_pnl_columns(row, signal, trailing_price, tr_is_active)
 
         self._signals_table_updating = False
+
+        # Issue #1: Update leverage column visibility based on override state
+        if hasattr(self, '_update_leverage_column_visibility'):
+            self._update_leverage_column_visibility()
+
         if self._has_signals_table_selection():
             self._update_current_position_from_selection()
 
@@ -220,9 +245,13 @@ class BotDisplaySignalsMixin:
                 tra_item.setForeground(QColor("#ff9800"))
             else:
                 tra_item.setForeground(QColor("#888888"))
-            self.signals_table.setItem(row, 7, tra_item)
         else:
-            self.signals_table.setItem(row, 7, QTableWidgetItem("-"))
+            tra_item = QTableWidgetItem("-")
+        # Make TRA% editable for active positions
+        if is_active:
+            tra_item.setFlags(tra_item.flags() | Qt.ItemFlag.ItemIsEditable)
+            tra_item.setToolTip("TRA%: Trailing Aktivierung ab X% Gewinn (editierbar)")
+        self.signals_table.setItem(row, 7, tra_item)
 
         if is_active:
             lock_checkbox = QCheckBox()
@@ -277,8 +306,39 @@ class BotDisplaySignalsMixin:
 
         if has_quantity or has_invested or is_entered or is_closed or has_derivative:
             current_price = signal.get("current_price", signal["price"])
-            pnl_currency = signal.get("pnl_currency", 0.0)
-            pnl_percent = signal.get("pnl_percent", 0.0)
+            entry_price = signal.get("price", 0)
+            invested = signal.get("invested", 0)
+            side = signal.get("side", "long")
+
+            # Issue #1: Get leverage override from Bot Tab
+            leverage = 1.0
+            if hasattr(self, 'get_leverage_override'):
+                override_enabled, override_value = self.get_leverage_override()
+                if override_enabled and override_value > 1:
+                    leverage = float(override_value)
+
+            # Calculate base P&L
+            if entry_price > 0 and current_price > 0:
+                if side.lower() == "long":
+                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
+
+                # Issue #1: Apply leverage to P&L %
+                pnl_percent = pnl_percent * leverage
+
+                # Issue #3: Subtract BitUnix fees
+                if hasattr(self, 'get_bitunix_fees'):
+                    maker_fee, taker_fee = self.get_bitunix_fees()
+                    # BitUnix Futures: entry and exit use taker fees
+                    total_fees_pct = taker_fee * 2
+                    pnl_percent = pnl_percent - total_fees_pct
+
+                # Calculate P&L currency from adjusted percentage
+                pnl_currency = invested * (pnl_percent / 100) if invested > 0 else 0
+            else:
+                pnl_currency = signal.get("pnl_currency", 0.0)
+                pnl_percent = signal.get("pnl_percent", 0.0)
 
             if is_closed:
                 exit_price = signal.get("exit_price", current_price)
@@ -298,15 +358,71 @@ class BotDisplaySignalsMixin:
             pct_item.setForeground(QColor(pnl_color))
             self.signals_table.setItem(row, 12, pct_item)
 
-            self._set_derivative_columns(row, signal, current_price)
-            self.signals_table.setItem(row, 17, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+            # Issue #6: Calculate and display BitUnix fees in Euro
+            # BitUnix fees are calculated on the leveraged position size
+            # Both entry AND exit use Taker fees (market orders)
+            fees_euro = 0.0
+            maker_fee = 0.02  # Default 0.02% (not used for market orders)
+            taker_fee = 0.06  # Default 0.06%
+            position_size = invested * leverage
+            entry_fee_euro = 0.0
+            exit_fee_euro = 0.0
+
+            if hasattr(self, 'get_bitunix_fees') and invested > 0:
+                maker_fee, taker_fee = self.get_bitunix_fees()
+                # Both Entry and Exit use Taker fee (market orders for immediate execution)
+                entry_fee_euro = position_size * (taker_fee / 100)
+                exit_fee_euro = position_size * (taker_fee / 100)  # Exit also Taker!
+                fees_euro = entry_fee_euro + exit_fee_euro
+                signal["fees_euro"] = fees_euro
+
+            fees_item = QTableWidgetItem(f"{fees_euro:.2f}")
+            fees_item.setForeground(QColor("#ff9800"))  # Orange for fees
+            fees_item.setToolTip(
+                f"BitUnix Futures Gebühren (beide Taker)\n"
+                f"Positionsgröße mit Hebel: {position_size:.2f} €\n"
+                f"Entry (Taker {taker_fee:.3f}%): {entry_fee_euro:.2f} €\n"
+                f"Exit (Taker {taker_fee:.3f}%): {exit_fee_euro:.2f} €\n"
+                f"Gesamt: {fees_euro:.2f} €"
+            )
+            self.signals_table.setItem(row, 13, fees_item)
+
+            # Issue #1: Pass leverage to derivative columns (shifted by 1 due to Fees € column)
+            self._set_derivative_columns(row, signal, current_price, leverage)
+            self.signals_table.setItem(row, 18, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
             self._set_tr_stop_column(row, trailing_price, tr_is_active)
         else:
-            for col in range(10, 19):
+            for col in range(10, 20):
                 self.signals_table.setItem(row, col, QTableWidgetItem("-"))
 
-    def _set_derivative_columns(self, row: int, signal: dict, current_price: float) -> None:
+    def _set_derivative_columns(self, row: int, signal: dict, current_price: float, leverage: float = 1.0) -> None:
+        """Set derivative and leverage columns.
+
+        Args:
+            row: Table row index
+            signal: Signal dictionary
+            current_price: Current market price
+            leverage: Leverage from Bot Tab override (Issue #1)
+
+        Column indices (shifted by 1 due to Issue #6 Fees € column at 13):
+        - 14: D P&L € (hidden)
+        - 15: D P&L % (hidden)
+        - 16: Heb (hidden)
+        - 17: WKN (hidden)
+        """
         deriv = signal.get("derivative")
+
+        # Issue #1: Always set the leverage column (Heb - column 16, shifted from 15)
+        if leverage > 1.0:
+            leverage_item = QTableWidgetItem(f"{leverage:.0f}x")
+            leverage_item.setForeground(QColor("#2196f3"))  # Blue for manual leverage
+            self.signals_table.setItem(row, 16, leverage_item)
+        elif deriv and deriv.get("leverage", 0) > 0:
+            self.signals_table.setItem(row, 16, QTableWidgetItem(f"{deriv['leverage']:.1f}"))
+        else:
+            self.signals_table.setItem(row, 16, QTableWidgetItem("-"))
+
+        # Derivative P&L columns (shifted: 14, 15, 17)
         if deriv and current_price > 0 and hasattr(self, "_calculate_derivative_pnl_for_signal"):
             deriv_pnl = self._calculate_derivative_pnl_for_signal(signal, current_price)
             if deriv_pnl:
@@ -314,28 +430,29 @@ class BotDisplaySignalsMixin:
                 d_pnl_item = QTableWidgetItem(f"{d_pnl_sign}{deriv_pnl['pnl_eur']:.2f}")
                 d_pnl_color = "#26a69a" if deriv_pnl["pnl_eur"] >= 0 else "#ef5350"
                 d_pnl_item.setForeground(QColor(d_pnl_color))
-                self.signals_table.setItem(row, 13, d_pnl_item)
+                self.signals_table.setItem(row, 14, d_pnl_item)
 
                 d_pct_sign = "+" if deriv_pnl["pnl_pct"] >= 0 else ""
                 d_pct_item = QTableWidgetItem(f"{d_pct_sign}{deriv_pnl['pnl_pct']:.2f}%")
                 d_pct_item.setForeground(QColor(d_pnl_color))
-                self.signals_table.setItem(row, 14, d_pct_item)
+                self.signals_table.setItem(row, 15, d_pct_item)
 
-                self.signals_table.setItem(row, 15, QTableWidgetItem(f"{deriv['leverage']:.1f}"))
-                self.signals_table.setItem(row, 16, QTableWidgetItem(deriv["wkn"]))
+                self.signals_table.setItem(row, 17, QTableWidgetItem(deriv["wkn"]))
                 return
-            for col in [13, 14, 15, 16]:
-                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
-        elif deriv:
-            self.signals_table.setItem(row, 13, QTableWidgetItem("-"))
             self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
-            self.signals_table.setItem(row, 15, QTableWidgetItem(f"{deriv.get('leverage', 0):.1f}"))
-            self.signals_table.setItem(row, 16, QTableWidgetItem(deriv.get("wkn", "-")))
+            self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 17, QTableWidgetItem("-"))
+        elif deriv:
+            self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 17, QTableWidgetItem(deriv.get("wkn", "-")))
         else:
-            for col in [13, 14, 15, 16]:
-                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 14, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 17, QTableWidgetItem("-"))
 
     def _set_tr_stop_column(self, row: int, trailing_price: float, tr_is_active: bool) -> None:
+        """Set the TR Stop column (index 19, shifted from 18 due to Issue #6 Fees € column)."""
         if trailing_price > 0:
             if tr_is_active:
                 tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
@@ -343,6 +460,6 @@ class BotDisplaySignalsMixin:
             else:
                 tr_price_item = QTableWidgetItem(f"{trailing_price:.2f} (inaktiv)")
                 tr_price_item.setForeground(QColor("#888888"))
-            self.signals_table.setItem(row, 18, tr_price_item)
+            self.signals_table.setItem(row, 19, tr_price_item)
         else:
-            self.signals_table.setItem(row, 18, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 19, QTableWidgetItem("-"))

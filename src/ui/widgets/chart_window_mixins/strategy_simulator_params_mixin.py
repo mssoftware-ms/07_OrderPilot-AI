@@ -17,23 +17,35 @@ class StrategySimulatorParamsMixin:
             return
 
         self.simulator_params_group.setEnabled(True)
-        strategy_map = {
-            0: StrategyName.BREAKOUT,
-            1: StrategyName.MOMENTUM,
-            2: StrategyName.MEAN_REVERSION,
-            3: StrategyName.TREND_FOLLOWING,
-            4: StrategyName.SCALPING,
-            5: StrategyName.BOLLINGER_SQUEEZE,
-            6: StrategyName.TREND_PULLBACK,
-            7: StrategyName.OPENING_RANGE,
-            8: StrategyName.REGIME_HYBRID,
-        }
-        strategy = strategy_map.get(index, StrategyName.BREAKOUT)
+
+        # Get catalog strategy name from dropdown
+        catalog_name = self.simulator_strategy_combo.currentText().strip()
+
+        # Map catalog name to simulator StrategyName enum
+        strategy = self._catalog_to_strategy_enum(catalog_name)
         self._populate_simulator_parameter_widgets(strategy)
         self._update_trials_hint(strategy)
 
         if self._all_run_active:
             self.simulator_params_group.setEnabled(False)
+
+    def _catalog_to_strategy_enum(self, catalog_name: str):
+        """Map catalog strategy name to simulator StrategyName enum."""
+        from src.core.simulator import StrategyName
+
+        # Mapping from catalog strategy names to simulator family enums
+        catalog_to_enum = {
+            "breakout_volatility": StrategyName.BREAKOUT,
+            "breakout_momentum": StrategyName.BREAKOUT,
+            "momentum_macd": StrategyName.MOMENTUM,
+            "mean_reversion_bb": StrategyName.MEAN_REVERSION,
+            "mean_reversion_rsi": StrategyName.MEAN_REVERSION,
+            "trend_following_conservative": StrategyName.TREND_FOLLOWING,
+            "trend_following_aggressive": StrategyName.TREND_FOLLOWING,
+            "scalping_range": StrategyName.SCALPING,
+            "sideways_range_bounce": StrategyName.SIDEWAYS_RANGE,
+        }
+        return catalog_to_enum.get(catalog_name, StrategyName.TREND_FOLLOWING)
     def _populate_simulator_parameter_widgets(self, strategy) -> None:
         """Create parameter input widgets for selected strategy."""
         from src.core.simulator import get_strategy_parameters
@@ -170,27 +182,118 @@ class StrategySimulatorParamsMixin:
             self.simulator_opt_metric_combo.setEnabled(False)
         else:
             self.simulator_opt_metric_combo.setEnabled(True)
-        self._on_entry_lookahead_changed()
-    def _on_entry_lookahead_changed(self) -> None:
-        if not hasattr(self, "simulator_entry_lookahead_combo"):
+
+    def _on_auto_strategy_toggled(self, checked: bool) -> None:
+        """Handle Auto-Strategy checkbox toggle.
+
+        When enabled, the strategy selector is disabled and ALL strategies
+        will be evaluated for each signal to find the best one.
+        """
+        if not hasattr(self, "simulator_strategy_combo"):
             return
-        enabled = self._is_entry_only_selected()
-        mode = self.simulator_entry_lookahead_combo.currentData()
-        is_fixed = mode == "fixed_bars"
-        self.simulator_entry_lookahead_combo.setEnabled(enabled)
-        if hasattr(self, "simulator_entry_lookahead_bars"):
-            self.simulator_entry_lookahead_bars.setEnabled(enabled and is_fixed)
-    def _get_entry_lookahead_mode(self) -> str:
-        if not hasattr(self, "simulator_entry_lookahead_combo"):
-            return "session_end"
-        data = self.simulator_entry_lookahead_combo.currentData()
-        return data or "session_end"
-    def _get_entry_lookahead_bars(self) -> int | None:
-        if not hasattr(self, "simulator_entry_lookahead_bars"):
-            return None
-        if self._get_entry_lookahead_mode() != "fixed_bars":
-            return None
-        return int(self.simulator_entry_lookahead_bars.value())
+
+        if checked:
+            # Disable strategy selection - will use all strategies
+            self.simulator_strategy_combo.setEnabled(False)
+            # Set status hint
+            if hasattr(self, "simulator_trials_hint_label"):
+                self.simulator_trials_hint_label.setText(
+                    "⚠️ Auto-Strategy: Testet alle Strategien pro Signal. "
+                    "Rechenzeit erhöht sich deutlich!"
+                )
+            self._append_simulator_log(
+                "Auto-Strategy aktiviert: Alle Strategien werden pro Signal getestet"
+            )
+        else:
+            # Re-enable strategy selection
+            self.simulator_strategy_combo.setEnabled(True)
+            if hasattr(self, "simulator_trials_hint_label"):
+                self.simulator_trials_hint_label.setText("")
+
+    def _is_auto_strategy_enabled(self) -> bool:
+        """Check if Auto-Strategy mode is enabled."""
+        if hasattr(self, "simulator_auto_strategy_checkbox"):
+            return self.simulator_auto_strategy_checkbox.isChecked()
+        return False
+
+    def _get_selected_time_range(self) -> str | int:
+        """Get the selected time range value.
+
+        Returns:
+            - "visible": Use visible chart range
+            - "all": Use all available data
+            - int: Number of hours for the time range
+        """
+        if not hasattr(self, "simulator_time_range_combo"):
+            return "visible"
+        data = self.simulator_time_range_combo.currentData()
+        return data if data is not None else "visible"
+
+    def _get_time_range_display_name(self) -> str:
+        """Get the display name of the selected time range."""
+        if not hasattr(self, "simulator_time_range_combo"):
+            return "Chart-Ansicht"
+        return self.simulator_time_range_combo.currentText()
+
+    def _calculate_bars_for_time_range(self, hours: int) -> int:
+        """Calculate number of bars for a given time range in hours.
+
+        Uses the chart's current timeframe to determine bar count.
+
+        Args:
+            hours: Time range in hours
+
+        Returns:
+            Number of bars for the time range
+        """
+        # Get chart timeframe
+        timeframe = self._get_chart_timeframe()
+
+        # Convert timeframe to minutes
+        timeframe_minutes = self._timeframe_to_minutes(timeframe)
+
+        # Calculate number of bars
+        total_minutes = hours * 60
+        return total_minutes // timeframe_minutes
+
+    def _get_chart_timeframe(self) -> str:
+        """Get the current chart timeframe."""
+        if hasattr(self, "chart_widget"):
+            if hasattr(self.chart_widget, "current_timeframe"):
+                return self.chart_widget.current_timeframe
+            if hasattr(self.chart_widget, "timeframe"):
+                return self.chart_widget.timeframe
+        return "1m"  # Default fallback
+
+    def _timeframe_to_minutes(self, timeframe: str) -> int:
+        """Convert timeframe string to minutes.
+
+        Args:
+            timeframe: Timeframe string like "1m", "5m", "1h", "1D"
+
+        Returns:
+            Number of minutes per candle
+        """
+        tf = timeframe.lower().strip()
+
+        # Parse numeric part
+        import re
+        match = re.match(r"(\d+)([mhdwM])", tf)
+        if not match:
+            return 1  # Default to 1 minute
+
+        value = int(match.group(1))
+        unit = match.group(2)
+
+        multipliers = {
+            "m": 1,          # minutes
+            "h": 60,         # hours
+            "d": 1440,       # days (24*60)
+            "w": 10080,      # weeks (7*24*60)
+            "M": 43200,      # months (30*24*60, approximate)
+        }
+
+        return value * multipliers.get(unit, 1)
     def _normalize_param_value(self, value: Any) -> Any:
         if isinstance(value, float):
             return round(value, 8)
@@ -240,6 +343,7 @@ class StrategySimulatorParamsMixin:
             6: StrategyName.TREND_PULLBACK,
             7: StrategyName.OPENING_RANGE,
             8: StrategyName.REGIME_HYBRID,
+            9: StrategyName.SIDEWAYS_RANGE,
         }
         strategy = strategy_map.get(
             self.simulator_strategy_combo.currentIndex(), StrategyName.BREAKOUT
@@ -252,12 +356,108 @@ class StrategySimulatorParamsMixin:
                 widget.setValue(param_def.default)
 
         self.simulator_status_label.setText("Parameters reset to default")
-    def _on_save_params_to_bot(self) -> None:
-        """Save current parameters for production bot use."""
-        from src.core.simulator import save_strategy_params_to_path
+    def _on_apply_to_active_strategy(self) -> None:
+        """Apply current parameters to the active trading strategy.
+
+        Uses the Strategy Bridge to sync simulator params with the active
+        catalog strategy used by the trading bot.
+        """
+        from src.core.tradingbot.strategy_bridge import get_strategy_bridge
 
         strategy_name = self._get_simulator_strategy_name()
         params = self._get_simulator_parameters()
+
+        # Check if bot controller is available
+        bot_controller = getattr(self, '_bot_controller', None)
+
+        if not bot_controller:
+            QMessageBox.warning(
+                self,
+                "No Active Bot",
+                "No active trading bot found.\n\n"
+                "Start the trading bot first, then apply parameters.",
+            )
+            return
+
+        bridge = get_strategy_bridge()
+
+        # Get active strategy name for display
+        active_strategy = None
+        if hasattr(bot_controller, 'get_strategy_selection'):
+            selection = bot_controller.get_strategy_selection()
+            if selection and selection.selected_strategy:
+                active_strategy = selection.selected_strategy
+
+        if not active_strategy:
+            QMessageBox.warning(
+                self,
+                "No Active Strategy",
+                "No strategy is currently active in the trading bot.\n\n"
+                "The bot needs to select a strategy first (Daily Strategy selection).",
+            )
+            return
+
+        # Check compatibility - now uses direct catalog name comparison
+        if strategy_name != active_strategy:
+            reply = QMessageBox.question(
+                self,
+                "Strategy Mismatch",
+                f"The active strategy is '{active_strategy}',\n"
+                f"but you're trying to apply '{strategy_name}' parameters.\n\n"
+                "This may cause unexpected behavior.\n\n"
+                "Apply anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        # Apply parameters
+        success = bridge.apply_to_active_strategy(
+            bot_controller=bot_controller,
+            simulator_strategy=strategy_name,
+            simulator_params=params,
+        )
+
+        if success:
+            self.simulator_status_label.setText(
+                f"✓ Parameters applied to: {active_strategy}"
+            )
+            QMessageBox.information(
+                self,
+                "Parameters Applied",
+                f"Simulator parameters successfully applied!\n\n"
+                f"Simulator Strategy: {strategy_name}\n"
+                f"Active Strategy: {active_strategy}\n\n"
+                f"Parameters:\n" + "\n".join(f"  • {k}: {v}" for k, v in params.items()),
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Apply Failed",
+                "Failed to apply parameters to active strategy.\n\n"
+                "Check the logs for details.",
+            )
+
+    def _on_save_params_to_bot(self) -> None:
+        """Save current parameters for production bot use."""
+        from src.core.simulator import save_strategy_params_to_path
+        from src.core.tradingbot.strategy_bridge import get_strategy_bridge
+
+        strategy_name = self._get_simulator_strategy_name()
+        params = self._get_simulator_parameters()
+
+        # Also save via bridge for catalog integration
+        bridge = get_strategy_bridge()
+        try:
+            bridge.save_bridged_params(
+                simulator_strategy=strategy_name,
+                simulator_params=params,
+                symbol=getattr(self, 'current_symbol', None),
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to save bridged params: {e}")
 
         # Get symbol from current chart if available
         symbol = None
@@ -332,38 +532,19 @@ class StrategySimulatorParamsMixin:
         self.simulator_status_label.setText(f"Parameters loaded: {strategy_name}")
         QMessageBox.information(self, "Parameters Loaded", info_text)
     def _get_simulator_strategy_name(self) -> str:
-        """Get currently selected strategy name."""
+        """Get currently selected strategy name (catalog strategy name directly)."""
         if self._is_all_strategy_selected():
             return "all"
+        # Return catalog strategy name directly from dropdown
+        return self.simulator_strategy_combo.currentText().strip()
 
-        strategy_map = {
-            0: "breakout",
-            1: "momentum",
-            2: "mean_reversion",
-            3: "trend_following",
-            4: "scalping",
-            5: "bollinger_squeeze",
-            6: "trend_pullback",
-            7: "opening_range",
-            8: "regime_hybrid",
-        }
-        return strategy_map.get(
-            self.simulator_strategy_combo.currentIndex(), "breakout"
-        )
     def _get_strategy_index_by_name(self, strategy_name: str) -> int | None:
         """Get combo index for a strategy name."""
-        strategy_map = {
-            "breakout": 0,
-            "momentum": 1,
-            "mean_reversion": 2,
-            "trend_following": 3,
-            "scalping": 4,
-            "bollinger_squeeze": 5,
-            "trend_pullback": 6,
-            "opening_range": 7,
-            "regime_hybrid": 8,
-        }
-        return strategy_map.get(strategy_name)
+        # Search for strategy name in combo box
+        for i in range(self.simulator_strategy_combo.count()):
+            if self.simulator_strategy_combo.itemText(i) == strategy_name:
+                return i
+        return None
     def _is_all_strategy_selected(self) -> bool:
         """Check if ALL is selected in strategy dropdown."""
         return self.simulator_strategy_combo.currentText().strip().upper() == "ALL"

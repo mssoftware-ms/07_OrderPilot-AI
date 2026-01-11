@@ -29,6 +29,7 @@ from .feature_engine import FeatureEngine
 from .models import (
     BotAction,
     BotDecision,
+    DirectionalBias,
     FeatureVector,
     LLMBotResponse,
     OrderIntent,

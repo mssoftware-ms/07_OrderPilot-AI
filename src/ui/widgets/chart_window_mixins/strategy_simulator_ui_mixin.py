@@ -65,7 +65,6 @@ class StrategySimulatorUIMixin:
         self._all_run_active = False
         self._all_run_restore_index = None
         self._on_simulator_strategy_changed(0)
-        self._on_entry_lookahead_changed()
 
         return widget
     def _create_simulator_controls(self) -> QWidget:
@@ -102,25 +101,37 @@ class StrategySimulatorUIMixin:
         strategy_layout = QVBoxLayout(strategy_group)
 
         self.simulator_strategy_combo = QComboBox()
-        self.simulator_strategy_combo.addItems(
-            [
-                "Breakout",
-                "Momentum",
-                "Mean Reversion",
-                "Trend Following",
-                "Scalping",
-                "Bollinger Squeeze",
-                "Trend Pullback",
-                "Opening Range",
-                "Regime Hybrid",
-                "ALL",
-            ]
-        )
+        # Load strategies from StrategyCatalog for consistency with trading bot
+        self.simulator_strategy_combo.addItems(self._get_catalog_strategy_names())
         self.simulator_strategy_combo.currentIndexChanged.connect(
             self._on_simulator_strategy_changed
         )
         strategy_layout.addWidget(self.simulator_strategy_combo)
         return strategy_group
+
+    def _get_catalog_strategy_names(self) -> list[str]:
+        """Get strategy names from StrategyCatalog + ALL option."""
+        try:
+            from src.core.tradingbot.strategy_catalog import StrategyCatalog
+            catalog = StrategyCatalog()
+            strategies = catalog.list_strategies()
+            # Sort alphabetically and add ALL at the end
+            return sorted(strategies) + ["ALL"]
+        except Exception as e:
+            logger.warning(f"Failed to load catalog strategies: {e}")
+            # Fallback to hardcoded list
+            return [
+                "breakout_momentum",
+                "breakout_volatility",
+                "mean_reversion_bb",
+                "mean_reversion_rsi",
+                "momentum_macd",
+                "scalping_range",
+                "sideways_range_bounce",
+                "trend_following_aggressive",
+                "trend_following_conservative",
+                "ALL",
+            ]
 
     def _build_params_group(self) -> QGroupBox:
         self.simulator_params_group = QGroupBox("Parameters")
@@ -153,6 +164,20 @@ class StrategySimulatorUIMixin:
         self.simulator_load_from_bot_btn.setToolTip("Gespeicherte Parameter laden")
         self.simulator_load_from_bot_btn.clicked.connect(self._on_load_params_from_bot)
         params_btn_row1.addWidget(self.simulator_load_from_bot_btn)
+
+        # New button: Apply to Active Strategy
+        self.simulator_apply_active_btn = QPushButton("→ Apply")
+        self.simulator_apply_active_btn.setToolTip(
+            "Parameter auf aktive Trading-Strategie anwenden\n"
+            "(synchronisiert mit Strategy Catalog)"
+        )
+        self.simulator_apply_active_btn.setStyleSheet(
+            "QPushButton { background-color: #2d5a27; color: white; font-weight: bold; }"
+            "QPushButton:hover { background-color: #3d7a37; }"
+        )
+        self.simulator_apply_active_btn.clicked.connect(self._on_apply_to_active_strategy)
+        params_btn_row1.addWidget(self.simulator_apply_active_btn)
+
         return params_btn_row1
 
     def _build_opt_group(self) -> QGroupBox:
@@ -175,8 +200,8 @@ class StrategySimulatorUIMixin:
 
         opt_layout.addLayout(self._build_objective_layout())
         opt_layout.addWidget(self._build_entry_only_checkbox())
-        opt_layout.addLayout(self._build_entry_lookahead_layout())
-        opt_layout.addLayout(self._build_entry_lookahead_bars_layout())
+        opt_layout.addWidget(self._build_auto_strategy_checkbox())
+        opt_layout.addLayout(self._build_time_range_layout())
         opt_layout.addLayout(self._build_trials_layout())
 
         self.simulator_trials_hint_label = QLabel("")
@@ -201,37 +226,52 @@ class StrategySimulatorUIMixin:
     def _build_entry_only_checkbox(self) -> QCheckBox:
         self.simulator_entry_only_checkbox = QCheckBox("Entry Only (Long+Short)")
         self.simulator_entry_only_checkbox.setToolTip(
-            "Simuliert nur Einstiege (Lookahead über Einstellung unten)."
+            "Simuliert nur Einstiege basierend auf dem Zeitraum."
         )
         self.simulator_entry_only_checkbox.toggled.connect(self._on_entry_only_toggled)
         return self.simulator_entry_only_checkbox
 
-    def _build_entry_lookahead_layout(self) -> QHBoxLayout:
-        entry_lookahead_layout = QHBoxLayout()
-        entry_lookahead_layout.addWidget(QLabel("Entry Lookahead:"))
-        self.simulator_entry_lookahead_combo = QComboBox()
-        self.simulator_entry_lookahead_combo.addItem(
-            "Session End (Equities 22:00 CET)", "session_end"
+    def _build_auto_strategy_checkbox(self) -> QCheckBox:
+        self.simulator_auto_strategy_checkbox = QCheckBox("Auto-Strategy (beste pro Signal)")
+        self.simulator_auto_strategy_checkbox.setToolTip(
+            "Ermittelt für jedes Entry-Signal die beste Strategie.\n"
+            "Testet alle Strategien und wählt die mit dem besten Score.\n"
+            "Erhöht die Rechenzeit deutlich!"
         )
-        self.simulator_entry_lookahead_combo.addItem(
-            "Until Counter-Signal", "counter_signal"
-        )
-        self.simulator_entry_lookahead_combo.addItem("Fixed Bars", "fixed_bars")
-        self.simulator_entry_lookahead_combo.currentIndexChanged.connect(
-            self._on_entry_lookahead_changed
-        )
-        entry_lookahead_layout.addWidget(self.simulator_entry_lookahead_combo)
-        return entry_lookahead_layout
+        self.simulator_auto_strategy_checkbox.toggled.connect(self._on_auto_strategy_toggled)
+        return self.simulator_auto_strategy_checkbox
 
-    def _build_entry_lookahead_bars_layout(self) -> QHBoxLayout:
-        entry_lookahead_bars_layout = QHBoxLayout()
-        entry_lookahead_bars_layout.addWidget(QLabel("Lookahead Bars:"))
-        self.simulator_entry_lookahead_bars = QSpinBox()
-        self.simulator_entry_lookahead_bars.setRange(1, 10000)
-        self.simulator_entry_lookahead_bars.setValue(30)
-        self.simulator_entry_lookahead_bars.setToolTip("Nur aktiv bei Fixed Bars")
-        entry_lookahead_bars_layout.addWidget(self.simulator_entry_lookahead_bars)
-        return entry_lookahead_bars_layout
+    def _build_time_range_layout(self) -> QHBoxLayout:
+        """Build the time range selector layout.
+
+        Time range options consider the chart's candle timeframe.
+        For crypto (24/7 market), no session-based options.
+        """
+        time_range_layout = QHBoxLayout()
+        time_range_layout.addWidget(QLabel("Zeitraum:"))
+        self.simulator_time_range_combo = QComboBox()
+
+        # Time range options with data values (in hours)
+        # The actual number of bars will be calculated based on candle timeframe
+        self.simulator_time_range_combo.addItem("Chart-Ansicht (sichtbar)", "visible")
+        self.simulator_time_range_combo.addItem("Intraday (24h)", 24)
+        self.simulator_time_range_combo.addItem("2 Tage", 48)
+        self.simulator_time_range_combo.addItem("5 Tage", 120)
+        self.simulator_time_range_combo.addItem("1 Woche", 168)
+        self.simulator_time_range_combo.addItem("2 Wochen", 336)
+        self.simulator_time_range_combo.addItem("1 Monat", 720)
+        self.simulator_time_range_combo.addItem("3 Monate", 2160)
+        self.simulator_time_range_combo.addItem("6 Monate", 4320)
+        self.simulator_time_range_combo.addItem("1 Jahr", 8760)
+        self.simulator_time_range_combo.addItem("Alle Daten", "all")
+
+        self.simulator_time_range_combo.setToolTip(
+            "Zeitraum für die Simulation.\n"
+            "Die Anzahl Kerzen wird basierend auf dem Chart-Timeframe berechnet.\n"
+            "'Chart-Ansicht' nutzt die aktuell sichtbaren Kerzen."
+        )
+        time_range_layout.addWidget(self.simulator_time_range_combo)
+        return time_range_layout
 
     def _build_trials_layout(self) -> QHBoxLayout:
         trials_layout = QHBoxLayout()
@@ -256,6 +296,15 @@ class StrategySimulatorUIMixin:
         self.simulator_stop_btn.setEnabled(False)
         self.simulator_stop_btn.clicked.connect(self._on_stop_simulation)
         buttons_layout.addWidget(self.simulator_stop_btn)
+
+        # Show Parameters button - opens popup with all test parameters
+        self.simulator_params_btn = QPushButton("📋 Params")
+        self.simulator_params_btn.setToolTip(
+            "Zeigt alle aktuellen Testparameter in einem Popup an"
+        )
+        self.simulator_params_btn.clicked.connect(self._on_show_test_parameters)
+        buttons_layout.addWidget(self.simulator_params_btn)
+
         return buttons_layout
 
     def _build_progress_bar(self) -> QProgressBar:
@@ -282,9 +331,11 @@ class StrategySimulatorUIMixin:
 
         # Results Table
         self.simulator_results_table = QTableWidget()
-        self.simulator_results_table.setColumnCount(10)
+        self.simulator_results_table.setColumnCount(12)
         self.simulator_results_table.setHorizontalHeaderLabels([
             "Strategy",
+            "Entry",      # Entry time (HH:MM)
+            "Exit",       # Exit time (HH:MM)
             "Trades",
             "Win %",
             "PF",
@@ -297,10 +348,10 @@ class StrategySimulatorUIMixin:
         ])
         # Set column resize modes - last column (Parameters) gets extra space
         header = self.simulator_results_table.horizontalHeader()
-        for i in range(9):  # First 9 columns: fixed width
+        for i in range(11):  # First 11 columns: fixed width
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         # Parameters column: stretches to fill remaining space
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(11, QHeaderView.ResizeMode.Stretch)
         self.simulator_results_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )

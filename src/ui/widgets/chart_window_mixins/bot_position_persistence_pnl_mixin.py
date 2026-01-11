@@ -46,7 +46,12 @@ class BotPositionPersistencePnlMixin:
             self._update_signals_table()
 
     def _get_chart_current_price(self) -> float:
+        """Get current price from chart - prefers live streaming price over DataFrame."""
         if hasattr(self, 'chart_widget'):
+            # Priority 1: Live streaming price (_last_price is updated on every tick)
+            if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
+                return float(self.chart_widget._last_price)
+            # Priority 2: DataFrame last close (for non-streaming mode)
             if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                 try:
                     return float(self.chart_widget.data['close'].iloc[-1])
@@ -64,6 +69,23 @@ class BotPositionPersistencePnlMixin:
 
         sig["current_price"] = current_price
         pnl_pct = self._calculate_pnl_pct(entry_price, current_price, side)
+
+        # Issue #1: Apply manual leverage override if enabled
+        leverage = 1.0
+        if hasattr(self, 'get_leverage_override'):
+            override_enabled, override_value = self.get_leverage_override()
+            if override_enabled and override_value > 1:
+                leverage = float(override_value)
+                pnl_pct = pnl_pct * leverage
+                sig["leverage"] = leverage
+
+        # Issue #3: Subtract BitUnix fees from P&L
+        if hasattr(self, 'get_bitunix_fees'):
+            maker_fee, taker_fee = self.get_bitunix_fees()
+            total_fees_pct = taker_fee + maker_fee
+            pnl_pct = pnl_pct - total_fees_pct
+            sig["fees_pct"] = total_fees_pct
+
         pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
         sig["pnl_currency"] = pnl_currency
         sig["pnl_percent"] = pnl_pct

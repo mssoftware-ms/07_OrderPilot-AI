@@ -84,8 +84,15 @@ class BotConfig(BaseModel):
 
     # Feature flags
     daily_strategy_selection: bool = Field(
-        default=True,
-        description="Enable daily strategy selection"
+        default=False,  # DISABLED for daytrading - use directional bias instead
+        description="Enable fixed daily strategy selection (DISABLED for daytrading)"
+    )
+    bias_override_threshold: float = Field(
+        default=0.8,
+        ge=0.5,
+        le=1.0,
+        description="Signal score threshold (0-1) to override daily bias. "
+        "E.g., 0.8 means an 80% signal can trade against daily bias."
     )
     auto_trade: bool = Field(
         default=False,

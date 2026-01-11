@@ -39,8 +39,22 @@ class OptimizationConfig:
     position_size_pct: float = 1.0   # 100% = voller Einsatz pro Trade
     slippage_pct: float = 0.001
     commission_pct: float = 0.001
+    # Legacy percentage-based SL/TP
     stop_loss_pct: float = 0.02
     take_profit_pct: float = 0.05
+    # ATR-based SL/TP (from Bot-Tab settings)
+    sl_atr_multiplier: float = 0.0  # 0 = use stop_loss_pct instead
+    tp_atr_multiplier: float = 0.0  # 0 = use take_profit_pct instead
+    atr_period: int = 14  # ATR calculation period
+    # Trailing Stop (from Bot-Tab settings)
+    trailing_stop_enabled: bool = False
+    trailing_stop_atr_multiplier: float = 1.5  # Trailing distance in ATR
+
+    # Entry-only optimization settings
+    entry_only: bool = False  # Only optimize entry signals, skip full simulation
+    entry_side: str = "both"  # "long", "short", or "both"
+    entry_lookahead_mode: str = "bars"  # "bars" or "time"
+    entry_lookahead_bars: int = 5  # Bars to look ahead for entry validation
 
 
 class BayesianOptimizer:
@@ -177,6 +191,154 @@ class BayesianOptimizer:
             return -result.max_drawdown_pct  # Negate for minimization
         else:
             return result.total_pnl_pct
+
+    def _load_optuna(self):
+        """Load optuna library for Bayesian optimization."""
+        try:
+            import optuna
+            from optuna.samplers import TPESampler
+
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+        except ImportError:
+            raise ImportError(
+                "optuna is required for Bayesian optimization. "
+                "Install with: pip install optuna"
+            )
+        return optuna, TPESampler
+
+    def _create_thread_event_loop(self):
+        """Create a new event loop for this thread."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+    def _build_trial_params(self, trial, parameters) -> dict[str, Any]:
+        """Build parameter dict from optuna trial suggestions."""
+        params = {}
+        for param_def in parameters:
+            if param_def.param_type == "int":
+                params[param_def.name] = trial.suggest_int(
+                    param_def.name,
+                    param_def.min_value,
+                    param_def.max_value,
+                    step=param_def.step or 1,
+                )
+            elif param_def.param_type == "float":
+                params[param_def.name] = trial.suggest_float(
+                    param_def.name,
+                    param_def.min_value,
+                    param_def.max_value,
+                    step=param_def.step,
+                )
+            elif param_def.param_type == "bool":
+                params[param_def.name] = trial.suggest_categorical(
+                    param_def.name, [True, False]
+                )
+        return params
+
+    def _run_simulation(self, loop, simulator, params: dict[str, Any]) -> SimulationResult:
+        """Run simulation with given parameters."""
+        return loop.run_until_complete(
+            simulator.run_simulation(
+                strategy_name=self.config.strategy_name,
+                parameters=params,
+                initial_capital=self.config.initial_capital,
+                position_size_pct=self.config.position_size_pct,
+                slippage_pct=self.config.slippage_pct,
+                commission_pct=self.config.commission_pct,
+                stop_loss_pct=self.config.stop_loss_pct,
+                take_profit_pct=self.config.take_profit_pct,
+                # ATR-based SL/TP from Bot-Tab settings
+                sl_atr_multiplier=self.config.sl_atr_multiplier,
+                tp_atr_multiplier=self.config.tp_atr_multiplier,
+                atr_period=self.config.atr_period,
+                # Trailing Stop from Bot-Tab settings
+                trailing_stop_enabled=self.config.trailing_stop_enabled,
+                trailing_stop_atr_multiplier=self.config.trailing_stop_atr_multiplier,
+            )
+        )
+
+    def _report_progress(
+        self,
+        progress_callback: Callable[[int, int, float], None] | None,
+        trial_number: int,
+        score: float,
+    ) -> None:
+        """Report optimization progress to callback."""
+        if not progress_callback:
+            return
+        try:
+            best = self._study.best_value if self._study.best_trial else score
+        except ValueError:
+            best = score
+        progress_callback(trial_number + 1, self.config.n_trials, best)
+
+    def _build_trials(self, optuna) -> list[OptimizationTrial]:
+        """Build list of OptimizationTrial from study trials."""
+        trials: list[OptimizationTrial] = []
+        result_idx = 0
+        for i, trial in enumerate(self._study.trials):
+            if trial.state != optuna.trial.TrialState.COMPLETE:
+                continue
+            result = self._all_results[result_idx] if result_idx < len(self._all_results) else None
+            result_idx += 1
+            metrics = {}
+            if result:
+                metrics = {
+                    "total_trades": result.total_trades,
+                    "win_rate": result.win_rate,
+                    "profit_factor": result.profit_factor,
+                    "total_pnl_pct": result.total_pnl_pct,
+                    "max_drawdown_pct": result.max_drawdown_pct,
+                    "sharpe_ratio": result.sharpe_ratio or 0.0,
+                }
+            trials.append(
+                OptimizationTrial(
+                    trial_number=i + 1,
+                    parameters=trial.params,
+                    score=trial.value,
+                    metrics=metrics,
+                )
+            )
+        return trials
+
+    def _select_best_result(self, optuna) -> tuple[dict[str, Any], float, SimulationResult | None]:
+        """Select the best result from completed trials."""
+        best_params: dict[str, Any] = {}
+        best_score = 0.0
+        best_result = None
+        completed_trials = [
+            t for t in self._study.trials if t.state == optuna.trial.TrialState.COMPLETE
+        ]
+        if completed_trials:
+            best_trial = self._study.best_trial
+            if best_trial:
+                best_params = best_trial.params
+                best_score = best_trial.value
+                completed_indices = [
+                    i for i, t in enumerate(self._study.trials)
+                    if t.state == optuna.trial.TrialState.COMPLETE
+                ]
+                if best_trial.number in [
+                    self._study.trials[i].number for i in completed_indices
+                ]:
+                    best_trial_result_idx = completed_indices.index(
+                        next(
+                            i for i in completed_indices
+                            if self._study.trials[i].number == best_trial.number
+                        )
+                    )
+                    if best_trial_result_idx < len(self._all_results):
+                        best_result = self._all_results[best_trial_result_idx]
+        else:
+            error_summary = (
+                "; ".join(self._trial_errors[:5]) if self._trial_errors else "Unknown error"
+            )
+            logger.error(
+                "Bayesian optimization failed: No trials completed. "
+                f"Errors: {error_summary}"
+            )
+        return best_params, best_score, best_result
 
 
 class GridSearchOptimizer:
@@ -330,6 +492,13 @@ class GridSearchOptimizer:
                 commission_pct=self.config.commission_pct,
                 stop_loss_pct=self.config.stop_loss_pct,
                 take_profit_pct=self.config.take_profit_pct,
+                # ATR-based SL/TP from Bot-Tab settings
+                sl_atr_multiplier=self.config.sl_atr_multiplier,
+                tp_atr_multiplier=self.config.tp_atr_multiplier,
+                atr_period=self.config.atr_period,
+                # Trailing Stop from Bot-Tab settings
+                trailing_stop_enabled=self.config.trailing_stop_enabled,
+                trailing_stop_atr_multiplier=self.config.trailing_stop_atr_multiplier,
             )
         )
 
@@ -451,6 +620,13 @@ class GridSearchOptimizer:
                     commission_pct=self.config.commission_pct,
                     stop_loss_pct=self.config.stop_loss_pct,
                     take_profit_pct=self.config.take_profit_pct,
+                    # ATR-based SL/TP from Bot-Tab settings
+                    sl_atr_multiplier=self.config.sl_atr_multiplier,
+                    tp_atr_multiplier=self.config.tp_atr_multiplier,
+                    atr_period=self.config.atr_period,
+                    # Trailing Stop from Bot-Tab settings
+                    trailing_stop_enabled=self.config.trailing_stop_enabled,
+                    trailing_stop_atr_multiplier=self.config.trailing_stop_atr_multiplier,
                 )
             ), None
         except Exception as e:

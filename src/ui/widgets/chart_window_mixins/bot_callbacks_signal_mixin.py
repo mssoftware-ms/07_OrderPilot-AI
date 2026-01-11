@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,11 @@ class BotCallbacksSignalMixin:
                 )
             # Enforce single open position after confirming/adding
             self._enforce_single_open_signal(refresh=False)
+
+            # Start P&L update timer for live price updates in Signals Tab
+            if hasattr(self, '_start_pnl_update_timer'):
+                self._start_pnl_update_timer()
+                logger.info("P&L update timer started for new ENTERED signal")
         else:
             self._update_or_add_candidate(
                 signal_type, side, score, strategy_name, entry_price, status
@@ -328,6 +334,25 @@ class BotCallbacksSignalMixin:
                 self._add_ki_log_entry("CHART", f"Stop-Loss-Linie gezeichnet @ {signal_stop_price:.2f}")
             else:
                 self._add_ki_log_entry("WARN", f"Kein Stop-Preis! signal_stop_price={signal_stop_price}")
+
+            # Issue #10: Draw trailing stop line immediately when position is opened
+            # Get trailing stop info from the active signal
+            active_sig = self._find_active_signal()
+            if active_sig:
+                trailing_stop_price = active_sig.get("trailing_stop_price", 0)
+                trailing_pct = active_sig.get("trailing_stop_pct", 0)
+                if trailing_stop_price > 0 and trailing_pct > 0:
+                    # Gray color for inactive trailing stop
+                    tr_color = "#888888"  # Gray when not yet active
+                    tr_label = f"TSL @ {trailing_stop_price:.2f} ({trailing_pct:.2f}%) [wartend]"
+                    self.chart_widget.add_stop_line(
+                        "trailing_stop",
+                        trailing_stop_price,
+                        line_type="trailing",
+                        color=tr_color,
+                        label=tr_label
+                    )
+                    self._add_ki_log_entry("CHART", f"Trailing-Stop-Linie gezeichnet @ {trailing_stop_price:.2f} (wartend)")
 
             self._save_signal_history()
             self._maybe_fetch_derivative_for_confirmed()
