@@ -1,8 +1,8 @@
 # ✅ Checkliste: Visible-Chart Entry Analyzer + Optimierte Indikator-Sets (SHORT=Rot, LONG=Grün)
 
 **Start:** 2026-01-11
-**Letzte Aktualisierung:** 2026-01-11 20:00
-**Gesamtfortschritt:** 40% (10/27 Tasks - Phase 0 + Phase 1.1 + 1.2 teilweise)
+**Letzte Aktualisierung:** 2026-01-11 21:00
+**Gesamtfortschritt:** 48% (13/27 Tasks - Phase 0 + Phase 1 komplett)
 
 ---
 
@@ -124,8 +124,10 @@
   Code: `src/ui/widgets/chart_mixins/entry_analyzer_mixin.py:95-108`
   Nachweis: `REPORT_20260111_1945_phase1_popup.md`
 
-- [ ] **1.1.3 Overlay-Layer für Entry-Marker**
-  Status: ⬜ → **Nutzt BotOverlayMixin.add_bot_marker()** - LONG=grün, SHORT=rot, Legende, Clear/Repaint
+- [x] **1.1.3 Overlay-Layer für Entry-Marker**
+  Status: ✅ Abgeschlossen (2026-01-11 21:00) → *LONG=grün (#26a69a, arrowUp), SHORT=rot (#ef5350, arrowDown)*
+  Code: `src/ui/widgets/chart_mixins/entry_analyzer_mixin.py:_draw_entry_markers()` (251 Zeilen)
+  Nachweis: Nutzt BotOverlayMixin.add_bot_marker() mit MarkerType.ENTRY_CONFIRMED
 
 ### 1.2 Full-Recompute Pipeline (sichtbarer Bereich)
 - [x] **1.2.1 Candle Slice Loader (1m + Multi-TF)**
@@ -153,8 +155,10 @@
   Code: `src/analysis/visible_chart/analyzer.py:_postprocess_entries()`
   Nachweis: Sortiert nach Confidence, behält Top-N
 
-- [ ] **1.2.6 Overlay-Rendering: Punkte für gesamten sichtbaren Bereich**
-  Status: ⬜ → *Nutzt BotOverlayMixin.add_bot_marker()* - Test pending
+- [x] **1.2.6 Overlay-Rendering: Punkte für gesamten sichtbaren Bereich**
+  Status: ✅ Abgeschlossen (2026-01-11 21:00) → *Draw/Clear via Popup-Buttons*
+  Code: `src/ui/widgets/chart_mixins/entry_analyzer_mixin.py:_draw_entry_markers(), _clear_entry_markers()`
+  Nachweis: Verbindet Popup-Signals mit BotOverlayMixin-Methoden
 
 **DoD Phase 1:** Sichtbarer Chart wird vollständig analysiert und Punkte werden eingezeichnet.
 
