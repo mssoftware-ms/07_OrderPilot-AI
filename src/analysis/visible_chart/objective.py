@@ -232,7 +232,7 @@ class ObjectiveFunction:
             }
 
         # 1. Variance in trade PnL (normalized by mean)
-        pnl_values = [t.pnl_r for t in trades]
+        pnl_values = [t.r_multiple for t in trades]
         mean_pnl = sum(pnl_values) / len(pnl_values)
         variance = sum((x - mean_pnl) ** 2 for x in pnl_values) / len(pnl_values)
         std_dev = math.sqrt(variance)
@@ -242,7 +242,7 @@ class ObjectiveFunction:
 
         # 2. Consistency: Check if wins/losses are evenly distributed
         # Using runs test approximation
-        win_loss_sequence = [1 if t.pnl_r > 0 else 0 for t in trades]
+        win_loss_sequence = [1 if t.r_multiple > 0 else 0 for t in trades]
         runs = 1
         for i in range(1, len(win_loss_sequence)):
             if win_loss_sequence[i] != win_loss_sequence[i - 1]:
@@ -260,7 +260,7 @@ class ObjectiveFunction:
 
         # 3. Temporal spread: Check trade distribution across time
         if hours_analyzed > 0 and len(trades) >= 2:
-            timestamps = [t.entry_time for t in trades]
+            timestamps = [t.entry_event.timestamp for t in trades]
             min_ts = min(timestamps)
             max_ts = max(timestamps)
             trade_span_hours = (max_ts - min_ts) / 3600
