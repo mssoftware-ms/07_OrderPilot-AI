@@ -365,8 +365,8 @@ class VisibleChartAnalyzer:
     def _calculate_features(self, candles: list[dict]) -> dict[str, list[float]]:
         """Calculate technical features from candles.
 
-        MVP: Simple features (SMA, RSI approximation).
-        Later: Full feature families.
+        Uses ATR-normalized features from entry_signal_engine for better
+        scale handling on 1m/5m timeframes.
 
         Args:
             candles: List of candle dicts.
@@ -374,43 +374,45 @@ class VisibleChartAnalyzer:
         Returns:
             Dict of feature name -> values.
         """
+        from src.analysis.entry_signals.entry_signal_engine import (
+            OptimParams,
+            calculate_features,
+        )
+
         if len(candles) < 20:
             return {}
 
-        closes = [c["close"] for c in candles]
+        # Use new robust feature calculation
+        params = OptimParams()
+        features = calculate_features(candles, params)
 
-        # Simple SMA
-        sma_20 = []
-        for i in range(len(closes)):
-            if i < 19:
-                sma_20.append(closes[i])
-            else:
-                sma_20.append(sum(closes[i - 19 : i + 1]) / 20)
+        # Add backward-compatible keys for any existing code
+        if "closes" in features:
+            closes = features["closes"]
+            features["sma_20"] = features.get("ema_slow", closes)
 
-        # Price vs SMA (trend indicator)
-        price_vs_sma = [
-            (closes[i] - sma_20[i]) / sma_20[i] if sma_20[i] != 0 else 0
-            for i in range(len(closes))
-        ]
+            # Convert ATR-normalized distance back to percentage for compatibility
+            if "dist_ema_atr" in features and "atr" in features:
+                dist = features["dist_ema_atr"]
+                atr = features["atr"]
+                ema_slow = features.get("ema_slow", closes)
+                price_vs_sma = []
+                for i in range(len(closes)):
+                    if ema_slow[i] != 0:
+                        price_vs_sma.append((closes[i] - ema_slow[i]) / ema_slow[i])
+                    else:
+                        price_vs_sma.append(0.0)
+                features["price_vs_sma"] = price_vs_sma
 
-        # Simple volatility (ATR approximation)
-        volatility = []
-        for i, c in enumerate(candles):
-            tr = c["high"] - c["low"]
-            volatility.append(tr / c["close"] if c["close"] != 0 else 0)
+            # Use ATR% as volatility
+            features["volatility"] = features.get("atr_pct", [0.0] * len(closes))
 
-        return {
-            "sma_20": sma_20,
-            "price_vs_sma": price_vs_sma,
-            "volatility": volatility,
-            "closes": closes,
-        }
+        return features
 
     def _detect_regime(self, features: dict[str, list[float]]) -> RegimeType:
         """Detect market regime from features.
 
-        MVP: Simple rules-based detection.
-        Later: HMM or ML-based.
+        Uses robust ADX/BB/ATR-based detection from entry_signal_engine.
 
         Args:
             features: Calculated features.
@@ -418,34 +420,18 @@ class VisibleChartAnalyzer:
         Returns:
             Detected regime type.
         """
-        if not features or "price_vs_sma" not in features:
+        from src.analysis.entry_signals.entry_signal_engine import (
+            OptimParams,
+            detect_regime,
+        )
+
+        if not features or "closes" not in features:
             return RegimeType.NO_TRADE
 
-        price_vs_sma = features["price_vs_sma"]
-        volatility = features.get("volatility", [])
-
-        if not price_vs_sma:
-            return RegimeType.NO_TRADE
-
-        # Average trend strength (last 20 values)
-        recent_trend = price_vs_sma[-20:] if len(price_vs_sma) >= 20 else price_vs_sma
-        avg_trend = sum(recent_trend) / len(recent_trend)
-
-        # Average volatility
-        recent_vol = volatility[-20:] if len(volatility) >= 20 else volatility
-        avg_vol = sum(recent_vol) / len(recent_vol) if recent_vol else 0
-
-        # Regime classification
-        if avg_vol > 0.015:  # High volatility
-            return RegimeType.HIGH_VOL
-        elif avg_trend > 0.005:  # Uptrend
-            return RegimeType.TREND_UP
-        elif avg_trend < -0.005:  # Downtrend
-            return RegimeType.TREND_DOWN
-        elif avg_vol < 0.005:  # Low volatility = squeeze
-            return RegimeType.SQUEEZE
-        else:
-            return RegimeType.RANGE
+        # Use new robust regime detection
+        # The engine's RegimeType enum values are now compatible (lowercase)
+        params = OptimParams()
+        return detect_regime(features, params)
 
     def _create_default_set(self, regime: RegimeType) -> IndicatorSet:
         """Create default indicator set for regime.
@@ -519,8 +505,7 @@ class VisibleChartAnalyzer:
     ) -> list[EntryEvent]:
         """Score potential entries across all candles.
 
-        MVP: Simple rules-based scoring.
-        Later: Optimized scoring based on indicator set.
+        Uses robust ATR-normalized entry logic from entry_signal_engine.
 
         Args:
             candles: List of candles.
@@ -530,107 +515,47 @@ class VisibleChartAnalyzer:
         Returns:
             List of detected entry events.
         """
+        from src.analysis.entry_signals.entry_signal_engine import (
+            OptimParams,
+            generate_entries,
+        )
+
         if regime == RegimeType.NO_TRADE:
             return []
 
+        # Use new robust entry generation
+        # Enum values are now directly compatible (lowercase)
+        params = OptimParams()
+        engine_entries = generate_entries(candles, features, regime, params)
+
+        # Convert engine entries to analyzer entries
+        # (They're now compatible, but we still convert for type safety)
         entries = []
-        price_vs_sma = features.get("price_vs_sma", [])
-
-        for i, candle in enumerate(candles):
-            if i < 20:  # Skip warmup period
-                continue
-
-            score = 0.0
-            side = None
-            reasons = []
-
-            trend = price_vs_sma[i] if i < len(price_vs_sma) else 0
-
-            # Simple entry logic based on regime
-            if regime in (RegimeType.TREND_UP,):
-                # Long on pullback in uptrend
-                if trend > 0 and trend < 0.01:  # Mild pullback in uptrend
-                    score = 0.6 + abs(trend) * 10
-                    side = EntrySide.LONG
-                    reasons.append("trend_pullback")
-
-            elif regime == RegimeType.TREND_DOWN:
-                # Short on pullback in downtrend
-                if trend < 0 and trend > -0.01:  # Mild pullback in downtrend
-                    score = 0.6 + abs(trend) * 10
-                    side = EntrySide.SHORT
-                    reasons.append("trend_pullback")
-
-            elif regime == RegimeType.RANGE:
-                # Mean reversion at extremes
-                if trend < -0.008:  # Oversold
-                    score = 0.5 + abs(trend) * 30
-                    side = EntrySide.LONG
-                    reasons.append("oversold")
-                elif trend > 0.008:  # Overbought
-                    score = 0.5 + abs(trend) * 30
-                    side = EntrySide.SHORT
-                    reasons.append("overbought")
-
-            elif regime == RegimeType.SQUEEZE:
-                # SQUEEZE: Look for range extremes and small directional moves
-                # Don't wait for volatility expansion (which doesn't exist in a squeeze period)
-                closes = features.get("closes", [])
-
-                if len(closes) > i and i >= 20:
-                    # Calculate local range
-                    recent_prices = closes[max(0, i-20):i+1]
-                    if len(recent_prices) >= 10:
-                        local_high = max(recent_prices)
-                        local_low = min(recent_prices)
-                        current_price = closes[i]
-
-                        if local_high > local_low:
-                            # Position in range (0 = low, 1 = high)
-                            position = (current_price - local_low) / (local_high - local_low)
-
-                            # Near bottom of range - potential long
-                            if position < 0.3 and trend > -0.005:
-                                score = 0.50 + (0.3 - position) * 0.6  # 0.50-0.68
-                                side = EntrySide.LONG
-                                reasons.append("squeeze_range_low")
-                            # Near top of range - potential short
-                            elif position > 0.7 and trend < 0.005:
-                                score = 0.50 + (position - 0.7) * 0.6  # 0.50-0.68
-                                side = EntrySide.SHORT
-                                reasons.append("squeeze_range_high")
-                            # Small trend in middle
-                            elif 0.4 < position < 0.6:
-                                if trend > 0.002:
-                                    score = 0.50 + abs(trend) * 20  # Start at 0.50
-                                    side = EntrySide.LONG
-                                    reasons.append("squeeze_trend_long")
-                                elif trend < -0.002:
-                                    score = 0.50 + abs(trend) * 20  # Start at 0.50
-                                    side = EntrySide.SHORT
-                                    reasons.append("squeeze_trend_short")
-
-            # Add entry if score threshold met
-            if side and score >= 0.5:
-                entries.append(
-                    EntryEvent(
-                        timestamp=candle["timestamp"],
-                        side=side,
-                        confidence=min(score, 1.0),
-                        price=candle["close"],
-                        reason_tags=reasons,
-                        regime=regime,
-                    )
+        for e in engine_entries:
+            entries.append(
+                EntryEvent(
+                    timestamp=e.timestamp,
+                    side=e.side,  # Directly compatible
+                    confidence=e.confidence,
+                    price=e.price,
+                    reason_tags=e.reason_tags,
+                    regime=regime,
                 )
+            )
+
+        debug_logger.info(
+            "Generated %d entries using entry_signal_engine (regime=%s)",
+            len(entries),
+            regime.value,
+        )
 
         return entries
 
     def _postprocess_entries(self, entries: list[EntryEvent]) -> list[EntryEvent]:
         """Apply postprocessing rules to entries.
 
-        - Cooldown: Minimum time between signals
-        - Clustering: Merge nearby signals
-        - Rate limiting: Max signals per hour
+        Note: The new entry_signal_engine already does clustering and cooldown,
+        so this only applies optional rate limiting.
 
         Args:
             entries: Raw entry events.
@@ -644,30 +569,22 @@ class VisibleChartAnalyzer:
         # Sort by timestamp
         entries = sorted(entries, key=lambda e: e.timestamp)
 
-        # Apply cooldown (minimum 5 minutes between signals)
-        cooldown_seconds = 5 * 60
-        filtered = []
-        last_ts = 0
-
-        for entry in entries:
-            if entry.timestamp - last_ts >= cooldown_seconds:
-                filtered.append(entry)
-                last_ts = entry.timestamp
-
-        # Rate limiting: max 6 signals per hour
-        max_per_hour = 6
-        if len(filtered) > max_per_hour:
+        # Optional: Rate limiting (max signals per hour)
+        # This is a safety measure; the engine already has cooldown
+        max_per_hour = 12  # Increased from 6 since engine handles spacing
+        if len(entries) > max_per_hour:
             # Keep highest confidence signals
-            filtered = sorted(filtered, key=lambda e: -e.confidence)[:max_per_hour]
+            filtered = sorted(entries, key=lambda e: -e.confidence)[:max_per_hour]
             filtered = sorted(filtered, key=lambda e: e.timestamp)
 
-        logger.debug(
-            "Postprocess: %d -> %d entries (cooldown + rate limit)",
-            len(entries),
-            len(filtered),
-        )
+            debug_logger.debug(
+                "Postprocess: %d -> %d entries (rate limit only)",
+                len(entries),
+                len(filtered),
+            )
+            return filtered
 
-        return filtered
+        return entries
 
     def _run_optimizer(
         self,
@@ -677,6 +594,8 @@ class VisibleChartAnalyzer:
     ) -> dict[str, Any]:
         """Run FastOptimizer to find optimal indicator set.
 
+        Now uses the new fast_optimize_params from entry_signal_engine.
+
         Args:
             candles: Candle data.
             regime: Detected regime.
@@ -685,23 +604,75 @@ class VisibleChartAnalyzer:
         Returns:
             Dict with active_set, alternatives, and entries.
         """
-        from .optimizer import FastOptimizer, OptimizerConfig
+        from src.analysis.entry_signals.entry_signal_engine import (
+            OptimParams,
+            fast_optimize_params,
+            generate_entries,
+        )
 
-        # Lazy init optimizer
-        if self._optimizer is None:
-            config = OptimizerConfig(
-                time_budget_ms=2000,  # 2 seconds
-                max_iterations=50,
-                early_stop_no_improve=15,
-                top_k=3,
+        # Run fast optimization
+        # Enum values are now directly compatible
+        base_params = OptimParams()
+        optimized_params = fast_optimize_params(
+            candles, base_params=base_params, budget_ms=1200, seed=42
+        )
+
+        # Generate entries with optimized parameters
+        engine_entries = generate_entries(candles, features, regime, optimized_params)
+
+        # Convert engine entries to analyzer entries
+        entries = []
+        for e in engine_entries:
+            entries.append(
+                EntryEvent(
+                    timestamp=e.timestamp,
+                    side=e.side,  # Directly compatible
+                    confidence=e.confidence,
+                    price=e.price,
+                    reason_tags=e.reason_tags,
+                    regime=regime,
+                )
             )
-            self._optimizer = FastOptimizer(config)
 
-        # Run optimization
-        opt_result = self._optimizer.optimize(candles, regime, features)
+        # Create indicator set from optimized params
+        active_set = self._create_optimized_set(regime, optimized_params)
+
+        debug_logger.info(
+            "Optimizer: %d entries with optimized params (regime=%s)",
+            len(entries),
+            regime.value,
+        )
 
         return {
-            "active_set": opt_result.best_set,
-            "alternatives": opt_result.alternatives,
-            "entries": opt_result.entries,
+            "active_set": active_set,
+            "alternatives": [],  # No alternatives for now
+            "entries": entries,
         }
+
+    def _create_optimized_set(self, regime: RegimeType, params: Any) -> IndicatorSet:
+        """Create indicator set from optimized parameters.
+
+        Args:
+            regime: Current regime.
+            params: Optimized OptimParams.
+
+        Returns:
+            IndicatorSet with optimized parameters.
+        """
+        return IndicatorSet(
+            name=f"Optimized {regime.value}",
+            regime=regime,
+            score=0.85,  # Higher score for optimized params
+            parameters={
+                "ema_fast": params.ema_fast,
+                "ema_slow": params.ema_slow,
+                "atr_period": params.atr_period,
+                "rsi_period": params.rsi_period,
+                "bb_period": params.bb_period,
+                "bb_std": params.bb_std,
+                "adx_period": params.adx_period,
+                "min_confidence": params.min_confidence,
+            },
+            families=["Trend", "Momentum", "Volatility", "Volume"],
+            description=f"ATR-optimized parameters for {regime.value}",
+        )
