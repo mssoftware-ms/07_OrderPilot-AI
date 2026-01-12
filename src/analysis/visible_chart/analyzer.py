@@ -197,6 +197,15 @@ class VisibleChartAnalyzer:
             entries = result.get("entries", [])
             debug_logger.info("Optimizer result: %d entries, %d alternative sets",
                             len(entries), len(alternatives))
+            if not entries:
+                debug_logger.warning(
+                    "Optimizer produced no entries; falling back to rules-based scoring."
+                )
+                active_set = active_set or self._create_default_set(regime)
+                entries = self._score_entries(candles, features, regime)
+                debug_logger.info("Fallback scored %d raw entries", len(entries))
+                entries = self._postprocess_entries(entries)
+                debug_logger.info("Fallback postprocessing: %d entries", len(entries))
         else:
             debug_logger.info("Using default rules-based detection...")
             # Phase 1: Default rules-based

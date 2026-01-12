@@ -10,7 +10,7 @@ from pathlib import Path
 def setup_entry_analyzer_logger() -> logging.Logger:
     """Setup dedicated logger for Entry Analyzer debugging.
 
-    Creates orderpilot-EntryAnalyzer.log in the current directory.
+    Creates orderpilot-entrie.log in the current directory.
 
     Returns:
         Configured logger instance.
@@ -23,7 +23,7 @@ def setup_entry_analyzer_logger() -> logging.Logger:
         return logger
 
     # File handler
-    log_file = Path.cwd() / "orderpilot-EntryAnalyzer.log"
+    log_file = Path.cwd() / "orderpilot-entrie.log"
     file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
 

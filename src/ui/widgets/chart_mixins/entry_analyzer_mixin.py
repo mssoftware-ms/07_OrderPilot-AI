@@ -65,10 +65,33 @@ class AnalysisWorker(QThread):
         try:
             from src.analysis.visible_chart.analyzer import VisibleChartAnalyzer
             from src.analysis.visible_chart.types import VisibleRange
+            from src.analysis.visible_chart.debug_logger import debug_logger
 
             # Convert range
-            from_ts = int(self._visible_range.get("from", 0))
-            to_ts = int(self._visible_range.get("to", 0))
+            from_raw = self._visible_range.get("from")
+            to_raw = self._visible_range.get("to")
+            from_ts = int(from_raw) if from_raw is not None else 0
+            to_ts = int(to_raw) if to_raw is not None else 0
+            from_idx = None
+            to_idx = None
+
+            if self._candles:
+                from_idx = int(round(from_raw)) if from_raw is not None else None
+                to_idx = int(round(to_raw)) if to_raw is not None else None
+                if from_idx is not None and to_idx is not None:
+                    max_idx = len(self._candles) - 1
+                    if 0 <= from_idx <= max_idx and 0 <= to_idx <= max_idx:
+                        from_ts = self._candles[from_idx]["timestamp"]
+                        to_ts = self._candles[to_idx]["timestamp"]
+
+            debug_logger.info(
+                "EntryAnalyzerWorker: range raw=%s -> ts=(%s,%s) idx=(%s,%s)",
+                self._visible_range,
+                from_ts,
+                to_ts,
+                from_idx,
+                to_idx,
+            )
 
             if from_ts == 0 or to_ts == 0:
                 self.error.emit("Invalid visible range")
@@ -81,8 +104,8 @@ class AnalysisWorker(QThread):
             visible_range = VisibleRange(
                 from_ts=from_ts,
                 to_ts=to_ts,
-                from_idx=self._visible_range.get("from_idx"),
-                to_idx=self._visible_range.get("to_idx"),
+                from_idx=from_idx if from_idx is not None else self._visible_range.get("from_idx"),
+                to_idx=to_idx if to_idx is not None else self._visible_range.get("to_idx"),
             )
 
             # Run analysis with pre-loaded candles
@@ -160,9 +183,25 @@ class EntryAnalyzerMixin:
 
         if data is not None and hasattr(data, "iterrows"):
             try:
-                for _, row in data.iterrows():
+                from src.ui.widgets.chart_mixins.data_loading_utils import (
+                    get_local_timezone_offset_seconds,
+                )
+
+                local_offset = get_local_timezone_offset_seconds()
+                has_time_column = "time" in data.columns
+
+                for idx, row in data.iterrows():
+                    if has_time_column:
+                        timestamp = int(row.get("time", 0))
+                    else:
+                        timestamp = 0
+                        if hasattr(idx, "timestamp"):
+                            timestamp = int(idx.timestamp()) + local_offset
+                        elif isinstance(idx, (int, float)):
+                            timestamp = int(idx)
+
                     candle = {
-                        "timestamp": int(row.get("time", 0)),
+                        "timestamp": timestamp,
                         "open": float(row.get("open", 0)),
                         "high": float(row.get("high", 0)),
                         "low": float(row.get("low", 0)),
@@ -170,8 +209,15 @@ class EntryAnalyzerMixin:
                         "volume": float(row.get("volume", 0)),
                     }
                     candles.append(candle)
+                debug_logger.info(
+                    "EntryAnalyzer: extracted %d candles (has_time_column=%s, local_offset=%s)",
+                    len(candles),
+                    has_time_column,
+                    local_offset,
+                )
             except Exception as e:
                 logger.warning("Failed to extract candles: %s", e)
+                debug_logger.exception("EntryAnalyzer: candle extraction failed")
 
         return candles
 
@@ -380,6 +426,7 @@ class EntryAnalyzerMixin:
         """
         if range_data is None:
             logger.error("Failed to get visible range")
+            debug_logger.error("EntryAnalyzer: visible range is None (chart not ready)")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -390,6 +437,7 @@ class EntryAnalyzerMixin:
             return
 
         logger.info("Visible range received: %s", range_data)
+        debug_logger.info("EntryAnalyzer: raw visible range: %s", range_data)
 
         # Get symbol and timeframe
         symbol = getattr(self, "_symbol", None) or getattr(self, "current_symbol", "UNKNOWN")
@@ -401,6 +449,7 @@ class EntryAnalyzerMixin:
         candles = self._get_candles_for_validation()
         if not candles:
             logger.error("No candle data available in chart")
+            debug_logger.error("EntryAnalyzer: no candle data available after extraction")
             QMessageBox.warning(
                 self,
                 "Error",
@@ -411,6 +460,12 @@ class EntryAnalyzerMixin:
             return
 
         logger.info("Starting analysis with %d candles", len(candles))
+        debug_logger.info(
+            "EntryAnalyzer: starting analysis (symbol=%s, timeframe=%s, candles=%d)",
+            symbol,
+            timeframe,
+            len(candles),
+        )
 
         # Update popup context
         if self._entry_analyzer_popup:
@@ -443,6 +498,11 @@ class EntryAnalyzerMixin:
             len(result.entries),
             result.regime.value,
         )
+        debug_logger.info(
+            "EntryAnalyzer: analysis finished with %d entries (regime=%s)",
+            len(result.entries),
+            result.regime.value,
+        )
 
     def _on_analysis_error(self, error_msg: str) -> None:
         """Handle analysis error.
@@ -454,6 +514,7 @@ class EntryAnalyzerMixin:
             self._entry_analyzer_popup.set_analyzing(False)
 
         logger.error("Analysis error: %s", error_msg)
+        debug_logger.error("EntryAnalyzer: analysis error: %s", error_msg)
         QMessageBox.critical(
             self,
             "Analysis Error",
