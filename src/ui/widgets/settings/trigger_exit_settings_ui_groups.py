@@ -202,17 +202,7 @@ class TriggerExitSettingsUIGroups:
         self.parent._trailing_enabled.setChecked(True)
         layout.addRow(self.parent._trailing_enabled)
 
-        # Activation threshold
-        self.parent._trailing_activation = QDoubleSpinBox()
-        self.parent._trailing_activation.setRange(0.5, 5.0)
-        self.parent._trailing_activation.setValue(0.5)  # Micro-Account: früher aktivieren
-        self.parent._trailing_activation.setSingleStep(0.1)
-        self.parent._trailing_activation.setDecimals(1)
-        self.parent._trailing_activation.setSuffix("x R")
-        self.parent._trailing_activation.setToolTip("Profit-Distanz für Trailing-Aktivierung (in R).")
-        layout.addRow("Aktivierung bei:", self.parent._trailing_activation)
-
-        # Trailing distance
+        # Trailing distance (TRA Prozent) - this is the main parameter
         self.parent._trailing_distance = QDoubleSpinBox()
         self.parent._trailing_distance.setRange(0.3, 2.0)
         self.parent._trailing_distance.setValue(0.3)  # Micro-Account: enger Trailing

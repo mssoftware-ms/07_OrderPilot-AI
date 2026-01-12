@@ -410,12 +410,31 @@ class EntryAnalyzerPopup(QDialog):
         self._candles = candles
 
     def set_analyzing(self, analyzing: bool) -> None:
+        """Set analyzing state and update progress bar.
+
+        Issue #27: Added debug logging for progress bar state changes.
+        """
+        # Import debug logger
+        try:
+            from src.analysis.visible_chart.debug_logger import debug_logger
+        except ImportError:
+            debug_logger = logger
+
+        debug_logger.info("PROGRESS BAR: set_analyzing(%s)", analyzing)
+
         self._analyze_btn.setEnabled(not analyzing)
         self._progress.setVisible(analyzing)
         if analyzing:
-            self._progress.setRange(0, 0)
+            self._progress.setRange(0, 0)  # Indeterminate mode (busy spinner)
+            debug_logger.debug("Progress bar: indeterminate mode (analyzing)")
         else:
-            self._progress.setRange(0, 100)
+            self._progress.setRange(0, 100)  # Determinate mode
+            self._progress.setValue(100)  # Complete
+            debug_logger.debug("Progress bar: complete (100%%)")
+
+        # Force GUI update
+        self._progress.update()
+        debug_logger.debug("Progress bar updated, visible=%s", analyzing)
 
     def set_result(self, result: AnalysisResult) -> None:
         self._result = result

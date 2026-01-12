@@ -12,6 +12,8 @@ class BotCallbacksLogOrderMixin:
     def _on_bot_log(self, log_type: str, message: str) -> None:
         """Handle bot log event."""
         self._add_ki_log_entry(log_type.upper(), message)
+        if hasattr(self, "_append_bot_log"):
+            self._append_bot_log(log_type, message)
     def _on_bot_order(self, order: Any) -> None:
         """Handle bot order event."""
         info = self._extract_order_info(order)
@@ -128,6 +130,10 @@ class BotCallbacksLogOrderMixin:
     def _maybe_add_entry_marker(
         self, signal: dict[str, Any] | None, fill_price: float
     ) -> None:
+        """Add entry marker to chart at actual entry candle (not signal candle).
+
+        Issue #26: Fixed to use actual entry timestamp instead of signal timestamp.
+        """
         if not signal:
             return
         if not (hasattr(self, "chart_widget") and hasattr(self.chart_widget, "add_bot_marker")):
@@ -138,7 +144,20 @@ class BotCallbacksLogOrderMixin:
                 return
             sig_side = signal.get("side", "long")
             label = signal.get("label", "E")
-            timestamp = signal.get("entry_timestamp", int(datetime.now().timestamp()))
+
+            # Issue #26 FIX: Use actual entry time from bot controller position if available
+            # This ensures the marker appears on the entry candle, not the signal candle
+            timestamp = None
+            if hasattr(self, '_bot_controller') and self._bot_controller:
+                position = getattr(self._bot_controller, 'position', None)
+                if position and hasattr(position, 'entry_time'):
+                    # Convert entry_time (datetime) to Unix timestamp
+                    timestamp = int(position.entry_time.timestamp())
+
+            # Fallback to entry_timestamp from signal, then current time
+            if timestamp is None:
+                timestamp = signal.get("entry_timestamp", int(datetime.now().timestamp()))
+
             self.chart_widget.add_bot_marker(
                 timestamp=timestamp,
                 price=entry_price,

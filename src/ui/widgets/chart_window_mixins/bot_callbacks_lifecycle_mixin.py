@@ -40,6 +40,10 @@ class BotCallbacksLifecycleMixin:
             on_macd_signal=self._on_macd_signal,
         )
 
+        # Update bot log UI status (Issue #23)
+        if hasattr(self, '_set_bot_run_status_label'):
+            self._set_bot_run_status_label(True)
+
         # Register state change callback
         self._bot_controller._state_machine._on_transition = lambda t: (
             self._on_bot_state_change(t.from_state.value, t.to_state.value)
@@ -130,5 +134,9 @@ class BotCallbacksLifecycleMixin:
 
         if self._bot_update_timer:
             self._bot_update_timer.stop()
+
+        # Update bot log UI status (Issue #23)
+        if hasattr(self, '_set_bot_run_status_label'):
+            self._set_bot_run_status_label(False)
 
         logger.info("Bot stopped")

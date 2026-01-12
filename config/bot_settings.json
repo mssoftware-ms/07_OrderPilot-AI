@@ -39,13 +39,14 @@
     "atr_trending": 2.0,
     "atr_ranging": 3.5,
     "volatility_bonus": 0.5,
-    "min_step_pct": 0.1,
+    "min_step_pct": 0.05,
     "trailing_activation_pct": 0.0,
-    "trailing_pct_distance": 1.4,
+    "trailing_pct_distance": 0.1,
     "min_score_pct": 60,
     "use_pattern_check": false,
     "pattern_similarity": 0.7,
     "pattern_min_matches": 5,
     "pattern_min_winrate_pct": 55
-  }
+  },
+  "whatsapp_notifications_enabled": true
 }

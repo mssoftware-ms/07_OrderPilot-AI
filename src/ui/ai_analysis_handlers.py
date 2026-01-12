@@ -202,6 +202,11 @@ class AIAnalysisHandlers:
                 json_str = result.model_dump_json(indent=2)
                 self.parent.txt_output.setText(json_str)
 
+                # Push result into Daily Strategy tab (if available)
+                chart_window = self.parent.parent()
+                if chart_window and hasattr(chart_window, "_update_daily_analysis_view"):
+                    chart_window._update_daily_analysis_view(result_dict)
+
                 analysis_logger.info("Analysis results displayed", extra={
                     'tab': 'overview',
                     'action': 'results_displayed',

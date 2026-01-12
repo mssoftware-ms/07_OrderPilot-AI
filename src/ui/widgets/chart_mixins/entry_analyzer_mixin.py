@@ -21,6 +21,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Import debug logger
+try:
+    from src.analysis.visible_chart.debug_logger import debug_logger
+except ImportError:
+    debug_logger = logger
+
 
 class AnalysisWorker(QThread):
     """Background worker for running analysis without blocking UI."""
