@@ -384,8 +384,10 @@ class StrategyTab(QWidget):
 
             # Get required context
             history_manager = getattr(chart_widget, 'history_manager', None)
-            symbol = getattr(chart_widget, 'symbol', None)
-            timeframe = getattr(chart_widget, 'current_timeframe', '1T')
+            # Bitunix chart exposes current_symbol/current_timeframe; fall back to .symbol
+            symbol = getattr(chart_widget, 'current_symbol', None) or getattr(chart_widget, 'symbol', None)
+            # Daily trend must use Tages‑Timeframe
+            timeframe = '1D'
             asset_class = getattr(chart_widget, 'current_asset_class', None)
             data_source = getattr(chart_widget, 'current_data_source', None)
 

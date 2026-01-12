@@ -32,7 +32,7 @@ class TriggerExitSettingsManagement:
             self.parent._sfp_wick_body_ratio, self.parent._sfp_penetration,
             self.parent._sl_atr_mult, self.parent._sl_percent, self.parent._sl_structure_buffer,
             self.parent._tp_rr_ratio, self.parent._tp_atr_mult,
-            self.parent._trailing_activation, self.parent._trailing_distance, self.parent._trailing_step,
+            self.parent._trailing_distance, self.parent._trailing_step,
             self.parent._max_hold_hours,
             self.parent._partial_tp1_r, self.parent._partial_tp1_size,
         ]
@@ -90,7 +90,6 @@ class TriggerExitSettingsManagement:
             },
             "trailing": {
                 "enabled": self.parent._trailing_enabled.isChecked(),
-                "activation_r": self.parent._trailing_activation.value(),
                 "distance_atr": self.parent._trailing_distance.value(),
                 "step_atr": self.parent._trailing_step.value(),
                 "move_to_be": self.parent._trailing_move_to_be.isChecked(),
@@ -141,7 +140,7 @@ class TriggerExitSettingsManagement:
         if "trailing" in settings:
             tr = settings["trailing"]
             self.parent._trailing_enabled.setChecked(tr.get("enabled", True))
-            self.parent._trailing_activation.setValue(tr.get("activation_r", 1.0))
+            # Note: activation_r field removed per Issue #24
             self.parent._trailing_distance.setValue(tr.get("distance_atr", 0.5))
             self.parent._trailing_step.setValue(tr.get("step_atr", 0.2))
             self.parent._trailing_move_to_be.setChecked(tr.get("move_to_be", True))

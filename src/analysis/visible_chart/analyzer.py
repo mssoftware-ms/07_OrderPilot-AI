@@ -7,6 +7,7 @@ and signal scoring.
 Phase 1: MVP with rules-based detection.
 Phase 2: FastOptimizer integration for parameter optimization.
 Phase 2.6: Caching & Wiederverwendung.
+Issue #27: Comprehensive debug logging.
 """
 
 from __future__ import annotations
@@ -27,6 +28,12 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Import debug logger for Issue #27
+try:
+    from .debug_logger import debug_logger
+except ImportError:
+    debug_logger = logger
 
 
 class VisibleChartAnalyzer:
@@ -111,10 +118,23 @@ class VisibleChartAnalyzer:
         """
         start_time = time.perf_counter()
 
+        # Issue #27: Comprehensive debug logging
+        debug_logger.info("=" * 80)
+        debug_logger.info("ENTRY ANALYZER: Starting new analysis")
+        debug_logger.info("Symbol: %s | Timeframe: %s", symbol, timeframe)
+        debug_logger.info("Visible Range: %d - %d (%d min)",
+                         visible_range.from_ts, visible_range.to_ts,
+                         visible_range.duration_minutes)
+        debug_logger.info("Candles provided: %d", len(candles) if candles else 0)
+        debug_logger.info("Optimizer enabled: %s | Cache enabled: %s",
+                         self._use_optimizer, self._use_cache)
+
         # Check for re-optimize trigger (symbol or regime change)
         symbol_changed = self._last_symbol is not None and self._last_symbol != symbol
         if symbol_changed:
             logger.info("Symbol changed: %s -> %s, invalidating cache", self._last_symbol, symbol)
+            debug_logger.info("SYMBOL CHANGE DETECTED: %s -> %s (cache invalidated)",
+                            self._last_symbol, symbol)
             if self._use_cache:
                 self._cache.invalidate_symbol(self._last_symbol)
         self._last_symbol = symbol
@@ -130,29 +150,44 @@ class VisibleChartAnalyzer:
 
         if not candles:
             logger.warning("No candles found for visible range")
+            debug_logger.warning("ANALYSIS ABORTED: No candles available")
+            debug_logger.info("=" * 80)
             return AnalysisResult(
                 visible_range=visible_range,
                 analysis_time_ms=(time.perf_counter() - start_time) * 1000,
             )
 
         # Step 2: Calculate features (with cache)
+        debug_logger.info("STEP 2: Calculating features...")
+        feature_start = time.perf_counter()
         features = self._get_or_calculate_features(
             candles, symbol, timeframe, visible_range
         )
+        feature_time = (time.perf_counter() - feature_start) * 1000
+        debug_logger.info("Features calculated in %.1fms (cached: %s)",
+                         feature_time, hasattr(features, '_cached'))
 
         # Step 3: Detect regime (with cache)
+        debug_logger.info("STEP 3: Detecting market regime...")
+        regime_start = time.perf_counter()
         regime = self._get_or_detect_regime(
             features, symbol, timeframe, visible_range
         )
+        regime_time = (time.perf_counter() - regime_start) * 1000
+        debug_logger.info("Regime detected: %s (took %.1fms)", regime.value, regime_time)
 
         # Check for regime change trigger
         regime_changed = self._last_regime is not None and self._last_regime != regime
         if regime_changed:
             logger.info("Regime changed: %s -> %s", self._last_regime.value, regime.value)
+            debug_logger.warning("REGIME CHANGE: %s -> %s", self._last_regime.value, regime.value)
         self._last_regime = regime
 
         # Step 4 & 5: Generate entries (with or without optimization)
+        debug_logger.info("STEP 4: Generating entry signals...")
+        entry_start = time.perf_counter()
         if self._use_optimizer:
+            debug_logger.info("Using FastOptimizer for parameter tuning...")
             # Check optimizer cache first
             result = self._get_or_run_optimizer(
                 candles, regime, features, symbol, timeframe, visible_range
@@ -160,12 +195,20 @@ class VisibleChartAnalyzer:
             active_set = result.get("active_set")
             alternatives = result.get("alternatives", [])
             entries = result.get("entries", [])
+            debug_logger.info("Optimizer result: %d entries, %d alternative sets",
+                            len(entries), len(alternatives))
         else:
+            debug_logger.info("Using default rules-based detection...")
             # Phase 1: Default rules-based
             active_set = self._create_default_set(regime)
+            debug_logger.debug("Default indicator set created: %s", active_set)
             entries = self._score_entries(candles, features, regime)
+            debug_logger.info("Scored %d raw entries", len(entries))
             entries = self._postprocess_entries(entries)
+            debug_logger.info("After postprocessing: %d entries", len(entries))
             alternatives = []
+        entry_time = (time.perf_counter() - entry_start) * 1000
+        debug_logger.info("Entry generation completed in %.1fms", entry_time)
 
         analysis_time = (time.perf_counter() - start_time) * 1000
 
@@ -179,6 +222,8 @@ class VisibleChartAnalyzer:
                     stats.hits,
                     stats.misses,
                 )
+                debug_logger.debug("Cache stats: hit_rate=%.1f%%, hits=%d, misses=%d",
+                                 stats.hit_rate * 100, stats.hits, stats.misses)
 
         logger.info(
             "Analysis complete: %d entries, regime=%s, optimized=%s, took %.1fms",
@@ -187,6 +232,18 @@ class VisibleChartAnalyzer:
             self._use_optimizer,
             analysis_time,
         )
+
+        # Issue #27: Final summary
+        debug_logger.info("=" * 80)
+        debug_logger.info("ANALYSIS COMPLETE:")
+        debug_logger.info("  Total time: %.1fms", analysis_time)
+        debug_logger.info("  Feature calc: %.1fms", feature_time)
+        debug_logger.info("  Regime detect: %.1fms", regime_time)
+        debug_logger.info("  Entry generation: %.1fms", entry_time)
+        debug_logger.info("  Entries found: %d", len(entries))
+        debug_logger.info("  Regime: %s", regime.value)
+        debug_logger.info("  Indicator set: %s", active_set.name if active_set else "None")
+        debug_logger.info("=" * 80)
 
         return AnalysisResult(
             entries=entries,
@@ -507,8 +564,42 @@ class VisibleChartAnalyzer:
                     reasons.append("overbought")
 
             elif regime == RegimeType.SQUEEZE:
-                # Breakout signals (placeholder)
-                pass
+                # SQUEEZE: Look for range extremes and small directional moves
+                # Don't wait for volatility expansion (which doesn't exist in a squeeze period)
+                closes = features.get("closes", [])
+
+                if len(closes) > i and i >= 20:
+                    # Calculate local range
+                    recent_prices = closes[max(0, i-20):i+1]
+                    if len(recent_prices) >= 10:
+                        local_high = max(recent_prices)
+                        local_low = min(recent_prices)
+                        current_price = closes[i]
+
+                        if local_high > local_low:
+                            # Position in range (0 = low, 1 = high)
+                            position = (current_price - local_low) / (local_high - local_low)
+
+                            # Near bottom of range - potential long
+                            if position < 0.3 and trend > -0.005:
+                                score = 0.50 + (0.3 - position) * 0.6  # 0.50-0.68
+                                side = EntrySide.LONG
+                                reasons.append("squeeze_range_low")
+                            # Near top of range - potential short
+                            elif position > 0.7 and trend < 0.005:
+                                score = 0.50 + (position - 0.7) * 0.6  # 0.50-0.68
+                                side = EntrySide.SHORT
+                                reasons.append("squeeze_range_high")
+                            # Small trend in middle
+                            elif 0.4 < position < 0.6:
+                                if trend > 0.002:
+                                    score = 0.50 + abs(trend) * 20  # Start at 0.50
+                                    side = EntrySide.LONG
+                                    reasons.append("squeeze_trend_long")
+                                elif trend < -0.002:
+                                    score = 0.50 + abs(trend) * 20  # Start at 0.50
+                                    side = EntrySide.SHORT
+                                    reasons.append("squeeze_trend_short")
 
             # Add entry if score threshold met
             if side and score >= 0.5:

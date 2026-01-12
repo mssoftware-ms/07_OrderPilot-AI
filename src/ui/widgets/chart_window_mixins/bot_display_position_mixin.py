@@ -11,6 +11,9 @@ class BotDisplayPositionMixin:
             self.bot_status_label.setStyleSheet(
                 f"font-weight: bold; color: {color}; font-size: 14px;"
             )
+        # Mirror to Signals tab log status (Issue #23)
+        if hasattr(self, '_set_bot_run_status_label'):
+            self._set_bot_run_status_label(status.upper() == "RUNNING")
     def _update_bot_display(self) -> None:
         """Update bot display with current state."""
         if self._bot_controller:

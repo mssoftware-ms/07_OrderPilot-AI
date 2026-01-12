@@ -15,6 +15,9 @@ class BotDisplayLoggingMixin:
             "type": entry_type,
             "message": message
         })
+        # Mirror into Trading Bot Log (Signals tab) if available (Issue #23)
+        if hasattr(self, "_append_bot_log"):
+            self._append_bot_log(entry_type, message, timestamp)
     def _log_bot_diagnostics(self) -> None:
         """Log periodic bot diagnostics for debugging."""
         if not self._bot_controller:
