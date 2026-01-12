@@ -104,17 +104,17 @@
     }
   ],
   "model_config": {
-    "queen_model": "opus-4.1",
+    "queen_model": "Claude Code CLI",
     "worker_model": "sonnet-4",
-    "default_queen": "opus-4.1",
+    "default_queen": "Claude Code CLI",
     "default_worker": "sonnet-4"
   },
   "swarm_config": {
     "topology": "hierarchical",
     "max_agents": 11,
     "queen_type": "strategic",
-    "task": "Bearbeite alle offenen Issues im Ordner Root->issues. Stelle sicher, dass WIRKLICH ALLE AUFGABEN, einschließlich aller Teilaufgaben im jeweiligen Issue, vollständig durchgeführt, abgeschlossen und getestet sind, bevor du das Issue auf \"closed\" setzt. Bei Fehlern oder nicht lösbaren Aufgaben melde dies im CMD-Fenster und lasse das Issue auf \"open\". Beachte dabei die Anweisungen in der Description sowie in den Feldern Additional und Comments. Arbeite die Issues Schritt für Schritt ab, z.B. Issue_1.json, Issue_2.json usw. Nach Abschluss jeder Aufgabe setze den Status auf \"closed\". Die Änderungen werden live vom AI-Modell direkt im vorhandenen lokalen Python 3.12 Code umgesetzt."
+    "task": "Bitte die optimierung am 'Entry Analyzer' ausführen: \"\\01_Projectplan\\Indicator Engineer\\Optimierung Entry Analyzer Button Analyze Visible Range.md\""
   },
-  "created_at": "2026-01-12T01:27:47.436612",
+  "created_at": "2026-01-13T00:03:20.961828",
   "last_session": null
 }
