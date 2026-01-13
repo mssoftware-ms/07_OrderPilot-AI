@@ -17,7 +17,6 @@ from .entry_signal_engine import (
     calculate_features,
     detect_regime,
     generate_entries,
-    fast_optimize_params,
     debug_summary,
 )
 
@@ -29,6 +28,5 @@ __all__ = [
     "calculate_features",
     "detect_regime",
     "generate_entries",
-    "fast_optimize_params",
     "debug_summary",
 ]

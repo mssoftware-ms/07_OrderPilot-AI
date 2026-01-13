@@ -191,6 +191,90 @@ class HistoricalDataManager:
         logger.info(f"📥 Bulk download completed. Total: {sum(results.values())} bars")
         return results
 
+    async def sync_history_to_now(
+        self,
+        provider,
+        symbols: list[str],
+        timeframe: Timeframe = Timeframe.MINUTE_1,
+        source: DataSource = DataSource.ALPACA_CRYPTO,
+        batch_size: int = 100,
+        filter_config: FilterConfig | None = None,
+        progress_callback: callable = None,
+    ) -> dict[str, int]:
+        """Sync historical data up to now without re-downloading everything.
+
+        Checks the last stored date for each symbol and downloads only the missing
+        period. If no data exists, it downloads the full default period (365 days).
+
+        Args:
+            provider: Data provider instance
+            symbols: List of symbols to sync
+            timeframe: Timeframe for bars
+            source: Data source enum
+            batch_size: Number of bars to save per batch
+            filter_config: Override filter configuration
+            progress_callback: Optional callback for UI updates
+
+        Returns:
+            Dictionary mapping symbols to number of bars saved
+        """
+        logger.info(f"🔄 Smart Sync started for {len(symbols)} symbols...")
+        results = {}
+
+        for i, symbol in enumerate(symbols):
+            try:
+                # Update progress callback if provided (overall progress)
+                if progress_callback:
+                    # Provide all 3 arguments: batch_num, total_bars, status_msg
+                    progress_callback(0, 0, f"Checking coverage for {symbol}...")
+
+                # 1. Check existing coverage
+                db_symbol = format_symbol_with_source(symbol, source)
+                coverage = await self._db_handler.get_data_coverage(db_symbol)
+
+                days_to_fetch = 365  # Default fallback if no data
+
+                if coverage and coverage.get('last_date'):
+                    last_date = coverage['last_date']
+                    # Ensure timezone awareness
+                    if last_date.tzinfo is None:
+                        last_date = last_date.replace(tzinfo=timezone.utc)
+
+                    now = datetime.now(timezone.utc)
+                    delta = now - last_date
+
+                    # Add 1 day buffer to handle timezone overlaps safely
+                    # Since we use INSERT OR REPLACE, overlaps are fine.
+                    # Ensure we don't request negative days or 0 days if very recent
+                    days_to_fetch = max(1, delta.days + 1)
+
+                    logger.info(f"📅 {symbol}: Last data from {last_date.date()} ({delta.days} days ago). Fetching {days_to_fetch} days.")
+                else:
+                    logger.info(f"📅 {symbol}: No existing data found. Fetching full year.")
+
+                # 2. Download only the missing period
+                # We use bulk_download for a single symbol to reuse its logic (filtering, saving, etc.)
+                symbol_result = await self.bulk_download(
+                    provider=provider,
+                    symbols=[symbol],
+                    days_back=days_to_fetch,
+                    timeframe=timeframe,
+                    source=source,
+                    batch_size=batch_size,
+                    filter_config=filter_config,
+                    replace_existing=False,  # CRITICAL: Keep existing data
+                    progress_callback=progress_callback
+                )
+
+                results.update(symbol_result)
+
+            except Exception as e:
+                logger.error(f"❌ Failed to sync {symbol}: {e}", exc_info=True)
+                results[symbol] = 0
+
+        logger.info(f"✅ Smart Sync completed. Updated {len(results)} symbols.")
+        return results
+
     def get_last_filter_stats(self) -> FilterStats | None:
         """Get statistics from the last filtering operation."""
         return self._last_filter_stats

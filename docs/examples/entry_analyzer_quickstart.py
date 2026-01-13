@@ -105,8 +105,8 @@ def example_2_with_optimizer():
         calculate_features,
         detect_regime,
         generate_entries,
-        fast_optimize_params,
     )
+    from src.analysis.indicator_optimization.optimizer import FastOptimizer
 
     logger.info("\n" + "=" * 80)
     logger.info("BEISPIEL 2: Mit Optimizer")
@@ -121,7 +121,8 @@ def example_2_with_optimizer():
 
     # 2. Optimizer laufen lassen (1.2 Sekunden Budget)
     logger.info("⏳ Optimizer läuft (1200ms Budget)...")
-    optimized = fast_optimize_params(candles, base_params, budget_ms=1200, seed=42)
+    optimizer = FastOptimizer()
+    optimized = optimizer.optimize(candles, base_params, budget_ms=1200, seed=42)
     logger.info("✓ Optimizer abgeschlossen")
 
     # 3. Zeige optimierte Params

@@ -170,6 +170,7 @@ class BackgroundRunner:
         self._last_regime: RegimeType | None = None
         self._current_symbol: str | None = None
         self._current_range: VisibleRange | None = None
+        self._candle_cache: list[dict] = []
 
         # Performance
         self._metrics = PerformanceMetrics()
@@ -462,31 +463,101 @@ class BackgroundRunner:
     def _run_incremental_update(self, task: AnalysisTask) -> AnalysisResult | None:
         """Run an incremental update with new candles.
 
-        For now, this triggers a full reanalysis but could be
-        optimized to only update features for new candles.
+        Appends new candles to cache and re-analyzes.
+        Checks if cached data is sufficient for visible range.
 
         Args:
             task: Incremental update task.
 
         Returns:
-            Analysis result or None.
+            AnalysisResult or None.
         """
         if not task.visible_range:
             return None
 
-        # TODO: Implement true incremental update
-        # For MVP, just run full analysis (cache helps)
-        return self._run_full_analysis(task)
+        # 1. Update cache with new candles
+        if task.new_candles:
+            if not self._candle_cache:
+                # No cache? Can't incremental. Fallback to full.
+                logger.debug("Incremental update requested but no cache. Falling back to full analysis.")
+                return self._run_full_analysis(task)
+
+            # Append new candles (avoid duplicates)
+            last_ts = self._candle_cache[-1]["timestamp"]
+            new_unique = [c for c in task.new_candles if c["timestamp"] > last_ts]
+            
+            if new_unique:
+                self._candle_cache.extend(new_unique)
+                # Keep cache size reasonable (e.g. max 5000 candles)
+                if len(self._candle_cache) > 5000:
+                     self._candle_cache = self._candle_cache[-5000:]
+
+        # 2. Check if cache covers visible range
+        # We need enough warmup data before visible range
+        if not self._candle_cache:
+             return self._run_full_analysis(task)
+
+        cache_start = self._candle_cache[0]["timestamp"]
+        cache_end = self._candle_cache[-1]["timestamp"]
+        
+        # Required start: visible start - warmup buffer (approx 100 bars)
+        # 1m bar = 60s. 100 bars = 6000s.
+        warmup_seconds = 60 * 100
+        required_start = task.visible_range.from_ts - warmup_seconds
+        
+        if required_start < cache_start:
+            # Cache doesn't go back far enough. Need full load.
+            logger.debug("Cache miss for incremental update (start). Falling back to full analysis.")
+            return self._run_full_analysis(task)
+            
+        if task.visible_range.to_ts > cache_end + 300: # Allow 5m slack
+             # Cache doesn't go forward enough (shouldn't happen with live updates but possible)
+             logger.debug("Cache miss for incremental update (end). Falling back to full analysis.")
+             return self._run_full_analysis(task)
+
+        # 3. Run analysis with cached candles
+        # Filter cache to relevant range to avoid processing too much? 
+        # Actually analyze_with_candles handles the whole list usually.
+        # But we can slice it to be efficient.
+        
+        # Find start index in cache
+        start_idx = 0
+        for i, c in enumerate(self._candle_cache):
+            if c["timestamp"] >= required_start:
+                start_idx = i
+                break
+        
+        sliced_candles = self._candle_cache[start_idx:]
+        
+        return self._analyzer.analyze_with_candles(
+            visible_range=task.visible_range,
+            symbol=task.symbol,
+            timeframe=task.timeframe,
+            candles=sliced_candles,
+        )
 
     def _handle_result(self, result: AnalysisResult, task: AnalysisTask) -> None:
         """Handle an analysis result.
 
         Detects changes and emits appropriate callbacks.
+        Updates candle cache.
 
         Args:
-            result: Analysis result.
+            result: AnalysisResult.
             task: Original task.
         """
+        # Update cache if result has candles (from full analysis or incremental)
+        if result.candles:
+            # For full analysis, replace cache
+            if task.task_type == TaskType.FULL_ANALYZE:
+                 self._candle_cache = list(result.candles)
+            # For incremental, we already updated cache in _run_incremental_update,
+            # but result might have processed/sliced ones. 
+            # Best to keep the main cache accumulating in _run_incremental_update
+            # and only replace on FULL_ANALYZE or if cache was empty.
+            elif not self._candle_cache:
+                 self._candle_cache = list(result.candles)
+
         # Check for regime change
         if self._last_regime and result.regime != self._last_regime:
             logger.info(

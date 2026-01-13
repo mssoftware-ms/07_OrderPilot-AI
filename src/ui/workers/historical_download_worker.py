@@ -26,20 +26,23 @@ class HistoricalDownloadWorker(QObject):
         symbols: list[str],
         days: int,
         timeframe: str,
+        mode: str = "download",  # "download" or "sync"
     ):
         """Initialize download worker.
 
         Args:
             provider_type: "alpaca" or "bitunix"
             symbols: List of symbols to download
-            days: Number of days of history
+            days: Number of days of history (ignored in sync mode)
             timeframe: Timeframe string (1min, 5min, 15min, 1h, 4h, 1d)
+            mode: "download" (replace existing) or "sync" (update missing)
         """
         super().__init__()
         self.provider_type = provider_type
         self.symbols = symbols
         self.days = days
         self.timeframe = timeframe
+        self.mode = mode
         self._cancelled = False
 
     def cancel(self):
@@ -214,16 +217,31 @@ class HistoricalDownloadWorker(QObject):
                 return callback
 
             try:
-                symbol_results = await manager.bulk_download(
-                    provider=provider,
-                    symbols=[symbol],
-                    days_back=self.days,
-                    timeframe=timeframe,
-                    source=DataSource.BITUNIX,
-                    batch_size=100,
-                    replace_existing=True,  # Delete old data first (removes bad ticks)
-                    progress_callback=make_progress_callback(symbol, progress_pct),
-                )
+                if self.mode == "sync":
+                    # Smart Sync: Check coverage and download only missing data
+                    self.progress.emit(progress_pct, f"Syncing {symbol} (filling gaps)...")
+                    
+                    symbol_results = await manager.sync_history_to_now(
+                        provider=provider,
+                        symbols=[symbol],
+                        timeframe=timeframe,
+                        source=DataSource.BITUNIX,
+                        batch_size=100,
+                        filter_config=None, # Use default
+                        progress_callback=make_progress_callback(symbol, progress_pct)
+                    )
+                else:
+                    # Full Download: Replace existing data
+                    symbol_results = await manager.bulk_download(
+                        provider=provider,
+                        symbols=[symbol],
+                        days_back=self.days,
+                        timeframe=timeframe,
+                        source=DataSource.BITUNIX,
+                        batch_size=100,
+                        replace_existing=True,  # Delete old data first (removes bad ticks)
+                        progress_callback=make_progress_callback(symbol, progress_pct),
+                    )
                 results.update(symbol_results)
             except Exception as e:
                 logger.error(f"Failed to download {symbol}: {e}")

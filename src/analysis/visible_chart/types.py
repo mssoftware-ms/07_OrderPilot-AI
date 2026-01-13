@@ -136,6 +136,7 @@ class AnalysisResult:
     visible_range: VisibleRange | None = None
     analysis_time_ms: float = 0.0
     candle_count: int = 0
+    candles: list[dict] | None = None
 
     @property
     def long_count(self) -> int:

@@ -151,9 +151,23 @@ class BotDisplayPositionMixin:
         return None
 
     def _get_current_price(self, from_bot: bool = True) -> float:
+        """Get current market price.
+        
+        Priority:
+        1. Live tick price (from streaming)
+        2. Bot controller last features (closed candle)
+        3. Chart widget data (last row)
+        """
+        # 1. Live tick price (most recent)
+        if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
+            return self._last_tick_price
+
+        # 2. Bot controller features (usually last closed bar)
         current = 0.0
         if from_bot and self._bot_controller and self._bot_controller._last_features:
             current = self._bot_controller._last_features.close
+            
+        # 3. Chart data fallback
         if current <= 0 and hasattr(self, 'chart_widget'):
             if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                 try:

@@ -44,7 +44,9 @@ class ToolbarMixinRow1:
     def add_timeframe_selector(self, toolbar: QToolBar) -> None:
         toolbar.addWidget(QLabel("Kerzen:"))
         self.parent.timeframe_combo = QComboBox()
+        # Issue #38: Added 1 second timeframe
         timeframes = [
+            ("1 Sekunde", "1S"),
             ("1 Minute", "1T"),
             ("5 Minuten", "5T"),
             ("15 Minuten", "15T"),
