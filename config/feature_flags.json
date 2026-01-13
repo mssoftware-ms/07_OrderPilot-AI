@@ -1,0 +1,103 @@
+{
+  "_comment": "Feature Flags for OrderPilot-AI - Task 5.24",
+  "_version": "1.0.0",
+  "_last_updated": "2026-01-13",
+
+  "bitunix_hedge": {
+    "enabled": false,
+    "description": "Bitunix HEDGE mode execution (Phases 0-5)",
+    "safe_default": false,
+    "reason": "New feature - requires testing before enabling",
+
+    "sub_features": {
+      "adaptive_limit_entry": {
+        "enabled": false,
+        "description": "Adaptive limit order entry with continuous price adjustment",
+        "phase": 4
+      },
+      "trailing_stop": {
+        "enabled": false,
+        "description": "Trailing stop loss that locks in profits",
+        "phase": 5
+      },
+      "kill_switch": {
+        "enabled": true,
+        "description": "Emergency close all positions",
+        "always_available": true
+      },
+      "single_trade_gate": {
+        "enabled": true,
+        "description": "Maximum 1 active trade enforcement",
+        "cannot_disable": true,
+        "reason": "Core safety feature"
+      }
+    },
+
+    "safety_limits": {
+      "max_notional_usd": 10000.0,
+      "max_leverage": 20,
+      "max_position_size": 1.0,
+      "comment": "Conservative defaults - can be overridden in bitunix_hedge_config.py"
+    },
+
+    "rate_limits": {
+      "place_order_per_sec": 8.0,
+      "modify_order_per_sec": 4.0,
+      "cancel_order_per_sec": 4.0,
+      "tpsl_modify_per_sec": 2.0,
+      "comment": "Below API limits for safety margin"
+    }
+  },
+
+  "release": {
+    "version": "1.0.0",
+    "date": "2026-01-13",
+    "status": "beta",
+    "ready_for_production": false,
+    "required_testing": [
+      "8-hour load test (Task 5.21)",
+      "Final QA checklist (Task 5.22)",
+      "Testnet validation"
+    ],
+
+    "rollout_plan": {
+      "stage_1_alpha": {
+        "enabled": false,
+        "users": "internal_testing_only",
+        "environment": "testnet",
+        "duration_days": 7
+      },
+      "stage_2_beta": {
+        "enabled": false,
+        "users": "selected_beta_testers",
+        "environment": "testnet",
+        "duration_days": 14,
+        "criteria": "Stage 1 passed without critical bugs"
+      },
+      "stage_3_production": {
+        "enabled": false,
+        "users": "all_users",
+        "environment": "mainnet",
+        "criteria": "Stage 2 passed + load test passed + QA signed off"
+      }
+    }
+  },
+
+  "monitoring": {
+    "log_level": "INFO",
+    "raw_ws_events": false,
+    "audit_logging": true,
+    "performance_metrics": true,
+    "comment": "Set raw_ws_events=true only for debugging"
+  },
+
+  "experimental": {
+    "_comment": "Features in development - DO NOT ENABLE IN PRODUCTION",
+    "multi_position_hedge": {
+      "enabled": false,
+      "description": "Allow multiple simultaneous positions",
+      "status": "planned",
+      "conflicts_with": "single_trade_gate"
+    }
+  }
+}

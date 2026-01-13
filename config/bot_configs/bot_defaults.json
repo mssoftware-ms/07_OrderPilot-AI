@@ -1,6 +1,6 @@
 {
   "meta": {
-    "saved_at": "2026-01-13T03:21:19.225683",
+    "saved_at": "2026-01-13T12:30:24.280167",
     "version": "1.0",
     "type": "bot_control_settings"
   },
@@ -8,9 +8,9 @@
     "ki_mode": "FULL_KI",
     "trade_direction": "AUTO",
     "trailing_mode": "PCT",
-    "initial_sl": 0.5,
+    "initial_sl": 0.2,
     "capital": 1000.0,
-    "risk_per_trade": 10.0,
+    "risk_per_trade": 8.5,
     "max_trades": 10,
     "max_daily_loss": 3.0,
     "disable_restrictions": true,
@@ -20,7 +20,6 @@
     "leverage_override_enabled": true,
     "leverage_value": 20,
     "regime_adaptive": true,
-    "trailing_activation": 0.0,
     "tra_percent": 0.1,
     "trailing_distance": 0.1,
     "atr_multiplier": 2.5,
@@ -35,6 +34,8 @@
     "pattern_winrate": 55,
     "show_entry_markers": true,
     "show_stop_lines": true,
-    "show_debug_hud": false
+    "show_debug_hud": false,
+    "futures_maker_fee": 0.02,
+    "futures_taker_fee": 0.06
   }
 }
