@@ -157,6 +157,7 @@ class ToolbarMixin:
 
     def _add_live_data_toggle(self, toolbar: QToolBar) -> None:
         self.live_data_toggle = QPushButton("Live Data: OFF")
+        self.live_data_toggle.setObjectName("liveDataToggle")
         self.live_data_toggle.setCheckable(True)
         self.live_data_toggle.setToolTip(
             "Toggle live market data in paper mode\n"

@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitunix Execution (HEDGE) - Hilfe</title>
+    <style>
+        :root {
+            --bg-dark: #1a1a2e;
+            --bg-card: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --text: #eee;
+            --text-dim: #aaa;
+            --success: #26a69a;
+            --warning: #ff9800;
+            --danger: #ef5350;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--highlight);
+            border-bottom: 2px solid var(--highlight);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: var(--success);
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--success);
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: var(--warning);
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .quickstart {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid var(--accent);
+        }
+
+        .quickstart h2 {
+            margin-top: 0;
+            color: var(--highlight);
+            border-left-color: var(--highlight);
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .step {
+            background: var(--accent);
+            padding: 15px;
+            border-radius: 8px;
+            position: relative;
+        }
+
+        .step-number {
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            width: 30px;
+            height: 30px;
+            background: var(--highlight);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .step h4 {
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .step p {
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+
+        .section {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--accent);
+        }
+
+        th {
+            background: var(--accent);
+            color: var(--highlight);
+        }
+
+        tr:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-success { background: var(--success); }
+        .badge-warning { background: var(--warning); color: #000; }
+        .badge-danger { background: var(--danger); }
+        .badge-info { background: var(--accent); }
+
+        .warning-box {
+            background: rgba(255, 152, 0, 0.2);
+            border-left: 4px solid var(--warning);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .danger-box {
+            background: rgba(239, 83, 80, 0.2);
+            border-left: 4px solid var(--danger);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .success-box {
+            background: rgba(38, 166, 154, 0.2);
+            border-left: 4px solid var(--success);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        code {
+            background: var(--accent);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .keyboard {
+            display: inline-block;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: monospace;
+            font-size: 12px;
+            box-shadow: 0 2px 0 #222;
+        }
+
+        .flow-diagram {
+            background: var(--accent);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .flow-step {
+            display: inline-block;
+            background: var(--bg-card);
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin: 5px;
+        }
+
+        .flow-arrow {
+            color: var(--highlight);
+            font-size: 20px;
+            margin: 0 10px;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--accent);
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            color: var(--text);
+            background: var(--accent);
+        }
+
+        .tab.active {
+            color: var(--highlight);
+            border-bottom: 2px solid var(--highlight);
+            margin-bottom: -2px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .state-machine {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .state {
+            padding: 15px 25px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .state-idle { background: var(--success); }
+        .state-pending { background: var(--warning); color: #000; }
+        .state-open { background: #2196F3; }
+        .state-exit { background: #9C27B0; }
+        .state-error { background: var(--danger); }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--accent);
+            color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Bitunix Execution (HEDGE) - Hilfe</h1>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('quickstart')">🚀 Schnellstart</button>
+            <button class="tab" onclick="showTab('detailed')">📖 Detaillierte Hilfe</button>
+            <button class="tab" onclick="showTab('reference')">📋 Referenz</button>
+        </div>
+
+        <!-- SCHNELLSTART TAB -->
+        <div id="quickstart" class="tab-content active">
+            <div class="quickstart">
+                <h2>🚀 Schnellstart - In 5 Schritten zum ersten Trade</h2>
+
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h4>Symbol wählen</h4>
+                        <p>Wähle ein Trading-Pair (z.B. BTCUSDT) aus der Dropdown-Liste.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h4>Leverage einstellen</h4>
+                        <p>Setze den Hebel (1-125x) und klicke "Apply".</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h4>Qty & Direction</h4>
+                        <p>Gib die Menge ein und wähle Long oder Short.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <h4>SL setzen (Pflicht!)</h4>
+                        <p>Aktiviere SL und gib den Stop-Loss-Preis ein.</p>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">5</div>
+                        <h4>ARM → SEND</h4>
+                        <p>Klicke "ARM", dann "SEND" um die Order zu platzieren.</p>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ Wichtig:</strong> Das System arbeitet im <strong>Single-Trade-Modus</strong>.
+                    Es kann nur eine Position gleichzeitig offen sein!
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📊 State Machine - Übersicht</h2>
+                <div class="state-machine">
+                    <div class="state state-idle">IDLE<br><small>Bereit</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="state state-pending">ENTRY_PENDING<br><small>Order aktiv</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="state state-open">POSITION_OPEN<br><small>Position offen</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="state state-exit">EXIT_PENDING<br><small>Schließt</small></div>
+                    <span class="flow-arrow">→</span>
+                    <div class="state state-idle">IDLE</div>
+                </div>
+                <p style="text-align: center; color: var(--text-dim);">
+                    Bei Fehlern: <span class="state state-error" style="display: inline-block; padding: 5px 15px;">ERROR_LOCK</span>
+                    → KILL SWITCH oder manuelles Reset
+                </p>
+            </div>
+        </div>
+
+        <!-- DETAILLIERTE HILFE TAB -->
+        <div id="detailed" class="tab-content">
+            <div class="section">
+                <h2>🔌 GroupBox: Connection & Risk</h2>
+
+                <table>
+                    <tr>
+                        <th>Element</th>
+                        <th>Beschreibung</th>
+                        <th>Hinweise</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Status</strong></td>
+                        <td>Verbindungsstatus (Connected/Disconnected)</td>
+                        <td>REST + WebSocket müssen beide OK sein</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Symbol</strong></td>
+                        <td>Trading-Pair Auswahl</td>
+                        <td>Nur änderbar im IDLE-State</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Leverage</strong></td>
+                        <td>Hebel (1-125x je nach Symbol)</td>
+                        <td>"Apply" klicken um zu aktivieren</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Qty (Base)</strong></td>
+                        <td>Order-Menge in Base-Currency</td>
+                        <td>Min: 0.001 BTC, Precision beachten!</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Notional</strong></td>
+                        <td>Berechneter USD-Wert</td>
+                        <td>qty × aktueller Preis</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Require SL</strong></td>
+                        <td>SL-Pflicht aktivieren</td>
+                        <td><span class="badge badge-danger">Empfohlen: AN</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Confirm Market</strong></td>
+                        <td>Bestätigung bei Market-Orders</td>
+                        <td><span class="badge badge-warning">Empfohlen: AN</span></td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📝 GroupBox: Entry</h2>
+
+                <h3>Direction</h3>
+                <div class="grid-2">
+                    <div>
+                        <p><span class="badge badge-success">Long</span> = Kaufen (BUY)</p>
+                        <p>Profit wenn Preis steigt</p>
+                    </div>
+                    <div>
+                        <p><span class="badge badge-danger">Short</span> = Verkaufen (SELL)</p>
+                        <p>Profit wenn Preis fällt</p>
+                    </div>
+                </div>
+
+                <h3>Entry Mode</h3>
+                <table>
+                    <tr>
+                        <th>Modus</th>
+                        <th>Beschreibung</th>
+                        <th>Anwendungsfall</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Standard</strong></td>
+                        <td>Normale LIMIT oder MARKET Order</td>
+                        <td>Schnelle Ausführung, einfache Trades</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Adaptive Limit</strong></td>
+                        <td>Preis folgt dem Markt mit Offset</td>
+                        <td>Besserer Fill-Preis, weniger Slippage</td>
+                    </tr>
+                </table>
+
+                <h3>Adaptive Limit - Workflow</h3>
+                <div class="flow-diagram">
+                    <span class="flow-step">Start-Preis berechnen</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">LIMIT Order platzieren</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">Tick-Loop: Preis anpassen</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-step">Fill → Position offen</span>
+                </div>
+
+                <div class="success-box">
+                    <strong>💡 Tipp:</strong> Adaptive Limit mit <code>offset = 0.05%</code> gibt dir einen besseren
+                    Entry-Preis als Market-Orders, ohne dass du ständig den Preis manuell anpassen musst.
+                </div>
+
+                <h3>Actions</h3>
+                <table>
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                        <th>Hotkey</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-warning">ARM</span></td>
+                        <td>Aktiviert SEND-Button für 3 Sekunden</td>
+                        <td>-</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-success">SEND</span></td>
+                        <td>Platziert die Order</td>
+                        <td><span class="keyboard">Ctrl+L</span> (Long), <span class="keyboard">Ctrl+S</span> (Short)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-info">Cancel</span></td>
+                        <td>Bricht pending Order ab</td>
+                        <td><span class="keyboard">Esc</span></td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>🎯 GroupBox: TP/SL & Trailing</h2>
+
+                <h3>Take Profit (TP)</h3>
+                <p>Automatischer Gewinnmitnahme-Preis. Position wird geschlossen wenn Preis erreicht.</p>
+
+                <h3>Stop Loss (SL)</h3>
+                <p>Verlustbegrenzung. <span class="badge badge-danger">PFLICHT</span> wenn "Require SL" aktiv!</p>
+
+                <div class="warning-box">
+                    <strong>⚠️ SL-Pflicht:</strong> Ohne Stop-Loss kann ein Trade unbegrenzte Verluste verursachen!
+                    Das System verhindert das Senden ohne SL wenn "Require SL" aktiviert ist.
+                </div>
+
+                <h3>Trailing Stop</h3>
+                <p>Der SL folgt dem Preis in Gewinnrichtung:</p>
+                <ul style="margin-left: 20px;">
+                    <li><strong>Long:</strong> SL steigt mit dem Preis (aber nie runter)</li>
+                    <li><strong>Short:</strong> SL sinkt mit dem Preis (aber nie hoch)</li>
+                </ul>
+
+                <h3>Sync SL to Exchange</h3>
+                <p>Synchronisiert den internen SL-Wert mit der Exchange. Wichtig für Trailing Stop!</p>
+
+                <h3>Exit Controls</h3>
+                <table>
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-danger">Close Position</span></td>
+                        <td>Schließt Position mit Market-Order (mit Bestätigung)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-danger">FLASH CLOSE</span></td>
+                        <td>Notfall-Schließung ohne Verzögerung</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📊 GroupBox: Status</h2>
+
+                <table>
+                    <tr>
+                        <th>Feld</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td><strong>State</strong></td>
+                        <td>Aktueller Zustand (IDLE, ENTRY_PENDING, POSITION_OPEN, etc.)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Order ID</strong></td>
+                        <td>ID der aktiven Order (für Support-Anfragen)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Position ID</strong></td>
+                        <td>ID der offenen Position</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Adaptive</strong></td>
+                        <td>Aktueller Preis im Adaptive-Modus + Timestamp</td>
+                    </tr>
+                </table>
+
+                <div class="danger-box">
+                    <strong>🛑 KILL SWITCH</strong><br>
+                    Notfall-Button der:
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Alle pending Orders cancelt</li>
+                        <li>Adaptive Limit stoppt</li>
+                        <li>Trading deaktiviert</li>
+                    </ul>
+                    <p style="margin-top: 10px;">Hotkey: <span class="keyboard">Ctrl+Shift+X</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- REFERENZ TAB -->
+        <div id="reference" class="tab-content">
+            <div class="section">
+                <h2>📋 Validierungsregeln</h2>
+                <table>
+                    <tr>
+                        <th>Regel</th>
+                        <th>Beschreibung</th>
+                        <th>Fehlermeldung</th>
+                    </tr>
+                    <tr>
+                        <td>Direction</td>
+                        <td>Long oder Short muss gewählt sein</td>
+                        <td>"Direction not selected"</td>
+                    </tr>
+                    <tr>
+                        <td>Qty ≥ Min</td>
+                        <td>Menge muss ≥ minTradeVolume sein</td>
+                        <td>"Quantity below minimum"</td>
+                    </tr>
+                    <tr>
+                        <td>Precision</td>
+                        <td>Qty/Price auf richtige Dezimalstellen</td>
+                        <td>"Precision error"</td>
+                    </tr>
+                    <tr>
+                        <td>SL Pflicht</td>
+                        <td>SL muss gesetzt sein wenn aktiviert</td>
+                        <td>"SL is required"</td>
+                    </tr>
+                    <tr>
+                        <td>Single Trade</td>
+                        <td>Kein neuer Trade wenn nicht IDLE</td>
+                        <td>"Trade already active"</td>
+                    </tr>
+                    <tr>
+                        <td>Price Collar</td>
+                        <td>Preis max 0.30% vom aktuellen entfernt</td>
+                        <td>"Price out of range"</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>⌨️ Hotkeys</h2>
+                <table>
+                    <tr>
+                        <th>Hotkey</th>
+                        <th>Aktion</th>
+                    </tr>
+                    <tr>
+                        <td><span class="keyboard">Ctrl+L</span></td>
+                        <td>ARM + SEND Long</td>
+                    </tr>
+                    <tr>
+                        <td><span class="keyboard">Ctrl+S</span></td>
+                        <td>ARM + SEND Short</td>
+                    </tr>
+                    <tr>
+                        <td><span class="keyboard">Esc</span></td>
+                        <td>Cancel Pending / Stop Adaptive</td>
+                    </tr>
+                    <tr>
+                        <td><span class="keyboard">Ctrl+Shift+X</span></td>
+                        <td>KILL SWITCH (Flash Close)</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>📊 State Machine - Transitions</h2>
+                <table>
+                    <tr>
+                        <th>Von</th>
+                        <th>Nach</th>
+                        <th>Trigger</th>
+                    </tr>
+                    <tr>
+                        <td>IDLE</td>
+                        <td>ENTRY_PENDING</td>
+                        <td>SEND geklickt</td>
+                    </tr>
+                    <tr>
+                        <td>ENTRY_PENDING</td>
+                        <td>POSITION_OPEN</td>
+                        <td>WS: Order FILLED</td>
+                    </tr>
+                    <tr>
+                        <td>ENTRY_PENDING</td>
+                        <td>IDLE</td>
+                        <td>WS: Order CANCELED</td>
+                    </tr>
+                    <tr>
+                        <td>POSITION_OPEN</td>
+                        <td>EXIT_PENDING</td>
+                        <td>Close/Flash Close geklickt</td>
+                    </tr>
+                    <tr>
+                        <td>EXIT_PENDING</td>
+                        <td>IDLE</td>
+                        <td>WS: Position geschlossen</td>
+                    </tr>
+                    <tr>
+                        <td>*</td>
+                        <td>ERROR_LOCK</td>
+                        <td>Kritischer Fehler</td>
+                    </tr>
+                    <tr>
+                        <td>ERROR_LOCK</td>
+                        <td>IDLE</td>
+                        <td>KILL SWITCH oder Manual Reset</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>🔧 Defaults (Empfohlen)</h2>
+                <table>
+                    <tr>
+                        <th>Setting</th>
+                        <th>Default</th>
+                        <th>Empfehlung</th>
+                    </tr>
+                    <tr>
+                        <td>Position Mode</td>
+                        <td>HEDGE</td>
+                        <td><span class="badge badge-danger">Pflicht!</span></td>
+                    </tr>
+                    <tr>
+                        <td>Entry Mode</td>
+                        <td>Standard LIMIT</td>
+                        <td>POST_ONLY für weniger Fees</td>
+                    </tr>
+                    <tr>
+                        <td>Adaptive Offset</td>
+                        <td>0.05%</td>
+                        <td>0.01% - 0.10%</td>
+                    </tr>
+                    <tr>
+                        <td>Require SL</td>
+                        <td>ON</td>
+                        <td><span class="badge badge-danger">Immer AN!</span></td>
+                    </tr>
+                    <tr>
+                        <td>Confirm Market</td>
+                        <td>ON</td>
+                        <td>Empfohlen</td>
+                    </tr>
+                    <tr>
+                        <td>SL Trigger</td>
+                        <td>MARK_PRICE</td>
+                        <td>Stabiler als LAST_PRICE</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>⚠️ Rate Limits</h2>
+                <table>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Limit</th>
+                        <th>Hinweis</th>
+                    </tr>
+                    <tr>
+                        <td>modify_order</td>
+                        <td>4/s</td>
+                        <td>Für Adaptive Limit</td>
+                    </tr>
+                    <tr>
+                        <td>tpsl_modify</td>
+                        <td>2/s</td>
+                        <td>Für Trailing SL Sync</td>
+                    </tr>
+                    <tr>
+                        <td>place_order</td>
+                        <td>10/s</td>
+                        <td>Genug für Single-Trade</td>
+                    </tr>
+                </table>
+
+                <div class="warning-box">
+                    <strong>⚠️ 429 Too Many Requests:</strong> Bei Überschreitung wartet das System automatisch
+                    (Exponential Backoff). Der "RateLimit"-Indikator im Status zeigt aktuelle Nutzung.
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Bitunix Execution (HEDGE) - OrderPilot-AI</p>
+            <p>Version 1.0.0 | © 2026</p>
+        </footer>
+    </div>
+
+    <script>
+        function showTab(tabId) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            // Remove active from all tabs
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+            // Show selected tab content
+            document.getElementById(tabId).classList.add('active');
+            // Set active tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

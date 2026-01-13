@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFontComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -25,6 +26,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -48,6 +50,38 @@ class SettingsTabsBasic:
         self.parent.theme_combo = QComboBox()
         self.parent.theme_combo.addItems(["Dark", "Light"])
         layout.addRow("Theme:", self.parent.theme_combo)
+
+        # UI Customization
+        layout.addRow(QLabel(""))
+        layout.addRow(QLabel("<b>UI Customization</b>"))
+
+        # Button Border Color
+        self.parent.ui_btn_border_color_btn = QPushButton()
+        self.parent.ui_btn_border_color_btn.setFixedSize(80, 30)
+        self.parent.ui_btn_border_color_btn.clicked.connect(lambda: self._choose_color('btn_border'))
+        self.parent.ui_btn_border_color = QColor("#3A3D43")  # Default dark theme border
+        self._update_color_button(self.parent.ui_btn_border_color_btn, self.parent.ui_btn_border_color)
+        layout.addRow("Button Border Color:", self.parent.ui_btn_border_color_btn)
+
+        # UI Font Color
+        self.parent.ui_font_color_btn = QPushButton()
+        self.parent.ui_font_color_btn.setFixedSize(80, 30)
+        self.parent.ui_font_color_btn.clicked.connect(lambda: self._choose_color('font_color'))
+        self.parent.ui_font_color = QColor("#EAECEF")  # Default dark theme text
+        self._update_color_button(self.parent.ui_font_color_btn, self.parent.ui_font_color)
+        layout.addRow("Global Font Color:", self.parent.ui_font_color_btn)
+
+        # Font Family
+        self.parent.ui_font_family_combo = QFontComboBox()
+        # Initial value will be loaded in load_current_settings
+        layout.addRow("Font Family:", self.parent.ui_font_family_combo)
+
+        # Font Size
+        self.parent.ui_font_size_spin = QSpinBox()
+        self.parent.ui_font_size_spin.setRange(8, 30)
+        self.parent.ui_font_size_spin.setValue(14)  # Default
+        self.parent.ui_font_size_spin.setSuffix(" px")
+        layout.addRow("Font Size:", self.parent.ui_font_size_spin)
 
         # Auto-connect broker
         self.parent.auto_connect_check = QCheckBox("Auto-connect to broker on startup")
@@ -220,7 +254,7 @@ class SettingsTabsBasic:
         """Open color picker dialog (Issue #34).
 
         Args:
-            color_type: 'bullish', 'bearish', or 'background'
+            color_type: 'bullish', 'bearish', 'background', 'btn_border', or 'font_color'
         """
         # Get current color
         if color_type == 'bullish':
@@ -229,12 +263,20 @@ class SettingsTabsBasic:
         elif color_type == 'bearish':
             current_color = self.parent.bearish_color
             btn = self.parent.bearish_color_btn
-        else:  # background
+        elif color_type == 'background':
             current_color = self.parent.background_color
             btn = self.parent.background_color_btn
+        elif color_type == 'btn_border':
+            current_color = self.parent.ui_btn_border_color
+            btn = self.parent.ui_btn_border_color_btn
+        elif color_type == 'font_color':
+            current_color = self.parent.ui_font_color
+            btn = self.parent.ui_font_color_btn
+        else:
+            return
 
         # Open color dialog
-        color = QColorDialog.getColor(current_color, self.parent, f"{color_type.title()} Farbe wählen")
+        color = QColorDialog.getColor(current_color, self.parent, f"{color_type.replace('_', ' ').title()} Farbe wählen")
 
         if color.isValid():
             # Update color
@@ -242,8 +284,12 @@ class SettingsTabsBasic:
                 self.parent.bullish_color = color
             elif color_type == 'bearish':
                 self.parent.bearish_color = color
-            else:  # background
+            elif color_type == 'background':
                 self.parent.background_color = color
+            elif color_type == 'btn_border':
+                self.parent.ui_btn_border_color = color
+            elif color_type == 'font_color':
+                self.parent.ui_font_color = color
 
             # Update button appearance
             self._update_color_button(btn, color)

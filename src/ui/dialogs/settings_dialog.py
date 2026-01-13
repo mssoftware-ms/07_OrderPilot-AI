@@ -74,6 +74,34 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
 
         # General
         self._set_combo_value(self.theme_combo, self.settings.value("theme", "Dark"))
+
+        # UI Customization
+        ui_btn_border_color_name = self.settings.value("ui_btn_border_color", "#3A3D43")
+        self.ui_btn_border_color = QColor(ui_btn_border_color_name)
+        if hasattr(self, '_basic_helper'):
+            self._basic_helper._update_color_button(self.ui_btn_border_color_btn, self.ui_btn_border_color)
+
+        ui_font_color_name = self.settings.value("ui_font_color", "#EAECEF")
+        self.ui_font_color = QColor(ui_font_color_name)
+        if hasattr(self, '_basic_helper'):
+            self._basic_helper._update_color_button(self.ui_font_color_btn, self.ui_font_color)
+
+        current_font = self.settings.value("ui_font_family", "Segoe UI")
+        self.ui_font_family_combo.setCurrentFont(self.ui_font_family_combo.currentFont()) # Set default first
+        # Find font in combo
+        idx = -1
+        # Iterate to find the font family match
+        for i in range(self.ui_font_family_combo.count()):
+            if self.ui_font_family_combo.itemText(i) == current_font:
+                idx = i
+                break
+        if idx >= 0:
+            self.ui_font_family_combo.setCurrentIndex(idx)
+
+        self.ui_font_size_spin.setValue(
+            self.settings.value("ui_font_size", 14, type=int)
+        )
+
         self.auto_connect_check.setChecked(
             self.settings.value("auto_connect", False, type=bool)
         )
@@ -319,6 +347,13 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         try:
             # General
             self.settings.setValue("theme", self.theme_combo.currentText())
+            
+            # UI Customization
+            self.settings.setValue("ui_btn_border_color", self.ui_btn_border_color.name())
+            self.settings.setValue("ui_font_color", self.ui_font_color.name())
+            self.settings.setValue("ui_font_family", self.ui_font_family_combo.currentFont().family())
+            self.settings.setValue("ui_font_size", self.ui_font_size_spin.value())
+
             self.settings.setValue("auto_connect", self.auto_connect_check.isChecked())
             self.settings.setValue("default_broker", self.default_broker_combo.currentText())
             self.settings.setValue("console_debug_level", self.console_debug_level.currentText())

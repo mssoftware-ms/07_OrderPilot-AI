@@ -135,8 +135,22 @@ class BotUISignalsMixin:
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # Current Position direkt oben ohne Splitter
-        layout.addWidget(self._build_current_position_widget())
+        # Top row: Bitunix HEDGE (with integrated Status) + Current Position
+        top_row_layout = QHBoxLayout()
+        top_row_layout.setSpacing(8)
+
+        # Bitunix HEDGE Execution Widget (takes remaining space)
+        # Now includes all 4 GroupBoxes: Connection & Risk, Entry, TP/SL, Status
+        bitunix_widget = self._build_bitunix_hedge_widget()
+        top_row_layout.addWidget(bitunix_widget, stretch=1)
+
+        # Current Position (fixed 420px width)
+        position_widget = self._build_current_position_widget()
+        position_widget.setMaximumWidth(420)
+        position_widget.setMinimumWidth(420)
+        top_row_layout.addWidget(position_widget, stretch=0)
+
+        layout.addLayout(top_row_layout)
 
         # 20px Abstand vor Recent Signals
         layout.addSpacing(20)
@@ -147,6 +161,74 @@ class BotUISignalsMixin:
         # Trading Bot Log (Issue #23)
         layout.addWidget(self._build_bot_log_widget())
         return widget
+
+    def _build_bitunix_hedge_widget(self) -> QWidget:
+        """Build Bitunix HEDGE Execution Widget.
+
+        Uses the new BitunixHedgeExecutionWidget with 3-column layout.
+        Based on: UI_Spezifikation_TradingBot_Signals_BitunixExecution.md
+        """
+        from src.ui.widgets.bitunix_hedge_execution_widget import BitunixHedgeExecutionWidget
+
+        try:
+            self.bitunix_hedge_widget = BitunixHedgeExecutionWidget(parent=self)
+
+            # Wire up signals
+            self.bitunix_hedge_widget.order_placed.connect(self._on_bitunix_order_placed)
+            self.bitunix_hedge_widget.position_opened.connect(self._on_bitunix_position_opened)
+            self.bitunix_hedge_widget.trade_closed.connect(self._on_bitunix_trade_closed)
+
+            return self.bitunix_hedge_widget
+
+        except Exception as e:
+            logger.error(f"Failed to create Bitunix HEDGE widget: {e}")
+            # Return placeholder on error
+            error_widget = QLabel(f"Bitunix HEDGE: Initialization failed - {e}")
+            error_widget.setStyleSheet("color: #ff5555; padding: 8px;")
+            return error_widget
+
+    def _on_bitunix_order_placed(self, order_id: str):
+        """Handle Bitunix order placed event."""
+        logger.info(f"Bitunix order placed: {order_id}")
+
+    def _on_bitunix_position_opened(self, position_id: str):
+        """Handle Bitunix position opened event."""
+        logger.info(f"Bitunix position opened: {position_id}")
+
+    def _on_bitunix_trade_closed(self):
+        """Handle Bitunix trade closed event."""
+        logger.info("Bitunix trade closed")
+
+    def _build_status_widget_fallback(self) -> QWidget:
+        """Build fallback Status GroupBox if Bitunix widget failed."""
+        status_group = QGroupBox("Status")
+        layout = QFormLayout()
+        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setVerticalSpacing(8)
+
+        self.state_label = QLabel("—")
+        layout.addRow("State:", self.state_label)
+
+        self.order_id_label = QLabel("—")
+        layout.addRow("Order ID:", self.order_id_label)
+
+        self.position_id_label = QLabel("—")
+        layout.addRow("Position ID:", self.position_id_label)
+
+        self.adaptive_label = QLabel("—")
+        layout.addRow("Adaptive:", self.adaptive_label)
+
+        kill_btn = QPushButton("KILL SWITCH")
+        kill_btn.setStyleSheet(
+            "background-color: #ff0000; color: white; font-weight: bold; padding: 8px;"
+        )
+        layout.addRow(kill_btn)
+
+        status_group.setLayout(layout)
+        status_group.setMinimumWidth(160)
+        status_group.setMaximumWidth(200)
+
+        return status_group
 
     def _build_current_position_widget(self) -> QWidget:
         position_widget = QWidget()
@@ -170,7 +252,7 @@ class BotUISignalsMixin:
         group_layout.addWidget(details_widget)
 
         position_group.setLayout(group_layout)
-        position_group.setMaximumHeight(220)
+        # Removed setMaximumHeight - allow full vertical space
         position_layout.addWidget(position_group)
         return position_widget
 

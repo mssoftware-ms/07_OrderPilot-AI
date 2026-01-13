@@ -3,16 +3,49 @@
 Provides Dark and Light themes for the PyQt6 application.
 """
 
+from PyQt6.QtCore import QSettings
+
 
 class ThemeManager:
     """Manages application themes."""
 
     def __init__(self):
         """Initialize theme manager."""
+        self.settings = QSettings("OrderPilot", "TradingApp")
+        self.reload_themes()
+
+    def reload_themes(self):
+        """Reload themes from settings."""
         self.themes = {
-            "dark": self._create_dark_theme(),
-            "light": self._create_light_theme()
+            "dark": self._create_dark_theme() + self._get_custom_overrides(),
+            "light": self._create_light_theme() + self._get_custom_overrides()
         }
+
+    def _get_custom_overrides(self) -> str:
+        """Generate CSS for custom UI settings."""
+        btn_border = self.settings.value("ui_btn_border_color", "#3A3D43")
+        font_color = self.settings.value("ui_font_color", "#EAECEF")
+        font_family = self.settings.value("ui_font_family", "Segoe UI")
+        font_size = self.settings.value("ui_font_size", 14)
+
+        return f"""
+            /* Custom UI Overrides */
+            QWidget {{
+                font-family: '{font_family}', Arial, sans-serif;
+                font-size: {font_size}px;
+                color: {font_color};
+            }}
+            QPushButton {{
+                border: 1px solid {btn_border};
+                color: {font_color};
+            }}
+            /* Exclusions */
+            QPushButton#liveDataToggle {{
+                border: 1px solid #D0D0D0; /* Keep original-ish border */
+                /* Color is handled by logic usually, but we can force default if needed */
+            }}
+            /* Kill Switches usually have inline styles which take precedence */
+        """
 
     def _create_dark_theme(self) -> str:
         """Create dark theme stylesheet."""
