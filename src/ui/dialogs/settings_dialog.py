@@ -9,6 +9,7 @@ import logging
 import os
 
 from PyQt6.QtCore import QSettings
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -149,10 +150,12 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.background_image_opacity_slider.setValue(bg_opacity)
         self.background_image_opacity_label.setText(f"{bg_opacity}%")
 
-        # Issue #39: Load Candle Border Radius
+        # Issue #39/#49: Load Candle Border Radius (0.25px increments)
         border_radius = self.settings.value("chart_candle_border_radius", 0, type=int)
         self.candle_border_radius_slider.setValue(border_radius)
-        self.candle_border_radius_label.setText(f"{border_radius} px")
+        # Display with 2 decimal places (value/4 to convert slider steps to pixels)
+        pixels = border_radius / 4.0
+        self.candle_border_radius_label.setText(f"{pixels:.2f} px")
 
         # Trading
         self.manual_approval.setChecked(

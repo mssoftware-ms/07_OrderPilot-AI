@@ -61,10 +61,31 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         outer_layout.setContentsMargins(8, 8, 8, 8)
         outer_layout.setSpacing(8)
 
-        # Title row with Help button
-        title_layout = QHBoxLayout()
-        title_layout.addStretch()
+        # Issue #66: Paper/Live Mode Toggle + Banner
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(12)
 
+        # Toggle checkbox
+        self.live_mode_cb = QCheckBox("Live Trading aktivieren")
+        self.live_mode_cb.setStyleSheet("font-weight: bold; font-size: 12px;")
+        self.live_mode_cb.setChecked(False)  # Default: Paper mode
+        self.live_mode_cb.toggled.connect(self._on_trading_mode_changed)
+        mode_row.addWidget(self.live_mode_cb)
+
+        # Mode indicator banner
+        self.mode_indicator = QLabel("📄 PAPERTRADING")
+        self.mode_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mode_indicator.setStyleSheet(
+            "background-color: #26a69a; color: white; "
+            "font-weight: bold; font-size: 16px; "
+            "padding: 12px; border-radius: 6px; "
+            "min-width: 200px;"
+        )
+        mode_row.addWidget(self.mode_indicator)
+
+        mode_row.addStretch()
+
+        # Help button
         self.help_btn = QPushButton("?")
         self.help_btn.setFixedSize(24, 24)
         self.help_btn.setStyleSheet(
@@ -74,9 +95,9 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         )
         self.help_btn.setToolTip("Hilfe zu Bitunix Execution (HEDGE)")
         self.help_btn.clicked.connect(self._on_help)
-        title_layout.addWidget(self.help_btn)
+        mode_row.addWidget(self.help_btn)
 
-        outer_layout.addLayout(title_layout)
+        outer_layout.addLayout(mode_row)
 
         # Columns layout (4 GroupBoxes)
         columns_layout = QHBoxLayout()
@@ -97,6 +118,12 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         outer_layout.addLayout(columns_layout)
 
         self.setLayout(outer_layout)
+
+        # Issue #66: Collect all trading widgets for Paper/Live mode control
+        self._collect_tradeable_widgets()
+
+        # Set initial mode (Paper mode by default)
+        self._update_mode_display(is_live=False)
 
     def _create_connection_risk_groupbox(self) -> QGroupBox:
         """Create GroupBox A: Connection & Risk."""
@@ -164,7 +191,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         layout.addRow("", self.confirm_market_cb)
 
         group.setLayout(layout)
-        group.setMaximumWidth(200)
+        group.setMaximumWidth(260)  # Issue #60: 30% breiter (200 * 1.3 = 260)
         return group
 
     def _create_entry_groupbox(self) -> QGroupBox:
@@ -267,24 +294,28 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         layout.addRow("", self.adaptive_target_label)
 
         # Actions
+        # Issue #59: Buttons untereinander, breiter, besser lesbar
         actions_widget = QWidget()
-        actions_layout = QHBoxLayout()
+        actions_layout = QVBoxLayout()  # Changed from QHBoxLayout to QVBoxLayout
         actions_layout.setContentsMargins(0, 8, 0, 0)
-        actions_layout.setSpacing(8)
+        actions_layout.setSpacing(6)  # Reduced spacing for vertical layout
 
         self.arm_btn = QPushButton("ARM")
-        self.arm_btn.setStyleSheet("background-color: #ff9800; color: white; font-weight: bold; padding: 6px 12px;")
+        self.arm_btn.setStyleSheet("background-color: #ff9800; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
+        self.arm_btn.setMinimumHeight(35)  # Ensure minimum height for readability
         self.arm_btn.clicked.connect(self._on_arm)
         actions_layout.addWidget(self.arm_btn)
 
         self.send_btn = QPushButton("SEND")
-        self.send_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 6px 12px;")
+        self.send_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
+        self.send_btn.setMinimumHeight(35)
         self.send_btn.setEnabled(False)
         self.send_btn.clicked.connect(self._on_send)
         actions_layout.addWidget(self.send_btn)
 
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setStyleSheet("background-color: #666; color: white; padding: 6px 8px;")
+        self.cancel_btn.setStyleSheet("background-color: #666; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
+        self.cancel_btn.setMinimumHeight(35)
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self._on_cancel)
         actions_layout.addWidget(self.cancel_btn)
@@ -293,7 +324,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         layout.addRow("", actions_widget)
 
         group.setLayout(layout)
-        group.setMaximumWidth(220)
+        group.setMaximumWidth(286)  # Issue #60: 30% breiter (220 * 1.3 = 286)
         return group
 
     def _create_tpsl_groupbox(self) -> QGroupBox:
@@ -375,7 +406,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         layout.addRow("", self.flash_close_btn)
 
         group.setLayout(layout)
-        group.setMaximumWidth(180)
+        group.setMaximumWidth(234)  # Issue #60: 30% breiter (180 * 1.3 = 234)
         return group
 
     def _create_status_groupbox(self) -> QGroupBox:
@@ -424,6 +455,112 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         status_group.setMaximumWidth(200)
 
         return status_group
+
+    # --- Issue #66: Paper/Live Mode Management ---
+
+    def _collect_tradeable_widgets(self) -> None:
+        """Collect all interactive widgets that should be disabled in Paper mode.
+
+        Issue #66: When in Paper Trading mode, all buttons and controls should be
+        disabled to prevent accidental live trading.
+        """
+        self._tradeable_widgets = [
+            # GroupBox A: Connection & Risk
+            self.symbol_combo,
+            self.leverage_spin,
+            self.leverage_btn,
+            self.qty_spin,
+            self.require_sl_cb,
+            self.confirm_market_cb,
+
+            # GroupBox B: Entry
+            self.long_radio,
+            self.short_radio,
+            self.entry_mode_combo,
+            self.limit_radio,
+            self.market_radio,
+            self.price_spin,
+            self.use_last_btn,
+            self.offset_spin,
+            self.arm_btn,
+            self.send_btn,
+            self.cancel_btn,
+
+            # GroupBox C: TP/SL & Trailing
+            self.tp_cb,
+            self.tp_spin,
+            self.sl_cb,
+            self.sl_spin,
+            self.sync_sl_btn,
+            self.trailing_cb,
+            self.close_btn,
+            self.flash_close_btn,
+
+            # GroupBox D: Status
+            self.kill_btn,
+        ]
+
+    def _on_trading_mode_changed(self, is_live: bool) -> None:
+        """Handle Paper/Live mode toggle.
+
+        Args:
+            is_live: True if Live mode is enabled, False for Paper mode
+
+        Issue #66: When switching modes, update the visual indicator and
+        enable/disable all trading controls accordingly.
+        """
+        logger.info(f"Trading mode changed: {'LIVE' if is_live else 'PAPER'}")
+        self._update_mode_display(is_live)
+        self._save_settings()
+
+        # Show warning dialog when switching to Live mode
+        if is_live:
+            reply = QMessageBox.warning(
+                self,
+                "Live Trading aktiviert",
+                "⚠️ ACHTUNG: Live Trading ist jetzt aktiviert!\n\n"
+                "Alle Trades werden REAL ausgeführt und verwenden ECHTES Geld.\n\n"
+                "Sind Sie sicher, dass Sie Live Trading aktivieren möchten?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                # User cancelled, revert to Paper mode
+                self.live_mode_cb.setChecked(False)
+                return
+
+    def _update_mode_display(self, is_live: bool) -> None:
+        """Update the mode indicator banner and enable/disable trading widgets.
+
+        Args:
+            is_live: True if Live mode, False for Paper mode
+
+        Issue #66: Visual indicator and button states must clearly show current mode.
+        """
+        if is_live:
+            # Live mode: Red banner, all controls enabled
+            self.mode_indicator.setText("🔴 LIVE TRADING")
+            self.mode_indicator.setStyleSheet(
+                "background-color: #ef5350; color: white; "
+                "font-weight: bold; font-size: 16px; "
+                "padding: 12px; border-radius: 6px; "
+                "min-width: 200px;"
+            )
+            enabled = True
+        else:
+            # Paper mode: Green banner, all controls disabled
+            self.mode_indicator.setText("📄 PAPERTRADING")
+            self.mode_indicator.setStyleSheet(
+                "background-color: #26a69a; color: white; "
+                "font-weight: bold; font-size: 16px; "
+                "padding: 12px; border-radius: 6px; "
+                "min-width: 200px;"
+            )
+            enabled = False
+
+        # Enable/disable all trading widgets
+        for widget in self._tradeable_widgets:
+            widget.setEnabled(enabled)
 
     # --- Event Handlers ---
 
@@ -529,14 +666,18 @@ class BitunixHedgeExecutionWidget(QGroupBox):
             logger.warning("FLASH CLOSE executed!")
 
     def _on_help(self):
-        """Open help page for Bitunix Execution (HEDGE)."""
+        """Open help page for Bitunix Execution (HEDGE).
+
+        Issue #57: Fixed path to help file - was going up too many directories
+        and using lowercase 'help' instead of 'Help'.
+        """
         import os
         import webbrowser
 
-        # Path to help file
+        # Path to help file (Issue #57: Fixed - 4 levels up, 'Help' capitalized)
         help_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))),
-            "help", "BitunixExcecution_HEDGE.html"
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            "Help", "BitunixExcecution_HEDGE.html"
         )
 
         if os.path.exists(help_path):
@@ -567,12 +708,20 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         self.qty_spin.setValue(float(self._settings.value("last_qty", 0.01)))
         self.offset_spin.setValue(float(self._settings.value("last_offset", 0.05)))
 
+        # Issue #66: Load Paper/Live mode setting (default: Paper mode = False)
+        is_live = self._settings.value("live_trading_enabled", False, type=bool)
+        self.live_mode_cb.setChecked(is_live)
+        self._update_mode_display(is_live)
+
     def _save_settings(self):
         """Save settings to QSettings."""
         self._settings.setValue("last_symbol", self.symbol_combo.currentText())
         self._settings.setValue("last_leverage", self.leverage_spin.value())
         self._settings.setValue("last_qty", self.qty_spin.value())
         self._settings.setValue("last_offset", self.offset_spin.value())
+
+        # Issue #66: Save Paper/Live mode setting
+        self._settings.setValue("live_trading_enabled", self.live_mode_cb.isChecked())
 
     # --- Public API for external status labels ---
 

@@ -468,12 +468,21 @@
                             const paneIndex = paneApi.paneIndex();
                             let series;
                             if (type === 'histogram') {
+                                // Issue #VOLUME: Fix upside-down volume chart with proper scaleMargins
                                 series = chart.addSeries(HistogramSeries, {
                                     base: 0,
                                     color,
                                     priceScaleId: 'right',
                                     priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
                                     title: displayName,
+                                    // Critical: Volume should grow from bottom (0) upwards
+                                    scaleMargins: { top: 0.1, bottom: 0.0 },
+                                    autoscaleInfoProvider: () => ({
+                                        priceRange: {
+                                            minValue: 0,
+                                            maxValue: null  // Auto-scale max
+                                        }
+                                    })
                                 }, paneIndex);
                             } else {
                                 const opts = { color, lineWidth: 2, title: displayName, priceScaleId: 'right' };
@@ -540,8 +549,17 @@
                                 paneApi = addPane(panelId);
                                 paneIndex = paneApi.paneIndex();
                             }
+                            // Issue #VOLUME: Fix upside-down histograms with proper scaleMargins
                             const seriesOpts = type === 'histogram'
-                                ? { base: 0, color, priceScaleId: 'right', priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, title: seriesKey.toUpperCase() }
+                                ? {
+                                    base: 0,
+                                    color,
+                                    priceScaleId: 'right',
+                                    priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
+                                    title: seriesKey.toUpperCase(),
+                                    scaleMargins: { top: 0.1, bottom: 0.0 },
+                                    autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: null } })
+                                }
                                 : { color, lineWidth: 2, title: seriesKey.toUpperCase(), priceScaleId: 'right' };
                             const s = type === 'histogram'
                                 ? chart.addSeries(HistogramSeries, seriesOpts, paneIndex)

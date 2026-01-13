@@ -182,28 +182,29 @@ class SettingsTabsBasic:
         info_label.setStyleSheet("color: #888; font-size: 9px;")
         layout.addRow(info_label)
 
-        # Issue #39: Candle Border Radius
+        # Issue #39/#49: Candle Border Radius (0.25 pixel increments)
         layout.addRow(QLabel(""))
         layout.addRow(QLabel("<b>Kerzen-Abrundung</b>"))
 
         radius_layout = QHBoxLayout()
         self.parent.candle_border_radius_slider = QSlider(Qt.Orientation.Horizontal)
-        self.parent.candle_border_radius_slider.setRange(0, 10)  # 0-10 pixels
+        # Issue #49: Range 0-40 (0-10px in 0.25px increments: 10*4=40)
+        self.parent.candle_border_radius_slider.setRange(0, 40)  # 0-10 pixels in 0.25 steps
         self.parent.candle_border_radius_slider.setValue(0)  # 0 = no rounding (default)
         self.parent.candle_border_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.parent.candle_border_radius_slider.setTickInterval(1)
+        self.parent.candle_border_radius_slider.setTickInterval(4)  # Tick every 1px (4*0.25)
         self.parent.candle_border_radius_slider.valueChanged.connect(self._update_border_radius_label)
         radius_layout.addWidget(self.parent.candle_border_radius_slider)
 
-        self.parent.candle_border_radius_label = QLabel("0 px")
-        self.parent.candle_border_radius_label.setFixedWidth(50)
+        self.parent.candle_border_radius_label = QLabel("0.00 px")
+        self.parent.candle_border_radius_label.setFixedWidth(60)
         self.parent.candle_border_radius_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         radius_layout.addWidget(self.parent.candle_border_radius_label)
 
         layout.addRow("Ecken-Abrundung:", radius_layout)
 
         radius_info_label = QLabel(
-            "<i>0 = Keine Abrundung (Standard), 3-5 = Leicht abgerundet, 10 = Stark abgerundet</i>"
+            "<i>0 = Keine Abrundung (Standard), 3-5 = Leicht abgerundet, 10 = Stark abgerundet. Schrittweite: 0,25 px</i>"
         )
         radius_info_label.setWordWrap(True)
         radius_info_label.setStyleSheet("color: #888; font-size: 9px;")
@@ -243,12 +244,14 @@ class SettingsTabsBasic:
         self.parent.background_image_opacity_label.setText(f"{value}%")
 
     def _update_border_radius_label(self, value: int) -> None:
-        """Update border radius label when slider changes (Issue #39).
+        """Update border radius label when slider changes (Issue #39/#49).
 
         Args:
-            value: Border radius in pixels (0-10)
+            value: Border radius in 0.25px steps (0-40, divide by 4 for actual pixels)
         """
-        self.parent.candle_border_radius_label.setText(f"{value} px")
+        # Issue #49: Convert slider value (0-40) to actual pixels (0-10 in 0.25 steps)
+        pixels = value / 4.0
+        self.parent.candle_border_radius_label.setText(f"{pixels:.2f} px")
 
     def _choose_color(self, color_type: str) -> None:
         """Open color picker dialog (Issue #34).

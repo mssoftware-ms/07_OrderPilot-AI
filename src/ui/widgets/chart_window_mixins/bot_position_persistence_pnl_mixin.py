@@ -70,14 +70,22 @@ class BotPositionPersistencePnlMixin:
         sig["current_price"] = current_price
         pnl_pct = self._calculate_pnl_pct(entry_price, current_price, side)
 
-        # Issue #1: Apply manual leverage override if enabled
-        leverage = 1.0
-        if hasattr(self, 'get_leverage_override'):
-            override_enabled, override_value = self.get_leverage_override()
-            if override_enabled and override_value > 1:
-                leverage = float(override_value)
-                pnl_pct = pnl_pct * leverage
-                sig["leverage"] = leverage
+        # Issue #65: DO NOT apply leverage to P/L calculation for Current Position display
+        # User explicitly requested: "Berechne den PL basierend auf dem Einkaufspreis und dem
+        # realen Preis, OHNE den Hebel zu beruecksichtigen" (Calculate P/L WITHOUT leverage)
+        #
+        # NOTE: Leverage should only be applied in derivative trading context, not here.
+        # The leverage multiplication was causing "jumping values" as the display alternated
+        # between leveraged and non-leveraged calculations from different code paths.
+        #
+        # OLD CODE (REMOVED):
+        # leverage = 1.0
+        # if hasattr(self, 'get_leverage_override'):
+        #     override_enabled, override_value = self.get_leverage_override()
+        #     if override_enabled and override_value > 1:
+        #         leverage = float(override_value)
+        #         pnl_pct = pnl_pct * leverage  # <-- THIS CAUSED THE JUMPING!
+        #         sig["leverage"] = leverage
 
         # Issue #3: Subtract BitUnix fees from P&L
         if hasattr(self, 'get_bitunix_fees'):

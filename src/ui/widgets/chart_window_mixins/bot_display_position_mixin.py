@@ -77,6 +77,23 @@ class BotDisplayPositionMixin:
         self.position_bars_held_label.setText(str(position.bars_held))
         self._update_position_right_column()
 
+        # Issue #50: Update SL/TP Progress Bar with active trade data
+        if hasattr(self, 'sltp_progress_bar') and current > 0:
+            # Get TP price from signal history
+            tp_price = 0.0
+            open_sig = self._find_open_signal()
+            if open_sig:
+                tp_price = open_sig.get("take_profit_price", open_sig.get("tp_price", 0))
+
+            if tp_price > 0 and stop > 0:
+                self.sltp_progress_bar.set_prices(
+                    entry=position.entry_price,
+                    sl=stop,
+                    tp=tp_price,
+                    current=current,
+                    side=side.lower()
+                )
+
     def _update_from_signal_history(self, open_signal: dict) -> None:
         side = open_signal.get("side", "unknown").upper()
         self._set_position_side(side)
@@ -113,6 +130,18 @@ class BotDisplayPositionMixin:
 
         self.position_bars_held_label.setText("-")
         self._update_position_right_column()
+
+        # Issue #50: Update SL/TP Progress Bar with signal history data
+        if hasattr(self, 'sltp_progress_bar') and current > 0 and entry_price > 0:
+            tp_price = open_signal.get("take_profit_price", open_signal.get("tp_price", 0))
+            if tp_price > 0 and stop_price > 0:
+                self.sltp_progress_bar.set_prices(
+                    entry=entry_price,
+                    sl=stop_price,
+                    tp=tp_price,
+                    current=current,
+                    side=side.lower()
+                )
 
     def _reset_position_display(self) -> None:
         self.position_side_label.setText("FLAT")

@@ -149,14 +149,16 @@ def get_chart_html_template() -> str:
         f"upColor: '{colors['upColor']}', downColor: '{colors['downColor']}', borderVisible: false, wickUpColor: '{colors['wickUpColor']}', wickDownColor: '{colors['wickDownColor']}'"
     )
 
-    # Issue #39: Inject candle border radius into JavaScript
+    # Issue #39/#49: Inject candle border radius into JavaScript (0.25px increments)
     settings = QSettings("OrderPilot", "TradingApp")
-    border_radius = settings.value("chart_candle_border_radius", 0, type=int)
+    border_radius_slider_value = settings.value("chart_candle_border_radius", 0, type=int)
+    # Convert slider value (0-40) to actual pixels (0-10 in 0.25 steps)
+    border_radius = border_radius_slider_value / 4.0
 
     # Inject border radius and custom colors BEFORE window.chartAPI definition
     template = template.replace(
         "window.chartAPI = {",
-        f"""// Issue #39: Border radius setting
+        f"""// Issue #39/#49: Border radius setting (0.25px increments)
                 window._candleBorderRadius = {border_radius};
 
                 // Issue #37/#40: Custom candle colors for overlay
@@ -165,5 +167,5 @@ def get_chart_html_template() -> str:
                 window.chartAPI = {{"""
     )
 
-    logger.debug(f"Injected border radius: {border_radius}, colors: {colors}")
+    logger.debug(f"Injected border radius: {border_radius} px (slider value: {border_radius_slider_value}), colors: {colors}")
     return template

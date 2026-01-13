@@ -231,10 +231,20 @@ class BotPanelsMixin(
         entry_price = sig.get("price", 0)
         invested = sig.get("invested", 0)
         side = sig.get("side", "long")
-        pnl_pct = sig.get("pnl_percent", 0)
-        pnl_currency = sig.get("pnl_currency", 0)
         stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
         take_profit = sig.get("take_profit_price", sig.get("tp_price", 0))
+
+        # Issue #54: Always calculate P/L WITHOUT leverage for Current Position display
+        # Do NOT use cached values from signal, as they may have leverage applied
+        if entry_price > 0 and hasattr(self, '_calculate_pnl'):
+            pnl_pct, pnl_currency = self._calculate_pnl(entry_price, current_price, invested, side)
+        else:
+            # Fallback to manual calculation if _calculate_pnl not available
+            if side.lower() == "long":
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+            else:
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100 if entry_price > 0 else 0
+            pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
 
         # Update SL/TP Progress Bar
         if hasattr(self, 'sltp_progress_bar') and entry_price > 0:

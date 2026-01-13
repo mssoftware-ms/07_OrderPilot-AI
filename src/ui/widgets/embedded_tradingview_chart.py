@@ -299,8 +299,10 @@ class EmbeddedTradingViewChart(
                 }
                 """
 
-            # Issue #39: Update candle border radius
-            border_radius = settings.value("chart_candle_border_radius", 0, type=int)
+            # Issue #39/#49: Update candle border radius (0.25px increments)
+            border_radius_slider_value = settings.value("chart_candle_border_radius", 0, type=int)
+            # Convert slider value (0-40) to actual pixels (0-10 in 0.25 steps)
+            border_radius = border_radius_slider_value / 4.0
             js_code += f"""
             if (window.chartAPI && window.chartAPI.updateCandleBorderRadius) {{
                 window.chartAPI.updateCandleBorderRadius({border_radius});
@@ -309,7 +311,7 @@ class EmbeddedTradingViewChart(
 
             if hasattr(self, "web_view") and self.web_view:
                 self.web_view.page().runJavaScript(js_code)
-                logger.info(f"Chart colors, background, and border radius refreshed: {colors}, bg={bg_image_path}, radius={border_radius}")
+                logger.info(f"Chart colors, background, and border radius refreshed: {colors}, bg={bg_image_path}, radius={border_radius}px (slider: {border_radius_slider_value})")
 
                 # Issue #40: Reload volume data with new colors
                 self._reload_volume_with_new_colors()

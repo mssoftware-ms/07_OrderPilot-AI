@@ -15,12 +15,26 @@ logger = logging.getLogger(__name__)
 def _ts_to_chart_time(timestamp) -> int:
     """Convert timestamp to chart time (UTC).
 
-    Handles both timezone-aware and naive datetimes.
-    Naive datetimes are interpreted as UTC.
+    Issue #52 fix: Handles both timezone-aware and naive datetimes.
+    Naive datetimes are interpreted as LOCAL time, then converted to UTC.
+    This fixes the 53-minute offset bug where entry points were marked too early.
     """
     from datetime import timezone
+    import time
+
     if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
+        # Issue #52: Interpret naive datetime as LOCAL time, not UTC
+        # Get local timezone offset
+        if time.daylight and time.localtime().tm_isdst > 0:
+            local_offset_seconds = -time.altzone
+        else:
+            local_offset_seconds = -time.timezone
+
+        # Create timezone-aware datetime with local offset
+        from datetime import timedelta
+        local_tz = timezone(timedelta(seconds=local_offset_seconds))
+        timestamp = timestamp.replace(tzinfo=local_tz)
+
     return int(timestamp.timestamp())
 
 
