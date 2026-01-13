@@ -242,18 +242,27 @@ class BotEventHandlersMixin:
 
             # Trailing stop settings
             self._apply_checkbox_setting(settings, "regime_adaptive", self.regime_adaptive_cb)
-            self._apply_spin_setting(settings, "atr_multiplier", self.atr_multiplier_spin)
-            self._apply_spin_setting(settings, "atr_trending", self.atr_trending_spin)
-            self._apply_spin_setting(settings, "atr_ranging", self.atr_ranging_spin)
-            self._apply_spin_setting(settings, "volatility_bonus", self.volatility_bonus_spin)
-            self._apply_spin_setting(settings, "min_step_pct", self.min_step_spin)
-            self._apply_spin_setting(
-                settings, "trailing_activation_pct", self.trailing_activation_spin
-            )
-            self._apply_spin_setting(
-                settings, "trailing_pct_distance", self.trailing_distance_spin
-            )
-            self._apply_spin_setting(settings, "min_score_pct", self.min_score_spin)
+            # Issue #44: Add hasattr checks for bot UI widgets that may not exist
+            if hasattr(self, 'atr_multiplier_spin'):
+                self._apply_spin_setting(settings, "atr_multiplier", self.atr_multiplier_spin)
+            if hasattr(self, 'atr_trending_spin'):
+                self._apply_spin_setting(settings, "atr_trending", self.atr_trending_spin)
+            if hasattr(self, 'atr_ranging_spin'):
+                self._apply_spin_setting(settings, "atr_ranging", self.atr_ranging_spin)
+            if hasattr(self, 'volatility_bonus_spin'):
+                self._apply_spin_setting(settings, "volatility_bonus", self.volatility_bonus_spin)
+            if hasattr(self, 'min_step_spin'):
+                self._apply_spin_setting(settings, "min_step_pct", self.min_step_spin)
+            if hasattr(self, 'trailing_activation_spin'):
+                self._apply_spin_setting(
+                    settings, "trailing_activation_pct", self.trailing_activation_spin
+                )
+            if hasattr(self, 'trailing_distance_spin'):
+                self._apply_spin_setting(
+                    settings, "trailing_pct_distance", self.trailing_distance_spin
+                )
+            if hasattr(self, 'min_score_spin'):
+                self._apply_spin_setting(settings, "min_score_pct", self.min_score_spin)
             self._apply_checkbox_setting(settings, "use_pattern_check", self.use_pattern_cb)
             self._apply_spin_setting(
                 settings, "pattern_similarity", self.pattern_similarity_spin
@@ -313,19 +322,29 @@ class BotEventHandlersMixin:
 
             # Trailing stop settings
             "regime_adaptive": self.regime_adaptive_cb.isChecked(),
-            "atr_multiplier": self.atr_multiplier_spin.value(),
-            "atr_trending": self.atr_trending_spin.value(),
-            "atr_ranging": self.atr_ranging_spin.value(),
-            "volatility_bonus": self.volatility_bonus_spin.value(),
-            "min_step_pct": self.min_step_spin.value(),
-            "trailing_activation_pct": self.trailing_activation_spin.value(),
-            "trailing_pct_distance": self.trailing_distance_spin.value(),
-            "min_score_pct": self.min_score_spin.value(),
             "use_pattern_check": self.use_pattern_cb.isChecked(),
             "pattern_similarity": self.pattern_similarity_spin.value(),
             "pattern_min_matches": self.pattern_matches_spin.value(),
             "pattern_min_winrate_pct": self.pattern_winrate_spin.value(),
         }
+
+        # Issue #44: Add optional settings only if widgets exist
+        if hasattr(self, 'atr_multiplier_spin'):
+            settings["atr_multiplier"] = self.atr_multiplier_spin.value()
+        if hasattr(self, 'atr_trending_spin'):
+            settings["atr_trending"] = self.atr_trending_spin.value()
+        if hasattr(self, 'atr_ranging_spin'):
+            settings["atr_ranging"] = self.atr_ranging_spin.value()
+        if hasattr(self, 'volatility_bonus_spin'):
+            settings["volatility_bonus"] = self.volatility_bonus_spin.value()
+        if hasattr(self, 'min_step_spin'):
+            settings["min_step_pct"] = self.min_step_spin.value()
+        if hasattr(self, 'trailing_activation_spin'):
+            settings["trailing_activation_pct"] = self.trailing_activation_spin.value()
+        if hasattr(self, 'trailing_distance_spin'):
+            settings["trailing_pct_distance"] = self.trailing_distance_spin.value()
+        if hasattr(self, 'min_score_spin'):
+            settings["min_score_pct"] = self.min_score_spin.value()
 
         self._bot_settings_manager.save_settings(symbol, settings)
         logger.info(f"Saved bot settings for {symbol}")

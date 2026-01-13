@@ -39,7 +39,9 @@ class Timeframe(Enum):
     MINUTE_15 = "15min"
     MINUTE_30 = "30min"
     HOUR_1 = "1h"
+    HOUR_2 = "2h"  # Issue #42: Added 2-hour timeframe
     HOUR_4 = "4h"
+    HOUR_8 = "8h"  # Issue #42: Added 8-hour timeframe
     DAY_1 = "1D"
     WEEK_1 = "1W"
     MONTH_1 = "1ME"

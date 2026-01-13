@@ -45,6 +45,7 @@ class ToolbarMixinRow1:
         toolbar.addWidget(QLabel("Kerzen:"))
         self.parent.timeframe_combo = QComboBox()
         # Issue #38: Added 1 second timeframe
+        # Issue #42: Added 2-hour and 8-hour timeframes
         timeframes = [
             ("1 Sekunde", "1S"),
             ("1 Minute", "1T"),
@@ -52,7 +53,9 @@ class ToolbarMixinRow1:
             ("15 Minuten", "15T"),
             ("30 Minuten", "30T"),
             ("1 Stunde", "1H"),
+            ("2 Stunden", "2H"),
             ("4 Stunden", "4H"),
+            ("8 Stunden", "8H"),
             ("1 Tag", "1D"),
         ]
         for display, value in timeframes:
@@ -70,7 +73,12 @@ class ToolbarMixinRow1:
     def add_period_selector(self, toolbar: QToolBar) -> None:
         toolbar.addWidget(QLabel("Zeitraum:"))
         self.parent.period_combo = QComboBox()
+        # Issue #42: Added shorter periods (1h, 2h, 4h, 8h) for 1-second charts
         periods = [
+            ("1 Stunde", "1H", 1/24),      # Issue #42: ~4% of a day
+            ("2 Stunden", "2H", 2/24),     # Issue #42: ~8% of a day
+            ("4 Stunden", "4H", 4/24),     # Issue #42: ~17% of a day
+            ("8 Stunden", "8H", 8/24),     # Issue #42: ~33% of a day
             ("Intraday", "1D", 1),
             ("2 Tage", "2D", 2),
             ("5 Tage", "5D", 5),

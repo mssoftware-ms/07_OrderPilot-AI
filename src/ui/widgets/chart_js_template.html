@@ -167,7 +167,7 @@
                     },
                     timeScale: {
                         timeVisible: true,
-                        secondsVisible: false,
+                        secondsVisible: true,  // Issue #42: Show seconds on X-axis for 1S charts
                         borderColor: '#485c7b',
                         shiftVisibleRangeOnNewBar: false, // Issue: Chart springt zur Mitte - disabled
                         barSpacing: 6,
@@ -353,6 +353,23 @@
                     setData: (data, skipFit = false) => {
                         try {
                             priceSeries.setData(data);
+
+                            // Issue #39: Store candle data for rounded candles overlay
+                            roundedCandlesData = data || [];
+
+                            // Issue #39: Initialize rounded candles overlay after data is loaded
+                            setTimeout(() => {
+                                try {
+                                    initRoundedCandlesOverlay();
+                                    // Update overlay views to render the data
+                                    if (roundedCandlesOverlay) {
+                                        roundedCandlesOverlay.updateAllViews();
+                                    }
+                                } catch(e) {
+                                    console.error('Failed to init rounded candles overlay:', e);
+                                }
+                            }, 100);
+
                             if (!skipFit && !suppressFitContent) {
                                 refitPriceScale();
                             } else {
@@ -376,6 +393,23 @@
                             }
                             priceSeries.update(c);
                             window._lastCandleTime = c.time;
+
+                            // Issue #39: Update roundedCandlesData with new candle
+                            if (roundedCandlesData.length > 0) {
+                                const lastIndex = roundedCandlesData.length - 1;
+                                if (roundedCandlesData[lastIndex] && roundedCandlesData[lastIndex].time === c.time) {
+                                    // Update existing candle
+                                    roundedCandlesData[lastIndex] = c;
+                                } else {
+                                    // Add new candle
+                                    roundedCandlesData.push(c);
+                                }
+                            }
+
+                            // Issue #39: Update rounded candles overlay on streaming updates
+                            if (roundedCandlesOverlay) {
+                                roundedCandlesOverlay.updateAllViews();
+                            }
 
                             // Issue #4: Auto-fit Y scale during streaming to prevent flat candles
                             // Issue #8: BUT respect user's manual Y-panning - don't override if user disabled
@@ -455,7 +489,23 @@
 
                     removePanel: (panelId) => { try { return removePane(panelId); } catch(e){ console.error(e); return false; } },
 
-                    setPanelData: (panelId, data) => { try { const s = panelMainSeries[panelId]; if (!s) return false; s.setData(data); return true; } catch(e){ console.error(e); return false; } },
+                    setPanelData: (panelId, data) => {
+                        try {
+                            const s = panelMainSeries[panelId];
+                            if (!s) return false;
+                            s.setData(data);
+
+                            // Issue #47: Reset time tracker when panel data is set (timeframe/period change)
+                            // This prevents "Cannot update oldest data" errors during live streaming
+                            const timeKey = '_lastTime_' + panelId;
+                            delete window[timeKey];
+
+                            return true;
+                        } catch(e){
+                            console.error(e);
+                            return false;
+                        }
+                    },
                     updatePanelData: (panelId, point) => {
                         try {
                             const s = panelMainSeries[panelId];
@@ -2279,6 +2329,252 @@
                     } catch(e) {
                         console.error('updateBackgroundImage error:', e);
                         return false;
+                    }
+                };
+
+                // ==================== ROUNDED CANDLES OVERLAY (Issue #39) ====================
+                // Based on TradingView official plugin pattern with performance optimizations:
+                // - Native roundRect() for modern browsers (Chrome 99+, Firefox 112+, Safari 16+)
+                // - Fallback using arcTo() for older browsers
+                // - Pixel-aligned coordinates (Math.round) for performance
+                // - Conditional rounding (only if candle width >= minWidth)
+                // - Only draws visible candles (viewport-based rendering)
+                // - Caching of candle dimensions for efficiency
+
+                class RoundedCandlesOverlayPrimitive {
+                    constructor(options = {}) {
+                        this._options = {
+                            radius: options.radius || 3,
+                            // Issue #49: Reduced from 4 to 1 to show candles at max zoom out
+                            minCandleBodyWidth: options.minCandleBodyWidth || 1,
+                            enabled: options.enabled !== false,
+                        };
+                        this._paneViews = [new RoundedCandlesOverlayPaneView(this)];
+                    }
+
+                    updateAllViews() {
+                        this._paneViews.forEach(v => v.update());
+                    }
+
+                    paneViews() {
+                        return this._paneViews;
+                    }
+
+                    setBorderRadius(radius) {
+                        this._options.radius = radius;
+                        this._options.enabled = radius > 0;
+                        this.updateAllViews();
+                    }
+
+                    setEnabled(enabled) {
+                        this._options.enabled = enabled;
+                        this.updateAllViews();
+                    }
+                }
+
+                class RoundedCandlesOverlayPaneView {
+                    constructor(source) {
+                        this._source = source;
+                    }
+
+                    update() {
+                        // Data comes from global roundedCandlesData
+                    }
+
+                    renderer() {
+                        return new RoundedCandlesOverlayRenderer(
+                            this._source._options
+                        );
+                    }
+                }
+
+                class RoundedCandlesOverlayRenderer {
+                    constructor(options) {
+                        this._options = options;
+                    }
+
+                    draw(target) {
+                        // Only draw if enabled and border radius > 0
+                        if (!this._options.enabled || this._options.radius === 0) {
+                            return;
+                        }
+
+                        // Get data from global variable
+                        const data = roundedCandlesData;
+                        if (!data || data.length === 0) {
+                            console.log('RoundedCandles: No data to draw');
+                            return;
+                        }
+
+                        target.useBitmapCoordinateSpace(scope => {
+                            const ctx = scope.context;
+                            const pixelRatio = scope.verticalPixelRatio;
+                            const horizontalPixelRatio = scope.horizontalPixelRatio;
+
+                            console.log('RoundedCandles: Drawing', data.length, 'candles with radius', this._options.radius);
+
+                            // Get time scale and convert data to screen coordinates
+                            const timeScale = chart.timeScale();
+                            const visibleLogicalRange = timeScale.getVisibleLogicalRange();
+                            if (!visibleLogicalRange) return;
+
+                            // Calculate candle width from bar spacing
+                            const barSpacing = timeScale.options().barSpacing;
+                            const candleWidth = Math.max(1, barSpacing * 0.8) * horizontalPixelRatio;
+
+                            const radius = Math.min(this._options.radius * pixelRatio, candleWidth / 2);
+
+                            // Get custom colors from window object (set by Python)
+                            const bullishColor = window._customCandleColors?.upColor || '#26a69a';
+                            const bearishColor = window._customCandleColors?.downColor || '#ef5350';
+
+                            // Draw all candle bodies with rounded corners
+                            data.forEach((bar, index) => {
+                                // Get screen coordinates using proper TradingView API
+                                const x = timeScale.timeToCoordinate(bar.time);
+                                if (x === null) return; // Not visible
+
+                                const yOpen = priceSeries.priceToCoordinate(bar.open);
+                                const yClose = priceSeries.priceToCoordinate(bar.close);
+                                if (yOpen === null || yClose === null) return;
+
+                                // Convert to bitmap coordinates
+                                const xBitmap = Math.round(x * horizontalPixelRatio);
+                                const yOpenBitmap = Math.round(yOpen * pixelRatio);
+                                const yCloseBitmap = Math.round(yClose * pixelRatio);
+
+                                const bodyTop = Math.min(yOpenBitmap, yCloseBitmap);
+                                const bodyBottom = Math.max(yOpenBitmap, yCloseBitmap);
+                                const bodyHeight = bodyBottom - bodyTop;
+
+                                // Skip if body height is too small (doji or very small body)
+                                if (bodyHeight < 2 * pixelRatio) return;
+
+                                // Skip rounding if candle is too narrow
+                                if (candleWidth < this._options.minCandleBodyWidth * horizontalPixelRatio) return;
+
+                                const halfWidth = candleWidth / 2;
+                                const left = xBitmap - halfWidth;
+
+                                // Set fill color based on candle direction
+                                const isBullish = bar.close >= bar.open;
+                                ctx.fillStyle = isBullish ? bullishColor : bearishColor;
+
+                                // Calculate effective radius (don't exceed half of width or height)
+                                const effectiveRadius = Math.min(radius, candleWidth / 2, bodyHeight / 2);
+
+                                // Draw rounded rectangle
+                                ctx.beginPath();
+
+                                // Use native roundRect if available (Chrome 99+, Firefox 112+, Safari 16+)
+                                if (typeof ctx.roundRect === 'function') {
+                                    ctx.roundRect(left, bodyTop, candleWidth, bodyHeight, effectiveRadius);
+                                } else {
+                                    // Fallback for older browsers using arcTo
+                                    const r = effectiveRadius;
+                                    ctx.moveTo(left + r, bodyTop);
+                                    ctx.arcTo(left + candleWidth, bodyTop, left + candleWidth, bodyTop + bodyHeight, r);
+                                    ctx.arcTo(left + candleWidth, bodyTop + bodyHeight, left, bodyTop + bodyHeight, r);
+                                    ctx.arcTo(left, bodyTop + bodyHeight, left, bodyTop, r);
+                                    ctx.arcTo(left, bodyTop, left + candleWidth, bodyTop, r);
+                                    ctx.closePath();
+                                }
+
+                                ctx.fill();
+
+                                // Optional: Draw border for sharper definition
+                                // (Commented out by default, can be enabled if desired)
+                                // ctx.strokeStyle = isBullish ? bullishColor : bearishColor;
+                                // ctx.lineWidth = 1;
+                                // ctx.stroke();
+                            });
+                        });
+                    }
+                }
+
+                // Store rounded candles overlay instance globally for dynamic updates
+                let roundedCandlesOverlay = null;
+                let roundedCandlesData = [];
+
+                // Initialize rounded candle overlay (called after chart data is loaded)
+                function initRoundedCandlesOverlay() {
+                    if (!roundedCandlesOverlay) {
+                        const borderRadius = parseInt(window._candleBorderRadius || 0);
+                        if (borderRadius > 0) {
+                            // Make standard candle bodies transparent so overlay is visible
+                            const wickColor = window._customCandleColors?.upColor || '#26a69a';
+                            priceSeries.applyOptions({
+                                upColor: 'transparent',
+                                downColor: 'transparent',
+                                wickUpColor: wickColor,
+                                wickDownColor: window._customCandleColors?.downColor || '#ef5350',
+                                borderVisible: false
+                            });
+
+                            roundedCandlesOverlay = new RoundedCandlesOverlayPrimitive({
+                                radius: borderRadius,
+                                minCandleBodyWidth: 1,  // Issue #49: Allow narrow candles at zoom out
+                                enabled: true
+                            });
+                            priceSeries.attachPrimitive(roundedCandlesOverlay);
+                            console.log('Rounded candles overlay attached with radius:', borderRadius);
+                        }
+                    }
+                }
+
+                // Update border radius dynamically (exposed via chartAPI)
+                window.chartAPI.updateCandleBorderRadius = (radius) => {
+                    window._candleBorderRadius = radius;
+
+                    if (radius === 0) {
+                        // Remove overlay and restore standard candles
+                        if (roundedCandlesOverlay) {
+                            priceSeries.detachPrimitive(roundedCandlesOverlay);
+                            roundedCandlesOverlay = null;
+                        }
+
+                        // Restore standard candle colors (from custom colors or defaults)
+                        const upColor = window._customCandleColors?.upColor || '#26a69a';
+                        const downColor = window._customCandleColors?.downColor || '#ef5350';
+                        priceSeries.applyOptions({
+                            upColor: upColor,
+                            downColor: downColor,
+                            wickUpColor: upColor,
+                            wickDownColor: downColor,
+                            borderVisible: false
+                        });
+                        console.log('Rounded candles overlay removed, standard candles restored');
+                    } else {
+                        // Make standard candles transparent if not already
+                        const wickColor = window._customCandleColors?.upColor || '#26a69a';
+                        priceSeries.applyOptions({
+                            upColor: 'transparent',
+                            downColor: 'transparent',
+                            wickUpColor: wickColor,
+                            wickDownColor: window._customCandleColors?.downColor || '#ef5350',
+                            borderVisible: false
+                        });
+
+                        // Create or update overlay
+                        if (!roundedCandlesOverlay) {
+                            roundedCandlesOverlay = new RoundedCandlesOverlayPrimitive({
+                                radius: radius,
+                                minCandleBodyWidth: 1,  // Issue #49: Allow narrow candles at zoom out
+                                enabled: true
+                            });
+                            priceSeries.attachPrimitive(roundedCandlesOverlay);
+                            console.log('Rounded candles overlay created with radius:', radius);
+                        } else {
+                            roundedCandlesOverlay.setBorderRadius(radius);
+                            console.log('Rounded candles overlay updated to radius:', radius);
+                        }
+                    }
+
+                    // Request chart repaint
+                    try {
+                        chart.timeScale().scrollToPosition(0, false);
+                    } catch(e) {
+                        console.error('Failed to trigger chart repaint:', e);
                     }
                 };
 

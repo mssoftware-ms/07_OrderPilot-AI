@@ -68,12 +68,15 @@ class DataLoadingResolution:
             Timeframe enum value
         """
         timeframe_map = {
+            "1S": Timeframe.SECOND_1,  # Issue #42: Added 1-second mapping
             "1T": Timeframe.MINUTE_1,
             "5T": Timeframe.MINUTE_5,
             "15T": Timeframe.MINUTE_15,
             "30T": Timeframe.MINUTE_30,
             "1H": Timeframe.HOUR_1,
+            "2H": Timeframe.HOUR_2,  # Issue #42: Added 2-hour mapping
             "4H": Timeframe.HOUR_4,
+            "8H": Timeframe.HOUR_8,  # Issue #42: Added 8-hour mapping
             "1D": Timeframe.DAY_1,
         }
         return timeframe_map.get(self.parent.current_timeframe, Timeframe.MINUTE_1)
@@ -109,13 +112,22 @@ class DataLoadingResolution:
 
         # Auto-detect provider based on symbol pattern when no provider specified
         if asset_class == AssetClass.CRYPTO:
-            # Check if it's a Bitunix symbol (USDT/USDC suffix)
+            # Issue #44: Better symbol pattern detection
+            # Bitunix: BTCUSDT, ETHUSDT (no slash, USDT/USDC suffix)
+            # Alpaca: BTC/USD, ETH/USD, SOL/USDT (has slash)
             symbol = self.parent.current_symbol if hasattr(self.parent, 'current_symbol') else ""
-            if "USDT" in symbol or "USDC" in symbol:
+
+            if "/" in symbol:
+                # Has slash → Alpaca Crypto (BTC/USD, ETH/USD, SOL/USDT)
+                logger.info(f"🔍 Alpaca crypto symbol detected ({symbol}), using Alpaca Crypto")
+                return DataSource.ALPACA_CRYPTO
+            elif "USDT" in symbol or "USDC" in symbol:
+                # No slash but has USDT/USDC → Bitunix (BTCUSDT, ETHUSDT)
                 logger.info(f"🔍 Bitunix symbol detected ({symbol}), using Bitunix provider")
                 return DataSource.BITUNIX
             else:
-                logger.info(f"🔍 Alpaca crypto symbol detected ({symbol}), using Alpaca Crypto")
+                # Fallback for other crypto symbols
+                logger.info(f"🔍 Unknown crypto symbol ({symbol}), defaulting to Alpaca Crypto")
                 return DataSource.ALPACA_CRYPTO
 
         logger.info("🔍 Stock symbol detected, using Alpaca Stock")
@@ -128,6 +140,10 @@ class DataLoadingResolution:
             Number of days to look back
         """
         period_to_days = {
+            "1H": 1,      # Issue #42: 1 hour (use 1 day for API call, filter later)
+            "2H": 1,      # Issue #42: 2 hours (use 1 day for API call, filter later)
+            "4H": 1,      # Issue #42: 4 hours (use 1 day for API call, filter later)
+            "8H": 1,      # Issue #42: 8 hours (use 1 day for API call, filter later)
             "1D": 1,      # Intraday (today)
             "2D": 2,      # 2 days
             "5D": 5,      # 5 days

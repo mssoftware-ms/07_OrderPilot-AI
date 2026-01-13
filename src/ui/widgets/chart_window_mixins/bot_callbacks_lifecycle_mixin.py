@@ -77,25 +77,46 @@ class BotCallbacksLifecycleMixin:
     ) -> None:
         config.bot.ki_mode = ki_mode
         config.bot.trailing_mode = trailing_mode
-        config.bot.disable_restrictions = self.disable_restrictions_cb.isChecked()
-        config.bot.disable_macd_exit = self.disable_macd_exit_cb.isChecked()
-        config.bot.entry_score_threshold = self.min_score_spin.value() / 100.0
-        config.bot.use_pattern_check = self.use_pattern_cb.isChecked()
-        config.bot.pattern_similarity_threshold = self.pattern_similarity_spin.value()
-        config.bot.pattern_min_matches = self.pattern_matches_spin.value()
-        config.bot.pattern_min_win_rate = self.pattern_winrate_spin.value() / 100.0
-        config.risk.initial_stop_loss_pct = self.initial_sl_spin.value()
-        config.risk.risk_per_trade_pct = self.risk_per_trade_spin.value()
-        config.risk.max_trades_per_day = self.max_trades_spin.value()
-        config.risk.max_daily_loss_pct = self.max_daily_loss_spin.value()
-        config.risk.regime_adaptive_trailing = self.regime_adaptive_cb.isChecked()
-        config.risk.trailing_atr_multiple = self.atr_multiplier_spin.value()
-        config.risk.trailing_atr_trending = self.atr_trending_spin.value()
-        config.risk.trailing_atr_ranging = self.atr_ranging_spin.value()
-        config.risk.trailing_volatility_bonus = self.volatility_bonus_spin.value()
-        config.risk.trailing_min_step_pct = self.min_step_spin.value()
-        config.risk.trailing_activation_pct = self.trailing_activation_spin.value()
-        config.risk.trailing_pct_distance = self.trailing_distance_spin.value()
+        # Issue #44/#48: Add hasattr checks to prevent AttributeError when widgets don't exist
+        if hasattr(self, 'disable_restrictions_cb'):
+            config.bot.disable_restrictions = self.disable_restrictions_cb.isChecked()
+        if hasattr(self, 'disable_macd_exit_cb'):
+            config.bot.disable_macd_exit = self.disable_macd_exit_cb.isChecked()
+        if hasattr(self, 'min_score_spin'):
+            config.bot.entry_score_threshold = self.min_score_spin.value() / 100.0
+        if hasattr(self, 'use_pattern_cb'):
+            config.bot.use_pattern_check = self.use_pattern_cb.isChecked()
+        if hasattr(self, 'pattern_similarity_spin'):
+            config.bot.pattern_similarity_threshold = self.pattern_similarity_spin.value()
+        # Continue with remaining widget checks
+        if hasattr(self, 'pattern_matches_spin'):
+            config.bot.pattern_min_matches = self.pattern_matches_spin.value()
+        if hasattr(self, 'pattern_winrate_spin'):
+            config.bot.pattern_min_win_rate = self.pattern_winrate_spin.value() / 100.0
+        if hasattr(self, 'initial_sl_spin'):
+            config.risk.initial_stop_loss_pct = self.initial_sl_spin.value()
+        if hasattr(self, 'risk_per_trade_spin'):
+            config.risk.risk_per_trade_pct = self.risk_per_trade_spin.value()
+        if hasattr(self, 'max_trades_spin'):
+            config.risk.max_trades_per_day = self.max_trades_spin.value()
+        if hasattr(self, 'max_daily_loss_spin'):
+            config.risk.max_daily_loss_pct = self.max_daily_loss_spin.value()
+        if hasattr(self, 'regime_adaptive_cb'):
+            config.risk.regime_adaptive_trailing = self.regime_adaptive_cb.isChecked()
+        if hasattr(self, 'atr_multiplier_spin'):
+            config.risk.trailing_atr_multiple = self.atr_multiplier_spin.value()
+        if hasattr(self, 'atr_trending_spin'):
+            config.risk.trailing_atr_trending = self.atr_trending_spin.value()
+        if hasattr(self, 'atr_ranging_spin'):
+            config.risk.trailing_atr_ranging = self.atr_ranging_spin.value()
+        if hasattr(self, 'volatility_bonus_spin'):
+            config.risk.trailing_volatility_bonus = self.volatility_bonus_spin.value()
+        if hasattr(self, 'min_step_spin'):
+            config.risk.trailing_min_step_pct = self.min_step_spin.value()
+        if hasattr(self, 'trailing_activation_spin'):
+            config.risk.trailing_activation_pct = self.trailing_activation_spin.value()
+        if hasattr(self, 'trailing_distance_spin'):
+            config.risk.trailing_pct_distance = self.trailing_distance_spin.value()
 
     def _warmup_bot_from_chart(self) -> None:
         if not (

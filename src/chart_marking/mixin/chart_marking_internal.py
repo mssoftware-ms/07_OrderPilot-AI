@@ -131,15 +131,18 @@ class ChartMarkingInternal:
         logger.debug("Cleared all horizontal lines from chart")
 
         # Add each line
+        # Issue #46: Fixed parameter order to match JavaScript signature
+        # JavaScript: addHorizontalLine(price, color, label, lineStyle, customId)
         for line_data in self.parent._sl_lines.get_chart_lines():
+            # Escape label to prevent JavaScript injection
+            safe_label = line_data['title'].replace("'", "\\'").replace('"', '\\"')
             js_code = (
                 f"window.chartAPI.addHorizontalLine("
                 f"{line_data['price']}, "
                 f"'{line_data['color']}', "
-                f"{line_data['lineStyle']}, "
-                f"{line_data['lineWidth']}, "
-                f"{str(line_data['axisLabelVisible']).lower()}, "
-                f"'{line_data['title']}'"
+                f"'{safe_label}', "  # Label is 3rd parameter (was 6th!)
+                f"{line_data['lineStyle']}, "  # lineStyle is 4th parameter (was 3rd)
+                f"'{line_data['id']}'"  # customId is 5th parameter (use line ID)
                 f");"
             )
             self._execute_js(js_code)
