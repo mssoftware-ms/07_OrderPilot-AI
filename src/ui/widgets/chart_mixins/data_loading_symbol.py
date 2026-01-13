@@ -64,6 +64,27 @@ class DataLoadingSymbol:
             # Map timeframe
             timeframe = self.parent._resolution.resolve_timeframe()
 
+            # Issue #43: Skip historical data loading for 1-second charts (only live streaming makes sense)
+            if self.parent.current_timeframe == "1S":
+                logger.info(f"⏩ 1-Second chart detected - skipping historical data, enabling live stream only")
+                self.parent.market_status_label.setText("🔴 Live Stream (no history for 1S)")
+                self.parent.market_status_label.setStyleSheet("color: #FF6600; font-weight: bold;")
+
+                # Store basic info for streaming
+                provider_source = self.parent._resolution.resolve_provider_source(
+                    data_provider, asset_class
+                )
+                self.parent.current_asset_class = asset_class
+                self.parent.current_data_source = provider_source
+
+                # Start live stream immediately
+                if self.parent.live_streaming_enabled:
+                    await self.restart_live_stream(symbol)
+                else:
+                    logger.warning("Live streaming is disabled - 1S chart requires live data")
+                    self.parent.market_status_label.setText("⚠ Enable Live Stream for 1S")
+                return
+
             # Map provider (single Alpaca option auto-selects crypto vs stocks)
             provider_source = self.parent._resolution.resolve_provider_source(
                 data_provider, asset_class

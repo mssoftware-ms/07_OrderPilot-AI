@@ -250,10 +250,11 @@ class EmbeddedTradingViewChart(
             logger.error("add_horizontal_line failed: %s", exc)
 
     def refresh_chart_colors(self) -> None:
-        """Refresh chart colors and background image from QSettings (Issues #34, #35, #37, #40).
+        """Refresh chart colors and background image from QSettings (Issues #34, #35, #37, #39, #40).
 
         Calls JavaScript updateColors() and updateBackgroundImage() to apply without reloading HTML.
         Issue #40: Also reloads volume data with updated colors.
+        Issue #39: Updates candle border radius.
         """
         try:
             from PyQt6.QtCore import QSettings
@@ -263,8 +264,9 @@ class EmbeddedTradingViewChart(
             settings = QSettings("OrderPilot", "TradingApp")
             colors = get_chart_colors_config()
 
-            # Update colors
+            # Update colors and sync window._customCandleColors for rounded candles overlay
             js_code = f"""
+            window._customCandleColors = {{ upColor: '{colors["upColor"]}', downColor: '{colors["downColor"]}' }};
             if (window.chartAPI && window.chartAPI.updateColors) {{
                 window.chartAPI.updateColors({{
                     background: '{colors["background"]}',
@@ -297,9 +299,17 @@ class EmbeddedTradingViewChart(
                 }
                 """
 
+            # Issue #39: Update candle border radius
+            border_radius = settings.value("chart_candle_border_radius", 0, type=int)
+            js_code += f"""
+            if (window.chartAPI && window.chartAPI.updateCandleBorderRadius) {{
+                window.chartAPI.updateCandleBorderRadius({border_radius});
+            }}
+            """
+
             if hasattr(self, "web_view") and self.web_view:
                 self.web_view.page().runJavaScript(js_code)
-                logger.info(f"Chart colors and background refreshed: {colors}, bg={bg_image_path}")
+                logger.info(f"Chart colors, background, and border radius refreshed: {colors}, bg={bg_image_path}, radius={border_radius}")
 
                 # Issue #40: Reload volume data with new colors
                 self._reload_volume_with_new_colors()

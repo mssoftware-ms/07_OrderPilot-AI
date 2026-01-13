@@ -111,6 +111,7 @@ def get_chart_html_template() -> str:
 
     Issue #35: Injects background image CSS if configured.
     Issues #34, #37: Injects custom chart colors from settings.
+    Issue #39: Injects candle border radius setting.
 
     Returns:
         Complete HTML template string with all JavaScript included.
@@ -148,4 +149,21 @@ def get_chart_html_template() -> str:
         f"upColor: '{colors['upColor']}', downColor: '{colors['downColor']}', borderVisible: false, wickUpColor: '{colors['wickUpColor']}', wickDownColor: '{colors['wickDownColor']}'"
     )
 
+    # Issue #39: Inject candle border radius into JavaScript
+    settings = QSettings("OrderPilot", "TradingApp")
+    border_radius = settings.value("chart_candle_border_radius", 0, type=int)
+
+    # Inject border radius and custom colors BEFORE window.chartAPI definition
+    template = template.replace(
+        "window.chartAPI = {",
+        f"""// Issue #39: Border radius setting
+                window._candleBorderRadius = {border_radius};
+
+                // Issue #37/#40: Custom candle colors for overlay
+                window._customCandleColors = {{ upColor: '{colors['upColor']}', downColor: '{colors['downColor']}' }};
+
+                window.chartAPI = {{"""
+    )
+
+    logger.debug(f"Injected border radius: {border_radius}, colors: {colors}")
     return template

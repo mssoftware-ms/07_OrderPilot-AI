@@ -55,12 +55,21 @@ class DataLoadingSeries:
         """Clean bad ticks and store data.
 
         New: Forward-fill gaps for 1-second candles if requested by user.
+        Issue #42: Filter to specific hour ranges for short periods (1H, 2H, 4H, 8H).
         """
         data = self.parent._cleaning.clean_bad_ticks(data)
 
         # Forward-fill gaps for 1-second candles (user request 2026-01-13)
         if hasattr(self.parent, 'current_timeframe') and self.parent.current_timeframe == "1S":
             data = self._fill_one_second_gaps(data)
+
+        # Issue #42: Filter data to last N hours for short period selections
+        if hasattr(self.parent, 'current_period'):
+            period = self.parent.current_period
+            if period in ["1H", "2H", "4H", "8H"] and not data.empty:
+                hours_map = {"1H": 1, "2H": 2, "4H": 4, "8H": 8}
+                hours = hours_map.get(period, 1)
+                data = self._filter_to_last_hours(data, hours)
 
         self.parent.data = data
         if len(data) > 0 and 'close' in data.columns:
@@ -111,6 +120,32 @@ class DataLoadingSeries:
 
         except Exception as exc:
             logger.error(f"Failed to fill 1S gaps: {exc}")
+            return data  # Return original data on error
+
+    def _filter_to_last_hours(self, data: "pd.DataFrame", hours: int) -> "pd.DataFrame":
+        """Filter DataFrame to show only the last N hours.
+
+        Issue #42: For short periods (1H, 2H, 4H, 8H), we fetch 1 day of data
+        but only display the last N hours.
+
+        Args:
+            data: OHLCV DataFrame with DatetimeIndex
+            hours: Number of hours to keep
+
+        Returns:
+            Filtered DataFrame
+        """
+        if data.empty:
+            return data
+
+        try:
+            from datetime import timedelta
+            cutoff = data.index[-1] - timedelta(hours=hours)
+            filtered = data[data.index >= cutoff]
+            logger.info(f"Filtered to last {hours}h: {len(data)} → {len(filtered)} candles")
+            return filtered
+        except Exception as exc:
+            logger.error(f"Failed to filter to last {hours}h: {exc}")
             return data  # Return original data on error
 
     def build_chart_series(self, data: "pd.DataFrame") -> tuple[list[dict], list[dict]]:

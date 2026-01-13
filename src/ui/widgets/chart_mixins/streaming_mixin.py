@@ -265,10 +265,14 @@ class StreamingMixin:
         }
 
     def _build_volume_payload(self, price: float) -> dict:
+        # Issue #40, #47: Use custom colors from settings (same as initial load)
+        from .data_loading_series import _get_volume_colors
+        vol_colors = _get_volume_colors()
+        is_bullish = price >= self._current_candle_open
         return {
             'time': self._current_candle_time,
             'value': float(self._current_candle_volume),
-            'color': '#26a69a' if price >= self._current_candle_open else '#ef5350'
+            'color': vol_colors['bullish'] if is_bullish else vol_colors['bearish']
         }
 
     def _execute_chart_updates(self, candle: dict, volume_bar: dict) -> None:
@@ -326,10 +330,14 @@ class StreamingMixin:
                     'close': float(bar_data.get('close', 0)),
                 }
 
+                # Issue #40, #47: Use custom colors from settings
+                from .data_loading_series import _get_volume_colors
+                vol_colors = _get_volume_colors()
+                is_bullish = candle['close'] >= candle['open']
                 volume = {
                     'time': aligned_time,
                     'value': float(bar_data.get('volume', 0)),
-                    'color': '#26a69a' if candle['close'] >= candle['open'] else '#ef5350'
+                    'color': vol_colors['bullish'] if is_bullish else vol_colors['bearish']
                 }
 
                 # Update chart
