@@ -216,6 +216,31 @@ class StreamingMixin:
                     f"L={prev_low:.2f} C={prev_close:.2f} V={prev_volume:.0f} -> new_open={price:.2f}"
                 )
 
+                # Update Entry Analyzer if available
+                if hasattr(self, 'on_new_candle_received'):
+                    # Calculate timestamp for the closed candle
+                    # current_minute_start is the NEW candle start.
+                    # Closed candle start should be previous period.
+                    # But actually we just need a dict with the closed values.
+                    # The timestamp is tricky here without resolution.
+                    # Assuming standard sequential bars.
+                    # Use _current_candle_time which was the START of the closed candle
+                    # BEFORE it was updated to current_minute_start below.
+                    
+                    # Wait, _current_candle_time is updated AFTER this block?
+                    # No, self._current_candle_time holds the start of the candle being closed.
+                    closed_candle_time = self._current_candle_time
+                    
+                    closed_candle = {
+                        'timestamp': closed_candle_time,
+                        'open': prev_open,
+                        'high': prev_high,
+                        'low': prev_low,
+                        'close': prev_close,
+                        'volume': prev_volume
+                    }
+                    self.on_new_candle_received(closed_candle)
+
             self._current_candle_time = current_minute_start
             self._current_candle_open = price
             self._current_candle_high = price

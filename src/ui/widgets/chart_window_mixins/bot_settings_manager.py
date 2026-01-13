@@ -50,7 +50,7 @@ class BotSettingsManager:
             'leverage_value': 20,
             # Trailing Settings (optimiert für enge Stops)
             'regime_adaptive': True,
-            'trailing_activation': 5.0,  # Trailing ab 5% Gewinn
+            # Issue #32: 'trailing_activation' entfernt (doppelte Funktion mit TRA Prozent)
             'tra_percent': 0.3,
             'trailing_distance': 1.0,  # Eng!
             'atr_multiplier': 1.5,  # Eng!
@@ -68,6 +68,9 @@ class BotSettingsManager:
             'show_entry_markers': True,
             'show_stop_lines': True,
             'show_debug_hud': False,
+            # BitUnix Fees (Issue #30)
+            'futures_maker_fee': 0.02,  # VIP 0 default
+            'futures_taker_fee': 0.06,  # VIP 0 default
         }
     }
 
@@ -110,7 +113,7 @@ class BotSettingsManager:
             'leverage_value': ('leverage_slider', 'slider'),
             # Trailing Settings
             'regime_adaptive': ('regime_adaptive_cb', 'check'),
-            'trailing_activation': ('trailing_activation_spin', 'double'),
+            # Issue #32: 'trailing_activation' entfernt
             'tra_percent': ('tra_percent_spin', 'double'),
             'trailing_distance': ('trailing_distance_spin', 'double'),
             'atr_multiplier': ('atr_multiplier_spin', 'double'),
@@ -128,6 +131,9 @@ class BotSettingsManager:
             'show_entry_markers': ('show_entry_markers_cb', 'check'),
             'show_stop_lines': ('show_stop_lines_cb', 'check'),
             'show_debug_hud': ('show_debug_hud_cb', 'check'),
+            # BitUnix Fees (Issue #30)
+            'futures_maker_fee': ('futures_maker_fee_spin', 'double'),
+            'futures_taker_fee': ('futures_taker_fee_spin', 'double'),
         }
 
         for key, (widget_name, widget_type) in widget_map.items():
@@ -169,7 +175,7 @@ class BotSettingsManager:
             'leverage_override_enabled': ('leverage_override_cb', 'check'),
             'leverage_value': ('leverage_slider', 'slider'),
             'regime_adaptive': ('regime_adaptive_cb', 'check'),
-            'trailing_activation': ('trailing_activation_spin', 'double'),
+            # Issue #32: 'trailing_activation' entfernt
             'tra_percent': ('tra_percent_spin', 'double'),
             'trailing_distance': ('trailing_distance_spin', 'double'),
             'atr_multiplier': ('atr_multiplier_spin', 'double'),
@@ -185,6 +191,9 @@ class BotSettingsManager:
             'show_entry_markers': ('show_entry_markers_cb', 'check'),
             'show_stop_lines': ('show_stop_lines_cb', 'check'),
             'show_debug_hud': ('show_debug_hud_cb', 'check'),
+            # BitUnix Fees (Issue #30)
+            'futures_maker_fee': ('futures_maker_fee_spin', 'double'),
+            'futures_taker_fee': ('futures_taker_fee_spin', 'double'),
         }
 
         for key, (widget_name, widget_type) in widget_map.items():

@@ -2195,6 +2195,93 @@
                     }
                 };
 
+                // ==================== CHART COLORS UPDATE (Issues #34, #35, #37) ====================
+                // Update chart colors dynamically without reloading HTML
+                window.chartAPI.updateColors = (colors) => {
+                    try {
+                        // Update layout background color
+                        if (colors.background) {
+                            chart.applyOptions({
+                                layout: {
+                                    background: { type: 'solid', color: colors.background }
+                                }
+                            });
+                        }
+
+                        // Update candlestick colors
+                        if (colors.upColor || colors.downColor || colors.wickUpColor || colors.wickDownColor) {
+                            priceSeries.applyOptions({
+                                upColor: colors.upColor || '#26a69a',
+                                downColor: colors.downColor || '#ef5350',
+                                wickUpColor: colors.wickUpColor || colors.upColor || '#26a69a',
+                                wickDownColor: colors.wickDownColor || colors.downColor || '#ef5350'
+                            });
+                        }
+
+                        console.log('Chart colors updated:', colors);
+                        return true;
+                    } catch(e) {
+                        console.error('updateColors error:', e);
+                        return false;
+                    }
+                };
+
+                // Update background image dynamically without reloading HTML
+                window.chartAPI.updateBackgroundImage = (imagePath, opacity) => {
+                    try {
+                        const container = document.getElementById('chart-container');
+                        if (!container) {
+                            console.error('chart-container not found');
+                            return false;
+                        }
+
+                        // Remove existing style if present
+                        let styleEl = document.getElementById('bg-image-style');
+                        if (styleEl) {
+                            styleEl.remove();
+                        }
+
+                        // If no image path, just remove the background
+                        if (!imagePath) {
+                            console.log('Background image removed');
+                            return true;
+                        }
+
+                        // Create new style element
+                        styleEl = document.createElement('style');
+                        styleEl.id = 'bg-image-style';
+                        const opacityValue = (opacity || 30) / 100.0;
+                        styleEl.textContent = `
+                            #chart-container::before {
+                                content: '';
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background-image: url('${imagePath}');
+                                background-size: cover;
+                                background-position: center;
+                                background-repeat: no-repeat;
+                                opacity: ${opacityValue};
+                                z-index: 0;
+                                pointer-events: none;
+                            }
+                            #chart-container > * {
+                                position: relative;
+                                z-index: 1;
+                            }
+                        `;
+                        document.head.appendChild(styleEl);
+
+                        console.log('Background image updated:', imagePath, 'opacity:', opacityValue);
+                        return true;
+                    } catch(e) {
+                        console.error('updateBackgroundImage error:', e);
+                        return false;
+                    }
+                };
+
                 // ==================== END DRAWING TOOLS ====================
 
                 // ==================== CROSSHAIR TRACKING ====================

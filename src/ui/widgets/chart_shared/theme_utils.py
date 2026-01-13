@@ -4,18 +4,78 @@ This module provides centralized theme management for all chart implementations.
 Previously, theme colors were hardcoded in multiple locations.
 
 IMPORTANT: This is now the SINGLE SOURCE OF TRUTH for chart themes.
+Issue #34: Added support for custom user colors from QSettings.
 """
 
 import logging
 from typing import Dict, Any, Optional
 
+from PyQt6.QtCore import QSettings
+
 from .constants import THEME_COLORS, DEFAULT_THEME
 
 logger = logging.getLogger(__name__)
 
+# Issue #34: Cache for custom colors to avoid repeated QSettings reads
+_custom_colors_cache: Optional[Dict[str, str]] = None
+
+
+def load_custom_colors() -> Dict[str, str]:
+    """Load custom chart colors from QSettings (Issue #34).
+
+    Returns:
+        Dictionary with custom color overrides
+    """
+    global _custom_colors_cache
+
+    if _custom_colors_cache is not None:
+        return _custom_colors_cache
+
+    settings = QSettings("OrderPilot", "TradingApp")
+    custom_colors = {}
+
+    # Load custom candle colors
+    bullish = settings.value("chart_bullish_color", None)
+    if bullish:
+        custom_colors["up_candle"] = bullish
+        custom_colors["up_wick"] = bullish
+        # Update volume color with transparency
+        if bullish.startswith("#"):
+            custom_colors["volume_up"] = f"rgba({int(bullish[1:3], 16)}, {int(bullish[3:5], 16)}, {int(bullish[5:7], 16)}, 0.5)"
+
+    bearish = settings.value("chart_bearish_color", None)
+    if bearish:
+        custom_colors["down_candle"] = bearish
+        custom_colors["down_wick"] = bearish
+        # Update volume color with transparency
+        if bearish.startswith("#"):
+            custom_colors["volume_down"] = f"rgba({int(bearish[1:3], 16)}, {int(bearish[3:5], 16)}, {int(bearish[5:7], 16)}, 0.5)"
+
+    # Load custom background color
+    background = settings.value("chart_background_color", None)
+    if background:
+        custom_colors["background"] = background
+        custom_colors["chart_background"] = background
+
+    _custom_colors_cache = custom_colors
+    logger.debug(f"Loaded custom chart colors: {custom_colors}")
+    return custom_colors
+
+
+def clear_custom_colors_cache() -> None:
+    """Clear custom colors cache (Issue #34).
+
+    Call this after saving new colors in settings to force reload.
+    """
+    global _custom_colors_cache
+    _custom_colors_cache = None
+    logger.debug("Custom colors cache cleared")
+
 
 def get_theme_colors(theme: str = DEFAULT_THEME) -> Dict[str, str]:
     """Get color palette for a specific theme.
+
+    Issue #34: Applies custom user colors from QSettings if available.
 
     Args:
         theme: Theme name ('dark' or 'light')
@@ -32,7 +92,14 @@ def get_theme_colors(theme: str = DEFAULT_THEME) -> Dict[str, str]:
         logger.warning(f"Unknown theme '{theme}', falling back to '{DEFAULT_THEME}'")
         theme = DEFAULT_THEME
 
-    return THEME_COLORS[theme].copy()
+    # Start with base theme colors
+    colors = THEME_COLORS[theme].copy()
+
+    # Issue #34: Apply custom user colors
+    custom_colors = load_custom_colors()
+    colors.update(custom_colors)
+
+    return colors
 
 
 def get_candle_colors(theme: str = DEFAULT_THEME) -> Dict[str, str]:

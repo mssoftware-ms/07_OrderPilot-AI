@@ -126,6 +126,69 @@ class BotCallbacksLifecycleMixin:
             self._bot_update_timer = QTimer()
             self._bot_update_timer.timeout.connect(self._update_bot_display)
         self._bot_update_timer.start(1000)
+
+        # Issue #29: Start entry check timer (checks every 60 seconds if no position)
+        self._ensure_entry_check_timer()
+
+    def _ensure_entry_check_timer(self) -> None:
+        """Ensure entry check timer is running (Issue #29).
+
+        Checks every 60 seconds if an entry opportunity exists when no position is open.
+        """
+        if not hasattr(self, '_entry_check_timer') or self._entry_check_timer is None:
+            self._entry_check_timer = QTimer()
+            self._entry_check_timer.timeout.connect(self._check_entry_opportunity)
+        self._entry_check_timer.start(60000)  # 60 seconds
+        logger.info("Entry check timer started (60s interval)")
+
+    def _check_entry_opportunity(self) -> None:
+        """Check if an entry opportunity exists (Issue #29).
+
+        Called every 60 seconds by timer when bot is running without open position.
+        """
+        if not self._bot_controller or not self._bot_controller.is_running:
+            return
+
+        # Only check if no position is open
+        if self._bot_controller.position is not None:
+            return
+
+        # Get current bar from chart
+        if not hasattr(self, 'chart_widget') or not hasattr(self.chart_widget, 'data'):
+            return
+
+        try:
+            chart_data = self.chart_widget.data
+            if chart_data is None or len(chart_data) == 0:
+                return
+
+            # Get latest bar
+            last_row = chart_data.iloc[-1]
+            last_timestamp = chart_data.index[-1]
+
+            bar = {
+                'timestamp': last_timestamp,
+                'open': float(last_row['open']),
+                'high': float(last_row['high']),
+                'low': float(last_row['low']),
+                'close': float(last_row['close']),
+                'volume': float(last_row.get('volume', 0)),
+            }
+
+            # Process bar for entry check
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Create task if loop is already running
+                asyncio.create_task(self._bot_controller.on_bar(bar))
+            else:
+                # Run synchronously if no loop
+                loop.run_until_complete(self._bot_controller.on_bar(bar))
+
+            logger.debug(f"Entry check executed at {last_timestamp}")
+        except Exception as e:
+            logger.error(f"Entry check failed: {e}")
+
     def _stop_bot(self) -> None:
         """Stop the running bot."""
         if self._bot_controller:
@@ -134,6 +197,11 @@ class BotCallbacksLifecycleMixin:
 
         if self._bot_update_timer:
             self._bot_update_timer.stop()
+
+        # Issue #29: Stop entry check timer
+        if hasattr(self, '_entry_check_timer') and self._entry_check_timer:
+            self._entry_check_timer.stop()
+            logger.info("Entry check timer stopped")
 
         # Update bot log UI status (Issue #23)
         if hasattr(self, '_set_bot_run_status_label'):

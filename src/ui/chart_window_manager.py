@@ -47,7 +47,14 @@ class ChartWindowManager:
 
             # Check if window is still valid (not deleted)
             try:
-                if window.isVisible():
+                # Issue #36: Check if window is minimized and restore it
+                if window.isMinimized():
+                    window.showNormal()  # Restore from minimized state
+                    window.raise_()  # Bring to front
+                    window.activateWindow()  # Activate and focus
+                    logger.info(f"Restored minimized chart window for {symbol}")
+                    return window
+                elif window.isVisible():
                     # Window exists and is visible, just focus it
                     window.raise_()  # Bring to front
                     window.activateWindow()  # Activate and focus
@@ -186,6 +193,33 @@ class ChartWindowManager:
     def close_all_charts(self):
         """Close all open chart windows (alias for close_all_windows)."""
         self.close_all_windows()
+
+    def refresh_all_chart_colors(self):
+        """Refresh colors for all open charts (Issues #34, #37).
+
+        Calls refresh_chart_colors() on each chart's chart_widget.
+        """
+        refreshed_count = 0
+        for symbol, window in list(self.windows.items()):
+            try:
+                # Access the chart_widget inside the ChartWindow
+                if hasattr(window, "chart_widget") and window.chart_widget:
+                    if hasattr(window.chart_widget, "refresh_chart_colors"):
+                        window.chart_widget.refresh_chart_colors()
+                        refreshed_count += 1
+                        logger.debug(f"Refreshed colors for chart: {symbol}")
+                    else:
+                        logger.warning(f"Chart {symbol} has no refresh_chart_colors method")
+                else:
+                    logger.warning(f"Chart window {symbol} has no chart_widget")
+            except RuntimeError:
+                # Window was deleted
+                logger.debug(f"Chart window for {symbol} was deleted during refresh")
+                continue
+            except Exception as exc:
+                logger.error(f"Failed to refresh colors for chart {symbol}: {exc}")
+
+        logger.info(f"Refreshed colors for {refreshed_count} chart(s)")
 
 
 # Singleton instance

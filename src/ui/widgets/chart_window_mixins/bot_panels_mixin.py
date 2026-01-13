@@ -87,6 +87,7 @@ class BotPanelsMixin(
         self._signal_history: list[dict] = []
         self._trade_history: list[dict] = []
         self._current_bot_symbol: str = ""
+        self._last_tick_price: float = 0.0  # Store last tick price for P&L updates
         self._bot_settings = QSettings("OrderPilot", "TradingApp")
         self._pending_position_restore: list[dict] | None = None
 
@@ -157,6 +158,9 @@ class BotPanelsMixin(
         """
         if current_price <= 0:
             return
+            
+        self._last_tick_price = current_price
+        
         selection_active = self._is_signals_selection_active()
         self._log_tick_if_needed(current_price)
 

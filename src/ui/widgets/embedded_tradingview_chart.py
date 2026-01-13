@@ -141,6 +141,9 @@ class EmbeddedTradingViewChart(
         # Initialize chart marking (from ChartMarkingMixin)
         self._init_chart_marking()
 
+        # Initialize Entry Analyzer (from EntryAnalyzerMixin)
+        self._init_entry_analyzer()
+
         # Initialize data loading (from DataLoadingMixin) - CRITICAL: Must be called before _setup_ui
         self._setup_data_loading()
 
@@ -245,6 +248,97 @@ class EmbeddedTradingViewChart(
                  logger.warning("add_line not available")
         except Exception as exc:
             logger.error("add_horizontal_line failed: %s", exc)
+
+    def refresh_chart_colors(self) -> None:
+        """Refresh chart colors and background image from QSettings (Issues #34, #35, #37, #40).
+
+        Calls JavaScript updateColors() and updateBackgroundImage() to apply without reloading HTML.
+        Issue #40: Also reloads volume data with updated colors.
+        """
+        try:
+            from PyQt6.QtCore import QSettings
+            from pathlib import Path
+            from .chart_js_template import get_chart_colors_config
+
+            settings = QSettings("OrderPilot", "TradingApp")
+            colors = get_chart_colors_config()
+
+            # Update colors
+            js_code = f"""
+            if (window.chartAPI && window.chartAPI.updateColors) {{
+                window.chartAPI.updateColors({{
+                    background: '{colors["background"]}',
+                    upColor: '{colors["upColor"]}',
+                    downColor: '{colors["downColor"]}',
+                    wickUpColor: '{colors["wickUpColor"]}',
+                    wickDownColor: '{colors["wickDownColor"]}'
+                }});
+            }}
+            """
+
+            # Update background image
+            bg_image_path = settings.value("chart_background_image", "")
+            bg_opacity = settings.value("chart_background_image_opacity", 30, type=int)
+
+            if bg_image_path:
+                # Convert Windows path to file:/// URL for WebView
+                image_path = Path(bg_image_path).as_posix()
+                file_url = f"file:///{image_path}"
+                js_code += f"""
+                if (window.chartAPI && window.chartAPI.updateBackgroundImage) {{
+                    window.chartAPI.updateBackgroundImage('{file_url}', {bg_opacity});
+                }}
+                """
+            else:
+                # Remove background image
+                js_code += """
+                if (window.chartAPI && window.chartAPI.updateBackgroundImage) {
+                    window.chartAPI.updateBackgroundImage(null, 0);
+                }
+                """
+
+            if hasattr(self, "web_view") and self.web_view:
+                self.web_view.page().runJavaScript(js_code)
+                logger.info(f"Chart colors and background refreshed: {colors}, bg={bg_image_path}")
+
+                # Issue #40: Reload volume data with new colors
+                self._reload_volume_with_new_colors()
+            else:
+                logger.warning("Cannot refresh colors: web_view not available")
+        except Exception as exc:
+            logger.error(f"refresh_chart_colors failed: {exc}")
+
+    def _reload_volume_with_new_colors(self) -> None:
+        """Reload volume panel with updated colors (Issue #40)."""
+        try:
+            # Only reload if we have data
+            if not hasattr(self, 'data') or self.data is None or self.data.empty:
+                logger.debug("No data available to reload volume")
+                return
+
+            # Rebuild volume data with new colors
+            from .chart_mixins.data_loading_series import DataLoadingSeries
+            series_helper = DataLoadingSeries(self)
+            _, volume_data = series_helper.build_chart_series(self.data)
+
+            if volume_data:
+                # Remove old volume panel
+                self._execute_js("window.chartAPI.removePanel('volume');")
+
+                # Create new volume panel with updated colors
+                from .chart_mixins.data_loading_series import _get_volume_colors
+                vol_colors = _get_volume_colors()
+
+                import json
+                self._execute_js(
+                    f"window.chartAPI.createPanel('volume', 'Volume', 'histogram', '{vol_colors['bullish']}', null, null);"
+                )
+                volume_json = json.dumps(volume_data)
+                self._execute_js(f"window.chartAPI.setPanelData('volume', {volume_json});")
+
+                logger.info(f"Volume panel reloaded with new colors: {vol_colors}")
+        except Exception as exc:
+            logger.error(f"_reload_volume_with_new_colors failed: {exc}")
 
     def resizeEvent(self, event):
         """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""

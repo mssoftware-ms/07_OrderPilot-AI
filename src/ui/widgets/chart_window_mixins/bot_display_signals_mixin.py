@@ -12,19 +12,22 @@ class BotDisplaySignalsMixin:
     """BotDisplaySignalsMixin extracted from BotDisplayManagerMixin."""
     def _update_signals_pnl(self) -> None:
         """Update P&L for all open signals in history."""
-        # Get current price - prefer bot_controller._last_features, fallback to chart data
+        # Use centralized price getter (prioritizes live tick)
         current_price = 0.0
-
-        if self._bot_controller and self._bot_controller._last_features:
-            current_price = self._bot_controller._last_features.close
-
-        # Fallback: get current price from chart widget data
-        if current_price <= 0 and hasattr(self, 'chart_widget'):
-            if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                try:
-                    current_price = float(self.chart_widget.data['close'].iloc[-1])
-                except Exception:
-                    pass
+        if hasattr(self, '_get_current_price'):
+            current_price = self._get_current_price()
+        
+        # Fallback if _get_current_price not available (should not happen in mixin composition)
+        if current_price <= 0:
+            if self._bot_controller and self._bot_controller._last_features:
+                current_price = self._bot_controller._last_features.close
+            
+            if current_price <= 0 and hasattr(self, 'chart_widget'):
+                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                    try:
+                        current_price = float(self.chart_widget.data['close'].iloc[-1])
+                    except Exception:
+                        pass
 
         if current_price <= 0:
             return

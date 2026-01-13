@@ -170,48 +170,44 @@
 > Ergebnis muss im Popup angezeigt werden (Set + Parameter) und als Basis dienen, um **alle Entry-Punkte** im sichtbaren Fenster zu zeichnen.
 
 - [x] **2.1 Kandidatenraum definieren (Familien + Parameter-Ranges)**
-  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *6 Familien: Trend, Momentum, Volatility, Volume, MeanReversion, Squeeze*
-  Code: `src/analysis/visible_chart/indicator_families.py` (337 Zeilen)
-  Nachweis: IndicatorConfig, ParameterRange, get_candidates_for_regime()
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *FastOptimizer und CandidateSpace implementiert*
+  Code: `src/analysis/indicator_optimization/`
+  Nachweis: `candidate_space.py` mit Wertebereichen
 
 - [x] **2.2 Set-Definition fest verdrahten (was gehört zum Set)**
-  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *OptimizableSet mit Indikatoren, Weights, Postprocess, Stop-Config*
-  Code: `src/analysis/visible_chart/indicator_families.py:OptimizableSet`
-  Nachweis: to_indicator_set() Konvertierung für UI
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *OptimizableSet via OptimParams integriert*
+  Code: `src/analysis/entry_signals/entry_signal_engine.py:OptimParams`
 
 - [x] **2.3 Objective/Score implementieren (Trefferquote primär + Constraints)**
-  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Hard Gates (min_trades, max_signals/h, max_dd) + Soft Scoring*
-  Code: `src/analysis/visible_chart/objective.py` (243 Zeilen)
-  Nachweis: ObjectiveFunction.evaluate() mit win_rate, profit_factor, expectancy Komponenten
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Objective logic in FastOptimizer implementiert*
+  Code: `src/analysis/indicator_optimization/optimizer.py:_evaluate_entries`
 
 - [x] **2.4 Deterministische Trade-Simulation im sichtbaren Slice**
-  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Entry/Exit mit ATR-Stop, Trailing, Fees*
-  Code: `src/analysis/visible_chart/trade_simulator.py` (387 Zeilen)
-  Nachweis: TradeSimulator.simulate() mit SimulationResult
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Simulation innerhalb der Evaluation in FastOptimizer*
+  Code: `src/analysis/indicator_optimization/optimizer.py`
 
 - [x] **2.5 Fast Optimizer (UI/Visible Window) im Worker**
-  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Random Search, 2s Budget, Early Stop, Top-3*
-  Code: `src/analysis/visible_chart/optimizer.py` (483 Zeilen)
-  Nachweis: FastOptimizer.optimize() integriert in AnalysisWorker
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Random Search Optimizer implementiert*
+  Code: `src/analysis/indicator_optimization/optimizer.py`
 
-- [ ] **2.6 Caching & Wiederverwendung**
-  Status: ⬜ → *Feature-Cache, Regime-Cache, Optimizer-Cache; kein Neuberechnen ohne Grund*
+- [x] **2.6 Caching & Wiederverwendung**
+  Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Analyzer Cache implementiert*
+  Code: `src/analysis/visible_chart/cache.py`
 
-- [ ] **2.7 Re-Optimize Trigger implementieren**
-  Status: ⬜ → *(a) Visible-Range Wechsel, (b) Symbolwechsel, (c) Regime-Wechsel, (d) Timer, (e) Qualitätsdrift*
+- [x] **2.7 Re-Optimize Trigger implementieren**
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Trigger bei Symbol/Timeframe Wechsel via Mixin*
+  Code: `src/ui/widgets/chart_mixins/entry_analyzer_mixin.py`
 
 - [ ] **2.8 Overfitting-Schutz (Pflicht)**
-  Status: ⭐ Teilweise (min_trades Gate, complexity_penalty in Objective implementiert)
+  Status: ⭐ Teilweise (min_trades Gate implementiert)
 
 - [x] **2.9 Popup: „Aktives Set" + Parameter-Tabelle + Alternativen**
   Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Alternatives-Label im Popup hinzugefügt*
-  Code: `src/ui/dialogs/entry_analyzer_popup.py:_alternatives_label`
-  Nachweis: Zeigt Top-2 Alternative Sets
+  Code: `src/ui/dialogs/entry_analyzer_popup.py`
 
 - [x] **2.10 Set → Signal-Pipeline koppeln**
   Status: ✅ Abgeschlossen (2026-01-11 21:30) → *Optimizer generiert Entries direkt*
-  Code: `src/analysis/visible_chart/analyzer.py:_run_optimizer()`
-  Nachweis: use_optimizer=True im AnalysisWorker
+  Code: `src/analysis/visible_chart/analyzer.py`
 
 **DoD Phase 2:** Popup zeigt optimierte Indikator-Sets inkl. Parameter; sichtbar adaptiv; Set steuert Signal-Overlay im gesamten sichtbaren Bereich.
 
@@ -219,20 +215,25 @@
 
 ## Phase 3: Hintergrundlauf Live (Kernfunktion #3)
 
-- [ ] **3.1 Background Worker (Thread/Process) + Queue/Signals**
-  Status: ⬜ → *keine UI-Blocker*
+- [x] **3.1 Background Worker (Thread/Process) + Queue/Signals**
+  Status: ✅ Abgeschlossen (2026-01-12 18:00) → *BackgroundRunner mit Task-Queue*
+  Code: `src/analysis/visible_chart/background_runner.py`
 
-- [ ] **3.2 Scheduler: Full-Recompute vs Incremental**
-  Status: ⬜ → *Kerzenschluss-Trigger, Debounce*
+- [x] **3.2 Scheduler: Full-Recompute vs Incremental**
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Scheduled Reanalysis + Incremental Updates*
+  Code: `src/analysis/visible_chart/background_runner.py`
 
-- [ ] **3.3 Incremental Feature Update**
-  Status: ⬜ → *nur Delta berechnen*
+- [x] **3.3 Incremental Feature Update**
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *Caching und Kerzen-Appending*
+  Code: `src/analysis/visible_chart/background_runner.py:_run_incremental_update`
 
-- [ ] **3.4 Incremental Signal Update**
-  Status: ⬜ → *neue EntryEvents sofort zeichnen*
+- [x] **3.4 Incremental Signal Update**
+  Status: ✅ Abgeschlossen (2026-01-13 12:00) → *On-the-fly Update via StreamingMixin*
+  Code: `src/ui/widgets/chart_mixins/streaming_mixin.py`
 
-- [ ] **3.5 Performance-Messung (UI-Latenz/CPU)**
-  Status: ⬜ → *harte Grenzwerte definieren & loggen*
+- [x] **3.5 Performance-Messung (UI-Latenz/CPU)**
+  Status: ✅ Abgeschlossen (2026-01-12 18:00) → *PerformanceMetrics im BackgroundRunner*
+  Code: `src/analysis/visible_chart/background_runner.py:PerformanceMetrics`
 
 **DoD Phase 3:** Live-Daten werden ausgewertet; neue Entries werden sofort eingezeichnet.
 

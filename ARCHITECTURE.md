@@ -534,10 +534,29 @@ Es ist **isoliert vom Trading** (Read-Only) und fokussiert auf Setup-Erkennung.
 8. AIAnalysisOutput (JSON) → UI Anzeige
 ```
 
+## Analysis & AI Modules
+
+### Visible Chart Analyzer (`src/analysis/visible_chart/`)
+- **Analyzer**: Orchestriert die Analyse des sichtbaren Chartbereichs.
+- **Background Runner**: Führt Analysen im Hintergrund durch (Full & Incremental).
+- **Optimization**: `src/analysis/indicator_optimization/` für Parameter-Optimierung.
+    - `candidate_space.py`: Definiert Parameter-Bereiche.
+    - `optimizer.py`: Fast Random Search Optimizer.
+- **Entry Signals**: `src/analysis/entry_signals/` (Core Logic).
+
+### AI Copilot (`src/analysis/visible_chart/entry_copilot.py`)
+- KI-gestützte Analyse von Signalen.
+- Generierung von Trading-Empfehlungen.
+
 ## Verzeichnisstruktur
 
 ```
 src/
+├── analysis/             # Analyse-Module [NEU]
+│   ├── visible_chart/    # Live-Analyse des sichtbaren Bereichs
+│   ├── indicator_optimization/ # Parameter-Optimierung
+│   ├── entry_signals/    # Core Signal Logic
+│   └── regime/           # Markterkennung
 ├── brokers/              # Deprecated - wird migriert
 ├── common/               # Shared Utilities
 │   ├── event_bus.py      # Globaler Event-Bus

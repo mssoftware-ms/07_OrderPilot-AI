@@ -146,6 +146,19 @@ class EntryAnalyzerMixin:
     _live_mode_enabled: bool = False
     _auto_draw_entries: bool = True
 
+    def _init_entry_analyzer(self) -> None:
+        """Initialize entry analyzer connections.
+
+        Must be called from chart widget __init__.
+        """
+        # Connect to chart signals if they exist
+        if hasattr(self, "symbol_changed"):
+            self.symbol_changed.connect(self._on_entry_analyzer_symbol_changed)
+        if hasattr(self, "timeframe_changed"):
+            self.timeframe_changed.connect(self._on_entry_analyzer_timeframe_changed)
+        if hasattr(self, "data_loaded"):
+            self.data_loaded.connect(self._on_entry_analyzer_data_loaded)
+
     def show_entry_analyzer(self) -> None:
         """Show the Entry Analyzer popup dialog."""
         from src.ui.dialogs.entry_analyzer_popup import EntryAnalyzerPopup
@@ -323,8 +336,9 @@ class EntryAnalyzerMixin:
         Args:
             result: AnalysisResult from background runner.
         """
-        # Update popup if open
-        if self._entry_analyzer_popup and self._entry_analyzer_popup.isVisible():
+        # Stop loading animation
+        if self._entry_analyzer_popup:
+            self._entry_analyzer_popup.set_analyzing(False)
             self._entry_analyzer_popup.set_result(result)
 
         # Auto-draw entries
@@ -338,188 +352,23 @@ class EntryAnalyzerMixin:
             result.regime.value,
         )
 
-    def _on_live_new_entry(self, entry: Any) -> None:
-        """Handle new entry detected in live mode.
-
-        Args:
-            entry: New EntryEvent.
-        """
-        if self._auto_draw_entries:
-            self._draw_single_entry(entry)
-
-        logger.info(
-            "New live entry: %s @ %.2f (confidence=%.0f%%)",
-            entry.side.value,
-            entry.price,
-            entry.confidence * 100,
-        )
-
-    def _on_live_regime_change(self, old: Any, new: Any) -> None:
-        """Handle regime change in live mode.
-
-        Args:
-            old: Previous RegimeType.
-            new: New RegimeType.
-        """
-        logger.info("Live regime change: %s -> %s", old.value, new.value)
-
-        # Update popup if open
-        if self._entry_analyzer_popup and self._entry_analyzer_popup.isVisible():
-            # Trigger refresh to show new regime
-            self._request_live_analysis()
-
-    def _on_live_error(self, error_msg: str) -> None:
-        """Handle live analysis error.
-
-        Args:
-            error_msg: Error message.
-        """
-        logger.error("Live analysis error: %s", error_msg)
-
-    def _draw_single_entry(self, entry: Any) -> None:
-        """Draw a single entry marker on the chart.
-
-        Args:
-            entry: EntryEvent to draw.
-        """
-        if not hasattr(self, "add_bot_marker"):
-            return
-
-        from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
-
-        marker_type = MarkerType.ENTRY_CONFIRMED
-        reasons_str = ", ".join(entry.reason_tags[:2]) if entry.reason_tags else ""
-        text = f"{entry.side.value.upper()} {entry.confidence:.0%}"
-        if reasons_str:
-            text = f"{text} [{reasons_str}]"
-
-        self.add_bot_marker(
-            timestamp=entry.timestamp,
-            price=entry.price,
-            marker_type=marker_type,
-            side=entry.side.value,
-            text=text,
-            score=entry.confidence,
-        )
+    # ... (other methods) ...
 
     def _start_visible_range_analysis(self) -> None:
-        """Start analysis of the visible chart range."""
+        """Start analysis of the visible chart range using Live Bridge."""
         if not hasattr(self, "get_visible_range"):
             logger.error("Chart widget has no get_visible_range method")
-            QMessageBox.warning(
-                self,
-                "Error",
-                "Visible range API not available",
-            )
             if self._entry_analyzer_popup:
                 self._entry_analyzer_popup.set_analyzing(False)
             return
 
-        # Get visible range asynchronously
-        self.get_visible_range(self._on_visible_range_received)
-
-    def _on_visible_range_received(self, range_data: dict | None) -> None:
-        """Handle received visible range data.
-
-        Args:
-            range_data: Dict with 'from' and 'to' keys, or None on error.
-        """
-        if range_data is None:
-            logger.error("Failed to get visible range")
-            debug_logger.error("EntryAnalyzer: visible range is None (chart not ready)")
-            QMessageBox.warning(
-                self,
-                "Error",
-                "Could not determine visible chart range",
-            )
-            if self._entry_analyzer_popup:
-                self._entry_analyzer_popup.set_analyzing(False)
-            return
-
-        logger.info("Visible range received: %s", range_data)
-        debug_logger.info("EntryAnalyzer: raw visible range: %s", range_data)
-
-        # Get symbol and timeframe
-        symbol = getattr(self, "_symbol", None) or getattr(self, "current_symbol", "UNKNOWN")
-        timeframe = getattr(self, "_timeframe", None) or getattr(
-            self, "current_timeframe", "1m"
-        )
-
-        # Get candles from chart data
-        candles = self._get_candles_for_validation()
-        if not candles:
-            logger.error("No candle data available in chart")
-            debug_logger.error("EntryAnalyzer: no candle data available after extraction")
-            QMessageBox.warning(
-                self,
-                "Error",
-                "No chart data available. Please load data first.",
-            )
-            if self._entry_analyzer_popup:
-                self._entry_analyzer_popup.set_analyzing(False)
-            return
-
-        logger.info("Starting analysis with %d candles", len(candles))
-        debug_logger.info(
-            "EntryAnalyzer: starting analysis (symbol=%s, timeframe=%s, candles=%d)",
-            symbol,
-            timeframe,
-            len(candles),
-        )
-
-        # Update popup context
+        # Enable live mode and request analysis
+        # This unifies the "Analyze" button with the Live/Incremental architecture
+        self.start_live_entry_analysis(auto_draw=True)
+        
+        # Manually set analyzing state (will be cleared in _on_live_result)
         if self._entry_analyzer_popup:
-            self._entry_analyzer_popup.set_context(symbol, timeframe, candles)
-
-        # Start background analysis
-        self._analysis_worker = AnalysisWorker(
-            visible_range=range_data,
-            symbol=symbol,
-            timeframe=timeframe,
-            candles=candles,
-            parent=self,
-        )
-        self._analysis_worker.finished.connect(self._on_analysis_finished)
-        self._analysis_worker.error.connect(self._on_analysis_error)
-        self._analysis_worker.start()
-
-    def _on_analysis_finished(self, result: AnalysisResult) -> None:
-        """Handle completed analysis.
-
-        Args:
-            result: The analysis result.
-        """
-        if self._entry_analyzer_popup:
-            self._entry_analyzer_popup.set_analyzing(False)
-            self._entry_analyzer_popup.set_result(result)
-
-        logger.info(
-            "Analysis completed: %d entries found, regime=%s",
-            len(result.entries),
-            result.regime.value,
-        )
-        debug_logger.info(
-            "EntryAnalyzer: analysis finished with %d entries (regime=%s)",
-            len(result.entries),
-            result.regime.value,
-        )
-
-    def _on_analysis_error(self, error_msg: str) -> None:
-        """Handle analysis error.
-
-        Args:
-            error_msg: Error message.
-        """
-        if self._entry_analyzer_popup:
-            self._entry_analyzer_popup.set_analyzing(False)
-
-        logger.error("Analysis error: %s", error_msg)
-        debug_logger.error("EntryAnalyzer: analysis error: %s", error_msg)
-        QMessageBox.critical(
-            self,
-            "Analysis Error",
-            f"Analysis failed: {error_msg}",
-        )
+            self._entry_analyzer_popup.set_analyzing(True)
 
     def _draw_entry_markers(self, entries: list[EntryEvent]) -> None:
         """Draw entry markers on the chart.
@@ -572,3 +421,35 @@ class EntryAnalyzerMixin:
         elif hasattr(self, "_clear_all_markers"):
             self._clear_all_markers()
             logger.info("Cleared all markers")
+
+    def _on_entry_analyzer_symbol_changed(self, symbol: str) -> None:
+        """Handle symbol change to update live analysis.
+
+        Args:
+            symbol: New symbol.
+        """
+        if self._live_mode_enabled:
+            logger.info("Symbol changed to %s, refreshing live analysis", symbol)
+            # Short delay to allow data to load?
+            # Ideally we wait for data_loaded signal, but for now request update.
+            self._request_live_analysis()
+
+    def _on_entry_analyzer_timeframe_changed(self, timeframe: str) -> None:
+        """Handle timeframe change to update live analysis.
+
+        Args:
+            timeframe: New timeframe.
+        """
+        if self._live_mode_enabled:
+            logger.info("Timeframe changed to %s, refreshing live analysis", timeframe)
+            self._request_live_analysis()
+
+    def _on_entry_analyzer_data_loaded(self) -> None:
+        """Handle data loaded event to update live analysis.
+        
+        This ensures analysis runs after new symbol/timeframe data 
+        is actually available in the chart.
+        """
+        if self._live_mode_enabled:
+            logger.info("Chart data loaded, refreshing live analysis")
+            self._request_live_analysis()

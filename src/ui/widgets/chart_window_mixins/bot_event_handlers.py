@@ -199,6 +199,7 @@ class BotEventHandlersMixin:
 
         if symbol != self._current_bot_symbol:
             self._current_bot_symbol = symbol
+            self._last_tick_price = 0.0  # Reset last tick price on symbol change
             self._load_bot_settings(symbol)
             logger.info(f"Bot panel updated for symbol: {symbol}")
 

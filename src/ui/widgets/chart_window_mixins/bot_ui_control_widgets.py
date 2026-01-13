@@ -435,22 +435,7 @@ class BotUIControlWidgets:
         self.parent.regime_adaptive_cb.stateChanged.connect(self.parent._on_regime_adaptive_changed)
         trailing_layout.addRow("Adaptive:", self.parent.regime_adaptive_cb)
 
-        # Trailing Activation
-        self.parent.trailing_activation_spin = QDoubleSpinBox()
-        self.parent.trailing_activation_spin.setRange(0.0, 100.0)
-        self.parent.trailing_activation_spin.setValue(5.0)
-        self.parent.trailing_activation_spin.setSingleStep(1.0)
-        self.parent.trailing_activation_spin.setDecimals(1)
-        self.parent.trailing_activation_spin.setSuffix(" %")
-        self.parent.trailing_activation_spin.setToolTip(
-            "Ab welchem GEWINN (Return on Risk) der Trailing Stop aktiviert wird.\n\n"
-            "Beispiel bei 100EUR Risiko:\n"
-            "- 0% = sofort wenn im Gewinn\n"
-            "- 10% = Trailing erst ab 10EUR Gewinn aktiv\n"
-            "- 50% = Trailing erst ab 50EUR Gewinn aktiv\n\n"
-            "Bis zur Aktivierung gilt nur der Initial Stop Loss (rot)."
-        )
-        trailing_layout.addRow("Aktivierung ab:", self.parent.trailing_activation_spin)
+        # Issue #32: "Aktivierung ab" Feld entfernt (doppelte Funktion mit TRA Prozent)
 
         # TRA Percent
         self.parent.tra_percent_spin = QDoubleSpinBox()

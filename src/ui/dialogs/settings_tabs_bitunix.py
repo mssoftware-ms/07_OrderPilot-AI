@@ -120,9 +120,15 @@ class SettingsTabsBitunix:
 
         # Download button and progress
         btn_layout = QHBoxLayout()
-        self.parent.bitunix_dl_btn = QPushButton("Download Historical Data")
+        self.parent.bitunix_dl_btn = QPushButton("Download Full History")
+        self.parent.bitunix_dl_btn.setToolTip("Deletes existing data and downloads full history (slow)")
         self.parent.bitunix_dl_btn.clicked.connect(self._start_bitunix_download)
         btn_layout.addWidget(self.parent.bitunix_dl_btn)
+
+        self.parent.bitunix_sync_btn = QPushButton("Sync -> Today")
+        self.parent.bitunix_sync_btn.setToolTip("Updates existing data with missing recent candles (fast)")
+        self.parent.bitunix_sync_btn.clicked.connect(self._start_bitunix_sync)
+        btn_layout.addWidget(self.parent.bitunix_sync_btn)
 
         self.parent.bitunix_dl_cancel_btn = QPushButton("Cancel")
         self.parent.bitunix_dl_cancel_btn.setEnabled(False)
@@ -168,6 +174,14 @@ class SettingsTabsBitunix:
 
     def _start_bitunix_download(self):
         """Start Bitunix historical data download."""
+        self._start_download_worker(mode="download")
+
+    def _start_bitunix_sync(self):
+        """Start Bitunix sync (update only)."""
+        self._start_download_worker(mode="sync")
+
+    def _start_download_worker(self, mode: str):
+        """Start the download worker with specified mode."""
         from src.ui.workers.historical_download_worker import DownloadThread, HistoricalDownloadWorker
 
         symbol = self.parent.bitunix_dl_symbol.currentText().strip()
@@ -184,6 +198,7 @@ class SettingsTabsBitunix:
             symbols=[symbol],
             days=days,
             timeframe=timeframe,
+            mode=mode,
         )
 
         # Connect signals
@@ -197,9 +212,12 @@ class SettingsTabsBitunix:
 
         # Update UI
         self.parent.bitunix_dl_btn.setEnabled(False)
+        self.parent.bitunix_sync_btn.setEnabled(False)
         self.parent.bitunix_dl_cancel_btn.setEnabled(True)
         self.parent.bitunix_dl_progress.setValue(0)
-        self.parent.bitunix_dl_status.setText(f"Starting download for {symbol}...")
+        
+        action = "download" if mode == "download" else "sync"
+        self.parent.bitunix_dl_status.setText(f"Starting {action} for {symbol}...")
 
     def _cancel_bitunix_download(self):
         """Cancel Bitunix download."""
@@ -215,14 +233,15 @@ class SettingsTabsBitunix:
     def _on_bitunix_finished(self, success: bool, message: str, results: dict):
         """Handle Bitunix download completion."""
         self.parent.bitunix_dl_btn.setEnabled(True)
+        self.parent.bitunix_sync_btn.setEnabled(True)
         self.parent.bitunix_dl_cancel_btn.setEnabled(False)
         self.parent.bitunix_dl_progress.setValue(100 if success else 0)
         self.parent.bitunix_dl_status.setText(message)
 
         if success:
-            QMessageBox.information(self.parent, "Download Complete", message)
+            QMessageBox.information(self.parent, "Operation Complete", message)
         else:
-            QMessageBox.warning(self.parent, "Download Failed", message)
+            QMessageBox.warning(self.parent, "Operation Failed", message)
 
         self._bitunix_download_thread = None
         self._bitunix_download_worker = None
@@ -230,9 +249,10 @@ class SettingsTabsBitunix:
     def _on_bitunix_error(self, error_message: str):
         """Handle Bitunix download error."""
         self.parent.bitunix_dl_btn.setEnabled(True)
+        self.parent.bitunix_sync_btn.setEnabled(True)
         self.parent.bitunix_dl_cancel_btn.setEnabled(False)
         self.parent.bitunix_dl_progress.setValue(0)
         self.parent.bitunix_dl_status.setText(f"Error: {error_message}")
-        QMessageBox.critical(self.parent, "Download Error", error_message)
+        QMessageBox.critical(self.parent, "Error", error_message)
         self._bitunix_download_thread = None
         self._bitunix_download_worker = None

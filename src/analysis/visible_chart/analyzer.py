@@ -262,6 +262,7 @@ class VisibleChartAnalyzer:
             visible_range=visible_range,
             analysis_time_ms=analysis_time,
             candle_count=len(candles),
+            candles=candles,
         )
 
     def _get_or_calculate_features(
@@ -594,7 +595,7 @@ class VisibleChartAnalyzer:
     ) -> dict[str, Any]:
         """Run FastOptimizer to find optimal indicator set.
 
-        Now uses the new fast_optimize_params from entry_signal_engine.
+        Now uses the FastOptimizer from indicator_optimization.
 
         Args:
             candles: Candle data.
@@ -606,19 +607,23 @@ class VisibleChartAnalyzer:
         """
         from src.analysis.entry_signals.entry_signal_engine import (
             OptimParams,
-            fast_optimize_params,
             generate_entries,
         )
+        from src.analysis.indicator_optimization.optimizer import FastOptimizer
 
         # Run fast optimization
-        # Enum values are now directly compatible
         base_params = OptimParams()
-        optimized_params = fast_optimize_params(
+        optimizer = FastOptimizer()
+        optimized_params = optimizer.optimize(
             candles, base_params=base_params, budget_ms=1200, seed=42
         )
 
         # Generate entries with optimized parameters
-        engine_entries = generate_entries(candles, features, regime, optimized_params)
+        # Recalculate features with new params
+        from src.analysis.entry_signals.entry_signal_engine import calculate_features
+        
+        opt_features = calculate_features(candles, optimized_params)
+        engine_entries = generate_entries(candles, opt_features, regime, optimized_params)
 
         # Convert engine entries to analyzer entries
         entries = []
@@ -626,7 +631,7 @@ class VisibleChartAnalyzer:
             entries.append(
                 EntryEvent(
                     timestamp=e.timestamp,
-                    side=e.side,  # Directly compatible
+                    side=e.side,
                     confidence=e.confidence,
                     price=e.price,
                     reason_tags=e.reason_tags,
@@ -645,7 +650,7 @@ class VisibleChartAnalyzer:
 
         return {
             "active_set": active_set,
-            "alternatives": [],  # No alternatives for now
+            "alternatives": [],
             "entries": entries,
         }
 

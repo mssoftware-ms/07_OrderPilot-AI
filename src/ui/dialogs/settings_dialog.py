@@ -87,6 +87,45 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.value("console_debug_level", "INFO"),
         )
 
+        # Issue #34: Chart Colors
+        from PyQt6.QtGui import QColor
+
+        bullish_color_name = self.settings.value("chart_bullish_color", "#26a69a")
+        self.bullish_color = QColor(bullish_color_name)
+        if hasattr(self, '_basic_helper'):
+            self._basic_helper._update_color_button(self.bullish_color_btn, self.bullish_color)
+
+        bearish_color_name = self.settings.value("chart_bearish_color", "#ef5350")
+        self.bearish_color = QColor(bearish_color_name)
+        if hasattr(self, '_basic_helper'):
+            self._basic_helper._update_color_button(self.bearish_color_btn, self.bearish_color)
+
+        background_color_name = self.settings.value("chart_background_color", "#1e1e1e")
+        self.background_color = QColor(background_color_name)
+        if hasattr(self, '_basic_helper'):
+            self._basic_helper._update_color_button(self.background_color_btn, self.background_color)
+
+        # Issue #35: Background Image
+        bg_image_path = self.settings.value("chart_background_image", "")
+        self.background_image_path = bg_image_path
+        if bg_image_path:
+            import os
+            filename = os.path.basename(bg_image_path)
+            self.background_image_label.setText(filename)
+            self.background_image_label.setStyleSheet("color: #26a69a;")
+        else:
+            self.background_image_label.setText("Kein Bild ausgewählt")
+            self.background_image_label.setStyleSheet("color: #888; font-style: italic;")
+
+        bg_opacity = self.settings.value("chart_background_image_opacity", 30, type=int)
+        self.background_image_opacity_slider.setValue(bg_opacity)
+        self.background_image_opacity_label.setText(f"{bg_opacity}%")
+
+        # Issue #39: Load Candle Border Radius
+        border_radius = self.settings.value("chart_candle_border_radius", 0, type=int)
+        self.candle_border_radius_slider.setValue(border_radius)
+        self.candle_border_radius_label.setText(f"{border_radius} px")
+
         # Trading
         self.manual_approval.setChecked(
             self.settings.value("manual_approval", True, type=bool)
@@ -283,6 +322,33 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("auto_connect", self.auto_connect_check.isChecked())
             self.settings.setValue("default_broker", self.default_broker_combo.currentText())
             self.settings.setValue("console_debug_level", self.console_debug_level.currentText())
+
+            # Issue #34: Save Chart Colors
+            self.settings.setValue("chart_bullish_color", self.bullish_color.name())
+            self.settings.setValue("chart_bearish_color", self.bearish_color.name())
+            self.settings.setValue("chart_background_color", self.background_color.name())
+
+            # Issue #35: Save Background Image Settings
+            self.settings.setValue("chart_background_image", self.background_image_path)
+            self.settings.setValue("chart_background_image_opacity", self.background_image_opacity_slider.value())
+
+            # Issue #39: Save Candle Border Radius
+            self.settings.setValue("chart_candle_border_radius", self.candle_border_radius_slider.value())
+
+            # Clear custom colors cache to force reload in charts
+            from src.ui.widgets.chart_shared.theme_utils import clear_custom_colors_cache
+            clear_custom_colors_cache()
+            logger.info("Custom chart colors and background image saved, cache cleared")
+
+            # Issues #34, #37: Refresh colors in all open charts
+            try:
+                from src.ui.chart_window_manager import get_chart_window_manager
+                chart_mgr = get_chart_window_manager()
+                if chart_mgr:
+                    chart_mgr.refresh_all_chart_colors()
+                    logger.info("All open charts refreshed with new colors")
+            except Exception as exc:
+                logger.warning(f"Could not refresh chart colors: {exc}")
 
             # Apply console debug level immediately
             self._apply_console_debug_level()
