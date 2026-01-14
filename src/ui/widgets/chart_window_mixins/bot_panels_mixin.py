@@ -229,34 +229,60 @@ class BotPanelsMixin(
         sig["pnl_percent"] = pnl_pct
 
     def _update_current_position_display(self, sig: dict, current_price: float) -> None:
+        """Update current position display panel."""
         entry_price = sig.get("price", 0)
         invested = sig.get("invested", 0)
         side = sig.get("side", "long")
         stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
         take_profit = sig.get("take_profit_price", sig.get("tp_price", 0))
 
-        # Issue #54: Always calculate P/L WITHOUT leverage for Current Position display
-        # Do NOT use cached values from signal, as they may have leverage applied
-        if entry_price > 0 and hasattr(self, '_calculate_pnl'):
-            pnl_pct, pnl_currency = self._calculate_pnl(entry_price, current_price, invested, side)
-        else:
-            # Fallback to manual calculation if _calculate_pnl not available
-            if side.lower() == "long":
-                pnl_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
-            else:
-                pnl_pct = ((entry_price - current_price) / entry_price) * 100 if entry_price > 0 else 0
-            pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
+        # Calculate P&L (Issue #54: WITHOUT leverage)
+        pnl_pct, pnl_currency = self._calculate_position_pnl(
+            entry_price, current_price, invested, side
+        )
 
-        # Update SL/TP Progress Bar
-        if hasattr(self, 'sltp_progress_bar') and entry_price > 0:
+        # Update all display components
+        self._update_sltp_progress_bar(entry_price, stop_price, take_profit, current_price, side)
+        self._update_position_basic_info(sig, entry_price, invested, side)
+        self._update_position_prices(sig, current_price, stop_price)
+        self._update_position_pnl_display(pnl_pct, pnl_currency)
+        self._update_position_score_display(sig)
+        self._update_trailing_stop_display(sig)
+        self._update_derivative_display(sig, current_price)
+
+    def _calculate_position_pnl(
+        self, entry_price: float, current_price: float, invested: float, side: str
+    ) -> tuple[float, float]:
+        """Calculate P&L for current position without leverage."""
+        if entry_price > 0 and hasattr(self, '_calculate_pnl'):
+            return self._calculate_pnl(entry_price, current_price, invested, side)
+
+        # Fallback to manual calculation
+        if side.lower() == "long":
+            pnl_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
+        else:
+            pnl_pct = ((entry_price - current_price) / entry_price) * 100 if entry_price > 0 else 0
+
+        pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
+        return pnl_pct, pnl_currency
+
+    def _update_sltp_progress_bar(
+        self, entry: float, sl: float, tp: float, current: float, side: str
+    ) -> None:
+        """Update SL/TP progress bar widget."""
+        if hasattr(self, 'sltp_progress_bar') and entry > 0:
             self.sltp_progress_bar.set_prices(
-                entry=entry_price,
-                sl=stop_price,
-                tp=take_profit,
-                current=current_price,
+                entry=entry,
+                sl=sl,
+                tp=tp,
+                current=current,
                 side=side
             )
 
+    def _update_position_basic_info(
+        self, sig: dict, entry_price: float, invested: float, side: str
+    ) -> None:
+        """Update basic position info (side, entry, size, invested)."""
         if hasattr(self, 'position_side_label'):
             side_upper = side.upper()
             self.position_side_label.setText(side_upper)
@@ -273,34 +299,46 @@ class BotPanelsMixin(
         if hasattr(self, 'position_invested_label') and invested > 0:
             self.position_invested_label.setText(f"{invested:.0f}")
 
-        stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
+    def _update_position_prices(
+        self, sig: dict, current_price: float, stop_price: float
+    ) -> None:
+        """Update position price labels (stop, current)."""
         if hasattr(self, 'position_stop_label') and stop_price > 0:
             self.position_stop_label.setText(f"{stop_price:.4f}")
 
         if hasattr(self, 'position_current_label'):
             self.position_current_label.setText(f"{current_price:.4f}")
 
-        if hasattr(self, 'position_pnl_label'):
-            color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
-            sign = "+" if pnl_pct >= 0 else ""
-            self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
-            self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
+    def _update_position_pnl_display(self, pnl_pct: float, pnl_currency: float) -> None:
+        """Update P&L label with color coding."""
+        if not hasattr(self, 'position_pnl_label'):
+            return
 
+        color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
+        sign = "+" if pnl_pct >= 0 else ""
+        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
+        self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
+
+    def _update_position_score_display(self, sig: dict) -> None:
+        """Update position confidence score display."""
         score = sig.get("score", 0)
         if hasattr(self, 'position_score_label') and score > 0:
             self.position_score_label.setText(f"{score * 100:.0f}")
 
+    def _update_trailing_stop_display(self, sig: dict) -> None:
+        """Update trailing stop price label."""
         tr_price = sig.get("trailing_stop_price", 0)
         tr_active = sig.get("tr_active", False)
-        if hasattr(self, 'position_tr_price_label') and tr_price > 0:
-            if tr_active:
-                self.position_tr_price_label.setText(f"{tr_price:.2f}")
-                self.position_tr_price_label.setStyleSheet("color: #ff9800;")
-            else:
-                self.position_tr_price_label.setText(f"{tr_price:.2f} (inaktiv)")
-                self.position_tr_price_label.setStyleSheet("color: #888888;")
 
-        self._update_derivative_display(sig, current_price)
+        if not hasattr(self, 'position_tr_price_label') or tr_price <= 0:
+            return
+
+        if tr_active:
+            self.position_tr_price_label.setText(f"{tr_price:.2f}")
+            self.position_tr_price_label.setStyleSheet("color: #ff9800;")
+        else:
+            self.position_tr_price_label.setText(f"{tr_price:.2f} (inaktiv)")
+            self.position_tr_price_label.setStyleSheet("color: #888888;")
 
     def _update_derivative_display(self, sig: dict, current_price: float) -> None:
         deriv = sig.get("derivative")
