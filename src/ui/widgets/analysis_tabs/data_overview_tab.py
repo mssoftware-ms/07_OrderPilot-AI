@@ -446,115 +446,214 @@ class DataOverviewTab(QWidget):
         Args:
             data: Data dictionary to display
         """
-        # Strategy section
-        if data.get("strategy"):
-            strategy_item = QTreeWidgetItem(["📋 Strategie", "", ""])
-            strategy_item.setExpanded(True)
-            for key, value in data["strategy"].items():
+        # Add all sections
+        self._add_strategy_section(data)
+        self._add_timeframes_section(data)
+        self._add_market_context_section(data)
+        self._add_indicators_section(data)
+        self._add_levels_section(data)
+        self._add_chart_data_section(data)
+
+    def _add_strategy_section(self, data: dict) -> None:
+        """Add strategy section to tree.
+
+        Args:
+            data: Data dictionary containing strategy info.
+        """
+        if not data.get("strategy"):
+            return
+
+        strategy_item = QTreeWidgetItem(["📋 Strategie", "", ""])
+        strategy_item.setExpanded(True)
+        for key, value in data["strategy"].items():
+            child = QTreeWidgetItem([str(key), str(value), ""])
+            strategy_item.addChild(child)
+        self.data_tree.addTopLevelItem(strategy_item)
+
+    def _add_timeframes_section(self, data: dict) -> None:
+        """Add timeframes section to tree.
+
+        Args:
+            data: Data dictionary containing timeframes info.
+        """
+        if not data.get("timeframes"):
+            return
+
+        tf_item = QTreeWidgetItem(["⏱️ Timeframes", f"{len(data['timeframes'])} aktiv", ""])
+        tf_item.setExpanded(True)
+
+        for tf_name, tf_data in data["timeframes"].items():
+            tf_child = QTreeWidgetItem([tf_name, tf_data.get("role", ""), ""])
+            tf_child.setExpanded(True)
+
+            # Add features if available
+            if "features" in tf_data:
+                self._add_timeframe_features(tf_child, tf_data["features"])
+
+            tf_item.addChild(tf_child)
+
+        self.data_tree.addTopLevelItem(tf_item)
+
+    def _add_timeframe_features(
+        self, parent_item: QTreeWidgetItem, features: dict
+    ) -> None:
+        """Add timeframe features to parent tree item.
+
+        Args:
+            parent_item: Parent tree item to add features to.
+            features: Dictionary of feature data.
+        """
+        for feat_key, feat_val in features.items():
+            if isinstance(feat_val, (list, dict)):
+                feat_child = QTreeWidgetItem([feat_key, f"{len(feat_val)} items", ""])
+            else:
+                feat_child = QTreeWidgetItem([feat_key, str(feat_val), ""])
+            parent_item.addChild(feat_child)
+
+    def _add_market_context_section(self, data: dict) -> None:
+        """Add market context section to tree.
+
+        Args:
+            data: Data dictionary containing market context info.
+        """
+        if not data.get("market_context"):
+            return
+
+        mc_item = QTreeWidgetItem(["📈 Market Context", "", ""])
+        mc_item.setExpanded(True)
+
+        for key, value in data["market_context"].items():
+            if isinstance(value, dict):
+                child = QTreeWidgetItem([str(key), "", ""])
+                for sub_key, sub_val in value.items():
+                    sub_child = QTreeWidgetItem([sub_key, str(sub_val), ""])
+                    child.addChild(sub_child)
+                mc_item.addChild(child)
+            else:
                 child = QTreeWidgetItem([str(key), str(value), ""])
-                strategy_item.addChild(child)
-            self.data_tree.addTopLevelItem(strategy_item)
+                mc_item.addChild(child)
 
-        # Timeframes section
-        if data.get("timeframes"):
-            tf_item = QTreeWidgetItem(["⏱️ Timeframes", f"{len(data['timeframes'])} aktiv", ""])
-            tf_item.setExpanded(True)
-            for tf_name, tf_data in data["timeframes"].items():
-                tf_child = QTreeWidgetItem([tf_name, tf_data.get("role", ""), ""])
-                tf_child.setExpanded(True)
+        self.data_tree.addTopLevelItem(mc_item)
 
-                # Add features if available
-                if "features" in tf_data:
-                    for feat_key, feat_val in tf_data["features"].items():
-                        if isinstance(feat_val, (list, dict)):
-                            feat_child = QTreeWidgetItem([feat_key, f"{len(feat_val)} items", ""])
-                        else:
-                            feat_child = QTreeWidgetItem([feat_key, str(feat_val), ""])
-                        tf_child.addChild(feat_child)
+    def _add_indicators_section(self, data: dict) -> None:
+        """Add indicators section to tree (Issue #37: Display all indicators including DI+/DI-).
 
-                tf_item.addChild(tf_child)
-            self.data_tree.addTopLevelItem(tf_item)
+        Args:
+            data: Data dictionary containing indicators info.
+        """
+        if not data.get("indicators"):
+            return
 
-        # Market Context section
-        if data.get("market_context"):
-            mc_item = QTreeWidgetItem(["📈 Market Context", "", ""])
-            mc_item.setExpanded(True)
-            for key, value in data["market_context"].items():
-                if isinstance(value, dict):
-                    child = QTreeWidgetItem([str(key), "", ""])
-                    for sub_key, sub_val in value.items():
-                        sub_child = QTreeWidgetItem([sub_key, str(sub_val), ""])
-                        child.addChild(sub_child)
-                    mc_item.addChild(child)
-                else:
-                    child = QTreeWidgetItem([str(key), str(value), ""])
-                    mc_item.addChild(child)
-            self.data_tree.addTopLevelItem(mc_item)
+        timeframe = data["indicators"].get("timeframe", "unknown")
+        ind_item = QTreeWidgetItem(["📊 Indikatoren", f"Timeframe: {timeframe}", ""])
+        ind_item.setExpanded(True)
 
-        # Indicators section - Issue #37: Display all indicators including DI+/DI-
-        if data.get("indicators"):
-            timeframe = data["indicators"].get("timeframe", "unknown")
-            ind_item = QTreeWidgetItem(["📊 Indikatoren", f"Timeframe: {timeframe}", ""])
-            ind_item.setExpanded(True)
+        # Define display names for better readability
+        indicator_names = {
+            "timeframe": "Timeframe",
+            "rsi": "RSI (14)",
+            "atr": "ATR (14)",
+            "atr_percent": "ATR %",
+            "adx": "ADX (14)",
+            "di_plus": "DI+ (Plus Directional Indicator)",
+            "di_minus": "DI- (Minus Directional Indicator)",
+            "ema_fast": "EMA Fast (20)",
+            "ema_slow": "EMA Slow (50)"
+        }
 
-            # Define display names for better readability
-            indicator_names = {
-                "timeframe": "Timeframe",
-                "rsi": "RSI (14)",
-                "atr": "ATR (14)",
-                "atr_percent": "ATR %",
-                "adx": "ADX (14)",
-                "di_plus": "DI+ (Plus Directional Indicator)",
-                "di_minus": "DI- (Minus Directional Indicator)",
-                "ema_fast": "EMA Fast (20)",
-                "ema_slow": "EMA Slow (50)"
-            }
+        for key, value in data["indicators"].items():
+            # Skip timeframe as it's already shown in the parent
+            if key == "timeframe":
+                continue
 
-            for key, value in data["indicators"].items():
-                # Skip timeframe as it's already shown in the parent
-                if key == "timeframe":
-                    continue
+            display_name = indicator_names.get(key, key)
+            self._add_indicator_item(ind_item, display_name, value)
 
-                display_name = indicator_names.get(key, key)
-                if value is not None:
-                    value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
-                    child = QTreeWidgetItem([display_name, value_str, ""])
-                    ind_item.addChild(child)
-                else:
-                    # Show indicator with "N/A" if not available
-                    child = QTreeWidgetItem([display_name, "N/A", ""])
-                    child.setForeground(1, QColor(128, 128, 128))  # Gray color for unavailable values
-                    ind_item.addChild(child)
-            self.data_tree.addTopLevelItem(ind_item)
+        self.data_tree.addTopLevelItem(ind_item)
 
-        # Levels section
-        if data.get("levels") and data["levels"].get("items"):
-            levels_item = QTreeWidgetItem(["🎯 Support/Resistance", f"{data['levels']['count']} Levels", ""])
-            levels_item.setExpanded(True)
-            for lvl in data["levels"]["items"]:
-                lvl_child = QTreeWidgetItem([
-                    lvl["type"],
-                    f"{lvl['price_low']:.2f} - {lvl['price_high']:.2f}",
-                    f"Stärke: {lvl.get('strength', 'N/A')}"
-                ])
-                levels_item.addChild(lvl_child)
-            self.data_tree.addTopLevelItem(levels_item)
+    def _add_indicator_item(
+        self, parent_item: QTreeWidgetItem, display_name: str, value
+    ) -> None:
+        """Add indicator item to parent with proper formatting.
 
-        # Chart Data section (Issue #34: From active chart widget)
-        if data.get("chart_data"):
-            chart_item = QTreeWidgetItem(["📉 Chart Daten (Live)", "", ""])
-            chart_item.setExpanded(True)
-            for key, value in data["chart_data"].items():
-                if isinstance(value, dict):
-                    child = QTreeWidgetItem([str(key), "", ""])
-                    for sub_key, sub_val in value.items():
-                        sub_child = QTreeWidgetItem([sub_key, str(sub_val), ""])
-                        child.addChild(sub_child)
-                    chart_item.addChild(child)
-                elif isinstance(value, list):
-                    child = QTreeWidgetItem([str(key), f"{len(value)} items", ", ".join(str(v) for v in value[:5])])
-                    chart_item.addChild(child)
-                else:
-                    child = QTreeWidgetItem([str(key), str(value), ""])
-                    chart_item.addChild(child)
-            self.data_tree.addTopLevelItem(chart_item)
+        Args:
+            parent_item: Parent tree item.
+            display_name: Display name for the indicator.
+            value: Indicator value (can be None).
+        """
+        if value is not None:
+            value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
+            child = QTreeWidgetItem([display_name, value_str, ""])
+            parent_item.addChild(child)
+        else:
+            # Show indicator with "N/A" if not available
+            child = QTreeWidgetItem([display_name, "N/A", ""])
+            child.setForeground(1, QColor(128, 128, 128))  # Gray color for unavailable values
+            parent_item.addChild(child)
+
+    def _add_levels_section(self, data: dict) -> None:
+        """Add support/resistance levels section to tree.
+
+        Args:
+            data: Data dictionary containing levels info.
+        """
+        if not (data.get("levels") and data["levels"].get("items")):
+            return
+
+        levels_item = QTreeWidgetItem([
+            "🎯 Support/Resistance",
+            f"{data['levels']['count']} Levels",
+            ""
+        ])
+        levels_item.setExpanded(True)
+
+        for lvl in data["levels"]["items"]:
+            lvl_child = QTreeWidgetItem([
+                lvl["type"],
+                f"{lvl['price_low']:.2f} - {lvl['price_high']:.2f}",
+                f"Stärke: {lvl.get('strength', 'N/A')}"
+            ])
+            levels_item.addChild(lvl_child)
+
+        self.data_tree.addTopLevelItem(levels_item)
+
+    def _add_chart_data_section(self, data: dict) -> None:
+        """Add chart data section to tree (Issue #34: From active chart widget).
+
+        Args:
+            data: Data dictionary containing chart data.
+        """
+        if not data.get("chart_data"):
+            return
+
+        chart_item = QTreeWidgetItem(["📉 Chart Daten (Live)", "", ""])
+        chart_item.setExpanded(True)
+
+        for key, value in data["chart_data"].items():
+            self._add_chart_data_item(chart_item, key, value)
+
+        self.data_tree.addTopLevelItem(chart_item)
+
+    def _add_chart_data_item(
+        self, parent_item: QTreeWidgetItem, key: str, value
+    ) -> None:
+        """Add chart data item with appropriate formatting based on value type.
+
+        Args:
+            parent_item: Parent tree item.
+            key: Data key.
+            value: Data value (dict, list, or scalar).
+        """
+        if isinstance(value, dict):
+            child = QTreeWidgetItem([str(key), "", ""])
+            for sub_key, sub_val in value.items():
+                sub_child = QTreeWidgetItem([sub_key, str(sub_val), ""])
+                child.addChild(sub_child)
+            parent_item.addChild(child)
+        elif isinstance(value, list):
+            preview = ", ".join(str(v) for v in value[:5])
+            child = QTreeWidgetItem([str(key), f"{len(value)} items", preview])
+            parent_item.addChild(child)
+        else:
+            child = QTreeWidgetItem([str(key), str(value), ""])
+            parent_item.addChild(child)
