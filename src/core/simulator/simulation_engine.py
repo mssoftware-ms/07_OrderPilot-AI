@@ -292,13 +292,32 @@ class StrategySimulator(
         Returns:
             SimulationResult with entry quality metrics
         """
-        entries = []
-        entry_scores = []
-
         # Determine lookahead bars
         if entry_lookahead_bars is None:
             entry_lookahead_bars = min(20, len(signals) // 10) or 10
 
+        # Detect and evaluate all entries
+        entries, entry_scores = self._detect_and_evaluate_entries(
+            signals, entry_side, entry_lookahead_bars
+        )
+
+        # Calculate aggregate metrics
+        metrics = self._calculate_entry_metrics(entries, entry_scores)
+
+        # Create synthetic trades for result compatibility
+        trades = self._create_synthetic_trades(entries)
+
+        # Build and return simulation result
+        return self._build_entry_simulation_result(
+            strategy_name, parameters, initial_capital, trades, metrics
+        )
+
+    def _detect_and_evaluate_entries(
+        self, signals: pd.DataFrame, entry_side: str, lookahead_bars: int
+    ) -> tuple[list[dict], list[float]]:
+        """Detect entry signals and evaluate their quality."""
+        entries = []
+        entry_scores = []
         signal_value = 1 if entry_side == "long" else -1
 
         for i, (timestamp, row) in enumerate(signals.iterrows()):
@@ -308,47 +327,94 @@ class StrategySimulator(
             if signal == signal_value or (entry_side == "long" and signal == 1):
                 entry_price = row["close"]
 
-                # Calculate entry quality based on lookahead
-                lookahead_end = min(i + entry_lookahead_bars, len(signals) - 1)
-                if lookahead_end > i:
-                    future_prices = signals.iloc[i + 1 : lookahead_end + 1]
+                # Evaluate entry quality
+                entry_eval = self._evaluate_entry_quality(
+                    signals, i, entry_price, entry_side, lookahead_bars
+                )
 
-                    if entry_side == "long":
-                        # For long: positive if price goes up
-                        max_price = future_prices["high"].max()
-                        min_price = future_prices["low"].min()
-                        max_gain_pct = (max_price - entry_price) / entry_price * 100
-                        max_loss_pct = (entry_price - min_price) / entry_price * 100
-                    else:
-                        # For short: positive if price goes down
-                        max_price = future_prices["high"].max()
-                        min_price = future_prices["low"].min()
-                        max_gain_pct = (entry_price - min_price) / entry_price * 100
-                        max_loss_pct = (max_price - entry_price) / entry_price * 100
+                if entry_eval:
+                    entry_eval["timestamp"] = timestamp
+                    entry_eval["entry_price"] = entry_price
+                    entry_eval["side"] = entry_side
+                    entries.append(entry_eval)
+                    entry_scores.append(entry_eval["entry_score"])
 
-                    # Entry score: reward/risk ratio
-                    entry_score = max_gain_pct / max_loss_pct if max_loss_pct > 0 else max_gain_pct
-                    entry_scores.append(entry_score)
+        return entries, entry_scores
 
-                    entries.append({
-                        "timestamp": timestamp,
-                        "entry_price": entry_price,
-                        "side": entry_side,
-                        "max_gain_pct": max_gain_pct,
-                        "max_loss_pct": max_loss_pct,
-                        "entry_score": entry_score,
-                    })
+    def _evaluate_entry_quality(
+        self,
+        signals: pd.DataFrame,
+        entry_idx: int,
+        entry_price: float,
+        entry_side: str,
+        lookahead_bars: int,
+    ) -> dict | None:
+        """Evaluate entry quality based on future price movement."""
+        lookahead_end = min(entry_idx + lookahead_bars, len(signals) - 1)
+        if lookahead_end <= entry_idx:
+            return None
 
-        # Calculate aggregate metrics
+        future_prices = signals.iloc[entry_idx + 1 : lookahead_end + 1]
+
+        # Calculate gains/losses based on side
+        max_gain_pct, max_loss_pct = self._calculate_entry_gains_losses(
+            future_prices, entry_price, entry_side
+        )
+
+        # Entry score: reward/risk ratio
+        entry_score = max_gain_pct / max_loss_pct if max_loss_pct > 0 else max_gain_pct
+
+        return {
+            "max_gain_pct": max_gain_pct,
+            "max_loss_pct": max_loss_pct,
+            "entry_score": entry_score,
+        }
+
+    def _calculate_entry_gains_losses(
+        self, future_prices: pd.DataFrame, entry_price: float, entry_side: str
+    ) -> tuple[float, float]:
+        """Calculate maximum gain and loss percentages for entry evaluation."""
+        max_price = future_prices["high"].max()
+        min_price = future_prices["low"].min()
+
+        if entry_side == "long":
+            # For long: positive if price goes up
+            max_gain_pct = (max_price - entry_price) / entry_price * 100
+            max_loss_pct = (entry_price - min_price) / entry_price * 100
+        else:
+            # For short: positive if price goes down
+            max_gain_pct = (entry_price - min_price) / entry_price * 100
+            max_loss_pct = (max_price - entry_price) / entry_price * 100
+
+        return max_gain_pct, max_loss_pct
+
+    def _calculate_entry_metrics(
+        self, entries: list[dict], entry_scores: list[float]
+    ) -> dict:
+        """Calculate aggregate metrics from entry evaluations."""
         total_entries = len(entries)
         avg_entry_score = np.mean(entry_scores) if entry_scores else 0.0
         positive_entries = sum(1 for e in entries if e["max_gain_pct"] > e["max_loss_pct"])
         win_rate = positive_entries / total_entries if total_entries > 0 else 0.0
 
-        # Create synthetic trades for result compatibility
-        trades: list[TradeRecord] = []
+        winning_gains = [e["max_gain_pct"] for e in entries if e["max_gain_pct"] > e["max_loss_pct"]]
+        losing_losses = [e["max_loss_pct"] for e in entries if e["max_gain_pct"] <= e["max_loss_pct"]]
+
+        return {
+            "total_entries": total_entries,
+            "avg_entry_score": avg_entry_score,
+            "positive_entries": positive_entries,
+            "win_rate": win_rate,
+            "avg_win": np.mean(winning_gains) if winning_gains else 0.0,
+            "avg_loss": np.mean(losing_losses) if losing_losses else 0.0,
+            "largest_win": max((e["max_gain_pct"] for e in entries), default=0.0),
+            "largest_loss": max((e["max_loss_pct"] for e in entries), default=0.0),
+        }
+
+    def _create_synthetic_trades(self, entries: list[dict]) -> list[TradeRecord]:
+        """Create synthetic trades for result compatibility."""
+        trades = []
         for entry in entries:
-            # Create a synthetic trade representing the entry evaluation
             trades.append(TradeRecord(
                 entry_time=entry["timestamp"],
                 entry_price=entry["entry_price"],
@@ -363,26 +429,36 @@ class StrategySimulator(
                 take_profit=entry["entry_price"] * (1 + entry["max_gain_pct"] / 100),
                 commission=0.0,
             ))
+        return trades
 
+    def _build_entry_simulation_result(
+        self,
+        strategy_name: StrategyName,
+        parameters: dict[str, Any],
+        initial_capital: float,
+        trades: list[TradeRecord],
+        metrics: dict,
+    ) -> SimulationResult:
+        """Build SimulationResult from entry evaluation."""
         return SimulationResult(
             strategy_name=strategy_name.value,
             parameters=parameters,
             symbol=self.symbol,
             trades=trades,
             total_pnl=sum(t.pnl for t in trades),
-            total_pnl_pct=avg_entry_score * 100 if avg_entry_score else 0.0,
-            win_rate=win_rate,
-            profit_factor=avg_entry_score if avg_entry_score > 0 else 0.0,
+            total_pnl_pct=metrics["avg_entry_score"] * 100 if metrics["avg_entry_score"] else 0.0,
+            win_rate=metrics["win_rate"],
+            profit_factor=metrics["avg_entry_score"] if metrics["avg_entry_score"] > 0 else 0.0,
             max_drawdown_pct=0.0,
             sharpe_ratio=None,
             sortino_ratio=None,
-            total_trades=total_entries,
-            winning_trades=positive_entries,
-            losing_trades=total_entries - positive_entries,
-            avg_win=np.mean([e["max_gain_pct"] for e in entries if e["max_gain_pct"] > e["max_loss_pct"]]) if positive_entries > 0 else 0.0,
-            avg_loss=np.mean([e["max_loss_pct"] for e in entries if e["max_gain_pct"] <= e["max_loss_pct"]]) if (total_entries - positive_entries) > 0 else 0.0,
-            largest_win=max((e["max_gain_pct"] for e in entries), default=0.0),
-            largest_loss=max((e["max_loss_pct"] for e in entries), default=0.0),
+            total_trades=metrics["total_entries"],
+            winning_trades=metrics["positive_entries"],
+            losing_trades=metrics["total_entries"] - metrics["positive_entries"],
+            avg_win=metrics["avg_win"],
+            avg_loss=metrics["avg_loss"],
+            largest_win=metrics["largest_win"],
+            largest_loss=metrics["largest_loss"],
             avg_trade_duration_seconds=0.0,
             max_consecutive_wins=0,
             max_consecutive_losses=0,
