@@ -199,3 +199,114 @@ class StrategySimulatorResultsMixin:
         if hasattr(self, "_plot_entry_points"):
             self._plot_entry_points()
 
+    def _on_show_simulation_markers(self) -> None:
+        """Show entry/exit markers on chart for selected result."""
+        selected = self.simulator_results_table.selectedItems()
+        if not selected:
+            return
+
+        row = selected[0].row()
+        result = self._get_result_from_row(row)
+        if result is None:
+            QMessageBox.warning(
+                self, "Warning",
+                "Keine Detail-Daten für diese Zeile verfügbar.\n\n"
+                "Optimization-Trials haben nur Metriken, keine Trade-Details.\n"
+                "Nur die 'Best Result'-Zeile hat vollständige Trade-Daten."
+            )
+            return
+
+        # Get chart and clear existing markers
+        if hasattr(self, "chart_widget"):
+            # Clear previous simulation markers
+            if hasattr(self.chart_widget, "clear_bot_markers"):
+                self.chart_widget.clear_bot_markers()
+
+            # Add entry/exit points
+            for trade in result.trades:
+                side = trade.side
+
+                # Entry marker
+                if hasattr(self.chart_widget, "add_entry_confirmed"):
+                    self.chart_widget.add_entry_confirmed(
+                        int(trade.entry_time.timestamp()),
+                        trade.entry_price,
+                        side,
+                        score=0,
+                    )
+
+                # Exit marker
+                if hasattr(self.chart_widget, "add_exit_marker"):
+                    self.chart_widget.add_exit_marker(
+                        int(trade.exit_time.timestamp()),
+                        trade.exit_price,
+                        side,
+                        trade.exit_reason,
+                    )
+
+            self.simulator_status_label.setText(
+                f"Showing {len(result.trades)} trades on chart"
+            )
+
+    def _on_clear_simulation_markers(self) -> None:
+        """Clear simulation markers from chart."""
+        if hasattr(self, "chart_widget") and hasattr(
+            self.chart_widget, "clear_bot_markers"
+        ):
+            self.chart_widget.clear_bot_markers()
+            self.simulator_status_label.setText("Markers cleared")
+
+    def _on_export_simulation_xlsx(self) -> None:
+        """Export results to Excel file."""
+        from datetime import datetime
+        from PyQt6.QtWidgets import QFileDialog
+
+        # Check if table has data (even if _simulation_results is empty)
+        table_row_count = self.simulator_results_table.rowCount()
+        if table_row_count == 0 and not self._simulation_results:
+            QMessageBox.warning(self, "Warning", "No results to export")
+            return
+
+        default_name = f"strategy_simulation_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Simulation Results",
+            default_name,
+            "Excel Files (*.xlsx)",
+        )
+        if not filepath:
+            return
+
+        try:
+            from src.core.simulator import export_simulation_results
+
+            saved_path = export_simulation_results(
+                results=self._simulation_results,
+                filepath=filepath,
+                optimization_run=self._last_optimization_run,
+            )
+            QMessageBox.information(
+                self,
+                "Export Complete",
+                f"Results exported to:\n{saved_path}",
+            )
+        except ImportError as e:
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"openpyxl is required for Excel export.\n\n{e}",
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", str(e))
+
+    def _on_clear_simulation_results(self) -> None:
+        """Clear all simulation results."""
+        from PyQt6.QtCore import Qt
+
+        self._simulation_results.clear()
+        self._last_optimization_run = None
+        self.simulator_results_table.setRowCount(0)
+        self.simulator_export_btn.setEnabled(False)
+        self.simulator_show_markers_btn.setEnabled(False)
+        self.simulator_status_label.setText("Results cleared")
+
