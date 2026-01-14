@@ -407,6 +407,33 @@ class BotDisplaySignalsMixin:
         trailing_price: float,
         tr_is_active: bool,
     ) -> None:
+        # Check if signal has data to display
+        if not self._should_display_signal_pnl(signal):
+            # Fill remaining columns with "-"
+            for col in range(11, 21):
+                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+            return
+
+        # Get signal data and calculate P&L
+        signal_data = self._get_signal_display_data(signal)
+
+        # Set display columns
+        self._set_current_price_column(row, signal, signal_data)
+        self._set_pnl_columns(row, signal_data)
+        self._set_fees_column(row, signal_data)
+        self._set_derivative_columns(row, signal, signal_data["current_price"], signal_data["leverage"])
+        self.signals_table.setItem(row, 19, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+        self._set_tr_stop_column(row, trailing_price, tr_is_active)
+
+    def _should_display_signal_pnl(self, signal: dict) -> bool:
+        """Check if signal has data worth displaying.
+
+        Args:
+            signal: Signal dictionary.
+
+        Returns:
+            True if signal should display P&L data.
+        """
         has_quantity = signal.get("quantity", 0) > 0
         has_invested = signal.get("invested", 0) > 0
         status = signal["status"]
@@ -414,110 +441,210 @@ class BotDisplaySignalsMixin:
         is_entered = status == "ENTERED" and signal.get("is_open", False)
         has_derivative = signal.get("derivative") is not None
 
-        if has_quantity or has_invested or is_entered or is_closed or has_derivative:
-            current_price = signal.get("current_price", signal["price"])
-            entry_price = signal.get("price", 0)
-            invested = signal.get("invested", 0)
-            side = signal.get("side", "long")
+        return has_quantity or has_invested or is_entered or is_closed or has_derivative
 
-            # Issue #1: Get leverage - use STATIC leverage from entry, NOT current UI value
-            # When position was entered, leverage was frozen at that value
-            leverage = signal.get("leverage_at_entry", 1.0)
+    def _get_signal_display_data(self, signal: dict) -> dict:
+        """Get calculated data for signal display.
 
-            # If no static leverage was saved (old signals), fall back to current UI value
-            if leverage is None or leverage <= 0:
-                leverage = 1.0
-                if hasattr(self, 'get_leverage_override'):
-                    override_enabled, override_value = self.get_leverage_override()
-                    if override_enabled and override_value > 1:
-                        leverage = float(override_value)
+        Args:
+            signal: Signal dictionary.
 
+        Returns:
+            Dictionary with current_price, entry_price, invested, side, leverage,
+            pnl_percent, pnl_currency, fees_euro, position_size, taker_fee.
+        """
+        current_price = signal.get("current_price", signal["price"])
+        entry_price = signal.get("price", 0)
+        invested = signal.get("invested", 0)
+        side = signal.get("side", "long")
+
+        # Get static leverage (frozen at entry)
+        leverage = self._get_signal_leverage(signal)
+
+        # Calculate P&L
+        pnl_percent, pnl_currency = self._calculate_display_pnl(
+            entry_price, current_price, invested, side, leverage, signal
+        )
+
+        # Calculate fees
+        fees_data = self._calculate_signal_fees(invested, leverage)
+
+        return {
+            "current_price": current_price,
+            "entry_price": entry_price,
+            "invested": invested,
+            "side": side,
+            "leverage": leverage,
+            "pnl_percent": pnl_percent,
+            "pnl_currency": pnl_currency,
+            "fees_euro": fees_data["fees_euro"],
+            "position_size": fees_data["position_size"],
+            "taker_fee": fees_data["taker_fee"],
+            "entry_fee_euro": fees_data["entry_fee_euro"],
+            "exit_fee_euro": fees_data["exit_fee_euro"],
+        }
+
+    def _get_signal_leverage(self, signal: dict) -> float:
+        """Get leverage for signal (prefer static, fallback to current).
+
+        Args:
+            signal: Signal dictionary.
+
+        Returns:
+            Leverage value.
+        """
+        # Issue #1: Use STATIC leverage from entry
+        leverage = signal.get("leverage_at_entry", 1.0)
+
+        # If no static leverage was saved (old signals), fall back to current UI value
+        if leverage is None or leverage <= 0:
+            leverage = 1.0
+            if hasattr(self, 'get_leverage_override'):
+                override_enabled, override_value = self.get_leverage_override()
+                if override_enabled and override_value > 1:
+                    leverage = float(override_value)
+
+        return leverage
+
+    def _calculate_display_pnl(
+        self, entry_price: float, current_price: float,
+        invested: float, side: str, leverage: float, signal: dict
+    ) -> tuple[float, float]:
+        """Calculate P&L for display with leverage and fees.
+
+        Args:
+            entry_price: Entry price.
+            current_price: Current price.
+            invested: Invested amount.
+            side: Trade side.
+            leverage: Leverage factor.
+            signal: Signal dictionary (for fallback values).
+
+        Returns:
+            Tuple of (pnl_percent, pnl_currency).
+        """
+        if entry_price > 0 and current_price > 0:
             # Calculate base P&L
-            if entry_price > 0 and current_price > 0:
-                if side.lower() == "long":
-                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                else:
-                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
-
-                # Issue #1: Apply leverage to P&L %
-                pnl_percent = pnl_percent * leverage
-
-                # Issue #3: Subtract BitUnix fees
-                if hasattr(self, 'get_bitunix_fees'):
-                    maker_fee, taker_fee = self.get_bitunix_fees()
-                    # BitUnix Futures: entry and exit use taker fees
-                    total_fees_pct = taker_fee * 2
-                    pnl_percent = pnl_percent - total_fees_pct
-
-                # Calculate P&L currency from adjusted percentage
-                pnl_currency = invested * (pnl_percent / 100) if invested > 0 else 0
+            if side.lower() == "long":
+                pnl_percent = ((current_price - entry_price) / entry_price) * 100
             else:
-                pnl_currency = signal.get("pnl_currency", 0.0)
-                pnl_percent = signal.get("pnl_percent", 0.0)
+                pnl_percent = ((entry_price - current_price) / entry_price) * 100
 
-            # Column 11: Current (vorher 10)
-            if is_closed:
-                exit_price = signal.get("exit_price", current_price)
-                current_item = QTableWidgetItem(f"{exit_price:.2f}")
-            else:
-                current_item = QTableWidgetItem(f"{current_price:.2f}")
-            self.signals_table.setItem(row, 11, current_item)
+            # Issue #1: Apply leverage to P&L %
+            pnl_percent = pnl_percent * leverage
 
-            # Column 12: P&L % (User wünscht % LINKS von USDT)
-            pct_sign = "+" if pnl_percent >= 0 else ""
-            pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
-            pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
-            pct_item.setForeground(QColor(pnl_color))
-            self.signals_table.setItem(row, 12, pct_item)
-
-            # Column 13: P&L USDT (rechts von %)
-            pnl_sign = "+" if pnl_currency >= 0 else ""
-            pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f}")
-            pnl_item.setForeground(QColor(pnl_color))
-            self.signals_table.setItem(row, 13, pnl_item)
-
-            # Issue #6: Calculate and display BitUnix fees in Euro
-            # BitUnix fees are calculated on the leveraged position size
-            # Both entry AND exit use Taker fees (market orders)
-            fees_euro = 0.0
-            maker_fee = 0.02  # Default 0.02% (not used for market orders)
-            taker_fee = 0.06  # Default 0.06%
-            position_size = invested * leverage
-            entry_fee_euro = 0.0
-            exit_fee_euro = 0.0
-
-            if hasattr(self, 'get_bitunix_fees') and invested > 0:
+            # Issue #3: Subtract BitUnix fees
+            if hasattr(self, 'get_bitunix_fees'):
                 maker_fee, taker_fee = self.get_bitunix_fees()
-                # Both Entry and Exit use Taker fee (market orders for immediate execution)
-                entry_fee_euro = position_size * (taker_fee / 100)
-                exit_fee_euro = position_size * (taker_fee / 100)  # Exit also Taker!
-                fees_euro = entry_fee_euro + exit_fee_euro
-                signal["fees_euro"] = fees_euro
+                total_fees_pct = taker_fee * 2
+                pnl_percent = pnl_percent - total_fees_pct
 
-            # Column 14: Fees USDT (vorher 13)
-            fees_item = QTableWidgetItem(f"{fees_euro:.2f}")
-            fees_item.setForeground(QColor("#ff9800"))  # Orange for fees
-            fees_item.setToolTip(
-                f"BitUnix Futures Gebühren (beide Taker)\n"
-                f"Positionsgröße mit Hebel: {position_size:.2f} USDT\n"
-                f"Entry (Taker {taker_fee:.3f}%): {entry_fee_euro:.2f} USDT\n"
-                f"Exit (Taker {taker_fee:.3f}%): {exit_fee_euro:.2f} USDT\n"
-                f"Gesamt: {fees_euro:.2f} USDT"
-            )
-            self.signals_table.setItem(row, 14, fees_item)
-
-            # Issue #1: Pass leverage to derivative columns
-            self._set_derivative_columns(row, signal, current_price, leverage)
-
-            # Column 19: Score (vorher 18)
-            self.signals_table.setItem(row, 19, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
-
-            # Column 20: TR Stop
-            self._set_tr_stop_column(row, trailing_price, tr_is_active)
+            # Calculate P&L currency from adjusted percentage
+            pnl_currency = invested * (pnl_percent / 100) if invested > 0 else 0
         else:
-            # Fill remaining columns with "-" (vorher 10-20, jetzt 11-21)
-            for col in range(11, 21):
-                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+            # Fallback to stored values
+            pnl_currency = signal.get("pnl_currency", 0.0)
+            pnl_percent = signal.get("pnl_percent", 0.0)
+
+        return pnl_percent, pnl_currency
+
+    def _calculate_signal_fees(self, invested: float, leverage: float) -> dict:
+        """Calculate BitUnix fees for signal display.
+
+        Args:
+            invested: Invested amount.
+            leverage: Leverage factor.
+
+        Returns:
+            Dictionary with fees_euro, position_size, taker_fee, entry_fee_euro, exit_fee_euro.
+        """
+        # Issue #6: Calculate BitUnix fees on leveraged position
+        position_size = invested * leverage
+        fees_euro = 0.0
+        taker_fee = 0.06  # Default 0.06%
+        entry_fee_euro = 0.0
+        exit_fee_euro = 0.0
+
+        if hasattr(self, 'get_bitunix_fees') and invested > 0:
+            maker_fee, taker_fee = self.get_bitunix_fees()
+            # Both Entry and Exit use Taker fee (market orders)
+            entry_fee_euro = position_size * (taker_fee / 100)
+            exit_fee_euro = position_size * (taker_fee / 100)
+            fees_euro = entry_fee_euro + exit_fee_euro
+
+        return {
+            "fees_euro": fees_euro,
+            "position_size": position_size,
+            "taker_fee": taker_fee,
+            "entry_fee_euro": entry_fee_euro,
+            "exit_fee_euro": exit_fee_euro,
+        }
+
+    def _set_current_price_column(self, row: int, signal: dict, signal_data: dict) -> None:
+        """Set current price column (Column 11).
+
+        Args:
+            row: Table row.
+            signal: Signal dictionary.
+            signal_data: Calculated signal data.
+        """
+        status = signal["status"]
+        is_closed = status.startswith("CLOSED") or status in ("SL", "TR", "MACD", "RSI", "Sell")
+
+        if is_closed:
+            exit_price = signal.get("exit_price", signal_data["current_price"])
+            current_item = QTableWidgetItem(f"{exit_price:.2f}")
+        else:
+            current_item = QTableWidgetItem(f"{signal_data['current_price']:.2f}")
+
+        self.signals_table.setItem(row, 11, current_item)
+
+    def _set_pnl_columns(self, row: int, signal_data: dict) -> None:
+        """Set P&L percentage and currency columns (Columns 12, 13).
+
+        Args:
+            row: Table row.
+            signal_data: Calculated signal data.
+        """
+        pnl_percent = signal_data["pnl_percent"]
+        pnl_currency = signal_data["pnl_currency"]
+        pnl_color = "#26a69a" if pnl_currency >= 0 else "#ef5350"
+
+        # Column 12: P&L %
+        pct_sign = "+" if pnl_percent >= 0 else ""
+        pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
+        pct_item.setForeground(QColor(pnl_color))
+        self.signals_table.setItem(row, 12, pct_item)
+
+        # Column 13: P&L USDT
+        pnl_sign = "+" if pnl_currency >= 0 else ""
+        pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_currency:.2f}")
+        pnl_item.setForeground(QColor(pnl_color))
+        self.signals_table.setItem(row, 13, pnl_item)
+
+    def _set_fees_column(self, row: int, signal_data: dict) -> None:
+        """Set fees column with tooltip (Column 14).
+
+        Args:
+            row: Table row.
+            signal_data: Calculated signal data.
+        """
+        fees_euro = signal_data["fees_euro"]
+        position_size = signal_data["position_size"]
+        taker_fee = signal_data["taker_fee"]
+        entry_fee_euro = signal_data["entry_fee_euro"]
+        exit_fee_euro = signal_data["exit_fee_euro"]
+
+        fees_item = QTableWidgetItem(f"{fees_euro:.2f}")
+        fees_item.setForeground(QColor("#ff9800"))  # Orange for fees
+        fees_item.setToolTip(
+            f"BitUnix Futures Gebühren (beide Taker)\n"
+            f"Positionsgröße mit Hebel: {position_size:.2f} USDT\n"
+            f"Entry (Taker {taker_fee:.3f}%): {entry_fee_euro:.2f} USDT\n"
+            f"Exit (Taker {taker_fee:.3f}%): {exit_fee_euro:.2f} USDT\n"
+            f"Gesamt: {fees_euro:.2f} USDT"
+        )
+        self.signals_table.setItem(row, 14, fees_item)
 
     def _set_derivative_columns(self, row: int, signal: dict, current_price: float, leverage: float = 1.0) -> None:
         """Set derivative and leverage columns.
