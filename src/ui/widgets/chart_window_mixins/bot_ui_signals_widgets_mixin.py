@@ -403,6 +403,6 @@ class BotUISignalsWidgetsMixin:
             override_enabled, _ = self.get_leverage_override()
             show_leverage = override_enabled
 
-        # Column 17 is "Heb" (Leverage) - mit Strategy-Spalte
-        self.signals_table.setColumnHidden(17, not show_leverage)
+        # Column 18 is "Heb" (Leverage) - Issue #5: moved from 17
+        self.signals_table.setColumnHidden(18, not show_leverage)
 

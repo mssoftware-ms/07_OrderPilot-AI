@@ -323,3 +323,45 @@ class BotCallbacksLifecycleMixin:
                     "DECISION",
                     f"Action: {action.value if action else 'unknown'}, Confidence: {decision.confidence:.2f}"
                 )
+
+    def _on_trading_blocked(self, reasons: list[str]) -> None:
+        """Handle trading blocked event.
+
+        Called when bot detects conditions that prevent trading (e.g., risk limits).
+
+        Args:
+            reasons: List of reasons why trading is blocked.
+        """
+        reason_str = ", ".join(reasons)
+        logger.warning(f"Trading blocked: {reason_str}")
+
+        if hasattr(self, '_add_ki_log_entry'):
+            self._add_ki_log_entry("BLOCKED", f"Trading gesperrt: {reason_str}")
+
+        # Update position labels if currently flat
+        if hasattr(self, 'position_side_label'):
+            self.position_side_label.setText("BLOCKED")
+            self.position_side_label.setStyleSheet("font-weight: bold; color: #ff9800;")
+
+    def _on_macd_signal(self, signal_type: str) -> None:
+        """Handle MACD cross signal - add marker to chart.
+
+        Args:
+            signal_type: "MACD_BEARISH_CROSS" or "MACD_BULLISH_CROSS"
+        """
+        if not hasattr(self, 'chart_widget'):
+            return
+
+        from datetime import datetime
+
+        # Add MACD signal marker to chart
+        if hasattr(self.chart_widget, 'add_macd_marker'):
+            is_bullish = "BULLISH" in signal_type.upper()
+            self.chart_widget.add_macd_marker(
+                timestamp=datetime.utcnow(),
+                is_bullish=is_bullish
+            )
+            logger.info(f"Added MACD marker: {signal_type}")
+
+        if hasattr(self, '_add_ki_log_entry'):
+            self._add_ki_log_entry("MACD", signal_type)
