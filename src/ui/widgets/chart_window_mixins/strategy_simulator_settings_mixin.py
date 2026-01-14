@@ -54,26 +54,20 @@ class StrategySimulatorSettingsMixin:
         Reads all configurable settings from the Bot-Tab widgets.
 
         Returns:
-            Dictionary with all bot settings for simulation:
-            - capital: Initial capital
-            - risk_per_trade_pct: Position size as % of capital
-            - initial_sl_pct: Initial stop loss %
-            - trade_direction: AUTO, BOTH, LONG_ONLY, SHORT_ONLY
-            - trailing_mode: PCT, ATR, SWING
-            - trailing_pct_distance: Distance for PCT mode
-            - trailing_activation_pct: Activation threshold
-            - trailing_atr_multiplier: ATR multiplier for trailing
-            - atr_trending_mult: ATR mult for trending markets
-            - atr_ranging_mult: ATR mult for ranging markets
-            - regime_adaptive: Enable regime-adaptive trailing
-            - maker_fee_pct: Maker fee (0.0002 = 0.02%)
-            - taker_fee_pct: Taker fee (0.0006 = 0.06%)
-            - leverage: Leverage multiplier
-            - sl_atr_multiplier: SL in ATR multiples
-            - tp_atr_multiplier: TP in ATR multiples
+            Dictionary with all bot settings for simulation.
         """
-        settings = {
-            # Default values
+        settings = self._get_default_bot_settings()
+        self._read_basic_settings(settings)
+        self._read_trailing_settings(settings)
+        self._read_fee_settings(settings)
+        self._read_leverage_settings(settings)
+        self._read_exit_trigger_settings(settings)
+        self._log_bot_settings(settings)
+        return settings
+
+    def _get_default_bot_settings(self) -> dict:
+        """Get default bot settings."""
+        return {
             "capital": 1000.0,
             "risk_per_trade_pct": 1.0,  # 100% = full position
             "initial_sl_pct": 0.02,  # 2%
@@ -93,120 +87,118 @@ class StrategySimulatorSettingsMixin:
             "trailing_enabled": False,
         }
 
+    def _read_widget_value(self, widget_attr: str, method: str = "value"):
+        """Helper to safely read widget value.
+
+        Args:
+            widget_attr: Widget attribute name (e.g., "bot_capital_spin")
+            method: Method to call on widget (default: "value")
+
+        Returns:
+            Widget value or None if widget doesn't exist or error occurs
+        """
+        if not hasattr(self, widget_attr):
+            return None
+
+        try:
+            widget = getattr(self, widget_attr)
+            return getattr(widget, method)()
+        except Exception:
+            return None
+
+    def _read_basic_settings(self, settings: dict) -> None:
+        """Read basic bot settings from widgets."""
         # Capital
-        if hasattr(self, "bot_capital_spin"):
-            try:
-                settings["capital"] = self.bot_capital_spin.value()
-            except Exception:
-                pass
+        value = self._read_widget_value("bot_capital_spin")
+        if value is not None:
+            settings["capital"] = value
 
         # Risk per Trade (convert to fraction: 50% -> 0.5)
-        if hasattr(self, "risk_per_trade_spin"):
-            try:
-                settings["risk_per_trade_pct"] = self.risk_per_trade_spin.value() / 100.0
-            except Exception:
-                pass
+        value = self._read_widget_value("risk_per_trade_spin")
+        if value is not None:
+            settings["risk_per_trade_pct"] = value / 100.0
 
         # Initial Stop Loss (convert to fraction: 1.5% -> 0.015)
-        if hasattr(self, "initial_sl_spin"):
-            try:
-                settings["initial_sl_pct"] = self.initial_sl_spin.value() / 100.0
-            except Exception:
-                pass
+        value = self._read_widget_value("initial_sl_spin")
+        if value is not None:
+            settings["initial_sl_pct"] = value / 100.0
 
         # Trade Direction
-        if hasattr(self, "trade_direction_combo"):
-            try:
-                settings["trade_direction"] = self.trade_direction_combo.currentText()
-            except Exception:
-                pass
+        value = self._read_widget_value("trade_direction_combo", "currentText")
+        if value is not None:
+            settings["trade_direction"] = value
 
+    def _read_trailing_settings(self, settings: dict) -> None:
+        """Read trailing stop settings from widgets."""
         # Trailing Mode
-        if hasattr(self, "trailing_mode_combo"):
-            try:
-                settings["trailing_mode"] = self.trailing_mode_combo.currentText()
-            except Exception:
-                pass
+        value = self._read_widget_value("trailing_mode_combo", "currentText")
+        if value is not None:
+            settings["trailing_mode"] = value
 
-        # Trailing Settings
-        if hasattr(self, "trailing_distance_spin"):
-            try:
-                settings["trailing_pct_distance"] = self.trailing_distance_spin.value()
-            except Exception:
-                pass
+        # Trailing Distance
+        value = self._read_widget_value("trailing_distance_spin")
+        if value is not None:
+            settings["trailing_pct_distance"] = value
 
-        if hasattr(self, "trailing_activation_spin"):
-            try:
-                settings["trailing_activation_pct"] = self.trailing_activation_spin.value()
-            except Exception:
-                pass
+        # Trailing Activation
+        value = self._read_widget_value("trailing_activation_spin")
+        if value is not None:
+            settings["trailing_activation_pct"] = value
 
-        if hasattr(self, "atr_multiplier_spin"):
-            try:
-                settings["trailing_atr_multiplier"] = self.atr_multiplier_spin.value()
-            except Exception:
-                pass
+        # ATR Multiplier
+        value = self._read_widget_value("atr_multiplier_spin")
+        if value is not None:
+            settings["trailing_atr_multiplier"] = value
 
-        if hasattr(self, "atr_trending_spin"):
-            try:
-                settings["atr_trending_mult"] = self.atr_trending_spin.value()
-            except Exception:
-                pass
+        # ATR Trending
+        value = self._read_widget_value("atr_trending_spin")
+        if value is not None:
+            settings["atr_trending_mult"] = value
 
-        if hasattr(self, "atr_ranging_spin"):
-            try:
-                settings["atr_ranging_mult"] = self.atr_ranging_spin.value()
-            except Exception:
-                pass
+        # ATR Ranging
+        value = self._read_widget_value("atr_ranging_spin")
+        if value is not None:
+            settings["atr_ranging_mult"] = value
 
-        if hasattr(self, "regime_adaptive_cb"):
-            try:
-                settings["regime_adaptive"] = self.regime_adaptive_cb.isChecked()
-            except Exception:
-                pass
+        # Regime Adaptive
+        value = self._read_widget_value("regime_adaptive_cb", "isChecked")
+        if value is not None:
+            settings["regime_adaptive"] = value
 
-        # Fees (convert to fraction: 0.02% -> 0.0002)
-        if hasattr(self, "futures_maker_fee_spin"):
-            try:
-                settings["maker_fee_pct"] = self.futures_maker_fee_spin.value() / 100.0
-            except Exception:
-                pass
+    def _read_fee_settings(self, settings: dict) -> None:
+        """Read fee settings from widgets (convert to fraction)."""
+        # Maker Fee (convert: 0.02% -> 0.0002)
+        value = self._read_widget_value("futures_maker_fee_spin")
+        if value is not None:
+            settings["maker_fee_pct"] = value / 100.0
 
-        if hasattr(self, "futures_taker_fee_spin"):
-            try:
-                settings["taker_fee_pct"] = self.futures_taker_fee_spin.value() / 100.0
-            except Exception:
-                pass
+        # Taker Fee (convert: 0.06% -> 0.0006)
+        value = self._read_widget_value("futures_taker_fee_spin")
+        if value is not None:
+            settings["taker_fee_pct"] = value / 100.0
 
-        # Leverage
-        if hasattr(self, "leverage_slider"):
-            try:
-                settings["leverage"] = float(self.leverage_slider.value())
-            except Exception:
-                pass
+    def _read_leverage_settings(self, settings: dict) -> None:
+        """Read leverage settings from widgets."""
+        value = self._read_widget_value("leverage_slider")
+        if value is not None:
+            settings["leverage"] = float(value)
 
-        # SL/TP ATR settings from trigger_exit_settings
-        if hasattr(self, "trigger_exit_settings") and self.trigger_exit_settings is not None:
-            try:
-                widget = self.trigger_exit_settings
-                # Note: Widget attributes have underscore prefix
-                settings["sl_atr_multiplier"] = widget._sl_atr_mult.value()
-                settings["tp_atr_multiplier"] = widget._tp_atr_mult.value()
-                settings["trailing_enabled"] = widget._trailing_enabled.isChecked()
-            except Exception as e:
-                logger.warning(f"Could not read trigger_exit_settings: {e}")
+    def _read_exit_trigger_settings(self, settings: dict) -> None:
+        """Read SL/TP ATR settings from trigger_exit_settings widget."""
+        if not hasattr(self, "trigger_exit_settings") or self.trigger_exit_settings is None:
+            return
 
-        # Log settings with mode-specific info
-        trailing_mode = settings["trailing_mode"]
-        if trailing_mode == "PCT":
-            trailing_info = f"PCT({settings['trailing_pct_distance']:.1f}%)"
-        elif trailing_mode == "ATR":
-            if settings["regime_adaptive"]:
-                trailing_info = f"ATR(trend={settings['atr_trending_mult']:.2f}x, range={settings['atr_ranging_mult']:.2f}x)"
-            else:
-                trailing_info = f"ATR({settings['trailing_atr_multiplier']:.2f}x)"
-        else:  # SWING
-            trailing_info = "SWING(BB 20/2)"
+        try:
+            widget = self.trigger_exit_settings
+            settings["sl_atr_multiplier"] = widget._sl_atr_mult.value()
+            settings["tp_atr_multiplier"] = widget._tp_atr_mult.value()
+            settings["trailing_enabled"] = widget._trailing_enabled.isChecked()
+        except Exception as e:
+            logger.warning(f"Could not read trigger_exit_settings: {e}")
+
+    def _log_bot_settings(self, settings: dict) -> None:
+        """Log bot settings with mode-specific info."""
+        trailing_info = self._format_trailing_info(settings)
 
         logger.info(
             f"Bot-Tab settings: capital=€{settings['capital']:.0f}, "
@@ -217,7 +209,19 @@ class StrategySimulatorSettingsMixin:
             f"fees=M{settings['maker_fee_pct']*100:.3f}%/T{settings['taker_fee_pct']*100:.3f}%"
         )
 
-        return settings
+    def _format_trailing_info(self, settings: dict) -> str:
+        """Format trailing stop info for logging."""
+        trailing_mode = settings["trailing_mode"]
+
+        if trailing_mode == "PCT":
+            return f"PCT({settings['trailing_pct_distance']:.1f}%)"
+        elif trailing_mode == "ATR":
+            if settings["regime_adaptive"]:
+                return f"ATR(trend={settings['atr_trending_mult']:.2f}x, range={settings['atr_ranging_mult']:.2f}x)"
+            else:
+                return f"ATR({settings['trailing_atr_multiplier']:.2f}x)"
+        else:  # SWING
+            return "SWING(BB 20/2)"
 
     def _collect_simulation_params(self):
         params = self._get_simulator_parameters()
