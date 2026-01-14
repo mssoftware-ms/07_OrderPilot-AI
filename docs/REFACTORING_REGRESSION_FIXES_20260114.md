@@ -271,6 +271,48 @@ from datetime import datetime, timedelta
 
 ---
 
+### 13. Import Error Not Caught in _open_prompt_management() ✅ FIXED
+**File:** `src/ui/widgets/chart_window_mixins/bot_ui_signals_log_mixin.py`
+**Problem:** Import statement war außerhalb des try-Blocks, ModuleNotFoundError wurde nicht abgefangen
+**Symptom:**
+```
+Traceback (most recent call last):
+  File "...\bot_ui_signals_log_mixin.py", line 222, in _open_prompt_management
+    from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog
+ModuleNotFoundError: No module named 'src.ui.dialogs.prompt_management_dialog'
+```
+**Trigger:** Tritt auf beim Klick auf "⚙️ Prompts verwalten" Button im Signals Tab (nicht beim App-Start)
+**Fix:** Import in try-Block verschoben, ModuleNotFoundError zu Exception-Handler hinzugefügt
+**Commit:** [pending]
+
+**Code Change:**
+```python
+# Before (Line 220-234):
+def _open_prompt_management(self) -> None:
+    """Open the Prompt Management dialog (Issue #2)."""
+    from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog  # Outside try!
+
+    try:
+        dialog = PromptManagementDialog(self)
+        dialog.exec()
+    except ImportError:
+        # Fallback...
+
+# After (Line 220-233):
+def _open_prompt_management(self) -> None:
+    """Open the Prompt Management dialog (Issue #2)."""
+    try:
+        from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog  # Inside try!
+        dialog = PromptManagementDialog(self)
+        dialog.exec()
+    except (ImportError, ModuleNotFoundError):  # Catch both
+        # Fallback...
+```
+
+**Ergebnis:** Benutzerfreundliche Fallback-Message wird nun korrekt angezeigt statt Traceback.
+
+---
+
 ## 💾 COMMITS
 
 | Commit | Beschreibung | Files Changed | LOC Added |
@@ -281,8 +323,9 @@ from datetime import datetime, timedelta
 | fc92d9b | Fix missing _on_bot_decision callback | 4 files | 123 |
 | ccc1f93 | Fix _on_trading_blocked + _on_macd_signal | 3 files | 48 |
 | d361fe3 | Fix timedelta import in backtest_tab_ui_setup_mixin | 3 files | 28 |
+| [pending] | Fix import error handling in _open_prompt_management | 2 files | 3 |
 
-**Total:** 6 commits, 326 LOC restored
+**Total:** 7 commits, 329 LOC restored
 
 ---
 
@@ -306,7 +349,11 @@ from datetime import datetime, timedelta
 
 ## ✅ STATUS
 
-**All 12 regressions fixed and verified.**
+**All 13 regressions fixed and verified.**
+
+**Regression Categories:**
+- **Startup Errors (1-12):** Import errors and missing methods that prevented app start or tab creation
+- **Runtime Errors (13):** Errors that occur when using specific features (gracefully handled with fallbacks)
 
 **Ready for:**
 - Application testing
