@@ -168,3 +168,34 @@ class StrategySimulatorResultsMixin:
             self.simulator_strategy_combo.setCurrentIndex(self._all_run_restore_index)
         self._all_run_restore_index = None
 
+    def _on_simulator_result_selected(self) -> None:
+        """Handle result selection in table."""
+        selected = self.simulator_results_table.selectedItems()
+        if not selected:
+            self.simulator_show_markers_btn.setEnabled(False)
+            if hasattr(self, "simulator_show_entry_points_checkbox"):
+                if self.simulator_show_entry_points_checkbox.isChecked():
+                    self._update_entry_points_from_selection()
+            return
+
+        row = selected[0].row()
+        result = self._get_result_from_row(row)
+        self.simulator_show_markers_btn.setEnabled(result is not None)
+        if hasattr(self, "simulator_show_entry_points_checkbox"):
+            if self.simulator_show_entry_points_checkbox.isChecked():
+                self._update_entry_points_from_selection()
+
+    def _get_result_from_row(self, row: int):
+        """Get simulation result from table row index."""
+        if 0 <= row < len(self._simulation_results):
+            return self._simulation_results[row]
+        return None
+
+    def _update_entry_points_from_selection(self) -> None:
+        """Update entry points display based on selected result."""
+        if not hasattr(self, "chart_widget"):
+            return
+        # Implementation depends on chart_widget having _plot_entry_points
+        if hasattr(self, "_plot_entry_points"):
+            self._plot_entry_points()
+
