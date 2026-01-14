@@ -98,6 +98,9 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             # Convert timeframe
             alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
 
+            # Convert symbol to Alpaca format (e.g., "BTCUSDT" → "BTC/USDT")
+            alpaca_symbol = self._convert_symbol_to_alpaca_format(symbol)
+
             # Convert to UTC if timezone-aware
             start_date_utc = self._ensure_utc_naive(start_date)
             end_date_utc = self._ensure_utc_naive(end_date)
@@ -107,7 +110,7 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             needs_chunking = time_span.days > 31  # Chunk if more than 1 month
 
             logger.info(
-                f"Alpaca crypto request: {symbol}, "
+                f"Alpaca crypto request: {alpaca_symbol} (from {symbol}), "
                 f"timeframe={timeframe.value}, "
                 f"start={start_date_utc}, "
                 f"end={end_date_utc}, "
@@ -143,7 +146,7 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
                         )
 
                     request = CryptoBarsRequest(
-                        symbol_or_symbols=symbol,
+                        symbol_or_symbols=alpaca_symbol,  # Use converted symbol format
                         timeframe=alpaca_timeframe,
                         start=current_start,
                         end=current_end
@@ -155,8 +158,9 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
                     )
 
                     # Convert chunk to HistoricalBar objects
-                    if hasattr(bars_response, 'data') and symbol in bars_response.data:
-                        for bar in bars_response.data[symbol]:
+                    # Use alpaca_symbol to access response data (key matches request symbol)
+                    if hasattr(bars_response, 'data') and alpaca_symbol in bars_response.data:
+                        for bar in bars_response.data[alpaca_symbol]:
                             hist_bar = HistoricalBar(
                                 timestamp=bar.timestamp,
                                 open=bar.open,
@@ -184,7 +188,7 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             else:
                 # Single request for short time spans
                 request = CryptoBarsRequest(
-                    symbol_or_symbols=symbol,
+                    symbol_or_symbols=alpaca_symbol,  # Use converted symbol format
                     timeframe=alpaca_timeframe,
                     start=start_date_utc,
                     end=end_date_utc
@@ -192,15 +196,15 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
 
                 bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
 
-                # Check response
-                if not hasattr(bars_response, 'data') or symbol not in bars_response.data:
-                    logger.warning(f"No crypto data found for {symbol} from Alpaca")
+                # Check response (use alpaca_symbol to access data)
+                if not hasattr(bars_response, 'data') or alpaca_symbol not in bars_response.data:
+                    logger.warning(f"No crypto data found for {alpaca_symbol} (from {symbol}) from Alpaca")
                     if hasattr(bars_response, 'data'):
                         logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
                     return []
 
                 # Convert to HistoricalBar objects
-                for bar in bars_response.data[symbol]:
+                for bar in bars_response.data[alpaca_symbol]:
                     hist_bar = HistoricalBar(
                         timestamp=bar.timestamp,
                         open=bar.open,
@@ -270,6 +274,32 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             Timeframe.MONTH_1: AlpacaTimeFrame(1, TimeFrameUnit.Month),
         }
         return mapping.get(timeframe, AlpacaTimeFrame(1, TimeFrameUnit.Minute))
+
+    def _convert_symbol_to_alpaca_format(self, symbol: str) -> str:
+        """Convert symbol to Alpaca Crypto format.
+
+        Alpaca Crypto expects format: BASE/QUOTE (e.g., "BTC/USDT", "ETH/USD")
+        Our internal format may be: BASEUSDT (e.g., "BTCUSDT", "ETHUSD")
+
+        Args:
+            symbol: Symbol in internal format (e.g., "BTCUSDT")
+
+        Returns:
+            Symbol in Alpaca format (e.g., "BTC/USDT")
+        """
+        # If already has slash, return as-is
+        if "/" in symbol:
+            return symbol
+
+        # Try to split common quote currencies
+        for quote in ["USDT", "USD", "EUR", "BTC", "ETH"]:
+            if symbol.endswith(quote):
+                base = symbol[:-len(quote)]
+                return f"{base}/{quote}"
+
+        # If no known quote currency found, return as-is and let API handle it
+        logger.warning(f"Could not convert symbol to Alpaca format: {symbol}")
+        return symbol
 
     def _check_sdk(self) -> bool:
         """Check whether the Alpaca SDK is installed.

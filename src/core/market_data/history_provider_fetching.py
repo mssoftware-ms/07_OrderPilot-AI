@@ -252,9 +252,21 @@ class HistoryProviderFetching:
                     ))
 
                 if new_bars:
-                    session.bulk_save_objects(new_bars)
-                    session.commit()
-                    logger.debug(f"Stored {len(new_bars)} bars to database")
+                    try:
+                        session.bulk_save_objects(new_bars)
+                        session.commit()
+                        logger.debug(f"Stored {len(new_bars)} bars to database")
+                    except Exception as commit_error:
+                        # Rollback on error (especially UNIQUE constraint violations)
+                        session.rollback()
+                        # Check if it's a UNIQUE constraint error (expected, can be ignored)
+                        error_str = str(commit_error)
+                        if "UNIQUE constraint failed" in error_str or "IntegrityError" in error_str:
+                            logger.debug(f"Skipped {len(new_bars)} bars (already in database - race condition)")
+                        else:
+                            # Log other errors
+                            logger.error(f"Database commit error: {commit_error}")
+                            raise
                 else:
                     logger.debug("All fetched bars already cached locally")
 

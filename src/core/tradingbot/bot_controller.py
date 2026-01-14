@@ -143,6 +143,7 @@ class BotController(
             require_regime_flip_for_switch=False  # No regime flip required
         )
         self._last_strategy_selection_date: datetime | None = None
+        self._manual_strategy_mode: bool = False  # True = manual, False = auto-detection
 
         # Run state
         self._running: bool = False
@@ -356,6 +357,51 @@ class BotController(
         self._active_strategy = None
         self._strategy_locked_until = None  # Clear lock if any
         logger.info("Strategy re-selection forced")
+
+    def force_strategy_reselection_now(self) -> str | None:
+        """Force immediate strategy re-selection.
+
+        Unlike force_strategy_reselection(), this immediately selects a new strategy
+        instead of waiting for the next bar.
+
+        Returns:
+            Name of selected strategy or None if no strategy selected
+        """
+        self._active_strategy = None
+        self._strategy_locked_until = None
+
+        if not self._regime:
+            logger.warning("Cannot select strategy: regime not yet initialized")
+            return None
+
+        try:
+            result = self._strategy_selector.select_strategy(
+                regime=self._regime,
+                symbol=self.symbol,
+                force=True
+            )
+
+            self._last_strategy_selection_date = datetime.utcnow()
+
+            selected_name = result.selected_strategy if result else None
+
+            # Update active strategy profile
+            if selected_name:
+                strategy_def = self._strategy_catalog.get_strategy(selected_name)
+                if strategy_def:
+                    self._active_strategy = strategy_def.profile
+                    logger.info(f"Strategy immediately re-selected: {selected_name}")
+                else:
+                    logger.warning(f"Strategy definition not found: {selected_name}")
+            else:
+                self._active_strategy = None
+                logger.info("Strategy immediately re-selected: neutral (keine Strategie)")
+
+            return selected_name
+
+        except Exception as e:
+            logger.error(f"Failed to force strategy reselection: {e}")
+            return None
 
     @property
     def current_strategy(self) -> StrategyProfile | None:

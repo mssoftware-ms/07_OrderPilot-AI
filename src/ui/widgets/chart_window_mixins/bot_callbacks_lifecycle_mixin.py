@@ -61,6 +61,10 @@ class BotCallbacksLifecycleMixin:
         # Save settings for this symbol
         self._save_bot_settings(symbol)
 
+        # Populate strategy combo box now that bot controller is available
+        if hasattr(self, '_populate_strategy_combo'):
+            self._populate_strategy_combo()
+
         logger.info(f"Bot started for {symbol} with {ki_mode.value} mode")
 
     def _resolve_bot_symbol(self) -> str:

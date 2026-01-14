@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.ui.widgets.chart_mixins.data_loading_utils import get_local_timezone_offset_seconds
+from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 
 logger = logging.getLogger(__name__)
 
