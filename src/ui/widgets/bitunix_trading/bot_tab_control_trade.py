@@ -45,149 +45,259 @@ class BotTabControlTrade:
             symbol: Trading-Symbol
             context: Aktueller MarketContext
         """
-        # 1. Prüfen ob bereits Position offen
-        if self.parent.parent._current_position is not None:
-            logger.debug("Position already open - skipping entry")
+        # Validate entry conditions
+        if not self._validate_entry_conditions():
             return
 
-        # 2. Prüfen ob Trigger aktiv
-        if not self.parent.parent._last_trigger_result or self.parent.parent._last_trigger_result.status.value != "triggered":
-            logger.debug(
-                f"No trigger - status: {self.parent.parent._last_trigger_result.status.value if self.parent.parent._last_trigger_result else 'None'}"
-            )
-            return
-
-        # 3. Prüfen ob Entry Score gut genug
-        if (
-            not self.parent.parent._last_entry_score
-            or self.parent.parent._last_entry_score.quality.value not in ["excellent", "good", "acceptable"]
-        ):
-            logger.warning(
-                f"Entry score quality too low: {self.parent.parent._last_entry_score.quality.value if self.parent.parent._last_entry_score else 'None'}"
-            )
-            self.parent._log(
-                f"⚠️ Entry Score zu niedrig: {self.parent.parent._last_entry_score.quality.value if self.parent.parent._last_entry_score else 'None'}"
-            )
-            return
-
-        # 4. Prüfen ob LLM Veto
-        if self.parent.parent._last_llm_result and self.parent.parent._last_llm_result.action.value == "veto":
-            logger.warning(f"LLM VETO - blocking trade: {self.parent.parent._last_llm_result.reasoning[:100]}")
-            self.parent._log(f"🚫 LLM VETO: {self.parent.parent._last_llm_result.reasoning[:50]}...")
-            return
-
-        # Alle Bedingungen erfüllt → Trade ausführen
+        # Execute trade
         try:
-            direction = self.parent.parent._last_entry_score.direction.value  # "long" or "short"
-            entry_price = context.current_price
-
-            # Position Size berechnen (mit Leverage)
-            leverage = (
-                self.parent.parent._last_leverage_result.final_leverage if self.parent.parent._last_leverage_result else 1.0
-            )
-
-            # Hole Risk-Settings aus Config
-            config = self.parent._persistence_helper._get_current_config()
-            risk_per_trade_pct = config.risk_per_trade_pct  # z.B. 1.0 = 1% des Kapitals
-
-            # Hole Kontogröße vom Adapter
-            account_balance = await self.parent.parent._adapter.get_balance()
-
-            # Berechne Position Size
-            risk_amount = account_balance * (risk_per_trade_pct / 100.0)
-
-            # Stop Loss Distanz aus TriggerExitEngine
-            exit_levels = self.parent.parent._last_trigger_result.exit_levels
-            if not exit_levels:
-                logger.error("No exit levels from TriggerExitEngine")
-                return
-
-            sl_price = exit_levels.stop_loss
-            tp_price = exit_levels.take_profit
-
-            # SL-Distanz in %
-            if direction == "long":
-                sl_distance_pct = abs((entry_price - sl_price) / entry_price)
-            else:
-                sl_distance_pct = abs((sl_price - entry_price) / entry_price)
-
-            # Quantity berechnen: Risk / SL-Distanz
-            quantity = (risk_amount / (entry_price * sl_distance_pct)) * leverage
-
-            # Position öffnen über Adapter
-            self.parent._log(f"🚀 Opening {direction.upper()} position: {quantity:.4f} {symbol} @ {entry_price:.2f}")
-            self.parent._log(f"   SL: {sl_price:.2f} | TP: {tp_price:.2f} | Leverage: {leverage:.1f}x")
-
-            order_result = await self.parent.parent._adapter.place_order(
-                symbol=symbol,
-                side="buy" if direction == "long" else "sell",
-                quantity=quantity,
-                order_type="market",
-            )
-
-            if order_result and order_result.get("status") == "filled":
-                # Position erfolgreich eröffnet
-                self.parent.parent._current_position = {
-                    "symbol": symbol,
-                    "side": direction,
-                    "entry_price": entry_price,
-                    "quantity": quantity,
-                    "stop_loss": sl_price,
-                    "take_profit": tp_price,
-                    "leverage": leverage,
-                    "entry_time": datetime.now(timezone.utc),
-                    "context_id": context.context_id,
-                    "trigger_type": (
-                        self.parent.parent._last_trigger_result.trigger_type.value
-                        if self.parent.parent._last_trigger_result.trigger_type
-                        else "unknown"
-                    ),
-                }
-
-                self.parent.parent._position_entry_price = entry_price
-                self.parent.parent._position_side = direction
-                self.parent.parent._position_quantity = quantity
-                self.parent.parent._position_stop_loss = sl_price
-                self.parent.parent._position_take_profit = tp_price
-
-                self.parent._log(f"✅ Position opened: {direction.upper()} {quantity:.4f} @ {entry_price:.2f}")
-
-                # Show SL/TP Visual Bar
-                self.parent.parent.sltp_container.setVisible(True)
-                self.parent._ui_helper._update_sltp_bar(entry_price)
-
-                # Journal Log
-                if self.parent.parent._journal_widget:
-                    trade_data = {
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "context_id": context.context_id,
-                        "action": "ENTRY",
-                        "side": direction,
-                        "price": entry_price,
-                        "quantity": quantity,
-                        "stop_loss": sl_price,
-                        "take_profit": tp_price,
-                        "leverage": leverage,
-                        "trigger": (
-                            self.parent.parent._last_trigger_result.trigger_type.value
-                            if self.parent.parent._last_trigger_result.trigger_type
-                            else "unknown"
-                        ),
-                        "entry_score": self.parent.parent._last_entry_score.final_score,
-                        "llm_action": (
-                            self.parent.parent._last_llm_result.action.value if self.parent.parent._last_llm_result else "none"
-                        ),
-                    }
-                    self.parent.parent._journal_widget.add_trade(trade_data)
-
-                # NOTE: WhatsApp Notification erfolgt über das ChartWindow Trading Bot Panel
-            else:
-                logger.error(f"Order failed: {order_result}")
-                self.parent._log(f"❌ Order failed: {order_result}")
-
+            await self._execute_trade(symbol, context)
         except Exception as e:
             logger.exception(f"Failed to execute trade: {e}")
             self.parent._log(f"❌ Trade execution error: {e}")
+
+    def _validate_entry_conditions(self) -> bool:
+        """Validate all entry conditions.
+
+        Returns:
+            True if all conditions met, False otherwise.
+        """
+        bot = self.parent.parent
+
+        # Check if position already open
+        if bot._current_position is not None:
+            logger.debug("Position already open - skipping entry")
+            return False
+
+        # Check if trigger active
+        if not bot._last_trigger_result or bot._last_trigger_result.status.value != "triggered":
+            logger.debug(
+                f"No trigger - status: {bot._last_trigger_result.status.value if bot._last_trigger_result else 'None'}"
+            )
+            return False
+
+        # Check entry score quality
+        if not self._is_entry_score_acceptable():
+            return False
+
+        # Check LLM veto
+        if self._has_llm_veto():
+            return False
+
+        return True
+
+    def _is_entry_score_acceptable(self) -> bool:
+        """Check if entry score meets minimum quality.
+
+        Returns:
+            True if acceptable, False otherwise.
+        """
+        bot = self.parent.parent
+        if (
+            not bot._last_entry_score
+            or bot._last_entry_score.quality.value not in ["excellent", "good", "acceptable"]
+        ):
+            quality = bot._last_entry_score.quality.value if bot._last_entry_score else 'None'
+            logger.warning(f"Entry score quality too low: {quality}")
+            self.parent._log(f"⚠️ Entry Score zu niedrig: {quality}")
+            return False
+        return True
+
+    def _has_llm_veto(self) -> bool:
+        """Check if LLM vetoed the trade.
+
+        Returns:
+            True if veto, False otherwise.
+        """
+        bot = self.parent.parent
+        if bot._last_llm_result and bot._last_llm_result.action.value == "veto":
+            logger.warning(f"LLM VETO - blocking trade: {bot._last_llm_result.reasoning[:100]}")
+            self.parent._log(f"🚫 LLM VETO: {bot._last_llm_result.reasoning[:50]}...")
+            return True
+        return False
+
+    async def _execute_trade(self, symbol: str, context: "MarketContext") -> None:
+        """Execute the trade after validation passed.
+
+        Args:
+            symbol: Trading symbol.
+            context: Market context.
+        """
+        # Calculate trade parameters
+        trade_params = await self._calculate_trade_parameters(symbol, context)
+        if not trade_params:
+            return
+
+        # Place order
+        order_result = await self._place_order(symbol, trade_params)
+
+        # Handle order result
+        if order_result and order_result.get("status") == "filled":
+            self._handle_successful_order(symbol, context, trade_params)
+        else:
+            logger.error(f"Order failed: {order_result}")
+            self.parent._log(f"❌ Order failed: {order_result}")
+
+    async def _calculate_trade_parameters(
+        self, symbol: str, context: "MarketContext"
+    ) -> dict | None:
+        """Calculate all trade parameters (size, SL, TP, etc.).
+
+        Returns:
+            Dictionary with trade parameters or None if calculation failed.
+        """
+        bot = self.parent.parent
+        direction = bot._last_entry_score.direction.value
+        entry_price = context.current_price
+
+        # Get leverage
+        leverage = bot._last_leverage_result.final_leverage if bot._last_leverage_result else 1.0
+
+        # Get risk settings
+        config = self.parent._persistence_helper._get_current_config()
+        risk_per_trade_pct = config.risk_per_trade_pct
+
+        # Get account balance
+        account_balance = await bot._adapter.get_balance()
+        risk_amount = account_balance * (risk_per_trade_pct / 100.0)
+
+        # Get exit levels
+        exit_levels = bot._last_trigger_result.exit_levels
+        if not exit_levels:
+            logger.error("No exit levels from TriggerExitEngine")
+            return None
+
+        sl_price = exit_levels.stop_loss
+        tp_price = exit_levels.take_profit
+
+        # Calculate SL distance
+        if direction == "long":
+            sl_distance_pct = abs((entry_price - sl_price) / entry_price)
+        else:
+            sl_distance_pct = abs((sl_price - entry_price) / entry_price)
+
+        # Calculate quantity
+        quantity = (risk_amount / (entry_price * sl_distance_pct)) * leverage
+
+        return {
+            "direction": direction,
+            "entry_price": entry_price,
+            "quantity": quantity,
+            "sl_price": sl_price,
+            "tp_price": tp_price,
+            "leverage": leverage,
+        }
+
+    async def _place_order(self, symbol: str, trade_params: dict) -> dict:
+        """Place market order.
+
+        Args:
+            symbol: Trading symbol.
+            trade_params: Trade parameters dictionary.
+
+        Returns:
+            Order result dictionary.
+        """
+        direction = trade_params["direction"]
+        quantity = trade_params["quantity"]
+        entry_price = trade_params["entry_price"]
+        sl_price = trade_params["sl_price"]
+        tp_price = trade_params["tp_price"]
+        leverage = trade_params["leverage"]
+
+        self.parent._log(
+            f"🚀 Opening {direction.upper()} position: {quantity:.4f} {symbol} @ {entry_price:.2f}"
+        )
+        self.parent._log(f"   SL: {sl_price:.2f} | TP: {tp_price:.2f} | Leverage: {leverage:.1f}x")
+
+        return await self.parent.parent._adapter.place_order(
+            symbol=symbol,
+            side="buy" if direction == "long" else "sell",
+            quantity=quantity,
+            order_type="market",
+        )
+
+    def _handle_successful_order(
+        self, symbol: str, context: "MarketContext", trade_params: dict
+    ) -> None:
+        """Handle successful order execution.
+
+        Args:
+            symbol: Trading symbol.
+            context: Market context.
+            trade_params: Trade parameters dictionary.
+        """
+        bot = self.parent.parent
+
+        # Create position data
+        trigger_type = (
+            bot._last_trigger_result.trigger_type.value
+            if bot._last_trigger_result.trigger_type
+            else "unknown"
+        )
+
+        bot._current_position = {
+            "symbol": symbol,
+            "side": trade_params["direction"],
+            "entry_price": trade_params["entry_price"],
+            "quantity": trade_params["quantity"],
+            "stop_loss": trade_params["sl_price"],
+            "take_profit": trade_params["tp_price"],
+            "leverage": trade_params["leverage"],
+            "entry_time": datetime.now(timezone.utc),
+            "context_id": context.context_id,
+            "trigger_type": trigger_type,
+        }
+
+        # Update position attributes
+        bot._position_entry_price = trade_params["entry_price"]
+        bot._position_side = trade_params["direction"]
+        bot._position_quantity = trade_params["quantity"]
+        bot._position_stop_loss = trade_params["sl_price"]
+        bot._position_take_profit = trade_params["tp_price"]
+
+        # Log success
+        self.parent._log(
+            f"✅ Position opened: {trade_params['direction'].upper()} "
+            f"{trade_params['quantity']:.4f} @ {trade_params['entry_price']:.2f}"
+        )
+
+        # Show SL/TP visual bar
+        bot.sltp_container.setVisible(True)
+        self.parent._ui_helper._update_sltp_bar(trade_params["entry_price"])
+
+        # Add to journal
+        self._add_trade_to_journal(context, trade_params, trigger_type)
+
+    def _add_trade_to_journal(
+        self, context: "MarketContext", trade_params: dict, trigger_type: str
+    ) -> None:
+        """Add trade to journal widget.
+
+        Args:
+            context: Market context.
+            trade_params: Trade parameters dictionary.
+            trigger_type: Trigger type string.
+        """
+        bot = self.parent.parent
+        if not bot._journal_widget:
+            return
+
+        trade_data = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "context_id": context.context_id,
+            "action": "ENTRY",
+            "side": trade_params["direction"],
+            "price": trade_params["entry_price"],
+            "quantity": trade_params["quantity"],
+            "stop_loss": trade_params["sl_price"],
+            "take_profit": trade_params["tp_price"],
+            "leverage": trade_params["leverage"],
+            "trigger": trigger_type,
+            "entry_score": bot._last_entry_score.final_score,
+            "llm_action": bot._last_llm_result.action.value if bot._last_llm_result else "none",
+        }
+        bot._journal_widget.add_trade(trade_data)
 
     async def _monitor_open_position(self, context: "MarketContext") -> None:
         """Überwacht offene Position und managed Exit.
