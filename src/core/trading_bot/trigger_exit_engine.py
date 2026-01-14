@@ -137,87 +137,17 @@ class TriggerExitEngine:
         sl = current_sl or exit_levels.stop_loss
         tp = exit_levels.take_profit
 
-        # Check Stop Loss
-        if direction == "LONG":
-            if current_price <= sl:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.SL_HIT,
-                    reason=f"Stop Loss hit at {sl:.2f}",
-                    suggested_exit_price=sl,
-                )
-        else:
-            if current_price >= sl:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.SL_HIT,
-                    reason=f"Stop Loss hit at {sl:.2f}",
-                    suggested_exit_price=sl,
-                )
+        # Check all exit conditions in priority order
+        exit_signal = (
+            self._check_stop_loss(current_price, sl, direction) or
+            self._check_take_profit(current_price, tp, direction) or
+            self._check_partial_tp(current_price, exit_levels, sl, direction) or
+            self._check_time_stop(entry_time, current_price) or
+            self._check_signal_reversal(entry_score, direction, current_price)
+        )
 
-        # Check Take Profit
-        if direction == "LONG":
-            if current_price >= tp:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.TP_HIT,
-                    reason=f"Take Profit hit at {tp:.2f}",
-                    suggested_exit_price=tp,
-                )
-        else:
-            if current_price <= tp:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.TP_HIT,
-                    reason=f"Take Profit hit at {tp:.2f}",
-                    suggested_exit_price=tp,
-                )
-
-        # Check Partial TP
-        if self.config.partial_tp_enabled and exit_levels.partial_tp_1:
-            if direction == "LONG" and current_price >= exit_levels.partial_tp_1:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.PARTIAL,
-                    reason=f"Partial TP1 at {exit_levels.partial_tp_1:.2f}",
-                    suggested_exit_price=current_price,
-                    is_partial=True,
-                    partial_percent=self.config.partial_tp_1_percent,
-                    new_sl=exit_levels.entry_price if self.config.move_sl_to_be_after_tp1 else sl,
-                )
-            elif direction == "SHORT" and current_price <= exit_levels.partial_tp_1:
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.PARTIAL,
-                    reason=f"Partial TP1 at {exit_levels.partial_tp_1:.2f}",
-                    suggested_exit_price=current_price,
-                    is_partial=True,
-                    partial_percent=self.config.partial_tp_1_percent,
-                    new_sl=exit_levels.entry_price if self.config.move_sl_to_be_after_tp1 else sl,
-                )
-
-        # Check Time Stop
-        if self.config.time_stop_enabled:
-            holding_time = datetime.now(timezone.utc) - entry_time
-            if holding_time > timedelta(minutes=self.config.max_holding_minutes):
-                return ExitSignal(
-                    should_exit=True,
-                    exit_type=ExitType.TIME_STOP,
-                    reason=f"Max holding time ({self.config.max_holding_minutes}min) exceeded",
-                    suggested_exit_price=current_price,
-                )
-
-        # Check Signal Reversal
-        if entry_score and entry_score.is_valid_for_entry:
-            score_direction = entry_score.direction.value
-            if score_direction != direction and score_direction != "NEUTRAL":
-                if entry_score.final_score >= 0.6:  # Strong reversal signal
-                    return ExitSignal(
-                        should_exit=True,
-                        exit_type=ExitType.SIGNAL_REVERSAL,
-                        reason=f"Signal reversal: {score_direction} with score {entry_score.final_score:.2f}",
-                        suggested_exit_price=current_price,
-                    )
+        if exit_signal:
+            return exit_signal
 
         # No exit condition met
         return ExitSignal(
@@ -225,6 +155,156 @@ class TriggerExitEngine:
             exit_type=ExitType.MANUAL,
             reason="No exit conditions met",
         )
+
+    def _check_stop_loss(
+        self, current_price: float, sl: float, direction: str
+    ) -> Optional[ExitSignal]:
+        """Check if stop loss was hit.
+
+        Args:
+            current_price: Current market price.
+            sl: Stop loss level.
+            direction: Position direction.
+
+        Returns:
+            ExitSignal if SL hit, None otherwise.
+        """
+        is_sl_hit = (
+            (direction == "LONG" and current_price <= sl) or
+            (direction == "SHORT" and current_price >= sl)
+        )
+
+        if is_sl_hit:
+            return ExitSignal(
+                should_exit=True,
+                exit_type=ExitType.SL_HIT,
+                reason=f"Stop Loss hit at {sl:.2f}",
+                suggested_exit_price=sl,
+            )
+        return None
+
+    def _check_take_profit(
+        self, current_price: float, tp: float, direction: str
+    ) -> Optional[ExitSignal]:
+        """Check if take profit was hit.
+
+        Args:
+            current_price: Current market price.
+            tp: Take profit level.
+            direction: Position direction.
+
+        Returns:
+            ExitSignal if TP hit, None otherwise.
+        """
+        is_tp_hit = (
+            (direction == "LONG" and current_price >= tp) or
+            (direction == "SHORT" and current_price <= tp)
+        )
+
+        if is_tp_hit:
+            return ExitSignal(
+                should_exit=True,
+                exit_type=ExitType.TP_HIT,
+                reason=f"Take Profit hit at {tp:.2f}",
+                suggested_exit_price=tp,
+            )
+        return None
+
+    def _check_partial_tp(
+        self, current_price: float, exit_levels: ExitLevels, sl: float, direction: str
+    ) -> Optional[ExitSignal]:
+        """Check if partial take profit was hit.
+
+        Args:
+            current_price: Current market price.
+            exit_levels: Exit levels containing partial TP.
+            sl: Current stop loss.
+            direction: Position direction.
+
+        Returns:
+            ExitSignal if partial TP hit, None otherwise.
+        """
+        if not self.config.partial_tp_enabled or not exit_levels.partial_tp_1:
+            return None
+
+        is_partial_hit = (
+            (direction == "LONG" and current_price >= exit_levels.partial_tp_1) or
+            (direction == "SHORT" and current_price <= exit_levels.partial_tp_1)
+        )
+
+        if is_partial_hit:
+            new_sl = (
+                exit_levels.entry_price
+                if self.config.move_sl_to_be_after_tp1
+                else sl
+            )
+            return ExitSignal(
+                should_exit=True,
+                exit_type=ExitType.PARTIAL,
+                reason=f"Partial TP1 at {exit_levels.partial_tp_1:.2f}",
+                suggested_exit_price=current_price,
+                is_partial=True,
+                partial_percent=self.config.partial_tp_1_percent,
+                new_sl=new_sl,
+            )
+        return None
+
+    def _check_time_stop(
+        self, entry_time: datetime, current_price: float
+    ) -> Optional[ExitSignal]:
+        """Check if max holding time exceeded.
+
+        Args:
+            entry_time: Position entry time.
+            current_price: Current market price.
+
+        Returns:
+            ExitSignal if time stop hit, None otherwise.
+        """
+        if not self.config.time_stop_enabled:
+            return None
+
+        holding_time = datetime.now(timezone.utc) - entry_time
+        if holding_time > timedelta(minutes=self.config.max_holding_minutes):
+            return ExitSignal(
+                should_exit=True,
+                exit_type=ExitType.TIME_STOP,
+                reason=f"Max holding time ({self.config.max_holding_minutes}min) exceeded",
+                suggested_exit_price=current_price,
+            )
+        return None
+
+    def _check_signal_reversal(
+        self, entry_score: Optional["EntryScoreResult"], direction: str, current_price: float
+    ) -> Optional[ExitSignal]:
+        """Check if signal reversed direction.
+
+        Args:
+            entry_score: Latest entry score.
+            direction: Current position direction.
+            current_price: Current market price.
+
+        Returns:
+            ExitSignal if strong reversal detected, None otherwise.
+        """
+        if not entry_score or not entry_score.is_valid_for_entry:
+            return None
+
+        score_direction = entry_score.direction.value
+        is_reversed = (
+            score_direction != direction and
+            score_direction != "NEUTRAL" and
+            entry_score.final_score >= 0.6  # Strong reversal threshold
+        )
+
+        if is_reversed:
+            return ExitSignal(
+                should_exit=True,
+                exit_type=ExitType.SIGNAL_REVERSAL,
+                reason=f"Signal reversal: {score_direction} with score {entry_score.final_score:.2f}",
+                suggested_exit_price=current_price,
+            )
+        return None
 
     def calculate_trailing_stop(
         self,
