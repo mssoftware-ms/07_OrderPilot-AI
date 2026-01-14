@@ -1,1 +1,1 @@
-Nutze refactorer für Strukturverbesserungen, optimizer für Performance. Teste nach jeder Änderung!
+Nutze Subagenten für spezialisierte Aufgaben. Delegiere Tests an den tester-Agenten.

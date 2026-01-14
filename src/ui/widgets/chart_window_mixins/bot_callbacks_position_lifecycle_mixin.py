@@ -13,6 +13,36 @@ logger = logging.getLogger(__name__)
 class BotCallbacksPositionLifecycleMixin:
     """Position lifecycle callbacks (enter, exit, adjust)"""
 
+    def _on_bot_decision(self, decision: Any) -> None:
+        """Handle bot decision callback.
+
+        This method is called by the bot controller when a trading decision is made.
+        It dispatches to appropriate handlers based on the action type.
+
+        Args:
+            decision: BotDecision object containing action, prices, and reasons
+        """
+        from src.core.trading_bot.bot_types import BotAction
+
+        action = getattr(decision, 'action', None)
+        if not action:
+            logger.warning("Bot decision has no action")
+            return
+
+        logger.info(f"Bot decision: {action}")
+
+        if action == BotAction.ENTER:
+            self._handle_bot_enter(decision)
+        elif action == BotAction.ADJUST_STOP:
+            self._handle_bot_adjust_stop(decision)
+        elif action == BotAction.EXIT:
+            self._handle_bot_exit(decision)
+        elif action == BotAction.HOLD:
+            # No action needed for HOLD
+            pass
+        else:
+            logger.warning(f"Unknown bot action: {action}")
+
     def _handle_bot_enter(self, decision: Any) -> None:
         """Handle BotAction.ENTER."""
         stop_price = getattr(decision, 'stop_price_after', None)
