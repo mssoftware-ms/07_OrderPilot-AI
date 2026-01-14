@@ -310,3 +310,13 @@ class StrategySimulatorResultsMixin:
         self.simulator_show_markers_btn.setEnabled(False)
         self.simulator_status_label.setText("Results cleared")
 
+    def _on_toggle_entry_points(self, checked: bool) -> None:
+        """Toggle display of entry points based on checkbox state."""
+        if not hasattr(self, "chart_widget"):
+            return
+        if checked:
+            self._update_entry_points_from_selection()
+        else:
+            if hasattr(self.chart_widget, "clear_bot_markers"):
+                self.chart_widget.clear_bot_markers()
+
