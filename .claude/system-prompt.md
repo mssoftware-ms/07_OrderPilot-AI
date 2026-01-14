@@ -1,1 +1,1 @@
-Nutze debugger für Root Cause Analyse, tracer für Stack Trace Analyse.
+Nutze refactorer für Strukturverbesserungen, optimizer für Performance. Teste nach jeder Änderung!

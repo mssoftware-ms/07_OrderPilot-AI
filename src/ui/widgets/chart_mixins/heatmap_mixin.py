@@ -52,20 +52,62 @@ class HeatmapMixin:
     def _load_heatmap_settings(self) -> None:
         """Load heatmap settings from QSettings."""
         try:
-            from Heatmap import HeatmapSettings
+            from Heatmap.heatmap_settings import (
+                HeatmapSettings,
+                WindowDuration,
+                ColorPalette,
+                NormalizationMode,
+                DecayMode,
+                ResolutionMode
+            )
 
             settings = QSettings("OrderPilot", "TradingApp")
 
+            # Map decay_minutes to DecayMode
+            decay_minutes = settings.value("heatmap/decay_minutes", 0, type=int)
+            decay = DecayMode.OFF
+            if decay_minutes >= 360:  # 6h
+                decay = DecayMode.SIX_HOURS
+            elif decay_minutes >= 60:
+                decay = DecayMode.SIXTY_MIN
+            elif decay_minutes >= 20:
+                decay = DecayMode.TWENTY_MIN
+
+            # Map auto_resolution to ResolutionMode
+            auto_res = settings.value("heatmap/auto_resolution", True, type=bool)
+            resolution_mode = ResolutionMode.AUTO if auto_res else ResolutionMode.MANUAL
+
+            # Map window string to Enum (safely)
+            window_str = settings.value("heatmap/window", "2h", type=str)
+            try:
+                window = WindowDuration(window_str)
+            except ValueError:
+                window = WindowDuration.TWO_HOURS
+
+            # Map palette string to Enum
+            palette_str = settings.value("heatmap/palette", "hot", type=str)
+            try:
+                palette = ColorPalette(palette_str)
+            except ValueError:
+                palette = ColorPalette.HOT
+
+            # Map normalization string to Enum
+            norm_str = settings.value("heatmap/normalization", "sqrt", type=str)
+            try:
+                normalization = NormalizationMode(norm_str)
+            except ValueError:
+                normalization = NormalizationMode.SQRT
+
             self._heatmap_settings = HeatmapSettings(
                 enabled=settings.value("heatmap/enabled", False, type=bool),
-                window=settings.value("heatmap/window", "2h", type=str),
+                window=window,
                 opacity=settings.value("heatmap/opacity", 0.5, type=float),
-                palette=settings.value("heatmap/palette", "hot", type=str),
-                normalization=settings.value("heatmap/normalization", "sqrt", type=str),
-                decay_minutes=settings.value("heatmap/decay_minutes", 0, type=int),
-                auto_resolution=settings.value("heatmap/auto_resolution", True, type=bool),
-                rows=settings.value("heatmap/rows", 280, type=int),
-                cols=settings.value("heatmap/cols", 1200, type=int),
+                palette=palette,
+                normalization=normalization,
+                decay=decay,
+                resolution_mode=resolution_mode,
+                manual_rows=settings.value("heatmap/rows", 280, type=int),
+                manual_cols=settings.value("heatmap/cols", 1200, type=int),
             )
 
             logger.info(f"Loaded heatmap settings: enabled={self._heatmap_settings.enabled}, "
@@ -82,16 +124,28 @@ class HeatmapMixin:
             return
 
         try:
+            from Heatmap.heatmap_settings import ResolutionMode, DecayMode
+
             settings = QSettings("OrderPilot", "TradingApp")
             settings.setValue("heatmap/enabled", self._heatmap_settings.enabled)
-            settings.setValue("heatmap/window", self._heatmap_settings.window)
+            settings.setValue("heatmap/window", self._heatmap_settings.window.value)
             settings.setValue("heatmap/opacity", self._heatmap_settings.opacity)
-            settings.setValue("heatmap/palette", self._heatmap_settings.palette)
-            settings.setValue("heatmap/normalization", self._heatmap_settings.normalization)
-            settings.setValue("heatmap/decay_minutes", self._heatmap_settings.decay_minutes)
-            settings.setValue("heatmap/auto_resolution", self._heatmap_settings.auto_resolution)
-            settings.setValue("heatmap/rows", self._heatmap_settings.rows)
-            settings.setValue("heatmap/cols", self._heatmap_settings.cols)
+            settings.setValue("heatmap/palette", self._heatmap_settings.palette.value)
+            settings.setValue("heatmap/normalization", self._heatmap_settings.normalization.value)
+
+            # Convert decay back to minutes (approx)
+            decay_val = 0
+            if self._heatmap_settings.decay == DecayMode.SIX_HOURS:
+                decay_val = 360
+            elif self._heatmap_settings.decay == DecayMode.SIXTY_MIN:
+                decay_val = 60
+            elif self._heatmap_settings.decay == DecayMode.TWENTY_MIN:
+                decay_val = 20
+            settings.setValue("heatmap/decay_minutes", decay_val)
+
+            settings.setValue("heatmap/auto_resolution", self._heatmap_settings.resolution_mode == ResolutionMode.AUTO)
+            settings.setValue("heatmap/rows", self._heatmap_settings.manual_rows)
+            settings.setValue("heatmap/cols", self._heatmap_settings.manual_cols)
             settings.sync()
 
             logger.debug("Saved heatmap settings to QSettings")

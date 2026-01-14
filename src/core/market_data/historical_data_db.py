@@ -10,6 +10,7 @@ Module 3/4 of historical_data_manager.py split (Lines 683-870).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -44,7 +45,7 @@ class HistoricalDataDB:
         Args:
             db_symbol: Database symbol identifier
         """
-        await self.db.run_in_executor(self._delete_symbol_data_sync, db_symbol)
+        await asyncio.to_thread(self._delete_symbol_data_sync, db_symbol)
 
     def _delete_symbol_data_sync(self, db_symbol: str) -> None:
         """
@@ -88,7 +89,7 @@ class HistoricalDataDB:
         batches = [bars[i : i + batch_size] for i in range(0, len(bars), batch_size)]
 
         for i, batch in enumerate(batches):
-            await self.db.run_in_executor(
+            await asyncio.to_thread(
                 self._save_batch_sync, batch, db_symbol, source
             )
             if i % 10 == 0 and i > 0:
@@ -145,7 +146,7 @@ class HistoricalDataDB:
         Returns:
             Dict with coverage info or None
         """
-        return await self.db.run_in_executor(self._get_coverage_sync, db_symbol)
+        return await asyncio.to_thread(self._get_coverage_sync, db_symbol)
 
     def _get_coverage_sync(self, db_symbol: str) -> dict | None:
         """
@@ -201,7 +202,7 @@ class HistoricalDataDB:
         Returns:
             Dict with integrity check results
         """
-        return await self.db.run_in_executor(self._verify_integrity_sync, db_symbol)
+        return await asyncio.to_thread(self._verify_integrity_sync, db_symbol)
 
     def _verify_integrity_sync(self, db_symbol: str) -> dict:
         """

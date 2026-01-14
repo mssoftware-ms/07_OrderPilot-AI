@@ -61,43 +61,43 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         outer_layout.setContentsMargins(8, 8, 8, 8)
         outer_layout.setSpacing(8)
 
-        # Issue #66: Paper/Live Mode Toggle + Banner
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(12)
-
-        # Toggle checkbox
+        # Issue #68: Live Mode UI moved to Current Position Widget
+        # We still initialize them here to keep logic working, but don't add to layout.
+        # The parent/mixin will take these widgets and place them in Current Position.
+        
         self.live_mode_cb = QCheckBox("Live Trading aktivieren")
         self.live_mode_cb.setStyleSheet("font-weight: bold; font-size: 12px;")
         self.live_mode_cb.setChecked(False)  # Default: Paper mode
         self.live_mode_cb.toggled.connect(self._on_trading_mode_changed)
-        mode_row.addWidget(self.live_mode_cb)
-
-        # Mode indicator banner
+        
         self.mode_indicator = QLabel("📄 PAPERTRADING")
         self.mode_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mode_indicator.setStyleSheet(
             "background-color: #26a69a; color: white; "
-            "font-weight: bold; font-size: 16px; "
-            "padding: 12px; border-radius: 6px; "
-            "min-width: 200px;"
+            "font-weight: bold; font-size: 11px; "  # Issue #68: Reduced from 14px
+            "padding: 4px 8px; border-radius: 4px; "  # Issue #68: Reduced padding
+            "min-width: 120px;"  # Issue #68: Reduced from 150px
         )
-        mode_row.addWidget(self.mode_indicator)
 
-        mode_row.addStretch()
-
-        # Help button
+        # Help button (Keep it here or move? Keeping it here for now as it relates to this widget)
+        # Actually, help might be better in the groupbox title bar or top right.
+        # For now, I'll add it to top right of outer layout if possible, or just append to columns
+        
+        header_layout = QHBoxLayout()
+        header_layout.addStretch()
+        
         self.help_btn = QPushButton("?")
-        self.help_btn.setFixedSize(24, 24)
+        self.help_btn.setFixedSize(20, 20)
         self.help_btn.setStyleSheet(
             "QPushButton { background-color: #4a4a4a; color: white; "
-            "font-weight: bold; border-radius: 12px; }"
+            "font-weight: bold; border-radius: 10px; }"
             "QPushButton:hover { background-color: #666; }"
         )
         self.help_btn.setToolTip("Hilfe zu Bitunix Execution (HEDGE)")
         self.help_btn.clicked.connect(self._on_help)
-        mode_row.addWidget(self.help_btn)
-
-        outer_layout.addLayout(mode_row)
+        header_layout.addWidget(self.help_btn)
+        
+        outer_layout.addLayout(header_layout)
 
         # Columns layout (4 GroupBoxes)
         columns_layout = QHBoxLayout()
@@ -129,8 +129,8 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         """Create GroupBox A: Connection & Risk."""
         group = QGroupBox("Connection && Risk")
         layout = QFormLayout()
-        layout.setVerticalSpacing(6)
-        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setVerticalSpacing(4) # Tighter spacing
+        layout.setContentsMargins(8, 8, 8, 8)
 
         # Connection Status
         self.connection_status = QLabel("Disconnected")
@@ -157,6 +157,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
 
         self.leverage_btn = QPushButton("Apply")
         self.leverage_btn.setMaximumWidth(50)
+        self.leverage_btn.setStyleSheet("padding: 2px;")
         self.leverage_btn.clicked.connect(self._on_apply_leverage)
         leverage_layout.addWidget(self.leverage_btn)
 
@@ -181,25 +182,33 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         self.limits_label.setStyleSheet("color: #666; font-size: 9px;")
         layout.addRow("Limits:", self.limits_label)
 
-        # Risk Guards
-        self.require_sl_cb = QCheckBox("Require SL")
-        self.require_sl_cb.setChecked(True)
-        layout.addRow("", self.require_sl_cb)
+        # Risk Guards - Issue #68: Side-by-side
+        risk_widget = QWidget()
+        risk_layout = QHBoxLayout()
+        risk_layout.setContentsMargins(0, 0, 0, 0)
+        risk_layout.setSpacing(4)
 
-        self.confirm_market_cb = QCheckBox("Confirm Market")
+        self.require_sl_cb = QCheckBox("Req SL")
+        self.require_sl_cb.setChecked(True)
+        risk_layout.addWidget(self.require_sl_cb)
+
+        self.confirm_market_cb = QCheckBox("Conf Mkt")
         self.confirm_market_cb.setChecked(True)
-        layout.addRow("", self.confirm_market_cb)
+        risk_layout.addWidget(self.confirm_market_cb)
+        
+        risk_widget.setLayout(risk_layout)
+        layout.addRow("", risk_widget)
 
         group.setLayout(layout)
-        group.setMaximumWidth(260)  # Issue #60: 30% breiter (200 * 1.3 = 260)
+        group.setMaximumWidth(260)
         return group
 
     def _create_entry_groupbox(self) -> QGroupBox:
         """Create GroupBox B: Entry (Standard / Adaptive)."""
         group = QGroupBox("Entry")
         layout = QFormLayout()
-        layout.setVerticalSpacing(6)
-        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setVerticalSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         # Direction (Long/Short)
         direction_widget = QWidget()
@@ -263,6 +272,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
 
         self.use_last_btn = QPushButton("Last")
         self.use_last_btn.setMaximumWidth(40)
+        self.use_last_btn.setStyleSheet("padding: 2px;")
         self.use_last_btn.clicked.connect(self._on_use_last_price)
         price_layout.addWidget(self.use_last_btn)
 
@@ -293,29 +303,31 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         self.adaptive_target_label.setVisible(False)
         layout.addRow("", self.adaptive_target_label)
 
-        # Actions
-        # Issue #59: Buttons untereinander, breiter, besser lesbar
+        # Actions - Issue #68: Side-by-side, smaller
         actions_widget = QWidget()
-        actions_layout = QVBoxLayout()  # Changed from QHBoxLayout to QVBoxLayout
+        actions_layout = QHBoxLayout()
         actions_layout.setContentsMargins(0, 8, 0, 0)
-        actions_layout.setSpacing(6)  # Reduced spacing for vertical layout
+        actions_layout.setSpacing(4)
+
+        # Smaller font style
+        btn_style = "color: white; font-weight: bold; padding: 4px; font-size: 11px; border-radius: 4px;"
 
         self.arm_btn = QPushButton("ARM")
-        self.arm_btn.setStyleSheet("background-color: #ff9800; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
-        self.arm_btn.setMinimumHeight(35)  # Ensure minimum height for readability
+        self.arm_btn.setStyleSheet(f"background-color: #ff9800; {btn_style}")
+        self.arm_btn.setMinimumHeight(28)
         self.arm_btn.clicked.connect(self._on_arm)
         actions_layout.addWidget(self.arm_btn)
 
         self.send_btn = QPushButton("SEND")
-        self.send_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
-        self.send_btn.setMinimumHeight(35)
+        self.send_btn.setStyleSheet(f"background-color: #4CAF50; {btn_style}")
+        self.send_btn.setMinimumHeight(28)
         self.send_btn.setEnabled(False)
         self.send_btn.clicked.connect(self._on_send)
         actions_layout.addWidget(self.send_btn)
 
         self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setStyleSheet("background-color: #666; color: white; font-weight: bold; padding: 10px; font-size: 13px;")
-        self.cancel_btn.setMinimumHeight(35)
+        self.cancel_btn.setStyleSheet(f"background-color: #666; {btn_style}")
+        self.cancel_btn.setMinimumHeight(28)
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self._on_cancel)
         actions_layout.addWidget(self.cancel_btn)
@@ -324,15 +336,15 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         layout.addRow("", actions_widget)
 
         group.setLayout(layout)
-        group.setMaximumWidth(286)  # Issue #60: 30% breiter (220 * 1.3 = 286)
+        group.setMaximumWidth(286)
         return group
 
     def _create_tpsl_groupbox(self) -> QGroupBox:
         """Create GroupBox C: TP/SL & Trailing."""
         group = QGroupBox("TP/SL && Trailing")
         layout = QFormLayout()
-        layout.setVerticalSpacing(6)
-        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setVerticalSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
 
         # Take Profit
         tp_widget = QWidget()
@@ -375,7 +387,7 @@ class BitunixHedgeExecutionWidget(QGroupBox):
 
         # Sync SL Button
         self.sync_sl_btn = QPushButton("Sync SL to Exchange")
-        self.sync_sl_btn.setStyleSheet("font-size: 10px; padding: 4px;")
+        self.sync_sl_btn.setStyleSheet("font-size: 10px; padding: 2px;")
         self.sync_sl_btn.clicked.connect(self._on_sync_sl)
         layout.addRow("", self.sync_sl_btn)
 
@@ -394,30 +406,51 @@ class BitunixHedgeExecutionWidget(QGroupBox):
         sep.setStyleSheet("color: #333;")
         layout.addRow(sep)
 
-        # Exit Controls
-        self.close_btn = QPushButton("Close Position")
-        self.close_btn.setStyleSheet("background-color: #ef5350; color: white; font-weight: bold; padding: 6px;")
-        self.close_btn.clicked.connect(self._on_close_position)
-        layout.addRow("", self.close_btn)
+        # Exit Controls - Issue #68: Side-by-side
+        exit_widget = QWidget()
+        exit_layout = QHBoxLayout()
+        exit_layout.setContentsMargins(0, 0, 0, 0)
+        exit_layout.setSpacing(4)
 
-        self.flash_close_btn = QPushButton("FLASH CLOSE")
-        self.flash_close_btn.setStyleSheet("background-color: #ff0000; color: white; font-weight: bold; padding: 4px; font-size: 10px;")
+        self.close_btn = QPushButton("Close")
+        self.close_btn.setStyleSheet("background-color: #ef5350; color: white; font-weight: bold; padding: 4px; font-size: 11px; border-radius: 4px;")
+        self.close_btn.clicked.connect(self._on_close_position)
+        exit_layout.addWidget(self.close_btn)
+
+        self.flash_close_btn = QPushButton("FLASH")
+        self.flash_close_btn.setStyleSheet("background-color: #ff0000; color: white; font-weight: bold; padding: 4px; font-size: 10px; border-radius: 4px;")
         self.flash_close_btn.clicked.connect(self._on_flash_close)
-        layout.addRow("", self.flash_close_btn)
+        exit_layout.addWidget(self.flash_close_btn)
+        
+        exit_widget.setLayout(exit_layout)
+        layout.addRow("", exit_widget)
 
         group.setLayout(layout)
-        group.setMaximumWidth(234)  # Issue #60: 30% breiter (180 * 1.3 = 234)
+        group.setMaximumWidth(234)
         return group
 
     def _create_status_groupbox(self) -> QGroupBox:
-        """Create GroupBox D: Status.
+        """Create GroupBox D: Current Position.
 
-        Contains State, Order ID, Position ID, Adaptive, Kill Switch.
+        Contains Live Mode controls, State, Order ID, Position ID, Adaptive, Kill Switch.
+        Issue #68: Renamed from "Status" to "Current Position"
         """
-        status_group = QGroupBox("Status")
+        status_group = QGroupBox("Current Position")
         layout = QFormLayout()
-        layout.setContentsMargins(8, 12, 8, 8)
-        layout.setVerticalSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setVerticalSpacing(4)
+
+        # Issue #68: Live Mode controls moved from top to here, side-by-side
+        live_mode_widget = QWidget()
+        live_mode_layout = QHBoxLayout()
+        live_mode_layout.setContentsMargins(0, 0, 0, 0)
+        live_mode_layout.setSpacing(6)
+
+        live_mode_layout.addWidget(self.live_mode_cb)
+        live_mode_layout.addWidget(self.mode_indicator)
+
+        live_mode_widget.setLayout(live_mode_layout)
+        layout.addRow("", live_mode_widget)
 
         # State
         self.state_label = QLabel("IDLE")
@@ -542,9 +575,9 @@ class BitunixHedgeExecutionWidget(QGroupBox):
             self.mode_indicator.setText("🔴 LIVE TRADING")
             self.mode_indicator.setStyleSheet(
                 "background-color: #ef5350; color: white; "
-                "font-weight: bold; font-size: 16px; "
-                "padding: 12px; border-radius: 6px; "
-                "min-width: 200px;"
+                "font-weight: bold; font-size: 11px; "  # Issue #68: Reduced from 14px
+                "padding: 4px 8px; border-radius: 4px; "  # Issue #68: Reduced padding
+                "min-width: 120px;"  # Issue #68: Reduced from 150px
             )
             enabled = True
         else:
@@ -552,9 +585,9 @@ class BitunixHedgeExecutionWidget(QGroupBox):
             self.mode_indicator.setText("📄 PAPERTRADING")
             self.mode_indicator.setStyleSheet(
                 "background-color: #26a69a; color: white; "
-                "font-weight: bold; font-size: 16px; "
-                "padding: 12px; border-radius: 6px; "
-                "min-width: 200px;"
+                "font-weight: bold; font-size: 11px; "  # Issue #68: Reduced from 14px
+                "padding: 4px 8px; border-radius: 4px; "  # Issue #68: Reduced padding
+                "min-width: 120px;"  # Issue #68: Reduced from 150px
             )
             enabled = False
 

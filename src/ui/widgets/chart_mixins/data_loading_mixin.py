@@ -66,6 +66,12 @@ class DataLoadingMixin:
         try:
             data = self._series.prepare_chart_data(data)
             candle_data, volume_data = self._series.build_chart_series(data)
+
+            # DEBUG: Log volume_data status
+            logger.info(f"🔍 Volume data created: {len(volume_data) if volume_data else 0} bars, type={type(volume_data)}")
+            if volume_data and len(volume_data) > 0:
+                logger.info(f"🔍 First volume bar: {volume_data[0]}")
+
             # Issue #5: Pass volume_data to create volume panel
             self._series.update_chart_series(candle_data, volume_data)
             self.volume_data = volume_data

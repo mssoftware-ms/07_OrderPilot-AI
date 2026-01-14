@@ -153,13 +153,18 @@ class BotUISignalsMixin:
         layout.addLayout(top_row_layout)
 
         # 20px Abstand vor Recent Signals
-        layout.addSpacing(20)
+        layout.addSpacing(10) # Reduced spacing
 
-        # Recent Signals expandiert den Rest
-        layout.addWidget(self._build_signals_widget(), stretch=1)
-
-        # Trading Bot Log (Issue #23)
-        layout.addWidget(self._build_bot_log_widget())
+        # Issue #68: Use QSplitter for Signals Table and Bot Log
+        # "Log Trading Bot ... nach unten hin minimieren kann"
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self._build_signals_widget())
+        splitter.addWidget(self._build_bot_log_widget())
+        splitter.setStretchFactor(0, 7) # Signals table gets more space
+        splitter.setStretchFactor(1, 3) # Log gets less
+        
+        layout.addWidget(splitter)
+        
         return widget
 
     def _build_bitunix_hedge_widget(self) -> QWidget:
@@ -240,6 +245,30 @@ class BotUISignalsMixin:
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(6, 6, 6, 6)
         group_layout.setSpacing(4)
+
+        # Issue #68: Add Live Trading controls here
+        if hasattr(self, 'bitunix_hedge_widget'):
+            mode_layout = QHBoxLayout()
+            mode_layout.setContentsMargins(0, 0, 0, 4)
+            mode_layout.setSpacing(12)
+            
+            # Use widgets from bitunix widget that were initialized but not added to layout
+            cb = self.bitunix_hedge_widget.live_mode_cb
+            lbl = self.bitunix_hedge_widget.mode_indicator
+            
+            # Adjust label style (smaller font as requested)
+            lbl.setStyleSheet(
+                "background-color: #26a69a; color: white; "
+                "font-weight: bold; font-size: 11px; " 
+                "padding: 4px 8px; border-radius: 4px;"
+                "min-width: 100px;"
+            )
+            
+            mode_layout.addWidget(cb)
+            mode_layout.addWidget(lbl)
+            mode_layout.addStretch()
+            
+            group_layout.addLayout(mode_layout)
 
         # Add SL/TP Progress Bar at the top
         self.sltp_progress_bar = SLTPProgressBar()
@@ -396,11 +425,22 @@ class BotUISignalsMixin:
         self.draw_chart_elements_btn.setEnabled(False)  # Initially disabled
         toolbar.addWidget(self.draw_chart_elements_btn)
 
+        # Export to XLSX button (neben Chart-Elemente Button)
+        self.export_signals_btn = QPushButton("📊 Export XLSX")
+        self.export_signals_btn.setFixedHeight(24)
+        self.export_signals_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 8px; background-color: #2196f3; color: white;"
+        )
+        self.export_signals_btn.setToolTip("Export signal table to Excel file")
+        self.export_signals_btn.clicked.connect(self._export_signals_to_xlsx)
+        toolbar.addWidget(self.export_signals_btn)
+
         toolbar.addStretch()
 
         signals_inner.addLayout(toolbar)
         self._build_signals_table()
         signals_inner.addWidget(self.signals_table)
+
         signals_group.setLayout(signals_inner)
         signals_layout.addWidget(signals_group)
         return signals_widget
@@ -870,19 +910,19 @@ class BotUISignalsMixin:
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(20)  # Issue #6: Added "Fees €" column
+        self.signals_table.setColumnCount(21)  # Added "Strategy" column
         self.signals_table.setHorizontalHeaderLabels(
             [
-                "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
-                "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
-                "Fees €",  # Issue #6: BitUnix fees in Euro
-                "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
+                "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
+                "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",
+                "Fees USDT",  # Issue #6: BitUnix fees in USDT
+                "D P&L USDT", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
             ]
         )
-        # Hidden columns: D P&L € (14), D P&L % (15), Heb (16), WKN (17), Score (18)
-        for col in [14, 15, 16, 17]:
+        # Hidden columns: D P&L USDT (15), D P&L % (16), Heb (17), WKN (18), Score (19)
+        for col in [15, 16, 17, 18]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(18, True)
+        self.signals_table.setColumnHidden(19, True)
         self.signals_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -910,5 +950,96 @@ class BotUISignalsMixin:
             override_enabled, _ = self.get_leverage_override()
             show_leverage = override_enabled
 
-        # Column 16 is "Heb" (Leverage) - shifted by 1 due to Issue #6 Fees € column
-        self.signals_table.setColumnHidden(16, not show_leverage)
+        # Column 17 is "Heb" (Leverage) - mit Strategy-Spalte
+        self.signals_table.setColumnHidden(17, not show_leverage)
+
+    def _export_signals_to_xlsx(self) -> None:
+        """Export signals table to XLSX file."""
+        try:
+            from datetime import datetime
+            from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+            # Ask user for save location
+            default_filename = f"signals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filepath, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Signals to XLSX",
+                default_filename,
+                "Excel Files (*.xlsx)"
+            )
+
+            if not filepath:
+                return  # User cancelled
+
+            # Try to import openpyxl
+            try:
+                from openpyxl import Workbook
+                from openpyxl.styles import Font, Alignment, PatternFill
+            except ImportError:
+                QMessageBox.warning(
+                    self,
+                    "Module nicht gefunden",
+                    "openpyxl ist nicht installiert.\n\nBitte installieren Sie es mit:\npip install openpyxl"
+                )
+                return
+
+            # Create workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Signals"
+
+            # Get headers from table
+            headers = []
+            for col in range(self.signals_table.columnCount()):
+                if not self.signals_table.isColumnHidden(col):
+                    header_item = self.signals_table.horizontalHeaderItem(col)
+                    headers.append(header_item.text() if header_item else f"Column {col}")
+
+            # Write headers
+            for col_idx, header in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="4CAF50", end_color="4CAF50", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center")
+
+            # Write data
+            visible_col_mapping = []
+            for col in range(self.signals_table.columnCount()):
+                if not self.signals_table.isColumnHidden(col):
+                    visible_col_mapping.append(col)
+
+            for row_idx in range(self.signals_table.rowCount()):
+                for excel_col_idx, table_col_idx in enumerate(visible_col_mapping, start=1):
+                    item = self.signals_table.item(row_idx, table_col_idx)
+                    if item:
+                        ws.cell(row=row_idx + 2, column=excel_col_idx, value=item.text())
+
+            # Auto-adjust column widths
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column].width = adjusted_width
+
+            # Save workbook
+            wb.save(filepath)
+
+            QMessageBox.information(
+                self,
+                "Export erfolgreich",
+                f"Signals wurden erfolgreich exportiert:\n{filepath}"
+            )
+
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Export Fehler",
+                f"Fehler beim Exportieren der Signale:\n{str(e)}"
+            )

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "saved_at": "2026-01-14T00:38:16.573522",
+    "saved_at": "2026-01-14T06:09:06.807577",
     "version": "1.0",
     "type": "bot_control_settings"
   },
@@ -11,7 +11,7 @@
     "initial_sl": 0.2,
     "capital": 1000.0,
     "risk_per_trade": 8.5,
-    "max_trades": 10,
+    "max_trades": 100,
     "max_daily_loss": 3.0,
     "disable_restrictions": true,
     "disable_macd_exit": true,
@@ -20,7 +20,7 @@
     "leverage_override_enabled": true,
     "leverage_value": 20,
     "regime_adaptive": true,
-    "tra_percent": 0.15,
+    "tra_percent": 0.1,
     "trailing_distance": 0.1,
     "atr_multiplier": 2.5,
     "atr_trending": 2.0,

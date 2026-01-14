@@ -14,7 +14,7 @@ Contains:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.broker import OrderResponse
@@ -36,7 +36,7 @@ class EngineEvents:
         event_bus.emit(
             Event(
                 type=EventType.ORDER_SUBMITTED,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 data={
                     "task_id": task.task_id,
                     "broker_order_id": response.broker_order_id,
@@ -59,7 +59,7 @@ class EngineEvents:
         event_bus.emit(
             OrderEvent(
                 type=EventType.ORDER_FILLED,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 symbol=task.order_request.symbol,
                 order_id=response.broker_order_id,
                 order_type=order_type_str,
@@ -102,7 +102,7 @@ class EngineEvents:
             event_bus.emit(
                 ExecutionEvent(
                     type=EventType.TRADE_ENTRY,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     symbol=task.order_request.symbol,
                     trade_id=trade_id,
                     action="entry",
@@ -124,7 +124,7 @@ class EngineEvents:
         event_bus.emit(
             ExecutionEvent(
                 type=EventType.TRADE_EXIT,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 symbol=task.order_request.symbol,
                 trade_id=trade_id,
                 action="exit",
@@ -143,7 +143,6 @@ class EngineEvents:
                 source="execution_engine",
             )
         )
-        logger.info(f"✅ TRADE_EXIT event emitted for {task.order_request.symbol}")
 
     def order_side_str(self, task) -> str:
         return (

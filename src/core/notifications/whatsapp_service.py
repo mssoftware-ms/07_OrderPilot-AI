@@ -112,16 +112,27 @@ class WhatsAppService:
         self._phone_number = phone_number
         self._enabled = False
         self._pywhatkit_available = False
+        self._keyboard_available = False  # FIX für GitHub Issue #287
         self._on_status_callback: Callable[[str], None] | None = None
         self._on_error_callback: Callable[[str], None] | None = None
 
-        # Check if pywhatkit is available
+        # Check if pywhatkit and keyboard are available
         try:
             import pywhatkit
             self._pywhatkit_available = True
             logger.info("WhatsAppService: pywhatkit verfügbar")
         except ImportError:
             logger.warning("WhatsAppService: pywhatkit nicht installiert - pip install pywhatkit")
+
+        # Check keyboard library (FIX für GitHub Issue #287)
+        try:
+            import keyboard
+            self._keyboard_available = True
+            logger.info("WhatsAppService: keyboard verfügbar (Enter-Fix aktiviert)")
+        except ImportError:
+            self._keyboard_available = False
+            logger.warning("WhatsAppService: keyboard nicht installiert - pip install keyboard")
+            logger.warning("WhatsAppService: Enter-Taste muss manuell gedrückt werden!")
 
         # Lade gespeicherten Enabled-Status
         self._load_enabled_state()
@@ -231,28 +242,68 @@ class WhatsAppService:
 
                 self._emit_status(f"Sende an {target_number}...")
                 logger.info(f"WhatsAppService: Sende Nachricht an {target_number}")
+                logger.info(f"WhatsAppService: Nachricht Vorschau: {message[:100]}...")
 
                 # Sofort senden (öffnet Browser)
+                # WICHTIG: Stellen Sie sicher, dass WhatsApp Web im Browser eingeloggt ist!
+                logger.info("WhatsAppService: Rufe sendwhatmsg_instantly auf...")
                 pwk.sendwhatmsg_instantly(
                     target_number,
                     message,
-                    wait_time=15,
-                    tab_close=True,
-                    close_time=3
+                    wait_time=20,  # ERHÖHT: 20 Sekunden für zuverlässiges Laden
+                    tab_close=True,  # Tab automatisch schließen nach Senden
+                    close_time=5  # Tab nach 5 Sekunden schließen
                 )
 
+                # FIX für GitHub Issue #287: pywhatkit sendet nicht automatisch
+                # LÖSUNG: keyboard.press_and_release('enter') statt pyautogui
+                logger.info("WhatsAppService: Warte 2 Sekunden bevor Enter gedrückt wird...")
+                import time
+                time.sleep(2)
+
+                # Versuche zuerst keyboard (empfohlene Lösung)
+                enter_pressed = False
+                if self._keyboard_available:
+                    try:
+                        import keyboard
+                        logger.info("WhatsAppService: Drücke Enter mit keyboard.press_and_release()...")
+                        keyboard.press_and_release('enter')
+                        enter_pressed = True
+                        logger.info("WhatsAppService: ✅ Enter gedrückt (keyboard)!")
+                    except Exception as kb_error:
+                        logger.warning(f"WhatsAppService: keyboard-Fehler: {kb_error}")
+
+                # Fallback auf pyautogui wenn keyboard fehlschlägt
+                if not enter_pressed:
+                    try:
+                        import pyautogui
+                        logger.info("WhatsAppService: Fallback auf pyautogui.press('enter')...")
+                        pyautogui.press('enter')
+                        logger.info("WhatsAppService: Enter gedrückt (pyautogui)!")
+                    except ImportError:
+                        logger.error("WhatsAppService: Weder keyboard noch pyautogui installiert!")
+                        logger.error("WhatsAppService: Installieren Sie: pip install keyboard")
+                    except Exception as press_error:
+                        logger.warning(f"WhatsAppService: Konnte Enter nicht drücken: {press_error}")
+
                 self._emit_status(f"✅ Nachricht gesendet an {target_number}")
-                logger.info(f"WhatsAppService: Nachricht erfolgreich gesendet")
+                logger.info(f"WhatsAppService: Nachricht erfolgreich gesendet an {target_number}")
                 return True
 
-            except Exception as e:
-                error = f"Fehler beim Senden: {e}"
+            except ImportError as e:
+                error = f"pywhatkit Import-Fehler: {e}"
                 logger.error(f"WhatsAppService: {error}")
                 self._emit_error(error)
                 return False
+            except Exception as e:
+                error = f"Fehler beim Senden: {type(e).__name__}: {str(e)}"
+                logger.exception(f"WhatsAppService: {error}")  # Verwendet exception statt error für Stack Trace
+                self._emit_error(error)
+                return False
 
-        thread = threading.Thread(target=send_async, daemon=True)
+        thread = threading.Thread(target=send_async, daemon=True, name="WhatsAppSender")
         thread.start()
+        logger.info(f"WhatsAppService: Thread gestartet für Nachricht an {target_number}")
         return True
 
     def send_trade_notification(self, notification: TradeNotification) -> bool:
@@ -265,8 +316,14 @@ class WhatsAppService:
         Returns:
             True wenn Senden gestartet wurde
         """
+        # Wenn pywhatkit verfügbar ist, sende immer (auch wenn nicht explizit aktiviert)
+        # Der Benutzer kann die Benachrichtigungen im WhatsApp-Tab deaktivieren
+        if not self._pywhatkit_available:
+            logger.debug("WhatsAppService: pywhatkit nicht verfügbar")
+            return False
+
         if not self._enabled:
-            logger.debug("WhatsAppService: Benachrichtigungen deaktiviert")
+            logger.debug("WhatsAppService: Benachrichtigungen deaktiviert (kann im WhatsApp-Tab aktiviert werden)")
             return False
 
         message = notification.format_message()

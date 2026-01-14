@@ -6,6 +6,7 @@ from typing import Any
 
 from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 from src.ui.widgets.chart_mixins.data_loading_utils import get_local_timezone_offset_seconds
+from src.core.notifications.whatsapp_service import TradeNotification
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +192,47 @@ class BotCallbacksSignalMixin:
                         sig["trailing_stop_price"] = entry_price * (1 - trailing_pct / 100)
                     else:
                         sig["trailing_stop_price"] = entry_price * (1 + trailing_pct / 100)
+
+                # Speichere Hebel beim Entry statisch (wird nicht mehr mit UI-Wert aktualisiert)
+                leverage_at_entry = None
+                if hasattr(self, 'leverage_spin'):
+                    leverage_at_entry = self.leverage_spin.value()
+                    sig["leverage_at_entry"] = leverage_at_entry
+                    logger.info(f"Hebel beim Entry gespeichert: {leverage_at_entry}x")
+
                 logger.info(
                     f"Updated candidate to confirmed: {side} @ {entry_price:.4f}, "
-                    f"SL={signal_stop_price:.4f}, invested={invested}, TR%={trailing_pct}, TRA%={trailing_activation}"
+                    f"SL={signal_stop_price:.4f}, invested={invested}, TR%={trailing_pct}, TRA%={trailing_activation}, Hebel={leverage_at_entry}"
                 )
+
+                # Send WhatsApp notification for position entry
+                try:
+                    # Use WhatsApp widget's working UI form mechanism
+                    if hasattr(self, 'whatsapp_tab') and self.whatsapp_tab:
+                        symbol = getattr(self, 'current_symbol', 'UNKNOWN')
+                        quantity = sig.get("quantity", 0.0)
+                        leverage = leverage_at_entry
+
+                        # Create TradeNotification and format message
+                        notification = TradeNotification(
+                            action="BUY",
+                            symbol=symbol,
+                            side=side,
+                            quantity=quantity if quantity > 0 else invested / entry_price,
+                            entry_price=entry_price,
+                            leverage=leverage,
+                            timestamp=datetime.now()
+                        )
+                        message = notification.format_message()
+
+                        # Send via WhatsApp widget (uses working UI form)
+                        self.whatsapp_tab.send_trade_notification(message)
+                        logger.info(f"WhatsApp notification sent: Position opened {side} @ {entry_price:.4f}")
+                    else:
+                        logger.warning("WhatsApp widget not available for notification")
+                except Exception as e:
+                    logger.error(f"Failed to send WhatsApp notification: {e}")
+
                 return True
         return False
 
@@ -218,12 +256,23 @@ class BotCallbacksSignalMixin:
             else:
                 trailing_stop_price = entry_price * (1 + trailing_pct / 100)
 
+        # Get strategy details if available
+        strategy_details = self._get_strategy_details(strategy_name)
+
+        # Speichere Hebel beim Entry statisch (wird nicht mehr mit UI-Wert aktualisiert)
+        leverage_at_entry = None
+        if hasattr(self, 'leverage_spin'):
+            leverage_at_entry = self.leverage_spin.value()
+            logger.info(f"Hebel beim Entry gespeichert: {leverage_at_entry}x")
+
         self._signal_history.append({
             "time": self._format_entry_time(),
+            "signal_id": self._next_signal_id,  # Fortlaufende dreistellige ID
             "type": signal_type,
             "side": side,
             "score": score,
             "strategy": strategy_name,
+            "strategy_details": strategy_details,  # Strategie-Name und Parameter
             "price": entry_price,
             "stop_price": signal_stop_price,
             "status": "ENTERED",
@@ -242,10 +291,41 @@ class BotCallbacksSignalMixin:
             "trailing_activation_pct": trailing_activation,
             "tr_active": False,
             "tr_lock_active": True,
+            "leverage_at_entry": leverage_at_entry,  # Statischer Hebel beim Entry
         })
+
+        # Increment signal ID for next signal
+        self._next_signal_id += 1
 
         # Ensure we never keep more than one open position
         self._enforce_single_open_signal(refresh=False)
+
+        # Send WhatsApp notification for position entry
+        try:
+            # Use WhatsApp widget's working UI form mechanism
+            if hasattr(self, 'whatsapp_tab') and self.whatsapp_tab:
+                symbol = getattr(self, 'current_symbol', 'UNKNOWN')
+                leverage = leverage_at_entry
+
+                # Create TradeNotification and format message
+                notification = TradeNotification(
+                    action="BUY",
+                    symbol=symbol,
+                    side=side,
+                    quantity=invested / entry_price,  # Calculate quantity from invested amount
+                    entry_price=entry_price,
+                    leverage=leverage,
+                    timestamp=datetime.now()
+                )
+                message = notification.format_message()
+
+                # Send via WhatsApp widget (uses working UI form)
+                self.whatsapp_tab.send_trade_notification(message)
+                logger.info(f"WhatsApp notification sent: Position opened {side} @ {entry_price:.4f}")
+            else:
+                logger.warning("WhatsApp widget not available for notification")
+        except Exception as e:
+            logger.error(f"Failed to send WhatsApp notification: {e}")
 
     def _update_or_add_candidate(
         self,
@@ -523,6 +603,66 @@ class BotCallbacksSignalMixin:
             active_sig["exit_timestamp"] = int(datetime.now().timestamp())
             if current_price > 0:
                 active_sig["exit_price"] = current_price
+
+            # Calculate P&L for WhatsApp notification
+            entry_price = active_sig.get("price", 0)
+            side = active_sig.get("side", "long")
+            quantity = active_sig.get("quantity", 0)
+            invested = active_sig.get("invested", 0)
+
+            if entry_price > 0 and current_price > 0:
+                # Calculate P&L percentage
+                if side.lower() == "long":
+                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
+
+                # Calculate P&L in USDT (based on invested amount)
+                pnl_usdt = invested * (pnl_percent / 100)
+
+                # Update signal with P&L
+                active_sig["pnl_percent"] = pnl_percent
+                active_sig["pnl_currency"] = pnl_usdt
+
+                # Send WhatsApp notification for position exit
+                try:
+                    # Use WhatsApp widget's working UI form mechanism
+                    if hasattr(self, 'whatsapp_tab') and self.whatsapp_tab:
+                        symbol = getattr(self, 'current_symbol', 'UNKNOWN')
+
+                        # Map exit status to reason
+                        reason_map = {
+                            "SL": "STOP_LOSS",
+                            "TR": "TAKE_PROFIT",
+                            "MACD": "SELL",
+                            "RSI": "SELL",
+                            "Sell": "SELL",
+                            "CLOSED": "SELL"
+                        }
+                        action = reason_map.get(exit_status, "SELL")
+
+                        # Create TradeNotification and format message
+                        notification = TradeNotification(
+                            action=action,
+                            symbol=symbol,
+                            side=side,
+                            quantity=quantity if quantity > 0 else invested / entry_price,
+                            entry_price=entry_price,
+                            exit_price=current_price,
+                            pnl=pnl_usdt,
+                            pnl_percent=pnl_percent,
+                            timestamp=datetime.now()
+                        )
+                        message = notification.format_message()
+
+                        # Send via WhatsApp widget (uses working UI form)
+                        self.whatsapp_tab.send_trade_notification(message)
+                        logger.info(f"WhatsApp notification sent: Position closed {exit_status} @ {current_price:.2f}, P&L: {pnl_usdt:.2f} USDT ({pnl_percent:.2f}%)")
+                    else:
+                        logger.warning("WhatsApp widget not available for notification")
+                except Exception as e:
+                    logger.error(f"Failed to send WhatsApp notification: {e}")
+
             self._save_signal_history()
             self._add_ki_log_entry("EXIT", f"Position geschlossen: {exit_status} @ {current_price:.2f}")
 
@@ -574,8 +714,15 @@ class BotCallbacksSignalMixin:
             if hasattr(self, 'chart_widget') and current_price > 0:
                 is_overbought = "RSI_EXTREME_OVERBOUGHT" in reason_codes
                 rsi_text = "RSI↓" if is_overbought else "RSI↑"
+
+                # Get timestamp from bot controller's last features (candle time, not now())
+                timestamp = int(datetime.now().timestamp())  # Fallback
+                if self._bot_controller and self._bot_controller._last_features:
+                    features_dt = self._bot_controller._last_features.timestamp
+                    timestamp = self._get_chart_timestamp(features_dt)
+
                 self.chart_widget.add_bot_marker(
-                    timestamp=int(datetime.now().timestamp()),
+                    timestamp=timestamp,
                     price=current_price,
                     marker_type=MarkerType.EXIT_SIGNAL,
                     side="rsi",
@@ -623,8 +770,15 @@ class BotCallbacksSignalMixin:
             try:
                 is_bullish = "bullish" in signal_type.lower()
                 marker_type = MarkerType.MACD_BULLISH if is_bullish else MarkerType.MACD_BEARISH
+
+                # Get timestamp from bot controller's last features (candle time, not now())
+                timestamp = int(datetime.now().timestamp())  # Fallback
+                if self._bot_controller and self._bot_controller._last_features:
+                    features_dt = self._bot_controller._last_features.timestamp
+                    timestamp = self._get_chart_timestamp(features_dt)
+
                 self.chart_widget.add_bot_marker(
-                    timestamp=int(datetime.now().timestamp()),
+                    timestamp=timestamp,
                     price=price,
                     marker_type=marker_type,
                     side="long" if is_bullish else "short",
@@ -660,3 +814,47 @@ class BotCallbacksSignalMixin:
         if new_state.lower() in state_colors:
             color, status = state_colors[new_state.lower()]
             self._update_bot_status(status, color)
+
+    def _get_strategy_details(self, strategy_name: str) -> str:
+        """
+        Get detailed strategy information including name and parameters.
+
+        Args:
+            strategy_name: Name of the strategy
+
+        Returns:
+            Formatted string with strategy name and parameters
+        """
+        if not strategy_name or strategy_name == "Neutral":
+            return "Neutral (keine Strategie)"
+
+        try:
+            # Try to get strategy parameters from bot controller
+            if self._bot_controller and hasattr(self._bot_controller, '_active_strategy'):
+                active_strategy = self._bot_controller._active_strategy
+                if active_strategy:
+                    # Get strategy profile with parameters
+                    params_str = f"{strategy_name}"
+
+                    # Add key parameters if available
+                    if hasattr(active_strategy, '__dict__'):
+                        params = []
+                        for key, value in active_strategy.__dict__.items():
+                            if not key.startswith('_') and key not in ['name', 'profile']:
+                                # Format parameter value
+                                if isinstance(value, float):
+                                    params.append(f"{key}={value:.2f}")
+                                elif isinstance(value, (int, str, bool)):
+                                    params.append(f"{key}={value}")
+
+                        if params:
+                            # Limit to first 5 parameters to keep it readable
+                            params_str += f" ({', '.join(params[:5])})"
+
+                    return params_str
+
+            return strategy_name
+
+        except Exception as e:
+            logger.warning(f"Could not get strategy details: {e}")
+            return strategy_name

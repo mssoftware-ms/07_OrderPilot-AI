@@ -1,0 +1,93 @@
+{
+  "profile": {
+    "name": "scalping_range",
+    "description": "Quick scalping in tight ranges with tight stops",
+    "regimes": [
+      "range"
+    ],
+    "volatility_levels": [
+      "low"
+    ],
+    "entry_threshold": 0.55,
+    "trailing_mode": "pct",
+    "trailing_multiplier": 0.8,
+    "win_rate": null,
+    "profit_factor": null,
+    "expectancy": null,
+    "sample_size": 0,
+    "is_robust": false,
+    "last_validated": null
+  },
+  "strategy_type": "scalping",
+  "entry_rules": [
+    {
+      "name": "stoch_extreme",
+      "description": "Stochastic at extreme",
+      "weight": 1.8,
+      "enabled": true,
+      "indicator": "stoch_k",
+      "condition": "extreme",
+      "threshold": 15.0
+    },
+    {
+      "name": "bb_touch",
+      "description": "Price touching BB band",
+      "weight": 1.5,
+      "enabled": true,
+      "indicator": "bb_pct",
+      "condition": "extreme",
+      "threshold": 0.02
+    },
+    {
+      "name": "low_volatility",
+      "description": "ATR below average",
+      "weight": 1.2,
+      "enabled": true,
+      "indicator": "atr_ratio",
+      "condition": "below",
+      "threshold": 0.8
+    }
+  ],
+  "min_entry_score": 0.55,
+  "exit_rules": [
+    {
+      "name": "quick_profit",
+      "description": "Exit at small profit target",
+      "priority": 1,
+      "enabled": true,
+      "rule_type": "profit",
+      "params": {
+        "target_pct": 0.5
+      }
+    },
+    {
+      "name": "stoch_neutral",
+      "description": "Exit when stoch returns to 50",
+      "priority": 2,
+      "enabled": true,
+      "rule_type": "indicator",
+      "params": {
+        "indicator": "stoch_k",
+        "condition": "near",
+        "target": 50
+      }
+    },
+    {
+      "name": "tight_stop",
+      "description": "Tight percentage stop",
+      "priority": 1,
+      "enabled": true,
+      "rule_type": "trailing",
+      "params": {
+        "mode": "pct",
+        "distance": 0.5
+      }
+    }
+  ],
+  "trailing_mode": "pct",
+  "trailing_params": {
+    "distance_pct": 0.5
+  },
+  "stop_loss_pct": 0.8,
+  "position_size_pct": 2.0
+}

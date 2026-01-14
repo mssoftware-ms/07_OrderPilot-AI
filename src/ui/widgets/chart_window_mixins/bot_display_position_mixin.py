@@ -222,10 +222,16 @@ class BotDisplayPositionMixin:
         self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_daily_strategy_panel(self) -> None:
         """Update Daily Strategy tab from current selection state."""
-        if not hasattr(self, "active_strategy_label"):
+        # Check for new ComboBox (preferred) or old label (fallback)
+        if not hasattr(self, "active_strategy_combo") and not hasattr(self, "active_strategy_label"):
             return
         if not self._bot_controller:
             return
+
+        # Populate combo box on first run
+        if hasattr(self, "active_strategy_combo") and self.active_strategy_combo.count() == 0:
+            if hasattr(self, "_populate_strategy_combo"):
+                self._populate_strategy_combo()
 
         selection = self._get_strategy_selection()
         self._set_active_strategy_label(selection)
@@ -241,6 +247,7 @@ class BotDisplayPositionMixin:
         return None
 
     def _set_active_strategy_label(self, selection) -> None:
+        """Update active strategy display (ComboBox or Label)."""
         active_name = None
         if selection and selection.selected_strategy:
             active_name = selection.selected_strategy
@@ -250,7 +257,14 @@ class BotDisplayPositionMixin:
             strategy = self._bot_controller.active_strategy
             active_name = strategy.name if strategy else None
 
-        self.active_strategy_label.setText(active_name if active_name else "None")
+        # Update ComboBox (new) or Label (old)
+        if hasattr(self, "active_strategy_combo") and hasattr(self, "_update_active_strategy_display"):
+            # Use new ComboBox
+            if active_name and not active_name.endswith("(fallback)"):
+                self._update_active_strategy_display(active_name)
+        elif hasattr(self, "active_strategy_label"):
+            # Fallback to old label
+            self.active_strategy_label.setText(active_name if active_name else "None")
 
     def _update_strategy_indicators_display(self) -> None:
         """Issue #2: Update the indicators display for active strategy.

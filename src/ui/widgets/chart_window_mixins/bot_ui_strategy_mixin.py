@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -32,11 +34,47 @@ class BotUIStrategyMixin:
         current_group = QGroupBox("Current Strategy")
         current_layout = QFormLayout()
 
-        self.active_strategy_label = QLabel("None")
-        self.active_strategy_label.setStyleSheet(
-            "font-weight: bold; font-size: 14px; color: #26a69a;"
+        # Auto-detection checkbox
+        auto_detect_row = QHBoxLayout()
+        self.auto_detect_checkbox = QCheckBox("Automatische Erkennung")
+        self.auto_detect_checkbox.setChecked(True)  # Default: auto-detection enabled
+        self.auto_detect_checkbox.setToolTip(
+            "Aktiviert: Strategie wird automatisch erkannt\n"
+            "Deaktiviert: Manuelle Strategieauswahl"
         )
-        current_layout.addRow("Active:", self.active_strategy_label)
+        self.auto_detect_checkbox.stateChanged.connect(self._on_auto_detect_changed)
+        auto_detect_row.addWidget(self.auto_detect_checkbox)
+        auto_detect_row.addStretch()
+        current_layout.addRow("Modus:", auto_detect_row)
+
+        # Active strategy ComboBox with detect button
+        active_row = QHBoxLayout()
+        self.active_strategy_combo = QComboBox()
+        self.active_strategy_combo.setMinimumWidth(250)
+        self.active_strategy_combo.setStyleSheet(
+            "font-weight: bold; font-size: 12px; color: #26a69a;"
+        )
+        self.active_strategy_combo.setEditable(False)
+        self.active_strategy_combo.setEnabled(False)  # Disabled by default (auto mode)
+        self.active_strategy_combo.currentTextChanged.connect(self._on_strategy_combo_changed)
+        active_row.addWidget(self.active_strategy_combo)
+
+        self.detect_strategy_btn = QPushButton("🔍 Detect Strategy")
+        self.detect_strategy_btn.setToolTip("Automatische Strategie-Erkennung basierend auf aktueller Marktlage")
+        self.detect_strategy_btn.clicked.connect(self._on_detect_strategy)
+        self.detect_strategy_btn.setMaximumWidth(140)
+        active_row.addWidget(self.detect_strategy_btn)
+
+        # Manual set button (for manual mode)
+        self.set_strategy_btn = QPushButton("✓ Setzen")
+        self.set_strategy_btn.setToolTip("Gewählte Strategie manuell setzen")
+        self.set_strategy_btn.clicked.connect(self._on_set_manual_strategy)
+        self.set_strategy_btn.setMaximumWidth(100)
+        self.set_strategy_btn.setVisible(False)  # Hidden in auto mode
+        active_row.addWidget(self.set_strategy_btn)
+
+        active_row.addStretch()
+        current_layout.addRow("Active:", active_row)
 
         self.regime_label = QLabel("Unknown")
         current_layout.addRow("Regime:", self.regime_label)
@@ -298,3 +336,246 @@ class BotUIStrategyMixin:
                 pass
         except Exception as e:
             self._set_daily_status(f"Laden fehlgeschlagen: {e}", error=True)
+
+    def _populate_strategy_combo(self) -> None:
+        """Populate strategy ComboBox with all available strategies."""
+        if not hasattr(self, 'active_strategy_combo'):
+            logger.debug("active_strategy_combo not found, skipping populate")
+            return
+
+        logger.info("_populate_strategy_combo called")
+
+        try:
+            # Check if bot controller exists
+            if not self._bot_controller:
+                logger.warning("Bot controller not available")
+                return
+
+            # Get all available strategies from catalog (direct access to private attribute)
+            try:
+                catalog = self._bot_controller._strategy_catalog
+                strategies = catalog.get_all_strategies()
+                logger.info(f"Retrieved {len(strategies)} strategies from catalog")
+            except AttributeError as e:
+                logger.error(f"Cannot access strategy catalog: {e}")
+                return
+
+            if not strategies:
+                logger.warning("No strategies found in catalog")
+                return
+
+            # Block signals to prevent triggering change events
+            self.active_strategy_combo.blockSignals(True)
+            self.active_strategy_combo.clear()
+            logger.debug("Cleared combo box")
+
+            # Add "Neutral" as first entry (default when no strategy selected)
+            self.active_strategy_combo.addItem("Neutral (keine Strategie)", userData=None)
+
+            # Add strategies to combo box
+            strategy_names = []
+            for strategy in strategies:
+                # StrategyDefinition has a 'profile' attribute with the name
+                strategy_name = strategy.profile.name
+                display_name = self._format_strategy_name(strategy_name)
+                strategy_names.append((strategy_name, display_name))
+                logger.debug(f"Added strategy: {strategy_name} -> {display_name}")
+
+            # Sort by display name
+            strategy_names.sort(key=lambda x: x[1])
+
+            # Add to combo box
+            for name, display_name in strategy_names:
+                self.active_strategy_combo.addItem(display_name, userData=name)
+
+            # Set Neutral as default
+            self.active_strategy_combo.setCurrentIndex(0)
+
+            self.active_strategy_combo.blockSignals(False)
+            logger.info(f"✓ Strategy combo populated with {len(strategy_names)} strategies + Neutral")
+
+        except Exception as e:
+            logger.error(f"Failed to populate strategy combo: {e}", exc_info=True)
+
+    def _format_strategy_name(self, name: str) -> str:
+        """Format strategy name for display (e.g., 'trend_following_conservative' -> 'Trend Following Conservative')."""
+        return " ".join(word.capitalize() for word in name.split("_"))
+
+    def _on_strategy_combo_changed(self, text: str) -> None:
+        """Handle strategy combo box selection change (only reacts in manual mode for live updates)."""
+        # This is only for display purposes - actual setting happens via "Setzen" button
+        # in manual mode, or automatically in auto mode
+        pass
+
+    def _on_auto_detect_changed(self, state: int) -> None:
+        """Handle auto-detection checkbox state change."""
+        try:
+            is_auto = self.auto_detect_checkbox.isChecked()
+
+            # Update bot controller flag
+            if self._bot_controller:
+                self._bot_controller._manual_strategy_mode = not is_auto
+                logger.info(f"Bot controller manual mode flag set to: {not is_auto}")
+
+            # Auto mode: ComboBox disabled, Detect button visible, Set button hidden
+            # Manual mode: ComboBox enabled, Detect button hidden, Set button visible
+            self.active_strategy_combo.setEnabled(not is_auto)
+            self.detect_strategy_btn.setVisible(is_auto)
+            self.set_strategy_btn.setVisible(not is_auto)
+
+            mode_text = "Automatisch" if is_auto else "Manuell"
+            logger.info(f"Strategy selection mode changed to: {mode_text}")
+            self._set_daily_status(f"Strategie-Modus: {mode_text}")
+
+            # Log to Signals tab
+            if hasattr(self, '_log_bot_activity'):
+                self._log_bot_activity("STRATEGY", f"Modus gewechselt: {mode_text}")
+
+        except Exception as e:
+            logger.error(f"Failed to change auto-detect mode: {e}")
+
+    def _on_set_manual_strategy(self) -> None:
+        """Set manually selected strategy from ComboBox."""
+        try:
+            if not self._bot_controller:
+                self._set_daily_status("Bot Controller nicht verfügbar", error=True)
+                return
+
+            # Get selected strategy from ComboBox
+            index = self.active_strategy_combo.currentIndex()
+            strategy_name = self.active_strategy_combo.itemData(index)
+            display_name = self.active_strategy_combo.currentText()
+
+            if strategy_name is None:
+                # "Neutral" selected
+                self._set_manual_strategy_in_bot(None)
+                self._set_daily_status("Strategie manuell gesetzt: Neutral")
+                logger.info("Manual strategy set: neutral (keine Strategie)")
+
+                # Log to Signals tab
+                if hasattr(self, '_log_bot_activity'):
+                    self._log_bot_activity("STRATEGY", "Manuell gesetzt: neutral (keine Strategie)")
+            else:
+                # Specific strategy selected
+                self._set_manual_strategy_in_bot(strategy_name)
+                self._set_daily_status(f"Strategie manuell gesetzt: {display_name}")
+                logger.info(f"Manual strategy set: {strategy_name}")
+
+                # Log to Signals tab
+                if hasattr(self, '_log_bot_activity'):
+                    self._log_bot_activity("STRATEGY", f"Manuell gesetzt: {strategy_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to set manual strategy: {e}")
+            self._set_daily_status(f"Manuelle Strategie-Auswahl fehlgeschlagen: {e}", error=True)
+
+    def _set_manual_strategy_in_bot(self, strategy_name: str | None) -> None:
+        """Set strategy in bot controller (for manual mode).
+
+        Args:
+            strategy_name: Strategy name or None for neutral
+        """
+        if not self._bot_controller:
+            return
+
+        try:
+            if strategy_name is None:
+                # Set to neutral (no strategy)
+                self._bot_controller._active_strategy = None
+                logger.info("Bot strategy set to: neutral")
+            else:
+                # Get strategy definition and set profile
+                strategy_def = self._bot_controller._strategy_catalog.get_strategy(strategy_name)
+                if strategy_def:
+                    self._bot_controller._active_strategy = strategy_def.profile
+                    logger.info(f"Bot strategy set to: {strategy_name}")
+                else:
+                    logger.error(f"Strategy definition not found: {strategy_name}")
+                    raise ValueError(f"Strategie nicht gefunden: {strategy_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to set strategy in bot controller: {e}")
+            raise
+
+    def _on_detect_strategy(self) -> None:
+        """Trigger automatic strategy detection based on current market conditions."""
+        try:
+            if not self._bot_controller:
+                self._set_daily_status("Bot Controller nicht verfügbar", error=True)
+                return
+
+            self._set_daily_status("Strategie-Erkennung läuft...")
+            logger.info("Manual strategy detection triggered")
+
+            # Force immediate strategy reselection
+            if hasattr(self._bot_controller, 'force_strategy_reselection_now'):
+                selected_name = self._bot_controller.force_strategy_reselection_now()
+
+                # Log detected strategy to Signals tab
+                if hasattr(self, '_log_bot_activity'):
+                    strategy_display = selected_name if selected_name else "neutral (keine Strategie)"
+                    self._log_bot_activity("STRATEGY", f"Erkannte Strategie: {strategy_display}")
+
+                # Update the daily strategy panel to reflect the new selection
+                if hasattr(self, '_update_daily_strategy_panel'):
+                    self._update_daily_strategy_panel()
+
+                if selected_name:
+                    self._set_daily_status(f"Strategie erkannt: {selected_name}")
+                else:
+                    self._set_daily_status("Keine Strategie erkannt (neutral)")
+            else:
+                self._set_daily_status("Strategie-Erkennung nicht verfügbar", error=True)
+
+        except Exception as e:
+            logger.error(f"Strategy detection failed: {e}")
+            self._set_daily_status(f"Strategie-Erkennung fehlgeschlagen: {e}", error=True)
+
+    def _update_active_strategy_display(self, strategy_name: str | None) -> None:
+        """Update the active strategy ComboBox to show the current strategy.
+
+        Args:
+            strategy_name: Internal strategy name (e.g., 'trend_following_conservative') or None for neutral
+        """
+        if not hasattr(self, 'active_strategy_combo'):
+            logger.debug("active_strategy_combo not found")
+            return
+
+        logger.info(f"_update_active_strategy_display called with: {strategy_name}")
+
+        try:
+            combo_count = self.active_strategy_combo.count()
+            logger.info(f"ComboBox has {combo_count} items")
+
+            if combo_count == 0:
+                logger.warning("ComboBox is empty, populating first")
+                self._populate_strategy_combo()
+                combo_count = self.active_strategy_combo.count()
+                logger.info(f"After populate: {combo_count} items")
+
+            # Block signals to prevent triggering change event
+            self.active_strategy_combo.blockSignals(True)
+
+            # If strategy_name is None, select "Neutral" (index 0)
+            if strategy_name is None:
+                self.active_strategy_combo.setCurrentIndex(0)
+                logger.info("✓ Active strategy display updated: Neutral (index 0)")
+            else:
+                # Find and select the strategy in combo box
+                found = False
+                for i in range(self.active_strategy_combo.count()):
+                    item_data = self.active_strategy_combo.itemData(i)
+                    logger.debug(f"Item {i}: {self.active_strategy_combo.itemText(i)} (data: {item_data})")
+                    if item_data == strategy_name:
+                        self.active_strategy_combo.setCurrentIndex(i)
+                        logger.info(f"✓ Active strategy display updated: {strategy_name} at index {i}")
+                        found = True
+                        break
+
+                if not found:
+                    logger.warning(f"Strategy '{strategy_name}' not found in combo box, defaulting to Neutral")
+                    self.active_strategy_combo.setCurrentIndex(0)
+
+            self.active_strategy_combo.blockSignals(False)
+        except Exception as e:
+            logger.error(f"Failed to update active strategy display: {e}", exc_info=True)

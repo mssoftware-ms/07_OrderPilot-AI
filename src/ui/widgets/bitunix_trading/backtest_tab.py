@@ -76,45 +76,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-class BatchTestWorker(QThread):
-    """Worker thread to run batch tests without blocking the UI."""
-
-    progress = pyqtSignal(int, str)
-    log = pyqtSignal(str)
-    finished = pyqtSignal(object, list)
-    error = pyqtSignal(str)
-
-    def __init__(
-        self,
-        batch_config,
-        *,
-        signal_callback: Callable | None,
-        initial_data: Any | None = None,  # pd.DataFrame
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._batch_config = batch_config
-        self._signal_callback = signal_callback
-        self._initial_data = initial_data
-
-    def run(self) -> None:
-        try:
-            self.log.emit("🧵 Batch-Worker gestartet (separater Thread)")
-            from src.core.backtesting import BatchRunner
-
-            runner = BatchRunner(
-                self._batch_config,
-                signal_callback=self._signal_callback,
-                initial_data=self._initial_data,
-            )
-            runner.set_progress_callback(lambda p, m: self.progress.emit(p, m))
-
-            summary = asyncio.run(runner.run())
-            self.finished.emit(summary, runner.results)
-        except Exception as exc:
-            logger.exception("Batch worker failed")
-            self.error.emit(str(exc))
+# Import worker from separate module
+from .backtest_tab_worker import BatchTestWorker
 
 # =============================================================================
 # ENGINE CONFIG IMPORTS

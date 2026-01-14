@@ -1,0 +1,106 @@
+{
+  "profile": {
+    "name": "trend_following_conservative",
+    "description": "Conservative trend following using MA crossovers and ADX confirmation",
+    "regimes": [
+      "trend_up",
+      "trend_down"
+    ],
+    "volatility_levels": [
+      "normal",
+      "low"
+    ],
+    "entry_threshold": 0.65,
+    "trailing_mode": "atr",
+    "trailing_multiplier": 1.5,
+    "win_rate": null,
+    "profit_factor": null,
+    "expectancy": null,
+    "sample_size": 0,
+    "is_robust": false,
+    "last_validated": null
+  },
+  "strategy_type": "trend_following",
+  "entry_rules": [
+    {
+      "name": "ma_alignment",
+      "description": "Price above/below SMA20 and SMA50 aligned",
+      "weight": 1.5,
+      "enabled": true,
+      "indicator": "sma_alignment",
+      "condition": "aligned",
+      "threshold": null
+    },
+    {
+      "name": "adx_strength",
+      "description": "ADX above 25 confirming trend strength",
+      "weight": 1.2,
+      "enabled": true,
+      "indicator": "adx",
+      "condition": "above",
+      "threshold": 25.0
+    },
+    {
+      "name": "macd_confirmation",
+      "description": "MACD histogram positive/negative for direction",
+      "weight": 1.0,
+      "enabled": true,
+      "indicator": "macd_hist",
+      "condition": "direction_match",
+      "threshold": null
+    },
+    {
+      "name": "rsi_not_extreme",
+      "description": "RSI not in extreme zone (30-70)",
+      "weight": 0.8,
+      "enabled": true,
+      "indicator": "rsi_14",
+      "condition": "between",
+      "threshold": 70.0
+    }
+  ],
+  "min_entry_score": 0.65,
+  "exit_rules": [
+    {
+      "name": "ma_cross_exit",
+      "description": "Exit on MA cross against position",
+      "priority": 2,
+      "enabled": true,
+      "rule_type": "indicator",
+      "params": {
+        "indicator": "sma_20",
+        "condition": "crosses_against"
+      }
+    },
+    {
+      "name": "adx_weakening",
+      "description": "Exit when ADX drops below 20",
+      "priority": 3,
+      "enabled": true,
+      "rule_type": "indicator",
+      "params": {
+        "indicator": "adx",
+        "condition": "below",
+        "threshold": 20
+      }
+    },
+    {
+      "name": "trailing_stop",
+      "description": "ATR-based trailing stop",
+      "priority": 1,
+      "enabled": true,
+      "rule_type": "trailing",
+      "params": {
+        "mode": "atr",
+        "multiplier": 2.0
+      }
+    }
+  ],
+  "trailing_mode": "atr",
+  "trailing_params": {
+    "multiplier": 2.0,
+    "min_distance_pct": 1.0
+  },
+  "stop_loss_pct": 2.5,
+  "position_size_pct": 2.0
+}
