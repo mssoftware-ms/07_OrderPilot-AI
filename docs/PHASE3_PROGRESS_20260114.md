@@ -87,24 +87,40 @@
 - [x] SignalGeneratorIndicatorSnapshot (class) (CC=32 → CC=11) ✅ (via extract_indicator_snapshot)
 
 ### Mittlere Complexity (D: CC 21-30):
-- 19 Funktionen mit CC 21-30
+- ✅ BotPanelsMixin._update_current_position_display (CC=28 → CC<10) - Commit e5032ad (64%)
+- ✅ StrategySimulator._run_entry_only_simulation (CC=27 → CC≤13) - Commit 5f23b04 (70%)
+- ✅ TradeFilter._apply_filters (CC=27 → CC<10) - Commit ceb1ae5 (63%)
+- ✅ BacktestCallbacksTemplateMixin._on_derive_variant_clicked (CC=26 → CC=5) - Commit f440920 (81%)
+- ✅ BacktestRunnerMetrics._calculate_metrics (CC=26 → CC=2) - Commit 1a30aea (92%)
+- ✅ DataOverviewTab._populate_tree (CC=26 → CC=1) - Commit 9ab7f24 (96%)
+- ✅ TradeSimulator._simulate_single_trade (CC=26 → CC=1) - Commit a46acc3 (96%)
+- ✅ AlpacaCryptoProvider.fetch_bars (CC=25 → CC=3) - Commit 542d3fa (88%)
+- ✅ BotDisplaySignalsMixin._update_signals_pnl (CC=25 → CC=4) - Commit 0d39d79 (84%)
+- ✅ BotDisplaySignalsMixin._set_status_and_pnl_columns (CC=25 → CC=2) - Commit 51d637f (92%)
+- ✅ SignalGenerator.generate_signal (CC=25 → CC=3) - Commit b641b66 (88%)
+- ✅ BacktestCallbacksTemplateMixin._on_load_template_clicked (CC=24 → CC=3) - Commit feea8b6 (87.5%)
+- ✅ BacktestConfigCollection.collect_engine_configs (CC=23 → CC=3) - Commit 4b3a3f0 (87%)
+- ✅ TriggerExitEngine.check_exit_conditions (CC=23 → CC=2) - Commit 9805369 (91%)
+- ✅ BotUiSignalsChartMixin._on_draw_chart_elements_clicked (CC=22 → CC=2) - Commit 4fe424a (91%)
+- 4 weitere Funktionen mit CC 21-22
 
 ## ✅ AKTUELLER STATUS
 
 **Phase 3 - Kritische Funktionen (F: CC >40):** 100% komplett (3/3 done) ✅
 **Phase 3 - Hohe Complexity (E: CC 31-40):** 100% komplett (5/5 done) ✅
+**Phase 3 - Mittlere Complexity (D: CC 21-30):** 79% komplett (15/19 done) 🚧
 
-**Nächster Schritt:** Mittlere Complexity (D: CC 21-30) - Optional
+**Nächster Schritt:** Verbleibende mittlere Complexity (D: CC 21-22)
 
 **Was fehlt noch:**
-- 19 mittlere Funktionen (CC 21-30) - Optional
+- 4 mittlere Funktionen (CC 21-22)
 
 **Was bereits erreicht:**
-- **8 kritische und hohe Funktionen** refactored (CC=61, CC=46, CC=42, CC=38, CC=37, CC=35, CC=33, CC=32)
-- **Durchschnittliche Reduktion:** ~75% (von F/E Rating zu A/B/C Rating)
+- **23 Funktionen** refactored (3 F-Rating, 5 E-Rating, 15 D-Rating)
+- **Durchschnittliche Reduktion:** ~85% (von F/E/D Rating zu A/B Rating)
 - Massive Verbesserungen in Lesbarkeit und Wartbarkeit
 - 100% Funktionalität erhalten
-- **7 Commits** durchgeführt
+- **22 Commits** durchgeführt
 
 ## 🎯 NÄCHSTE SCHRITTE
 
