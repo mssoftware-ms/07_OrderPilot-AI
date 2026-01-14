@@ -97,10 +97,39 @@ class DataPreflightService:
         Returns:
             PreflightResult mit Status und Issues
         """
-        issues: list[PreflightIssue] = []
-        quality_score = 100
+        # Validate DataFrame
+        early_failure = self._check_dataframe_validity(df, symbol, timeframe)
+        if early_failure:
+            return early_failure
 
-        # 1. Empty/None Check
+        # Run all checks
+        check_results = self._run_all_checks(df, timeframe)
+
+        # Calculate quality score
+        quality_score = self._calculate_quality_score(check_results)
+
+        # Clean data if needed
+        cleaned_df = self._clean_data_if_needed(
+            df, check_results["outlier_count"], clean_data
+        )
+
+        # Build and log result
+        result = self._build_result(
+            check_results, quality_score, cleaned_df, symbol, timeframe, df
+        )
+        self._log_result(result, symbol, timeframe)
+
+        return result
+
+    def _check_dataframe_validity(
+        self, df: pd.DataFrame | None, symbol: str, timeframe: str
+    ) -> PreflightResult | None:
+        """Check basic DataFrame validity.
+
+        Returns:
+            PreflightResult if invalid, None if valid.
+        """
+        # Empty/None check
         if df is None or df.empty:
             return PreflightResult(
                 status=PreflightStatus.FAILED,
@@ -116,102 +145,191 @@ class DataPreflightService:
                 quality_score=0,
             )
 
-        # 2. Index Validation (delegates to _basic_checks)
+        # Index validation
         index_issues = self._basic_checks.check_index(df)
-        issues.extend(index_issues)
         if any(i.severity == IssueSeverity.CRITICAL for i in index_issues):
             return PreflightResult(
                 status=PreflightStatus.FAILED,
                 symbol=symbol,
                 timeframe=timeframe,
-                issues=issues,
+                issues=index_issues,
                 data_rows=len(df),
                 quality_score=0,
             )
 
-        # 3. Minimum Data Check (delegates to _basic_checks)
+        return None
+
+    def _run_all_checks(
+        self, df: pd.DataFrame, timeframe: str
+    ) -> dict:
+        """Run all data quality checks.
+
+        Returns:
+            Dictionary with all check results.
+        """
+        interval_minutes = self._parse_timeframe(timeframe)
+        issues = []
+
+        # Minimum data check
         min_data_issues = self._basic_checks.check_minimum_data(df)
         issues.extend(min_data_issues)
-        if any(i.severity == IssueSeverity.CRITICAL for i in min_data_issues):
-            quality_score -= self.config.insufficient_data_penalty
 
-        # 4. Freshness Check (delegates to _basic_checks)
-        interval_minutes = self._parse_timeframe(timeframe)
+        # Freshness check
         freshness_issues, freshness_seconds = self._basic_checks.check_freshness(
             df, interval_minutes
         )
         issues.extend(freshness_issues)
-        if freshness_issues:
-            quality_score -= self.config.stale_data_penalty
 
-        # 5. Price Validation (delegates to _price_volume)
+        # Price validation
         price_issues = self._price_volume.check_prices(df)
         issues.extend(price_issues)
 
-        # 6. Volume Check (delegates to _price_volume)
+        # Volume check
         volume_issues, zero_count = self._price_volume.check_volume(df)
         issues.extend(volume_issues)
-        if zero_count > 0:
-            quality_score -= self.config.zero_volume_penalty * min(zero_count, 3)
 
-        # 7. Outlier Detection (delegates to _quality)
+        # Outlier detection
         outlier_issues, outlier_count = self._quality.check_outliers(df)
         issues.extend(outlier_issues)
-        if outlier_count > 0:
-            quality_score -= self.config.outlier_penalty * min(outlier_count, 5)
 
-        # 8. Gap Detection (delegates to _quality)
+        # Gap detection
         gap_issues, gap_count = self._quality.check_gaps(df, interval_minutes)
         issues.extend(gap_issues)
+
+        return {
+            "issues": issues,
+            "freshness_seconds": freshness_seconds,
+            "zero_count": zero_count,
+            "outlier_count": outlier_count,
+            "gap_count": gap_count,
+        }
+
+    def _calculate_quality_score(self, check_results: dict) -> int:
+        """Calculate quality score based on check results.
+
+        Args:
+            check_results: Dictionary with check results.
+
+        Returns:
+            Quality score (0-100).
+        """
+        score = 100
+        issues = check_results["issues"]
+
+        # Penalty for critical issues
+        if any(i.severity == IssueSeverity.CRITICAL for i in issues):
+            score -= self.config.insufficient_data_penalty
+
+        # Penalty for stale data
+        if any(i.issue_type == IssueType.STALE_DATA for i in issues):
+            score -= self.config.stale_data_penalty
+
+        # Penalty for zero volume
+        zero_count = check_results["zero_count"]
+        if zero_count > 0:
+            score -= self.config.zero_volume_penalty * min(zero_count, 3)
+
+        # Penalty for outliers
+        outlier_count = check_results["outlier_count"]
+        if outlier_count > 0:
+            score -= self.config.outlier_penalty * min(outlier_count, 5)
+
+        # Penalty for gaps
+        gap_count = check_results["gap_count"]
         if gap_count > 0:
-            quality_score -= self.config.gap_penalty * min(gap_count, 5)
+            score -= self.config.gap_penalty * min(gap_count, 5)
 
-        # Clean Data if requested (delegates to _quality)
-        cleaned_df = None
+        return max(0, min(100, score))
+
+    def _clean_data_if_needed(
+        self, df: pd.DataFrame, outlier_count: int, clean_data: bool
+    ) -> pd.DataFrame | None:
+        """Clean data if requested and outliers detected.
+
+        Returns:
+            Cleaned DataFrame or None.
+        """
         if clean_data and outlier_count > 0:
-            cleaned_df = self._quality.clean_data(df)
+            return self._quality.clean_data(df)
+        return None
 
-        # Determine final status
-        critical_count = sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL)
-        warning_count = sum(1 for i in issues if i.severity == IssueSeverity.WARNING)
+    def _build_result(
+        self,
+        check_results: dict,
+        quality_score: int,
+        cleaned_df: pd.DataFrame | None,
+        symbol: str,
+        timeframe: str,
+        df: pd.DataFrame,
+    ) -> PreflightResult:
+        """Build final PreflightResult.
 
-        if critical_count > 0:
-            status = PreflightStatus.FAILED
-        elif warning_count > 0:
-            status = PreflightStatus.WARNING
-        else:
-            status = PreflightStatus.PASSED
+        Args:
+            check_results: Check results dictionary.
+            quality_score: Calculated quality score.
+            cleaned_df: Cleaned DataFrame if cleaning was done.
+            symbol: Trading symbol.
+            timeframe: Timeframe string.
+            df: Original DataFrame.
 
-        # Clamp quality score
-        quality_score = max(0, min(100, quality_score))
+        Returns:
+            PreflightResult.
+        """
+        issues = check_results["issues"]
+        status = self._determine_status(issues)
 
-        result = PreflightResult(
+        return PreflightResult(
             status=status,
             symbol=symbol,
             timeframe=timeframe,
             issues=issues,
             data_rows=len(df),
-            data_freshness_seconds=freshness_seconds,
-            zero_volume_count=zero_count,
-            outlier_count=outlier_count,
-            gap_count=gap_count,
+            data_freshness_seconds=check_results["freshness_seconds"],
+            zero_volume_count=check_results["zero_count"],
+            outlier_count=check_results["outlier_count"],
+            gap_count=check_results["gap_count"],
             quality_score=quality_score,
-            cleaned_df=cleaned_df if clean_data else None,
+            cleaned_df=cleaned_df,
         )
 
-        # Log result
-        if status == PreflightStatus.FAILED:
+    def _determine_status(self, issues: list[PreflightIssue]) -> PreflightStatus:
+        """Determine preflight status from issues.
+
+        Args:
+            issues: List of issues.
+
+        Returns:
+            PreflightStatus enum value.
+        """
+        critical_count = sum(1 for i in issues if i.severity == IssueSeverity.CRITICAL)
+        warning_count = sum(1 for i in issues if i.severity == IssueSeverity.WARNING)
+
+        if critical_count > 0:
+            return PreflightStatus.FAILED
+        if warning_count > 0:
+            return PreflightStatus.WARNING
+        return PreflightStatus.PASSED
+
+    def _log_result(
+        self, result: PreflightResult, symbol: str, timeframe: str
+    ) -> None:
+        """Log preflight result.
+
+        Args:
+            result: Preflight result to log.
+            symbol: Trading symbol.
+            timeframe: Timeframe string.
+        """
+        if result.status == PreflightStatus.FAILED:
             logger.warning(
                 f"Preflight FAILED for {symbol}/{timeframe}: {result.get_summary()}"
             )
-        elif status == PreflightStatus.WARNING:
+        elif result.status == PreflightStatus.WARNING:
             logger.info(
-                f"Preflight WARNING for {symbol}/{timeframe}: {len(issues)} issues"
+                f"Preflight WARNING for {symbol}/{timeframe}: {len(result.issues)} issues"
             )
         else:
             logger.debug(f"Preflight PASSED for {symbol}/{timeframe}")
-
-        return result
 
     # =========================================================================
     # HELPER METHODS
