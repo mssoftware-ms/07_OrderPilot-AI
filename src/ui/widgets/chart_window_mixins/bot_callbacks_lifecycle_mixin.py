@@ -233,3 +233,93 @@ class BotCallbacksLifecycleMixin:
             self._set_bot_run_status_label(False)
 
         logger.info("Bot stopped")
+
+    def _on_bot_decision(self, decision) -> None:
+        """Handle bot decision event.
+
+        Updates chart UI based on bot decisions (ENTER, ADJUST_STOP, EXIT).
+
+        Args:
+            decision: BotDecision with action, stop prices, etc.
+        """
+        from src.core.tradingbot.models import BotAction
+
+        action = decision.action if hasattr(decision, 'action') else None
+        logger.info(f"Bot decision: {action.value if action else 'unknown'}")
+
+        # Handle stop line updates on chart
+        if hasattr(self, 'chart_widget') and action:
+            try:
+                if action == BotAction.ENTER:
+                    # Draw initial stop line
+                    stop_price = getattr(decision, 'stop_price_after', None)
+                    if stop_price:
+                        self.chart_widget.add_stop_line(
+                            "position_stop",
+                            stop_price,
+                            line_type="initial",
+                            label=f"Initial SL @ {stop_price:.2f}"
+                        )
+                        logger.info(f"Added initial stop line at {stop_price}")
+
+                elif action == BotAction.ADJUST_STOP:
+                    # Update trailing stop line
+                    new_stop = getattr(decision, 'stop_price_after', None)
+                    old_stop = getattr(decision, 'stop_price_before', None)
+                    if new_stop:
+                        self.chart_widget.add_stop_line(
+                            "position_stop",
+                            new_stop,
+                            line_type="trailing",
+                            label=f"Trailing SL @ {new_stop:.2f}"
+                        )
+                        logger.info(f"Updated stop line: {old_stop} -> {new_stop}")
+
+                elif action == BotAction.EXIT:
+                    # Remove stop line
+                    if hasattr(self.chart_widget, 'remove_stop_line'):
+                        self.chart_widget.remove_stop_line("position_stop")
+                        logger.info("Removed stop line on exit")
+
+                    # Add exit marker to chart
+                    from datetime import datetime
+                    reason_codes = getattr(decision, 'reason_codes', []) or []
+                    side = decision.side.value if hasattr(decision, 'side') and hasattr(decision.side, 'value') else 'long'
+
+                    # Get exit price from position or decision
+                    exit_price = None
+                    if self._bot_controller and self._bot_controller._last_features:
+                        exit_price = self._bot_controller._last_features.close
+
+                    if exit_price:
+                        if "STOP_HIT" in reason_codes:
+                            # Stop-loss was triggered
+                            if hasattr(self.chart_widget, 'add_stop_triggered_marker'):
+                                self.chart_widget.add_stop_triggered_marker(
+                                    timestamp=datetime.utcnow(),
+                                    price=exit_price,
+                                    side=side
+                                )
+                                logger.info(f"Added stop-triggered marker at {exit_price:.4f}")
+                        else:
+                            # Normal exit (signal, time stop, etc.)
+                            if hasattr(self.chart_widget, 'add_exit_marker'):
+                                reason = reason_codes[0] if reason_codes else "EXIT"
+                                self.chart_widget.add_exit_marker(
+                                    timestamp=datetime.utcnow(),
+                                    price=exit_price,
+                                    side=side,
+                                    reason=reason
+                                )
+                                logger.info(f"Added exit marker at {exit_price:.4f} ({reason})")
+
+            except Exception as e:
+                logger.error(f"Failed to update stop line: {e}", exc_info=True)
+
+        # Log KI decisions
+        if hasattr(decision, 'source') and decision.source == 'llm':
+            if hasattr(self, '_add_ki_log_entry'):
+                self._add_ki_log_entry(
+                    "DECISION",
+                    f"Action: {action.value if action else 'unknown'}, Confidence: {decision.confidence:.2f}"
+                )
