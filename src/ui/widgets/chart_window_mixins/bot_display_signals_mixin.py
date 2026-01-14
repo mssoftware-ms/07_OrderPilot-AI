@@ -409,8 +409,8 @@ class BotDisplaySignalsMixin:
     ) -> None:
         # Check if signal has data to display
         if not self._should_display_signal_pnl(signal):
-            # Fill remaining columns with "-"
-            for col in range(11, 21):
+            # Fill remaining columns with "-" (Issue #5: Now up to column 22)
+            for col in range(11, 22):
                 self.signals_table.setItem(row, col, QTableWidgetItem("-"))
             return
 
@@ -421,8 +421,9 @@ class BotDisplaySignalsMixin:
         self._set_current_price_column(row, signal, signal_data)
         self._set_pnl_columns(row, signal_data)
         self._set_fees_column(row, signal_data)
+        self._set_quantity_column(row, signal, signal_data)  # Issue #5: Gekaufte Stückzahl
         self._set_derivative_columns(row, signal, signal_data["current_price"], signal_data["leverage"])
-        self.signals_table.setItem(row, 19, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+        self.signals_table.setItem(row, 20, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))  # Score moved to col 20
         self._set_tr_stop_column(row, trailing_price, tr_is_active)
 
     def _should_display_signal_pnl(self, signal: dict) -> bool:
@@ -646,6 +647,42 @@ class BotDisplaySignalsMixin:
         )
         self.signals_table.setItem(row, 14, fees_item)
 
+    def _set_quantity_column(self, row: int, signal: dict, signal_data: dict) -> None:
+        """Set quantity column (gekaufte Stückzahl) - Column 15 (Issue #5).
+
+        Args:
+            row: Table row.
+            signal: Signal dictionary.
+            signal_data: Calculated signal data.
+        """
+        quantity = signal.get("quantity", 0)
+        invested = signal_data.get("invested", 0)
+        entry_price = signal_data.get("entry_price", 0)
+
+        # Calculate quantity if not stored
+        if quantity <= 0 and invested > 0 and entry_price > 0:
+            quantity = invested / entry_price
+
+        if quantity > 0:
+            # Format quantity based on asset type (crypto vs stocks)
+            if quantity < 1:
+                # Crypto (fractional amounts)
+                quantity_text = f"{quantity:.6f}".rstrip('0').rstrip('.')
+            else:
+                # Stocks or larger amounts
+                quantity_text = f"{quantity:.2f}"
+
+            quantity_item = QTableWidgetItem(quantity_text)
+            quantity_item.setForeground(QColor("#2196f3"))  # Blue
+            quantity_item.setToolTip(
+                f"Gekaufte Stückzahl: {quantity:.8f}\n"
+                f"Eingesetztes Kapital: {invested:.2f} USDT\n"
+                f"Entry-Preis: {entry_price:.4f} USDT"
+            )
+            self.signals_table.setItem(row, 15, quantity_item)
+        else:
+            self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
+
     def _set_derivative_columns(self, row: int, signal: dict, current_price: float, leverage: float = 1.0) -> None:
         """Set derivative and leverage columns.
 
@@ -655,15 +692,15 @@ class BotDisplaySignalsMixin:
             current_price: Current market price
             leverage: Leverage from Bot Tab override (Issue #1)
 
-        Column indices (mit Strategy-Spalte):
-        - 15: D P&L USDT (hidden)
-        - 16: D P&L % (hidden)
-        - 17: Heb (hidden)
-        - 18: WKN (hidden)
+        Column indices (Issue #5: With "Stück" column added):
+        - 16: D P&L USDT (hidden)
+        - 17: D P&L % (hidden)
+        - 18: Heb (hidden)
+        - 19: WKN (hidden)
         """
         deriv = signal.get("derivative")
 
-        # Column 17: Heb (vorher 16)
+        # Column 18: Heb (Issue #5: moved from 17)
         # Use static leverage from signal (frozen at entry), not current UI value
         signal_leverage = signal.get("leverage_at_entry")
 
@@ -671,41 +708,41 @@ class BotDisplaySignalsMixin:
             leverage_item = QTableWidgetItem(f"{signal_leverage:.0f}x")
             leverage_item.setForeground(QColor("#2196f3"))  # Blue for static leverage
             leverage_item.setToolTip(f"Hebel beim Entry: {signal_leverage:.0f}x (statisch)")
-            self.signals_table.setItem(row, 17, leverage_item)
+            self.signals_table.setItem(row, 18, leverage_item)
         elif leverage > 1.0:
             # Fallback for old signals without saved leverage
             leverage_item = QTableWidgetItem(f"{leverage:.0f}x")
             leverage_item.setForeground(QColor("#ff9800"))  # Orange for fallback
             leverage_item.setToolTip(f"Hebel (aus Bot-Tab): {leverage:.0f}x")
-            self.signals_table.setItem(row, 17, leverage_item)
+            self.signals_table.setItem(row, 18, leverage_item)
         elif deriv and deriv.get("leverage", 0) > 0:
-            self.signals_table.setItem(row, 17, QTableWidgetItem(f"{deriv['leverage']:.1f}"))
+            self.signals_table.setItem(row, 18, QTableWidgetItem(f"{deriv['leverage']:.1f}"))
         else:
-            self.signals_table.setItem(row, 17, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 18, QTableWidgetItem("-"))
 
-        # Derivative P&L columns (mit Strategy-Spalte: 15, 16, 18)
+        # Derivative P&L columns (Issue #5: columns 16, 17, 19)
         if deriv and current_price > 0 and hasattr(self, "_calculate_derivative_pnl_for_signal"):
             deriv_pnl = self._calculate_derivative_pnl_for_signal(signal, current_price)
             if deriv_pnl:
-                # Column 15: D P&L USDT (vorher 14)
+                # Column 16: D P&L USDT
                 d_pnl_sign = "+" if deriv_pnl["pnl_eur"] >= 0 else ""
                 d_pnl_item = QTableWidgetItem(f"{d_pnl_sign}{deriv_pnl['pnl_eur']:.2f}")
                 d_pnl_color = "#26a69a" if deriv_pnl["pnl_eur"] >= 0 else "#ef5350"
                 d_pnl_item.setForeground(QColor(d_pnl_color))
-                self.signals_table.setItem(row, 15, d_pnl_item)
+                self.signals_table.setItem(row, 16, d_pnl_item)
 
-                # Column 16: D P&L % (vorher 15)
+                # Column 17: D P&L %
                 d_pct_sign = "+" if deriv_pnl["pnl_pct"] >= 0 else ""
                 d_pct_item = QTableWidgetItem(f"{d_pct_sign}{deriv_pnl['pnl_pct']:.2f}%")
                 d_pct_item.setForeground(QColor(d_pnl_color))
-                self.signals_table.setItem(row, 16, d_pct_item)
+                self.signals_table.setItem(row, 17, d_pct_item)
 
-                # Column 18: WKN (vorher 17)
-                self.signals_table.setItem(row, 18, QTableWidgetItem(deriv["wkn"]))
+                # Column 19: WKN
+                self.signals_table.setItem(row, 19, QTableWidgetItem(deriv["wkn"]))
                 return
-            self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
             self.signals_table.setItem(row, 16, QTableWidgetItem("-"))
-            self.signals_table.setItem(row, 18, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 17, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 19, QTableWidgetItem("-"))
         elif deriv:
             self.signals_table.setItem(row, 15, QTableWidgetItem("-"))
             self.signals_table.setItem(row, 16, QTableWidgetItem("-"))
