@@ -157,150 +157,249 @@ class BacktestCallbacksTemplateMixin:
         self._log("📂 Lade Template...")
 
         try:
-            # FileDialog zum Öffnen
-            filename, _ = QFileDialog.getOpenFileName(
-                self,
-                "Template laden",
-                str(Path("config/backtest_templates")),
-                "JSON Files (*.json);;All Files (*)"
-            )
-
+            # Load template file
+            filename = self._get_template_filename()
             if not filename:
                 return
 
-            # Template laden
-            with open(filename, 'r', encoding='utf-8') as f:
-                template = json.load(f)
-
-            # Validiere Template-Struktur - Unterstütze V1 (parameters) UND V2 (entry_score, etc.) Format
-            is_v1_format = 'parameters' in template
-            is_v2_format = 'version' in template and ('entry_score' in template or 'strategy_profile' in template)
-
-            if not is_v1_format and not is_v2_format:
-                QMessageBox.warning(
-                    self, "Ungültiges Template",
-                    "Die ausgewählte Datei ist kein gültiges Backtest-Template.\n\n"
-                    "Erwartet: V1-Format mit 'parameters' oder V2-Format mit 'entry_score'/'strategy_profile'."
-                )
+            template = self._load_template_file(filename)
+            if template is None:
                 return
 
-            meta = template.get('meta', {})
+            # Parse template data
+            meta, params, specs = self._parse_template_data(template)
+            if specs is None:
+                return
 
-            # V2-Format: Konvertiere zu V1-kompatiblem Format für die UI
-            if is_v2_format:
-                params = self._convert_v2_to_parameters(template)
-                full_specs = []  # V2 hat keine full_specs
-                self._log(f"📦 V2-Format erkannt (version: {template.get('version', 'unknown')})")
-            else:
-                params = template.get('parameters', {})
-                full_specs = template.get('full_specs', [])
-
-            # Falls full_specs vorhanden, diese für Tabelle verwenden
-            if full_specs:
-                specs = full_specs
-            else:
-                # Rekonstruiere specs aus parameters
-                specs = []
-                for param_key, param_data in params.items():
-                    specs.append({
-                        'parameter': param_key,
-                        'display_name': param_key.replace('_', ' ').title(),
-                        'current_value': param_data.get('value'),
-                        'type': param_data.get('type', 'float'),
-                        'category': param_data.get('category', 'Unknown'),
-                        'subcategory': param_data.get('subcategory', ''),
-                        'ui_tab': param_data.get('category', 'Unknown'),
-                        'description': param_data.get('description', ''),
-                        'min': param_data.get('min'),
-                        'max': param_data.get('max'),
-                        'variations': param_data.get('variations', []),
-                    })
-
-            # Tabelle aktualisieren
-            self.config_inspector_table.setRowCount(len(specs))
-
-            for row, spec in enumerate(specs):
-                # Kategorie
-                self.config_inspector_table.setItem(
-                    row, 0, QTableWidgetItem(f"{spec['category']}/{spec.get('subcategory', '')}")
-                )
-
-                # Parameter
-                self.config_inspector_table.setItem(
-                    row, 1, QTableWidgetItem(spec.get('display_name', spec.get('parameter', '')))
-                )
-
-                # Wert
-                value = spec.get('current_value')
-                if spec.get('type') == 'float' and value is not None:
-                    value_str = f"{value:.2f}"
-                else:
-                    value_str = str(value)
-                value_item = QTableWidgetItem(value_str)
-                value_item.setForeground(QColor("#FF9800"))  # Orange für Template-Werte
-                self.config_inspector_table.setItem(row, 2, value_item)
-
-                # UI-Tab
-                self.config_inspector_table.setItem(
-                    row, 3, QTableWidgetItem(spec.get('ui_tab', ''))
-                )
-
-                # Beschreibung
-                description = spec.get('description', '')
-                desc_item = QTableWidgetItem(description[:40] + '...' if len(description) > 40 else description)
-                desc_item.setToolTip(description)
-                self.config_inspector_table.setItem(row, 4, desc_item)
-
-                # Typ
-                self.config_inspector_table.setItem(
-                    row, 5, QTableWidgetItem(spec.get('type', ''))
-                )
-
-                # Min/Max
-                min_val = spec.get('min')
-                max_val = spec.get('max')
-                if min_val is not None and max_val is not None:
-                    minmax_str = f"{min_val}-{max_val}"
-                else:
-                    minmax_str = "—"
-                self.config_inspector_table.setItem(row, 6, QTableWidgetItem(minmax_str))
-
-                # Variationen
-                variations = spec.get('variations', [])
-                if variations:
-                    var_str = ", ".join([str(v)[:6] for v in variations[:4]])
-                    if len(variations) > 4:
-                        var_str += "..."
-                else:
-                    var_str = "—"
-                self.config_inspector_table.setItem(row, 7, QTableWidgetItem(var_str))
-
-            # Parameter Space aus Template-Parametern erstellen
-            param_space = {}
-            for param_key, param_data in params.items():
-                value = param_data.get('value')
-                variations = param_data.get('variations', [])
-                if variations:
-                    param_space[param_key] = variations
-                elif value is not None:
-                    param_space[param_key] = [value]
-
-            self.param_space_text.setText(json.dumps(param_space, indent=2))
-
-            template_name = meta.get('name', 'Unbekannt')
-            template_desc = meta.get('description', '')
-            created_at = meta.get('created_at', '')
-
-            self._log(f"✅ Template '{template_name}' geladen")
-            self._log(f"   📅 Erstellt: {created_at[:10] if created_at else 'Unbekannt'}")
-            self._log(f"   📊 {len(params)} Parameter")
-
-            if template_desc:
-                self._log(f"   📝 {template_desc[:50]}...")
+            # Update UI with template data
+            self._populate_inspector_table(specs)
+            self._update_parameter_space(params)
+            self._log_template_metadata(meta, params)
 
         except Exception as e:
             logger.exception("Failed to load template")
             self._log(f"❌ Template-Laden fehlgeschlagen: {e}")
+
+    def _get_template_filename(self) -> str | None:
+        """Show file dialog and return selected template filename.
+
+        Returns:
+            Filename or None if cancelled.
+        """
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Template laden",
+            str(Path("config/backtest_templates")),
+            "JSON Files (*.json);;All Files (*)"
+        )
+        return filename if filename else None
+
+    def _load_template_file(self, filename: str) -> dict | None:
+        """Load and validate template file.
+
+        Args:
+            filename: Path to template file.
+
+        Returns:
+            Template dictionary or None if invalid.
+        """
+        with open(filename, 'r', encoding='utf-8') as f:
+            template = json.load(f)
+
+        # Validate template format
+        is_v1_format = 'parameters' in template
+        is_v2_format = 'version' in template and ('entry_score' in template or 'strategy_profile' in template)
+
+        if not is_v1_format and not is_v2_format:
+            QMessageBox.warning(
+                self, "Ungültiges Template",
+                "Die ausgewählte Datei ist kein gültiges Backtest-Template.\n\n"
+                "Erwartet: V1-Format mit 'parameters' oder V2-Format mit 'entry_score'/'strategy_profile'."
+            )
+            return None
+
+        return template
+
+    def _parse_template_data(self, template: dict) -> tuple[dict, dict, list | None]:
+        """Parse template data into meta, params, and specs.
+
+        Args:
+            template: Template dictionary.
+
+        Returns:
+            Tuple of (meta, params, specs) or (meta, params, None) if error.
+        """
+        meta = template.get('meta', {})
+
+        # Check format and convert if needed
+        is_v2_format = 'version' in template and ('entry_score' in template or 'strategy_profile' in template)
+
+        if is_v2_format:
+            params = self._convert_v2_to_parameters(template)
+            full_specs = []  # V2 has no full_specs
+            self._log(f"📦 V2-Format erkannt (version: {template.get('version', 'unknown')})")
+        else:
+            params = template.get('parameters', {})
+            full_specs = template.get('full_specs', [])
+
+        # Get specs (from full_specs or reconstruct from params)
+        if full_specs:
+            specs = full_specs
+        else:
+            specs = self._reconstruct_specs_from_params(params)
+
+        return meta, params, specs
+
+    def _reconstruct_specs_from_params(self, params: dict) -> list[dict]:
+        """Reconstruct specs list from parameters dictionary.
+
+        Args:
+            params: Parameters dictionary.
+
+        Returns:
+            List of spec dictionaries.
+        """
+        specs = []
+        for param_key, param_data in params.items():
+            specs.append({
+                'parameter': param_key,
+                'display_name': param_key.replace('_', ' ').title(),
+                'current_value': param_data.get('value'),
+                'type': param_data.get('type', 'float'),
+                'category': param_data.get('category', 'Unknown'),
+                'subcategory': param_data.get('subcategory', ''),
+                'ui_tab': param_data.get('category', 'Unknown'),
+                'description': param_data.get('description', ''),
+                'min': param_data.get('min'),
+                'max': param_data.get('max'),
+                'variations': param_data.get('variations', []),
+            })
+        return specs
+
+    def _populate_inspector_table(self, specs: list[dict]) -> None:
+        """Populate config inspector table with specs.
+
+        Args:
+            specs: List of parameter specifications.
+        """
+        self.config_inspector_table.setRowCount(len(specs))
+
+        for row, spec in enumerate(specs):
+            self._set_table_row(row, spec)
+
+    def _set_table_row(self, row: int, spec: dict) -> None:
+        """Set all columns for a single table row.
+
+        Args:
+            row: Row index.
+            spec: Parameter specification dictionary.
+        """
+        # Kategorie
+        self.config_inspector_table.setItem(
+            row, 0, QTableWidgetItem(f"{spec['category']}/{spec.get('subcategory', '')}")
+        )
+
+        # Parameter
+        self.config_inspector_table.setItem(
+            row, 1, QTableWidgetItem(spec.get('display_name', spec.get('parameter', '')))
+        )
+
+        # Wert (orange highlighted for templates)
+        value = spec.get('current_value')
+        value_str = f"{value:.2f}" if spec.get('type') == 'float' and value is not None else str(value)
+        value_item = QTableWidgetItem(value_str)
+        value_item.setForeground(QColor("#FF9800"))
+        self.config_inspector_table.setItem(row, 2, value_item)
+
+        # UI-Tab
+        self.config_inspector_table.setItem(
+            row, 3, QTableWidgetItem(spec.get('ui_tab', ''))
+        )
+
+        # Beschreibung (with tooltip)
+        description = spec.get('description', '')
+        desc_item = QTableWidgetItem(description[:40] + '...' if len(description) > 40 else description)
+        desc_item.setToolTip(description)
+        self.config_inspector_table.setItem(row, 4, desc_item)
+
+        # Typ
+        self.config_inspector_table.setItem(
+            row, 5, QTableWidgetItem(spec.get('type', ''))
+        )
+
+        # Min/Max
+        minmax_str = self._format_minmax(spec.get('min'), spec.get('max'))
+        self.config_inspector_table.setItem(row, 6, QTableWidgetItem(minmax_str))
+
+        # Variationen
+        var_str = self._format_variations(spec.get('variations', []))
+        self.config_inspector_table.setItem(row, 7, QTableWidgetItem(var_str))
+
+    def _format_minmax(self, min_val, max_val) -> str:
+        """Format min/max values for display.
+
+        Args:
+            min_val: Minimum value.
+            max_val: Maximum value.
+
+        Returns:
+            Formatted string.
+        """
+        if min_val is not None and max_val is not None:
+            return f"{min_val}-{max_val}"
+        return "—"
+
+    def _format_variations(self, variations: list) -> str:
+        """Format variations list for display.
+
+        Args:
+            variations: List of variation values.
+
+        Returns:
+            Formatted string.
+        """
+        if not variations:
+            return "—"
+
+        var_str = ", ".join([str(v)[:6] for v in variations[:4]])
+        if len(variations) > 4:
+            var_str += "..."
+        return var_str
+
+    def _update_parameter_space(self, params: dict) -> None:
+        """Update parameter space text field with template parameters.
+
+        Args:
+            params: Parameters dictionary.
+        """
+        param_space = {}
+        for param_key, param_data in params.items():
+            value = param_data.get('value')
+            variations = param_data.get('variations', [])
+            if variations:
+                param_space[param_key] = variations
+            elif value is not None:
+                param_space[param_key] = [value]
+
+        self.param_space_text.setText(json.dumps(param_space, indent=2))
+
+    def _log_template_metadata(self, meta: dict, params: dict) -> None:
+        """Log template metadata after successful load.
+
+        Args:
+            meta: Template metadata dictionary.
+            params: Parameters dictionary.
+        """
+        template_name = meta.get('name', 'Unbekannt')
+        template_desc = meta.get('description', '')
+        created_at = meta.get('created_at', '')
+
+        self._log(f"✅ Template '{template_name}' geladen")
+        self._log(f"   📅 Erstellt: {created_at[:10] if created_at else 'Unbekannt'}")
+        self._log(f"   📊 {len(params)} Parameter")
+
+        if template_desc:
+            self._log(f"   📝 {template_desc[:50]}...")
 
     def _on_derive_variant_clicked(self) -> None:
         """
