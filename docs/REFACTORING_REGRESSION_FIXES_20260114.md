@@ -250,6 +250,27 @@ Failed to start bot
 
 ---
 
+### 12. Missing timedelta Import ✅ FIXED
+**File:** `src/ui/widgets/bitunix_trading/backtest_tab_ui_setup_mixin.py`
+**Problem:** timedelta wurde verwendet (Line 358) aber nicht importiert
+**Symptom:**
+```
+Failed to create Backtesting tab: name 'timedelta' is not defined
+```
+**Fix:** timedelta zu datetime imports hinzugefügt
+**Commit:** [pending]
+
+**Code Change:**
+```python
+# Before (Line 5):
+from datetime import datetime
+
+# After (Line 5):
+from datetime import datetime, timedelta
+```
+
+---
+
 ## 💾 COMMITS
 
 | Commit | Beschreibung | Files Changed | LOC Added |
@@ -259,8 +280,9 @@ Failed to start bot
 | cae2eb4 | Fix QDateEdit import & _on_toggle_entry_points | 2 files | 11 |
 | fc92d9b | Fix missing _on_bot_decision callback | 4 files | 123 |
 | ccc1f93 | Fix _on_trading_blocked + _on_macd_signal | 3 files | 48 |
+| [pending] | Fix timedelta import in backtest_tab_ui_setup_mixin | 1 file | 1 |
 
-**Total:** 5 commits, 325 LOC restored
+**Total:** 6 commits, 326 LOC restored
 
 ---
 
@@ -284,7 +306,7 @@ Failed to start bot
 
 ## ✅ STATUS
 
-**All 11 regressions fixed and verified.**
+**All 12 regressions fixed and verified.**
 
 **Ready for:**
 - Application testing
