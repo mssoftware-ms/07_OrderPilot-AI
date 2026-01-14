@@ -242,7 +242,27 @@ class TradeFilter:
         Returns:
             FilterResult indicating if entry was filtered.
         """
-        # 1. Volatility spike filter
+        # Apply each filter in sequence; return early if any filter fails
+        filter_checks = [
+            self._check_volatility_spike(entry, idx, atr_values, avg_atr),
+            self._check_spread_spike(entry, idx, spreads, avg_spreads),
+            self._check_data_gap(entry, candles, idx),
+            self._check_volume(entry, idx, volumes, avg_volumes),
+            self._check_time_restriction(entry),
+            self._check_custom_filters(entry, candles, idx),
+        ]
+
+        for result in filter_checks:
+            if result.is_filtered:
+                return result
+
+        # Passed all filters
+        return FilterResult(entry=entry, is_filtered=False)
+
+    def _check_volatility_spike(
+        self, entry: EntryEvent, idx: int, atr_values: list[float], avg_atr: list[float]
+    ) -> FilterResult:
+        """Check for volatility spike filter."""
         if idx < len(atr_values) and idx < len(avg_atr) and avg_atr[idx] > 0:
             vol_ratio = atr_values[idx] / avg_atr[idx]
             if vol_ratio > self.config.vol_spike_threshold:
@@ -252,8 +272,16 @@ class TradeFilter:
                     reason=FilterReason.VOLATILITY_SPIKE,
                     details=f"ATR ratio: {vol_ratio:.2f}x",
                 )
+        return FilterResult(entry=entry, is_filtered=False)
 
-        # 2. Spread spike filter
+    def _check_spread_spike(
+        self,
+        entry: EntryEvent,
+        idx: int,
+        spreads: list[float] | None,
+        avg_spreads: list[float] | None,
+    ) -> FilterResult:
+        """Check for spread spike filter."""
         if spreads and avg_spreads and idx < len(spreads) and idx < len(avg_spreads):
             if avg_spreads[idx] > 0:
                 spread_ratio = spreads[idx] / avg_spreads[idx]
@@ -264,37 +292,64 @@ class TradeFilter:
                         reason=FilterReason.SPREAD_SPIKE,
                         details=f"Spread ratio: {spread_ratio:.2f}x",
                     )
+        return FilterResult(entry=entry, is_filtered=False)
 
-        # 3. Data gap filter
-        if idx > 0:
-            candle = candles[idx]
-            prev_candle = candles[idx - 1]
+    def _check_data_gap(
+        self, entry: EntryEvent, candles: list[dict], idx: int
+    ) -> FilterResult:
+        """Check for data gap filter (price and time gaps)."""
+        if idx <= 0:
+            return FilterResult(entry=entry, is_filtered=False)
 
-            # Check for price gap
-            gap = abs(candle["open"] - prev_candle["close"])
-            gap_pct = gap / prev_candle["close"] * 100 if prev_candle["close"] > 0 else 0
+        candle = candles[idx]
+        prev_candle = candles[idx - 1]
 
-            if gap_pct > self.config.gap_threshold_pct:
-                return FilterResult(
-                    entry=entry,
-                    is_filtered=True,
-                    reason=FilterReason.DATA_GAP,
-                    details=f"Gap: {gap_pct:.2f}%",
-                )
+        # Check for price gap
+        gap_result = self._check_price_gap(entry, candle, prev_candle)
+        if gap_result.is_filtered:
+            return gap_result
 
-            # Check for time gap (missing candles)
-            expected_interval = self._estimate_candle_interval(candles)
-            if expected_interval > 0:
-                time_gap = candle["timestamp"] - prev_candle["timestamp"]
-                if time_gap > expected_interval * 2:
-                    return FilterResult(
-                        entry=entry,
-                        is_filtered=True,
-                        reason=FilterReason.DATA_GAP,
-                        details=f"Time gap: {time_gap}s (expected {expected_interval}s)",
-                    )
+        # Check for time gap
+        return self._check_time_gap(entry, candles, candle, prev_candle)
 
-        # 4. Volume filter
+    def _check_price_gap(
+        self, entry: EntryEvent, candle: dict, prev_candle: dict
+    ) -> FilterResult:
+        """Check for price gap between candles."""
+        gap = abs(candle["open"] - prev_candle["close"])
+        gap_pct = gap / prev_candle["close"] * 100 if prev_candle["close"] > 0 else 0
+
+        if gap_pct > self.config.gap_threshold_pct:
+            return FilterResult(
+                entry=entry,
+                is_filtered=True,
+                reason=FilterReason.DATA_GAP,
+                details=f"Gap: {gap_pct:.2f}%",
+            )
+        return FilterResult(entry=entry, is_filtered=False)
+
+    def _check_time_gap(
+        self, entry: EntryEvent, candles: list[dict], candle: dict, prev_candle: dict
+    ) -> FilterResult:
+        """Check for time gap (missing candles)."""
+        expected_interval = self._estimate_candle_interval(candles)
+        if expected_interval <= 0:
+            return FilterResult(entry=entry, is_filtered=False)
+
+        time_gap = candle["timestamp"] - prev_candle["timestamp"]
+        if time_gap > expected_interval * 2:
+            return FilterResult(
+                entry=entry,
+                is_filtered=True,
+                reason=FilterReason.DATA_GAP,
+                details=f"Time gap: {time_gap}s (expected {expected_interval}s)",
+            )
+        return FilterResult(entry=entry, is_filtered=False)
+
+    def _check_volume(
+        self, entry: EntryEvent, idx: int, volumes: list[float], avg_volumes: list[float]
+    ) -> FilterResult:
+        """Check for volume filter."""
         if idx < len(volumes) and idx < len(avg_volumes) and avg_volumes[idx] > 0:
             vol_ratio = volumes[idx] / avg_volumes[idx]
             if vol_ratio < self.config.min_volume_ratio:
@@ -304,30 +359,39 @@ class TradeFilter:
                     reason=FilterReason.LOW_VOLUME,
                     details=f"Volume ratio: {vol_ratio:.2f}x",
                 )
+        return FilterResult(entry=entry, is_filtered=False)
 
-        # 5. Time restriction filter
-        if self.config.excluded_hours_utc or self.config.excluded_weekdays:
-            from datetime import datetime, timezone
+    def _check_time_restriction(self, entry: EntryEvent) -> FilterResult:
+        """Check for time restriction filter."""
+        if not self.config.excluded_hours_utc and not self.config.excluded_weekdays:
+            return FilterResult(entry=entry, is_filtered=False)
 
-            dt = datetime.fromtimestamp(entry.timestamp, tz=timezone.utc)
+        from datetime import datetime, timezone
 
-            if dt.hour in self.config.excluded_hours_utc:
-                return FilterResult(
-                    entry=entry,
-                    is_filtered=True,
-                    reason=FilterReason.TIME_RESTRICTION,
-                    details=f"Excluded hour: {dt.hour}",
-                )
+        dt = datetime.fromtimestamp(entry.timestamp, tz=timezone.utc)
 
-            if dt.weekday() in self.config.excluded_weekdays:
-                return FilterResult(
-                    entry=entry,
-                    is_filtered=True,
-                    reason=FilterReason.TIME_RESTRICTION,
-                    details=f"Excluded weekday: {dt.weekday()}",
-                )
+        if dt.hour in self.config.excluded_hours_utc:
+            return FilterResult(
+                entry=entry,
+                is_filtered=True,
+                reason=FilterReason.TIME_RESTRICTION,
+                details=f"Excluded hour: {dt.hour}",
+            )
 
-        # 6. Custom filters
+        if dt.weekday() in self.config.excluded_weekdays:
+            return FilterResult(
+                entry=entry,
+                is_filtered=True,
+                reason=FilterReason.TIME_RESTRICTION,
+                details=f"Excluded weekday: {dt.weekday()}",
+            )
+
+        return FilterResult(entry=entry, is_filtered=False)
+
+    def _check_custom_filters(
+        self, entry: EntryEvent, candles: list[dict], idx: int
+    ) -> FilterResult:
+        """Check custom filters."""
         for custom_filter in self.config.custom_filters:
             try:
                 is_filtered, details = custom_filter(entry, candles, idx)
@@ -341,7 +405,6 @@ class TradeFilter:
             except Exception as e:
                 logger.warning("Custom filter error: %s", e)
 
-        # Passed all filters
         return FilterResult(entry=entry, is_filtered=False)
 
     def _calculate_atr(self, candles: list[dict], period: int = 14) -> list[float]:
