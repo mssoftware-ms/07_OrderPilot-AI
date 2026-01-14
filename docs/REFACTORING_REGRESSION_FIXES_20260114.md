@@ -258,7 +258,7 @@ Failed to start bot
 Failed to create Backtesting tab: name 'timedelta' is not defined
 ```
 **Fix:** timedelta zu datetime imports hinzugefügt
-**Commit:** [pending]
+**Commit:** d361fe3
 
 **Code Change:**
 ```python
@@ -280,7 +280,7 @@ from datetime import datetime, timedelta
 | cae2eb4 | Fix QDateEdit import & _on_toggle_entry_points | 2 files | 11 |
 | fc92d9b | Fix missing _on_bot_decision callback | 4 files | 123 |
 | ccc1f93 | Fix _on_trading_blocked + _on_macd_signal | 3 files | 48 |
-| [pending] | Fix timedelta import in backtest_tab_ui_setup_mixin | 1 file | 1 |
+| d361fe3 | Fix timedelta import in backtest_tab_ui_setup_mixin | 3 files | 28 |
 
 **Total:** 6 commits, 326 LOC restored
 
