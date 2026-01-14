@@ -206,7 +206,9 @@ class BotDisplayPositionMixin:
         return current
 
     def _calculate_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
-        if side == "LONG":
+        """Return P&L percent/currency without leverage, tolerant to side casing."""
+        side_normalized = (side or "").upper()
+        if side_normalized == "LONG":
             pnl_pct = ((current - entry_price) / entry_price) * 100
         else:
             pnl_pct = ((entry_price - current) / entry_price) * 100

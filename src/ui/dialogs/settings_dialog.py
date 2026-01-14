@@ -51,6 +51,7 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         tabs.addTab(self._create_broker_tab(), "Brokers")
         tabs.addTab(self._create_market_data_tab(), "Market Data")
         tabs.addTab(self._create_ai_tab(), "AI")
+        tabs.addTab(self._create_heatmap_tab(), "Heatmap")
         tabs.addTab(self._create_notifications_tab(), "Notifications")
 
         layout.addWidget(tabs)
@@ -117,8 +118,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         )
 
         # Issue #34: Chart Colors
-        from PyQt6.QtGui import QColor
-
         bullish_color_name = self.settings.value("chart_bullish_color", "#26a69a")
         self.bullish_color = QColor(bullish_color_name)
         if hasattr(self, '_basic_helper'):
@@ -316,6 +315,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.value("connection_notif", False, type=bool)
         )
 
+        # Heatmap settings
+        if hasattr(self, '_heatmap_helper'):
+            self._heatmap_helper.load_heatmap_settings()
+
     def _set_combo_value(self, combo, value: str) -> None:
         index = combo.findText(value)
         if index >= 0:
@@ -445,6 +448,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("order_filled_notif", self.order_filled_notif.isChecked())
             self.settings.setValue("alert_notif", self.alert_notif.isChecked())
             self.settings.setValue("connection_notif", self.connection_notif.isChecked())
+
+            # Heatmap settings
+            if hasattr(self, '_heatmap_helper'):
+                self._heatmap_helper.save_heatmap_settings()
 
             # Sync settings to disk
             self.settings.sync()

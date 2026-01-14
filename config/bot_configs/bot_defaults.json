@@ -1,14 +1,14 @@
 {
   "meta": {
-    "saved_at": "2026-01-13T21:29:13.235414",
+    "saved_at": "2026-01-14T00:38:16.573522",
     "version": "1.0",
     "type": "bot_control_settings"
   },
   "settings": {
-    "ki_mode": "FULL_KI",
+    "ki_mode": "NO_KI",
     "trade_direction": "AUTO",
     "trailing_mode": "PCT",
-    "initial_sl": 0.15,
+    "initial_sl": 0.2,
     "capital": 1000.0,
     "risk_per_trade": 8.5,
     "max_trades": 10,
@@ -20,7 +20,7 @@
     "leverage_override_enabled": true,
     "leverage_value": 20,
     "regime_adaptive": true,
-    "tra_percent": 0.1,
+    "tra_percent": 0.15,
     "trailing_distance": 0.1,
     "atr_multiplier": 2.5,
     "atr_trending": 2.0,
