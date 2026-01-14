@@ -2766,12 +2766,11 @@ class BacktestTab(QWidget):
                 error_item.setForeground(QColor("#888"))
                 self.batch_results_table.setItem(row, 2, error_item)
 
-    def _get_signal_callback(self, initial_data: pd.DataFrame | None = None) -> Optional[Callable]:
+    def _get_signal_callback(self) -> Optional[Callable]:
         """
-        Gibt den Signal-Callback für den Backtest zurück.
+        Erstellt Signal-Callback für Backtest.
 
-        Args:
-            initial_data: Optionales DataFrame mit allen Daten für Pre-Calculation
+        Simplified: Nutzt IndicatorEngine Cache (kein eigenes Pre-Calculation nötig).
 
         Returns:
             Callable: Signal-Callback Funktion oder None
@@ -2793,377 +2792,152 @@ class BacktestTab(QWidget):
 
         # Erstelle Signal-Pipeline mit Engine-Configs
         try:
-            from src.core.trading_bot import (
-                LevelEngine,
-                EntryScoreEngine,
-                MarketContextBuilder,
-            )
-
-            # Entry Score Config aus Engine Settings
-            entry_config = None
-            if HAS_ENTRY_SCORE and 'entry_score' in engine_configs:
-                try:
-                    es = engine_configs['entry_score']
-                    entry_config = EntryScoreConfig(
-                        weight_trend_alignment=es.get('weights', {}).get('trend_alignment', 0.25),
-                        weight_momentum_rsi=es.get('weights', {}).get('rsi', 0.15),
-                        weight_momentum_macd=es.get('weights', {}).get('macd', 0.20),
-                        weight_trend_strength=es.get('weights', {}).get('adx', 0.15),
-                        weight_volatility=es.get('weights', {}).get('volatility', 0.10),
-                        weight_volume=es.get('weights', {}).get('volume', 0.15),
-                        threshold_excellent=es.get('thresholds', {}).get('excellent', 0.80),
-                        threshold_good=es.get('thresholds', {}).get('good', 0.65),
-                        threshold_moderate=es.get('thresholds', {}).get('moderate', 0.50),
-                        threshold_weak=es.get('thresholds', {}).get('weak', 0.35),
-                        min_score_for_entry=es.get('min_score_for_entry', 0.50),
-                        block_in_chop_range=es.get('gates', {}).get('block_in_chop', True),
-                        block_against_strong_trend=es.get('gates', {}).get('block_against_strong_trend', True),
-                        allow_counter_trend_sfp=es.get('gates', {}).get('allow_counter_trend_sfp', True),
-                        regime_boost_strong_trend=es.get('gates', {}).get('trend_boost', 0.10),
-                        regime_penalty_chop=es.get('gates', {}).get('chop_penalty', -0.15),
-                        regime_penalty_volatile=es.get('gates', {}).get('volatile_penalty', -0.10),
-                    )
-                    logger.info("EntryScoreConfig aus Engine Settings geladen")
-                except Exception as e:
-                    logger.warning(f"EntryScoreConfig Fehler: {e}")
-
-            # Level Engine Config aus Engine Settings
-            level_config = None
-            if HAS_LEVELS and 'levels' in engine_configs:
-                try:
-                    lvl = engine_configs['levels']
-                    level_config = LevelEngineConfig(
-                        lookback_bars=lvl.get('lookback_bars', 100),
-                        min_touches=lvl.get('min_touches', 2),
-                        zone_width_atr=lvl.get('zone_width_atr', 0.5),
-                        significance_threshold=lvl.get('significance_threshold', 0.7),
-                    )
-                    logger.info("LevelEngineConfig aus Engine Settings geladen")
-                except Exception as e:
-                    logger.warning(f"LevelEngineConfig Fehler: {e}")
-
-            # Min-Score aus Entry Settings
-            min_score_for_signal = 0.50
-            if 'entry_score' in engine_configs:
-                min_score_for_signal = engine_configs['entry_score'].get('min_score_for_entry', 0.50)
-
-            # Trigger/Exit Settings
-            tp_atr_mult = 2.0
-            sl_atr_mult = 1.5
-            if 'trigger_exit' in engine_configs:
-                te = engine_configs['trigger_exit']
-                tp_atr_mult = te.get('tp_atr_multiplier', 2.0)
-                sl_atr_mult = te.get('sl_atr_multiplier', 1.5)
-
-            # Erstelle konfigurierte Signal-Pipeline für Backtest
-            # WICHTIG: Signatur muss (candle, history_1m, mtf_data) sein!
-            # - candle: CandleSnapshot (einzelne Candle)
-            # - history_1m: pd.DataFrame mit OHLCV History
-            # - mtf_data: dict mit Multi-Timeframe DataFrames
-
-            # =================================================================
-            # ULTRA-LIGHT BACKTEST SIGNAL CALLBACK
-            # =================================================================
-            # Optimiert für maximale Performance:
-            # 1. Indikatoren PRE-CALCULATED auf initial_data (O(N) statt O(N^2))
-            # 2. Lookup statt Berechnung im Loop
-            # =================================================================
-
+            from src.core.trading_bot import EntryScoreEngine
             from src.core.indicators import IndicatorEngine, IndicatorConfig, IndicatorType
             import pandas as pd
 
-            # Indicator Engine mit Cache
+            # Build Entry Config from engine settings
+            entry_config = self._build_entry_config(engine_configs)
+
+            # Engine Settings
+            min_score_for_signal = engine_configs.get('entry_score', {}).get('min_score_for_entry', 0.50)
+            tp_atr_mult = engine_configs.get('trigger_exit', {}).get('tp_atr_multiplier', 2.0)
+            sl_atr_mult = engine_configs.get('trigger_exit', {}).get('sl_atr_multiplier', 1.5)
+
+            # Create engines (IndicatorEngine has built-in cache!)
             indicator_engine = IndicatorEngine(cache_size=500)
             entry_engine = EntryScoreEngine(config=entry_config) if entry_config else EntryScoreEngine()
 
-            # Pre-Calculation State
-            precalc_df = None
-            if initial_data is not None and not initial_data.empty:
-                try:
-                    logger.info(f"⚡ Pre-calculating indicators for {len(initial_data)} bars...")
-                    df_calc = initial_data.copy()
-                    
-                    # EMA 20, 50
-                    for period in [20, 50]:
-                        config = IndicatorConfig(IndicatorType.EMA, {"period": period, "price": "close"}, use_talib=True)
-                        res = indicator_engine.calculate(df_calc, config)
-                        df_calc[f"ema_{period}"] = res.values
-
-                    # RSI 14
-                    rsi_config = IndicatorConfig(IndicatorType.RSI, {"period": 14}, use_talib=True)
-                    df_calc["rsi_14"] = indicator_engine.calculate(df_calc, rsi_config).values
-
-                    # ADX 14
-                    adx_config = IndicatorConfig(IndicatorType.ADX, {"period": 14}, use_talib=True)
-                    adx_result = indicator_engine.calculate(df_calc, adx_config)
-                    if isinstance(adx_result.values, pd.DataFrame):
-                        df_calc["adx_14"] = adx_result.values["adx"]
-                        df_calc["plus_di"] = adx_result.values["plus_di"]
-                        df_calc["minus_di"] = adx_result.values["minus_di"]
-
-                    # ATR 14
-                    atr_config = IndicatorConfig(IndicatorType.ATR, {"period": 14}, use_talib=True)
-                    df_calc["atr_14"] = indicator_engine.calculate(df_calc, atr_config).values
-
-                    # Set timestamp as index for fast lookup if not already
-                    if 'timestamp' in df_calc.columns:
-                        df_calc.set_index('timestamp', inplace=True)
-                    
-                    precalc_df = df_calc
-                    logger.info("✅ Pre-calculation complete")
-                except Exception as e:
-                    logger.error(f"Pre-calculation failed: {e}")
-                    precalc_df = None
-
-            # Fallback Cache für On-the-fly Berechnung
-            cache_state = {
-                'last_price': 0.0,
-                'last_df_with_indicators': None,
-                'last_df_hash': None,
-                'candle_count': 0,
-            }
-
-            def _calculate_indicators_fast(df: pd.DataFrame) -> pd.DataFrame:
-                """Berechnet nur die MINIMAL notwendigen Indikatoren."""
-                if df is None or df.empty:
-                    return df
-
-                # Prüfe ob bereits berechnet (via Hash)
-                df_hash = hash((len(df), df.iloc[-1]['close'] if 'close' in df.columns else 0))
-                if cache_state['last_df_hash'] == df_hash and cache_state['last_df_with_indicators'] is not None:
-                    return cache_state['last_df_with_indicators']
-
-                result_df = df.copy()
-
-                try:
-                    # Nur die wichtigsten Indikatoren für Entry-Score
-                    # EMA 20, 50 für Trend
-                    for period in [20, 50]:
-                        config = IndicatorConfig(
-                            indicator_type=IndicatorType.EMA,
-                            params={"period": period, "price": "close"},
-                            use_talib=True,
-                            cache_results=True,
-                        )
-                        res = indicator_engine.calculate(result_df, config)
-                        result_df[f"ema_{period}"] = res.values
-
-                    # RSI für Momentum
-                    rsi_config = IndicatorConfig(
-                        indicator_type=IndicatorType.RSI,
-                        params={"period": 14},
-                        use_talib=True,
-                        cache_results=True,
-                    )
-                    result_df["rsi_14"] = indicator_engine.calculate(result_df, rsi_config).values
-
-                    # ADX für Trend-Stärke
-                    adx_config = IndicatorConfig(
-                        indicator_type=IndicatorType.ADX,
-                        params={"period": 14},
-                        use_talib=True,
-                        cache_results=True,
-                    )
-                    adx_result = indicator_engine.calculate(result_df, adx_config)
-                    if isinstance(adx_result.values, pd.DataFrame):
-                        result_df["adx_14"] = adx_result.values["adx"]
-                        result_df["plus_di"] = adx_result.values["plus_di"]
-                        result_df["minus_di"] = adx_result.values["minus_di"]
-
-                    # ATR für SL/TP
-                    atr_config = IndicatorConfig(
-                        indicator_type=IndicatorType.ATR,
-                        params={"period": 14},
-                        use_talib=True,
-                        cache_results=True,
-                    )
-                    result_df["atr_14"] = indicator_engine.calculate(result_df, atr_config).values
-
-                    # Cache das Ergebnis
-                    cache_state['last_df_with_indicators'] = result_df
-                    cache_state['last_df_hash'] = df_hash
-
-                except Exception as e:
-                    logger.warning(f"Indicator calculation error: {e}")
-
-                return result_df
-
             def backtest_signal_callback(candle, history_1m, mtf_data):
-                """
-                ULTRA-LIGHT Signal Callback für Backtest.
-                """
-                if history_1m is None or history_1m.empty or len(history_1m) < 50:
+                """Simplified signal callback for backtest."""
+                if history_1m is None or len(history_1m) < 50:
                     return None
 
                 try:
-                    cache_state['candle_count'] += 1
-                    current_price = candle.close
-                    
-                    # 1. VERSUCH: Lookup in Pre-Calculated Data
-                    df_with_indicators = None
-                    if precalc_df is not None:
-                        try:
-                            # Timestamp Match
-                            ts = candle.timestamp
-                            if ts in precalc_df.index:
-                                # Wir brauchen eine "Zeile" als DataFrame für den EntryScoreEngine? 
-                                # Nein, EntryScore erwartet DataFrame.
-                                # Aber wir können die Werte direkt extrahieren und in ein Mini-DF packen?
-                                # EntryEngine erwartet History-DF für Berechnungen.
-                                # Wir müssen tricksen: wir geben ihm ein Dummy-DF, das die Werte der aktuellen Zeile hat.
-                                
-                                # Besser: Wir bauen ein "View" auf precalc_df bis zum aktuellen Zeitpunkt?
-                                # Nein, slicing ist auch teuer.
-                                
-                                # Wenn wir precalc_df haben, sind die Indikatoren schon da!
-                                # Wir müssen EntryScoreEngine NICHT aufrufen, wenn wir die Werte manuell prüfen können?
-                                # ODER wir geben EntryScoreEngine das Slice (Zeile) mit den fertigen Indikatoren.
-                                
-                                # Einfachster Weg: Wir nehmen die Zeile aus precalc_df
-                                # Aber EntryScoreEngine braucht oft .iloc[-1] und -2 etc. für Crossovers.
-                                
-                                # Slicing via Index Position
-                                # Das könnte teuer sein wenn precalc_df riesig ist.
-                                # Aber history_1m ist das was wir haben.
-                                
-                                # Moment! history_1m IST ein Slice des ReplayProviders.
-                                # Wenn wir precalc_df haben, können wir die Indikatoren an history_1m MERGEN?
-                                # Zu langsam.
-                                
-                                # NEUER ANSATZ: Wir nutzen die PRE-CALCULATED WERTE direkt im Callback, 
-                                # OHNE EntryScoreEngine neu rechnen zu lassen, wenn möglich.
-                                # Wir bauen EntryScore Logic hier nach für Speed? Nein, Wartbarkeit.
-                                
-                                # Wir übergeben history_1m, aber INJIZIEREN die Indikatoren aus precalc_df?
-                                # history_1m hat keine Indikatoren.
-                                
-                                # Lookup Indikatoren für aktuellen Timestamp
-                                row = precalc_df.loc[ts]
-                                
-                                # Wir erstellen ein "Fake" DF mit Indikatoren nur für den letzten Bar
-                                # Das reicht EntryScoreEngine aber nicht (braucht Trend/Verlauf).
-                                
-                                # OK, Hybrid:
-                                # Wir nehmen history_1m (ohne Indikatoren).
-                                # Wir hängen die Indikatoren an?
-                                
-                                # Back to basics: 
-                                # EntryScoreEngine.calculate nimmt DF.
-                                # Wenn DF schon Indikatoren hat, rechnet er sie (hoffentlich) nicht neu?
-                                # Check EntryScoreEngine implementation... 
-                                # Normalerweise rechnet er sie.
-                                
-                                # Workaround:
-                                # Wir geben EntryScoreEngine ein DF, das wir aus precalc_df zusammenbauen?
-                                # Bar index lookup.
-                                
-                                # Fallback auf slicing precalc_df:
-                                # candle.bar_index nutzen?
-                                bar_idx = candle.bar_index
-                                # Slice precalc_df bis bar_idx
-                                # Das ist pandas slice -> schnell genug?
-                                # df_with_indicators = precalc_df.iloc[max(0, bar_idx-50):bar_idx+1]
-                                
-                                # ReplayProvider slice ist bereits history_1m.
-                                # Wir können einfach die Indikatoren von precalc_df per index holen?
-                                # Nein, history_1m ist ein neuer DF.
-                                
-                                # Lösung: Wir nutzen precalc_df.iloc[...] als Basis.
-                                # Wir müssen sicherstellen dass bar_index passt.
-                                if 0 <= bar_idx < len(precalc_df):
-                                     # Letzte 50 Bars reichen meist für Entry Score Logik (außer EMA200)
-                                     start_idx = max(0, bar_idx - 200)
-                                     df_with_indicators = precalc_df.iloc[start_idx : bar_idx + 1]
-                                
-                        except Exception as lookup_err:
-                            # logger.warning(f"Lookup error: {lookup_err}")
-                            pass
+                    # Calculate indicators (IndicatorEngine caches automatically!)
+                    df = self._calculate_indicators(history_1m, indicator_engine)
 
-                    # 2. FALLBACK: On-the-fly Berechnung
-                    if df_with_indicators is None:
-                        df_with_indicators = _calculate_indicators_fast(history_1m)
-
-                    # Entry Score berechnen
+                    # Calculate entry score
                     score_result = entry_engine.calculate(
-                        df_with_indicators,
-                        regime_result=None,  # Skip regime für Speed
+                        df,
+                        regime_result=None,  # Skip regime for speed
                         symbol="BTCUSDT",
                         timeframe="1m"
                     )
 
-                    # Update cache
-                    cache_state['last_price'] = current_price
+                    if not score_result or score_result.final_score < min_score_for_signal:
+                        return None
 
-                    # Score verwenden (final_score ist bereits 0.0-1.0)
-                    if score_result:
-                        total_score = score_result.final_score
-                        if not isinstance(total_score, (int, float)):
-                            total_score = 0.0
+                    # Get ATR for SL/TP
+                    atr = df['atr_14'].iloc[-1] if 'atr_14' in df.columns else (candle.close * 0.02)
+                    current_price = candle.close
+                    direction_str = score_result.direction.value if hasattr(score_result.direction, 'value') else str(score_result.direction)
 
-                        # Signal generieren wenn Score hoch genug
-                        if total_score >= min_score_for_signal:
-                            # ATR aus DataFrame nehmen
-                            atr = None
-                            if 'atr_14' in df_with_indicators.columns:
-                                atr_series = df_with_indicators['atr_14'].dropna()
-                                if not atr_series.empty:
-                                    atr = float(atr_series.iloc[-1])
-
-                            current_price = candle.close
-                            atr = atr or (current_price * 0.02)  # Fallback: 2%
-
-                            # Bestimme Richtung
-                            direction = score_result.direction
-                            direction_str = direction.value if hasattr(direction, 'value') else str(direction)
-
-                            if direction_str == "LONG":
-                                action = "buy"
-                                sl = current_price - (atr * sl_atr_mult)
-                                tp = current_price + (atr * tp_atr_mult)
-                                sl_distance = atr * sl_atr_mult
-                            elif direction_str == "SHORT":
-                                action = "sell"
-                                sl = current_price + (atr * sl_atr_mult)
-                                tp = current_price - (atr * tp_atr_mult)
-                                sl_distance = atr * sl_atr_mult
-                            else:
-                                return None
-
-                            # Return Format für BacktestRunner
-                            return {
-                                "action": action,  # "buy" oder "sell"
-                                "stop_loss": sl,
-                                "take_profit": tp,
-                                "sl_distance": sl_distance,
-                                "leverage": 1,  # Default leverage
-                                "reason": f"Score: {total_score:.2f}",
-                                "confidence": total_score,
-                                "atr": atr,
-                            }
+                    # Generate signal
+                    if direction_str == "LONG":
+                        return {
+                            "action": "buy",
+                            "stop_loss": current_price - (atr * sl_atr_mult),
+                            "take_profit": current_price + (atr * tp_atr_mult),
+                            "sl_distance": atr * sl_atr_mult,
+                            "leverage": 1,
+                            "reason": f"Score: {score_result.final_score:.2f}",
+                            "confidence": score_result.final_score,
+                            "atr": atr,
+                        }
+                    elif direction_str == "SHORT":
+                        return {
+                            "action": "sell",
+                            "stop_loss": current_price + (atr * sl_atr_mult),
+                            "take_profit": current_price - (atr * tp_atr_mult),
+                            "sl_distance": atr * sl_atr_mult,
+                            "leverage": 1,
+                            "reason": f"Score: {score_result.final_score:.2f}",
+                            "confidence": score_result.final_score,
+                            "atr": atr,
+                        }
 
                 except Exception as e:
                     logger.warning(f"Signal generation error: {e}")
 
                 return None
 
-            config_sources = []
-            if entry_config:
-                config_sources.append("EntryScore")
-            if level_config:
-                config_sources.append("Levels")
-            if 'trigger_exit' in engine_configs:
-                config_sources.append("Trigger/Exit")
-
-            logger.info(f"Signal callback mit Engine-Configs: {config_sources}")
+            logger.info("Signal callback created with simplified logic")
             return backtest_signal_callback
 
         except ImportError as e:
             logger.warning(f"Could not create signal callback: {e}")
             return None
 
-    # =========================================================================
-    # CONFIG INSPECTOR UI HANDLERS
-    # =========================================================================
+    def _build_entry_config(self, engine_configs: dict):
+        """Build EntryScoreConfig from engine settings."""
+        from src.core.trading_bot import EntryScoreConfig
+
+        if not HAS_ENTRY_SCORE or 'entry_score' not in engine_configs:
+            return None
+
+        try:
+            es = engine_configs['entry_score']
+            return EntryScoreConfig(
+                weight_trend_alignment=es.get('weights', {}).get('trend_alignment', 0.25),
+                weight_momentum_rsi=es.get('weights', {}).get('rsi', 0.15),
+                weight_momentum_macd=es.get('weights', {}).get('macd', 0.20),
+                weight_trend_strength=es.get('weights', {}).get('adx', 0.15),
+                weight_volatility=es.get('weights', {}).get('volatility', 0.10),
+                weight_volume=es.get('weights', {}).get('volume', 0.15),
+                threshold_excellent=es.get('thresholds', {}).get('excellent', 0.80),
+                threshold_good=es.get('thresholds', {}).get('good', 0.65),
+                threshold_moderate=es.get('thresholds', {}).get('moderate', 0.50),
+                threshold_weak=es.get('thresholds', {}).get('weak', 0.35),
+                min_score_for_entry=es.get('min_score_for_entry', 0.50),
+                block_in_chop_range=es.get('gates', {}).get('block_in_chop', True),
+                block_against_strong_trend=es.get('gates', {}).get('block_against_strong_trend', True),
+                allow_counter_trend_sfp=es.get('gates', {}).get('allow_counter_trend_sfp', True),
+                regime_boost_strong_trend=es.get('gates', {}).get('trend_boost', 0.10),
+                regime_penalty_chop=es.get('gates', {}).get('chop_penalty', -0.15),
+                regime_penalty_volatile=es.get('gates', {}).get('volatile_penalty', -0.10),
+            )
+        except Exception as e:
+            logger.warning(f"EntryScoreConfig error: {e}")
+            return None
+
+    def _calculate_indicators(self, df, indicator_engine):
+        """
+        Calculate indicators with IndicatorEngine (uses internal cache).
+
+        Simplified: No custom cache logic needed!
+        """
+        from src.core.indicators import IndicatorConfig, IndicatorType
+        import pandas as pd
+
+        result = df.copy()
+
+        try:
+            # EMA 20, 50
+            for period in [20, 50]:
+                config = IndicatorConfig(IndicatorType.EMA, {"period": period, "price": "close"}, use_talib=True)
+                result[f"ema_{period}"] = indicator_engine.calculate(result, config).values
+
+            # RSI 14
+            config = IndicatorConfig(IndicatorType.RSI, {"period": 14}, use_talib=True)
+            result["rsi_14"] = indicator_engine.calculate(result, config).values
+
+            # ADX 14
+            config = IndicatorConfig(IndicatorType.ADX, {"period": 14}, use_talib=True)
+            adx_result = indicator_engine.calculate(result, config)
+            if isinstance(adx_result.values, pd.DataFrame):
+                result["adx_14"] = adx_result.values["adx"]
+                result["plus_di"] = adx_result.values.get("plus_di", 0)
+                result["minus_di"] = adx_result.values.get("minus_di", 0)
+
+            # ATR 14
+            config = IndicatorConfig(IndicatorType.ATR, {"period": 14}, use_talib=True)
+            result["atr_14"] = indicator_engine.calculate(result, config).values
+
+        except Exception as e:
+            logger.warning(f"Indicator calculation error: {e}")
+
+        return result
 
     def _on_load_configs_clicked(self) -> None:
         """
