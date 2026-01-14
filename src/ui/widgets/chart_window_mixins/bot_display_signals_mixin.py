@@ -753,7 +753,7 @@ class BotDisplaySignalsMixin:
             self.signals_table.setItem(row, 18, QTableWidgetItem("-"))
 
     def _set_tr_stop_column(self, row: int, trailing_price: float, tr_is_active: bool) -> None:
-        """Set the TR Stop column (Column 20, mit Strategy-Spalte)."""
+        """Set the TR Stop column (Column 21, Issue #5: moved from 20)."""
         if trailing_price > 0:
             if tr_is_active:
                 tr_price_item = QTableWidgetItem(f"{trailing_price:.2f}")
@@ -761,7 +761,7 @@ class BotDisplaySignalsMixin:
             else:
                 tr_price_item = QTableWidgetItem(f"{trailing_price:.2f} (inaktiv)")
                 tr_price_item.setForeground(QColor("#888888"))
-            # Column 20: TR Stop (vorher 19)
-            self.signals_table.setItem(row, 20, tr_price_item)
+            # Column 21: TR Stop (Issue #5: moved from 20)
+            self.signals_table.setItem(row, 21, tr_price_item)
         else:
-            self.signals_table.setItem(row, 20, QTableWidgetItem("-"))
+            self.signals_table.setItem(row, 21, QTableWidgetItem("-"))
