@@ -79,156 +79,250 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
             return []
 
         try:
+            # Import required modules
             from alpaca.data.historical import CryptoHistoricalDataClient
             from alpaca.data.requests import CryptoBarsRequest
             from alpaca.data.timeframe import TimeFrame as AlpacaTimeFrame
-            from dateutil.relativedelta import relativedelta
 
-            # Create client (keys are optional for crypto market data)
-            if self.api_key and self.api_secret:
-                client = CryptoHistoricalDataClient(
-                    api_key=self.api_key,
-                    secret_key=self.api_secret
-                )
-                logger.debug("Alpaca crypto client created with API keys")
-            else:
-                client = CryptoHistoricalDataClient()
-                logger.debug("Alpaca crypto client created without API keys (market data only)")
+            # Create client
+            client = self._create_crypto_client(CryptoHistoricalDataClient)
 
-            # Convert timeframe
-            alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
-
-            # Convert symbol to Alpaca format (e.g., "BTCUSDT" → "BTC/USDT")
-            alpaca_symbol = self._convert_symbol_to_alpaca_format(symbol)
-
-            # Convert to UTC if timezone-aware
-            start_date_utc = self._ensure_utc_naive(start_date)
-            end_date_utc = self._ensure_utc_naive(end_date)
-
-            # Calculate time span to determine if chunking is needed
-            time_span = end_date_utc - start_date_utc
-            needs_chunking = time_span.days > 31  # Chunk if more than 1 month
-
-            logger.info(
-                f"Alpaca crypto request: {alpaca_symbol} (from {symbol}), "
-                f"timeframe={timeframe.value}, "
-                f"start={start_date_utc}, "
-                f"end={end_date_utc}, "
-                f"span={time_span.days} days, "
-                f"chunking={'yes' if needs_chunking else 'no'}"
+            # Prepare request parameters
+            alpaca_symbol, alpaca_timeframe, start_utc, end_utc, needs_chunking = (
+                self._prepare_fetch_parameters(symbol, timeframe, start_date, end_date)
             )
 
-            all_bars = []
-
+            # Fetch bars (chunked or single request)
             if needs_chunking:
-                # Chunk requests by month to avoid hitting limits
-                current_start = start_date_utc
-                chunk_num = 0
-
-                while current_start < end_date_utc:
-                    current_end = min(
-                        current_start + relativedelta(months=1),
-                        end_date_utc
-                    )
-
-                    chunk_num += 1
-                    logger.debug(
-                        f"Chunk {chunk_num}: {current_start.date()} to {current_end.date()}"
-                    )
-
-                    # Progress callback with detailed info
-                    if progress_callback:
-                        progress_callback(
-                            chunk_num,
-                            len(all_bars),
-                            f"Chunk {chunk_num}: {len(all_bars):,} Bars geladen, "
-                            f"aktuell bei {current_end.strftime('%d.%m.%Y')}"
-                        )
-
-                    request = CryptoBarsRequest(
-                        symbol_or_symbols=alpaca_symbol,  # Use converted symbol format
-                        timeframe=alpaca_timeframe,
-                        start=current_start,
-                        end=current_end
-                    )
-
-                    # Fetch chunk
-                    bars_response = await asyncio.to_thread(
-                        client.get_crypto_bars, request
-                    )
-
-                    # Convert chunk to HistoricalBar objects
-                    # Use alpaca_symbol to access response data (key matches request symbol)
-                    if hasattr(bars_response, 'data') and alpaca_symbol in bars_response.data:
-                        for bar in bars_response.data[alpaca_symbol]:
-                            hist_bar = HistoricalBar(
-                                timestamp=bar.timestamp,
-                                open=bar.open,
-                                high=bar.high,
-                                low=bar.low,
-                                close=bar.close,
-                                volume=int(bar.volume) if bar.volume else 0,
-                                vwap=bar.vwap if hasattr(bar, 'vwap') else None,
-                                trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
-                                source="alpaca_crypto"
-                            )
-                            all_bars.append(hist_bar)
-
-                    # Move to next chunk
-                    current_start = current_end
-
-                    # Rate limiting between chunks
-                    if current_start < end_date_utc:
-                        await asyncio.sleep(self.rate_limit_delay)
-
-                logger.info(
-                    f"Fetched {len(all_bars)} crypto bars from Alpaca for {symbol} "
-                    f"({chunk_num} chunks)"
+                all_bars = await self._fetch_bars_chunked(
+                    client, CryptoBarsRequest, alpaca_symbol,
+                    alpaca_timeframe, start_utc, end_utc,
+                    progress_callback, symbol
                 )
             else:
-                # Single request for short time spans
-                request = CryptoBarsRequest(
-                    symbol_or_symbols=alpaca_symbol,  # Use converted symbol format
-                    timeframe=alpaca_timeframe,
-                    start=start_date_utc,
-                    end=end_date_utc
+                all_bars = await self._fetch_bars_single(
+                    client, CryptoBarsRequest, alpaca_symbol,
+                    alpaca_timeframe, start_utc, end_utc, symbol
                 )
-
-                bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
-
-                # Check response (use alpaca_symbol to access data)
-                if not hasattr(bars_response, 'data') or alpaca_symbol not in bars_response.data:
-                    logger.warning(f"No crypto data found for {alpaca_symbol} (from {symbol}) from Alpaca")
-                    if hasattr(bars_response, 'data'):
-                        logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
-                    return []
-
-                # Convert to HistoricalBar objects
-                for bar in bars_response.data[alpaca_symbol]:
-                    hist_bar = HistoricalBar(
-                        timestamp=bar.timestamp,
-                        open=bar.open,
-                        high=bar.high,
-                        low=bar.low,
-                        close=bar.close,
-                        volume=int(bar.volume) if bar.volume else 0,
-                        vwap=bar.vwap if hasattr(bar, 'vwap') else None,
-                        trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
-                        source="alpaca_crypto"
-                    )
-                    all_bars.append(hist_bar)
-
-                logger.info(f"Fetched {len(all_bars)} crypto bars from Alpaca for {symbol}")
 
             return all_bars
 
         except Exception as e:
-            error_str = str(e)
-            self.last_error = error_str
-            if "401" in error_str or "authorization" in error_str.lower():
-                self.auth_failed = True
-            logger.error(f"Error fetching Alpaca crypto data: {e}")
+            return self._handle_fetch_error(e)
+
+    def _create_crypto_client(self, ClientClass):
+        """Create Alpaca crypto client with or without API keys.
+
+        Args:
+            ClientClass: CryptoHistoricalDataClient class.
+
+        Returns:
+            Configured client instance.
+        """
+        if self.api_key and self.api_secret:
+            client = ClientClass(api_key=self.api_key, secret_key=self.api_secret)
+            logger.debug("Alpaca crypto client created with API keys")
+        else:
+            client = ClientClass()
+            logger.debug("Alpaca crypto client created without API keys (market data only)")
+        return client
+
+    def _prepare_fetch_parameters(
+        self, symbol: str, timeframe: Timeframe,
+        start_date: datetime, end_date: datetime
+    ) -> tuple:
+        """Prepare fetch parameters (symbol, timeframe, dates, chunking flag).
+
+        Args:
+            symbol: Original symbol.
+            timeframe: Timeframe.
+            start_date: Start date.
+            end_date: End date.
+
+        Returns:
+            Tuple of (alpaca_symbol, alpaca_timeframe, start_utc, end_utc, needs_chunking).
+        """
+        # Convert timeframe and symbol
+        alpaca_timeframe = self._timeframe_to_alpaca(timeframe)
+        alpaca_symbol = self._convert_symbol_to_alpaca_format(symbol)
+
+        # Convert to UTC if timezone-aware
+        start_utc = self._ensure_utc_naive(start_date)
+        end_utc = self._ensure_utc_naive(end_date)
+
+        # Calculate time span to determine if chunking is needed
+        time_span = end_utc - start_utc
+        needs_chunking = time_span.days > 31  # Chunk if more than 1 month
+
+        logger.info(
+            f"Alpaca crypto request: {alpaca_symbol} (from {symbol}), "
+            f"timeframe={timeframe.value}, "
+            f"start={start_utc}, "
+            f"end={end_utc}, "
+            f"span={time_span.days} days, "
+            f"chunking={'yes' if needs_chunking else 'no'}"
+        )
+
+        return alpaca_symbol, alpaca_timeframe, start_utc, end_utc, needs_chunking
+
+    async def _fetch_bars_chunked(
+        self, client, RequestClass, alpaca_symbol: str,
+        alpaca_timeframe, start_utc: datetime, end_utc: datetime,
+        progress_callback, original_symbol: str
+    ) -> list[HistoricalBar]:
+        """Fetch bars in chunks for long time periods.
+
+        Args:
+            client: Alpaca client.
+            RequestClass: CryptoBarsRequest class.
+            alpaca_symbol: Converted Alpaca symbol.
+            alpaca_timeframe: Converted timeframe.
+            start_utc: Start date UTC.
+            end_utc: End date UTC.
+            progress_callback: Progress callback function.
+            original_symbol: Original symbol for logging.
+
+        Returns:
+            List of HistoricalBar objects.
+        """
+        from dateutil.relativedelta import relativedelta
+
+        all_bars = []
+        current_start = start_utc
+        chunk_num = 0
+
+        while current_start < end_utc:
+            current_end = min(
+                current_start + relativedelta(months=1),
+                end_utc
+            )
+
+            chunk_num += 1
+            logger.debug(f"Chunk {chunk_num}: {current_start.date()} to {current_end.date()}")
+
+            # Progress callback with detailed info
+            if progress_callback:
+                progress_callback(
+                    chunk_num,
+                    len(all_bars),
+                    f"Chunk {chunk_num}: {len(all_bars):,} Bars geladen, "
+                    f"aktuell bei {current_end.strftime('%d.%m.%Y')}"
+                )
+
+            # Fetch chunk
+            request = RequestClass(
+                symbol_or_symbols=alpaca_symbol,
+                timeframe=alpaca_timeframe,
+                start=current_start,
+                end=current_end
+            )
+
+            bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
+
+            # Convert chunk to HistoricalBar objects
+            chunk_bars = self._convert_bars_to_historical(bars_response, alpaca_symbol)
+            all_bars.extend(chunk_bars)
+
+            # Move to next chunk
+            current_start = current_end
+
+            # Rate limiting between chunks
+            if current_start < end_utc:
+                await asyncio.sleep(self.rate_limit_delay)
+
+        logger.info(
+            f"Fetched {len(all_bars)} crypto bars from Alpaca for {original_symbol} "
+            f"({chunk_num} chunks)"
+        )
+        return all_bars
+
+    async def _fetch_bars_single(
+        self, client, RequestClass, alpaca_symbol: str,
+        alpaca_timeframe, start_utc: datetime, end_utc: datetime,
+        original_symbol: str
+    ) -> list[HistoricalBar]:
+        """Fetch bars with single request for short time periods.
+
+        Args:
+            client: Alpaca client.
+            RequestClass: CryptoBarsRequest class.
+            alpaca_symbol: Converted Alpaca symbol.
+            alpaca_timeframe: Converted timeframe.
+            start_utc: Start date UTC.
+            end_utc: End date UTC.
+            original_symbol: Original symbol for logging.
+
+        Returns:
+            List of HistoricalBar objects.
+        """
+        request = RequestClass(
+            symbol_or_symbols=alpaca_symbol,
+            timeframe=alpaca_timeframe,
+            start=start_utc,
+            end=end_utc
+        )
+
+        bars_response = await asyncio.to_thread(client.get_crypto_bars, request)
+
+        # Check response (use alpaca_symbol to access data)
+        if not hasattr(bars_response, 'data') or alpaca_symbol not in bars_response.data:
+            logger.warning(f"No crypto data found for {alpaca_symbol} (from {original_symbol}) from Alpaca")
+            if hasattr(bars_response, 'data'):
+                logger.debug(f"Available symbols: {list(bars_response.data.keys())}")
             return []
+
+        # Convert to HistoricalBar objects
+        all_bars = self._convert_bars_to_historical(bars_response, alpaca_symbol)
+
+        logger.info(f"Fetched {len(all_bars)} crypto bars from Alpaca for {original_symbol}")
+        return all_bars
+
+    def _convert_bars_to_historical(
+        self, bars_response, alpaca_symbol: str
+    ) -> list[HistoricalBar]:
+        """Convert Alpaca bar response to HistoricalBar objects.
+
+        Args:
+            bars_response: Response from Alpaca API.
+            alpaca_symbol: Symbol used in request.
+
+        Returns:
+            List of HistoricalBar objects.
+        """
+        hist_bars = []
+
+        if hasattr(bars_response, 'data') and alpaca_symbol in bars_response.data:
+            for bar in bars_response.data[alpaca_symbol]:
+                hist_bar = HistoricalBar(
+                    timestamp=bar.timestamp,
+                    open=bar.open,
+                    high=bar.high,
+                    low=bar.low,
+                    close=bar.close,
+                    volume=int(bar.volume) if bar.volume else 0,
+                    vwap=bar.vwap if hasattr(bar, 'vwap') else None,
+                    trades=bar.trade_count if hasattr(bar, 'trade_count') else None,
+                    source="alpaca_crypto"
+                )
+                hist_bars.append(hist_bar)
+
+        return hist_bars
+
+    def _handle_fetch_error(self, error: Exception) -> list[HistoricalBar]:
+        """Handle fetch error and return empty list.
+
+        Args:
+            error: Exception that occurred.
+
+        Returns:
+            Empty list.
+        """
+        error_str = str(error)
+        self.last_error = error_str
+        if "401" in error_str or "authorization" in error_str.lower():
+            self.auth_failed = True
+        logger.error(f"Error fetching Alpaca crypto data: {error}")
+        return []
 
     async def is_available(self) -> bool:
         """Check if Alpaca crypto provider is available.
