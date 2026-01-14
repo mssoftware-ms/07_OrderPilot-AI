@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+from src.ui.widgets.chart_mixins.data_loading_utils import get_local_timezone_offset_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,20 @@ class BotCallbacksSignalMixin:
         trailing_activation = self.tra_percent_spin.value() if hasattr(self, 'tra_percent_spin') else 0.0
         return capital, risk_pct, invested, initial_sl_pct, trailing_pct, trailing_activation
 
+    def _get_chart_timestamp(self, dt: datetime | None = None) -> int:
+        if dt is None:
+            dt = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp()) + get_local_timezone_offset_seconds()
+
+    def _format_entry_time(self, dt: datetime | None = None) -> str:
+        if dt is None:
+            dt = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
     def _ensure_stop_price(self, signal_stop_price: float, entry_price: float, initial_sl_pct: float, side: str) -> float:
         if signal_stop_price <= 0 and entry_price > 0 and initial_sl_pct > 0:
             if side.lower() == "long":
@@ -160,7 +175,10 @@ class BotCallbacksSignalMixin:
                 sig["price"] = entry_price
                 sig["is_open"] = True
                 sig["label"] = f"E:{int(score * 100)}"
-                sig["entry_timestamp"] = int(datetime.now().timestamp())
+                entry_dt = datetime.now(timezone.utc)
+                sig["entry_timestamp"] = self._get_chart_timestamp(entry_dt)
+                sig["entry_timestamp_utc"] = int(entry_dt.timestamp())
+                sig["time"] = self._format_entry_time(entry_dt)
                 sig["stop_price"] = signal_stop_price
                 sig["invested"] = invested
                 sig["initial_sl_pct"] = initial_sl_pct
@@ -201,7 +219,7 @@ class BotCallbacksSignalMixin:
                 trailing_stop_price = entry_price * (1 + trailing_pct / 100)
 
         self._signal_history.append({
-            "time": datetime.now().strftime("%H:%M:%S"),
+            "time": self._format_entry_time(),
             "type": signal_type,
             "side": side,
             "score": score,
@@ -216,7 +234,8 @@ class BotCallbacksSignalMixin:
             "pnl_percent": 0.0,
             "is_open": True,
             "label": f"E:{int(score * 100)}",
-            "entry_timestamp": int(datetime.now().timestamp()),
+            "entry_timestamp": self._get_chart_timestamp(),
+            "entry_timestamp_utc": int(datetime.now(timezone.utc).timestamp()),
             "initial_sl_pct": initial_sl_pct,
             "trailing_stop_pct": trailing_pct,
             "trailing_stop_price": trailing_stop_price,
@@ -300,7 +319,7 @@ class BotCallbacksSignalMixin:
     ) -> None:
         self._add_ki_log_entry("DEBUG", f"Chart-Elemente zeichnen: entry={entry_price:.2f}, SL={signal_stop_price:.2f}")
         try:
-            entry_ts = int(datetime.now().timestamp())
+            entry_ts = self._get_chart_timestamp()
             label = f"E:{int(score * 100)}"
             self.chart_widget.add_bot_marker(
                 timestamp=entry_ts,
