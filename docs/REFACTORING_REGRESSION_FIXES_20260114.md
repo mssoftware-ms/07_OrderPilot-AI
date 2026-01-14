@@ -214,6 +214,42 @@ Failed to start bot
 
 ---
 
+### 10. Missing `_on_trading_blocked()` ✅ FIXED
+**File:** `src/ui/widgets/chart_window_mixins/bot_callbacks_lifecycle_mixin.py`
+**Problem:** Trading-Blocked-Callback existierte nicht
+**Symptom:**
+```
+AttributeError: 'ChartWindow' object has no attribute '_on_trading_blocked'
+Failed to start bot
+```
+**Fix:** Callback-Methode wiederhergestellt (15 LOC)
+**Commit:** ccc1f93
+
+**Funktionalität:**
+- Verarbeitet Trading-Blocked-Events von Risk-Limits
+- Aktualisiert UI Position-Label auf "BLOCKED" Status
+- Logged Blocked-Gründe ins KI-Log
+
+---
+
+### 11. Missing `_on_macd_signal()` ✅ FIXED
+**File:** `src/ui/widgets/chart_window_mixins/bot_callbacks_lifecycle_mixin.py`
+**Problem:** MACD-Signal-Callback existierte nicht
+**Symptom:**
+```
+AttributeError: 'ChartWindow' object has no attribute '_on_macd_signal'
+Failed to start bot
+```
+**Fix:** Callback-Methode wiederhergestellt (19 LOC)
+**Commit:** ccc1f93
+
+**Funktionalität:**
+- Verarbeitet MACD-Cross-Signale vom Bot
+- Zeichnet MACD-Marker im Chart (bullish/bearish)
+- Logged MACD-Signale ins KI-Log
+
+---
+
 ## 💾 COMMITS
 
 | Commit | Beschreibung | Files Changed | LOC Added |
@@ -222,8 +258,9 @@ Failed to start bot
 | 5daeb86 | Add missing strategy simulator callback methods | 1 file | 111 |
 | cae2eb4 | Fix QDateEdit import & _on_toggle_entry_points | 2 files | 11 |
 | fc92d9b | Fix missing _on_bot_decision callback | 4 files | 123 |
+| ccc1f93 | Fix _on_trading_blocked + _on_macd_signal | 3 files | 48 |
 
-**Total:** 4 commits, 277 LOC restored
+**Total:** 5 commits, 325 LOC restored
 
 ---
 
@@ -234,18 +271,20 @@ Failed to start bot
 - **Fix Implementation (Round 1):** 20 min (restore 6 methods, add imports)
 - **Error Discovery (Round 2):** 2 min (2 weitere Fehler beim zweiten Start)
 - **Fix Implementation (Round 2):** 10 min (restore 2 weitere Methoden/Imports)
-- **Error Discovery (Round 3):** 1 min (Bot-Start-Fehler)
+- **Error Discovery (Round 3):** 1 min (Bot-Start-Fehler #1)
 - **Fix Implementation (Round 3):** 15 min (restore _on_bot_decision, 90 LOC)
+- **Error Discovery (Round 4):** 1 min (Bot-Start-Fehler #2)
+- **Fix Implementation (Round 4):** 10 min (restore 2 bot callbacks, 34 LOC)
 - **Verification:** 10 min (compile checks, test connections)
-- **Documentation:** 30 min (this report + updates)
+- **Documentation:** 35 min (this report + updates)
 
-**Total:** ~108 minutes
+**Total:** ~124 minutes
 
 ---
 
 ## ✅ STATUS
 
-**All 9 regressions fixed and verified.**
+**All 11 regressions fixed and verified.**
 
 **Ready for:**
 - Application testing
