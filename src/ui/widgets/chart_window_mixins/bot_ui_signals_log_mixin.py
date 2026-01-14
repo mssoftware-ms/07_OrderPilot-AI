@@ -219,12 +219,11 @@ class BotUISignalsLogMixin:
 
     def _open_prompt_management(self) -> None:
         """Open the Prompt Management dialog (Issue #2)."""
-        from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog
-
         try:
+            from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog
             dialog = PromptManagementDialog(self)
             dialog.exec()
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             # Fallback if dialog doesn't exist yet
             QMessageBox.information(
                 self,

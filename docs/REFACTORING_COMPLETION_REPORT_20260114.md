@@ -251,8 +251,9 @@ python3 -m py_compile src/**/*.py
 
 ## 🐛 POST-REFACTORING REGRESSION FIXES
 
-After completing the refactoring, 12 critical regressions were discovered during application testing:
+After completing the refactoring, 13 regressions were discovered during application testing:
 
+### Startup Errors (1-12):
 1. ✅ Missing QFrame import in backtest_tab_ui_setup_mixin.py
 2. ✅ Missing _on_simulator_result_selected() method
 3. ✅ Missing _on_show_simulation_markers() method
@@ -266,7 +267,10 @@ After completing the refactoring, 12 critical regressions were discovered during
 11. ✅ Missing _on_macd_signal() method (bot start failure)
 12. ✅ Missing timedelta import in backtest_tab_ui_setup_mixin.py
 
-**All regressions fixed in 6 commits (326 LOC restored from git history)**
+### Runtime Errors (13):
+13. ✅ Import error not caught in _open_prompt_management() (gracefully handled with fallback)
+
+**All regressions fixed in 7 commits (329 LOC restored from git history)**
 
 **See:** `REFACTORING_REGRESSION_FIXES_20260114.md` for detailed analysis
 
