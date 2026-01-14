@@ -503,11 +503,7 @@ def generate_entries(
 ) -> list[EntryEvent]:
     """Generate entry signals for the entire visible range.
 
-    Uses regime-specific logic:
-    - TREND_UP/DOWN: Pullback entries with ATR-normalized distance
-    - RANGE: Mean-reversion at BB extremes
-    - SQUEEZE: Breakout confirmation with volume spike
-    - HIGH_VOL: Only extreme signals
+    Uses regime-specific logic via strategy pattern.
 
     Args:
         candles: OHLCV candles.
@@ -521,149 +517,221 @@ def generate_entries(
     if not candles or not features:
         return []
 
-    closes = features["closes"]
-    atr = features["atr"]
-    rsi = features["rsi"]
-    bbp = features["bb_percent"]
-    bb_up = features["bb_up"]
-    bb_lo = features["bb_lo"]
-    bb_width = features["bb_width"]
-    vol = features["volume"]
-    vol_sma = features["vol_sma"]
-    dist = features["dist_ema_atr"]
-    up_w = features["up_wick"]
-    lo_w = features["lo_wick"]
-    piv_h = features["pivot_high"]
-    piv_l = features["pivot_low"]
-    adx = features["adx"]
+    context = _prepare_entry_context(candles, features, params)
+    raw = _generate_raw_entries(candles, context, regime, params)
+    return _postprocess_entries(raw, cooldown_bars=params.cooldown_bars, cluster_window_bars=params.cluster_window_bars)
 
+
+def _prepare_entry_context(
+    candles: list[dict[str, Any]], features: dict[str, list[float]], params: OptimParams
+) -> dict[str, Any]:
+    """Prepare context data for entry generation."""
     n = len(candles)
     warmup = min(50, max(20, int(max(params.ema_slow, params.bb_period, params.adx_period) * 0.6)))
     warmup = min(warmup, n - 1)
 
+    return {
+        "closes": features["closes"],
+        "atr": features["atr"],
+        "rsi": features["rsi"],
+        "bbp": features["bb_percent"],
+        "bb_up": features["bb_up"],
+        "bb_lo": features["bb_lo"],
+        "bb_width": features["bb_width"],
+        "vol": features["volume"],
+        "vol_sma": features["vol_sma"],
+        "dist": features["dist_ema_atr"],
+        "up_w": features["up_wick"],
+        "lo_w": features["lo_wick"],
+        "piv_h": features["pivot_high"],
+        "piv_l": features["pivot_low"],
+        "adx": features["adx"],
+        "n": n,
+        "warmup": warmup,
+    }
+
+
+def _generate_raw_entries(
+    candles: list[dict[str, Any]], context: dict[str, Any], regime: RegimeType, params: OptimParams
+) -> list[EntryEvent]:
+    """Generate raw entry events before postprocessing."""
     raw: list[EntryEvent] = []
 
-    for i in range(n):
-        if i < warmup:
+    for i in range(context["n"]):
+        if i < context["warmup"]:
             continue
 
-        side: EntrySide | None = None
-        score = 0.0
-        reasons: list[str] = []
+        signal = _check_entry_at_index(i, context, regime, params)
+        if signal:
+            raw.append(_create_entry_event(candles[i], signal, context["closes"][i], regime))
 
-        a = max(1e-12, atr[i])
-        d = dist[i]
-        r = rsi[i]
-        conf_vol = (vol[i] / max(1e-12, vol_sma[i])) if i < len(vol_sma) else 1.0
-        wick_long = lo_w[i]
-        wick_short = up_w[i]
-        is_piv_low = piv_l[i] > 0.5
-        is_piv_high = piv_h[i] > 0.5
+    return raw
 
-        # ---------------- Trend regimes: pullback entries ----------------
-        if regime == RegimeType.TREND_UP:
-            # Pullback = price below EMA_slow in ATR units, but not "free fall"
-            if d <= 0.0 and abs(d) <= params.pullback_atr * 2.2:
-                score += _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
-                reasons.append("trend_pullback_atr")
 
-                if r <= params.pullback_rsi:
-                    score += 0.18
-                    reasons.append("rsi_pullback")
+def _check_entry_at_index(
+    i: int, context: dict[str, Any], regime: RegimeType, params: OptimParams
+) -> dict[str, Any] | None:
+    """Check for entry signal at given index."""
+    # Extract current bar data
+    bar_data = {
+        "atr": max(1e-12, context["atr"][i]),
+        "dist": context["dist"][i],
+        "rsi": context["rsi"][i],
+        "conf_vol": (context["vol"][i] / max(1e-12, context["vol_sma"][i])) if i < len(context["vol_sma"]) else 1.0,
+        "wick_long": context["lo_w"][i],
+        "wick_short": context["up_w"][i],
+        "is_piv_low": context["piv_l"][i] > 0.5,
+        "is_piv_high": context["piv_h"][i] > 0.5,
+        "adx": context["adx"][i],
+        "bbp": context["bbp"][i],
+        "bb_width": context["bb_width"][i],
+        "close": context["closes"][i],
+        "bb_up": context["bb_up"][i],
+        "bb_lo": context["bb_lo"][i],
+    }
 
-                if wick_long >= params.wick_reject or is_piv_low:
-                    score += 0.18
-                    reasons.append("rejection_or_pivot_low")
+    # Route to regime-specific handler
+    handlers = {
+        RegimeType.TREND_UP: _handle_trend_up,
+        RegimeType.TREND_DOWN: _handle_trend_down,
+        RegimeType.RANGE: _handle_range,
+        RegimeType.SQUEEZE: _handle_squeeze,
+        RegimeType.HIGH_VOL: _handle_high_vol,
+    }
 
-                # Avoid entries when ADX collapsed (anti-flip)
-                if adx[i] < params.adx_trend * 0.75:
-                    score -= 0.15
-                    reasons.append("weak_trend_penalty")
+    handler = handlers.get(regime)
+    if not handler:
+        return None
 
-                side = EntrySide.LONG
+    result = handler(bar_data, params)
+    if result and result["score"] >= params.min_confidence:
+        return result
+    return None
 
-        elif regime == RegimeType.TREND_DOWN:
-            if d >= 0.0 and abs(d) <= params.pullback_atr * 2.2:
-                score += _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
-                reasons.append("trend_pullback_atr")
 
-                # In downtrend: RSI high-ish on pullback
-                if r >= (100.0 - params.pullback_rsi):
-                    score += 0.18
-                    reasons.append("rsi_pullback")
+def _handle_trend_up(bar_data: dict[str, Any], params: OptimParams) -> dict[str, Any] | None:
+    """Handle TREND_UP regime: pullback entries."""
+    d = bar_data["dist"]
+    if not (d <= 0.0 and abs(d) <= params.pullback_atr * 2.2):
+        return None
 
-                if wick_short >= params.wick_reject or is_piv_high:
-                    score += 0.18
-                    reasons.append("rejection_or_pivot_high")
+    score = _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
+    reasons = ["trend_pullback_atr"]
 
-                if adx[i] < params.adx_trend * 0.75:
-                    score -= 0.15
-                    reasons.append("weak_trend_penalty")
+    if bar_data["rsi"] <= params.pullback_rsi:
+        score += 0.18
+        reasons.append("rsi_pullback")
 
-                side = EntrySide.SHORT
+    if bar_data["wick_long"] >= params.wick_reject or bar_data["is_piv_low"]:
+        score += 0.18
+        reasons.append("rejection_or_pivot_low")
 
-        # ---------------- Range regime: mean reversion at BB extremes ----------------
-        elif regime == RegimeType.RANGE:
-            bbp_i = bbp[i]
-            if bbp_i <= params.bb_entry and r <= params.rsi_oversold:
-                score = 0.55
-                score += _clamp((params.bb_entry - bbp_i) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
-                if wick_long >= params.wick_reject or is_piv_low:
-                    score += 0.15
-                    reasons.append("rejection_or_pivot_low")
-                reasons += ["range_bb_oversold", "rsi_oversold"]
-                side = EntrySide.LONG
+    if bar_data["adx"] < params.adx_trend * 0.75:
+        score -= 0.15
+        reasons.append("weak_trend_penalty")
 
-            elif bbp_i >= (1.0 - params.bb_entry) and r >= params.rsi_overbought:
-                score = 0.55
-                score += _clamp((bbp_i - (1.0 - params.bb_entry)) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
-                if wick_short >= params.wick_reject or is_piv_high:
-                    score += 0.15
-                    reasons.append("rejection_or_pivot_high")
-                reasons += ["range_bb_overbought", "rsi_overbought"]
-                side = EntrySide.SHORT
+    return {"side": EntrySide.LONG, "score": score, "reasons": reasons}
 
-        # ---------------- Squeeze: breakout with minimal confirmation ----------------
-        elif regime == RegimeType.SQUEEZE:
-            # Require still narrow bands
-            if bb_width[i] <= params.squeeze_bb_width * 1.4:
-                # Breakout above upper band by x*ATR
-                if closes[i] > (bb_up[i] + params.breakout_atr * a) and conf_vol >= params.vol_spike_factor:
-                    score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
-                    reasons += ["squeeze_breakout_up", "vol_spike"]
-                    side = EntrySide.LONG
-                # Breakout below lower band
-                elif closes[i] < (bb_lo[i] - params.breakout_atr * a) and conf_vol >= params.vol_spike_factor:
-                    score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
-                    reasons += ["squeeze_breakout_down", "vol_spike"]
-                    side = EntrySide.SHORT
 
-        # HIGH_VOL: usually reduce trading (or require stronger confirmation)
-        elif regime == RegimeType.HIGH_VOL:
-            # For MVP: allow only stronger extremes (avoid spam)
-            bbp_i = bbp[i]
-            if bbp_i <= (params.bb_entry * 0.75) and r <= (params.rsi_oversold - 3):
-                score = 0.62
-                reasons += ["high_vol_extreme_long"]
-                side = EntrySide.LONG
-            elif bbp_i >= (1.0 - params.bb_entry * 0.75) and r >= (params.rsi_overbought + 3):
-                score = 0.62
-                reasons += ["high_vol_extreme_short"]
-                side = EntrySide.SHORT
+def _handle_trend_down(bar_data: dict[str, Any], params: OptimParams) -> dict[str, Any] | None:
+    """Handle TREND_DOWN regime: pullback entries."""
+    d = bar_data["dist"]
+    if not (d >= 0.0 and abs(d) <= params.pullback_atr * 2.2):
+        return None
 
-        if side and score >= params.min_confidence:
-            raw.append(
-                EntryEvent(
-                    timestamp=candles[i].get("timestamp"),
-                    side=side,
-                    confidence=float(_clamp(score, 0.0, 1.0)),
-                    price=closes[i],
-                    reason_tags=reasons,
-                    regime=regime,
-                )
-            )
+    score = _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
+    reasons = ["trend_pullback_atr"]
 
-    return _postprocess_entries(raw, cooldown_bars=params.cooldown_bars, cluster_window_bars=params.cluster_window_bars)
+    if bar_data["rsi"] >= (100.0 - params.pullback_rsi):
+        score += 0.18
+        reasons.append("rsi_pullback")
+
+    if bar_data["wick_short"] >= params.wick_reject or bar_data["is_piv_high"]:
+        score += 0.18
+        reasons.append("rejection_or_pivot_high")
+
+    if bar_data["adx"] < params.adx_trend * 0.75:
+        score -= 0.15
+        reasons.append("weak_trend_penalty")
+
+    return {"side": EntrySide.SHORT, "score": score, "reasons": reasons}
+
+
+def _handle_range(bar_data: dict[str, Any], params: OptimParams) -> dict[str, Any] | None:
+    """Handle RANGE regime: mean reversion at BB extremes."""
+    bbp_i = bar_data["bbp"]
+    r = bar_data["rsi"]
+
+    # Long at lower extreme
+    if bbp_i <= params.bb_entry and r <= params.rsi_oversold:
+        score = 0.55 + _clamp((params.bb_entry - bbp_i) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
+        reasons = ["range_bb_oversold", "rsi_oversold"]
+        if bar_data["wick_long"] >= params.wick_reject or bar_data["is_piv_low"]:
+            score += 0.15
+            reasons.append("rejection_or_pivot_low")
+        return {"side": EntrySide.LONG, "score": score, "reasons": reasons}
+
+    # Short at upper extreme
+    if bbp_i >= (1.0 - params.bb_entry) and r >= params.rsi_overbought:
+        score = 0.55 + _clamp((bbp_i - (1.0 - params.bb_entry)) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
+        reasons = ["range_bb_overbought", "rsi_overbought"]
+        if bar_data["wick_short"] >= params.wick_reject or bar_data["is_piv_high"]:
+            score += 0.15
+            reasons.append("rejection_or_pivot_high")
+        return {"side": EntrySide.SHORT, "score": score, "reasons": reasons}
+
+    return None
+
+
+def _handle_squeeze(bar_data: dict[str, Any], params: OptimParams) -> dict[str, Any] | None:
+    """Handle SQUEEZE regime: breakout with volume confirmation."""
+    if bar_data["bb_width"] > params.squeeze_bb_width * 1.4:
+        return None
+
+    conf_vol = bar_data["conf_vol"]
+    if conf_vol < params.vol_spike_factor:
+        return None
+
+    a = bar_data["atr"]
+    close = bar_data["close"]
+
+    # Breakout above
+    if close > (bar_data["bb_up"] + params.breakout_atr * a):
+        score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
+        return {"side": EntrySide.LONG, "score": score, "reasons": ["squeeze_breakout_up", "vol_spike"]}
+
+    # Breakout below
+    if close < (bar_data["bb_lo"] - params.breakout_atr * a):
+        score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
+        return {"side": EntrySide.SHORT, "score": score, "reasons": ["squeeze_breakout_down", "vol_spike"]}
+
+    return None
+
+
+def _handle_high_vol(bar_data: dict[str, Any], params: OptimParams) -> dict[str, Any] | None:
+    """Handle HIGH_VOL regime: only extreme signals."""
+    bbp_i = bar_data["bbp"]
+    r = bar_data["rsi"]
+
+    if bbp_i <= (params.bb_entry * 0.75) and r <= (params.rsi_oversold - 3):
+        return {"side": EntrySide.LONG, "score": 0.62, "reasons": ["high_vol_extreme_long"]}
+
+    if bbp_i >= (1.0 - params.bb_entry * 0.75) and r >= (params.rsi_overbought + 3):
+        return {"side": EntrySide.SHORT, "score": 0.62, "reasons": ["high_vol_extreme_short"]}
+
+    return None
+
+
+def _create_entry_event(candle: dict[str, Any], signal: dict[str, Any], price: float, regime: RegimeType) -> EntryEvent:
+    """Create EntryEvent from signal data."""
+    return EntryEvent(
+        timestamp=candle.get("timestamp"),
+        side=signal["side"],
+        confidence=float(_clamp(signal["score"], 0.0, 1.0)),
+        price=price,
+        reason_tags=signal["reasons"],
+        regime=regime,
+    )
 
 
 def _postprocess_entries(entries: list[EntryEvent], cooldown_bars: int, cluster_window_bars: int) -> list[EntryEvent]:
