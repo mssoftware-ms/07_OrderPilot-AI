@@ -311,148 +311,21 @@ class BacktestCallbacksTemplateMixin:
         """
         self._log("📝 Variante ableiten...")
 
-        # Prüfe ob Daten in Tabelle vorhanden
-        if self.config_inspector_table.rowCount() == 0:
-            QMessageBox.warning(
-                self, "Keine Basisdaten",
-                "Bitte zuerst Engine Configs laden oder ein Template öffnen."
-            )
+        # Validate base data
+        if not self._validate_base_data():
             return
 
         try:
-            # Dialog für Varianten-Erstellung
-            dialog = QDialog(self)
-            dialog.setWindowTitle("📝 Variante aus Basis ableiten")
-            dialog.setMinimumSize(600, 500)
-
-            dlg_layout = QVBoxLayout(dialog)
-
-            # Info
-            info = QLabel(
-                "Wähle Parameter aus der Basistabelle und passe deren Werte an.\n"
-                "Nicht geänderte Werte werden von der Basis übernommen."
-            )
-            info.setStyleSheet("color: #888; font-size: 11px; margin-bottom: 10px;")
-            dlg_layout.addWidget(info)
-
-            # Varianten-Name
-            name_layout = QHBoxLayout()
-            name_layout.addWidget(QLabel("Varianten-Name:"))
-            variant_name_input = QLineEdit()
-            variant_name_input.setPlaceholderText("z.B. 'Aggressive V1'")
-            name_layout.addWidget(variant_name_input)
-            dlg_layout.addLayout(name_layout)
-
-            # Parameter-Editor Tabelle (editierbar!)
-            param_table = QTableWidget()
-            param_table.setColumnCount(4)
-            param_table.setHorizontalHeaderLabels(["Parameter", "Basis-Wert", "Neuer Wert", "Ändern?"])
-            param_table.horizontalHeader().setStretchLastSection(True)
-
-            # Extrahiere Parameter aus Basistabelle
-            base_params = []
-            for row in range(self.config_inspector_table.rowCount()):
-                param_item = self.config_inspector_table.item(row, 1)
-                value_item = self.config_inspector_table.item(row, 2)
-                type_item = self.config_inspector_table.item(row, 5)
-
-                if param_item and value_item:
-                    base_params.append({
-                        'name': param_item.text(),
-                        'value': value_item.text(),
-                        'type': type_item.text() if type_item else 'float',
-                    })
-
-            param_table.setRowCount(len(base_params))
-
-            for row, param in enumerate(base_params):
-                # Parameter-Name (read-only)
-                name_item = QTableWidgetItem(param['name'])
-                name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                param_table.setItem(row, 0, name_item)
-
-                # Basis-Wert (read-only)
-                base_item = QTableWidgetItem(param['value'])
-                base_item.setFlags(base_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                base_item.setForeground(QColor("#888"))
-                param_table.setItem(row, 1, base_item)
-
-                # Neuer Wert (editierbar)
-                new_item = QTableWidgetItem(param['value'])
-                new_item.setForeground(QColor("#4CAF50"))
-                param_table.setItem(row, 2, new_item)
-
-                # Checkbox "Ändern?"
-                checkbox_widget = QWidget()
-                checkbox_layout = QHBoxLayout(checkbox_widget)
-                checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                checkbox_layout.setContentsMargins(0, 0, 0, 0)
-                checkbox = QCheckBox()
-                checkbox_layout.addWidget(checkbox)
-                param_table.setCellWidget(row, 3, checkbox_widget)
-
-            dlg_layout.addWidget(param_table)
-
-            # Quick-Actions
-            quick_layout = QHBoxLayout()
-
-            # "Alle auswählen" Button
-            select_all_btn = QPushButton("Alle auswählen")
-            select_all_btn.clicked.connect(
-                lambda: self._select_all_variant_checkboxes(param_table, True)
-            )
-            quick_layout.addWidget(select_all_btn)
-
-            # "Keine auswählen" Button
-            select_none_btn = QPushButton("Keine auswählen")
-            select_none_btn.clicked.connect(
-                lambda: self._select_all_variant_checkboxes(param_table, False)
-            )
-            quick_layout.addWidget(select_none_btn)
-
-            quick_layout.addStretch()
-            dlg_layout.addLayout(quick_layout)
-
-            # Buttons
-            btn_box = QDialogButtonBox()
-
-            create_btn = QPushButton("✅ Variante erstellen")
-            create_btn.clicked.connect(dialog.accept)
-            btn_box.addButton(create_btn, QDialogButtonBox.ButtonRole.AcceptRole)
-
-            cancel_btn = QPushButton("Abbrechen")
-            cancel_btn.clicked.connect(dialog.reject)
-            btn_box.addButton(cancel_btn, QDialogButtonBox.ButtonRole.RejectRole)
-
-            dlg_layout.addWidget(btn_box)
+            # Create and show dialog
+            dialog, variant_name_input, param_table = self._create_derive_variant_dialog()
 
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
 
-            # Variante aus Dialog-Daten erstellen
-            variant_name = variant_name_input.text() or f"Variante_{datetime.now().strftime('%H%M%S')}"
-            variant_params = {}
-
-            for row in range(param_table.rowCount()):
-                checkbox_widget = param_table.cellWidget(row, 3)
-                if checkbox_widget:
-                    checkbox = checkbox_widget.findChild(QCheckBox)
-                    if checkbox and checkbox.isChecked():
-                        param_name = param_table.item(row, 0).text()
-                        new_value = param_table.item(row, 2).text()
-
-                        # Versuche Wert zu konvertieren
-                        try:
-                            if '.' in new_value:
-                                variant_params[param_name] = float(new_value)
-                            elif new_value.isdigit():
-                                variant_params[param_name] = int(new_value)
-                            elif new_value.lower() in ('true', 'false'):
-                                variant_params[param_name] = new_value.lower() == 'true'
-                            else:
-                                variant_params[param_name] = new_value
-                        except ValueError:
-                            variant_params[param_name] = new_value
+            # Extract variant parameters from dialog
+            variant_name, variant_params = self._extract_variant_parameters(
+                variant_name_input, param_table
+            )
 
             if not variant_params:
                 QMessageBox.warning(
@@ -461,32 +334,273 @@ class BacktestCallbacksTemplateMixin:
                 )
                 return
 
-            # Variante zu Parameter-Space hinzufügen
-            try:
-                current_space_text = self.param_space_text.toPlainText()
-                if current_space_text.strip():
-                    current_space = json.loads(current_space_text)
-                else:
-                    current_space = {}
-            except json.JSONDecodeError:
-                current_space = {}
+            # Update parameter space with new variant
+            self._update_parameter_space_with_variant(variant_params)
 
-            # Merge Varianten-Parameter in Space
-            for param_name, param_value in variant_params.items():
-                if param_name not in current_space:
-                    current_space[param_name] = []
-                if param_value not in current_space[param_name]:
-                    current_space[param_name].append(param_value)
-
-            self.param_space_text.setText(json.dumps(current_space, indent=2))
-
-            self._log(f"✅ Variante '{variant_name}' erstellt mit {len(variant_params)} geänderten Parametern")
-            for param, value in list(variant_params.items())[:5]:
-                self._log(f"   {param}: {value}")
-            if len(variant_params) > 5:
-                self._log(f"   ... und {len(variant_params) - 5} weitere")
+            # Log success
+            self._log_variant_creation(variant_name, variant_params)
 
         except Exception as e:
             logger.exception("Failed to derive variant")
             self._log(f"❌ Varianten-Erstellung fehlgeschlagen: {e}")
+
+    def _validate_base_data(self) -> bool:
+        """Validate that base data is available in table."""
+        if self.config_inspector_table.rowCount() == 0:
+            QMessageBox.warning(
+                self, "Keine Basisdaten",
+                "Bitte zuerst Engine Configs laden oder ein Template öffnen."
+            )
+            return False
+        return True
+
+    def _create_derive_variant_dialog(self) -> tuple:
+        """Create dialog for variant derivation with parameter table.
+
+        Returns:
+            Tuple of (dialog, variant_name_input, param_table)
+        """
+        # Dialog für Varianten-Erstellung
+        dialog = QDialog(self)
+        dialog.setWindowTitle("📝 Variante aus Basis ableiten")
+        dialog.setMinimumSize(600, 500)
+
+        dlg_layout = QVBoxLayout(dialog)
+
+        # Info
+        info = QLabel(
+            "Wähle Parameter aus der Basistabelle und passe deren Werte an.\n"
+            "Nicht geänderte Werte werden von der Basis übernommen."
+        )
+        info.setStyleSheet("color: #888; font-size: 11px; margin-bottom: 10px;")
+        dlg_layout.addWidget(info)
+
+        # Varianten-Name
+        name_layout = QHBoxLayout()
+        name_layout.addWidget(QLabel("Varianten-Name:"))
+        variant_name_input = QLineEdit()
+        variant_name_input.setPlaceholderText("z.B. 'Aggressive V1'")
+        name_layout.addWidget(variant_name_input)
+        dlg_layout.addLayout(name_layout)
+
+        # Parameter-Editor Tabelle (editierbar!)
+        param_table = QTableWidget()
+        param_table.setColumnCount(4)
+        param_table.setHorizontalHeaderLabels(["Parameter", "Basis-Wert", "Neuer Wert", "Ändern?"])
+        param_table.horizontalHeader().setStretchLastSection(True)
+
+        # Extrahiere Parameter aus Basistabelle
+        base_params = self._extract_base_parameters()
+
+        param_table.setRowCount(len(base_params))
+
+        # Populate table with parameters
+        self._populate_variant_parameter_table(param_table, base_params)
+
+        dlg_layout.addWidget(param_table)
+
+        # Quick-Actions
+        quick_layout = QHBoxLayout()
+
+        # "Alle auswählen" Button
+        select_all_btn = QPushButton("Alle auswählen")
+        select_all_btn.clicked.connect(
+            lambda: self._select_all_variant_checkboxes(param_table, True)
+        )
+        quick_layout.addWidget(select_all_btn)
+
+        # "Keine auswählen" Button
+        select_none_btn = QPushButton("Keine auswählen")
+        select_none_btn.clicked.connect(
+            lambda: self._select_all_variant_checkboxes(param_table, False)
+        )
+        quick_layout.addWidget(select_none_btn)
+
+        quick_layout.addStretch()
+        dlg_layout.addLayout(quick_layout)
+
+        # Buttons
+        btn_box = QDialogButtonBox()
+
+        create_btn = QPushButton("✅ Variante erstellen")
+        create_btn.clicked.connect(dialog.accept)
+        btn_box.addButton(create_btn, QDialogButtonBox.ButtonRole.AcceptRole)
+
+        cancel_btn = QPushButton("Abbrechen")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_box.addButton(cancel_btn, QDialogButtonBox.ButtonRole.RejectRole)
+
+        dlg_layout.addWidget(btn_box)
+
+        return dialog, variant_name_input, param_table
+
+    def _extract_base_parameters(self) -> list[dict]:
+        """Extract parameters from base configuration table.
+
+        Returns:
+            List of parameter dictionaries with name, value, and type.
+        """
+        base_params = []
+        for row in range(self.config_inspector_table.rowCount()):
+            param_item = self.config_inspector_table.item(row, 1)
+            value_item = self.config_inspector_table.item(row, 2)
+            type_item = self.config_inspector_table.item(row, 5)
+
+            if param_item and value_item:
+                base_params.append({
+                    'name': param_item.text(),
+                    'value': value_item.text(),
+                    'type': type_item.text() if type_item else 'float',
+                })
+        return base_params
+
+    def _populate_variant_parameter_table(
+        self, param_table: QTableWidget, base_params: list[dict]
+    ) -> None:
+        """Populate variant parameter table with base parameters.
+
+        Args:
+            param_table: Table widget to populate.
+            base_params: List of base parameter dictionaries.
+        """
+        for row, param in enumerate(base_params):
+            # Parameter-Name (read-only)
+            name_item = QTableWidgetItem(param['name'])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            param_table.setItem(row, 0, name_item)
+
+            # Basis-Wert (read-only)
+            base_item = QTableWidgetItem(param['value'])
+            base_item.setFlags(base_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            base_item.setForeground(QColor("#888"))
+            param_table.setItem(row, 1, base_item)
+
+            # Neuer Wert (editierbar)
+            new_item = QTableWidgetItem(param['value'])
+            new_item.setForeground(QColor("#4CAF50"))
+            param_table.setItem(row, 2, new_item)
+
+            # Checkbox "Ändern?"
+            checkbox_widget = QWidget()
+            checkbox_layout = QHBoxLayout(checkbox_widget)
+            checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            checkbox_layout.setContentsMargins(0, 0, 0, 0)
+            checkbox = QCheckBox()
+            checkbox_layout.addWidget(checkbox)
+            param_table.setCellWidget(row, 3, checkbox_widget)
+
+    def _select_all_variant_checkboxes(
+        self, param_table: QTableWidget, select: bool
+    ) -> None:
+        """Select or deselect all checkboxes in variant parameter table.
+
+        Args:
+            param_table: Table widget containing checkboxes.
+            select: True to select all, False to deselect all.
+        """
+        for row in range(param_table.rowCount()):
+            checkbox_widget = param_table.cellWidget(row, 3)
+            if checkbox_widget:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox:
+                    checkbox.setChecked(select)
+
+    def _extract_variant_parameters(
+        self, variant_name_input: QLineEdit, param_table: QTableWidget
+    ) -> tuple[str, dict]:
+        """Extract variant parameters from dialog.
+
+        Args:
+            variant_name_input: Input field for variant name.
+            param_table: Table containing parameter changes.
+
+        Returns:
+            Tuple of (variant_name, variant_params dictionary)
+        """
+        from datetime import datetime
+
+        # Get variant name
+        variant_name = variant_name_input.text() or f"Variante_{datetime.now().strftime('%H%M%S')}"
+        variant_params = {}
+
+        # Extract checked parameters
+        for row in range(param_table.rowCount()):
+            checkbox_widget = param_table.cellWidget(row, 3)
+            if checkbox_widget:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox and checkbox.isChecked():
+                    param_name = param_table.item(row, 0).text()
+                    new_value = param_table.item(row, 2).text()
+
+                    # Convert value to appropriate type
+                    variant_params[param_name] = self._convert_parameter_value(new_value)
+
+        return variant_name, variant_params
+
+    def _convert_parameter_value(self, value_str: str) -> int | float | bool | str:
+        """Convert parameter value string to appropriate type.
+
+        Args:
+            value_str: String value to convert.
+
+        Returns:
+            Converted value (int, float, bool, or str).
+        """
+        try:
+            if '.' in value_str:
+                return float(value_str)
+            elif value_str.isdigit():
+                return int(value_str)
+            elif value_str.lower() in ('true', 'false'):
+                return value_str.lower() == 'true'
+            else:
+                return value_str
+        except ValueError:
+            return value_str
+
+    def _update_parameter_space_with_variant(self, variant_params: dict) -> None:
+        """Update parameter space JSON with new variant parameters.
+
+        Args:
+            variant_params: Dictionary of parameter changes.
+        """
+        # Load current parameter space
+        try:
+            current_space_text = self.param_space_text.toPlainText()
+            if current_space_text.strip():
+                current_space = json.loads(current_space_text)
+            else:
+                current_space = {}
+        except json.JSONDecodeError:
+            current_space = {}
+
+        # Merge variant parameters into space
+        for param_name, param_value in variant_params.items():
+            if param_name not in current_space:
+                current_space[param_name] = []
+            if param_value not in current_space[param_name]:
+                current_space[param_name].append(param_value)
+
+        # Update text field
+        self.param_space_text.setText(json.dumps(current_space, indent=2))
+
+    def _log_variant_creation(self, variant_name: str, variant_params: dict) -> None:
+        """Log successful variant creation.
+
+        Args:
+            variant_name: Name of the created variant.
+            variant_params: Dictionary of changed parameters.
+        """
+        self._log(
+            f"✅ Variante '{variant_name}' erstellt mit "
+            f"{len(variant_params)} geänderten Parametern"
+        )
+
+        # Log first 5 parameters
+        for param, value in list(variant_params.items())[:5]:
+            self._log(f"   {param}: {value}")
+
+        # Indicate if there are more
+        if len(variant_params) > 5:
+            self._log(f"   ... und {len(variant_params) - 5} weitere")
 
