@@ -299,23 +299,41 @@ class DataOverviewTab(QWidget):
             "market_context": {},
         }
 
-        # Strategy info from context
+        # Collect each data type using helper methods
+        data["strategy"] = self._collect_strategy_data()
+        data["timeframes"] = self._collect_timeframes_data()
+        self._merge_features_data(data)
+
+        if self._market_context:
+            data["market_context"] = self._collect_market_context_base()
+            self._add_candle_summary(data["market_context"])
+            data["indicators"] = self._collect_indicators_data()
+            data["levels"] = self._collect_levels_data()
+        else:
+            logger.warning("No market context available for data overview")
+
+        return data
+
+    def _collect_strategy_data(self) -> dict:
+        """Collect strategy information from context."""
         try:
             strategy = self.context.get_selected_strategy()
             if strategy:
-                data["strategy"] = {
+                return {
                     "name": strategy.name,
                     "risk_reward": getattr(strategy, 'risk_reward', None),
                     "confluence_threshold": getattr(strategy, 'confluence_threshold', None),
                 }
         except Exception as e:
             logger.debug(f"Could not get strategy: {e}")
+        return {}
 
-        # Timeframes from context
+    def _collect_timeframes_data(self) -> dict:
+        """Collect active timeframes from context."""
         try:
             timeframes = self.context.get_active_timeframes()
             if timeframes:
-                data["timeframes"] = {
+                return {
                     tf.tf: {
                         "role": tf.role,
                         "lookback": tf.lookback,
@@ -324,86 +342,103 @@ class DataOverviewTab(QWidget):
                 }
         except Exception as e:
             logger.debug(f"Could not get timeframes: {e}")
+        return {}
 
-        # Features from last analysis
-        if self._last_features:
-            for tf, features in self._last_features.items():
-                if tf == 'chart_data':
-                    # Chart data from _try_fetch_chart_data (Issue #34)
-                    data["chart_data"] = features
-                else:
-                    if tf not in data["timeframes"]:
-                        data["timeframes"][tf] = {}
-                    data["timeframes"][tf]["features"] = features
+    def _merge_features_data(self, data: dict) -> None:
+        """Merge features from last analysis into data dict."""
+        if not self._last_features:
+            return
 
-        # Market context
-        if self._market_context:
-            ctx = self._market_context
-            data["market_context"] = {
-                "symbol": ctx.symbol,
-                "timeframe": ctx.timeframe,
-                "regime": ctx.regime.value if hasattr(ctx.regime, 'value') else str(ctx.regime) if ctx.regime else None,
-                "trend": ctx.trend.value if hasattr(ctx.trend, 'value') else str(ctx.trend) if ctx.trend else None,
-            }
-
-            logger.debug(f"Market context found: {ctx.symbol}, regime={ctx.regime}, trend={ctx.trend}")
-
-            # Candle summary
-            if ctx.candle_summary:
-                cs = ctx.candle_summary
-                data["market_context"]["candles"] = {
-                    "open": cs.open,
-                    "high": cs.high,
-                    "low": cs.low,
-                    "close": cs.close,
-                }
-
-            # Indicators - Issue #37: Ensure all indicator values are displayed
-            # Try to get indicators from the primary timeframe (usually 5m)
-            ind = None
-            if hasattr(ctx, 'indicators_5m') and ctx.indicators_5m:
-                ind = ctx.indicators_5m
-            elif hasattr(ctx, 'indicators_1h') and ctx.indicators_1h:
-                ind = ctx.indicators_1h
-            elif hasattr(ctx, 'indicators_4h') and ctx.indicators_4h:
-                ind = ctx.indicators_4h
-            elif hasattr(ctx, 'indicators_1d') and ctx.indicators_1d:
-                ind = ctx.indicators_1d
-
-            if ind:
-                data["indicators"] = {
-                    "timeframe": ind.timeframe if hasattr(ind, 'timeframe') else "unknown",
-                    "rsi": ind.rsi_14 if hasattr(ind, 'rsi_14') else None,
-                    "atr": ind.atr_14 if hasattr(ind, 'atr_14') else None,
-                    "atr_percent": ind.atr_percent if hasattr(ind, 'atr_percent') else None,
-                    "adx": ind.adx_14 if hasattr(ind, 'adx_14') else None,
-                    "di_plus": ind.plus_di if hasattr(ind, 'plus_di') else None,  # DI+ (Plus Directional Indicator)
-                    "di_minus": ind.minus_di if hasattr(ind, 'minus_di') else None,  # DI- (Minus Directional Indicator)
-                    "ema_fast": ind.ema_20 if hasattr(ind, 'ema_20') else None,
-                    "ema_slow": ind.ema_50 if hasattr(ind, 'ema_50') else None,
-                }
-                logger.debug(f"Indicators found from {ind.timeframe}: ADX={data['indicators']['adx']}, DI+={data['indicators']['di_plus']}, DI-={data['indicators']['di_minus']}, ATR={data['indicators']['atr']}")
+        for tf, features in self._last_features.items():
+            if tf == 'chart_data':
+                data["chart_data"] = features
             else:
-                logger.warning("No indicators found in market context")
+                if tf not in data["timeframes"]:
+                    data["timeframes"][tf] = {}
+                data["timeframes"][tf]["features"] = features
 
-            # Levels
-            if ctx.levels and ctx.levels.levels:
-                data["levels"] = {
-                    "count": len(ctx.levels.levels),
-                    "items": [
-                        {
-                            "type": lvl.level_type.value if hasattr(lvl.level_type, 'value') else str(lvl.level_type),
-                            "price_low": lvl.price_low,
-                            "price_high": lvl.price_high,
-                            "strength": lvl.strength,
-                        }
-                        for lvl in ctx.levels.levels[:10]  # Limit to 10
-                    ]
+    def _collect_market_context_base(self) -> dict:
+        """Collect base market context information."""
+        ctx = self._market_context
+        context_data = {
+            "symbol": ctx.symbol,
+            "timeframe": ctx.timeframe,
+            "regime": ctx.regime.value if hasattr(ctx.regime, 'value') else str(ctx.regime) if ctx.regime else None,
+            "trend": ctx.trend.value if hasattr(ctx.trend, 'value') else str(ctx.trend) if ctx.trend else None,
+        }
+        logger.debug(f"Market context found: {ctx.symbol}, regime={ctx.regime}, trend={ctx.trend}")
+        return context_data
+
+    def _add_candle_summary(self, context_data: dict) -> None:
+        """Add candle summary to market context if available."""
+        if not self._market_context or not self._market_context.candle_summary:
+            return
+
+        cs = self._market_context.candle_summary
+        context_data["candles"] = {
+            "open": cs.open,
+            "high": cs.high,
+            "low": cs.low,
+            "close": cs.close,
+        }
+
+    def _find_best_indicators(self):
+        """Find best available indicators from market context.
+
+        Returns:
+            Indicator object or None
+        """
+        ctx = self._market_context
+        if not ctx:
+            return None
+
+        # Try to get indicators from primary timeframe (priority order: 5m, 1h, 4h, 1d)
+        for attr_name in ['indicators_5m', 'indicators_1h', 'indicators_4h', 'indicators_1d']:
+            if hasattr(ctx, attr_name):
+                ind = getattr(ctx, attr_name)
+                if ind:
+                    return ind
+        return None
+
+    def _collect_indicators_data(self) -> dict:
+        """Collect indicator values from market context."""
+        ind = self._find_best_indicators()
+        if not ind:
+            logger.warning("No indicators found in market context")
+            return {}
+
+        indicators = {
+            "timeframe": ind.timeframe if hasattr(ind, 'timeframe') else "unknown",
+            "rsi": ind.rsi_14 if hasattr(ind, 'rsi_14') else None,
+            "atr": ind.atr_14 if hasattr(ind, 'atr_14') else None,
+            "atr_percent": ind.atr_percent if hasattr(ind, 'atr_percent') else None,
+            "adx": ind.adx_14 if hasattr(ind, 'adx_14') else None,
+            "di_plus": ind.plus_di if hasattr(ind, 'plus_di') else None,
+            "di_minus": ind.minus_di if hasattr(ind, 'minus_di') else None,
+            "ema_fast": ind.ema_20 if hasattr(ind, 'ema_20') else None,
+            "ema_slow": ind.ema_50 if hasattr(ind, 'ema_50') else None,
+        }
+        logger.debug(f"Indicators found from {indicators['timeframe']}: ADX={indicators['adx']}, DI+={indicators['di_plus']}, DI-={indicators['di_minus']}, ATR={indicators['atr']}")
+        return indicators
+
+    def _collect_levels_data(self) -> dict:
+        """Collect support/resistance levels from market context."""
+        ctx = self._market_context
+        if not ctx or not ctx.levels or not ctx.levels.levels:
+            return {}
+
+        return {
+            "count": len(ctx.levels.levels),
+            "items": [
+                {
+                    "type": lvl.level_type.value if hasattr(lvl.level_type, 'value') else str(lvl.level_type),
+                    "price_low": lvl.price_low,
+                    "price_high": lvl.price_high,
+                    "strength": lvl.strength,
                 }
-        else:
-            logger.warning("No market context available for data overview")
-
-        return data
+                for lvl in ctx.levels.levels[:10]  # Limit to 10
+            ]
+        }
 
     def _populate_tree(self, data: dict) -> None:
         """Populate the tree widget with data.
