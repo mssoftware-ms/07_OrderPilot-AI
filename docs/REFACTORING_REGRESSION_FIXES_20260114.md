@@ -192,6 +192,28 @@ AttributeError: 'ChartWindow' object has no attribute '_on_toggle_entry_points'
 
 ---
 
+### 9. Missing `_on_bot_decision()` ✅ FIXED
+**File:** `src/ui/widgets/chart_window_mixins/bot_callbacks_lifecycle_mixin.py`
+**Problem:** Bot-Decision-Callback existierte nicht
+**Symptom:**
+```
+AttributeError: 'ChartWindow' object has no attribute '_on_bot_decision'
+Failed to start bot
+```
+**Fix:** Vollständige Methode wiederhergestellt (90 LOC)
+**Commit:** fc92d9b
+
+**Funktionalität:**
+- Verarbeitet Bot-Entscheidungen (ENTER, ADJUST_STOP, EXIT)
+- Zeichnet Initial Stop Lines bei ENTER
+- Aktualisiert Trailing Stop Lines bei ADJUST_STOP
+- Entfernt Stop Lines und zeichnet Exit-Marker bei EXIT
+- Logged KI-Entscheidungen mit Confidence
+
+**Trigger:** Tritt beim Klick auf "Start Bot" Button im Trading Bot Tab auf
+
+---
+
 ## 💾 COMMITS
 
 | Commit | Beschreibung | Files Changed | LOC Added |
@@ -199,8 +221,9 @@ AttributeError: 'ChartWindow' object has no attribute '_on_toggle_entry_points'
 | 8a41ccf | Fix QFrame import & _on_simulator_result_selected | 3 files | 32 |
 | 5daeb86 | Add missing strategy simulator callback methods | 1 file | 111 |
 | cae2eb4 | Fix QDateEdit import & _on_toggle_entry_points | 2 files | 11 |
+| fc92d9b | Fix missing _on_bot_decision callback | 4 files | 123 |
 
-**Total:** 3 commits, 154 LOC restored
+**Total:** 4 commits, 277 LOC restored
 
 ---
 
@@ -211,16 +234,18 @@ AttributeError: 'ChartWindow' object has no attribute '_on_toggle_entry_points'
 - **Fix Implementation (Round 1):** 20 min (restore 6 methods, add imports)
 - **Error Discovery (Round 2):** 2 min (2 weitere Fehler beim zweiten Start)
 - **Fix Implementation (Round 2):** 10 min (restore 2 weitere Methoden/Imports)
+- **Error Discovery (Round 3):** 1 min (Bot-Start-Fehler)
+- **Fix Implementation (Round 3):** 15 min (restore _on_bot_decision, 90 LOC)
 - **Verification:** 10 min (compile checks, test connections)
-- **Documentation:** 25 min (this report + updates)
+- **Documentation:** 30 min (this report + updates)
 
-**Total:** ~87 minutes
+**Total:** ~108 minutes
 
 ---
 
 ## ✅ STATUS
 
-**All 8 regressions fixed and verified.**
+**All 9 regressions fixed and verified.**
 
 **Ready for:**
 - Application testing
