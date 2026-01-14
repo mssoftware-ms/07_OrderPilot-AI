@@ -12,79 +12,172 @@ class BotDisplaySignalsMixin:
     """BotDisplaySignalsMixin extracted from BotDisplayManagerMixin."""
     def _update_signals_pnl(self) -> None:
         """Update P&L for all open signals in history."""
-        # Use centralized price getter (prioritizes live tick)
-        current_price = 0.0
-        if hasattr(self, '_get_current_price'):
-            current_price = self._get_current_price()
-        
-        # Fallback if _get_current_price not available (should not happen in mixin composition)
-        if current_price <= 0:
-            if self._bot_controller and self._bot_controller._last_features:
-                current_price = self._bot_controller._last_features.close
-            
-            if current_price <= 0 and hasattr(self, 'chart_widget'):
-                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                    try:
-                        current_price = float(self.chart_widget.data['close'].iloc[-1])
-                    except Exception:
-                        pass
+        # Get current price with fallbacks
+        current_price = self._get_current_price_for_pnl()
 
         if current_price <= 0:
             return
 
+        # Update P&L for all open signals
+        table_updated = self._update_open_signals_pnl(current_price)
+
+        if table_updated:
+            self._update_signals_table()
+
+    def _get_current_price_for_pnl(self) -> float:
+        """Get current price for P&L calculation with multiple fallbacks.
+
+        Returns:
+            Current price, or 0.0 if not available.
+        """
+        # Primary: use centralized price getter (prioritizes live tick)
+        if hasattr(self, '_get_current_price'):
+            current_price = self._get_current_price()
+            if current_price > 0:
+                return current_price
+
+        # Fallback 1: bot controller features
+        if self._bot_controller and self._bot_controller._last_features:
+            current_price = self._bot_controller._last_features.close
+            if current_price > 0:
+                return current_price
+
+        # Fallback 2: chart widget data
+        if hasattr(self, 'chart_widget'):
+            if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                try:
+                    return float(self.chart_widget.data['close'].iloc[-1])
+                except Exception:
+                    pass
+
+        return 0.0
+
+    def _update_open_signals_pnl(self, current_price: float) -> bool:
+        """Update P&L for all open signals.
+
+        Args:
+            current_price: Current market price.
+
+        Returns:
+            True if any signal was updated, False otherwise.
+        """
         table_updated = False
 
         for sig in self._signal_history:
             if sig.get("status") == "ENTERED" and sig.get("is_open", False):
                 entry_price = sig.get("price", 0)
-                quantity = sig.get("quantity", 0)
-                invested = sig.get("invested", 0)
-                side = sig.get("side", "long")
 
                 if entry_price > 0:
-                    sig["current_price"] = current_price
-
-                    # Calculate P&L
-                    if side.lower() == "long":
-                        pnl_pct = ((current_price - entry_price) / entry_price) * 100
-                    else:
-                        pnl_pct = ((entry_price - current_price) / entry_price) * 100
-
-                    # Issue #1: Apply manual leverage override if enabled
-                    leverage = 1.0
-                    if hasattr(self, 'get_leverage_override'):
-                        override_enabled, override_value = self.get_leverage_override()
-                        if override_enabled and override_value > 1:
-                            leverage = float(override_value)
-                            pnl_pct = pnl_pct * leverage
-                            sig["leverage"] = leverage
-
-                    # Issue #3: Subtract BitUnix fees from P&L
-                    if hasattr(self, 'get_bitunix_fees'):
-                        maker_fee, taker_fee = self.get_bitunix_fees()
-                        # BitUnix Futures: both entry AND exit are market (taker) orders
-                        total_fees_pct = taker_fee * 2
-                        pnl_pct = pnl_pct - total_fees_pct
-                        sig["fees_pct"] = total_fees_pct
-
-                    if invested > 0:
-                        pnl_currency = invested * (pnl_pct / 100)
-                    elif quantity > 0:
-                        pnl_currency = quantity * (current_price - entry_price) if side.lower() == "long" else quantity * (entry_price - current_price)
-                        if leverage > 1:
-                            pnl_currency = pnl_currency * leverage
-                    else:
-                        pnl_currency = 0
-
-                    sig["pnl_currency"] = pnl_currency
-                    sig["pnl_percent"] = pnl_pct
+                    # Update signal with current price and P&L
+                    self._update_single_signal_pnl(sig, entry_price, current_price)
                     table_updated = True
 
                     # Check trailing stop activation
                     self._check_tr_activation(sig, current_price)
 
-        if table_updated:
-            self._update_signals_table()
+        return table_updated
+
+    def _update_single_signal_pnl(
+        self, sig: dict, entry_price: float, current_price: float
+    ) -> None:
+        """Update P&L values for a single signal.
+
+        Args:
+            sig: Signal dictionary to update.
+            entry_price: Entry price.
+            current_price: Current market price.
+        """
+        sig["current_price"] = current_price
+
+        quantity = sig.get("quantity", 0)
+        invested = sig.get("invested", 0)
+        side = sig.get("side", "long")
+
+        # Calculate P&L with leverage and fees
+        pnl_pct, leverage = self._calculate_pnl_with_adjustments(
+            entry_price, current_price, side
+        )
+
+        # Calculate P&L in currency
+        pnl_currency = self._calculate_pnl_currency(
+            entry_price, current_price, invested, quantity, side, leverage, pnl_pct
+        )
+
+        # Store results in signal
+        sig["pnl_currency"] = pnl_currency
+        sig["pnl_percent"] = pnl_pct
+        if leverage > 1:
+            sig["leverage"] = leverage
+
+    def _calculate_pnl_with_adjustments(
+        self, entry_price: float, current_price: float, side: str
+    ) -> tuple[float, float]:
+        """Calculate P&L percentage with leverage and fees adjustments.
+
+        Args:
+            entry_price: Entry price.
+            current_price: Current price.
+            side: Trade side (long/short).
+
+        Returns:
+            Tuple of (adjusted_pnl_pct, leverage).
+        """
+        # Calculate base P&L
+        if side.lower() == "long":
+            pnl_pct = ((current_price - entry_price) / entry_price) * 100
+        else:
+            pnl_pct = ((entry_price - current_price) / entry_price) * 100
+
+        # Issue #1: Apply manual leverage override if enabled
+        leverage = 1.0
+        if hasattr(self, 'get_leverage_override'):
+            override_enabled, override_value = self.get_leverage_override()
+            if override_enabled and override_value > 1:
+                leverage = float(override_value)
+                pnl_pct = pnl_pct * leverage
+
+        # Issue #3: Subtract BitUnix fees from P&L
+        if hasattr(self, 'get_bitunix_fees'):
+            maker_fee, taker_fee = self.get_bitunix_fees()
+            # BitUnix Futures: both entry AND exit are market (taker) orders
+            total_fees_pct = taker_fee * 2
+            pnl_pct = pnl_pct - total_fees_pct
+
+        return pnl_pct, leverage
+
+    def _calculate_pnl_currency(
+        self, entry_price: float, current_price: float,
+        invested: float, quantity: float, side: str,
+        leverage: float, pnl_pct: float
+    ) -> float:
+        """Calculate P&L in currency.
+
+        Args:
+            entry_price: Entry price.
+            current_price: Current price.
+            invested: Invested amount.
+            quantity: Position quantity.
+            side: Trade side (long/short).
+            leverage: Leverage factor.
+            pnl_pct: P&L percentage (already adjusted).
+
+        Returns:
+            P&L in currency.
+        """
+        if invested > 0:
+            return invested * (pnl_pct / 100)
+        elif quantity > 0:
+            if side.lower() == "long":
+                pnl_currency = quantity * (current_price - entry_price)
+            else:
+                pnl_currency = quantity * (entry_price - current_price)
+
+            if leverage > 1:
+                pnl_currency = pnl_currency * leverage
+
+            return pnl_currency
+        else:
+            return 0.0
     def _check_tr_activation(self, sig: dict, current_price: float) -> None:
         """Check if trailing stop should be activated based on activation threshold.
 
