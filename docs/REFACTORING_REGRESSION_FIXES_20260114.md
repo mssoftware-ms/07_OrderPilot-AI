@@ -163,32 +163,64 @@ python3 -m py_compile src/core/simulator/*.py
 
 ---
 
+### 7. Missing QDateEdit Import ✅ FIXED
+**File:** `src/ui/widgets/bitunix_trading/backtest_tab_ui_setup_mixin.py`
+**Problem:** QDateEdit wurde verwendet (Line 357, 363) aber nicht importiert
+**Symptom:**
+```
+Failed to create Backtesting tab: name 'QDateEdit' is not defined
+```
+**Fix:** QDateEdit zu PyQt6.QtWidgets imports hinzugefügt
+**Commit:** cae2eb4
+
+---
+
+### 8. Missing `_on_toggle_entry_points()` ✅ FIXED
+**File:** `src/ui/widgets/chart_window_mixins/strategy_simulator_results_mixin.py`
+**Problem:** Checkbox-Toggle-Callback existierte nicht
+**Symptom:**
+```
+AttributeError: 'ChartWindow' object has no attribute '_on_toggle_entry_points'
+```
+**Fix:** Toggle-Methode wiederhergestellt (9 LOC)
+**Commit:** cae2eb4
+
+**Funktionalität:**
+- Schaltet Entry-Points-Display ein/aus
+- Ruft `_update_entry_points_from_selection()` wenn aktiviert
+- Löscht Marker wenn deaktiviert
+
+---
+
 ## 💾 COMMITS
 
 | Commit | Beschreibung | Files Changed | LOC Added |
 |--------|--------------|---------------|-----------|
 | 8a41ccf | Fix QFrame import & _on_simulator_result_selected | 3 files | 32 |
 | 5daeb86 | Add missing strategy simulator callback methods | 1 file | 111 |
+| cae2eb4 | Fix QDateEdit import & _on_toggle_entry_points | 2 files | 11 |
 
-**Total:** 2 commits, 143 LOC restored
+**Total:** 3 commits, 154 LOC restored
 
 ---
 
 ## ⏱️ TIME INVESTMENT
 
-- **Error Discovery:** 5 min (beim App-Start)
-- **Investigation:** 15 min (Git history, error analysis)
-- **Fix Implementation:** 20 min (restore methods, add imports)
+- **Error Discovery (Round 1):** 5 min (6 errors beim ersten App-Start)
+- **Investigation (Round 1):** 15 min (Git history, error analysis)
+- **Fix Implementation (Round 1):** 20 min (restore 6 methods, add imports)
+- **Error Discovery (Round 2):** 2 min (2 weitere Fehler beim zweiten Start)
+- **Fix Implementation (Round 2):** 10 min (restore 2 weitere Methoden/Imports)
 - **Verification:** 10 min (compile checks, test connections)
-- **Documentation:** 20 min (this report)
+- **Documentation:** 25 min (this report + updates)
 
-**Total:** ~70 minutes
+**Total:** ~87 minutes
 
 ---
 
 ## ✅ STATUS
 
-**All 6 regressions fixed and verified.**
+**All 8 regressions fixed and verified.**
 
 **Ready for:**
 - Application testing
