@@ -218,7 +218,7 @@ class BotDisplayPositionMixin:
     def _set_pnl_display(self, pnl_pct: float, pnl_currency: float) -> None:
         color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
         sign = "+" if pnl_pct >= 0 else ""
-        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f})")
+        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
         self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_daily_strategy_panel(self) -> None:
         """Update Daily Strategy tab from current selection state."""
@@ -397,6 +397,8 @@ class BotDisplayPositionMixin:
         current_price = signal.get("current_price", 0.0)
         if is_closed:
             current_price = signal.get("exit_price", current_price)
+        elif current_price <= 0 and hasattr(self, "_last_tick_price") and self._last_tick_price > 0:
+            current_price = self._last_tick_price
         if current_price <= 0 and entry_price > 0:
             current_price = entry_price
         return current_price
@@ -410,18 +412,21 @@ class BotDisplayPositionMixin:
         invested: float,
         quantity: float,
     ) -> tuple[float | None, float | None]:
-        pnl_percent = signal.get("pnl_percent")
-        pnl_currency = signal.get("pnl_currency")
-        if pnl_percent is None and entry_price > 0 and current_price > 0:
+        pnl_percent = None
+        pnl_currency = None
+        if entry_price > 0 and current_price > 0:
             if side_upper == "SHORT":
                 pnl_percent = ((entry_price - current_price) / entry_price) * 100
             else:
                 pnl_percent = ((current_price - entry_price) / entry_price) * 100
-        if pnl_currency is None and pnl_percent is not None:
             if invested > 0:
                 pnl_currency = invested * (pnl_percent / 100)
-            elif quantity > 0 and current_price > 0:
-                pnl_currency = quantity * (current_price - entry_price) if side_upper == "LONG" else quantity * (entry_price - current_price)
+            elif quantity > 0:
+                pnl_currency = (
+                    quantity * (current_price - entry_price)
+                    if side_upper == "LONG"
+                    else quantity * (entry_price - current_price)
+                )
             else:
                 pnl_currency = 0.0
         return pnl_percent, pnl_currency
@@ -434,7 +439,7 @@ class BotDisplayPositionMixin:
             else:
                 sign = "+" if pnl_percent >= 0 else ""
                 color = "#26a69a" if pnl_percent >= 0 else "#ef5350"
-                self.position_pnl_label.setText(f"{sign}{pnl_percent:.2f}% ({sign}{pnl_currency:.2f})")
+                self.position_pnl_label.setText(f"{sign}{pnl_percent:.2f}% ({sign}{pnl_currency:.2f} EUR)")
                 self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_position_right_column_from_signal(self, signal: dict) -> None:
         """Update right column (Score, TR, Derivative) from a signal dict."""
