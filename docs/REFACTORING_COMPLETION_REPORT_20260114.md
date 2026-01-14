@@ -251,7 +251,7 @@ python3 -m py_compile src/**/*.py
 
 ## 🐛 POST-REFACTORING REGRESSION FIXES
 
-After completing the refactoring, 6 critical regressions were discovered during application startup:
+After completing the refactoring, 8 critical regressions were discovered during application startup:
 
 1. ✅ Missing QFrame import in backtest_tab_ui_setup_mixin.py
 2. ✅ Missing _on_simulator_result_selected() method
@@ -259,8 +259,10 @@ After completing the refactoring, 6 critical regressions were discovered during 
 4. ✅ Missing _on_clear_simulation_markers() method
 5. ✅ Missing _on_export_simulation_xlsx() method
 6. ✅ Missing _on_clear_simulation_results() method
+7. ✅ Missing QDateEdit import in backtest_tab_ui_setup_mixin.py
+8. ✅ Missing _on_toggle_entry_points() method
 
-**All regressions fixed in 2 commits (143 LOC restored from git history)**
+**All regressions fixed in 3 commits (154 LOC restored from git history)**
 
 **See:** `REFACTORING_REGRESSION_FIXES_20260114.md` for detailed analysis
 
