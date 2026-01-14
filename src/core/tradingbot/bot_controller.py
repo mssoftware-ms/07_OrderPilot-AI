@@ -454,6 +454,11 @@ class BotController(
         if not self._running:
             return None
 
+        # Issue #11: Auto-recovery from ERROR state on next bar
+        if self._state_machine.is_error():
+            self._log_activity("RECOVERY", "Auto-clearing error state, resuming normal operation")
+            self._state_machine.clear_error()
+
         self._bar_count += 1
 
         # Log new bar with price data

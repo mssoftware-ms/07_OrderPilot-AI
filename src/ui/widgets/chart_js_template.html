@@ -170,7 +170,7 @@
                         secondsVisible: true,  // Issue #42: Show seconds on X-axis for 1S charts
                         borderColor: '#485c7b',
                         shiftVisibleRangeOnNewBar: false, // Issue: Chart springt zur Mitte - disabled
-                        barSpacing: 6,
+                        barSpacing: 10,  // Issue #8: Increased from 6 to 10 for better candle visibility on 1M/5M charts
                     },
                     localization: {
                         locale: 'de-DE',
@@ -430,8 +430,66 @@
                             rightScale.applyOptions({ autoScale: true });
                         }
                     },
-                    setVolumeData: () => console.warn('setVolumeData is deprecated'),
-                    updateVolume: () => console.warn('updateVolume is deprecated'),
+                    // Issue #9: Re-enable volume chart with histogram series
+                    setVolumeData: (data) => {
+                        try {
+                            if (!data || !Array.isArray(data) || data.length === 0) {
+                                console.warn('setVolumeData: no data provided');
+                                return false;
+                            }
+
+                            // Create or get volume panel
+                            const panelId = 'volume';
+                            const seriesKey = 'volume';
+
+                            // Check if volume series already exists
+                            const key = panelId + '_' + seriesKey;
+                            if (!panelExtraSeries[key]) {
+                                // Add volume as histogram series in separate panel
+                                const success = window.chartAPI.addPanelSeries(
+                                    panelId,
+                                    seriesKey,
+                                    'histogram',
+                                    '#26a69a80',  // Semi-transparent green
+                                    data
+                                );
+                                if (!success) {
+                                    console.error('Failed to create volume series');
+                                    return false;
+                                }
+                            } else {
+                                // Update existing volume data
+                                panelExtraSeries[key].setData(data);
+                            }
+
+                            console.log('Volume data set: ' + data.length + ' bars');
+                            return true;
+                        } catch(e) {
+                            console.error('setVolumeData error:', e);
+                            return false;
+                        }
+                    },
+                    updateVolume: (volumeBar) => {
+                        try {
+                            if (!volumeBar || !volumeBar.time) {
+                                return false;
+                            }
+
+                            const key = 'volume_volume';
+                            const volumeSeries = panelExtraSeries[key];
+
+                            if (!volumeSeries) {
+                                console.warn('Volume series not initialized, call setVolumeData first');
+                                return false;
+                            }
+
+                            volumeSeries.update(volumeBar);
+                            return true;
+                        } catch(e) {
+                            console.error('updateVolume error:', e);
+                            return false;
+                        }
+                    },
 
                     addIndicator: (name, color) => {
                         try {
