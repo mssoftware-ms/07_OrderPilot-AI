@@ -343,22 +343,42 @@ class BotUISignalsWidgetsMixin:
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(21)  # Added "Strategy" column
+        self.signals_table.setColumnCount(22)  # Issue #5: Added "Stück" column (22 total)
         self.signals_table.setHorizontalHeaderLabels(
             [
                 "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
                 "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",
                 "Fees USDT",  # Issue #6: BitUnix fees in USDT
+                "Stück",  # Issue #5: Gekaufte Stückzahl
                 "D P&L USDT", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
             ]
         )
-        # Hidden columns: D P&L USDT (15), D P&L % (16), Heb (17), WKN (18), Score (19)
-        for col in [15, 16, 17, 18]:
+        # Hidden columns: D P&L USDT (16), D P&L % (17), Heb (18), WKN (19), Score (20)
+        for col in [16, 17, 18, 19]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(19, True)
-        self.signals_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self.signals_table.setColumnHidden(20, True)
+
+        # Issue #4: Set column resize modes for optimal width usage
+        header = self.signals_table.horizontalHeader()
+
+        # Narrow columns (6-character width) - Issue #4
+        narrow_cols = [1, 3, 6, 7, 8, 9, 10]  # Type, Side, SL%, TR%, TRA%, TR Lock, Status
+        for col in narrow_cols:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Medium-width columns with fixed pixel sizes for better control
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Time
+        header.resizeSection(0, 70)
+        header.setSectionResizeMode(17, QHeaderView.ResizeMode.Fixed)  # Heb
+        header.resizeSection(17, 50)
+        header.setSectionResizeMode(12, QHeaderView.ResizeMode.Fixed)  # P&L %
+        header.resizeSection(12, 70)
+
+        # Stretch remaining columns (Strategy, Entry, Stop, Current, P&L USDT, Fees, Stück, TR Stop)
+        stretch_cols = [2, 4, 5, 11, 13, 14, 15, 21]
+        for col in stretch_cols:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+
         self.signals_table.setAlternatingRowColors(True)
         self.signals_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.signals_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
