@@ -317,15 +317,29 @@ class FastOptimizer:
         if not candles or len(candles) < 20:
             return []
 
-        entries = []
-        closes = [c["close"] for c in candles]
+        # Prepare context
+        context = self._prepare_generation_context(candles, opt_set, features)
 
+        # Generate raw entries
+        raw_entries = self._generate_raw_entries_loop(
+            candles, context, regime, opt_set
+        )
+
+        # Apply postprocessing
+        entries = self._postprocess_entries(raw_entries, opt_set.postprocess_config)
+
+        return entries
+
+    def _prepare_generation_context(
+        self,
+        candles: list[dict],
+        opt_set: OptimizableSet,
+        features: dict[str, list[float]] | None,
+    ) -> dict:
+        """Prepare context data for entry generation."""
         # Calculate basic features if not provided
         if features is None:
             features = self._calculate_basic_features(candles)
-
-        price_vs_sma = features.get("price_vs_sma", [])
-        volatility = features.get("volatility", [])
 
         # Get indicator parameters
         indicator_params = {cfg.name: params for cfg, params in opt_set.indicators}
@@ -342,126 +356,199 @@ class FastOptimizer:
         if "EMA_Trend" in indicator_params:
             trend_threshold = indicator_params["EMA_Trend"].get("threshold", 0.005)
 
-        min_confidence = opt_set.postprocess_config.get("min_confidence", 0.5)
+        return {
+            "closes": [c["close"] for c in candles],
+            "price_vs_sma": features.get("price_vs_sma", []),
+            "volatility": features.get("volatility", []),
+            "rsi_oversold": rsi_oversold,
+            "rsi_overbought": rsi_overbought,
+            "trend_threshold": trend_threshold,
+            "min_confidence": opt_set.postprocess_config.get("min_confidence", 0.5),
+            "scoring_weights": opt_set.scoring_weights,
+        }
 
-        # Simple rule-based entry generation
+    def _generate_raw_entries_loop(
+        self,
+        candles: list[dict],
+        context: dict,
+        regime: RegimeType,
+        opt_set: OptimizableSet,
+    ) -> list[EntryEvent]:
+        """Main loop for generating raw entry signals."""
+        entries = []
+
         for i, candle in enumerate(candles):
             if i < 20:  # Skip warmup
                 continue
 
-            score = 0.0
-            side = None
-            reasons = []
-
-            trend = price_vs_sma[i] if i < len(price_vs_sma) else 0
-            vol = volatility[i] if i < len(volatility) else 0
-
-            # Regime-specific logic
-            if regime in (RegimeType.TREND_UP,):
-                # Long on pullback in uptrend
-                if trend > 0 and trend < trend_threshold * 2:
-                    score = 0.5 + abs(trend) * 20
-                    side = EntrySide.LONG
-                    reasons.append("trend_pullback")
-
-            elif regime == RegimeType.TREND_DOWN:
-                # Short on pullback in downtrend
-                if trend < 0 and trend > -trend_threshold * 2:
-                    score = 0.5 + abs(trend) * 20
-                    side = EntrySide.SHORT
-                    reasons.append("trend_pullback")
-
-            elif regime == RegimeType.RANGE:
-                # Mean reversion at extremes
-                threshold = trend_threshold * 1.5
-                if trend < -threshold:
-                    score = 0.5 + abs(trend) * 25
-                    side = EntrySide.LONG
-                    reasons.append("oversold")
-                elif trend > threshold:
-                    score = 0.5 + abs(trend) * 25
-                    side = EntrySide.SHORT
-                    reasons.append("overbought")
-
-            elif regime == RegimeType.SQUEEZE:
-                # SUPER AGGRESSIVE DEBUG for SQUEEZE
-                if i == 20:
-                    try:
-                        from .debug_logger import debug_logger
-                        debug_logger.warning("=" * 60)
-                        debug_logger.warning("SQUEEZE ITERATION DEBUG (i=20)")
-                        debug_logger.warning("  trend: %.6f", trend)
-                        debug_logger.warning("  vol: %.6f", vol)
-                        debug_logger.warning("  closes[i]: %.2f", closes[i] if i < len(closes) else 0)
-                        debug_logger.warning("=" * 60)
-                    except Exception as e:
-                        pass
-
-                # SQUEEZE: SEHR LOCKERE Bedingungen für Testing!
-                # Calculate local range
-                recent_prices = closes[max(0, i-20):i+1]
-
-                if len(recent_prices) >= 5:  # Nur 5 Kerzen benötigt
-                    local_high = max(recent_prices)
-                    local_low = min(recent_prices)
-                    current_price = closes[i]
-
-                    if local_high > local_low:
-                        # Position in range (0 = low, 1 = high)
-                        position = (current_price - local_low) / (local_high - local_low)
-
-                        # DEBUG: Log für erste 3 Checks
-                        if i < 23:
-                            try:
-                                from .debug_logger import debug_logger
-                                debug_logger.info("  i=%d: position=%.3f, trend=%.6f, price=%.2f",
-                                                i, position, trend, current_price)
-                            except Exception:
-                                pass
-
-                        # EXTREM LOCKERE Bedingungen:
-                        # 1. JEDE Position < 0.4 → LONG
-                        if position < 0.4:
-                            score = 0.51 + (0.4 - position) * 0.5  # 0.51-0.71
-                            side = EntrySide.LONG
-                            reasons.append("squeeze_range_low")
-                        # 2. JEDE Position > 0.6 → SHORT
-                        elif position > 0.6:
-                            score = 0.51 + (position - 0.6) * 0.5  # 0.51-0.71
-                            side = EntrySide.SHORT
-                            reasons.append("squeeze_range_high")
-                        # 3. Mitte mit MINIMALEM Trend
-                        elif 0.35 < position < 0.65:
-                            if trend > 0.0001:  # SEHR minimal
-                                score = 0.51 + abs(trend) * 50
-                                side = EntrySide.LONG
-                                reasons.append("squeeze_trend_long")
-                            elif trend < -0.0001:
-                                score = 0.51 + abs(trend) * 50
-                                side = EntrySide.SHORT
-                                reasons.append("squeeze_trend_short")
-
-            # Apply indicator weights to score
-            for name, weight in opt_set.scoring_weights.items():
-                score *= (1 + (weight - 0.5) * 0.2)
-
-            # Add entry if threshold met
-            if side and score >= min_confidence:
-                entries.append(
-                    EntryEvent(
-                        timestamp=candle["timestamp"],
-                        side=side,
-                        confidence=min(score, 1.0),
-                        price=candle["close"],
-                        reason_tags=reasons,
-                        regime=regime,
-                    )
-                )
-
-        # Apply postprocessing
-        entries = self._postprocess_entries(entries, opt_set.postprocess_config)
+            entry = self._check_entry_at_candle(i, candle, context, regime, opt_set)
+            if entry:
+                entries.append(entry)
 
         return entries
+
+    def _check_entry_at_candle(
+        self,
+        i: int,
+        candle: dict,
+        context: dict,
+        regime: RegimeType,
+        opt_set: OptimizableSet,
+    ) -> EntryEvent | None:
+        """Check for entry signal at specific candle index."""
+        trend = context["price_vs_sma"][i] if i < len(context["price_vs_sma"]) else 0
+        vol = context["volatility"][i] if i < len(context["volatility"]) else 0
+
+        # Route to regime-specific handler
+        handlers = {
+            RegimeType.TREND_UP: self._handle_trend_up_entry,
+            RegimeType.TREND_DOWN: self._handle_trend_down_entry,
+            RegimeType.RANGE: self._handle_range_entry,
+            RegimeType.SQUEEZE: self._handle_squeeze_entry,
+        }
+
+        handler = handlers.get(regime)
+        if not handler:
+            return None
+
+        bar_data = {"trend": trend, "vol": vol, "i": i, "closes": context["closes"]}
+        result = handler(bar_data, context)
+
+        if not result:
+            return None
+
+        score, side, reasons = result
+
+        # Apply indicator weights to score
+        for name, weight in context["scoring_weights"].items():
+            score *= (1 + (weight - 0.5) * 0.2)
+
+        # Check threshold
+        if score >= context["min_confidence"]:
+            return EntryEvent(
+                timestamp=candle["timestamp"],
+                side=side,
+                confidence=min(score, 1.0),
+                price=candle["close"],
+                reason_tags=reasons,
+                regime=regime,
+            )
+
+        return None
+
+    def _handle_trend_up_entry(
+        self, bar_data: dict, context: dict
+    ) -> tuple[float, EntrySide, list[str]] | None:
+        """Handle TREND_UP regime: long on pullback."""
+        trend = bar_data["trend"]
+        trend_threshold = context["trend_threshold"]
+
+        if trend > 0 and trend < trend_threshold * 2:
+            score = 0.5 + abs(trend) * 20
+            return (score, EntrySide.LONG, ["trend_pullback"])
+        return None
+
+    def _handle_trend_down_entry(
+        self, bar_data: dict, context: dict
+    ) -> tuple[float, EntrySide, list[str]] | None:
+        """Handle TREND_DOWN regime: short on pullback."""
+        trend = bar_data["trend"]
+        trend_threshold = context["trend_threshold"]
+
+        if trend < 0 and trend > -trend_threshold * 2:
+            score = 0.5 + abs(trend) * 20
+            return (score, EntrySide.SHORT, ["trend_pullback"])
+        return None
+
+    def _handle_range_entry(
+        self, bar_data: dict, context: dict
+    ) -> tuple[float, EntrySide, list[str]] | None:
+        """Handle RANGE regime: mean reversion at extremes."""
+        trend = bar_data["trend"]
+        threshold = context["trend_threshold"] * 1.5
+
+        if trend < -threshold:
+            score = 0.5 + abs(trend) * 25
+            return (score, EntrySide.LONG, ["oversold"])
+        elif trend > threshold:
+            score = 0.5 + abs(trend) * 25
+            return (score, EntrySide.SHORT, ["overbought"])
+        return None
+
+    def _handle_squeeze_entry(
+        self, bar_data: dict, context: dict
+    ) -> tuple[float, EntrySide, list[str]] | None:
+        """Handle SQUEEZE regime: range breakouts with very loose conditions."""
+        i = bar_data["i"]
+        trend = bar_data["trend"]
+        closes = bar_data["closes"]
+
+        # Debug logging for first iteration
+        self._log_squeeze_debug(i, bar_data)
+
+        # Calculate local range
+        recent_prices = closes[max(0, i-20):i+1]
+        if len(recent_prices) < 5:
+            return None
+
+        local_high = max(recent_prices)
+        local_low = min(recent_prices)
+        current_price = closes[i]
+
+        if local_high <= local_low:
+            return None
+
+        # Position in range (0 = low, 1 = high)
+        position = (current_price - local_low) / (local_high - local_low)
+
+        # Debug logging for early checks
+        if i < 23:
+            self._log_squeeze_position(i, position, trend, current_price)
+
+        # Very loose conditions for testing
+        if position < 0.4:
+            score = 0.51 + (0.4 - position) * 0.5  # 0.51-0.71
+            return (score, EntrySide.LONG, ["squeeze_range_low"])
+        elif position > 0.6:
+            score = 0.51 + (position - 0.6) * 0.5  # 0.51-0.71
+            return (score, EntrySide.SHORT, ["squeeze_range_high"])
+        elif 0.35 < position < 0.65:
+            if trend > 0.0001:  # Very minimal
+                score = 0.51 + abs(trend) * 50
+                return (score, EntrySide.LONG, ["squeeze_trend_long"])
+            elif trend < -0.0001:
+                score = 0.51 + abs(trend) * 50
+                return (score, EntrySide.SHORT, ["squeeze_trend_short"])
+
+        return None
+
+    def _log_squeeze_debug(self, i: int, bar_data: dict) -> None:
+        """Log debug info for squeeze regime at first iteration."""
+        if i != 20:
+            return
+
+        try:
+            from .debug_logger import debug_logger
+            debug_logger.warning("=" * 60)
+            debug_logger.warning("SQUEEZE ITERATION DEBUG (i=20)")
+            debug_logger.warning("  trend: %.6f", bar_data["trend"])
+            debug_logger.warning("  vol: %.6f", bar_data["vol"])
+            debug_logger.warning("  closes[i]: %.2f",
+                bar_data["closes"][i] if i < len(bar_data["closes"]) else 0)
+            debug_logger.warning("=" * 60)
+        except Exception:
+            pass
+
+    def _log_squeeze_position(
+        self, i: int, position: float, trend: float, price: float
+    ) -> None:
+        """Log position info for squeeze regime during early checks."""
+        try:
+            from .debug_logger import debug_logger
+            debug_logger.info("  i=%d: position=%.3f, trend=%.6f, price=%.2f",
+                            i, position, trend, price)
+        except Exception:
+            pass
 
     def _calculate_basic_features(
         self, candles: list[dict]
