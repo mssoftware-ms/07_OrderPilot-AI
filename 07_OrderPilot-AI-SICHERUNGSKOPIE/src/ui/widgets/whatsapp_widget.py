@@ -383,3 +383,36 @@ class WhatsAppWidget(QWidget):
     def get_service(self):
         """Gibt den WhatsApp-Service zurück."""
         return self._whatsapp_service
+
+    def send_trade_notification(self, message: str) -> bool:
+        """
+        Sendet eine Trade-Benachrichtigung über das UI-Formular.
+        Nutzt das Textfeld + Button, was nachweislich funktioniert.
+
+        Args:
+            message: Nachrichtentext
+
+        Returns:
+            True wenn Senden gestartet wurde
+        """
+        if not self.is_enabled():
+            logger.debug("WhatsAppWidget: Benachrichtigungen deaktiviert")
+            return False
+
+        if not self._whatsapp_service or not self._whatsapp_service.is_available:
+            logger.error("WhatsAppWidget: Service nicht verfügbar")
+            return False
+
+        try:
+            # Nachricht ins Textfeld schreiben
+            self.message_input.setPlainText(message)
+
+            # Button programmatisch klicken (simuliert Benutzer-Klick)
+            self.send_btn.click()
+
+            logger.info("WhatsAppWidget: Trade-Benachrichtigung über UI gesendet")
+            return True
+
+        except Exception as e:
+            logger.error(f"WhatsAppWidget: Fehler beim Senden: {e}")
+            return False

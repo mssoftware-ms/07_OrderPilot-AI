@@ -195,18 +195,38 @@ class TradeLogEntry:
 
     def to_markdown(self) -> str:
         """Generiert Markdown-Report für den Trade."""
-        lines = [
+        sections = [
+            self._md_header(),
+            self._md_trade_summary(),
+            self._md_risk_management(),
+            self._md_entry_indicators(),
+            self._md_market_context(),
+            self._md_signal_analysis(),
+            self._md_trailing_stop_history(),
+            self._md_notes(),
+            self._md_bot_config(),
+        ]
+        return "\n".join(filter(None, sections))
+
+    def _md_header(self) -> str:
+        """Generate markdown header."""
+        return "\n".join([
             f"# Trade Report: {self.trade_id}",
             "",
             f"**Symbol:** {self.symbol}",
             f"**Created:** {self.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
             "",
             "---",
+        ])
+
+    def _md_trade_summary(self) -> str:
+        """Generate trade summary section."""
+        return "\n".join([
             "",
             "## Trade Summary",
             "",
-            f"| Metric | Value |",
-            f"|--------|-------|",
+            "| Metric | Value |",
+            "|--------|-------|",
             f"| Direction | {self.entry_side or 'N/A'} |",
             f"| Entry Price | ${self.entry_price or 'N/A'} |",
             f"| Exit Price | ${self.exit_price or 'N/A'} |",
@@ -217,11 +237,16 @@ class TradeLogEntry:
             f"| Net P&L | ${self.net_pnl or 'N/A'} ({self.realized_pnl_percent or 0}%) |",
             "",
             "---",
+        ])
+
+    def _md_risk_management(self) -> str:
+        """Generate risk management section."""
+        return "\n".join([
             "",
             "## Risk Management",
             "",
-            f"| Parameter | Value |",
-            f"|-----------|-------|",
+            "| Parameter | Value |",
+            "|-----------|-------|",
             f"| Initial SL | ${self.initial_stop_loss or 'N/A'} |",
             f"| Initial TP | ${self.initial_take_profit or 'N/A'} |",
             f"| Final SL | ${self.current_stop_loss or 'N/A'} |",
@@ -229,168 +254,211 @@ class TradeLogEntry:
             f"| Risk Amount | ${self.risk_amount_usd or 'N/A'} |",
             f"| Exit Reason | {self.exit_reason.value if self.exit_reason else 'N/A'} |",
             "",
+        ])
+
+    def _md_entry_indicators(self) -> str:
+        """Generate entry indicators section."""
+        if not self.entry_indicators:
+            return ""
+
+        ind = self.entry_indicators
+        lines = [
+            "---",
+            "",
+            "## Entry Indicators",
+            "",
+            f"**Time:** {ind.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            "",
         ]
 
-        # Entry Indicators
-        if self.entry_indicators:
-            ind = self.entry_indicators
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Entry Indicators",
-                    "",
-                    f"**Time:** {ind.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                    "",
-                    "### Trend",
-                    f"- EMA 20: ${ind.ema_20:.2f}" if ind.ema_20 else "- EMA 20: N/A",
-                    f"- EMA 50: ${ind.ema_50:.2f}" if ind.ema_50 else "- EMA 50: N/A",
-                    f"- EMA 200: ${ind.ema_200:.2f}"
-                    if ind.ema_200
-                    else "- EMA 200: N/A",
-                    f"- Price to EMA20: {ind.ema_20_distance_pct:.2f}%"
-                    if ind.ema_20_distance_pct
-                    else "",
-                    "",
-                    "### Momentum",
-                    f"- RSI (14): {ind.rsi_14:.1f} ({ind.rsi_state})"
-                    if ind.rsi_14
-                    else "- RSI: N/A",
-                    f"- MACD: {ind.macd_line:.2f} / Signal: {ind.macd_signal:.2f}"
-                    if ind.macd_line
-                    else "- MACD: N/A",
-                    f"- MACD Crossover: {ind.macd_crossover}"
-                    if ind.macd_crossover
-                    else "",
-                    "",
-                    "### Volatility",
-                    f"- ATR (14): ${ind.atr_14:.2f} ({ind.atr_percent:.2f}%)"
-                    if ind.atr_14
-                    else "- ATR: N/A",
-                    f"- Bollinger %B: {ind.bb_pct_b:.2f}"
-                    if ind.bb_pct_b is not None
-                    else "",
-                    f"- BB Width: {ind.bb_width:.4f}" if ind.bb_width else "",
-                    "",
-                    "### Trend Strength",
-                    f"- ADX (14): {ind.adx_14:.1f}" if ind.adx_14 else "- ADX: N/A",
-                    f"- +DI: {ind.plus_di:.1f} / -DI: {ind.minus_di:.1f}"
-                    if ind.plus_di
-                    else "",
-                    "",
-                ]
-            )
+        # Trend indicators
+        lines.extend(self._md_trend_indicators(ind))
 
-        # Market Context
-        if self.market_context:
-            ctx = self.market_context
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Market Context",
-                    "",
-                    f"**Regime:** {ctx.regime}",
-                    "",
-                    "### Multi-Timeframe Trends",
-                    f"- 1D: {ctx.trend_1d or 'N/A'}",
-                    f"- 4H: {ctx.trend_4h or 'N/A'}",
-                    f"- 1H: {ctx.trend_1h or 'N/A'}",
-                    f"- 5M: {ctx.trend_5m or 'N/A'}",
-                    "",
-                    "### Support/Resistance",
-                    f"- Nearest Support: ${ctx.nearest_support:.2f} ({ctx.distance_to_support_pct:.2f}% away)"
-                    if ctx.nearest_support
-                    else "- Support: N/A",
-                    f"- Nearest Resistance: ${ctx.nearest_resistance:.2f} ({ctx.distance_to_resistance_pct:.2f}% away)"
-                    if ctx.nearest_resistance
-                    else "- Resistance: N/A",
-                    "",
-                ]
-            )
+        # Momentum indicators
+        lines.extend(self._md_momentum_indicators(ind))
 
-        # Signal Details
-        if self.signal_details:
-            sig = self.signal_details
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Signal Analysis",
-                    "",
-                    f"**Direction:** {sig.direction}",
-                    f"**Confluence Score:** {sig.confluence_score}/5",
-                    "",
-                    "### Conditions Met",
-                ]
-            )
-            for cond in sig.conditions_met:
-                lines.append(f"- ✅ {cond}")
+        # Volatility indicators
+        lines.extend(self._md_volatility_indicators(ind))
 
-            lines.append("")
-            lines.append("### Conditions Failed")
-            for cond in sig.conditions_failed:
-                lines.append(f"- ❌ {cond}")
-
-            if sig.ai_enabled:
-                lines.extend(
-                    [
-                        "",
-                        "### AI Validation",
-                        f"- **Confidence:** {sig.ai_confidence}%",
-                        f"- **Approved:** {'Yes' if sig.ai_approved else 'No'}",
-                        f"- **Setup Type:** {sig.ai_setup_type or 'N/A'}",
-                        f"- **Reasoning:** {sig.ai_reasoning or 'N/A'}",
-                    ]
-                )
-
-            lines.append("")
-
-        # Trailing Stop History
-        if self.trailing_stop_history:
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Trailing Stop History",
-                    "",
-                    "| Time | Old SL | New SL | Trigger Price |",
-                    "|------|--------|--------|---------------|",
-                ]
-            )
-            for ts in self.trailing_stop_history:
-                time_str = ts.timestamp.strftime("%H:%M:%S")
-                lines.append(
-                    f"| {time_str} | ${ts.old_sl:.2f} | ${ts.new_sl:.2f} | ${ts.trigger_price:.2f} |"
-                )
-            lines.append("")
-
-        # Notes
-        if self.notes:
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Trade Notes",
-                    "",
-                ]
-            )
-            for note in self.notes:
-                lines.append(f"- {note}")
-            lines.append("")
-
-        # Bot Config
-        if self.bot_config_snapshot:
-            lines.extend(
-                [
-                    "---",
-                    "",
-                    "## Bot Configuration (at trade time)",
-                    "",
-                    "```json",
-                    json.dumps(self.bot_config_snapshot, indent=2),
-                    "```",
-                ]
-            )
+        # Trend strength
+        lines.extend(self._md_trend_strength(ind))
 
         return "\n".join(lines)
+
+    def _md_trend_indicators(self, ind: IndicatorSnapshot) -> list[str]:
+        """Format trend indicators."""
+        lines = ["### Trend"]
+        lines.append(f"- EMA 20: ${ind.ema_20:.2f}" if ind.ema_20 else "- EMA 20: N/A")
+        lines.append(f"- EMA 50: ${ind.ema_50:.2f}" if ind.ema_50 else "- EMA 50: N/A")
+        lines.append(f"- EMA 200: ${ind.ema_200:.2f}" if ind.ema_200 else "- EMA 200: N/A")
+        if ind.ema_20_distance_pct:
+            lines.append(f"- Price to EMA20: {ind.ema_20_distance_pct:.2f}%")
+        lines.append("")
+        return lines
+
+    def _md_momentum_indicators(self, ind: IndicatorSnapshot) -> list[str]:
+        """Format momentum indicators."""
+        lines = ["### Momentum"]
+        if ind.rsi_14:
+            lines.append(f"- RSI (14): {ind.rsi_14:.1f} ({ind.rsi_state})")
+        else:
+            lines.append("- RSI: N/A")
+
+        if ind.macd_line:
+            lines.append(f"- MACD: {ind.macd_line:.2f} / Signal: {ind.macd_signal:.2f}")
+        else:
+            lines.append("- MACD: N/A")
+
+        if ind.macd_crossover:
+            lines.append(f"- MACD Crossover: {ind.macd_crossover}")
+        lines.append("")
+        return lines
+
+    def _md_volatility_indicators(self, ind: IndicatorSnapshot) -> list[str]:
+        """Format volatility indicators."""
+        lines = ["### Volatility"]
+        if ind.atr_14:
+            lines.append(f"- ATR (14): ${ind.atr_14:.2f} ({ind.atr_percent:.2f}%)")
+        else:
+            lines.append("- ATR: N/A")
+
+        if ind.bb_pct_b is not None:
+            lines.append(f"- Bollinger %B: {ind.bb_pct_b:.2f}")
+        if ind.bb_width:
+            lines.append(f"- BB Width: {ind.bb_width:.4f}")
+        lines.append("")
+        return lines
+
+    def _md_trend_strength(self, ind: IndicatorSnapshot) -> list[str]:
+        """Format trend strength indicators."""
+        lines = ["### Trend Strength"]
+        lines.append(f"- ADX (14): {ind.adx_14:.1f}" if ind.adx_14 else "- ADX: N/A")
+        if ind.plus_di:
+            lines.append(f"- +DI: {ind.plus_di:.1f} / -DI: {ind.minus_di:.1f}")
+        lines.append("")
+        return lines
+
+    def _md_market_context(self) -> str:
+        """Generate market context section."""
+        if not self.market_context:
+            return ""
+
+        ctx = self.market_context
+        lines = [
+            "---",
+            "",
+            "## Market Context",
+            "",
+            f"**Regime:** {ctx.regime}",
+            "",
+            "### Multi-Timeframe Trends",
+            f"- 1D: {ctx.trend_1d or 'N/A'}",
+            f"- 4H: {ctx.trend_4h or 'N/A'}",
+            f"- 1H: {ctx.trend_1h or 'N/A'}",
+            f"- 5M: {ctx.trend_5m or 'N/A'}",
+            "",
+            "### Support/Resistance",
+        ]
+
+        if ctx.nearest_support:
+            lines.append(f"- Nearest Support: ${ctx.nearest_support:.2f} ({ctx.distance_to_support_pct:.2f}% away)")
+        else:
+            lines.append("- Support: N/A")
+
+        if ctx.nearest_resistance:
+            lines.append(f"- Nearest Resistance: ${ctx.nearest_resistance:.2f} ({ctx.distance_to_resistance_pct:.2f}% away)")
+        else:
+            lines.append("- Resistance: N/A")
+
+        lines.append("")
+        return "\n".join(lines)
+
+    def _md_signal_analysis(self) -> str:
+        """Generate signal analysis section."""
+        if not self.signal_details:
+            return ""
+
+        sig = self.signal_details
+        lines = [
+            "---",
+            "",
+            "## Signal Analysis",
+            "",
+            f"**Direction:** {sig.direction}",
+            f"**Confluence Score:** {sig.confluence_score}/5",
+            "",
+            "### Conditions Met",
+        ]
+
+        for cond in sig.conditions_met:
+            lines.append(f"- ✅ {cond}")
+
+        lines.append("")
+        lines.append("### Conditions Failed")
+        for cond in sig.conditions_failed:
+            lines.append(f"- ❌ {cond}")
+
+        if sig.ai_enabled:
+            lines.extend([
+                "",
+                "### AI Validation",
+                f"- **Confidence:** {sig.ai_confidence}%",
+                f"- **Approved:** {'Yes' if sig.ai_approved else 'No'}",
+                f"- **Setup Type:** {sig.ai_setup_type or 'N/A'}",
+                f"- **Reasoning:** {sig.ai_reasoning or 'N/A'}",
+            ])
+
+        lines.append("")
+        return "\n".join(lines)
+
+    def _md_trailing_stop_history(self) -> str:
+        """Generate trailing stop history section."""
+        if not self.trailing_stop_history:
+            return ""
+
+        lines = [
+            "---",
+            "",
+            "## Trailing Stop History",
+            "",
+            "| Time | Old SL | New SL | Trigger Price |",
+            "|------|--------|--------|---------------|",
+        ]
+
+        for ts in self.trailing_stop_history:
+            time_str = ts.timestamp.strftime("%H:%M:%S")
+            lines.append(f"| {time_str} | ${ts.old_sl:.2f} | ${ts.new_sl:.2f} | ${ts.trigger_price:.2f} |")
+
+        lines.append("")
+        return "\n".join(lines)
+
+    def _md_notes(self) -> str:
+        """Generate notes section."""
+        if not self.notes:
+            return ""
+
+        lines = [
+            "---",
+            "",
+            "## Trade Notes",
+            "",
+        ]
+        for note in self.notes:
+            lines.append(f"- {note}")
+        lines.append("")
+        return "\n".join(lines)
+
+    def _md_bot_config(self) -> str:
+        """Generate bot config section."""
+        if not self.bot_config_snapshot:
+            return ""
+
+        return "\n".join([
+            "---",
+            "",
+            "## Bot Configuration (at trade time)",
+            "",
+            "```json",
+            json.dumps(self.bot_config_snapshot, indent=2),
+            "```",
+        ])

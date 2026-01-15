@@ -65,7 +65,7 @@ class StrategySimulatorParamsMixin:
                 widget = QSpinBox()
                 widget.setRange(
                     param_def.min_value or 0,
-                    param_def.max_value or 100,
+                    param_def.max_value or 999999,
                 )
                 widget.setValue(param_def.default)
                 if param_def.step:
@@ -74,7 +74,7 @@ class StrategySimulatorParamsMixin:
                 widget = QDoubleSpinBox()
                 widget.setRange(
                     param_def.min_value or 0.0,
-                    param_def.max_value or 100.0,
+                    param_def.max_value or 999999.0,
                 )
                 widget.setValue(param_def.default)
                 if param_def.step:
