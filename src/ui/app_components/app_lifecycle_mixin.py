@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from src.ai import get_openai_service
 from src.common.event_bus import Event, EventType, event_bus
 from src.common.logging_setup import configure_logging
+from PyQt6 import sip  # For checking if Qt object is deleted
 from src.config.loader import config_manager
 from src.core.broker import BrokerAdapter
 from src.core.market_data.history_provider import HistoryManager
@@ -50,6 +51,26 @@ logger = logging.getLogger(__name__)
 
 class AppLifecycleMixin:
     """AppLifecycleMixin extracted from TradingApplication."""
+
+    def _is_widget_valid(self, widget_name: str) -> bool:
+        """Check if a Qt widget attribute exists and hasn't been deleted."""
+        if not hasattr(self, widget_name):
+            return False
+        widget = getattr(self, widget_name)
+        try:
+            # Check if the C++ object has been deleted
+            return not sip.isdeleted(widget)
+        except (RuntimeError, TypeError):
+            return False
+
+    def _safe_set_status(self, text: str) -> None:
+        """Safely set ai_status text, handling deleted widgets."""
+        if self._is_widget_valid("ai_status"):
+            try:
+                self.ai_status.setText(text)
+            except RuntimeError:
+                pass  # Widget was deleted between check and use
+
     async def initialize_services(self) -> None:
         """Initialize background services (AI, etc.)."""
         try:
@@ -59,25 +80,21 @@ class AppLifecycleMixin:
 
             if not ai_config or not getattr(ai_config, "enabled", True):
                 self.ai_service = None
-                if hasattr(self, "ai_status"):
-                    self.ai_status.setText("AI: Disabled")
+                self._safe_set_status("AI: Disabled")
                 return
 
             if not api_key:
                 logger.warning("OpenAI API key not configured; AI service disabled")
                 self.ai_service = None
-                if hasattr(self, "ai_status"):
-                    self.ai_status.setText("AI: Missing Key")
+                self._safe_set_status("AI: Missing Key")
                 return
 
             # get_openai_service is async
             self.ai_service = await get_openai_service(ai_config, api_key)
-            if hasattr(self, "ai_status"):
-                self.ai_status.setText("AI: Ready")
+            self._safe_set_status("AI: Ready")
         except Exception as e:
-            logger.error(f"Failed to initialize AI service: {e}", exc_info=True)
-            if hasattr(self, "ai_status"):
-                self.ai_status.setText("AI: Error")
+            logger.error(f"Failed to initialize AI service: {e}")
+            self._safe_set_status("AI: Error")
     def show_console_window(self) -> None:
         """Show the hidden console window."""
         _show_console_window()

@@ -41,88 +41,75 @@ class BacktestConfigCollection:
         Returns:
             Dict mit allen Engine-Konfigurationen
         """
-        configs = {}
-
-        # Finde das ChartWindow (parent chain durchsuchen)
         chart_window = self.find_chart_window()
 
         if not chart_window:
             logger.warning("ChartWindow nicht gefunden - verwende Default-Configs")
             return self.get_default_engine_configs()
 
-        # Entry Score Settings
-        if hasattr(chart_window, 'entry_score_settings'):
-            try:
-                widget = chart_window.entry_score_settings
-                if hasattr(widget, 'get_settings'):
-                    configs['entry_score'] = widget.get_settings()
-                    logger.debug("Entry Score Config geladen")
-            except Exception as e:
-                logger.warning(f"Entry Score Config Fehler: {e}")
-
-        # Trigger/Exit Settings
-        if hasattr(chart_window, 'trigger_exit_settings'):
-            try:
-                widget = chart_window.trigger_exit_settings
-                if hasattr(widget, 'get_settings'):
-                    configs['trigger_exit'] = widget.get_settings()
-                    logger.debug("Trigger/Exit Config geladen")
-            except Exception as e:
-                logger.warning(f"Trigger/Exit Config Fehler: {e}")
-
-        # Leverage Settings
-        if hasattr(chart_window, 'leverage_settings'):
-            try:
-                widget = chart_window.leverage_settings
-                if hasattr(widget, 'get_settings'):
-                    configs['leverage'] = widget.get_settings()
-                    logger.debug("Leverage Config geladen")
-            except Exception as e:
-                logger.warning(f"Leverage Config Fehler: {e}")
-
-        # LLM Validation Settings
-        if hasattr(chart_window, 'llm_validation_settings'):
-            try:
-                widget = chart_window.llm_validation_settings
-                if hasattr(widget, 'get_settings'):
-                    configs['llm_validation'] = widget.get_settings()
-                    logger.debug("LLM Validation Config geladen")
-            except Exception as e:
-                logger.warning(f"LLM Validation Config Fehler: {e}")
-
-        # Level Detection Settings
-        if hasattr(chart_window, 'level_settings'):
-            try:
-                widget = chart_window.level_settings
-                if hasattr(widget, 'get_settings'):
-                    configs['levels'] = widget.get_settings()
-                    logger.debug("Level Detection Config geladen")
-            except Exception as e:
-                logger.warning(f"Level Detection Config Fehler: {e}")
-
-        # Bot Control Settings (Regime, Risk, etc.)
-        if hasattr(chart_window, 'bot_control_tab'):
-            try:
-                # Sammle Regime-relevante Einstellungen
-                tab = chart_window.bot_control_tab
-                if hasattr(tab, 'get_settings'):
-                    configs['bot_control'] = tab.get_settings()
-                    logger.debug("Bot Control Config geladen")
-            except Exception as e:
-                logger.warning(f"Bot Control Config Fehler: {e}")
-
-        # Daily Strategy Settings
-        if hasattr(chart_window, 'bot_strategy_tab'):
-            try:
-                tab = chart_window.bot_strategy_tab
-                if hasattr(tab, 'get_settings'):
-                    configs['daily_strategy'] = tab.get_settings()
-                    logger.debug("Daily Strategy Config geladen")
-            except Exception as e:
-                logger.warning(f"Daily Strategy Config Fehler: {e}")
+        # Collect all settings using DRY helper
+        configs = self._collect_all_settings(chart_window)
 
         logger.info(f"Engine Configs geladen: {list(configs.keys())}")
         return configs
+
+    def _collect_all_settings(self, chart_window) -> Dict[str, Any]:
+        """Collect all engine settings from chart window.
+
+        Args:
+            chart_window: ChartWindow widget containing settings.
+
+        Returns:
+            Dictionary of all collected settings.
+        """
+        # Define settings to collect: (attribute_name, config_key, display_name)
+        settings_specs = [
+            ('entry_score_settings', 'entry_score', 'Entry Score'),
+            ('trigger_exit_settings', 'trigger_exit', 'Trigger/Exit'),
+            ('leverage_settings', 'leverage', 'Leverage'),
+            ('llm_validation_settings', 'llm_validation', 'LLM Validation'),
+            ('level_settings', 'levels', 'Level Detection'),
+            ('bot_control_tab', 'bot_control', 'Bot Control'),
+            ('bot_strategy_tab', 'daily_strategy', 'Daily Strategy'),
+        ]
+
+        configs = {}
+        for attr_name, config_key, display_name in settings_specs:
+            config = self._collect_single_setting(
+                chart_window, attr_name, config_key, display_name
+            )
+            if config is not None:
+                configs[config_key] = config
+
+        return configs
+
+    def _collect_single_setting(
+        self, chart_window, attr_name: str, config_key: str, display_name: str
+    ) -> Dict[str, Any] | None:
+        """Collect a single setting from chart window widget.
+
+        Args:
+            chart_window: ChartWindow widget.
+            attr_name: Attribute name to look for.
+            config_key: Key for configs dictionary.
+            display_name: Display name for logging.
+
+        Returns:
+            Settings dictionary or None if not found/error.
+        """
+        if not hasattr(chart_window, attr_name):
+            return None
+
+        try:
+            widget = getattr(chart_window, attr_name)
+            if hasattr(widget, 'get_settings'):
+                settings = widget.get_settings()
+                logger.debug(f"{display_name} Config geladen")
+                return settings
+        except Exception as e:
+            logger.warning(f"{display_name} Config Fehler: {e}")
+
+        return None
 
     def find_chart_window(self) -> Optional["QWidget"]:
         """
