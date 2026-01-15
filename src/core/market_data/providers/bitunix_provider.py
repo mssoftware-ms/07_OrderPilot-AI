@@ -202,135 +202,122 @@ class BitunixProvider(HistoricalDataProvider):
         interval_ms = self._interval_ms(interval)
         start_ms = int(start_date.timestamp() * 1000)
         current_end_ms = int(end_date.timestamp() * 1000)
-        limit = 200  # API spec: max 200 per call
+        limit = 200  # API spec max (docs: limit default 100, max 200)
 
         all_bars: list[HistoricalBar] = []
-        max_batches = self.max_batches or 120
+        max_batches = self.max_batches or 3000
 
-        logger.info(f"📡 Bitunix Provider: Fetching {symbol} bars...")
-        logger.info(f"📡 Bitunix Provider: Timeframe={timeframe.value}, Interval={interval}")
-        logger.info(f"📡 Bitunix Provider: Start={start_date}, End={end_date}")
-        logger.debug(f"📡 Bitunix Provider: Base URL={self.base_url}")
-
-        # Calculate estimated total batches for progress
-        total_period_ms = current_end_ms - start_ms
-        bars_per_batch = limit
-        estimated_total_bars = int(total_period_ms / interval_ms)
-        estimated_batches = max(1, estimated_total_bars // bars_per_batch)
+        logger.info("📡 Bitunix Provider: Fetching %s from %s to %s (tf=%s, interval=%s)",
+                    symbol, start_date, end_date, timeframe.value, interval)
 
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 batches = 0
-                # Paginate BACKWARDS: from end_date towards start_date
-                while current_end_ms > start_ms and batches < max_batches:
-                    params = {
-                        'symbol': symbol,
-                        'interval': interval,
-                        'limit': limit,
-                        'startTime': start_ms,
-                        'endTime': current_end_ms,
-                    }
 
-                    # Build headers (no auth needed for public market data)
+                while current_end_ms >= start_ms and batches < max_batches:
+                    params = {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "limit": limit,
+                        "endTime": current_end_ms,
+                        "startTime": start_ms
+                    }
                     headers = self._build_headers(params)
 
-                    # Progress callback with detailed info
+                    # Progress callback BEFORE request so UI moves while waiting
                     if progress_callback:
-                        # Calculate current date being fetched
-                        current_date = datetime.fromtimestamp(current_end_ms / 1000, tz=timezone.utc)
+                        current_dt = datetime.fromtimestamp(current_end_ms / 1000, tz=timezone.utc)
                         progress_callback(
                             batches + 1,
                             len(all_bars),
                             f"Batch {batches + 1}: {len(all_bars):,} Bars geladen, "
-                            f"aktuell bei {current_date.strftime('%d.%m.%Y %H:%M')}"
+                            f"aktuell bei {current_dt.strftime('%d.%m.%Y %H:%M')}"
                         )
 
                     if batches % 50 == 0:
-                        logger.info(f"📡 Bitunix Provider: Batch #{batches + 1}, bars so far: {len(all_bars)}")
-                    logger.debug(f"📡 Bitunix Provider: Request #{batches + 1}, endTime={current_end_ms}")
+                        logger.info("📡 Bitunix Provider: Batch #%s, bars so far: %s", batches + 1, len(all_bars))
 
-                    async with session.get(
-                        f"{self.base_url}/api/v1/futures/market/kline",
-                        params=params,
-                        headers=headers,
-                    ) as response:
-                        if response.status != 200:
-                            error_text = await response.text()
-                            logger.error(f"❌ Bitunix API Error:")
-                            logger.error(f"   HTTP Status: {response.status}")
-                            logger.error(f"   Symbol: {symbol}")
-                            logger.error(f"   Interval: {interval}")
-                            logger.error(f"   URL: {self.base_url}/api/v1/futures/market/kline")
-                            logger.error(f"   Params: {params}")
-                            logger.error(f"   Response: {error_text[:500]}")  # First 500 chars
-                            break
-
-                        data = await response.json()
-
-                        # Check for API-level errors (code != 0)
-                        if data.get('code') != 0:
-                            logger.error(f"❌ Bitunix API Error Response:")
-                            logger.error(f"   Error Code: {data.get('code')}")
-                            logger.error(f"   Error Message: {data.get('msg', data.get('message', 'Unknown'))}")
-                            logger.error(f"   Symbol: {symbol}")
-                            logger.error(f"   Full Response: {data}")
-                            break
-
-                        # Parse klines (returns sorted ascending)
-                        batch = self._parse_klines(data, symbol)
-
-                        if not batch:
-                            logger.info("No more bars returned; stopping pagination.")
-                            break
-
-                        all_bars.extend(batch)
-                        if len(all_bars) >= self.max_bars:
-                            logger.warning(
-                                f"Reached max_bars={self.max_bars} for {symbol}; stopping pagination"
+                    # ---- HTTP call with retries on 5xx ------------------------------------
+                    retries = 0
+                    response = None
+                    while retries < 3:
+                        try:
+                            response = await session.get(
+                                f"{self.base_url}/api/v1/futures/market/kline",
+                                params=params,
+                                headers=headers,
                             )
-                            break
+                            if response.status == 200:
+                                break
+                            if response.status >= 500:
+                                msg = await response.text()
+                                retries += 1
+                                logger.warning("⚠️ Bitunix API %s, retry %s/3: %s", response.status, retries, msg[:180])
+                                await asyncio.sleep(0.5 * retries)
+                                continue
 
-                        # IMPORTANT: Bitunix returns data in DESCENDING order (newest first)
-                        # After sorting ascending, batch[0] is the OLDEST bar
-                        # Next request: end_ms = oldest_timestamp - 1ms (go further back in time)
-                        oldest_ts_ms = int(batch[0].timestamp.timestamp() * 1000)
-                        current_end_ms = oldest_ts_ms - 1  # Move endTime backwards
+                            # Non-retriable error
+                            msg = await response.text()
+                            logger.error("❌ Bitunix API Error: HTTP %s (%s)", response.status, msg[:200])
+                            return []
+                        except asyncio.TimeoutError:
+                            retries += 1
+                            logger.warning("⚠️ Bitunix timeout, retry %s/3", retries)
+                            await asyncio.sleep(0.5 * retries)
+                            continue
 
+                    if not response or response.status != 200:
+                        logger.error("❌ Bitunix API failed after retries (status=%s)", getattr(response, "status", None))
+                        break
+
+                    data = await response.json()
+
+                    # API-level error (code != 0)
+                    if data.get("code") != 0:
+                        logger.error("❌ Bitunix API Error Response: code=%s msg=%s", data.get("code"), data.get("msg", data.get("message")))
+                        break
+
+                    batch = self._parse_klines(data, symbol)
+                    if not batch:
+                        # No data returned → move back a window to avoid infinite loop
+                        logger.info("No bars returned; stepping back one window.")
+                        current_end_ms -= interval_ms * limit
                         batches += 1
-                        if batches >= max_batches:
-                            logger.warning(
-                                f"Reached max_batches={max_batches} for {symbol}; stopping pagination"
-                            )
-                            break
+                        continue
 
-                        # Respect rate limits (10 req/s)
-                        await asyncio.sleep(self.rate_limit_delay)
+                    all_bars.extend(batch)
+                    if len(all_bars) >= self.max_bars:
+                        logger.warning("Reached max_bars=%s for %s; stopping pagination", self.max_bars, symbol)
+                        break
 
-            # Deduplicate and sort
+                    # Next page: go to just before oldest bar
+                    oldest_ts_ms = int(batch[0].timestamp.timestamp() * 1000)
+                    current_end_ms = oldest_ts_ms - interval_ms
+
+                    batches += 1
+                    if batches >= max_batches:
+                        logger.warning("Reached max_batches=%s for %s; stopping pagination", max_batches, symbol)
+                        break
+
+                    await asyncio.sleep(self.rate_limit_delay)
+
+            # Deduplicate and sort ascending
             dedup = {int(bar.timestamp.timestamp() * 1000): bar for bar in all_bars}
             bars_sorted = [dedup[k] for k in sorted(dedup.keys())]
 
-            logger.info(f"✅ Bitunix Provider: Fetched {len(bars_sorted)} bars for {symbol} ({batches} requests, interval {interval})")
+            logger.info("✅ Bitunix Provider: Fetched %s bars for %s (%s requests, interval %s)",
+                        len(bars_sorted), symbol, batches, interval)
             return bars_sorted
 
         except asyncio.TimeoutError:
-            logger.error(f"❌ Bitunix Provider: Request timeout")
-            logger.error(f"   Symbol: {symbol}")
-            logger.error(f"   Interval: {interval}")
-            logger.error(f"   URL: {self.base_url}/api/v1/futures/market/kline")
-            logger.error(f"   Timeout: 30 seconds")
+            logger.error("❌ Bitunix Provider: Request timeout (symbol=%s, interval=%s)", symbol, interval)
             return []
         except aiohttp.ClientError as e:
-            logger.error(f"❌ Bitunix Provider: Network error")
-            logger.error(f"   Symbol: {symbol}")
-            logger.error(f"   Error Type: {type(e).__name__}")
-            logger.error(f"   Error: {e}")
+            logger.error("❌ Bitunix Provider: Network error %s (symbol=%s)", e, symbol)
             return []
         except Exception as e:
-            logger.error(f"❌ Bitunix Provider: Unexpected error")
-            logger.error(f"   Symbol: {symbol}")
-            logger.error(f"   Error Type: {type(e).__name__}")
-            logger.error(f"   Error: {e}", exc_info=True)
+            logger.error("❌ Bitunix Provider: Unexpected error %s", e, exc_info=True)
             return []
 
     def _parse_klines(self, data: dict, symbol: str) -> list[HistoricalBar]:
@@ -387,6 +374,7 @@ class BitunixProvider(HistoricalDataProvider):
 
                 bar = HistoricalBar(
                     timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
+                    symbol=symbol,
                     open=Decimal(str(kline['open'])),
                     high=Decimal(str(kline['high'])),
                     low=Decimal(str(kline['low'])),

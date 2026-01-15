@@ -60,24 +60,16 @@ class DataLoadingSeries:
         data = self.parent._cleaning.clean_bad_ticks(data)
 
         # Forward-fill gaps for 1-second candles (user request 2026-01-13)
-        # TEMPORÄR DEAKTIVIERT - verursacht Mini-Körper-Kerzen ohne Dochte
-        # if hasattr(self.parent, 'current_timeframe') and self.parent.current_timeframe == "1S":
-        #     data = self._fill_one_second_gaps(data)
-
-        # DEBUG: Log timeframe to verify correct detection
-        if hasattr(self.parent, 'current_timeframe'):
-            logger.info(f"Current timeframe: {self.parent.current_timeframe}, data shape: {data.shape}")
-        else:
-            logger.warning("current_timeframe not set!")
+        if hasattr(self.parent, 'current_timeframe') and self.parent.current_timeframe == "1S":
+            data = self._fill_one_second_gaps(data)
 
         # Issue #42: Filter data to last N hours for short period selections
-        # DEAKTIVIERT - verursacht Probleme beim Laden aller Kerzen
-        # if hasattr(self.parent, 'current_period'):
-        #     period = self.parent.current_period
-        #     if period in ["1H", "2H", "4H", "8H"] and not data.empty:
-        #         hours_map = {"1H": 1, "2H": 2, "4H": 4, "8H": 8}
-        #         hours = hours_map.get(period, 1)
-        #         data = self._filter_to_last_hours(data, hours)
+        if hasattr(self.parent, 'current_period'):
+            period = self.parent.current_period
+            if period in ["1H", "2H", "4H", "8H"] and not data.empty:
+                hours_map = {"1H": 1, "2H": 2, "4H": 4, "8H": 8}
+                hours = hours_map.get(period, 1)
+                data = self._filter_to_last_hours(data, hours)
 
         self.parent.data = data
         if len(data) > 0 and 'close' in data.columns:
@@ -220,7 +212,7 @@ class DataLoadingSeries:
             self.parent._execute_js(f"window.chartAPI.setData({candle_json});")
 
         # Issue #5, #40: Create volume panel and set volume data with custom colors
-        if volume_data is not None:
+        if volume_data:
             # Issue #40: Use custom bullish color for volume panel
             vol_colors = _get_volume_colors()
             self.parent._execute_js(

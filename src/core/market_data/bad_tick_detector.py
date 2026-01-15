@@ -66,6 +66,14 @@ class BadTickDetector:
             }
             for b in bars
         ])
+        # Ensure numeric types for math operations (Decimal -> float)
+        df[["open", "high", "low", "close", "volume"]] = df[
+            ["open", "high", "low", "close", "volume"]
+        ].astype(float)
+
+        # Skip filtering if not enough points for the window
+        if len(df) < max(3, self.config.hampel_window):
+            return bars, FilterStats(total_bars=len(bars))
 
         original_len = len(df)
         stats = FilterStats(total_bars=original_len)
@@ -94,6 +102,10 @@ class BadTickDetector:
             logger.warning(f"Unknown cleaning_mode: {self.config.cleaning_mode}")
             return bars, stats
 
+        # Issue #XX: Ensure OHLC consistency after interpolation/forward-fill
+        # Interpolation can cause Open < Low or Close > High
+        df = self._ensure_ohlc_consistency(df)
+
         stats.filtering_percentage = (bad_count / original_len * 100) if original_len > 0 else 0.0
 
         if self.config.log_stats:
@@ -102,8 +114,8 @@ class BadTickDetector:
                 f"using {self.config.method} method, mode={self.config.cleaning_mode}"
             )
 
-        # Convert back to Bar objects
-        from alpaca.data.models.bars import Bar
+        # Convert back to HistoricalBar objects
+        from src.core.market_data.types import HistoricalBar
         from datetime import datetime
 
         cleaned_bars = []
@@ -112,16 +124,15 @@ class BadTickDetector:
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
             cleaned_bars.append(
-                Bar(
-                    symbol=bars[0].symbol if bars else symbol,
+                HistoricalBar(
                     timestamp=ts,
+                    symbol=symbol,
                     open=float(row["open"]),
                     high=float(row["high"]),
                     low=float(row["low"]),
                     close=float(row["close"]),
                     volume=float(row["volume"]),
-                    trade_count=getattr(bars[0], "trade_count", 0) if bars else 0,
-                    vwap=getattr(bars[0], "vwap", None) if bars else None,
+                    source="filtered",
                 )
             )
 
@@ -276,10 +287,10 @@ class BadTickDetector:
             df[col] = df[col].interpolate(method="linear", limit_direction="both")
 
             # Forward fill if interpolation fails
-            df[col] = df[col].fillna(method="ffill")
+            df[col] = df[col].ffill()
 
             # Backward fill if still NaN
-            df[col] = df[col].fillna(method="bfill")
+            df[col] = df[col].bfill()
 
         return df
 
@@ -304,9 +315,41 @@ class BadTickDetector:
             df.loc[bad_mask, col] = np.nan
 
             # Forward fill
-            df[col] = df[col].fillna(method="ffill")
+            df[col] = df[col].ffill()
 
             # Backward fill if still NaN
-            df[col] = df[col].fillna(method="bfill")
+            df[col] = df[col].bfill()
+
+        return df
+
+    def _ensure_ohlc_consistency(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Ensure OHLC consistency after interpolation/forward-fill.
+
+        After independent interpolation of OHLC columns, consistency may be violated:
+        - Open may be < Low or > High
+        - Close may be < Low or > High
+
+        This method corrects High/Low to encompass Open/Close values.
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            DataFrame with consistent OHLC relationships
+        """
+        if not all(col in df.columns for col in ["open", "high", "low", "close"]):
+            return df
+
+        df = df.copy()
+
+        # High must be >= max(open, close, high)
+        df["high"] = df[["open", "high", "close"]].max(axis=1)
+
+        # Low must be <= min(open, close, low)
+        df["low"] = df[["open", "low", "close"]].min(axis=1)
+
+        # Log corrections for debugging
+        logger.debug("OHLC consistency enforced after interpolation")
 
         return df

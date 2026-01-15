@@ -153,7 +153,7 @@ def get_chart_html_template() -> str:
     settings = QSettings("OrderPilot", "TradingApp")
     border_radius_slider_value = settings.value("chart_candle_border_radius", 0, type=int)
     # Convert slider value (0-40) to actual pixels (0-10 in 0.25 steps)
-    border_radius = border_radius_slider_value / 4.0
+    border_radius = 0.0  # Force-disable rounded overlay to avoid rendering glitches
 
     # Inject border radius and custom colors BEFORE window.chartAPI definition
     template = template.replace(

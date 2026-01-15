@@ -170,8 +170,7 @@
                         secondsVisible: true,  // Issue #42: Show seconds on X-axis for 1S charts
                         borderColor: '#485c7b',
                         shiftVisibleRangeOnNewBar: false, // Issue: Chart springt zur Mitte - disabled
-                        barSpacing: 10,  // Issue #8: Increased from 6 to 10 for better candle visibility on 1M/5M charts
-                        minBarSpacing: 4, // Prevent ultra-thin candles when many bars are visible
+                        barSpacing: 6,
                     },
                     localization: {
                         locale: 'de-DE',
@@ -219,6 +218,10 @@
                 const panelMap = {};
                 const panelMainSeries = {};
                 const panelExtraSeries = {};
+
+                // Expose to window scope for streaming mixin access
+                window.panelMainSeries = panelMainSeries;
+                window.panelMap = panelMap;
 
                 const pricePaneApi = chart.panes()[0];
                 if (pricePaneApi?.setStretchFactor) pricePaneApi.setStretchFactor(10);
@@ -431,66 +434,8 @@
                             rightScale.applyOptions({ autoScale: true });
                         }
                     },
-                    // Issue #9: Re-enable volume chart with histogram series
-                    setVolumeData: (data) => {
-                        try {
-                            if (!data || !Array.isArray(data) || data.length === 0) {
-                                console.warn('setVolumeData: no data provided');
-                                return false;
-                            }
-
-                            // Create or get volume panel
-                            const panelId = 'volume';
-                            const seriesKey = 'volume';
-
-                            // Check if volume series already exists
-                            const key = panelId + '_' + seriesKey;
-                            if (!panelExtraSeries[key]) {
-                                // Add volume as histogram series in separate panel
-                                const success = window.chartAPI.addPanelSeries(
-                                    panelId,
-                                    seriesKey,
-                                    'histogram',
-                                    '#26a69a80',  // Semi-transparent green
-                                    data
-                                );
-                                if (!success) {
-                                    console.error('Failed to create volume series');
-                                    return false;
-                                }
-                            } else {
-                                // Update existing volume data
-                                panelExtraSeries[key].setData(data);
-                            }
-
-                            console.log('Volume data set: ' + data.length + ' bars');
-                            return true;
-                        } catch(e) {
-                            console.error('setVolumeData error:', e);
-                            return false;
-                        }
-                    },
-                    updateVolume: (volumeBar) => {
-                        try {
-                            if (!volumeBar || !volumeBar.time) {
-                                return false;
-                            }
-
-                            const key = 'volume_volume';
-                            const volumeSeries = panelExtraSeries[key];
-
-                            if (!volumeSeries) {
-                                console.warn('Volume series not initialized, call setVolumeData first');
-                                return false;
-                            }
-
-                            volumeSeries.update(volumeBar);
-                            return true;
-                        } catch(e) {
-                            console.error('updateVolume error:', e);
-                            return false;
-                        }
-                    },
+                    setVolumeData: () => console.warn('setVolumeData is deprecated'),
+                    updateVolume: () => console.warn('updateVolume is deprecated'),
 
                     addIndicator: (name, color) => {
                         try {
@@ -527,21 +472,12 @@
                             const paneIndex = paneApi.paneIndex();
                             let series;
                             if (type === 'histogram') {
-                                // Issue #VOLUME: Fix upside-down volume chart with proper scaleMargins
                                 series = chart.addSeries(HistogramSeries, {
                                     base: 0,
                                     color,
                                     priceScaleId: 'right',
                                     priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
                                     title: displayName,
-                                    // Critical: Volume should grow from bottom (0) upwards
-                                    scaleMargins: { top: 0.1, bottom: 0.0 },
-                                    autoscaleInfoProvider: () => ({
-                                        priceRange: {
-                                            minValue: 0,
-                                            maxValue: null  // Auto-scale max
-                                        }
-                                    })
                                 }, paneIndex);
                             } else {
                                 const opts = { color, lineWidth: 2, title: displayName, priceScaleId: 'right' };
@@ -608,17 +544,8 @@
                                 paneApi = addPane(panelId);
                                 paneIndex = paneApi.paneIndex();
                             }
-                            // Issue #VOLUME: Fix upside-down histograms with proper scaleMargins
                             const seriesOpts = type === 'histogram'
-                                ? {
-                                    base: 0,
-                                    color,
-                                    priceScaleId: 'right',
-                                    priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
-                                    title: seriesKey.toUpperCase(),
-                                    scaleMargins: { top: 0.1, bottom: 0.0 },
-                                    autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: null } })
-                                }
+                                ? { base: 0, color, priceScaleId: 'right', priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }, title: seriesKey.toUpperCase() }
                                 : { color, lineWidth: 2, title: seriesKey.toUpperCase(), priceScaleId: 'right' };
                             const s = type === 'histogram'
                                 ? chart.addSeries(HistogramSeries, seriesOpts, paneIndex)

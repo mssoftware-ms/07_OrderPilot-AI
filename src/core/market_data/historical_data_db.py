@@ -12,10 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import pandas as pd
+
+from sqlalchemy import func
+from sqlalchemy.dialects.sqlite import insert
+
+from src.database.models import MarketBar
 
 if TYPE_CHECKING:
     from src.database.database import Database
@@ -55,13 +60,9 @@ class HistoricalDataDB:
             db_symbol: Database symbol identifier
         """
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM historical_bars WHERE symbol = ?", (db_symbol,)
-                )
-                conn.commit()
-                deleted = cursor.rowcount
+            with self.db.session() as session:
+                deleted = session.query(MarketBar).filter_by(symbol=db_symbol).delete()
+                session.commit()
                 logger.info(f"🗑️  Deleted {deleted} existing bars for {db_symbol}")
         except Exception as e:
             logger.error(f"Error deleting data for {db_symbol}: {e}")
@@ -105,33 +106,38 @@ class HistoricalDataDB:
             source: Data source name
         """
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
+            rows = []
+            for bar in batch:
+                ts = bar.timestamp
+                if isinstance(ts, str):
+                    ts = pd.to_datetime(ts).to_pydatetime()
+                if ts.tzinfo is not None:
+                    ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+                rows.append(
+                    {
+                        "symbol": db_symbol,
+                        "timestamp": ts,
+                        "open": float(bar.open),
+                        "high": float(bar.high),
+                        "low": float(bar.low),
+                        "close": float(bar.close),
+                        "volume": float(bar.volume),
+                        "source": source,
+                    }
+                )
 
-                for bar in batch:
-                    ts = bar.timestamp
-                    if isinstance(ts, datetime):
-                        ts = ts.isoformat()
+            if not rows:
+                return
 
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO historical_bars
-                        (symbol, timestamp, open, high, low, close, volume, source)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            db_symbol,
-                            ts,
-                            float(bar.open),
-                            float(bar.high),
-                            float(bar.low),
-                            float(bar.close),
-                            float(bar.volume),
-                            source,
-                        ),
-                    )
-
-                conn.commit()
+            with self.db.session() as session:
+                stmt = insert(MarketBar).values(rows)
+                update_cols = {c: stmt.excluded[c] for c in ["open", "high", "low", "close", "volume", "source"]}
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["symbol", "timestamp"],
+                    set_=update_cols,
+                )
+                session.execute(stmt)
+                session.commit()
         except Exception as e:
             logger.error(f"Error saving batch for {db_symbol}: {e}")
             raise
@@ -159,21 +165,17 @@ class HistoricalDataDB:
             Dict with first_date, last_date, total_bars, date_range_days
         """
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT
-                        MIN(timestamp) as first_date,
-                        MAX(timestamp) as last_date,
-                        COUNT(*) as total_bars
-                    FROM historical_bars
-                    WHERE symbol = ?
-                    """,
-                    (db_symbol,),
+            with self.db.session() as session:
+                row = (
+                    session.query(
+                        func.min(MarketBar.timestamp),
+                        func.max(MarketBar.timestamp),
+                        func.count(MarketBar.id),
+                    )
+                    .filter(MarketBar.symbol == db_symbol)
+                    .one()
                 )
 
-                row = cursor.fetchone()
                 if not row or row[0] is None:
                     return None
 
@@ -265,3 +267,38 @@ class HistoricalDataDB:
         except Exception as e:
             logger.error(f"Error verifying integrity for {db_symbol}: {e}")
             return {"has_issues": True, "error": str(e)}
+
+    async def get_basic_stats(self, db_symbol: str) -> dict | None:
+        """
+        Lightweight stats for a symbol (min/max/count).
+
+        Args:
+            db_symbol: Database symbol identifier
+
+        Returns:
+            Dict with first_ts, last_ts, total or None if no rows.
+        """
+        return await asyncio.to_thread(self._get_basic_stats_sync, db_symbol)
+
+    def _get_basic_stats_sync(self, db_symbol: str) -> dict | None:
+        try:
+            with self.db.session() as session:
+                row = (
+                    session.query(
+                        func.min(MarketBar.timestamp),
+                        func.max(MarketBar.timestamp),
+                        func.count(MarketBar.id),
+                    )
+                    .filter(MarketBar.symbol == db_symbol)
+                    .one()
+                )
+                if not row or row[0] is None:
+                    return None
+                return {
+                    "first_ts": pd.to_datetime(row[0]),
+                    "last_ts": pd.to_datetime(row[1]),
+                    "total": row[2],
+                }
+        except Exception as e:
+            logger.error(f"Error getting basic stats for {db_symbol}: {e}")
+            return None

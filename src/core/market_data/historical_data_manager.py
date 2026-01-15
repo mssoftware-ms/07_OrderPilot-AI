@@ -114,8 +114,8 @@ class HistoricalDataManager:
 
         for symbol in symbols:
             try:
-                # Format symbol with source prefix for database
-                db_symbol = format_symbol_with_source(symbol, source)
+                # For Bitunix we keep raw symbol (UI expects plain BTCUSDT)
+                db_symbol = symbol if source == DataSource.BITUNIX else format_symbol_with_source(symbol, source)
 
                 # Delete existing data if replace mode is enabled
                 if replace_existing:
@@ -154,14 +154,14 @@ class HistoricalDataManager:
                     else:
                         detector = self._detector
 
-                    bars, stats = await detector.filter_bad_ticks(bars, symbol)
-                    total_filter_stats.total_bars += stats.total_bars
-                    total_filter_stats.bad_ticks_found += stats.bad_ticks_found
-                    total_filter_stats.bad_ticks_interpolated += stats.bad_ticks_interpolated
-                    total_filter_stats.bad_ticks_removed += stats.bad_ticks_removed
+                bars, stats = await detector.filter_bad_ticks(bars, symbol)
+                total_filter_stats.total_bars += stats.total_bars
+                total_filter_stats.bad_ticks_found += stats.bad_ticks_found
+                total_filter_stats.bad_ticks_interpolated += stats.bad_ticks_interpolated
+                total_filter_stats.bad_ticks_removed += stats.bad_ticks_removed
 
                 # Format symbol with source prefix for database
-                db_symbol = format_symbol_with_source(symbol, source)
+                db_symbol = symbol if source == DataSource.BITUNIX else format_symbol_with_source(symbol, source)
 
                 # Save to database in batches (delegated)
                 await self._db_handler.save_bars_batched(
@@ -200,6 +200,7 @@ class HistoricalDataManager:
         batch_size: int = 100,
         filter_config: FilterConfig | None = None,
         progress_callback: callable = None,
+        min_days_back: int | None = None,
     ) -> dict[str, int]:
         """Sync historical data up to now without re-downloading everything.
 
@@ -229,10 +230,39 @@ class HistoricalDataManager:
                     progress_callback(0, 0, f"Checking coverage for {symbol}...")
 
                 # 1. Check existing coverage
-                db_symbol = format_symbol_with_source(symbol, source)
+                db_symbol = symbol if source == DataSource.BITUNIX else format_symbol_with_source(symbol, source)
                 coverage = await self._db_handler.get_data_coverage(db_symbol)
+                stats = await self._db_handler.get_basic_stats(db_symbol)
 
                 days_to_fetch = 365  # Default fallback if no data
+                missing_bars = 0
+                if stats and stats.get("first_ts") is not None and stats.get("last_ts") is not None:
+                    first_ts = stats["first_ts"]
+                    last_ts = stats["last_ts"]
+                    # Normalize tz to UTC for arithmetic
+                    if first_ts.tzinfo is None:
+                        first_ts = first_ts.replace(tzinfo=timezone.utc)
+                    else:
+                        first_ts = first_ts.tz_convert(timezone.utc) if hasattr(first_ts, 'tz_convert') else first_ts.astimezone(timezone.utc)
+                    if last_ts.tzinfo is None:
+                        last_ts = last_ts.replace(tzinfo=timezone.utc)
+                    else:
+                        last_ts = last_ts.tz_convert(timezone.utc) if hasattr(last_ts, 'tz_convert') else last_ts.astimezone(timezone.utc)
+                    total = stats["total"]
+                    # Expectation based on 1m candles (approx). If timeframe != 1m, scale accordingly.
+                    tf_seconds = 60
+                    if timeframe == Timeframe.MINUTE_5:
+                        tf_seconds = 300
+                    elif timeframe == Timeframe.MINUTE_15:
+                        tf_seconds = 900
+                    elif timeframe == Timeframe.HOUR_1:
+                        tf_seconds = 3600
+                    elif timeframe == Timeframe.HOUR_4:
+                        tf_seconds = 14_400
+                    elif timeframe == Timeframe.DAY_1:
+                        tf_seconds = 86_400
+                    expected = int(((last_ts - first_ts).total_seconds() // tf_seconds) + 1)
+                    missing_bars = max(0, expected - total)
 
                 if coverage and coverage.get('last_date'):
                     last_date = coverage['last_date']
@@ -249,8 +279,20 @@ class HistoricalDataManager:
                     days_to_fetch = max(1, delta.days + 1)
 
                     logger.info(f"📅 {symbol}: Last data from {last_date.date()} ({delta.days} days ago). Fetching {days_to_fetch} days.")
+                    if missing_bars > 0:
+                        logger.info(f"🔍 Detected ~{missing_bars} fehlende Bars im vorhandenen Bereich – lade kompletten Bereich neu (ohne Löschen).")
+                        # Expand fetch to cover whole stored span + recent buffer
+                        span_days = max(1, (last_date - first_ts).days + 2) if stats else days_to_fetch
+                        days_to_fetch = max(days_to_fetch, span_days)
+                        # Progress hint
+                        if progress_callback:
+                            progress_callback(0, 0, f"{symbol}: fülle Lücken (~{missing_bars} Bars) durch Neu-Download")
                 else:
                     logger.info(f"📅 {symbol}: No existing data found. Fetching full year.")
+
+                # Enforce minimum from caller (e.g., UI selection)
+                if min_days_back is not None:
+                    days_to_fetch = max(days_to_fetch, min_days_back)
 
                 # 2. Download only the missing period
                 # We use bulk_download for a single symbol to reuse its logic (filtering, saving, etc.)
