@@ -1,7 +1,0 @@
-[features]
-# Enable supported Codex CLI feature flag replacing deprecated web_search
-web_search_request = true
-
-[tools]
-# Explicitly enable deprecated web_search toggle for compatibility with older releases
-web_search = true

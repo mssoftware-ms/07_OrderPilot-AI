@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .strategy_selector_models import SelectionResult, SelectionSnapshot
@@ -95,11 +95,9 @@ class StrategySelectorGuards:
         passed_count: int,
     ) -> SelectionResult:
         """Create selection result."""
-        # Calculate lock until (15 minutes from now for faster market adaptation)
-        # Changed from daily lock (23:59:59) to 15-minute intervals to better
-        # respond to intraday market condition changes
+        # Calculate lock until (end of current day UTC)
         now = datetime.utcnow()
-        lock_until = now + timedelta(minutes=15)
+        lock_until = datetime(now.year, now.month, now.day, 23, 59, 59)
 
         result = SelectionResult(
             selected_strategy=strategy.profile.name,

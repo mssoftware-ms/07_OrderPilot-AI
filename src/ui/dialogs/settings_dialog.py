@@ -9,7 +9,6 @@ import logging
 import os
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -51,7 +50,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         tabs.addTab(self._create_broker_tab(), "Brokers")
         tabs.addTab(self._create_market_data_tab(), "Market Data")
         tabs.addTab(self._create_ai_tab(), "AI")
-        tabs.addTab(self._create_heatmap_tab(), "Heatmap")
         tabs.addTab(self._create_notifications_tab(), "Notifications")
 
         layout.addWidget(tabs)
@@ -76,34 +74,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
 
         # General
         self._set_combo_value(self.theme_combo, self.settings.value("theme", "Dark"))
-
-        # UI Customization
-        ui_btn_border_color_name = self.settings.value("ui_btn_border_color", "#3A3D43")
-        self.ui_btn_border_color = QColor(ui_btn_border_color_name)
-        if hasattr(self, '_basic_helper'):
-            self._basic_helper._update_color_button(self.ui_btn_border_color_btn, self.ui_btn_border_color)
-
-        ui_font_color_name = self.settings.value("ui_font_color", "#EAECEF")
-        self.ui_font_color = QColor(ui_font_color_name)
-        if hasattr(self, '_basic_helper'):
-            self._basic_helper._update_color_button(self.ui_font_color_btn, self.ui_font_color)
-
-        current_font = self.settings.value("ui_font_family", "Segoe UI")
-        self.ui_font_family_combo.setCurrentFont(self.ui_font_family_combo.currentFont()) # Set default first
-        # Find font in combo
-        idx = -1
-        # Iterate to find the font family match
-        for i in range(self.ui_font_family_combo.count()):
-            if self.ui_font_family_combo.itemText(i) == current_font:
-                idx = i
-                break
-        if idx >= 0:
-            self.ui_font_family_combo.setCurrentIndex(idx)
-
-        self.ui_font_size_spin.setValue(
-            self.settings.value("ui_font_size", 14, type=int)
-        )
-
         self.auto_connect_check.setChecked(
             self.settings.value("auto_connect", False, type=bool)
         )
@@ -118,6 +88,8 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         )
 
         # Issue #34: Chart Colors
+        from PyQt6.QtGui import QColor
+
         bullish_color_name = self.settings.value("chart_bullish_color", "#26a69a")
         self.bullish_color = QColor(bullish_color_name)
         if hasattr(self, '_basic_helper'):
@@ -149,12 +121,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.background_image_opacity_slider.setValue(bg_opacity)
         self.background_image_opacity_label.setText(f"{bg_opacity}%")
 
-        # Issue #39/#49: Load Candle Border Radius (0.25px increments)
+        # Issue #39: Load Candle Border Radius
         border_radius = self.settings.value("chart_candle_border_radius", 0, type=int)
         self.candle_border_radius_slider.setValue(border_radius)
-        # Display with 2 decimal places (value/4 to convert slider steps to pixels)
-        pixels = border_radius / 4.0
-        self.candle_border_radius_label.setText(f"{pixels:.2f} px")
+        self.candle_border_radius_label.setText(f"{border_radius} px")
 
         # Trading
         self.manual_approval.setChecked(
@@ -315,10 +285,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.value("connection_notif", False, type=bool)
         )
 
-        # Heatmap settings
-        if hasattr(self, '_heatmap_helper'):
-            self._heatmap_helper.load_heatmap_settings()
-
     def _set_combo_value(self, combo, value: str) -> None:
         index = combo.findText(value)
         if index >= 0:
@@ -353,13 +319,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         try:
             # General
             self.settings.setValue("theme", self.theme_combo.currentText())
-            
-            # UI Customization
-            self.settings.setValue("ui_btn_border_color", self.ui_btn_border_color.name())
-            self.settings.setValue("ui_font_color", self.ui_font_color.name())
-            self.settings.setValue("ui_font_family", self.ui_font_family_combo.currentFont().family())
-            self.settings.setValue("ui_font_size", self.ui_font_size_spin.value())
-
             self.settings.setValue("auto_connect", self.auto_connect_check.isChecked())
             self.settings.setValue("default_broker", self.default_broker_combo.currentText())
             self.settings.setValue("console_debug_level", self.console_debug_level.currentText())
@@ -448,10 +407,6 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("order_filled_notif", self.order_filled_notif.isChecked())
             self.settings.setValue("alert_notif", self.alert_notif.isChecked())
             self.settings.setValue("connection_notif", self.connection_notif.isChecked())
-
-            # Heatmap settings
-            if hasattr(self, '_heatmap_helper'):
-                self._heatmap_helper.save_heatmap_settings()
 
             # Sync settings to disk
             self.settings.sync()

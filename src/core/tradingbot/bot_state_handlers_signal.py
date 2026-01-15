@@ -38,40 +38,12 @@ class BotStateHandlersSignal:
             self.parent._state_machine.trigger(BotTrigger.SIGNAL_EXPIRED)
             return None
 
-        # Issue #56: Check if CANDIDATE signal has expired (timeout after 10 minutes)
-        from datetime import timedelta, timezone
-        import pandas as pd
-
-        # Use timezone-aware datetime to match signal timestamp
-        now_utc = pd.Timestamp.now(tz='UTC')
-        signal_timestamp = pd.Timestamp(self.parent._current_signal.timestamp)
-
-        # Ensure both are timezone-aware for comparison
-        if signal_timestamp.tz is None:
-            signal_timestamp = signal_timestamp.tz_localize('UTC')
-
-        signal_age = now_utc - signal_timestamp
-        max_candidate_age = timedelta(minutes=10)
-
-        if (self.parent._current_signal.signal_type == SignalType.CANDIDATE and
-            signal_age > max_candidate_age):
-            # CANDIDATE signal timeout - prevents blocking
-            self.parent._log_activity(
-                "SIGNAL_TIMEOUT",
-                f"CANDIDATE signal expired after {signal_age.total_seconds():.0f}s (max: {max_candidate_age.total_seconds():.0f}s)"
-            )
-            self.parent._current_signal = None
-            self.parent._state_machine.trigger(BotTrigger.SIGNAL_EXPIRED)
-            return self.parent._create_decision(
-                BotAction.NO_TRADE, TradeSide.NONE, features, ["SIGNAL_TIMEOUT"]
-            )
-
         # Check signal still valid
         side = self.parent._current_signal.side
         new_score = self.parent._calculate_entry_score(features, side)
 
         if new_score < self.parent._get_entry_threshold() * 0.9:  # Allow some slack
-            # Signal expired (score too low)
+            # Signal expired
             self.parent._current_signal = None
             self.parent._state_machine.trigger(BotTrigger.SIGNAL_EXPIRED)
             return self.parent._create_decision(

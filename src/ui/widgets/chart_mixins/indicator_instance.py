@@ -111,37 +111,21 @@ class IndicatorInstanceManager:
                 logger.warning("No data yet, cannot add indicator %s", inst.display_name)
                 return
 
-            # Issue #55: Ensure chart is fully ready before adding indicator
-            if not (self.parent.page_loaded and self.parent.chart_initialized):
-                logger.warning("Chart not ready yet, cannot add indicator %s", inst.display_name)
-                # Re-queue the indicator
-                if inst not in self.parent._pending_indicator_instances:
-                    self.parent._pending_indicator_instances.append(inst)
-                return
-
-            logger.info(f"Adding indicator to chart: {inst.display_name} (overlay={inst.is_overlay})")
-
             config = IndicatorConfig(indicator_type=inst.ind_type, params=inst.params)
             result = self.parent.indicator_engine.calculate(self.parent.data, config)
             ind_data = self.parent._conversion.convert_indicator_result(inst.ind_id, result)
 
-            logger.debug(f"Indicator data calculated: {len(ind_data)} points")
-
             if inst.is_overlay:
                 self.parent._chart_ops.create_overlay_indicator(inst.display_name, inst.color)
-                logger.info(f"Created overlay indicator: {inst.display_name}")
             else:
                 self.parent._chart_ops.create_oscillator_panel(
                     inst.instance_id, inst.display_name, inst.color, inst.min_val, inst.max_val
                 )
-                logger.info(f"Created oscillator panel: {inst.instance_id}")
 
             if inst.is_overlay:
                 self.parent._chart_ops.update_overlay_data(inst.display_name, ind_data)
-                logger.info(f"Updated overlay data: {inst.display_name}")
             else:
                 self.parent._chart_ops.update_oscillator_data(inst.instance_id, ind_data)
-                logger.info(f"Updated oscillator data: {inst.instance_id}")
 
         except Exception as ind_error:
             logger.error("Error creating indicator %s: %s", inst.ind_id, ind_error, exc_info=True)

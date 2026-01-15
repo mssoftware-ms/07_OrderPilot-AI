@@ -66,17 +66,7 @@ class SimulationConfig:
     leverage: float = 1.0
 
 
-
-# Import mixins
-from .simulation_indicators_mixin import SimulationIndicatorsMixin
-from .simulation_trade_mixin import SimulationTradeMixin
-from .simulation_results_mixin import SimulationResultsMixin
-
-class StrategySimulator(
-    SimulationIndicatorsMixin,
-    SimulationTradeMixin,
-    SimulationResultsMixin,
-):
+class StrategySimulator:
     """Simulator for running strategies with configurable parameters.
 
     This class provides a simplified backtesting engine that:
@@ -98,7 +88,6 @@ class StrategySimulator(
         self._signal_generator = StrategySignalGenerator(self.data)
         self._trades: list[TradeRecord] = []
         self._equity_curve: list[tuple[datetime, float]] = []
-
 
     def _prepare_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Prepare and validate data."""
@@ -258,7 +247,6 @@ class StrategySimulator(
 
         return result
 
-
     def _generate_signals(
         self,
         strategy_name: StrategyName,
@@ -266,7 +254,6 @@ class StrategySimulator(
     ) -> pd.DataFrame:
         """Generate trading signals based on strategy logic."""
         return self._signal_generator.generate(strategy_name, parameters)
-
 
     def _run_entry_only_simulation(
         self,
@@ -292,32 +279,13 @@ class StrategySimulator(
         Returns:
             SimulationResult with entry quality metrics
         """
+        entries = []
+        entry_scores = []
+
         # Determine lookahead bars
         if entry_lookahead_bars is None:
             entry_lookahead_bars = min(20, len(signals) // 10) or 10
 
-        # Detect and evaluate all entries
-        entries, entry_scores = self._detect_and_evaluate_entries(
-            signals, entry_side, entry_lookahead_bars
-        )
-
-        # Calculate aggregate metrics
-        metrics = self._calculate_entry_metrics(entries, entry_scores)
-
-        # Create synthetic trades for result compatibility
-        trades = self._create_synthetic_trades(entries)
-
-        # Build and return simulation result
-        return self._build_entry_simulation_result(
-            strategy_name, parameters, initial_capital, trades, metrics
-        )
-
-    def _detect_and_evaluate_entries(
-        self, signals: pd.DataFrame, entry_side: str, lookahead_bars: int
-    ) -> tuple[list[dict], list[float]]:
-        """Detect entry signals and evaluate their quality."""
-        entries = []
-        entry_scores = []
         signal_value = 1 if entry_side == "long" else -1
 
         for i, (timestamp, row) in enumerate(signals.iterrows()):
@@ -327,94 +295,47 @@ class StrategySimulator(
             if signal == signal_value or (entry_side == "long" and signal == 1):
                 entry_price = row["close"]
 
-                # Evaluate entry quality
-                entry_eval = self._evaluate_entry_quality(
-                    signals, i, entry_price, entry_side, lookahead_bars
-                )
+                # Calculate entry quality based on lookahead
+                lookahead_end = min(i + entry_lookahead_bars, len(signals) - 1)
+                if lookahead_end > i:
+                    future_prices = signals.iloc[i + 1 : lookahead_end + 1]
 
-                if entry_eval:
-                    entry_eval["timestamp"] = timestamp
-                    entry_eval["entry_price"] = entry_price
-                    entry_eval["side"] = entry_side
-                    entries.append(entry_eval)
-                    entry_scores.append(entry_eval["entry_score"])
+                    if entry_side == "long":
+                        # For long: positive if price goes up
+                        max_price = future_prices["high"].max()
+                        min_price = future_prices["low"].min()
+                        max_gain_pct = (max_price - entry_price) / entry_price * 100
+                        max_loss_pct = (entry_price - min_price) / entry_price * 100
+                    else:
+                        # For short: positive if price goes down
+                        max_price = future_prices["high"].max()
+                        min_price = future_prices["low"].min()
+                        max_gain_pct = (entry_price - min_price) / entry_price * 100
+                        max_loss_pct = (max_price - entry_price) / entry_price * 100
 
-        return entries, entry_scores
+                    # Entry score: reward/risk ratio
+                    entry_score = max_gain_pct / max_loss_pct if max_loss_pct > 0 else max_gain_pct
+                    entry_scores.append(entry_score)
 
-    def _evaluate_entry_quality(
-        self,
-        signals: pd.DataFrame,
-        entry_idx: int,
-        entry_price: float,
-        entry_side: str,
-        lookahead_bars: int,
-    ) -> dict | None:
-        """Evaluate entry quality based on future price movement."""
-        lookahead_end = min(entry_idx + lookahead_bars, len(signals) - 1)
-        if lookahead_end <= entry_idx:
-            return None
+                    entries.append({
+                        "timestamp": timestamp,
+                        "entry_price": entry_price,
+                        "side": entry_side,
+                        "max_gain_pct": max_gain_pct,
+                        "max_loss_pct": max_loss_pct,
+                        "entry_score": entry_score,
+                    })
 
-        future_prices = signals.iloc[entry_idx + 1 : lookahead_end + 1]
-
-        # Calculate gains/losses based on side
-        max_gain_pct, max_loss_pct = self._calculate_entry_gains_losses(
-            future_prices, entry_price, entry_side
-        )
-
-        # Entry score: reward/risk ratio
-        entry_score = max_gain_pct / max_loss_pct if max_loss_pct > 0 else max_gain_pct
-
-        return {
-            "max_gain_pct": max_gain_pct,
-            "max_loss_pct": max_loss_pct,
-            "entry_score": entry_score,
-        }
-
-    def _calculate_entry_gains_losses(
-        self, future_prices: pd.DataFrame, entry_price: float, entry_side: str
-    ) -> tuple[float, float]:
-        """Calculate maximum gain and loss percentages for entry evaluation."""
-        max_price = future_prices["high"].max()
-        min_price = future_prices["low"].min()
-
-        if entry_side == "long":
-            # For long: positive if price goes up
-            max_gain_pct = (max_price - entry_price) / entry_price * 100
-            max_loss_pct = (entry_price - min_price) / entry_price * 100
-        else:
-            # For short: positive if price goes down
-            max_gain_pct = (entry_price - min_price) / entry_price * 100
-            max_loss_pct = (max_price - entry_price) / entry_price * 100
-
-        return max_gain_pct, max_loss_pct
-
-    def _calculate_entry_metrics(
-        self, entries: list[dict], entry_scores: list[float]
-    ) -> dict:
-        """Calculate aggregate metrics from entry evaluations."""
+        # Calculate aggregate metrics
         total_entries = len(entries)
         avg_entry_score = np.mean(entry_scores) if entry_scores else 0.0
         positive_entries = sum(1 for e in entries if e["max_gain_pct"] > e["max_loss_pct"])
         win_rate = positive_entries / total_entries if total_entries > 0 else 0.0
 
-        winning_gains = [e["max_gain_pct"] for e in entries if e["max_gain_pct"] > e["max_loss_pct"]]
-        losing_losses = [e["max_loss_pct"] for e in entries if e["max_gain_pct"] <= e["max_loss_pct"]]
-
-        return {
-            "total_entries": total_entries,
-            "avg_entry_score": avg_entry_score,
-            "positive_entries": positive_entries,
-            "win_rate": win_rate,
-            "avg_win": np.mean(winning_gains) if winning_gains else 0.0,
-            "avg_loss": np.mean(losing_losses) if losing_losses else 0.0,
-            "largest_win": max((e["max_gain_pct"] for e in entries), default=0.0),
-            "largest_loss": max((e["max_loss_pct"] for e in entries), default=0.0),
-        }
-
-    def _create_synthetic_trades(self, entries: list[dict]) -> list[TradeRecord]:
-        """Create synthetic trades for result compatibility."""
-        trades = []
+        # Create synthetic trades for result compatibility
+        trades: list[TradeRecord] = []
         for entry in entries:
+            # Create a synthetic trade representing the entry evaluation
             trades.append(TradeRecord(
                 entry_time=entry["timestamp"],
                 entry_price=entry["entry_price"],
@@ -429,36 +350,26 @@ class StrategySimulator(
                 take_profit=entry["entry_price"] * (1 + entry["max_gain_pct"] / 100),
                 commission=0.0,
             ))
-        return trades
 
-    def _build_entry_simulation_result(
-        self,
-        strategy_name: StrategyName,
-        parameters: dict[str, Any],
-        initial_capital: float,
-        trades: list[TradeRecord],
-        metrics: dict,
-    ) -> SimulationResult:
-        """Build SimulationResult from entry evaluation."""
         return SimulationResult(
             strategy_name=strategy_name.value,
             parameters=parameters,
             symbol=self.symbol,
             trades=trades,
             total_pnl=sum(t.pnl for t in trades),
-            total_pnl_pct=metrics["avg_entry_score"] * 100 if metrics["avg_entry_score"] else 0.0,
-            win_rate=metrics["win_rate"],
-            profit_factor=metrics["avg_entry_score"] if metrics["avg_entry_score"] > 0 else 0.0,
+            total_pnl_pct=avg_entry_score * 100 if avg_entry_score else 0.0,
+            win_rate=win_rate,
+            profit_factor=avg_entry_score if avg_entry_score > 0 else 0.0,
             max_drawdown_pct=0.0,
             sharpe_ratio=None,
             sortino_ratio=None,
-            total_trades=metrics["total_entries"],
-            winning_trades=metrics["positive_entries"],
-            losing_trades=metrics["total_entries"] - metrics["positive_entries"],
-            avg_win=metrics["avg_win"],
-            avg_loss=metrics["avg_loss"],
-            largest_win=metrics["largest_win"],
-            largest_loss=metrics["largest_loss"],
+            total_trades=total_entries,
+            winning_trades=positive_entries,
+            losing_trades=total_entries - positive_entries,
+            avg_win=np.mean([e["max_gain_pct"] for e in entries if e["max_gain_pct"] > e["max_loss_pct"]]) if positive_entries > 0 else 0.0,
+            avg_loss=np.mean([e["max_loss_pct"] for e in entries if e["max_gain_pct"] <= e["max_loss_pct"]]) if (total_entries - positive_entries) > 0 else 0.0,
+            largest_win=max((e["max_gain_pct"] for e in entries), default=0.0),
+            largest_loss=max((e["max_loss_pct"] for e in entries), default=0.0),
             avg_trade_duration_seconds=0.0,
             max_consecutive_wins=0,
             max_consecutive_losses=0,
@@ -469,60 +380,50 @@ class StrategySimulator(
             bars_processed=len(self.data),
         )
 
-
     def _breakout_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._breakout_signals(df, params)
-
 
     def _momentum_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._momentum_signals(df, params)
 
-
     def _mean_reversion_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._mean_reversion_signals(df, params)
-
 
     def _trend_following_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._trend_following_signals(df, params)
 
-
     def _scalping_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._scalping_signals(df, params)
-
 
     def _bollinger_squeeze_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._bollinger_squeeze_signals(df, params)
 
-
     def _trend_pullback_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._trend_pullback_signals(df, params)
-
 
     def _opening_range_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._opening_range_signals(df, params)
 
-
     def _regime_hybrid_signals(
         self, df: pd.DataFrame, params: dict[str, Any]
     ) -> pd.Series:
         return self._signal_generator._regime_hybrid_signals(df, params)
-
 
     def _simulate_trades(
         self,
@@ -600,6 +501,583 @@ class StrategySimulator(
 
         return trades
 
+    def _check_entry_signal(self, signal: int, config: SimulationConfig) -> str | None:
+        """Check if entry signal matches trade direction filter.
+
+        Args:
+            signal: Trading signal (1=long, -1=short)
+            config: Simulation configuration
+
+        Returns:
+            Entry side ("long" or "short") or None if filtered out
+        """
+        direction = config.trade_direction
+
+        if signal == 1:  # Long signal
+            if direction in ("BOTH", "AUTO", "LONG_ONLY"):
+                return "long"
+        elif signal == -1:  # Short signal
+            if direction in ("BOTH", "AUTO", "SHORT_ONLY"):
+                return "short"
+
+        return None
+
+    def _calculate_bollinger_bands(
+        self, df: pd.DataFrame, period: int = 20, std_mult: float = 2.0
+    ) -> tuple[pd.Series, pd.Series]:
+        """Calculate Bollinger Bands for SWING trailing mode.
+
+        Returns:
+            Tuple of (lower_band, upper_band)
+        """
+        close = df["close"]
+        sma = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+
+        lower_band = sma - (std * std_mult)
+        upper_band = sma + (std * std_mult)
+
+        # Backfill NaN values
+        lower_band = lower_band.bfill()
+        upper_band = upper_band.bfill()
+
+        return lower_band, upper_band
+
+    def _calculate_adx(self, df: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Calculate ADX (Average Directional Index) for regime detection.
+
+        ADX > 25 = Trending market
+        ADX < 20 = Ranging market
+        """
+        high = df["high"]
+        low = df["low"]
+        close = df["close"]
+
+        # True Range
+        tr1 = high - low
+        tr2 = np.abs(high - close.shift())
+        tr3 = np.abs(low - close.shift())
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        # Directional Movement
+        plus_dm = high.diff()
+        minus_dm = -low.diff()
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm < 0] = 0
+        plus_dm[(plus_dm < minus_dm) | (plus_dm < 0)] = 0
+        minus_dm[(minus_dm < plus_dm) | (minus_dm < 0)] = 0
+
+        # Wilder's smoothing
+        alpha = 1.0 / period
+        atr = tr.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        plus_di = 100 * (plus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean() / atr)
+        minus_di = 100 * (minus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean() / atr)
+
+        # ADX calculation
+        dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
+        adx = dx.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+
+        # Backfill NaN values
+        adx = adx.bfill().fillna(25.0)
+
+        return adx
+
+    def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Calculate Average True Range using Wilder's Smoothing Method.
+
+        Reference: https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/average-true-range-atr
+        """
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+
+        # Use Wilder's smoothing (EMA with alpha = 1/period)
+        alpha = 1.0 / period
+        atr = true_range.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+
+        # Fill NaN values with the first valid ATR (backfill)
+        atr = atr.bfill()
+        return atr
+
+    def _update_trailing_stop(
+        self,
+        position: dict,
+        current_price: float,
+        current_atr: float,
+        config: SimulationConfig,
+        current_adx: float = 25.0,
+        bb_lower: float = 0.0,
+        bb_upper: float = 0.0,
+    ) -> dict:
+        """Update trailing stop if price moved favorably.
+
+        Supports three trailing modes:
+        - PCT: Fixed percentage distance from current price
+        - ATR: Volatility-based (ATR multiple), regime-adaptive
+        - SWING: Bollinger Bands as support/resistance
+
+        For long positions: move stop up when price increases
+        For short positions: move stop down when price decreases
+        """
+        side = position.get("side", "long")
+        entry_price = position["entry_price"]
+
+        # Check activation threshold (profit % before trailing activates)
+        if config.trailing_activation_pct > 0:
+            if side == "long":
+                profit_pct = (current_price - entry_price) / entry_price * 100
+            else:
+                profit_pct = (entry_price - current_price) / entry_price * 100
+
+            if profit_pct < config.trailing_activation_pct:
+                # Not enough profit yet, don't activate trailing
+                return position
+
+        # Calculate trailing distance based on mode
+        mode = config.trailing_stop_mode
+
+        if mode == "PCT":
+            # Fixed percentage distance
+            trailing_distance = current_price * (config.trailing_pct_distance / 100.0)
+
+        elif mode == "SWING":
+            # Bollinger Band based - use BB as dynamic support/resistance
+            if side == "long":
+                # For long: use lower BB as trailing stop
+                new_trailing_stop = bb_lower
+                if new_trailing_stop > position["stop_loss"]:
+                    position["stop_loss"] = new_trailing_stop
+                    position["trailing_stop_active"] = True
+                return position
+            else:
+                # For short: use upper BB as trailing stop
+                new_trailing_stop = bb_upper
+                if new_trailing_stop < position["stop_loss"]:
+                    position["stop_loss"] = new_trailing_stop
+                    position["trailing_stop_active"] = True
+                return position
+
+        else:  # ATR mode (default)
+            # Regime-adaptive ATR multiplier
+            if config.regime_adaptive:
+                if current_adx > 25:
+                    # Trending market: use tighter stop
+                    atr_mult = config.atr_trending_mult
+                elif current_adx < 20:
+                    # Ranging market: use wider stop
+                    atr_mult = config.atr_ranging_mult
+                else:
+                    # Neutral: use base multiplier
+                    atr_mult = config.trailing_stop_atr_multiplier
+            else:
+                atr_mult = config.trailing_stop_atr_multiplier
+
+            trailing_distance = current_atr * atr_mult
+
+        # Apply trailing stop (PCT and ATR modes)
+        if side == "long":
+            # For long: trailing stop follows price up
+            new_trailing_stop = current_price - trailing_distance
+            if new_trailing_stop > position["stop_loss"]:
+                position["stop_loss"] = new_trailing_stop
+                position["trailing_stop_active"] = True
+        else:
+            # For short: trailing stop follows price down
+            new_trailing_stop = current_price + trailing_distance
+            if new_trailing_stop < position["stop_loss"]:
+                position["stop_loss"] = new_trailing_stop
+                position["trailing_stop_active"] = True
+
+        return position
+
+    def _check_exit_conditions(
+        self,
+        row: pd.Series,
+        signal: int,
+        position: dict,
+        config: SimulationConfig,
+        current_atr: float = 0.0,
+    ) -> dict | None:
+        """Check exit conditions including trailing stop.
+
+        Args:
+            row: Current bar data
+            signal: Trading signal (-1=sell, 0=hold, 1=buy)
+            position: Current position dict
+            config: Simulation configuration
+            current_atr: Current ATR value for trailing stop updates
+
+        Returns:
+            Exit info dict or None if no exit triggered
+        """
+        side = position.get("side", "long")
+
+        if side == "long":
+            # Long position exits
+            if row["low"] <= position["stop_loss"]:
+                reason = "TRAILING_STOP" if position.get("trailing_stop_active") else "STOP_LOSS"
+                return {"price": position["stop_loss"], "reason": reason}
+            if row["high"] >= position["take_profit"]:
+                return {"price": position["take_profit"], "reason": "TAKE_PROFIT"}
+            if signal == -1:
+                return {"price": row["close"] * (1 - config.slippage_pct), "reason": "SIGNAL"}
+        else:
+            # Short position exits
+            if row["high"] >= position["stop_loss"]:
+                reason = "TRAILING_STOP" if position.get("trailing_stop_active") else "STOP_LOSS"
+                return {"price": position["stop_loss"], "reason": reason}
+            if row["low"] <= position["take_profit"]:
+                return {"price": position["take_profit"], "reason": "TAKE_PROFIT"}
+            if signal == 1:
+                return {"price": row["close"] * (1 + config.slippage_pct), "reason": "SIGNAL"}
+
+        return None
+
+    def _close_position(
+        self,
+        position: dict,
+        timestamp,
+        exit_info: dict,
+        config: SimulationConfig,
+        capital: float,
+    ) -> tuple[TradeRecord, float]:
+        """Close position and calculate P&L with maker/taker fees."""
+        exit_price = exit_info["price"]
+        side = position.get("side", "long")
+        exit_reason = exit_info["reason"]
+
+        # Calculate P&L based on side
+        if side == "long":
+            pnl = (exit_price - position["entry_price"]) * position["size"]
+        else:
+            pnl = (position["entry_price"] - exit_price) * position["size"]
+
+        # Use maker fee for limit orders (TP, trailing), taker for market (SL, signal)
+        # TP and trailing stops are typically limit orders (maker)
+        # SL and signal exits are typically market orders (taker)
+        if exit_reason in ("TAKE_PROFIT", "TRAILING_STOP"):
+            exit_fee_pct = config.maker_fee_pct
+        else:
+            exit_fee_pct = config.taker_fee_pct
+
+        # Fallback to commission_pct if fees are 0 (legacy mode)
+        if exit_fee_pct == 0:
+            exit_fee_pct = config.commission_pct
+
+        exit_commission = exit_price * position["size"] * exit_fee_pct
+        total_commission = exit_commission + position["commission"]
+        pnl -= exit_commission
+
+        trade = TradeRecord(
+            entry_time=position["entry_time"],
+            entry_price=position["entry_price"],
+            exit_time=timestamp,
+            exit_price=exit_price,
+            side=side,
+            size=position["size"],
+            pnl=pnl,
+            pnl_pct=pnl / (position["entry_price"] * position["size"]),
+            exit_reason=exit_reason,
+            stop_loss=position["stop_loss"],
+            take_profit=position["take_profit"],
+            commission=total_commission,
+        )
+        return trade, capital + pnl
+
+    def _open_position(
+        self,
+        timestamp,
+        price: float,
+        config: SimulationConfig,
+        capital: float,
+        current_atr: float = 0.0,
+        side: str = "long",
+    ) -> tuple[dict, float]:
+        """Open a new position with ATR-based or percentage-based SL/TP.
+
+        Args:
+            timestamp: Entry timestamp
+            price: Entry price
+            config: Simulation configuration
+            capital: Available capital
+            current_atr: Current ATR value (used if ATR-based SL/TP enabled)
+            side: Position side ("long" or "short")
+
+        Returns:
+            Tuple of (position dict, remaining capital)
+        """
+        # Apply slippage
+        if side == "long":
+            entry_price = price * (1 + config.slippage_pct)
+        else:
+            entry_price = price * (1 - config.slippage_pct)
+
+        position_value = capital * config.position_size_pct
+        size = position_value / entry_price
+
+        # Entry is typically a market order (taker fee)
+        entry_fee_pct = config.taker_fee_pct if config.taker_fee_pct > 0 else config.commission_pct
+        commission = position_value * entry_fee_pct
+
+        # Calculate SL/TP based on ATR or percentage
+        if config.sl_atr_multiplier > 0 and current_atr > 0:
+            # ATR-based stop loss (from Bot-Tab settings)
+            sl_distance = current_atr * config.sl_atr_multiplier
+            if side == "long":
+                stop_loss = entry_price - sl_distance
+            else:
+                stop_loss = entry_price + sl_distance
+        else:
+            # Percentage-based stop loss (legacy)
+            if side == "long":
+                stop_loss = entry_price * (1 - config.stop_loss_pct)
+            else:
+                stop_loss = entry_price * (1 + config.stop_loss_pct)
+
+        if config.tp_atr_multiplier > 0 and current_atr > 0:
+            # ATR-based take profit (from Bot-Tab settings)
+            tp_distance = current_atr * config.tp_atr_multiplier
+            if side == "long":
+                take_profit = entry_price + tp_distance
+            else:
+                take_profit = entry_price - tp_distance
+        else:
+            # Percentage-based take profit (legacy)
+            if side == "long":
+                take_profit = entry_price * (1 + config.take_profit_pct)
+            else:
+                take_profit = entry_price * (1 - config.take_profit_pct)
+
+        position = {
+            "entry_time": timestamp,
+            "entry_price": entry_price,
+            "size": size,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "commission": commission,
+            "side": side,
+            "entry_atr": current_atr,
+            "trailing_stop_active": False,
+        }
+        return position, capital - commission
+
+    def _close_position_end(
+        self,
+        signals_df: pd.DataFrame,
+        position: dict,
+        config: SimulationConfig,
+    ) -> TradeRecord:
+        """Close position at end of data."""
+        last_row = signals_df.iloc[-1]
+        exit_price = last_row["close"]
+        side = position.get("side", "long")
+
+        # Calculate P&L based on side
+        if side == "long":
+            pnl = (exit_price - position["entry_price"]) * position["size"]
+        else:
+            pnl = (position["entry_price"] - exit_price) * position["size"]
+
+        commission = exit_price * position["size"] * config.commission_pct
+        pnl -= commission
+
+        return TradeRecord(
+            entry_time=position["entry_time"],
+            entry_price=position["entry_price"],
+            exit_time=signals_df.index[-1],
+            exit_price=exit_price,
+            side=side,
+            size=position["size"],
+            pnl=pnl,
+            pnl_pct=pnl / (position["entry_price"] * position["size"]),
+            exit_reason="END_OF_DATA",
+            stop_loss=position["stop_loss"],
+            take_profit=position["take_profit"],
+            commission=commission + position["commission"],
+        )
+
+    def _calculate_result(
+        self,
+        strategy_name: str,
+        parameters: dict[str, Any],
+        trades: list[TradeRecord],
+        initial_capital: float,
+    ) -> SimulationResult:
+        """Calculate simulation result from trades."""
+        if not trades:
+            return self._empty_result(strategy_name, parameters, initial_capital)
+
+        metrics = self._calculate_trade_metrics(trades, initial_capital)
+
+        return SimulationResult(
+            strategy_name=strategy_name,
+            parameters=parameters,
+            symbol=self.symbol,
+            trades=trades,
+            total_pnl=metrics["total_pnl"],
+            total_pnl_pct=(metrics["total_pnl"] / initial_capital) * 100,
+            win_rate=metrics["win_rate"],
+            profit_factor=metrics["profit_factor"],
+            max_drawdown_pct=metrics["max_drawdown_pct"],
+            sharpe_ratio=metrics["sharpe_ratio"],
+            sortino_ratio=metrics["sortino_ratio"],
+            total_trades=len(trades),
+            winning_trades=metrics["total_wins"],
+            losing_trades=metrics["total_losses"],
+            avg_win=metrics["avg_win"],
+            avg_loss=metrics["avg_loss"],
+            largest_win=metrics["largest_win"],
+            largest_loss=metrics["largest_loss"],
+            avg_trade_duration_seconds=metrics["avg_duration"],
+            max_consecutive_wins=metrics["max_cons_wins"],
+            max_consecutive_losses=metrics["max_cons_losses"],
+            initial_capital=initial_capital,
+            final_capital=metrics["final_capital"],
+            data_start=self.data.index[0],
+            data_end=self.data.index[-1],
+            bars_processed=len(self.data),
+        )
+
+    def _empty_result(
+        self,
+        strategy_name: str,
+        parameters: dict[str, Any],
+        initial_capital: float,
+    ) -> SimulationResult:
+        return SimulationResult(
+            strategy_name=strategy_name,
+            parameters=parameters,
+            symbol=self.symbol,
+            trades=[],
+            total_pnl=0.0,
+            total_pnl_pct=0.0,
+            win_rate=0.0,
+            profit_factor=0.0,
+            max_drawdown_pct=0.0,
+            sharpe_ratio=None,
+            sortino_ratio=None,
+            total_trades=0,
+            winning_trades=0,
+            losing_trades=0,
+            avg_win=0.0,
+            avg_loss=0.0,
+            largest_win=0.0,
+            largest_loss=0.0,
+            avg_trade_duration_seconds=0.0,
+            max_consecutive_wins=0,
+            max_consecutive_losses=0,
+            initial_capital=initial_capital,
+            final_capital=initial_capital,
+            data_start=self.data.index[0],
+            data_end=self.data.index[-1],
+            bars_processed=len(self.data),
+        )
+
+    def _calculate_trade_metrics(
+        self,
+        trades: list[TradeRecord],
+        initial_capital: float,
+    ) -> dict[str, Any]:
+        total_pnl = sum(t.pnl for t in trades)
+        winning_trades = [t for t in trades if t.is_winner]
+        losing_trades = [t for t in trades if not t.is_winner]
+
+        total_wins = len(winning_trades)
+        total_losses = len(losing_trades)
+        win_rate = total_wins / len(trades) if trades else 0.0
+
+        gross_profit = sum(t.pnl for t in winning_trades)
+        gross_loss = abs(sum(t.pnl for t in losing_trades))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+        profit_factor = profit_factor if profit_factor != float("inf") else 99.99
+
+        avg_win = gross_profit / total_wins if total_wins > 0 else 0.0
+        avg_loss = gross_loss / total_losses if total_losses > 0 else 0.0
+
+        largest_win = max((t.pnl for t in winning_trades), default=0.0)
+        largest_loss = min((t.pnl for t in losing_trades), default=0.0)
+
+        max_dd = self._max_drawdown_pct(trades, initial_capital)
+        final_capital = initial_capital + total_pnl
+
+        max_cons_wins, max_cons_losses = self._max_consecutive_runs(trades)
+        avg_duration = self._avg_trade_duration(trades)
+        sharpe, sortino = self._risk_ratios(trades)
+
+        return {
+            "total_pnl": total_pnl,
+            "total_wins": total_wins,
+            "total_losses": total_losses,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "max_drawdown_pct": max_dd,
+            "sharpe_ratio": sharpe,
+            "sortino_ratio": sortino,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "largest_win": largest_win,
+            "largest_loss": largest_loss,
+            "avg_duration": avg_duration,
+            "max_cons_wins": max_cons_wins,
+            "max_cons_losses": max_cons_losses,
+            "final_capital": final_capital,
+        }
+
+    def _max_drawdown_pct(self, trades: list[TradeRecord], initial_capital: float) -> float:
+        equity = initial_capital
+        peak = equity
+        max_dd = 0.0
+        for trade in trades:
+            equity += trade.pnl
+            peak = max(peak, equity)
+            dd = (peak - equity) / peak
+            max_dd = max(max_dd, dd)
+        return max_dd * 100
+
+    def _max_consecutive_runs(self, trades: list[TradeRecord]) -> tuple[int, int]:
+        max_cons_wins = max_cons_losses = 0
+        current_wins = current_losses = 0
+        for trade in trades:
+            if trade.is_winner:
+                current_wins += 1
+                current_losses = 0
+                max_cons_wins = max(max_cons_wins, current_wins)
+            else:
+                current_losses += 1
+                current_wins = 0
+                max_cons_losses = max(max_cons_losses, current_losses)
+        return max_cons_wins, max_cons_losses
+
+    def _avg_trade_duration(self, trades: list[TradeRecord]) -> float:
+        durations = [t.duration_seconds for t in trades]
+        return np.mean(durations) if durations else 0.0
+
+    def _risk_ratios(self, trades: list[TradeRecord]) -> tuple[float | None, float | None]:
+        returns = [t.pnl_pct for t in trades]
+        if len(returns) <= 1:
+            return None, None
+        mean_return = np.mean(returns)
+        std_return = np.std(returns)
+        neg_returns = [r for r in returns if r < 0]
+        downside_std = np.std(neg_returns) if neg_returns else 0.0
+        sharpe = (mean_return * 252) / (std_return * np.sqrt(252)) if std_return > 0 else None
+        sortino = (mean_return * 252) / (downside_std * np.sqrt(252)) if downside_std > 0 else None
+        return sharpe, sortino
+
+    # Helper methods for indicator calculations
+    def _true_range(self, df: pd.DataFrame) -> pd.Series:
+        """Calculate True Range."""
+        return self._signal_generator._true_range(df)
+
+    def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
+        """Calculate RSI."""
+        return self._signal_generator._calculate_rsi(prices, period)
+
+    def _calculate_obv(self, df: pd.DataFrame) -> pd.Series:
+        """Calculate On-Balance Volume."""
+        return self._signal_generator._calculate_obv(df)
 
     def get_entry_exit_points(
         self, result: SimulationResult
@@ -635,4 +1113,3 @@ class StrategySimulator(
             )
 
         return points
-

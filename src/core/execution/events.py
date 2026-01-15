@@ -5,7 +5,7 @@ for chart markers and UI updates.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import backtrader as bt
@@ -55,7 +55,7 @@ class OrderEventEmitter:
         """
         event = OrderEvent(
             type=EventType.ORDER_CREATED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -73,7 +73,7 @@ class OrderEventEmitter:
         """Emit ORDER_SUBMITTED event."""
         event = OrderEvent(
             type=EventType.ORDER_SUBMITTED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -99,7 +99,7 @@ class OrderEventEmitter:
         """
         event = OrderEvent(
             type=EventType.ORDER_FILLED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -122,7 +122,7 @@ class OrderEventEmitter:
         """Emit ORDER_PARTIAL_FILL event."""
         event = OrderEvent(
             type=EventType.ORDER_PARTIAL_FILL,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={"remaining_quantity": remaining_quantity},
             source=self.source,
             symbol=self.symbol,
@@ -137,7 +137,7 @@ class OrderEventEmitter:
         """Emit ORDER_CANCELLED event."""
         event = OrderEvent(
             type=EventType.ORDER_CANCELLED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={"reason": reason} if reason else {},
             source=self.source,
             symbol=self.symbol,
@@ -150,7 +150,7 @@ class OrderEventEmitter:
         """Emit ORDER_REJECTED event."""
         event = OrderEvent(
             type=EventType.ORDER_REJECTED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={"reason": reason},
             source=self.source,
             symbol=self.symbol,
@@ -193,7 +193,7 @@ class ExecutionEventEmitter:
         """
         event = ExecutionEvent(
             type=EventType.TRADE_ENTRY,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -231,7 +231,7 @@ class ExecutionEventEmitter:
         """
         event = ExecutionEvent(
             type=EventType.TRADE_EXIT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -260,7 +260,7 @@ class ExecutionEventEmitter:
         """Emit STOP_LOSS_HIT event."""
         event = ExecutionEvent(
             type=EventType.STOP_LOSS_HIT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -289,7 +289,7 @@ class ExecutionEventEmitter:
         """Emit TAKE_PROFIT_HIT event."""
         event = ExecutionEvent(
             type=EventType.TAKE_PROFIT_HIT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={},
             source=self.source,
             symbol=self.symbol,
@@ -316,7 +316,7 @@ class ExecutionEventEmitter:
         """Emit POSITION_OPENED event."""
         event = Event(
             type=EventType.POSITION_OPENED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={
                 "symbol": self.symbol,
                 "position_id": position_id,
@@ -338,7 +338,7 @@ class ExecutionEventEmitter:
         """Emit POSITION_CLOSED event."""
         event = Event(
             type=EventType.POSITION_CLOSED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(),
             data={
                 "symbol": self.symbol,
                 "position_id": position_id,

@@ -53,10 +53,6 @@ class AppSettingsMixin:
     def apply_theme(self, theme_name: str):
         """Apply a theme to the application."""
         try:
-            # Reload theme manager to pick up custom settings
-            if hasattr(self.theme_manager, 'reload_themes'):
-                self.theme_manager.reload_themes()
-
             # Normalize theme name to lowercase for comparison
             theme_name_lower = theme_name.lower()
 

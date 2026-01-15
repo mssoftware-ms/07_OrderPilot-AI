@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
-from src.ui.widgets.chart_mixins.data_loading_utils import get_local_timezone_offset_seconds
-from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 
 logger = logging.getLogger(__name__)
 
@@ -129,23 +127,6 @@ class BotCallbacksLogOrderMixin:
         )
         return capital * (risk_pct / 100)
 
-    def _to_chart_timestamp(
-        self,
-        entry_dt: datetime | None = None,
-        fallback_timestamp: int | None = None,
-    ) -> int:
-        if entry_dt is not None:
-            if entry_dt.tzinfo is None:
-                local_offset = get_local_timezone_offset_seconds()
-                entry_dt = entry_dt.replace(tzinfo=timezone(timedelta(seconds=local_offset)))
-            utc_ts = int(entry_dt.timestamp())
-        elif fallback_timestamp is not None:
-            utc_ts = int(fallback_timestamp)
-        else:
-            utc_ts = int(datetime.now(timezone.utc).timestamp())
-
-        return utc_ts + get_local_timezone_offset_seconds()
-
     def _maybe_add_entry_marker(
         self, signal: dict[str, Any] | None, fill_price: float
     ) -> None:
@@ -166,40 +147,27 @@ class BotCallbacksLogOrderMixin:
 
             # Issue #26 FIX: Use actual entry time from bot controller position if available
             # This ensures the marker appears on the entry candle, not the signal candle
-            entry_dt = None
+            timestamp = None
             if hasattr(self, '_bot_controller') and self._bot_controller:
                 position = getattr(self._bot_controller, 'position', None)
                 if position and hasattr(position, 'entry_time'):
-                    entry_dt = position.entry_time
+                    # Convert entry_time (datetime) to Unix timestamp
+                    timestamp = int(position.entry_time.timestamp())
 
             # Fallback to entry_timestamp from signal, then current time
-            fallback_ts_utc = signal.get("entry_timestamp_utc")
-            fallback_ts = signal.get("entry_timestamp")
-            if entry_dt is None and fallback_ts_utc is not None:
-                timestamp = self._to_chart_timestamp(None, fallback_ts_utc)
-            elif entry_dt is None and fallback_ts is not None:
-                timestamp = int(fallback_ts)
-            else:
-                timestamp = self._to_chart_timestamp(entry_dt, None)
-            signal["entry_timestamp"] = timestamp
-            display_dt = entry_dt
-            if display_dt is None:
-                display_dt = datetime.fromtimestamp(
-                    timestamp - get_local_timezone_offset_seconds(), tz=timezone.utc
-                )
-            entry_time_label = display_dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-            marker_text = f"{label} {entry_time_label} @ {entry_price:.3f}"
+            if timestamp is None:
+                timestamp = signal.get("entry_timestamp", int(datetime.now().timestamp()))
 
             self.chart_widget.add_bot_marker(
                 timestamp=timestamp,
                 price=entry_price,
                 marker_type=MarkerType.ENTRY_CONFIRMED,
                 side=sig_side,
-                text=marker_text,
+                text=label,
             )
             self._add_ki_log_entry(
                 "CHART",
-                f"Entry-Marker hinzugefuegt: {marker_text} ({sig_side})",
+                f"Entry-Marker hinzugefuegt: {label} @ {entry_price:.2f} ({sig_side})",
             )
         except Exception as e:
             logger.error(f"Failed to add entry marker: {e}")

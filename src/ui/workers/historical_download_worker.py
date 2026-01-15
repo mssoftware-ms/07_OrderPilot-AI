@@ -83,15 +83,13 @@ class HistoricalDownloadWorker(QObject):
 
         self.progress.emit(5, "Initializing database...")
 
-        # Initialize database - force SQLite for downloads to avoid Postgres dependency during UI ops
+        # Initialize database
         try:
             profile = config_manager.load_profile()
-            profile.database.engine = "sqlite"
-            profile.database.path = "./data/orderpilot.db"
             initialize_database(profile.database)
         except Exception as e:
             logger.warning(f"Database init issue: {e}, trying SQLite fallback")
-            # Secondary fallback path
+            # Fallback to SQLite
             profile = config_manager.load_profile()
             profile.database.engine = "sqlite"
             profile.database.path = "./data/orderpilot_historical.db"
@@ -154,16 +152,14 @@ class HistoricalDownloadWorker(QObject):
             if self._cancelled:
                 break
 
-            # Base percentage segment for this symbol
-            base_pct = 20 + int((i / max(1, len(self.symbols))) * 70)
-            self.progress.emit(base_pct, f"Deleting old data & downloading {symbol}...")
+            progress_pct = 20 + int((i / len(self.symbols)) * 70)
+            self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
             # Create progress callback that emits detailed updates
             def make_progress_callback(sym: str, base_pct: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Map batch_num to a subrange of ~70% to show actual progress
-                    pct = min(95, base_pct + int(min(batch_num, 1000) / 1000 * 70))
-                    self.progress.emit(pct, f"{sym}: {status_msg}")
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
@@ -175,12 +171,12 @@ class HistoricalDownloadWorker(QObject):
                     source=DataSource.ALPACA_CRYPTO,
                     batch_size=100,
                     replace_existing=True,  # Delete old data first (removes bad ticks)
-                    progress_callback=make_progress_callback(symbol, base_pct),
+                    progress_callback=make_progress_callback(symbol, progress_pct),
                 )
                 results.update(symbol_results)
             except Exception as e:
                 logger.error(f"Failed to download {symbol}: {e}")
-                self.progress.emit(base_pct, f"Error downloading {symbol}: {e}")
+                self.progress.emit(progress_pct, f"Error downloading {symbol}: {e}")
 
         return results
 
@@ -205,16 +201,6 @@ class HistoricalDownloadWorker(QObject):
 
         self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
 
-        bars_per_day = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        expected_bars = max(1, self.days * bars_per_day.get(self.timeframe, 1440))
-
         results = {}
         for i, symbol in enumerate(self.symbols):
             if self._cancelled:
@@ -226,12 +212,8 @@ class HistoricalDownloadWorker(QObject):
             # Create progress callback that emits detailed updates
             def make_progress_callback(sym: str, base_pct: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Map real progress to 70% span based on expected bars (no artificial cap)
-                    pct_span = 70
-                    ratio = min(1.0, total_bars / max(1, expected_bars))
-                    pct = base_pct + int(ratio * pct_span)
-                    pct = min(99, pct)
-                    self.progress.emit(pct, f"{sym}: {status_msg}")
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
@@ -246,8 +228,7 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         filter_config=None, # Use default
-                        progress_callback=make_progress_callback(symbol, progress_pct),
-                        min_days_back=self.days  # respect UI selection (e.g., 90d)
+                        progress_callback=make_progress_callback(symbol, progress_pct)
                     )
                 else:
                     # Full Download: Replace existing data

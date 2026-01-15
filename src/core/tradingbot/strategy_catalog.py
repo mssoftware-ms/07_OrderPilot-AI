@@ -13,8 +13,6 @@ REFACTORED: Split into multiple files to meet 600 LOC limit.
 from __future__ import annotations
 
 import logging
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 # Re-export types for backward compatibility
@@ -24,6 +22,7 @@ from .strategy_definitions import (
     StrategyDefinition,
     StrategyType,
 )
+from .strategy_templates import StrategyTemplatesMixin
 
 if TYPE_CHECKING:
     from .models import RegimeState
@@ -39,66 +38,41 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-class StrategyCatalog:
-    """Catalog of trading strategies loaded from JSON configuration.
+class StrategyCatalog(StrategyTemplatesMixin):
+    """Catalog of pre-built trading strategies.
 
-    Strategies are loaded from 'config/strategies/*.json' on initialization.
+    Provides strategy definitions for different market conditions
+    and regime types.
     """
 
-    def __init__(self, strategies_dir: str = "config/strategies"):
-        """Initialize strategy catalog and load strategies.
-        
-        Args:
-            strategies_dir: Directory containing strategy JSON files
-        """
+    def __init__(self):
+        """Initialize strategy catalog with built-in strategies."""
         self._strategies: dict[str, StrategyDefinition] = {}
-        self._strategies_dir = Path(strategies_dir)
-        self._load_strategies()
+        self._register_builtin_strategies()
         logger.info(f"StrategyCatalog initialized with {len(self._strategies)} strategies")
 
-    def _load_strategies(self) -> None:
-        """Load strategies from JSON files."""
-        if not self._strategies_dir.exists():
-            logger.warning(f"Strategies directory not found: {self._strategies_dir}")
-            return
+    def _register_builtin_strategies(self) -> None:
+        """Register all built-in strategy definitions."""
+        # 1. Trend Following
+        self._strategies["trend_following_conservative"] = self._create_trend_following_conservative()
+        self._strategies["trend_following_aggressive"] = self._create_trend_following_aggressive()
 
-        for file_path in self._strategies_dir.glob("*.json"):
-            try:
-                self._load_single_strategy(file_path)
-            except Exception as e:
-                logger.error(f"Failed to load strategy from {file_path}: {e}")
-                # We do NOT silently fail - we log error and the user will see a missing strategy
-                # For critical errors (invalid JSON syntax), this will show in logs.
-                # If we want to crash the app, we could raise e, but for robustness
-                # logging the error is usually better so the app can still start with valid strategies.
-                raise ValueError(f"CRITICAL: Invalid strategy config in {file_path}: {e}") from e
+        # 2. Mean Reversion
+        self._strategies["mean_reversion_bb"] = self._create_mean_reversion_bb()
+        self._strategies["mean_reversion_rsi"] = self._create_mean_reversion_rsi()
 
-    def _load_single_strategy(self, file_path: Path) -> None:
-        """Load a single strategy file.
-        
-        Args:
-            file_path: Path to JSON file
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Validate and create object using Pydantic
-            strategy = StrategyDefinition(**data)
-            
-            # Use filename stem or profile name as key? Profile name is safer.
-            name = strategy.profile.name
-            
-            if name in self._strategies:
-                logger.warning(f"Duplicate strategy name '{name}' in {file_path}. Overwriting.")
-            
-            self._strategies[name] = strategy
-            logger.debug(f"Loaded strategy: {name}")
-            
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in {file_path}: {e}")
-        except Exception as e:
-            raise ValueError(f"Invalid strategy definition in {file_path}: {e}")
+        # 3. Breakout
+        self._strategies["breakout_volatility"] = self._create_breakout_volatility()
+        self._strategies["breakout_momentum"] = self._create_breakout_momentum()
+
+        # 4. Momentum
+        self._strategies["momentum_macd"] = self._create_momentum_macd()
+
+        # 5. Scalping (for high frequency)
+        self._strategies["scalping_range"] = self._create_scalping_range()
+
+        # 6. Sideways/Range Market (Issue #45)
+        self._strategies["sideways_range_bounce"] = self._create_sideways_range_bounce()
 
     # ==================== Query Methods ====================
 

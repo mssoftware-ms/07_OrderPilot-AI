@@ -77,23 +77,6 @@ class BotDisplayPositionMixin:
         self.position_bars_held_label.setText(str(position.bars_held))
         self._update_position_right_column()
 
-        # Issue #50: Update SL/TP Progress Bar with active trade data
-        if hasattr(self, 'sltp_progress_bar') and current > 0:
-            # Get TP price from signal history
-            tp_price = 0.0
-            open_sig = self._find_open_signal()
-            if open_sig:
-                tp_price = open_sig.get("take_profit_price", open_sig.get("tp_price", 0))
-
-            if tp_price > 0 and stop > 0:
-                self.sltp_progress_bar.set_prices(
-                    entry=position.entry_price,
-                    sl=stop,
-                    tp=tp_price,
-                    current=current,
-                    side=side.lower()
-                )
-
     def _update_from_signal_history(self, open_signal: dict) -> None:
         side = open_signal.get("side", "unknown").upper()
         self._set_position_side(side)
@@ -130,18 +113,6 @@ class BotDisplayPositionMixin:
 
         self.position_bars_held_label.setText("-")
         self._update_position_right_column()
-
-        # Issue #50: Update SL/TP Progress Bar with signal history data
-        if hasattr(self, 'sltp_progress_bar') and current > 0 and entry_price > 0:
-            tp_price = open_signal.get("take_profit_price", open_signal.get("tp_price", 0))
-            if tp_price > 0 and stop_price > 0:
-                self.sltp_progress_bar.set_prices(
-                    entry=entry_price,
-                    sl=stop_price,
-                    tp=tp_price,
-                    current=current,
-                    side=side.lower()
-                )
 
     def _reset_position_display(self) -> None:
         self.position_side_label.setText("FLAT")
@@ -206,9 +177,7 @@ class BotDisplayPositionMixin:
         return current
 
     def _calculate_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
-        """Return P&L percent/currency without leverage, tolerant to side casing."""
-        side_normalized = (side or "").upper()
-        if side_normalized == "LONG":
+        if side == "LONG":
             pnl_pct = ((current - entry_price) / entry_price) * 100
         else:
             pnl_pct = ((entry_price - current) / entry_price) * 100
@@ -218,20 +187,14 @@ class BotDisplayPositionMixin:
     def _set_pnl_display(self, pnl_pct: float, pnl_currency: float) -> None:
         color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
         sign = "+" if pnl_pct >= 0 else ""
-        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f} EUR)")
+        self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f})")
         self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_daily_strategy_panel(self) -> None:
         """Update Daily Strategy tab from current selection state."""
-        # Check for new ComboBox (preferred) or old label (fallback)
-        if not hasattr(self, "active_strategy_combo") and not hasattr(self, "active_strategy_label"):
+        if not hasattr(self, "active_strategy_label"):
             return
         if not self._bot_controller:
             return
-
-        # Populate combo box on first run
-        if hasattr(self, "active_strategy_combo") and self.active_strategy_combo.count() == 0:
-            if hasattr(self, "_populate_strategy_combo"):
-                self._populate_strategy_combo()
 
         selection = self._get_strategy_selection()
         self._set_active_strategy_label(selection)
@@ -247,7 +210,6 @@ class BotDisplayPositionMixin:
         return None
 
     def _set_active_strategy_label(self, selection) -> None:
-        """Update active strategy display (ComboBox or Label)."""
         active_name = None
         if selection and selection.selected_strategy:
             active_name = selection.selected_strategy
@@ -257,14 +219,7 @@ class BotDisplayPositionMixin:
             strategy = self._bot_controller.active_strategy
             active_name = strategy.name if strategy else None
 
-        # Update ComboBox (new) or Label (old)
-        if hasattr(self, "active_strategy_combo") and hasattr(self, "_update_active_strategy_display"):
-            # Use new ComboBox
-            if active_name and not active_name.endswith("(fallback)"):
-                self._update_active_strategy_display(active_name)
-        elif hasattr(self, "active_strategy_label"):
-            # Fallback to old label
-            self.active_strategy_label.setText(active_name if active_name else "None")
+        self.active_strategy_label.setText(active_name if active_name else "None")
 
     def _update_strategy_indicators_display(self) -> None:
         """Issue #2: Update the indicators display for active strategy.
@@ -411,8 +366,6 @@ class BotDisplayPositionMixin:
         current_price = signal.get("current_price", 0.0)
         if is_closed:
             current_price = signal.get("exit_price", current_price)
-        elif current_price <= 0 and hasattr(self, "_last_tick_price") and self._last_tick_price > 0:
-            current_price = self._last_tick_price
         if current_price <= 0 and entry_price > 0:
             current_price = entry_price
         return current_price
@@ -426,21 +379,18 @@ class BotDisplayPositionMixin:
         invested: float,
         quantity: float,
     ) -> tuple[float | None, float | None]:
-        pnl_percent = None
-        pnl_currency = None
-        if entry_price > 0 and current_price > 0:
+        pnl_percent = signal.get("pnl_percent")
+        pnl_currency = signal.get("pnl_currency")
+        if pnl_percent is None and entry_price > 0 and current_price > 0:
             if side_upper == "SHORT":
                 pnl_percent = ((entry_price - current_price) / entry_price) * 100
             else:
                 pnl_percent = ((current_price - entry_price) / entry_price) * 100
+        if pnl_currency is None and pnl_percent is not None:
             if invested > 0:
                 pnl_currency = invested * (pnl_percent / 100)
-            elif quantity > 0:
-                pnl_currency = (
-                    quantity * (current_price - entry_price)
-                    if side_upper == "LONG"
-                    else quantity * (entry_price - current_price)
-                )
+            elif quantity > 0 and current_price > 0:
+                pnl_currency = quantity * (current_price - entry_price) if side_upper == "LONG" else quantity * (entry_price - current_price)
             else:
                 pnl_currency = 0.0
         return pnl_percent, pnl_currency
@@ -453,7 +403,7 @@ class BotDisplayPositionMixin:
             else:
                 sign = "+" if pnl_percent >= 0 else ""
                 color = "#26a69a" if pnl_percent >= 0 else "#ef5350"
-                self.position_pnl_label.setText(f"{sign}{pnl_percent:.2f}% ({sign}{pnl_currency:.2f} EUR)")
+                self.position_pnl_label.setText(f"{sign}{pnl_percent:.2f}% ({sign}{pnl_currency:.2f})")
                 self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_position_right_column_from_signal(self, signal: dict) -> None:
         """Update right column (Score, TR, Derivative) from a signal dict."""

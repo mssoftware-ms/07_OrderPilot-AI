@@ -29,7 +29,6 @@ from src.ui.dialogs.settings_tabs_alpaca import SettingsTabsAlpaca
 from src.ui.dialogs.settings_tabs_bitunix import SettingsTabsBitunix
 from src.ui.dialogs.settings_tabs_market_main import SettingsTabsMarketMain
 from src.ui.dialogs.settings_tabs_ai import SettingsTabsAI
-from src.ui.dialogs.settings_tabs_heatmap import SettingsTabsHeatmap
 
 
 class SettingsTabsMixin:
@@ -54,7 +53,6 @@ class SettingsTabsMixin:
         self._bitunix_helper = SettingsTabsBitunix(parent=self)
         self._market_main_helper = SettingsTabsMarketMain(parent=self)
         self._ai_helper = SettingsTabsAI(parent=self)
-        self._heatmap_helper = SettingsTabsHeatmap(parent=self)
 
     # ========================================================================
     # Basic Settings Tabs (General, Trading, Broker)
@@ -102,17 +100,6 @@ class SettingsTabsMixin:
         Delegates to SettingsTabsAI.create_ai_tab().
         """
         return self._ai_helper.create_ai_tab()
-
-    # ========================================================================
-    # Heatmap Tab
-    # ========================================================================
-
-    def _create_heatmap_tab(self) -> QWidget:
-        """Create heatmap settings tab.
-
-        Delegates to SettingsTabsHeatmap.create_heatmap_tab().
-        """
-        return self._heatmap_helper.create_heatmap_tab()
 
     # ========================================================================
     # Notifications Tab

@@ -67,22 +67,4 @@ class BotStateHandlersDispatcher:
             self.parent._state_machine.trigger(BotTrigger.RESET)
             return None
 
-        elif state == BotState.ERROR:
-            # Issue #11: ERROR state should be auto-cleared by on_bar, but handle gracefully
-            self.parent._log_activity(
-                "ERROR",
-                "Bot in ERROR state - will auto-recover on next bar"
-            )
-            return None
-
-        elif state == BotState.PAUSED:
-            # Bot is paused, no action
-            return None
-
-        # Unknown state - should never happen
-        self.parent._log_activity(
-            "ERROR",
-            f"Unknown state: {state.value} - forcing reset"
-        )
-        self.parent._state_machine.trigger(BotTrigger.RESET, force=True)
         return None

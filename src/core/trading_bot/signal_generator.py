@@ -95,32 +95,57 @@ class SignalGenerator:
         Returns:
             TradeSignal mit Direction, Strength und Confluence Score
         """
-        # Validate data
-        validation_signal = self._validate_signal_data(df)
-        if validation_signal:
-            return validation_signal
+        if df.empty or len(df) < self.EMA_LONG:
+            logger.warning("Insufficient data for signal generation")
+            return self._create_neutral_signal("Insufficient data")
 
-        current_price = float(df.iloc[-1].get("close", 0))
+        # Aktuelle Werte
+        current = df.iloc[-1]
+        current_price = float(current.get("close", 0))
 
-        # Check conditions and determine direction
-        signal_result = self._determine_signal_direction(df)
-        if signal_result is None:
+        if current_price <= 0:
+            return self._create_neutral_signal("Invalid price data")
+
+        # Prüfe alle Bedingungen (delegiert)
+        long_conditions = self._long_conditions.check_long_conditions(df, current)
+        short_conditions = self._short_conditions.check_short_conditions(df, current)
+
+        long_score = sum(1 for c in long_conditions if c.met)
+        short_score = sum(1 for c in short_conditions if c.met)
+
+        # Bestimme Richtung
+        if long_score >= self.min_confluence and long_score > short_score:
+            direction = SignalDirection.LONG
+            confluence = long_score
+            conditions_met = [c for c in long_conditions if c.met]
+            conditions_failed = [c for c in long_conditions if not c.met]
+
+        elif short_score >= self.min_confluence and short_score > long_score:
+            direction = SignalDirection.SHORT
+            confluence = short_score
+            conditions_met = [c for c in short_conditions if c.met]
+            conditions_failed = [c for c in short_conditions if not c.met]
+
+        else:
             return self._create_neutral_signal(
-                f"Insufficient confluence"
+                f"Insufficient confluence (Long: {long_score}, Short: {short_score})"
             )
 
-        direction, confluence, conditions_met, conditions_failed = signal_result
-
-        # Validate regime alignment
+        # Regime-Check
         if require_regime_alignment and regime:
-            regime_error = self._validate_regime_alignment(direction, regime)
-            if regime_error:
-                return regime_error
+            if not self._is_regime_aligned(direction, regime):
+                return self._create_neutral_signal(
+                    f"Regime mismatch: {regime} vs {direction.value}"
+                )
 
-        # Calculate signal strength
-        strength = self._calculate_signal_strength(confluence)
+        # Signalstärke
+        if confluence >= 5:
+            strength = SignalStrength.STRONG
+        elif confluence >= 4:
+            strength = SignalStrength.MODERATE
+        else:
+            strength = SignalStrength.WEAK
 
-        # Create signal
         signal = TradeSignal(
             direction=direction,
             strength=strength,
@@ -137,99 +162,6 @@ class SignalGenerator:
         )
 
         return signal
-
-    def _validate_signal_data(self, df: pd.DataFrame) -> TradeSignal | None:
-        """Validate DataFrame and price data.
-
-        Returns:
-            Neutral signal if validation fails, None if data is valid.
-        """
-        if df.empty or len(df) < self.EMA_LONG:
-            logger.warning("Insufficient data for signal generation")
-            return self._create_neutral_signal("Insufficient data")
-
-        current_price = float(df.iloc[-1].get("close", 0))
-        if current_price <= 0:
-            return self._create_neutral_signal("Invalid price data")
-
-        return None
-
-    def _determine_signal_direction(
-        self, df: pd.DataFrame
-    ) -> tuple[SignalDirection, int, list, list] | None:
-        """Determine signal direction based on confluence scores.
-
-        Returns:
-            Tuple of (direction, confluence, conditions_met, conditions_failed)
-            or None if no valid signal.
-        """
-        current = df.iloc[-1]
-
-        # Get conditions from helpers
-        long_conditions = self._long_conditions.check_long_conditions(df, current)
-        short_conditions = self._short_conditions.check_short_conditions(df, current)
-
-        long_score = sum(1 for c in long_conditions if c.met)
-        short_score = sum(1 for c in short_conditions if c.met)
-
-        # Determine direction based on scores
-        if long_score >= self.min_confluence and long_score > short_score:
-            return self._build_signal_result(
-                SignalDirection.LONG, long_score, long_conditions
-            )
-
-        if short_score >= self.min_confluence and short_score > long_score:
-            return self._build_signal_result(
-                SignalDirection.SHORT, short_score, short_conditions
-            )
-
-        return None
-
-    def _build_signal_result(
-        self, direction: SignalDirection, score: int, conditions: list
-    ) -> tuple[SignalDirection, int, list, list]:
-        """Build signal result tuple from direction and conditions.
-
-        Args:
-            direction: Signal direction.
-            score: Confluence score.
-            conditions: List of all conditions checked.
-
-        Returns:
-            Tuple of (direction, score, conditions_met, conditions_failed).
-        """
-        conditions_met = [c for c in conditions if c.met]
-        conditions_failed = [c for c in conditions if not c.met]
-        return direction, score, conditions_met, conditions_failed
-
-    def _validate_regime_alignment(
-        self, direction: SignalDirection, regime: str
-    ) -> TradeSignal | None:
-        """Validate that signal direction aligns with market regime.
-
-        Returns:
-            Neutral signal if regime misaligned, None if aligned.
-        """
-        if not self._is_regime_aligned(direction, regime):
-            return self._create_neutral_signal(
-                f"Regime mismatch: {regime} vs {direction.value}"
-            )
-        return None
-
-    def _calculate_signal_strength(self, confluence: int) -> SignalStrength:
-        """Calculate signal strength from confluence score.
-
-        Args:
-            confluence: Confluence score (0-5).
-
-        Returns:
-            SignalStrength enum value.
-        """
-        if confluence >= 5:
-            return SignalStrength.STRONG
-        if confluence >= 4:
-            return SignalStrength.MODERATE
-        return SignalStrength.WEAK
 
     def _is_regime_aligned(self, direction: SignalDirection, regime: str) -> bool:
         """Prüft ob Regime zur Signal-Richtung passt."""

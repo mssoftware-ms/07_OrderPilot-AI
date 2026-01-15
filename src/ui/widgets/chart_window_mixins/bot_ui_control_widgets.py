@@ -143,7 +143,7 @@ class BotUIControlWidgets:
 
         # Initial Stop Loss
         self.parent.initial_sl_spin = QDoubleSpinBox()
-        self.parent.initial_sl_spin.setRange(0.1, 999999.0)
+        self.parent.initial_sl_spin.setRange(0.1, 10.0)
         self.parent.initial_sl_spin.setValue(1.5)
         self.parent.initial_sl_spin.setSuffix(" %")
         self.parent.initial_sl_spin.setDecimals(2)
@@ -156,7 +156,7 @@ class BotUIControlWidgets:
 
         # Capital
         self.parent.bot_capital_spin = QDoubleSpinBox()
-        self.parent.bot_capital_spin.setRange(0, 999999999)
+        self.parent.bot_capital_spin.setRange(10, 10000000)
         self.parent.bot_capital_spin.setValue(100)
         self.parent.bot_capital_spin.setPrefix("€ ")
         self.parent.bot_capital_spin.setDecimals(0)
@@ -169,7 +169,7 @@ class BotUIControlWidgets:
 
         # Risk per Trade
         self.parent.risk_per_trade_spin = QDoubleSpinBox()
-        self.parent.risk_per_trade_spin.setRange(0.1, 999999.0)
+        self.parent.risk_per_trade_spin.setRange(0.1, 100.0)
         self.parent.risk_per_trade_spin.setValue(50.0)
         self.parent.risk_per_trade_spin.setSuffix(" %")
         self.parent.risk_per_trade_spin.setDecimals(2)
@@ -182,13 +182,13 @@ class BotUIControlWidgets:
 
         # Max Trades per Day
         self.parent.max_trades_spin = QSpinBox()
-        self.parent.max_trades_spin.setRange(1, 999999)
+        self.parent.max_trades_spin.setRange(1, 50)
         self.parent.max_trades_spin.setValue(10)
         settings_layout.addRow("Max Trades/Day:", self.parent.max_trades_spin)
 
         # Max Daily Loss
         self.parent.max_daily_loss_spin = QDoubleSpinBox()
-        self.parent.max_daily_loss_spin.setRange(0.0, 999999.0)
+        self.parent.max_daily_loss_spin.setRange(0.5, 10.0)
         self.parent.max_daily_loss_spin.setValue(3.0)
         self.parent.max_daily_loss_spin.setSuffix(" %")
         self.parent.max_daily_loss_spin.setDecimals(2)
@@ -324,12 +324,12 @@ class BotUIControlWidgets:
         slider_layout.setSpacing(4)
 
         self.parent.leverage_slider = QSlider(Qt.Orientation.Horizontal)
-        self.parent.leverage_slider.setRange(1, 200)  # BitUnix Leverage: 1x bis 200x
+        self.parent.leverage_slider.setRange(1, 100)
         self.parent.leverage_slider.setValue(20)
         self.parent.leverage_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.parent.leverage_slider.setTickInterval(20)
         self.parent.leverage_slider.setToolTip(
-            "Manueller Hebel (1x - 200x).\n"
+            "Manueller Hebel (1x - 100x).\n"
             "Empfohlen für 100€ Kapital: 15-25x"
         )
         self.parent.leverage_slider.valueChanged.connect(self.parent._on_leverage_slider_changed)
@@ -380,7 +380,7 @@ class BotUIControlWidgets:
 
         # Futures Maker Fee
         self.parent.futures_maker_fee_spin = QDoubleSpinBox()
-        self.parent.futures_maker_fee_spin.setRange(0.0, 999999.0)
+        self.parent.futures_maker_fee_spin.setRange(0.0, 1.0)
         self.parent.futures_maker_fee_spin.setValue(0.02)  # BitUnix VIP 0 default
         self.parent.futures_maker_fee_spin.setSingleStep(0.01)
         self.parent.futures_maker_fee_spin.setDecimals(3)
@@ -397,7 +397,7 @@ class BotUIControlWidgets:
 
         # Futures Taker Fee
         self.parent.futures_taker_fee_spin = QDoubleSpinBox()
-        self.parent.futures_taker_fee_spin.setRange(0.0, 999999.0)
+        self.parent.futures_taker_fee_spin.setRange(0.0, 1.0)
         self.parent.futures_taker_fee_spin.setValue(0.06)  # BitUnix VIP 0 default
         self.parent.futures_taker_fee_spin.setSingleStep(0.01)
         self.parent.futures_taker_fee_spin.setDecimals(3)
@@ -439,7 +439,7 @@ class BotUIControlWidgets:
 
         # TRA Percent
         self.parent.tra_percent_spin = QDoubleSpinBox()
-        self.parent.tra_percent_spin.setRange(0.0, 999999.0)
+        self.parent.tra_percent_spin.setRange(0.0, 10.0)
         self.parent.tra_percent_spin.setValue(0.5)
         self.parent.tra_percent_spin.setSingleStep(0.1)
         self.parent.tra_percent_spin.setDecimals(2)
@@ -453,7 +453,7 @@ class BotUIControlWidgets:
 
         # Trailing Distance
         self.parent.trailing_distance_spin = QDoubleSpinBox()
-        self.parent.trailing_distance_spin.setRange(0.0, 999999.0)
+        self.parent.trailing_distance_spin.setRange(0.1, 10.0)
         self.parent.trailing_distance_spin.setValue(1.0)
         self.parent.trailing_distance_spin.setSingleStep(0.1)
         self.parent.trailing_distance_spin.setDecimals(2)
@@ -469,7 +469,7 @@ class BotUIControlWidgets:
 
         # ATR Multiplier
         self.parent.atr_multiplier_spin = QDoubleSpinBox()
-        self.parent.atr_multiplier_spin.setRange(0.0, 999999.0)
+        self.parent.atr_multiplier_spin.setRange(0.5, 8.0)
         self.parent.atr_multiplier_spin.setValue(1.5)
         self.parent.atr_multiplier_spin.setSingleStep(0.1)
         self.parent.atr_multiplier_spin.setDecimals(2)
@@ -482,7 +482,7 @@ class BotUIControlWidgets:
 
         # ATR Trending
         self.parent.atr_trending_spin = QDoubleSpinBox()
-        self.parent.atr_trending_spin.setRange(0.0, 999999.0)
+        self.parent.atr_trending_spin.setRange(0.5, 5.0)
         self.parent.atr_trending_spin.setValue(1.2)
         self.parent.atr_trending_spin.setSingleStep(0.1)
         self.parent.atr_trending_spin.setDecimals(2)
@@ -495,7 +495,7 @@ class BotUIControlWidgets:
 
         # ATR Ranging
         self.parent.atr_ranging_spin = QDoubleSpinBox()
-        self.parent.atr_ranging_spin.setRange(0.0, 999999.0)
+        self.parent.atr_ranging_spin.setRange(1.0, 8.0)
         self.parent.atr_ranging_spin.setValue(2.0)
         self.parent.atr_ranging_spin.setSingleStep(0.1)
         self.parent.atr_ranging_spin.setDecimals(2)
@@ -508,7 +508,7 @@ class BotUIControlWidgets:
 
         # Volatility Bonus
         self.parent.volatility_bonus_spin = QDoubleSpinBox()
-        self.parent.volatility_bonus_spin.setRange(0.0, 999999.0)
+        self.parent.volatility_bonus_spin.setRange(0.0, 2.0)
         self.parent.volatility_bonus_spin.setValue(0.5)
         self.parent.volatility_bonus_spin.setSingleStep(0.1)
         self.parent.volatility_bonus_spin.setDecimals(2)
@@ -521,7 +521,7 @@ class BotUIControlWidgets:
 
         # Min Step
         self.parent.min_step_spin = QDoubleSpinBox()
-        self.parent.min_step_spin.setRange(0.0, 999999.0)
+        self.parent.min_step_spin.setRange(0.05, 2.0)
         self.parent.min_step_spin.setValue(0.3)
         self.parent.min_step_spin.setSingleStep(0.05)
         self.parent.min_step_spin.setSuffix(" %")
@@ -543,7 +543,7 @@ class BotUIControlWidgets:
 
         # Min Score
         self.parent.min_score_spin = QSpinBox()
-        self.parent.min_score_spin.setRange(0, 999999)
+        self.parent.min_score_spin.setRange(0, 100)
         self.parent.min_score_spin.setValue(55)
         self.parent.min_score_spin.setSingleStep(1)
         self.parent.min_score_spin.setToolTip(
@@ -564,7 +564,7 @@ class BotUIControlWidgets:
 
         # Pattern Similarity
         self.parent.pattern_similarity_spin = QDoubleSpinBox()
-        self.parent.pattern_similarity_spin.setRange(0.0, 999999.0)
+        self.parent.pattern_similarity_spin.setRange(0.1, 1.0)
         self.parent.pattern_similarity_spin.setSingleStep(0.05)
         self.parent.pattern_similarity_spin.setValue(0.70)
         self.parent.pattern_similarity_spin.setDecimals(2)
@@ -575,14 +575,14 @@ class BotUIControlWidgets:
 
         # Pattern Matches
         self.parent.pattern_matches_spin = QSpinBox()
-        self.parent.pattern_matches_spin.setRange(1, 999999)
+        self.parent.pattern_matches_spin.setRange(1, 200)
         self.parent.pattern_matches_spin.setValue(5)
         self.parent.pattern_matches_spin.setToolTip("Mindestens benötigte Treffer (ähnliche Muster)")
         pattern_layout.addRow("Min Matches:", self.parent.pattern_matches_spin)
 
         # Pattern Win-Rate
         self.parent.pattern_winrate_spin = QSpinBox()
-        self.parent.pattern_winrate_spin.setRange(0, 999999)
+        self.parent.pattern_winrate_spin.setRange(0, 100)
         self.parent.pattern_winrate_spin.setValue(55)
         self.parent.pattern_winrate_spin.setToolTip(
             "Minimale historische Win-Rate der Treffer (0-100)"

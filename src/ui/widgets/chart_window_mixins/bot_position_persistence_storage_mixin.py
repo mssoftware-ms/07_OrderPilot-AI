@@ -50,14 +50,7 @@ class BotPositionPersistenceStorageMixin:
                 if hasattr(self, "_enforce_single_open_signal"):
                     self._enforce_single_open_signal(refresh=False)
 
-                # Find highest signal_id and continue counting from there
-                max_id = 0
-                for sig in self._signal_history:
-                    sig_id = sig.get("signal_id", 0)
-                    if sig_id > max_id:
-                        max_id = sig_id
-                self._next_signal_id = max_id + 1 if max_id > 0 else 1
-                logger.info(f"Loaded {len(self._signal_history)} signals for {key}, next signal ID: {self._next_signal_id}")
+                logger.info(f"Loaded {len(self._signal_history)} signals for {key}")
 
                 if hasattr(self, 'signals_table'):
                     self._update_signals_table()

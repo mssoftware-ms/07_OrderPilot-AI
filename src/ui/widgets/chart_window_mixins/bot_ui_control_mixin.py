@@ -98,9 +98,6 @@ class BotUIControlMixin:
         self._on_trailing_mode_changed()
         self._on_regime_adaptive_changed()
 
-        # Issue #64: Auto-load saved settings on startup
-        self._auto_load_saved_settings()
-
         # Bottom Row (Display Options + Help)
         layout.addLayout(self._build_bottom_row())
 
@@ -230,32 +227,6 @@ class BotUIControlMixin:
     def _on_reset_defaults_clicked(self) -> None:
         """Reset to factory defaults (delegated to settings helper)."""
         self._settings_helper.on_reset_defaults_clicked()
-
-    def _auto_load_saved_settings(self) -> None:
-        """Auto-load saved settings on startup (Issue #64).
-
-        Silently loads settings from bot_defaults.json if it exists.
-        This ensures saved settings (like TRA percent) are restored
-        automatically without requiring manual "Load" button click.
-        """
-        try:
-            from pathlib import Path
-            import json
-
-            default_file = Path("config/bot_configs/bot_defaults.json")
-
-            if default_file.exists():
-                with open(default_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-
-                self._settings_helper.apply_bot_settings(settings)
-                logger.info(f"Bot settings auto-loaded from {default_file}")
-            else:
-                logger.debug("No saved settings found - using widget defaults")
-
-        except Exception as e:
-            logger.warning(f"Failed to auto-load settings: {e}")
-            # Don't raise - just use widget defaults
 
     # =========================================================================
     # PUBLIC API (Retained for backward compatibility)

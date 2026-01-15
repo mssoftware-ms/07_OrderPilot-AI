@@ -36,36 +36,6 @@ class HistoricalDataDB:
             db: Database instance
         """
         self.db = db
-        self._ensure_table_exists()
-
-    def _ensure_table_exists(self) -> None:
-        """Create historical_bars table if it doesn't exist."""
-        try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS historical_bars (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        symbol TEXT NOT NULL,
-                        timestamp TEXT NOT NULL,
-                        open REAL NOT NULL,
-                        high REAL NOT NULL,
-                        low REAL NOT NULL,
-                        close REAL NOT NULL,
-                        volume REAL NOT NULL DEFAULT 0,
-                        source TEXT,
-                        UNIQUE(symbol, timestamp)
-                    )
-                """)
-                # Create index for fast lookups
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_historical_bars_symbol_timestamp
-                    ON historical_bars(symbol, timestamp)
-                """)
-                conn.commit()
-                logger.debug("historical_bars table ensured")
-        except Exception as e:
-            logger.error(f"Failed to create historical_bars table: {e}")
 
     async def delete_symbol_data(self, db_symbol: str) -> None:
         """

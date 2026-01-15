@@ -95,206 +95,68 @@ class BacktestRunnerMetrics:
         if not trades:
             return BacktestMetrics()
 
-        # Calculate basic trade statistics
-        basic_stats = self._calculate_basic_trade_stats(trades)
-
-        # Calculate P&L statistics
-        pnl_stats = self._calculate_pnl_stats(
-            basic_stats["winners"], basic_stats["losers"], basic_stats["total_trades"]
-        )
-
-        # Calculate R-multiple statistics
-        r_stats = self._calculate_r_multiple_stats(trades)
-
-        # Calculate drawdown and streaks
-        max_dd_pct, max_dd_duration = self._calculate_drawdown(equity_curve)
-        max_wins, max_losses = self._calculate_streaks(trades)
-
-        # Calculate returns and duration
-        total_return = self._calculate_total_return()
-        sharpe = self._calculate_sharpe(equity_curve)
-        avg_duration_min = self._calculate_avg_duration(trades)
-
-        # Build and return metrics object
-        return self._build_metrics_object(
-            basic_stats=basic_stats,
-            pnl_stats=pnl_stats,
-            r_stats=r_stats,
-            max_dd_pct=max_dd_pct,
-            max_dd_duration=max_dd_duration,
-            total_return=total_return,
-            sharpe=sharpe,
-            avg_duration_min=avg_duration_min,
-            max_wins=max_wins,
-            max_losses=max_losses,
-        )
-
-    def _calculate_basic_trade_stats(self, trades: list["Trade"]) -> dict:
-        """Calculate basic trade statistics (winners, losers, win rate).
-
-        Args:
-            trades: List of trades.
-
-        Returns:
-            Dictionary with total_trades, winners, losers, winning_trades, losing_trades, win_rate.
-        """
+        # Basis-Statistiken
         total_trades = len(trades)
         winners = [t for t in trades if t.realized_pnl > 0]
         losers = [t for t in trades if t.realized_pnl <= 0]
 
         winning_trades = len(winners)
         losing_trades = len(losers)
+
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
 
-        return {
-            "total_trades": total_trades,
-            "winners": winners,
-            "losers": losers,
-            "winning_trades": winning_trades,
-            "losing_trades": losing_trades,
-            "win_rate": win_rate,
-        }
-
-    def _calculate_pnl_stats(
-        self, winners: list["Trade"], losers: list["Trade"], total_trades: int
-    ) -> dict:
-        """Calculate P&L statistics (profit, loss, expectancy, profit factor).
-
-        Args:
-            winners: List of winning trades.
-            losers: List of losing trades.
-            total_trades: Total number of trades.
-
-        Returns:
-            Dictionary with profit_factor, expectancy, avg_win, avg_loss.
-        """
-        winning_trades = len(winners)
-        losing_trades = len(losers)
-
+        # P&L Statistiken
         gross_profit = sum(t.realized_pnl for t in winners)
         gross_loss = abs(sum(t.realized_pnl for t in losers))
 
-        profit_factor = self._calculate_profit_factor(gross_profit, gross_loss)
+        profit_factor = (
+            gross_profit / gross_loss if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
+        )
 
         avg_win = gross_profit / winning_trades if winning_trades > 0 else 0
         avg_loss = -gross_loss / losing_trades if losing_trades > 0 else 0
 
-        # Expectancy = (Win% * AvgWin) + (Loss% * AvgLoss)
-        win_rate = winning_trades / total_trades if total_trades > 0 else 0
+        # Expectancy = (Win% * AvgWin) - (Loss% * AvgLoss)
         loss_rate = losing_trades / total_trades if total_trades > 0 else 0
-        expectancy = (win_rate * avg_win) + (loss_rate * avg_loss)
+        expectancy = (win_rate * avg_win) + (loss_rate * avg_loss)  # avg_loss ist negativ
 
-        return {
-            "profit_factor": profit_factor,
-            "expectancy": expectancy,
-            "avg_win": avg_win,
-            "avg_loss": avg_loss,
-        }
-
-    def _calculate_profit_factor(self, gross_profit: float, gross_loss: float) -> float:
-        """Calculate profit factor with proper handling of edge cases.
-
-        Args:
-            gross_profit: Total profit from winning trades.
-            gross_loss: Total loss from losing trades (absolute value).
-
-        Returns:
-            Profit factor (gross_profit / gross_loss).
-        """
-        if gross_loss > 0:
-            return gross_profit / gross_loss
-        elif gross_profit > 0:
-            return float("inf")
-        else:
-            return 0.0
-
-    def _calculate_r_multiple_stats(self, trades: list["Trade"]) -> dict:
-        """Calculate R-multiple statistics (avg, best, worst).
-
-        Args:
-            trades: List of trades.
-
-        Returns:
-            Dictionary with avg_r, best_r, worst_r.
-        """
+        # R-Multiples
         r_multiples = [t.r_multiple for t in trades if t.r_multiple is not None]
+        avg_r = np.mean(r_multiples) if r_multiples else None
+        best_r = max(r_multiples) if r_multiples else None
+        worst_r = min(r_multiples) if r_multiples else None
 
-        return {
-            "avg_r": np.mean(r_multiples) if r_multiples else None,
-            "best_r": max(r_multiples) if r_multiples else None,
-            "worst_r": min(r_multiples) if r_multiples else None,
-        }
+        # Drawdown
+        max_dd_pct, max_dd_duration = self._calculate_drawdown(equity_curve)
 
-    def _calculate_total_return(self) -> float:
-        """Calculate total return percentage.
+        # Streaks
+        max_wins, max_losses = self._calculate_streaks(trades)
 
-        Returns:
-            Total return as percentage.
-        """
-        return ((self.parent.state.equity / self.parent.config.initial_capital) - 1) * 100
+        # Returns
+        total_return = ((self.parent.state.equity / self.parent.config.initial_capital) - 1) * 100
 
-    def _calculate_avg_duration(self, trades: list["Trade"]) -> float | None:
-        """Calculate average trade duration in minutes.
+        # Sharpe (vereinfacht)
+        sharpe = self._calculate_sharpe(equity_curve)
 
-        Args:
-            trades: List of trades.
-
-        Returns:
-            Average duration in minutes, or None if no duration data.
-        """
+        # Trade Duration
         durations = [t.duration for t in trades if t.duration is not None]
-        return np.mean(durations) / 60 if durations else None
-
-    def _build_metrics_object(
-        self,
-        basic_stats: dict,
-        pnl_stats: dict,
-        r_stats: dict,
-        max_dd_pct: float,
-        max_dd_duration: float | None,
-        total_return: float,
-        sharpe: float | None,
-        avg_duration_min: float | None,
-        max_wins: int,
-        max_losses: int,
-    ) -> "BacktestMetrics":
-        """Build BacktestMetrics object from calculated statistics.
-
-        Args:
-            basic_stats: Basic trade statistics dictionary.
-            pnl_stats: P&L statistics dictionary.
-            r_stats: R-multiple statistics dictionary.
-            max_dd_pct: Maximum drawdown percentage.
-            max_dd_duration: Maximum drawdown duration in days.
-            total_return: Total return percentage.
-            sharpe: Sharpe ratio.
-            avg_duration_min: Average trade duration in minutes.
-            max_wins: Maximum consecutive wins.
-            max_losses: Maximum consecutive losses.
-
-        Returns:
-            BacktestMetrics object with all calculated metrics.
-        """
-        from src.core.models.backtest_models import BacktestMetrics
-
-        winners = basic_stats["winners"]
-        losers = basic_stats["losers"]
+        avg_duration_min = np.mean(durations) / 60 if durations else None
 
         return BacktestMetrics(
-            total_trades=basic_stats["total_trades"],
-            winning_trades=basic_stats["winning_trades"],
-            losing_trades=basic_stats["losing_trades"],
-            win_rate=basic_stats["win_rate"],
-            profit_factor=pnl_stats["profit_factor"],
-            expectancy=pnl_stats["expectancy"],
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            expectancy=expectancy,
             max_drawdown_pct=max_dd_pct,
             max_drawdown_duration_days=max_dd_duration,
             sharpe_ratio=sharpe,
-            avg_r_multiple=r_stats["avg_r"],
-            best_r_multiple=r_stats["best_r"],
-            worst_r_multiple=r_stats["worst_r"],
-            avg_win=pnl_stats["avg_win"],
-            avg_loss=pnl_stats["avg_loss"],
+            avg_r_multiple=avg_r,
+            best_r_multiple=best_r,
+            worst_r_multiple=worst_r,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
             largest_win=max(t.realized_pnl for t in winners) if winners else 0,
             largest_loss=min(t.realized_pnl for t in losers) if losers else 0,
             total_return_pct=total_return,

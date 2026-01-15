@@ -1,7 +1,7 @@
 ---
 name: analyzer
 description: Code analyzer for deep codebase understanding. Use for architecture analysis.
-tools: Read, Grep, Glob, WebSearch
+tools: Read, Grep, Glob
 model: opus
 ---
 
@@ -18,7 +18,5 @@ BEI INTEGRATIONSPLAN:
    - Reihenfolge der Implementierung
    - Potenzielle Risiken und Abhängigkeiten
 4. Schätze Komplexität und Aufwand
-
-WICHTIG: Nutze WebSearch um Best Practices und aktuelle Dokumentation zu recherchieren!
 
 OUTPUT: Strukturierte Markdown-Ausgabe mit klarer Gliederung

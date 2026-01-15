@@ -212,7 +212,7 @@ class DataLoadingSeries:
             self.parent._execute_js(f"window.chartAPI.setData({candle_json});")
 
         # Issue #5, #40: Create volume panel and set volume data with custom colors
-        if volume_data is not None:
+        if volume_data:
             # Issue #40: Use custom bullish color for volume panel
             vol_colors = _get_volume_colors()
             self.parent._execute_js(

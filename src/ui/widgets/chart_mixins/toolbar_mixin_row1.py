@@ -81,7 +81,6 @@ class ToolbarMixinRow1:
             ("8 Stunden", "8H", 8/24),     # Issue #42: ~33% of a day
             ("Intraday", "1D", 1),
             ("2 Tage", "2D", 2),
-            ("3 Tage", "3D", 3),           # Issue #62: Added 3 days period
             ("5 Tage", "5D", 5),
             ("1 Woche", "1W", 7),
             ("2 Wochen", "2W", 14),

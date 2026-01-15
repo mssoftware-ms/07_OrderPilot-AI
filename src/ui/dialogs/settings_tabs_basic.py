@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
-    QFontComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -26,7 +25,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSlider,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -50,38 +48,6 @@ class SettingsTabsBasic:
         self.parent.theme_combo = QComboBox()
         self.parent.theme_combo.addItems(["Dark", "Light"])
         layout.addRow("Theme:", self.parent.theme_combo)
-
-        # UI Customization
-        layout.addRow(QLabel(""))
-        layout.addRow(QLabel("<b>UI Customization</b>"))
-
-        # Button Border Color
-        self.parent.ui_btn_border_color_btn = QPushButton()
-        self.parent.ui_btn_border_color_btn.setFixedSize(80, 30)
-        self.parent.ui_btn_border_color_btn.clicked.connect(lambda: self._choose_color('btn_border'))
-        self.parent.ui_btn_border_color = QColor("#3A3D43")  # Default dark theme border
-        self._update_color_button(self.parent.ui_btn_border_color_btn, self.parent.ui_btn_border_color)
-        layout.addRow("Button Border Color:", self.parent.ui_btn_border_color_btn)
-
-        # UI Font Color
-        self.parent.ui_font_color_btn = QPushButton()
-        self.parent.ui_font_color_btn.setFixedSize(80, 30)
-        self.parent.ui_font_color_btn.clicked.connect(lambda: self._choose_color('font_color'))
-        self.parent.ui_font_color = QColor("#EAECEF")  # Default dark theme text
-        self._update_color_button(self.parent.ui_font_color_btn, self.parent.ui_font_color)
-        layout.addRow("Global Font Color:", self.parent.ui_font_color_btn)
-
-        # Font Family
-        self.parent.ui_font_family_combo = QFontComboBox()
-        # Initial value will be loaded in load_current_settings
-        layout.addRow("Font Family:", self.parent.ui_font_family_combo)
-
-        # Font Size
-        self.parent.ui_font_size_spin = QSpinBox()
-        self.parent.ui_font_size_spin.setRange(8, 30)
-        self.parent.ui_font_size_spin.setValue(14)  # Default
-        self.parent.ui_font_size_spin.setSuffix(" px")
-        layout.addRow("Font Size:", self.parent.ui_font_size_spin)
 
         # Auto-connect broker
         self.parent.auto_connect_check = QCheckBox("Auto-connect to broker on startup")
@@ -182,29 +148,28 @@ class SettingsTabsBasic:
         info_label.setStyleSheet("color: #888; font-size: 9px;")
         layout.addRow(info_label)
 
-        # Issue #39/#49: Candle Border Radius (0.25 pixel increments)
+        # Issue #39: Candle Border Radius
         layout.addRow(QLabel(""))
         layout.addRow(QLabel("<b>Kerzen-Abrundung</b>"))
 
         radius_layout = QHBoxLayout()
         self.parent.candle_border_radius_slider = QSlider(Qt.Orientation.Horizontal)
-        # Issue #49: Range 0-40 (0-10px in 0.25px increments: 10*4=40)
-        self.parent.candle_border_radius_slider.setRange(0, 40)  # 0-10 pixels in 0.25 steps
+        self.parent.candle_border_radius_slider.setRange(0, 10)  # 0-10 pixels
         self.parent.candle_border_radius_slider.setValue(0)  # 0 = no rounding (default)
         self.parent.candle_border_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.parent.candle_border_radius_slider.setTickInterval(4)  # Tick every 1px (4*0.25)
+        self.parent.candle_border_radius_slider.setTickInterval(1)
         self.parent.candle_border_radius_slider.valueChanged.connect(self._update_border_radius_label)
         radius_layout.addWidget(self.parent.candle_border_radius_slider)
 
-        self.parent.candle_border_radius_label = QLabel("0.00 px")
-        self.parent.candle_border_radius_label.setFixedWidth(60)
+        self.parent.candle_border_radius_label = QLabel("0 px")
+        self.parent.candle_border_radius_label.setFixedWidth(50)
         self.parent.candle_border_radius_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         radius_layout.addWidget(self.parent.candle_border_radius_label)
 
         layout.addRow("Ecken-Abrundung:", radius_layout)
 
         radius_info_label = QLabel(
-            "<i>0 = Keine Abrundung (Standard), 3-5 = Leicht abgerundet, 10 = Stark abgerundet. Schrittweite: 0,25 px</i>"
+            "<i>0 = Keine Abrundung (Standard), 3-5 = Leicht abgerundet, 10 = Stark abgerundet</i>"
         )
         radius_info_label.setWordWrap(True)
         radius_info_label.setStyleSheet("color: #888; font-size: 9px;")
@@ -244,20 +209,18 @@ class SettingsTabsBasic:
         self.parent.background_image_opacity_label.setText(f"{value}%")
 
     def _update_border_radius_label(self, value: int) -> None:
-        """Update border radius label when slider changes (Issue #39/#49).
+        """Update border radius label when slider changes (Issue #39).
 
         Args:
-            value: Border radius in 0.25px steps (0-40, divide by 4 for actual pixels)
+            value: Border radius in pixels (0-10)
         """
-        # Issue #49: Convert slider value (0-40) to actual pixels (0-10 in 0.25 steps)
-        pixels = value / 4.0
-        self.parent.candle_border_radius_label.setText(f"{pixels:.2f} px")
+        self.parent.candle_border_radius_label.setText(f"{value} px")
 
     def _choose_color(self, color_type: str) -> None:
         """Open color picker dialog (Issue #34).
 
         Args:
-            color_type: 'bullish', 'bearish', 'background', 'btn_border', or 'font_color'
+            color_type: 'bullish', 'bearish', or 'background'
         """
         # Get current color
         if color_type == 'bullish':
@@ -266,20 +229,12 @@ class SettingsTabsBasic:
         elif color_type == 'bearish':
             current_color = self.parent.bearish_color
             btn = self.parent.bearish_color_btn
-        elif color_type == 'background':
+        else:  # background
             current_color = self.parent.background_color
             btn = self.parent.background_color_btn
-        elif color_type == 'btn_border':
-            current_color = self.parent.ui_btn_border_color
-            btn = self.parent.ui_btn_border_color_btn
-        elif color_type == 'font_color':
-            current_color = self.parent.ui_font_color
-            btn = self.parent.ui_font_color_btn
-        else:
-            return
 
         # Open color dialog
-        color = QColorDialog.getColor(current_color, self.parent, f"{color_type.replace('_', ' ').title()} Farbe wählen")
+        color = QColorDialog.getColor(current_color, self.parent, f"{color_type.title()} Farbe wählen")
 
         if color.isValid():
             # Update color
@@ -287,12 +242,8 @@ class SettingsTabsBasic:
                 self.parent.bullish_color = color
             elif color_type == 'bearish':
                 self.parent.bearish_color = color
-            elif color_type == 'background':
+            else:  # background
                 self.parent.background_color = color
-            elif color_type == 'btn_border':
-                self.parent.ui_btn_border_color = color
-            elif color_type == 'font_color':
-                self.parent.ui_font_color = color
 
             # Update button appearance
             self._update_color_button(btn, color)

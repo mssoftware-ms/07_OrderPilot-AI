@@ -1,1 +1,1 @@
-READ-ONLY Modus aktiv. Nutze analyzer für Architekturanalyse, documenter für Dokumentationsbedarf.
+Nutze debugger für Root Cause Analyse, tracer für Stack Trace Analyse.

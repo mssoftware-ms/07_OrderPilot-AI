@@ -33,7 +33,6 @@ from .chart_mixins import (
     LevelZonesMixin,
 )
 from .chart_mixins.entry_analyzer_mixin import EntryAnalyzerMixin
-from .chart_mixins.heatmap_mixin import HeatmapMixin
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
 from .embedded_tradingview_chart_events_mixin import EmbeddedTradingViewChartEventsMixin
@@ -51,7 +50,6 @@ class EmbeddedTradingViewChart(
     EntryAnalyzerMixin,  # Entry Analyzer popup integration
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
-    HeatmapMixin,  # Liquidation Heatmap integration
     LevelZonesMixin,  # Phase 5.5: Level zones support
     BotOverlayMixin,
     ToolbarMixin,

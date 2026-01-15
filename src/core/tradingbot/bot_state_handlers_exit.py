@@ -127,24 +127,13 @@ class BotStateHandlersExit:
         return self._check_macd_exit(features)
 
     def _check_rsi_exit(self, features: FeatureVector) -> str | None:
-        """Check RSI extreme exit conditions.
-
-        Exit when RSI indicates the position is going AGAINST us:
-        - LONG position: Exit when RSI < 20 (oversold, price falling = loss)
-        - SHORT position: Exit when RSI > 80 (overbought, price rising = loss)
-
-        Do NOT exit when RSI indicates profit:
-        - LONG + RSI > 80 = price rising strongly = PROFIT, keep position!
-        - SHORT + RSI < 20 = price falling strongly = PROFIT, keep position!
-        """
+        """Check RSI extreme exit conditions."""
         if features.rsi_14 is None or not self.parent._position:
             return None
-        # LONG: Exit when RSI oversold (price falling, position losing)
-        if self.parent._position.side == TradeSide.LONG and features.rsi_14 < 20:
-            return "RSI_EXTREME_OVERSOLD"
-        # SHORT: Exit when RSI overbought (price rising, position losing)
-        if self.parent._position.side == TradeSide.SHORT and features.rsi_14 > 80:
+        if self.parent._position.side == TradeSide.LONG and features.rsi_14 > 80:
             return "RSI_EXTREME_OVERBOUGHT"
+        if self.parent._position.side == TradeSide.SHORT and features.rsi_14 < 20:
+            return "RSI_EXTREME_OVERSOLD"
         return None
 
     def _check_macd_exit(self, features: FeatureVector) -> str | None:

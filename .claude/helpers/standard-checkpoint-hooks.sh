@@ -4,12 +4,7 @@
 # Function to handle pre-edit checkpoints
 pre_edit_checkpoint() {
     local tool_input="$1"
-    # Handle both JSON input and plain file path
-    if echo "$tool_input" | jq -e . >/dev/null 2>&1; then
-        local file=$(echo "$tool_input" | jq -r '.file_path // empty')
-    else
-        local file="$tool_input"
-    fi
+    local file=$(echo "$tool_input" | jq -r '.file_path // empty')
     
     if [ -n "$file" ]; then
         local checkpoint_branch="checkpoint/pre-edit-$(date +%Y%m%d-%H%M%S)"
@@ -42,12 +37,7 @@ EOF
 # Function to handle post-edit checkpoints
 post_edit_checkpoint() {
     local tool_input="$1"
-    # Handle both JSON input and plain file path
-    if echo "$tool_input" | jq -e . >/dev/null 2>&1; then
-        local file=$(echo "$tool_input" | jq -r '.file_path // empty')
-    else
-        local file="$tool_input"
-    fi
+    local file=$(echo "$tool_input" | jq -r '.file_path // empty')
     
     if [ -n "$file" ] && [ -f "$file" ]; then
         # Check if file was modified - first check if file is tracked

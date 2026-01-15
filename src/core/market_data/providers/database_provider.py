@@ -54,13 +54,7 @@ class DatabaseProvider(HistoricalDataProvider):
         end_date: datetime,
         timeframe: Timeframe
     ) -> list[HistoricalBar]:
-        """Synchronous database fetch (runs in thread).
-
-        Checks both market_bars (SQLAlchemy) and historical_bars (raw SQL) tables.
-        """
-        bars = []
-
-        # 1. Try SQLAlchemy market_bars table first
+        """Synchronous database fetch (runs in thread)."""
         with self.db_manager.session() as session:
             bars_db = session.query(MarketBar).filter(
                 MarketBar.symbol == symbol,
@@ -68,6 +62,7 @@ class DatabaseProvider(HistoricalDataProvider):
                 MarketBar.timestamp <= end_date
             ).order_by(MarketBar.timestamp).all()
 
+            bars = []
             for bar_db in bars_db:
                 bar = HistoricalBar(
                     timestamp=bar_db.timestamp,
@@ -81,61 +76,12 @@ class DatabaseProvider(HistoricalDataProvider):
                 )
                 bars.append(bar)
 
-        # 2. If no bars from market_bars, try historical_bars table (bulk download storage)
-        if not bars:
-            bars = self._fetch_from_historical_bars(symbol, start_date, end_date)
+            # Resample if needed
+            if bars and timeframe != Timeframe.SECOND_1:
+                bars = self._resample_bars(bars, timeframe)
 
-        # Resample if needed
-        if bars and timeframe != Timeframe.SECOND_1:
-            bars = self._resample_bars(bars, timeframe)
-
-        logger.info(f"Fetched {len(bars)} bars from database for {symbol}")
-        return bars
-
-    def _fetch_from_historical_bars(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: datetime
-    ) -> list[HistoricalBar]:
-        """Fetch from historical_bars table (raw SQL - backup compatibility)."""
-        try:
-            with self.db_manager.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT timestamp, open, high, low, close, volume, source
-                    FROM historical_bars
-                    WHERE symbol = ?
-                    AND timestamp >= ?
-                    AND timestamp <= ?
-                    ORDER BY timestamp
-                """, (symbol, start_date.isoformat(), end_date.isoformat()))
-
-                rows = cursor.fetchall()
-                bars = []
-                for row in rows:
-                    ts = row[0]
-                    # Parse timestamp (can be string or datetime)
-                    if isinstance(ts, str):
-                        ts = pd.to_datetime(ts)
-
-                    bar = HistoricalBar(
-                        timestamp=ts,
-                        open=Decimal(str(row[1])),
-                        high=Decimal(str(row[2])),
-                        low=Decimal(str(row[3])),
-                        close=Decimal(str(row[4])),
-                        volume=int(row[5]) if row[5] else 0,
-                        source=row[6] if len(row) > 6 else "historical_bars"
-                    )
-                    bars.append(bar)
-
-                logger.info(f"Fetched {len(bars)} bars from historical_bars for {symbol}")
-                return bars
-
-        except Exception as e:
-            logger.debug(f"historical_bars table not available or error: {e}")
-            return []
+            logger.info(f"Fetched {len(bars)} bars from database for {symbol}")
+            return bars
 
     async def is_available(self) -> bool:
         """Check if database is available."""

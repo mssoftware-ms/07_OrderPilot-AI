@@ -103,252 +103,179 @@ class ReportGenerator:
         Returns:
             Markdown string.
         """
-        sections = [
-            self._md_header(data),
-            self._md_summary(data),
-            self._md_indicator_set(data),
-            self._md_validation_results(data),
-            self._md_filter_statistics(data),
-            self._md_entry_timeline(data),
-            self._md_trade_breakdown(data),
-            self._md_alternatives(data),
-            self._md_footer(),
-        ]
-        return "\n".join(sections)
+        lines = []
 
-    def _md_header(self, data: ReportData) -> str:
-        """Generate report header."""
-        return "\n".join([
-            f"# Entry Analysis Report: {data.symbol}",
-            "",
-            f"**Generated:** {data.analysis_time.strftime(self.config.timestamp_format)}",
-            f"**Timeframe:** {data.timeframe}",
-            f"**Regime:** {data.regime.value}",
-            "",
-        ])
+        # Header
+        lines.append(f"# Entry Analysis Report: {data.symbol}")
+        lines.append("")
+        lines.append(f"**Generated:** {data.analysis_time.strftime(self.config.timestamp_format)}")
+        lines.append(f"**Timeframe:** {data.timeframe}")
+        lines.append(f"**Regime:** {data.regime.value}")
+        lines.append("")
 
-    def _md_summary(self, data: ReportData) -> str:
-        """Generate summary section."""
-        lines = [
-            "## Summary",
-            "",
-            f"- **Entries Found:** {len(data.entries)}",
-        ]
+        # Summary
+        lines.append("## Summary")
+        lines.append("")
+        lines.append(f"- **Entries Found:** {len(data.entries)}")
 
         if data.simulation:
             sim = data.simulation
-            lines.extend([
-                f"- **Total Trades:** {sim.total_trades}",
-                f"- **Win Rate:** {sim.win_rate:.1%}",
-                f"- **Profit Factor:** {sim.profit_factor:.2f}",
-                f"- **Expectancy:** {sim.expectancy:.2f}R",
-                f"- **Max Drawdown:** {sim.max_drawdown_pct:.1f}R",
-            ])
+            lines.append(f"- **Total Trades:** {sim.total_trades}")
+            lines.append(f"- **Win Rate:** {sim.win_rate:.1%}")
+            lines.append(f"- **Profit Factor:** {sim.profit_factor:.2f}")
+            lines.append(f"- **Expectancy:** {sim.expectancy:.2f}R")
+            lines.append(f"- **Max Drawdown:** {sim.max_drawdown_pct:.1f}R")
 
         if data.validation:
             val = data.validation
             status = "PASSED" if val.is_valid else "FAILED"
-            lines.extend([
-                f"- **Validation:** {status}",
-                f"- **OOS Score:** {val.avg_test_score:.3f}",
-                f"- **OOS Win Rate:** {val.oos_win_rate:.1%}",
-            ])
+            lines.append(f"- **Validation:** {status}")
+            lines.append(f"- **OOS Score:** {val.avg_test_score:.3f}")
+            lines.append(f"- **OOS Win Rate:** {val.oos_win_rate:.1%}")
 
         lines.append("")
-        return "\n".join(lines)
 
-    def _md_indicator_set(self, data: ReportData) -> str:
-        """Generate indicator set section."""
-        if not data.indicator_set:
-            return ""
-
-        lines = [
-            "## Best Indicator Set",
-            "",
-            f"**Name:** {data.indicator_set.name}",
-            f"**Score:** {data.indicator_set.score:.3f}",
-            "",
-            "### Indicators",
-            "",
-        ]
-
-        for ind in data.indicator_set.indicators:
-            lines.append(f"- **{ind.get('name', 'Unknown')}**")
-            params = ind.get("params", {})
-            if params:
-                param_str = ", ".join(f"{k}={v}" for k, v in params.items())
-                lines.append(f"  - Params: {param_str}")
-            weight = ind.get("weight", 0)
-            lines.append(f"  - Weight: {weight:.2f}")
-
-        lines.append("")
-        return "\n".join(lines)
-
-    def _md_validation_results(self, data: ReportData) -> str:
-        """Generate validation results section."""
-        if not self.config.include_validation or not data.validation:
-            return ""
-
-        lines = [
-            "## Validation Results",
-            "",
-        ]
-
-        val = data.validation
-
-        if not val.is_valid:
-            lines.extend([
-                "### Failure Reasons",
-                "",
-            ])
-            for reason in val.failure_reasons:
-                lines.append(f"- {reason}")
+        # Indicator Set
+        if data.indicator_set:
+            lines.append("## Best Indicator Set")
+            lines.append("")
+            lines.append(f"**Name:** {data.indicator_set.name}")
+            lines.append(f"**Score:** {data.indicator_set.score:.3f}")
+            lines.append("")
+            lines.append("### Indicators")
             lines.append("")
 
-        lines.extend([
-            "### Fold Summary",
-            "",
-            "| Fold | Train Score | Test Score | Ratio | Train WR | Test WR | Overfit |",
-            "|------|-------------|------------|-------|----------|---------|---------|",
-        ])
+            for ind in data.indicator_set.indicators:
+                lines.append(f"- **{ind.get('name', 'Unknown')}**")
+                params = ind.get("params", {})
+                if params:
+                    param_str = ", ".join(f"{k}={v}" for k, v in params.items())
+                    lines.append(f"  - Params: {param_str}")
+                weight = ind.get("weight", 0)
+                lines.append(f"  - Weight: {weight:.2f}")
 
-        for fold in val.folds:
-            ratio = f"{fold.train_test_ratio:.2f}" if fold.test_score > 0 else "N/A"
-            overfit = "Yes" if fold.is_overfit else "No"
-            lines.append(
-                f"| {fold.fold_idx} | {fold.train_score:.3f} | {fold.test_score:.3f} | "
-                f"{ratio} | {fold.train_win_rate:.1%} | {fold.test_win_rate:.1%} | {overfit} |"
-            )
-
-        lines.extend([
-            "",
-            f"**Seed Used:** {val.seed_used}",
-            f"**Total Time:** {val.total_time_ms:.1f}ms",
-            "",
-        ])
-
-        return "\n".join(lines)
-
-    def _md_filter_statistics(self, data: ReportData) -> str:
-        """Generate filter statistics section."""
-        if not self.config.include_filters or not data.filter_stats:
-            return ""
-
-        stats = data.filter_stats
-        lines = [
-            "## Filter Statistics",
-            "",
-            f"- **Total Entries:** {stats.total_entries}",
-            f"- **Filtered Out:** {stats.filtered_count}",
-            f"- **Pass Rate:** {stats.pass_rate:.1%}",
-            "",
-        ]
-
-        if stats.by_reason:
-            lines.extend([
-                "### By Reason",
-                "",
-            ])
-            for reason, count in sorted(stats.by_reason.items(), key=lambda x: -x[1]):
-                lines.append(f"- {reason}: {count}")
             lines.append("")
 
-        return "\n".join(lines)
-
-    def _md_entry_timeline(self, data: ReportData) -> str:
-        """Generate entry timeline section."""
-        if not self.config.include_entries or not data.entries:
-            return ""
-
-        lines = [
-            "## Entry Timeline",
-            "",
-        ]
-
-        entries_to_show = data.entries[: self.config.max_entries_detail]
-
-        lines.extend([
-            "| Time | Side | Price | Confidence | Reasons |",
-            "|------|------|-------|------------|---------|",
-        ])
-
-        for entry in entries_to_show:
-            dt = datetime.fromtimestamp(entry.timestamp, tz=timezone.utc)
-            time_str = dt.strftime("%Y-%m-%d %H:%M")
-            side = entry.side.value.upper()
-            reasons = ", ".join(entry.reason_tags[:2]) if entry.reason_tags else "-"
-            lines.append(
-                f"| {time_str} | {side} | {entry.price:.2f} | "
-                f"{entry.confidence:.1%} | {reasons} |"
-            )
-
-        if len(data.entries) > self.config.max_entries_detail:
-            remaining = len(data.entries) - self.config.max_entries_detail
-            lines.append(f"\n*... and {remaining} more entries*")
-
-        lines.append("")
-        return "\n".join(lines)
-
-    def _md_trade_breakdown(self, data: ReportData) -> str:
-        """Generate trade breakdown section."""
-        if not self.config.include_trades or not data.simulation or not data.simulation.trades:
-            return ""
-
-        lines = [
-            "## Trade Breakdown",
-            "",
-        ]
-
-        trades_to_show = data.simulation.trades[: self.config.max_trades_detail]
-
-        lines.extend([
-            "| Entry Time | Side | Entry | Exit | R | Result | Exit Reason |",
-            "|------------|------|-------|------|---|--------|-------------|",
-        ])
-
-        for trade in trades_to_show:
-            dt = datetime.fromtimestamp(trade.entry_event.timestamp, tz=timezone.utc)
-            time_str = dt.strftime("%Y-%m-%d %H:%M")
-            side = trade.side.value.upper()
-            result = "WIN" if trade.is_winner else "LOSS"
-            lines.append(
-                f"| {time_str} | {side} | {trade.entry_price:.2f} | "
-                f"{trade.exit_price:.2f} | {trade.r_multiple:.2f} | {result} | "
-                f"{trade.exit_reason} |"
-            )
-
-        if len(data.simulation.trades) > self.config.max_trades_detail:
-            remaining = len(data.simulation.trades) - self.config.max_trades_detail
-            lines.append(f"\n*... and {remaining} more trades*")
-
-        lines.append("")
-        return "\n".join(lines)
-
-    def _md_alternatives(self, data: ReportData) -> str:
-        """Generate alternative sets section."""
-        if not data.alternatives:
-            return ""
-
-        lines = [
-            "## Alternative Sets",
-            "",
-        ]
-
-        for i, alt in enumerate(data.alternatives[:3], 1):
-            lines.append(f"### Alternative {i}: {alt.name}")
-            lines.append(f"- Score: {alt.score:.3f}")
-            ind_names = [ind.get("name", "?") for ind in alt.indicators]
-            lines.append(f"- Indicators: {', '.join(ind_names)}")
+        # Validation Details
+        if self.config.include_validation and data.validation:
+            lines.append("## Validation Results")
             lines.append("")
 
-        return "\n".join(lines)
+            val = data.validation
 
-    def _md_footer(self) -> str:
-        """Generate report footer."""
-        return "\n".join([
-            "---",
-            "*Report generated by OrderPilot-AI Entry Analyzer*",
-        ])
+            if not val.is_valid:
+                lines.append("### Failure Reasons")
+                lines.append("")
+                for reason in val.failure_reasons:
+                    lines.append(f"- {reason}")
+                lines.append("")
+
+            lines.append("### Fold Summary")
+            lines.append("")
+            lines.append("| Fold | Train Score | Test Score | Ratio | Train WR | Test WR | Overfit |")
+            lines.append("|------|-------------|------------|-------|----------|---------|---------|")
+
+            for fold in val.folds:
+                ratio = f"{fold.train_test_ratio:.2f}" if fold.test_score > 0 else "N/A"
+                overfit = "Yes" if fold.is_overfit else "No"
+                lines.append(
+                    f"| {fold.fold_idx} | {fold.train_score:.3f} | {fold.test_score:.3f} | "
+                    f"{ratio} | {fold.train_win_rate:.1%} | {fold.test_win_rate:.1%} | {overfit} |"
+                )
+
+            lines.append("")
+            lines.append(f"**Seed Used:** {val.seed_used}")
+            lines.append(f"**Total Time:** {val.total_time_ms:.1f}ms")
+            lines.append("")
+
+        # Filter Statistics
+        if self.config.include_filters and data.filter_stats:
+            lines.append("## Filter Statistics")
+            lines.append("")
+
+            stats = data.filter_stats
+            lines.append(f"- **Total Entries:** {stats.total_entries}")
+            lines.append(f"- **Filtered Out:** {stats.filtered_count}")
+            lines.append(f"- **Pass Rate:** {stats.pass_rate:.1%}")
+            lines.append("")
+
+            if stats.by_reason:
+                lines.append("### By Reason")
+                lines.append("")
+                for reason, count in sorted(stats.by_reason.items(), key=lambda x: -x[1]):
+                    lines.append(f"- {reason}: {count}")
+                lines.append("")
+
+        # Entry Timeline
+        if self.config.include_entries and data.entries:
+            lines.append("## Entry Timeline")
+            lines.append("")
+
+            entries_to_show = data.entries[: self.config.max_entries_detail]
+
+            lines.append("| Time | Side | Price | Confidence | Reasons |")
+            lines.append("|------|------|-------|------------|---------|")
+
+            for entry in entries_to_show:
+                dt = datetime.fromtimestamp(entry.timestamp, tz=timezone.utc)
+                time_str = dt.strftime("%Y-%m-%d %H:%M")
+                side = entry.side.value.upper()
+                reasons = ", ".join(entry.reason_tags[:2]) if entry.reason_tags else "-"
+                lines.append(
+                    f"| {time_str} | {side} | {entry.price:.2f} | "
+                    f"{entry.confidence:.1%} | {reasons} |"
+                )
+
+            if len(data.entries) > self.config.max_entries_detail:
+                remaining = len(data.entries) - self.config.max_entries_detail
+                lines.append(f"\n*... and {remaining} more entries*")
+
+            lines.append("")
+
+        # Trade Breakdown
+        if self.config.include_trades and data.simulation and data.simulation.trades:
+            lines.append("## Trade Breakdown")
+            lines.append("")
+
+            trades_to_show = data.simulation.trades[: self.config.max_trades_detail]
+
+            lines.append("| Entry Time | Side | Entry | Exit | R | Result | Exit Reason |")
+            lines.append("|------------|------|-------|------|---|--------|-------------|")
+
+            for trade in trades_to_show:
+                dt = datetime.fromtimestamp(trade.entry_event.timestamp, tz=timezone.utc)
+                time_str = dt.strftime("%Y-%m-%d %H:%M")
+                side = trade.side.value.upper()
+                result = "WIN" if trade.is_winner else "LOSS"
+                lines.append(
+                    f"| {time_str} | {side} | {trade.entry_price:.2f} | "
+                    f"{trade.exit_price:.2f} | {trade.r_multiple:.2f} | {result} | "
+                    f"{trade.exit_reason} |"
+                )
+
+            if len(data.simulation.trades) > self.config.max_trades_detail:
+                remaining = len(data.simulation.trades) - self.config.max_trades_detail
+                lines.append(f"\n*... and {remaining} more trades*")
+
+            lines.append("")
+
+        # Alternatives
+        if data.alternatives:
+            lines.append("## Alternative Sets")
+            lines.append("")
+
+            for i, alt in enumerate(data.alternatives[:3], 1):
+                lines.append(f"### Alternative {i}: {alt.name}")
+                lines.append(f"- Score: {alt.score:.3f}")
+                ind_names = [ind.get("name", "?") for ind in alt.indicators]
+                lines.append(f"- Indicators: {', '.join(ind_names)}")
+                lines.append("")
+
+        # Footer
+        lines.append("---")
+        lines.append("*Report generated by OrderPilot-AI Entry Analyzer*")
+
+        return "\n".join(lines)
 
     def generate_json(self, data: ReportData) -> dict[str, Any]:
         """Generate JSON report.

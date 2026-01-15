@@ -108,10 +108,6 @@ class BotStateHandlersFlat:
         Args:
             features: Current feature vector
         """
-        # Skip automatic selection if in manual mode
-        if self.parent._manual_strategy_mode:
-            return
-
         now = datetime.utcnow()
 
         # Check if new day or forced reselection
@@ -162,13 +158,6 @@ class BotStateHandlersFlat:
                         f"Aktuelle Strategie: {self.parent._active_strategy.name} "
                         f"(wechselt mit Marktsituation)",
                     )
-            else:
-                # No strategy selected (neutral)
-                self.parent._active_strategy = None
-                self.parent._log_activity(
-                    "STRATEGY",
-                    "Aktuelle Strategie: neutral (keine Strategie erkannt)",
-                )
 
         except Exception as e:
             self.parent._log_activity("ERROR", f"Bias/Strategie-Auswahl fehlgeschlagen: {e}")
