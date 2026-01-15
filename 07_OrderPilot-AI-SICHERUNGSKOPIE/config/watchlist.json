@@ -1,0 +1,94 @@
+{
+  "watchlist": [
+    {
+      "symbol": "QQQ",
+      "name": "NASDAQ 100 ETF",
+      "wkn": ""
+    },
+    {
+      "symbol": "DIA",
+      "name": "Dow Jones ETF",
+      "wkn": ""
+    },
+    {
+      "symbol": "SPY",
+      "name": "S&P 500 ETF",
+      "wkn": ""
+    },
+    {
+      "symbol": "IWM",
+      "name": "Russell 2000 ETF",
+      "wkn": ""
+    },
+    {
+      "symbol": "VTI",
+      "name": "Total Stock Market ETF",
+      "wkn": ""
+    },
+    {
+      "symbol": "BTC/USD",
+      "name": "Bitcoin",
+      "wkn": ""
+    },
+    {
+      "symbol": "BTCUSDT",
+      "name": "Bitcoin Future (Bitunix)",
+      "wkn": ""
+    },
+    {
+      "symbol": "ETH/USD",
+      "name": "Ethereum",
+      "wkn": ""
+    },
+    {
+      "symbol": "SOL/USD",
+      "name": "Solana",
+      "wkn": ""
+    },
+    {
+      "symbol": "AVAX/USD",
+      "name": "Avalanche",
+      "wkn": ""
+    },
+    {
+      "symbol": "MATIC/USD",
+      "name": "Polygon",
+      "wkn": ""
+    },
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "wkn": ""
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp.",
+      "wkn": ""
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet Inc.",
+      "wkn": ""
+    },
+    {
+      "symbol": "AMZN",
+      "name": "Amazon.com Inc.",
+      "wkn": ""
+    },
+    {
+      "symbol": "META",
+      "name": "Meta Platforms Inc.",
+      "wkn": ""
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA Corp.",
+      "wkn": ""
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla Inc.",
+      "wkn": ""
+    }
+  ]
+}

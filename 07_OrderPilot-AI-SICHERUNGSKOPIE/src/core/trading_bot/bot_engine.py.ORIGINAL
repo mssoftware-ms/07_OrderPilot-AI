@@ -1,0 +1,643 @@
+"""
+Trading Bot Engine - Zentrale State Machine und Orchestrierung (REFACTORED)
+
+Die Haupt-Engine des Trading Bots. Koordiniert:
+- State Machine (IDLE → ANALYZING → IN_POSITION)
+- Signal-Generierung
+- Risk Management
+- Position Monitoring
+- AI Validation
+- Trade Logging
+
+Module 4/4 of bot_engine.py split - Main Orchestrator
+
+WICHTIG: Arbeitet NUR im Paper-Modus!
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
+
+import pandas as pd
+
+if TYPE_CHECKING:
+    from PyQt6.QtCore import pyqtSignal
+
+    from src.core.broker.bitunix_paper_adapter import BitunixPaperAdapter
+    from src.core.broker.broker_types import OrderRequest, OrderResponse, Position
+
+from .ai_validator import AISignalValidator, AIValidation
+from .bot_config import BotConfig
+from .bot_market_analyzer import BotMarketAnalyzer
+from .bot_trade_handler import BotTradeHandler
+from .bot_types import BotState, BotStatistics
+from .position_monitor import (
+    ExitResult,
+    ExitTrigger,
+    MonitoredPosition,
+    PositionMonitor,
+)
+from .risk_manager import RiskCalculation, RiskManager
+from .signal_generator import SignalDirection, SignalGenerator, TradeSignal
+from .strategy_config import StrategyConfig, get_strategy_config
+from .trade_logger import (
+    ExitReason,
+    IndicatorSnapshot,
+    MarketContext,
+    SignalDetails,
+    TradeLogEntry,
+    TradeLogger,
+    TradeOutcome,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class TradingBotEngine:
+    """
+    Haupt-Engine des Trading Bots (REFACTORED).
+
+    Koordiniert alle Komponenten und verwaltet den Bot-Lebenszyklus.
+    Delegiert spezifische Aufgaben an Helper-Klassen:
+    - BotMarketAnalyzer: Market data + indicators + regime
+    - BotTradeHandler: Trade execution + position management
+
+    SICHERHEIT: Arbeitet NUR mit BitunixPaperAdapter!
+    """
+
+    def __init__(
+        self,
+        adapter: "BitunixPaperAdapter",
+        config: BotConfig | None = None,
+        strategy_config_path: Path | str | None = None,
+    ):
+        """
+        Args:
+            adapter: BitunixPaperAdapter (NUR PAPER!)
+            config: Bot-Konfiguration
+            strategy_config_path: Pfad zur JSON Strategie-Konfiguration
+        """
+        # SICHERHEITS-CHECK: Nur Paper-Adapter erlaubt!
+        adapter_class = type(adapter).__name__
+        if "Paper" not in adapter_class:
+            raise ValueError(
+                f"SICHERHEITSFEHLER: TradingBotEngine akzeptiert NUR Paper-Adapter! "
+                f"Erhalten: {adapter_class}"
+            )
+
+        self.adapter = adapter
+        self.config = config or BotConfig()
+        self.strategy_config = get_strategy_config(strategy_config_path)
+
+        # Komponenten initialisieren
+        self.signal_generator = SignalGenerator(
+            min_confluence=self.strategy_config.min_confluence_long
+        )
+        self.risk_manager = RiskManager(
+            config=self.config,
+            strategy_config=self.strategy_config,
+        )
+        self.position_monitor = PositionMonitor(
+            risk_manager=self.risk_manager,
+            check_interval_ms=self.config.position_check_interval_ms,
+        )
+        # AISignalValidator - Provider und Model kommen aus QSettings (File -> Settings -> AI)!
+        self.ai_validator = AISignalValidator(
+            enabled=self.strategy_config.ai_config.enabled,
+            confidence_threshold_trade=self.strategy_config.ai_config.confidence_threshold_trade,
+            confidence_threshold_deep=self.strategy_config.ai_config.confidence_threshold_deep,
+            deep_analysis_enabled=self.strategy_config.ai_config.deep_analysis_enabled,
+            fallback_to_technical=self.strategy_config.ai_config.fallback_to_technical,
+        )
+        self.trade_logger = TradeLogger(
+            log_directory=self.config.logging.log_directory,
+            log_format=self.config.logging.log_format,
+        )
+
+        # Helper-Klassen initialisieren
+        self.market_analyzer = BotMarketAnalyzer(self)
+        self.trade_handler = BotTradeHandler(self)
+
+        # State
+        self._state = BotState.IDLE
+        self._running = False
+        self._current_trade_log: TradeLogEntry | None = None
+        self._last_signal: TradeSignal | None = None
+        self._last_analysis_time: datetime | None = None
+        self._last_error: str | None = None
+
+        # Statistics
+        self._stats = BotStatistics(
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        )
+
+        # Callbacks für UI
+        self._on_state_changed: Callable[[BotState], None] | None = None
+        self._on_signal_generated: Callable[[TradeSignal], None] | None = None
+        self._on_position_opened: Callable[[MonitoredPosition], None] | None = None
+        self._on_position_closed: Callable[[TradeLogEntry], None] | None = None
+        self._on_error: Callable[[str], None] | None = None
+        self._on_log: Callable[[str], None] | None = None
+
+        # Timer/Task
+        self._analysis_task: asyncio.Task | None = None
+
+        # Setup Position Monitor Callbacks
+        self.position_monitor.set_exit_callback(self.trade_handler.on_exit_triggered)
+        self.position_monitor.set_trailing_callback(self.trade_handler.on_trailing_updated)
+        self.position_monitor.set_price_callback(self.trade_handler.on_price_updated)
+
+        logger.info(
+            f"TradingBotEngine initialized (REFACTORED). "
+            f"Symbol: {self.config.symbol}, "
+            f"Leverage: {self.strategy_config.risk_config.leverage}x, "
+            f"AI: {'Enabled' if self.ai_validator.enabled else 'Disabled'}"
+        )
+
+    # =========================================================================
+    # PROPERTIES
+    # =========================================================================
+
+    @property
+    def state(self) -> BotState:
+        """Aktueller Bot-Zustand."""
+        return self._state
+
+    @property
+    def is_running(self) -> bool:
+        """Bot läuft?"""
+        return self._running
+
+    @property
+    def has_position(self) -> bool:
+        """Position offen?"""
+        return self.position_monitor.has_position
+
+    @property
+    def statistics(self) -> BotStatistics:
+        """Aktuelle Statistiken."""
+        return self._stats
+
+    # =========================================================================
+    # STATE MANAGEMENT
+    # =========================================================================
+
+    def _set_state(self, new_state: BotState) -> None:
+        """Setzt neuen Zustand und triggert Callback."""
+        old_state = self._state
+        self._state = new_state
+        self._log(f"State: {old_state.value} → {new_state.value}")
+
+        if self._on_state_changed:
+            self._on_state_changed(new_state)
+
+    def _log(self, message: str) -> None:
+        """Loggt Nachricht und triggert Callback."""
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        full_message = f"[{timestamp}] {message}"
+        logger.info(f"Bot: {message}")
+
+        if self._on_log:
+            self._on_log(full_message)
+
+    # =========================================================================
+    # CHART DATA INTERFACE (Delegated to Market Analyzer)
+    # =========================================================================
+
+    def set_chart_data(
+        self,
+        data: pd.DataFrame,
+        symbol: str,
+        timeframe: str,
+    ) -> None:
+        """Setzt Chart-Daten (delegiert an Market Analyzer)."""
+        self.market_analyzer.set_chart_data(data, symbol, timeframe)
+
+    def clear_chart_data(self) -> None:
+        """Löscht Chart-Daten (delegiert an Market Analyzer)."""
+        self.market_analyzer.clear_chart_data()
+
+    @property
+    def has_chart_data(self) -> bool:
+        """Sind Chart-Daten verfügbar? (delegiert an Market Analyzer)."""
+        return self.market_analyzer.has_chart_data
+
+    # =========================================================================
+    # LIFECYCLE
+    # =========================================================================
+
+    async def start(self) -> None:
+        """Startet den Bot."""
+        if self._running:
+            self._log("Bot is already running")
+            return
+
+        self._set_state(BotState.STARTING)
+        self._running = True
+
+        try:
+            # Adapter verbinden
+            if not self.adapter.connected:
+                await self.adapter.connect()
+                self._log("Adapter connected")
+
+            # Stats zurücksetzen wenn neuer Tag
+            self._check_daily_reset()
+
+            # Gespeicherte Position laden (falls vorhanden)
+            if self.load_position():
+                self._log("Weiter mit wiederhergestellter Position")
+                # State ist bereits IN_POSITION durch load_position()
+            else:
+                # Analysis-Loop starten (nur wenn keine Position)
+                self._analysis_task = asyncio.create_task(self._run_analysis_loop())
+                self._set_state(BotState.ANALYZING)
+
+            self._log("Bot started successfully")
+
+        except Exception as e:
+            self._last_error = str(e)
+            self._set_state(BotState.ERROR)
+            self._log(f"Failed to start: {e}")
+            if self._on_error:
+                self._on_error(str(e))
+
+    async def stop(self, close_position: bool = False) -> None:
+        """
+        Stoppt den Bot.
+
+        Args:
+            close_position: True = Position schließen, False = Position speichern
+        """
+        if not self._running:
+            return
+
+        self._set_state(BotState.STOPPING)
+        self._running = False
+
+        # Analysis-Task stoppen
+        if self._analysis_task:
+            self._analysis_task.cancel()
+            try:
+                await self._analysis_task
+            except asyncio.CancelledError:
+                pass
+
+        # Offene Position behandeln
+        if self.has_position:
+            if close_position:
+                self._log("Position wird geschlossen...")
+                exit_result = ExitResult(
+                    should_exit=True,
+                    trigger=ExitTrigger.BOT_STOPPED,
+                    trigger_price=self.position_monitor.position.current_price,
+                    reason="Bot stopped",
+                )
+                await self.trade_handler.close_position(exit_result)
+            else:
+                # Position speichern für nächsten Start
+                self._log("Position wird für nächsten Start gespeichert...")
+                self.save_position()
+
+        self._set_state(BotState.IDLE)
+        self._log("Bot stopped")
+
+    # =========================================================================
+    # ANALYSIS LOOP
+    # =========================================================================
+
+    async def _run_analysis_loop(self) -> None:
+        """Haupt-Analyse-Loop."""
+        interval = self.config.analysis_interval_seconds
+
+        while self._running:
+            try:
+                await self._run_analysis_cycle()
+                await asyncio.sleep(interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self._log(f"Analysis error: {e}")
+                logger.exception("Analysis cycle error")
+                await asyncio.sleep(interval)
+
+    async def _run_analysis_cycle(self) -> None:
+        """Ein Analyse-Zyklus."""
+        if not self._running:
+            return
+
+        # Keine Analyse wenn Position offen und Monitor aktiv
+        if self._state == BotState.IN_POSITION:
+            # Nur Exit-Signal prüfen
+            await self._check_exit_signal()
+            return
+
+        self._set_state(BotState.ANALYZING)
+
+        # Marktdaten holen
+        df = await self.market_analyzer.fetch_market_data()
+        if df is None or df.empty:
+            self._log("No market data available")
+            return
+
+        # Indikatoren berechnen (falls noch nicht vorhanden)
+        if "ema_20" not in df.columns:
+            df = self.market_analyzer.calculate_indicators(df)
+
+        # Regime erkennen
+        regime = self.market_analyzer.detect_regime(df)
+
+        # Signal generieren
+        signal = self.signal_generator.generate_signal(
+            df=df,
+            regime=regime,
+            require_regime_alignment=self.config.require_regime_alignment,
+        )
+
+        self._last_signal = signal
+        self._last_analysis_time = datetime.now(timezone.utc)
+        self._stats.signals_generated += 1
+
+        if self._on_signal_generated:
+            self._on_signal_generated(signal)
+
+        # Kein valides Signal
+        if not signal.is_valid:
+            self._set_state(BotState.WAITING_SIGNAL)
+            self._stats.signals_rejected_confluence += 1
+            return
+
+        self._log(
+            f"Signal: {signal.direction.value} "
+            f"(Confluence: {signal.confluence_score}/5)"
+        )
+
+        # Immer Indikatoren und Kontext extrahieren (für Logging)
+        indicators = self.signal_generator.extract_indicator_snapshot(df)
+        market_context = self.market_analyzer.extract_market_context(df, regime)
+
+        # AI Validation - IMMER wenn aktiviert!
+        if self.ai_validator.enabled:
+            self._set_state(BotState.VALIDATING)
+
+            ai_result = await self.ai_validator.validate_signal_async(
+                signal=signal,
+                market_data=df,
+                market_context=market_context,
+            )
+
+            if not ai_result.approved:
+                self._log(f"AI rejected: {ai_result.reason}")
+                self._stats.signals_rejected_ai += 1
+                self._set_state(BotState.WAITING_SIGNAL)
+                return
+
+            self._log(f"AI approved: {ai_result.confidence:.2%}")
+
+        # Signal approved - Trade ausführen
+        await self.trade_handler.execute_trade(signal, indicators, market_context)
+
+    async def _check_exit_signal(self) -> None:
+        """Prüft auf Exit-Signal."""
+        # Position Monitor checkt automatisch SL/TP
+        # Hier könnten zusätzliche Checks rein (z.B. Signal-Reversal)
+        pass
+
+    # =========================================================================
+    # HELPERS
+    # =========================================================================
+
+    async def _get_balance(self) -> Decimal:
+        """Holt aktuelle Balance."""
+        try:
+            account = await self.adapter.get_account()
+            if account and account.equity:
+                return account.equity
+            return Decimal("10000")  # Fallback
+        except Exception as e:
+            logger.error(f"Failed to get balance: {e}")
+            return Decimal("10000")
+
+    def _check_daily_reset(self) -> None:
+        """Prüft ob neue Trading-Session (neuer Tag)."""
+        current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._stats.date != current_date:
+            self._stats = BotStatistics(date=current_date)
+            self._log("New trading session started")
+
+    def _update_statistics(self, trade_log: TradeLogEntry) -> None:
+        """Aktualisiert Statistiken nach Trade."""
+        self._stats.trades_total += 1
+
+        if trade_log.outcome == TradeOutcome.WIN:
+            self._stats.trades_won += 1
+        elif trade_log.outcome == TradeOutcome.LOSS:
+            self._stats.trades_lost += 1
+        else:
+            self._stats.trades_breakeven += 1
+
+        if trade_log.net_pnl:
+            self._stats.total_pnl += trade_log.net_pnl
+
+            # Drawdown tracking
+            if self._stats.total_pnl > self._stats.peak_pnl:
+                self._stats.peak_pnl = self._stats.total_pnl
+
+            current_drawdown = self._stats.peak_pnl - self._stats.total_pnl
+            if current_drawdown > self._stats.max_drawdown:
+                self._stats.max_drawdown = current_drawdown
+
+        # Risk Manager informieren
+        if trade_log.net_pnl:
+            self.risk_manager.record_trade_result(trade_log.net_pnl)
+
+    # =========================================================================
+    # CALLBACKS
+    # =========================================================================
+
+    def set_state_callback(self, callback: Callable[[BotState], None]) -> None:
+        """Setzt Callback für State-Änderungen."""
+        self._on_state_changed = callback
+
+    def set_signal_callback(self, callback: Callable[[TradeSignal], None]) -> None:
+        """Setzt Callback für neue Signale."""
+        self._on_signal_generated = callback
+
+    def set_position_opened_callback(
+        self, callback: Callable[[MonitoredPosition], None]
+    ) -> None:
+        """Setzt Callback für Position-Öffnung."""
+        self._on_position_opened = callback
+
+    def set_position_closed_callback(
+        self, callback: Callable[[TradeLogEntry], None]
+    ) -> None:
+        """Setzt Callback für Position-Schließung."""
+        self._on_position_closed = callback
+
+    def set_error_callback(self, callback: Callable[[str], None]) -> None:
+        """Setzt Callback für Fehler."""
+        self._on_error = callback
+
+    def set_log_callback(self, callback: Callable[[str], None]) -> None:
+        """Setzt Callback für Log-Nachrichten."""
+        self._on_log = callback
+
+    # =========================================================================
+    # CONFIG UPDATE
+    # =========================================================================
+
+    def update_config(self, config: BotConfig) -> None:
+        """
+        Aktualisiert die Bot-Konfiguration.
+
+        Einige Änderungen werden erst nach Neustart wirksam.
+        HINWEIS: Provider und Model kommen aus QSettings (File -> Settings -> AI)!
+        """
+        self.config = config
+        # Update Risk Manager mit neuer Config
+        self.risk_manager.update_config(config)
+        # AI Validator aktualisieren (Provider/Model kommen aus QSettings!)
+        self.ai_validator.update_config(
+            enabled=config.ai.enabled,
+            confidence_threshold=config.ai.confidence_threshold,
+        )
+        # Trade Logger Verzeichnis aktualisieren
+        if config.logging.enabled:
+            config.logging.log_directory.mkdir(parents=True, exist_ok=True)
+        self._log(f"Config aktualisiert: Risk={config.risk_per_trade_percent}%, SL={config.sl_atr_multiplier}x ATR")
+        logger.info("Bot config updated")
+
+    # =========================================================================
+    # PUBLIC STATUS
+    # =========================================================================
+
+    def get_current_status(self) -> dict:
+        """Gibt aktuellen Bot-Status zurück."""
+        return {
+            "state": self._state.value,
+            "running": self._running,
+            "has_position": self.has_position,
+            "position": self.position_monitor.get_position_status(),
+            "last_signal": {
+                "direction": self._last_signal.direction.value,
+                "confluence": self._last_signal.confluence_score,
+                "strength": self._last_signal.strength.value,
+            }
+            if self._last_signal
+            else None,
+            "last_analysis": self._last_analysis_time.isoformat()
+            if self._last_analysis_time
+            else None,
+            "statistics": self._stats.to_dict(),
+            "last_error": self._last_error,
+        }
+
+    # =========================================================================
+    # MANUAL CONTROLS (Delegated to Trade Handler)
+    # =========================================================================
+
+    async def manual_close_position(self) -> None:
+        """Schließt Position manuell (delegiert an Trade Handler)."""
+        await self.trade_handler.manual_close_position()
+
+    async def on_price_update(self, price: Decimal) -> None:
+        """Preis-Update von außen (delegiert an Trade Handler)."""
+        await self.trade_handler.on_price_update(price)
+
+    # =========================================================================
+    # POSITION PERSISTENCE
+    # =========================================================================
+
+    _POSITION_FILE = Path("config/trading_bot/active_position.json")
+
+    def save_position(self) -> bool:
+        """
+        Speichert aktive Position in Datei.
+
+        Wird beim Beenden aufgerufen um Position zu erhalten.
+
+        Returns:
+            True wenn erfolgreich gespeichert
+        """
+        try:
+            self._POSITION_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+            if self.position_monitor.has_position:
+                position = self.position_monitor.position
+                data = {
+                    "position": position.to_dict(),
+                    "bot_state": self._state.value,
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._POSITION_FILE.write_text(json.dumps(data, indent=2))
+                logger.info(f"Position saved: {position.symbol} {position.side}")
+                self._log(f"💾 Position gespeichert: {position.symbol}")
+                return True
+            else:
+                # Keine Position - Datei löschen falls vorhanden
+                if self._POSITION_FILE.exists():
+                    self._POSITION_FILE.unlink()
+                    logger.debug("No position to save, removed old file")
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to save position: {e}")
+            return False
+
+    def load_position(self) -> bool:
+        """
+        Lädt gespeicherte Position aus Datei.
+
+        Wird beim Start aufgerufen um Position wiederherzustellen.
+
+        Returns:
+            True wenn Position geladen wurde
+        """
+        try:
+            if not self._POSITION_FILE.exists():
+                logger.debug("No saved position file found")
+                return False
+
+            data = json.loads(self._POSITION_FILE.read_text())
+            position_data = data.get("position")
+
+            if not position_data:
+                logger.debug("Saved position file is empty")
+                return False
+
+            # Position wiederherstellen
+            position = self.position_monitor.restore_position(position_data)
+
+            if position:
+                self._set_state(BotState.IN_POSITION)
+                self._log(
+                    f"📂 Position wiederhergestellt: {position.symbol} {position.side} "
+                    f"@ {position.entry_price}"
+                )
+
+                # UI Callback triggern
+                if self._on_position_opened:
+                    self._on_position_opened(position)
+
+                # Position-Datei nach erfolgreichem Laden löschen
+                # (wird beim nächsten Save neu erstellt)
+                self._POSITION_FILE.unlink()
+                logger.info(
+                    f"Position restored from file: {position.symbol} {position.side}, "
+                    f"Entry: {position.entry_price}, SL: {position.stop_loss}, TP: {position.take_profit}"
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to load position: {e}")
+            return False

@@ -1,0 +1,36 @@
+# config/profiles/live.yaml
+profile: live
+ai:
+  enabled: true
+  model_default: gpt-5-mini
+  model_critical: gpt-5
+  temperature: 0.1
+  max_output_tokens: 800
+  timeouts:
+    connect_ms: 5000
+    read_ms: 12000
+  rate_limits:
+    rps: 1
+    burst: 2
+  budget:
+    monthly_eur: 25
+    warn_eur: 20
+    block_at_eur: 25
+  features:
+    order_dialog_explain: true
+    alert_triage: true
+    backtest_review: true
+    strategy_post_signal: true
+    realtime: false
+marketdata:
+  ohlc_resample_default: "1s"
+  noise_filter:
+    type: median
+    window: 3
+execution:
+  manual_approval_default: true
+  risk_controls:
+    max_risk_pct: 0.5
+    day_trade_limit: 10
+logging:
+  telemetry_ai: true

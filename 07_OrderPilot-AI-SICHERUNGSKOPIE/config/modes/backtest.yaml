@@ -1,0 +1,96 @@
+# Backtest Mode Configuration
+# Optimized for historical backtesting with synthetic execution
+
+profile_name: backtest
+description: Backtesting profile for strategy validation
+environment: development
+trading_mode: backtest
+
+broker:
+  broker_type: mock
+  paper_trading: true
+  auto_reconnect: false
+  account_id: null
+
+database:
+  engine: postgresql
+  host: localhost
+  port: 5432
+  database: orderpilot
+  username: orderpilot
+  password: orderpilot
+  echo: false
+
+backtest:
+  initial_capital: "10000"
+  data_frequency: "1m"
+  include_commissions: true
+  include_slippage: true
+  benchmark: SPY
+  random_seed: 42
+  optimization_metric: sharpe
+
+trading:
+  max_position_size: "10000"
+  max_portfolio_risk: 0.02
+  max_daily_loss: "1000"
+  max_open_positions: 10
+  default_stop_loss_pct: 0.02
+  default_take_profit_pct: 0.05
+  allow_short_selling: true  # Allow for backtest
+  use_margin: false
+  commission_model: fixed
+  commission_value: 1.0
+  slippage_model: fixed
+  slippage_value: 0.001
+
+execution:
+  execution_algo: market
+  manual_approval_default: false  # Auto-execute in backtest
+  emergency_stop_active: false
+  cancel_on_disconnect: false
+  retry_failed_orders: false
+  order_timeout_seconds: 60
+
+ai:
+  enabled: true
+  model: gpt-4-turbo-preview
+  temperature: 0.2
+  max_tokens: 4000
+  cost_limit_daily: 5.0  # Lower limit for backtests
+  cache_responses: true
+
+alerts:
+  email_enabled: false
+  sound_enabled: false
+  popup_enabled: false
+  alert_on_order_fill: false
+  alert_on_stop_loss: false
+
+monitoring:
+  track_metrics: true
+  metrics_interval: 60
+  export_metrics: true
+  export_format: json
+  track_latency: false
+  track_memory: true
+
+market_data:
+  alpaca_enabled: false
+  yahoo_enabled: true
+  prefer_live_broker: false
+
+ui:
+  theme: dark
+  confirm_orders: false  # No confirmation needed in backtest
+  show_indicators: true
+  default_timeframe: 5m
+
+features:
+  paper_trading: false
+  live_trading: false
+  backtesting: true
+  optimization: true
+  ai_analysis: true
+  options_trading: false
+  crypto_trading: false

@@ -1,0 +1,1969 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Bot - Hilfe | OrderPilot-AI</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-highlight: #1a1a2e;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-green: #26a69a;
+            --accent-red: #ef5350;
+            --accent-orange: #ff9800;
+            --accent-blue: #2196f3;
+            --accent-purple: #9c27b0;
+            --border-color: #30363d;
+            --link-color: #58a6ff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--bg-highlight) 0%, var(--bg-secondary) 100%);
+            padding: 30px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .header h1 .icon {
+            font-size: 36px;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Navigation Tabs */
+        .nav-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 4px;
+            padding: 15px 20px;
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 98px;
+            z-index: 99;
+        }
+
+        .nav-tab {
+            padding: 10px 18px;
+            background-color: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .nav-tab:hover {
+            background-color: var(--bg-highlight);
+            color: var(--text-primary);
+        }
+
+        .nav-tab.active {
+            background-color: var(--accent-green);
+            color: white;
+            border-color: var(--accent-green);
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Section Styles */
+        .section {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section h3 {
+            font-size: 16px;
+            color: var(--accent-green);
+            margin: 20px 0 12px 0;
+        }
+
+        .section p {
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        /* Parameter Tables */
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+
+        .param-table th,
+        .param-table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid var(--border-color);
+        }
+
+        .param-table th {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .param-table tr:nth-child(even) {
+            background-color: var(--bg-tertiary);
+        }
+
+        .param-table tr:hover {
+            background-color: var(--bg-highlight);
+        }
+
+        /* Info Boxes */
+        .info-box {
+            padding: 16px;
+            border-radius: 6px;
+            margin: 16px 0;
+            display: flex;
+            gap: 12px;
+        }
+
+        .info-box.tip {
+            background-color: rgba(38, 166, 154, 0.1);
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .info-box.warning {
+            background-color: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid var(--accent-orange);
+        }
+
+        .info-box.danger {
+            background-color: rgba(239, 83, 80, 0.1);
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .info-box.info {
+            background-color: rgba(33, 150, 243, 0.1);
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .info-box .icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .info-box .content {
+            flex: 1;
+        }
+
+        .info-box .title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        /* Code/Value Highlights */
+        code {
+            background-color: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            color: var(--accent-orange);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.green { background-color: var(--accent-green); color: white; }
+        .badge.red { background-color: var(--accent-red); color: white; }
+        .badge.orange { background-color: var(--accent-orange); color: black; }
+        .badge.blue { background-color: var(--accent-blue); color: white; }
+        .badge.purple { background-color: var(--accent-purple); color: white; }
+
+        /* Workflow Steps */
+        .workflow {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .workflow-step {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background-color: var(--accent-green);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+            background-color: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 6px;
+        }
+
+        .step-content h4 {
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin: 0;
+        }
+
+        /* Accordion */
+        .accordion {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            background-color: var(--bg-tertiary);
+            padding: 14px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+
+        .accordion-header:hover {
+            background-color: var(--bg-highlight);
+        }
+
+        .accordion-header .arrow {
+            transition: transform 0.2s;
+        }
+
+        .accordion.open .accordion-header .arrow {
+            transform: rotate(180deg);
+        }
+
+        .accordion-content {
+            display: none;
+            padding: 16px;
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .accordion.open .accordion-content {
+            display: block;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-muted);
+            font-size: 12px;
+            border-top: 1px solid var(--border-color);
+            margin-top: 40px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-tabs {
+                position: static;
+            }
+
+            .nav-tab {
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+        }
+
+        /* Quick Reference Card */
+        .quick-ref {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .quick-ref-card {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .quick-ref-card h4 {
+            color: var(--accent-green);
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .quick-ref-card ul {
+            list-style: none;
+            font-size: 13px;
+        }
+
+        .quick-ref-card li {
+            padding: 6px 0;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .quick-ref-card li span:last-child {
+            color: var(--accent-orange);
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <h1>
+            <span class="icon">🤖</span>
+            Trading Bot - Hilfe
+        </h1>
+        <p>Umfassende Dokumentation für das OrderPilot-AI Trading Bot Fenster</p>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="quickstart">🚀 Quick Start</button>
+        <button class="nav-tab" data-tab="overview">Übersicht</button>
+        <button class="nav-tab" data-tab="bot">Bot Control</button>
+        <button class="nav-tab" data-tab="strategy">Daily Strategy</button>
+        <button class="nav-tab" data-tab="signals">Signals</button>
+        <button class="nav-tab" data-tab="ki-logs">KI Logs</button>
+        <button class="nav-tab" data-tab="engine">Engine Settings</button>
+        <button class="nav-tab" data-tab="backtesting">Backtesting</button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- QUICK START TAB -->
+        <div id="quickstart" class="tab-content active">
+            <div class="section">
+                <h2><span>🚀</span> Quick Start: Vom Start bis zum Trading</h2>
+                <p>Diese Anleitung führt dich Schritt für Schritt durch den kompletten Workflow - vom ersten Start bis zum aktiven Trading mit dem Bot.</p>
+
+                <div class="info-box tip">
+                    <span class="icon">⏱️</span>
+                    <div class="content">
+                        <div class="title">Zeitaufwand</div>
+                        <p>Erster Start mit Backtesting: ca. 15-30 Minuten | Täglicher Start: ca. 2 Minuten</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>📋</span> Phase 1: Ersteinrichtung (einmalig)</h2>
+                <p>Diese Schritte musst du nur beim allerersten Start durchführen.</p>
+
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Trading Bot Fenster öffnen</h4>
+                            <p>Klicke im Hauptmenü auf <strong>Trading → Bot Fenster öffnen</strong> oder nutze den Shortcut <code>Ctrl+B</code></p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Engine Settings Tab öffnen</h4>
+                            <p>Wechsle zum <strong>Engine Settings</strong> Tab. Hier konfigurierst du die Trading-Engines:</p>
+                            <ul style="color: var(--text-secondary); margin: 8px 0 0 20px; font-size: 13px;">
+                                <li><strong>Entry Score</strong> - Wann ein Signal gut genug ist</li>
+                                <li><strong>Trigger/Exit</strong> - Stop-Loss und Take-Profit Regeln</li>
+                                <li><strong>Leverage Rules</strong> - Hebel-Einstellungen</li>
+                                <li><strong>Level Detection</strong> - Support/Resistance Erkennung</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Micro-Account Defaults laden (empfohlen)</h4>
+                            <p>Für 100€ Konten: Klicke in jedem Sub-Tab auf <strong>🔄 Reset</strong> um optimierte Micro-Account Defaults zu laden. Die Werte sind bereits für kleine Konten optimiert.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Einstellungen speichern</h4>
+                            <p>Klicke auf <strong>💾 Speichern</strong> um deine Einstellungen dauerhaft zu sichern.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>🔬</span> Phase 2: Backtesting (empfohlen)</h2>
+                <p>Teste deine Strategie mit historischen Daten, bevor du echtes Geld einsetzt.</p>
+
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>Backtesting Tab öffnen</h4>
+                            <p>Wechsle zum <strong>Backtesting</strong> Tab</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">6</div>
+                        <div class="step-content">
+                            <h4>Setup konfigurieren</h4>
+                            <p>Im <strong>Setup</strong> Sub-Tab:</p>
+                            <ul style="color: var(--text-secondary); margin: 8px 0 0 20px; font-size: 13px;">
+                                <li>Symbol wählen (z.B. BTC/USDT)</li>
+                                <li>Timeframe: 5m oder 15m empfohlen</li>
+                                <li>Zeitraum: mindestens 3 Monate</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">7</div>
+                        <div class="step-content">
+                            <h4>Engine Configs laden</h4>
+                            <p>Klicke <strong>📥 Lade Engine Configs</strong> um deine Engine-Einstellungen in den Backtest zu übernehmen</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">8</div>
+                        <div class="step-content">
+                            <h4>Varianten generieren (optional)</h4>
+                            <p>Klicke <strong>🤖 Auto Generate Varianten</strong> um automatisch verschiedene Parameter-Kombinationen zu erstellen</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">9</div>
+                        <div class="step-content">
+                            <h4>Backtest starten</h4>
+                            <p>Klicke <strong>▶️ Start Backtest</strong> (einzeln) oder <strong>🔄 Start Batch</strong> (mehrere Varianten)</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">10</div>
+                        <div class="step-content">
+                            <h4>Ergebnisse prüfen</h4>
+                            <p>Im <strong>Results</strong> Sub-Tab: Prüfe Expectancy (> 0), Profit Factor (> 1.5), Max Drawdown (< 30%)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box warning">
+                    <span class="icon">⚠️</span>
+                    <div class="content">
+                        <div class="title">Wichtig!</div>
+                        <p>Starte den Bot NICHT, wenn die Backtest-Ergebnisse negativ sind (Expectancy < 0 oder Profit Factor < 1.0)!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>▶️</span> Phase 3: Bot starten</h2>
+                <p>Jetzt bist du bereit für das echte Trading!</p>
+
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">11</div>
+                        <div class="step-content">
+                            <h4>Bot Control Tab öffnen</h4>
+                            <p>Wechsle zum <strong>Bot Control</strong> Tab - hier steuerst du den Trading Bot</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">12</div>
+                        <div class="step-content">
+                            <h4>Grundeinstellungen prüfen</h4>
+                            <table class="param-table" style="margin-top: 8px;">
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Micro-Account Empfehlung</th>
+                                </tr>
+                                <tr>
+                                    <td>Kapital</td>
+                                    <td><code>100</code> €</td>
+                                </tr>
+                                <tr>
+                                    <td>Risk/Trade %</td>
+                                    <td><code>30-50</code> %</td>
+                                </tr>
+                                <tr>
+                                    <td>Leverage Override</td>
+                                    <td><code>20x</code></td>
+                                </tr>
+                                <tr>
+                                    <td>Initial SL %</td>
+                                    <td><code>1.5</code> %</td>
+                                </tr>
+                                <tr>
+                                    <td>KI Modus</td>
+                                    <td><code>NO_KI</code> (Anfänger) oder <code>LOW_KI</code></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">13</div>
+                        <div class="step-content">
+                            <h4>Trade Direction wählen</h4>
+                            <p>Wähle basierend auf dem Backtest-Ergebnis:</p>
+                            <ul style="color: var(--text-secondary); margin: 8px 0 0 20px; font-size: 13px;">
+                                <li><code>AUTO</code> - Bot wählt automatisch (empfohlen nach Batch-Test)</li>
+                                <li><code>LONG_ONLY</code> - Nur kaufen (bei Aufwärtstrend)</li>
+                                <li><code>SHORT_ONLY</code> - Nur verkaufen (bei Abwärtstrend)</li>
+                                <li><code>BOTH</code> - Beide Richtungen</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number" style="background-color: var(--accent-green); font-size: 18px;">▶</div>
+                        <div class="step-content" style="border: 2px solid var(--accent-green);">
+                            <h4>🎯 Start Bot klicken!</h4>
+                            <p>Klicke den grünen <strong>Start Bot</strong> Button. Der Bot ist jetzt aktiv und sucht nach Signalen!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>👀</span> Phase 4: Trading überwachen</h2>
+                <p>Der Bot läuft jetzt. So behältst du den Überblick:</p>
+
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">15</div>
+                        <div class="step-content">
+                            <h4>Signals Tab beobachten</h4>
+                            <p>Im <strong>Signals</strong> Tab siehst du:</p>
+                            <ul style="color: var(--text-secondary); margin: 8px 0 0 20px; font-size: 13px;">
+                                <li>Aktuelle Position mit P&L</li>
+                                <li>SL/TP Progress Bar</li>
+                                <li>Alle erkannten Signale</li>
+                                <li>Entry Score jedes Signals</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">16</div>
+                        <div class="step-content">
+                            <h4>Status Panel im Chart</h4>
+                            <p>Das Trading Status Panel zeigt: Bot-Status, aktuelle Position, P&L, Regime Badge</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">17</div>
+                        <div class="step-content">
+                            <h4>Bei Bedarf: Pause oder Stop</h4>
+                            <p><strong>Pause</strong> - Keine neuen Trades, aber Position-Monitoring aktiv<br>
+                            <strong>Stop Bot</strong> - Bot komplett stoppen (Positionen bleiben offen!)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box danger">
+                    <span class="icon">🚨</span>
+                    <div class="content">
+                        <div class="title">Wichtig: Position schließen</div>
+                        <p>Der <strong>Stop Bot</strong> Button schließt KEINE offenen Positionen! Um eine Position manuell zu schließen, nutze die Exchange-Oberfläche oder den "Close Position" Button im Signals Tab.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>🔁</span> Täglicher Quick-Start (nach Ersteinrichtung)</h2>
+                <p>Nach der Ersteinrichtung brauchst du täglich nur noch diese Schritte:</p>
+
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Bot Fenster öffnen</h4>
+                            <p><code>Ctrl+B</code> oder Menü → Trading → Bot Fenster</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Einstellungen prüfen</h4>
+                            <p>Kurzer Check: Kapital, Leverage, KI-Modus korrekt?</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number" style="background-color: var(--accent-green);">3</div>
+                        <div class="step-content">
+                            <h4>Start Bot</h4>
+                            <p>Grünen Button klicken - fertig!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box info">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Pro-Tipp</div>
+                        <p>Führe wöchentlich einen neuen Backtest durch, um zu prüfen ob deine Parameter noch optimal sind. Die Marktbedingungen ändern sich!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>❓</span> Häufige Fragen</h2>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Der Bot findet keine Signale - was tun?</strong></span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <ul style="color: var(--text-secondary); margin-left: 20px;">
+                            <li>Min Score zu hoch? Versuche 45-55 statt 60+</li>
+                            <li>Markt in Chop-Phase? "Block in Chop" deaktivieren</li>
+                            <li>Trade Direction zu restriktiv? Probiere "BOTH"</li>
+                            <li>Timeframe zu groß? Wechsle auf 5m oder 1m</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Der Bot macht zu viele Verlust-Trades</strong></span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <ul style="color: var(--text-secondary); margin-left: 20px;">
+                            <li>Min Score erhöhen (z.B. auf 60-65)</li>
+                            <li>Stop-Loss enger setzen (1.2-1.5% statt 2%)</li>
+                            <li>Trailing früher aktivieren (0.3R statt 0.5R)</li>
+                            <li>Neuen Backtest mit anderen Parametern durchführen</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Welchen KI-Modus soll ich wählen?</strong></span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <table class="param-table">
+                            <tr>
+                                <th>Modus</th>
+                                <th>Empfohlen für</th>
+                            </tr>
+                            <tr>
+                                <td><code>NO_KI</code></td>
+                                <td>Anfänger, Backtesting, wenn LLM-Kosten sparen</td>
+                            </tr>
+                            <tr>
+                                <td><code>LOW_KI</code></td>
+                                <td>Tägliches Trading mit KI-Unterstützung bei der Strategie</td>
+                            </tr>
+                            <tr>
+                                <td><code>FULL_KI</code></td>
+                                <td>Erfahrene Trader, die volle KI-Power nutzen wollen</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ÜBERSICHT TAB -->
+        <div id="overview" class="tab-content">
+            <div class="section">
+                <h2><span>📋</span> Übersicht</h2>
+                <p>Der Trading Bot ist ein automatisiertes Handelssystem, das Signale generiert, Positionen verwaltet und optional KI-gestützte Entscheidungen trifft.</p>
+
+                <h3>Grundlegender Workflow</h3>
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Bot starten</h4>
+                            <p>Klicke auf "Start Bot" im Bot Control Tab. Bei aktiviertem KI-Modus wird automatisch eine Tagesstrategie ermittelt.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Chart-Analyse</h4>
+                            <p>Der Bot analysiert den Chart jede Minute auf Einstiegssignale basierend auf den konfigurierten Indikatoren und Regeln.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Signal & Entry Score</h4>
+                            <p>Bei einem potentiellen Signal wird ein Entry Score (0-100) berechnet. Nur Signale über dem Mindest-Score werden ausgeführt.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Position Management</h4>
+                            <p>Offene Positionen werden mit Initial Stop-Loss und Trailing Stop überwacht. Der Bot passt Stops dynamisch an.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box tip">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Tipp für Einsteiger</div>
+                        <p>Beginne mit dem <code>NO_KI</code> Modus und niedrigem Hebel (5-10x), um das System kennenzulernen.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>🎯</span> KI-Modi Übersicht</h2>
+                <table class="param-table">
+                    <tr>
+                        <th>Modus</th>
+                        <th>Beschreibung</th>
+                        <th>LLM-Calls</th>
+                        <th>Empfohlen für</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge green">NO_KI</span></td>
+                        <td>Rein regelbasiert, keine KI-Unterstützung</td>
+                        <td>0</td>
+                        <td>Backtesting, Strategie-Tests</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge orange">LOW_KI</span></td>
+                        <td>Daily Strategy Selection (1 Call pro Tag)</td>
+                        <td>1/Tag</td>
+                        <td>Tägliches Trading mit KI-Guidance</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge red">FULL_KI</span></td>
+                        <td>Daily + Intraday Events (RegimeFlip, Exit, Signal)</td>
+                        <td>Variabel</td>
+                        <td>Aktives Trading mit voller KI-Unterstützung</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>⚡</span> Quick Reference</h2>
+                <div class="quick-ref">
+                    <div class="quick-ref-card">
+                        <h4>Micro-Account (100€)</h4>
+                        <ul>
+                            <li><span>Hebel</span><span>15-25x</span></li>
+                            <li><span>Risk/Trade</span><span>30-50%</span></li>
+                            <li><span>Initial SL</span><span>1.5-2%</span></li>
+                            <li><span>Trailing</span><span>ATR-basiert</span></li>
+                        </ul>
+                    </div>
+                    <div class="quick-ref-card">
+                        <h4>Standard-Account (1000€+)</h4>
+                        <ul>
+                            <li><span>Hebel</span><span>5-10x</span></li>
+                            <li><span>Risk/Trade</span><span>5-10%</span></li>
+                            <li><span>Initial SL</span><span>2-3%</span></li>
+                            <li><span>Trailing</span><span>ATR/PCT</span></li>
+                        </ul>
+                    </div>
+                    <div class="quick-ref-card">
+                        <h4>Konservativ</h4>
+                        <ul>
+                            <li><span>Hebel</span><span>1-5x</span></li>
+                            <li><span>Risk/Trade</span><span>1-3%</span></li>
+                            <li><span>Initial SL</span><span>3-5%</span></li>
+                            <li><span>Trailing</span><span>PCT</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOT CONTROL TAB -->
+        <div id="bot" class="tab-content">
+            <div class="section">
+                <h2><span>🎮</span> Bot Control</h2>
+                <p>Hier startest und stoppst du den Trading Bot und konfigurierst die grundlegenden Handelsparameter.</p>
+
+                <h3>Steuerung</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge green">Start Bot</span></td>
+                        <td>Startet den Bot. Bei KI-Modus wird zuerst die Tagesstrategie ermittelt.</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge red">Stop Bot</span></td>
+                        <td>Stoppt den Bot. Offene Positionen bleiben bestehen!</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge orange">Pause</span></td>
+                        <td>Pausiert die Signal-Suche, behält aber Position-Monitoring aktiv.</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>⚙️</span> Bot Settings</h2>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Trade Richtung</strong> - Handelsrichtung (Long/Short/Beide)</span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <table class="param-table">
+                            <tr>
+                                <th>Option</th>
+                                <th>Beschreibung</th>
+                            </tr>
+                            <tr>
+                                <td><code>AUTO</code></td>
+                                <td>Wird durch Backtesting automatisch ermittelt (empfohlen)</td>
+                            </tr>
+                            <tr>
+                                <td><code>BOTH</code></td>
+                                <td>Long und Short Trades erlaubt</td>
+                            </tr>
+                            <tr>
+                                <td><code>LONG_ONLY</code></td>
+                                <td>Nur Long-Positionen (Aufwärtstrend)</td>
+                            </tr>
+                            <tr>
+                                <td><code>SHORT_ONLY</code></td>
+                                <td>Nur Short-Positionen (Abwärtstrend)</td>
+                            </tr>
+                        </table>
+                        <div class="info-box tip">
+                            <span class="icon">💡</span>
+                            <div class="content">
+                                <p>Bei <code>AUTO</code> testet das Backtesting alle Richtungen und wählt die profitabelste.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Trailing Mode</strong> - Stop-Loss Nachzieh-Methode</span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <table class="param-table">
+                            <tr>
+                                <th>Modus</th>
+                                <th>Beschreibung</th>
+                                <th>Empfohlen für</th>
+                            </tr>
+                            <tr>
+                                <td><code>PCT</code></td>
+                                <td>Fester Prozent-Abstand vom aktuellen Kurs</td>
+                                <td>Stabile Märkte, Swing Trading</td>
+                            </tr>
+                            <tr>
+                                <td><code>ATR</code></td>
+                                <td>Volatilitäts-basiert (ATR-Multiple), Regime-angepasst</td>
+                                <td>Volatile Märkte, Daytrading</td>
+                            </tr>
+                            <tr>
+                                <td><code>SWING</code></td>
+                                <td>Bollinger Bands als Support/Resistance</td>
+                                <td>Range-Märkte</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Initial SL %</strong> - Anfänglicher Stop-Loss</span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <p>Der einzige fixe Parameter - alle anderen Exits sind dynamisch.</p>
+                        <table class="param-table">
+                            <tr>
+                                <th>Bereich</th>
+                                <th>Empfehlung</th>
+                            </tr>
+                            <tr>
+                                <td>Aktien</td>
+                                <td>1.5% - 3%</td>
+                            </tr>
+                            <tr>
+                                <td>Crypto</td>
+                                <td>2% - 5%</td>
+                            </tr>
+                            <tr>
+                                <td>Micro-Account</td>
+                                <td>1.5% - 2% (eng!)</td>
+                            </tr>
+                        </table>
+                        <div class="info-box warning">
+                            <span class="icon">⚠️</span>
+                            <div class="content">
+                                <p>Bei hohem Hebel (20x+) sollte der SL enger sein, um Totalverlust zu vermeiden!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Kapital & Risk</strong> - Kapital und Risiko pro Trade</span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <table class="param-table">
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Beschreibung</th>
+                                <th>Micro-Account</th>
+                                <th>Standard</th>
+                            </tr>
+                            <tr>
+                                <td>Kapital</td>
+                                <td>Verfügbares Trading-Kapital</td>
+                                <td>100€</td>
+                                <td>1000€+</td>
+                            </tr>
+                            <tr>
+                                <td>Risk/Trade %</td>
+                                <td>Prozent des Kapitals pro Trade</td>
+                                <td>30-50%</td>
+                                <td>5-10%</td>
+                            </tr>
+                            <tr>
+                                <td>Max Trades/Day</td>
+                                <td>Maximale Trades pro Tag</td>
+                                <td>10-15</td>
+                                <td>5-10</td>
+                            </tr>
+                            <tr>
+                                <td>Max Daily Loss %</td>
+                                <td>Maximaler Tagesverlust (stoppt Bot)</td>
+                                <td>5%</td>
+                                <td>3%</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>📊</span> Leverage Override</h2>
+                <p>Manuelle Überschreibung des Hebels - wichtig für Micro-Accounts!</p>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Hebel</th>
+                        <th>Risiko</th>
+                        <th>Farbcode</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>1x - 10x</td>
+                        <td>Niedrig</td>
+                        <td><span class="badge green">Grün</span></td>
+                        <td>Konservativ, für größere Konten</td>
+                    </tr>
+                    <tr>
+                        <td>11x - 25x</td>
+                        <td>Mittel</td>
+                        <td><span class="badge orange">Orange</span></td>
+                        <td>Balance zwischen Gewinn und Risiko</td>
+                    </tr>
+                    <tr>
+                        <td>26x - 50x</td>
+                        <td>Hoch</td>
+                        <td><span class="badge" style="background:#FF5722;color:white;">Dunkel-Orange</span></td>
+                        <td>Für erfahrene Trader</td>
+                    </tr>
+                    <tr>
+                        <td>51x - 100x</td>
+                        <td>Sehr Hoch</td>
+                        <td><span class="badge red">Rot</span></td>
+                        <td>Nur für Micro-Accounts mit engem SL!</td>
+                    </tr>
+                </table>
+
+                <div class="info-box danger">
+                    <span class="icon">🚨</span>
+                    <div class="content">
+                        <div class="title">Warnung: Hoher Hebel</div>
+                        <p>Bei 100€ Kapital mit 20x Hebel: 1% Kursbewegung = 20€ Gewinn/Verlust. Immer Stop-Loss aktiv lassen!</p>
+                    </div>
+                </div>
+
+                <h3>Schnellwahl-Buttons</h3>
+                <p>Klicke auf einen Button um den Hebel schnell zu setzen: <code>5x</code> <code>10x</code> <code>20x</code> <code>50x</code> <code>75x</code> <code>100x</code></p>
+            </div>
+
+            <div class="section">
+                <h2><span>💾</span> Einstellungen Speichern/Laden</h2>
+                <table class="param-table">
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td>💾 Speichern</td>
+                        <td>Speichert alle aktuellen Einstellungen als Standard</td>
+                    </tr>
+                    <tr>
+                        <td>📂 Laden</td>
+                        <td>Lädt gespeicherte Standard-Einstellungen</td>
+                    </tr>
+                    <tr>
+                        <td>🔄 Reset</td>
+                        <td>Setzt alle Werte auf Micro-Account Factory-Defaults zurück</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- DAILY STRATEGY TAB -->
+        <div id="strategy" class="tab-content">
+            <div class="section">
+                <h2><span>📅</span> Daily Strategy</h2>
+                <p>Die Tagesstrategie wird bei aktiviertem KI-Modus (LOW_KI oder FULL_KI) automatisch ermittelt und gibt die Handelsrichtung für den Tag vor.</p>
+
+                <h3>Strategie-Ermittlung</h3>
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Markt-Analyse</h4>
+                            <p>Der LLM analysiert Tageskerzen, Trend-Indikatoren und Markt-Sentiment.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Strategie-Auswahl</h4>
+                            <p>Basierend auf der Analyse wird eine der verfügbaren Strategien ausgewählt.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Parameter-Anpassung</h4>
+                            <p>Die Strategie-Parameter werden für den aktuellen Markt optimiert.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Verfügbare Strategien</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Strategie</th>
+                        <th>Markt-Typ</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Daytrading</strong></td>
+                        <td>Trending</td>
+                        <td>Intraday-Trades mit schnellen Exits, enge Stops</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Swing</strong></td>
+                        <td>Ranging</td>
+                        <td>Längere Haltezeiten, weitere Stops</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Scalping</strong></td>
+                        <td>Volatile</td>
+                        <td>Sehr kurzfristig, minimale Gewinne pro Trade</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Breakout</strong></td>
+                        <td>Konsolidierung</td>
+                        <td>Wartet auf Ausbrüche aus Ranges</td>
+                    </tr>
+                </table>
+
+                <div class="info-box info">
+                    <span class="icon">ℹ️</span>
+                    <div class="content">
+                        <div class="title">NO_KI Modus</div>
+                        <p>Im NO_KI Modus wird keine automatische Strategie gewählt. Der Bot handelt rein regelbasiert nach den konfigurierten Parametern.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SIGNALS TAB -->
+        <div id="signals" class="tab-content">
+            <div class="section">
+                <h2><span>📡</span> Signals & Trade Management</h2>
+                <p>Zeigt alle erkannten Signale und ermöglicht die Verwaltung offener Positionen.</p>
+
+                <h3>Current Position</h3>
+                <p>Die Positionsanzeige zeigt alle Details zur aktuellen offenen Position:</p>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Feld</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>SL/TP Progress Bar</td>
+                        <td>Grafische Anzeige der Position zwischen Stop-Loss (rot) und Take-Profit (grün)</td>
+                    </tr>
+                    <tr>
+                        <td>Side</td>
+                        <td>LONG / SHORT / FLAT</td>
+                    </tr>
+                    <tr>
+                        <td>Entry</td>
+                        <td>Einstiegspreis</td>
+                    </tr>
+                    <tr>
+                        <td>Size</td>
+                        <td>Positionsgröße</td>
+                    </tr>
+                    <tr>
+                        <td>Invested</td>
+                        <td>Investierter Betrag</td>
+                    </tr>
+                    <tr>
+                        <td>Stop</td>
+                        <td>Aktueller Stop-Loss Preis</td>
+                    </tr>
+                    <tr>
+                        <td>Current</td>
+                        <td>Aktueller Kurs</td>
+                    </tr>
+                    <tr>
+                        <td>P&L</td>
+                        <td>Gewinn/Verlust (€ und %)</td>
+                    </tr>
+                    <tr>
+                        <td>Score</td>
+                        <td>Entry Score des Signals</td>
+                    </tr>
+                    <tr>
+                        <td>TR Kurs</td>
+                        <td>Trailing Stop Kurs</td>
+                    </tr>
+                </table>
+
+                <h3>Signals Tabelle</h3>
+                <p>Alle erkannten Signale werden hier aufgelistet mit folgenden Spalten:</p>
+
+                <div class="accordion">
+                    <div class="accordion-header">
+                        <span><strong>Tabellen-Spalten</strong></span>
+                        <span class="arrow">▼</span>
+                    </div>
+                    <div class="accordion-content">
+                        <table class="param-table">
+                            <tr><th>Spalte</th><th>Beschreibung</th></tr>
+                            <tr><td>Time</td><td>Zeitpunkt des Signals</td></tr>
+                            <tr><td>Type</td><td>Signal-Typ (ENTRY, EXIT, etc.)</td></tr>
+                            <tr><td>Side</td><td>LONG oder SHORT</td></tr>
+                            <tr><td>Entry</td><td>Einstiegspreis</td></tr>
+                            <tr><td>Stop</td><td>Stop-Loss Preis</td></tr>
+                            <tr><td>SL%</td><td>Stop-Loss in Prozent</td></tr>
+                            <tr><td>TR%</td><td>Trailing Prozent</td></tr>
+                            <tr><td>TRA%</td><td>Trailing Activation Prozent</td></tr>
+                            <tr><td>TR Lock</td><td>Trailing Lock Status</td></tr>
+                            <tr><td>Status</td><td>PENDING, ACTIVE, CLOSED</td></tr>
+                            <tr><td>Current</td><td>Aktueller Kurs</td></tr>
+                            <tr><td>P&L €</td><td>Gewinn/Verlust in Euro</td></tr>
+                            <tr><td>P&L %</td><td>Gewinn/Verlust in Prozent</td></tr>
+                            <tr><td>Score</td><td>Entry Score (0-100)</td></tr>
+                            <tr><td>TR Stop</td><td>Trailing Stop Preis</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <h3>Clear-Funktionen</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td>🗑️ Zeile löschen</td>
+                        <td>Entfernt die ausgewählte Zeile aus der Tabelle</td>
+                    </tr>
+                    <tr>
+                        <td>🧹 Alle löschen</td>
+                        <td>Leert die gesamte Signals-Tabelle (mit Bestätigung)</td>
+                    </tr>
+                </table>
+
+                <div class="info-box tip">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Rechtsklick-Menü</div>
+                        <p>Rechtsklick auf eine Zeile öffnet ein Kontextmenü mit weiteren Optionen.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KI LOGS TAB -->
+        <div id="ki-logs" class="tab-content">
+            <div class="section">
+                <h2><span>🧠</span> KI Logs</h2>
+                <p>Zeigt alle KI-Interaktionen und LLM-Antworten für Debugging und Nachvollziehbarkeit.</p>
+
+                <h3>Log-Typen</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Typ</th>
+                        <th>Beschreibung</th>
+                        <th>Auslöser</th>
+                    </tr>
+                    <tr>
+                        <td><span class="badge blue">STRATEGY</span></td>
+                        <td>Tagesstrategie-Ermittlung</td>
+                        <td>Bot-Start (LOW_KI/FULL_KI)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge orange">SIGNAL</span></td>
+                        <td>Signal-Validierung</td>
+                        <td>Neues Signal erkannt (FULL_KI)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge purple">REGIME</span></td>
+                        <td>Regime-Wechsel Analyse</td>
+                        <td>Markt-Regime ändert sich (FULL_KI)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge red">EXIT</span></td>
+                        <td>Exit-Empfehlung</td>
+                        <td>KI empfiehlt vorzeitigen Exit (FULL_KI)</td>
+                    </tr>
+                </table>
+
+                <h3>Log-Einträge enthalten</h3>
+                <ul style="color: var(--text-secondary); margin-left: 20px;">
+                    <li>Zeitstempel des LLM-Calls</li>
+                    <li>Kontext/Prompt der an die KI gesendet wurde</li>
+                    <li>KI-Antwort mit Reasoning</li>
+                    <li>Resultierende Aktion (falls vorhanden)</li>
+                    <li>Token-Verbrauch und Latenz</li>
+                </ul>
+
+                <div class="info-box info">
+                    <span class="icon">ℹ️</span>
+                    <div class="content">
+                        <div class="title">NO_KI Modus</div>
+                        <p>Im NO_KI Modus werden keine KI-Logs generiert, da keine LLM-Calls stattfinden.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ENGINE SETTINGS TAB -->
+        <div id="engine" class="tab-content">
+            <div class="section">
+                <h2><span>🔧</span> Engine Settings</h2>
+                <p>Detaillierte Konfiguration der Trading-Engines. Diese Einstellungen werden auch im Backtesting verwendet.</p>
+            </div>
+
+            <div class="section">
+                <h2><span>🎯</span> Entry Score</h2>
+                <p>Der Entry Score (0-100) bestimmt die Qualität eines Signals. Nur Signale über dem Mindest-Score werden ausgeführt.</p>
+
+                <h3>Gewichtungen</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Indikator</th>
+                        <th>Beschreibung</th>
+                        <th>Empfohlen</th>
+                    </tr>
+                    <tr>
+                        <td>Trend Alignment</td>
+                        <td>Übereinstimmung mit übergeordnetem Trend</td>
+                        <td>25-35%</td>
+                    </tr>
+                    <tr>
+                        <td>RSI</td>
+                        <td>Momentum-Indikator</td>
+                        <td>15-25%</td>
+                    </tr>
+                    <tr>
+                        <td>MACD</td>
+                        <td>Trend-Bestätigung</td>
+                        <td>20-30%</td>
+                    </tr>
+                    <tr>
+                        <td>ADX</td>
+                        <td>Trendstärke</td>
+                        <td>10-20%</td>
+                    </tr>
+                    <tr>
+                        <td>Volume</td>
+                        <td>Volumen-Bestätigung</td>
+                        <td>5-15%</td>
+                    </tr>
+                </table>
+
+                <div class="info-box tip">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Min Score Empfehlung</div>
+                        <p>Ein Min Score von <code>50-60</code> ist ein guter Kompromiss zwischen Qualität und Trade-Häufigkeit.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>🎯</span> Trigger/Exit</h2>
+                <p>Konfiguration von Take-Profit und Trailing Stop Parametern.</p>
+
+                <h3>Take Profit</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                        <th>Empfohlen</th>
+                    </tr>
+                    <tr>
+                        <td>TP ATR Multiplier</td>
+                        <td>Take Profit in ATR-Multiplen</td>
+                        <td>2.0 - 3.0x</td>
+                    </tr>
+                </table>
+
+                <h3>Stop Loss</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                        <th>Micro-Account</th>
+                    </tr>
+                    <tr>
+                        <td>SL ATR Multiplier</td>
+                        <td>Stop Loss in ATR-Multiplen</td>
+                        <td>0.8 - 1.2x (eng!)</td>
+                    </tr>
+                </table>
+
+                <h3>Trailing Stop</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Trailing Enabled</td>
+                        <td>Trailing Stop aktivieren</td>
+                    </tr>
+                    <tr>
+                        <td>Activation R</td>
+                        <td>Ab welchem R-Gewinn Trailing aktiviert wird</td>
+                    </tr>
+                    <tr>
+                        <td>Distance R</td>
+                        <td>Trailing-Abstand in R-Multiplen</td>
+                    </tr>
+                </table>
+
+                <div class="info-box warning">
+                    <span class="icon">⚠️</span>
+                    <div class="content">
+                        <p>Für Micro-Accounts: Aktiviere Trailing früh (0.3-0.5 R) mit engem Abstand (0.2-0.3 R) für schnelle Gewinnsicherung!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>📈</span> Leverage Rules</h2>
+                <p>Automatische Hebel-Anpassung basierend auf Marktbedingungen.</p>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Base Leverage</td>
+                        <td>Standard-Hebel für normale Bedingungen</td>
+                    </tr>
+                    <tr>
+                        <td>Max Leverage</td>
+                        <td>Maximaler erlaubter Hebel</td>
+                    </tr>
+                    <tr>
+                        <td>Volatility Adjustment</td>
+                        <td>Hebel-Reduktion bei hoher Volatilität</td>
+                    </tr>
+                    <tr>
+                        <td>Trend Bonus</td>
+                        <td>Hebel-Erhöhung bei starkem Trend</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>🤖</span> LLM Validation</h2>
+                <p>Konfiguration der KI-gestützten Signal-Validierung.</p>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Enabled</td>
+                        <td>LLM-Validierung aktivieren</td>
+                    </tr>
+                    <tr>
+                        <td>Model</td>
+                        <td>Verwendetes LLM-Modell</td>
+                    </tr>
+                    <tr>
+                        <td>Temperature</td>
+                        <td>Kreativität der Antworten (0.0-1.0)</td>
+                    </tr>
+                    <tr>
+                        <td>Max Tokens</td>
+                        <td>Maximale Antwortlänge</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>📊</span> Level Detection</h2>
+                <p>Erkennung von Support/Resistance Levels.</p>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Lookback Bars</td>
+                        <td>Anzahl Bars für Level-Erkennung</td>
+                    </tr>
+                    <tr>
+                        <td>Sensitivity</td>
+                        <td>Empfindlichkeit der Erkennung</td>
+                    </tr>
+                    <tr>
+                        <td>Merge Distance</td>
+                        <td>Abstand zum Zusammenführen naher Levels</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- BACKTESTING TAB -->
+        <div id="backtesting" class="tab-content">
+            <div class="section">
+                <h2><span>📊</span> Backtesting</h2>
+                <p>Teste deine Strategie mit historischen Daten, bevor du echtes Geld riskierst.</p>
+
+                <h3>Sub-Tabs</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Tab</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td>📁 Setup</td>
+                        <td>Datenquelle, Symbol, Zeitraum, Strategy</td>
+                    </tr>
+                    <tr>
+                        <td>⚙️ Execution</td>
+                        <td>Fees, Slippage, Leverage Settings</td>
+                    </tr>
+                    <tr>
+                        <td>📊 Results</td>
+                        <td>Equity Curve, Metriken, Trade-Liste</td>
+                    </tr>
+                    <tr>
+                        <td>🔄 Batch/WF</td>
+                        <td>Batch-Tests und Walk-Forward Analyse</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>📁</span> Setup</h2>
+
+                <h3>Datenquelle</h3>
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Symbol</td>
+                        <td>Trading-Symbol (z.B. BTC/USDT)</td>
+                    </tr>
+                    <tr>
+                        <td>Start Date</td>
+                        <td>Beginn des Backtesting-Zeitraums</td>
+                    </tr>
+                    <tr>
+                        <td>End Date</td>
+                        <td>Ende des Backtesting-Zeitraums</td>
+                    </tr>
+                    <tr>
+                        <td>Timeframe</td>
+                        <td>Kerzen-Zeitrahmen (1m, 5m, 15m, 1h, etc.)</td>
+                    </tr>
+                </table>
+
+                <div class="info-box tip">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Empfohlene Zeiträume</div>
+                        <p>Für aussagekräftige Ergebnisse: mindestens 3-6 Monate Daten mit 50+ Trades.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>⚙️</span> Execution Settings</h2>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Beschreibung</th>
+                        <th>Empfohlen</th>
+                    </tr>
+                    <tr>
+                        <td>Initial Capital</td>
+                        <td>Startkapital für den Backtest</td>
+                        <td>100€ (Micro)</td>
+                    </tr>
+                    <tr>
+                        <td>Commission %</td>
+                        <td>Gebühren pro Trade</td>
+                        <td>0.1%</td>
+                    </tr>
+                    <tr>
+                        <td>Slippage %</td>
+                        <td>Simulierte Slippage</td>
+                        <td>0.05%</td>
+                    </tr>
+                    <tr>
+                        <td>Leverage</td>
+                        <td>Verwendeter Hebel</td>
+                        <td>20x</td>
+                    </tr>
+                    <tr>
+                        <td>Max Positions</td>
+                        <td>Maximale gleichzeitige Positionen</td>
+                        <td>1-2</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>📊</span> Results - KPIs</h2>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Metrik</th>
+                        <th>Beschreibung</th>
+                        <th>Zielwert</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Expectancy</strong></td>
+                        <td>Erwartungswert pro Trade in €</td>
+                        <td>> 0 (positiv)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Profit Factor</strong></td>
+                        <td>Brutto-Gewinn / Brutto-Verlust</td>
+                        <td>> 1.5</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Win Rate</strong></td>
+                        <td>Prozent gewonnene Trades</td>
+                        <td>> 40%</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Max Drawdown</strong></td>
+                        <td>Maximaler Rückgang vom Hoch</td>
+                        <td>< 30%</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Sharpe Ratio</strong></td>
+                        <td>Risiko-adjustierte Rendite</td>
+                        <td>> 1.0</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Total Trades</strong></td>
+                        <td>Anzahl ausgeführter Trades</td>
+                        <td>> 50 (statistisch relevant)</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>🔄</span> Batch/Walk-Forward</h2>
+
+                <h3>Batch-Tests</h3>
+                <p>Teste viele Parameter-Kombinationen automatisch:</p>
+                <table class="param-table">
+                    <tr>
+                        <th>Methode</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                    <tr>
+                        <td>Grid Search</td>
+                        <td>Testet alle Kombinationen (langsam, vollständig)</td>
+                    </tr>
+                    <tr>
+                        <td>Random Search</td>
+                        <td>Zufällige Auswahl (schneller, unvollständig)</td>
+                    </tr>
+                    <tr>
+                        <td>Bayesian</td>
+                        <td>Intelligente Suche basierend auf bisherigen Ergebnissen</td>
+                    </tr>
+                </table>
+
+                <h3>Walk-Forward Analyse</h3>
+                <p>Validiert die Strategie durch zeitliche Aufteilung:</p>
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>In-Sample Training</h4>
+                            <p>Optimiere Parameter auf einem Teil der Daten (z.B. 70%)</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Out-of-Sample Test</h4>
+                            <p>Teste die optimierten Parameter auf den restlichen Daten (30%)</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Roll Forward</h4>
+                            <p>Wiederhole für mehrere Zeitfenster</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box warning">
+                    <span class="icon">⚠️</span>
+                    <div class="content">
+                        <div class="title">Overfitting vermeiden!</div>
+                        <p>Walk-Forward hilft sicherzustellen, dass die Strategie nicht nur auf historischen Daten funktioniert (Overfitting).</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>📝</span> Template Management</h2>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                    </tr>
+                    <tr>
+                        <td>💾 Template speichern</td>
+                        <td>Speichert aktuelle Backtest-Konfiguration als JSON-Template</td>
+                    </tr>
+                    <tr>
+                        <td>📂 Template laden</td>
+                        <td>Lädt ein gespeichertes Template</td>
+                    </tr>
+                    <tr>
+                        <td>📝 Variante ableiten</td>
+                        <td>Erstellt Variationen der Basiskonfiguration für Batch-Tests</td>
+                    </tr>
+                </table>
+
+                <h3>Mitgelieferte Templates</h3>
+                <ul style="color: var(--text-secondary); margin-left: 20px;">
+                    <li><strong>micro_account_aggressive.json</strong> - Optimiert für 100€, 20x Hebel, enge Stops</li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2><span>🔧</span> Wichtige Buttons</h2>
+
+                <table class="param-table">
+                    <tr>
+                        <th>Button</th>
+                        <th>Funktion</th>
+                        <th>Wann verwenden?</th>
+                    </tr>
+                    <tr>
+                        <td><strong>📥 Lade Engine Configs</strong></td>
+                        <td>Lädt alle Parameter aus den Engine Settings Tabs (Entry Score, Trigger/Exit, Leverage, Level Detection) und zeigt sie im Config Inspector an. Die Parameter werden automatisch in den Parameter Space für Batch-Tests übernommen.</td>
+                        <td>Vor jedem Backtest, um aktuelle Engine-Einstellungen zu verwenden</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🤖 Auto Generate Varianten</strong></td>
+                        <td>Generiert automatisch sinnvolle Test-Varianten basierend auf vordefinierten Strategien (Trend-fokussiert, RSI-fokussiert, etc.). Die Varianten können für Batch-Tests verwendet werden.</td>
+                        <td>Wenn du nicht weißt, welche Parameter-Kombinationen testen</td>
+                    </tr>
+                    <tr>
+                        <td><strong>▶️ Start Backtest</strong></td>
+                        <td>Startet einen einzelnen Backtest mit den aktuellen Einstellungen</td>
+                        <td>Für schnelle Tests einer Konfiguration</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🔄 Start Batch</strong></td>
+                        <td>Startet Batch-Tests mit allen Parameter-Kombinationen aus dem Parameter Space</td>
+                        <td>Zum Finden der optimalen Parameter</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2><span>📋</span> Schritt-für-Schritt Anleitung</h2>
+
+                <h3>🎯 Variante A: Schneller Single-Backtest</h3>
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Setup konfigurieren</h4>
+                            <p>Im <strong>Setup Tab</strong>: Symbol, Timeframe und Zeitraum wählen (z.B. BTC/USDT, 5m, letzte 3 Monate)</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Execution Settings prüfen</h4>
+                            <p>Im <strong>Execution Tab</strong>: Initial Capital (100€), Commission (0.1%), Leverage (20x) überprüfen</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Engine Configs laden</h4>
+                            <p>Klicke <strong>📥 Lade Engine Configs</strong> um die Einstellungen aus den anderen Tabs zu laden</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Backtest starten</h4>
+                            <p>Klicke <strong>▶️ Start Backtest</strong> und warte auf Ergebnisse im Results Tab</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>🔬 Variante B: Batch-Test mit Auto-Varianten</h3>
+                <div class="workflow">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Setup wie oben</h4>
+                            <p>Symbol, Zeitraum und Timeframe im Setup Tab konfigurieren</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Engine Configs laden</h4>
+                            <p>Klicke <strong>📥 Lade Engine Configs</strong> - die Parameter erscheinen in der Config Inspector Tabelle</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Varianten generieren</h4>
+                            <p>Klicke <strong>🤖 Auto Generate Varianten</strong> - wähle im Dialog "Als Parameter Space verwenden"</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Batch-Test konfigurieren</h4>
+                            <p>Im <strong>Batch/WF Tab</strong>: Suchmethode (Grid/Random/Bayesian) und Iterationen wählen</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>Batch starten</h4>
+                            <p>Klicke <strong>🔄 Start Batch</strong> - die Ergebnisse zeigen die beste Parameter-Kombination</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box tip">
+                    <span class="icon">💡</span>
+                    <div class="content">
+                        <div class="title">Pro-Tipp: Trade Direction optimieren</div>
+                        <p>Die Auto-Generate Funktion testet automatisch <code>BOTH</code>, <code>LONG_ONLY</code> und <code>SHORT_ONLY</code>. Das Ergebnis zeigt dir, welche Richtung für das Symbol aktuell am profitabelsten ist.</p>
+                    </div>
+                </div>
+
+                <div class="info-box warning">
+                    <span class="icon">⚠️</span>
+                    <div class="content">
+                        <div class="title">Wichtig vor dem Live-Trading</div>
+                        <p>Nach dem Batch-Test: Die beste Konfiguration in den Engine Settings Tabs manuell einstellen, dann <strong>Speichern</strong> klicken. Erst danach den Bot starten!</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span>📊</span> Ergebnis-Interpretation</h2>
+
+                <h3>Gute Ergebnisse (Grün)</h3>
+                <ul style="color: var(--text-secondary); margin-left: 20px;">
+                    <li>Expectancy > 0.5€ pro Trade</li>
+                    <li>Profit Factor > 1.5</li>
+                    <li>Win Rate > 45%</li>
+                    <li>Max Drawdown < 25%</li>
+                    <li>> 50 Trades im Testzeitraum</li>
+                </ul>
+
+                <h3>Warnsignale (Rot)</h3>
+                <ul style="color: var(--text-secondary); margin-left: 20px;">
+                    <li>Negative Expectancy → Strategie verliert langfristig Geld</li>
+                    <li>Profit Factor < 1.0 → Mehr Verluste als Gewinne</li>
+                    <li>Drawdown > 50% → Zu riskant für das Kapital</li>
+                    <li>< 20 Trades → Ergebnis statistisch nicht aussagekräftig</li>
+                </ul>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>OrderPilot-AI Trading Bot Hilfe | Version 1.0 | 2026</p>
+        <p>Erstellt für das OrderPilot-AI Projekt</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Tab Navigation
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs
+                document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                const tabId = tab.getAttribute('data-tab');
+                document.getElementById(tabId).classList.add('active');
+
+                // Scroll to top of content
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        });
+
+        // Accordion functionality
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const accordion = header.parentElement;
+                accordion.classList.toggle('open');
+            });
+        });
+
+        // Open first accordion in each section by default
+        document.querySelectorAll('.section').forEach(section => {
+            const firstAccordion = section.querySelector('.accordion');
+            if (firstAccordion) {
+                firstAccordion.classList.add('open');
+            }
+        });
+    </script>
+</body>
+</html>

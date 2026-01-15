@@ -1,0 +1,22 @@
+# prompts/risk_guard.yaml
+version: "1.0"
+task: "Prüfe einfache Risiko-Heuristiken vor Orderfreigabe."
+inputs:
+  symbol: str
+  position_size: float
+  atr: float
+  account_equity: float
+  max_risk_pct: float
+requirements:
+  - "Antworte strikt im Schema 'RiskCheck'."
+  - "Wenn unklar, gib 'status':'review' mit kurzer Begründung."
+output_schema: "schemas/RiskCheck.json"
+prompt:
+  system: |
+    Du bist ein strenger Risk-Guard. Liefere nur kompakte, prüfbare Hinweise.
+  user: |
+    Symbol: {{symbol}}
+    Größe: {{position_size}}
+    ATR: {{atr}}
+    Equity: {{account_equity}}
+    MaxRisk%: {{max_risk_pct}}

@@ -1,0 +1,46 @@
+{
+  "_description": "Aggressive NASDAQ-Konfiguration (Tech Stocks, Momentum)",
+  "_risk_level": "HIGH",
+  "_notes": "Mehr Trades, FULL_KI, inkl. Pre-/Post-Market für News-Events",
+
+  "bot_config": {
+    "symbol": "NVDA",
+    "timeframe": "1T",
+    "market_type": "STOCK",
+    "ki_mode": "FULL_KI",
+    "trailing_mode": "ATR",
+    "entry_score_threshold": 50
+  },
+
+  "risk_config": {
+    "initial_stop_loss_pct": 2.5,
+    "risk_per_trade_pct": 1.5,
+    "max_daily_loss_pct": 5.0,
+    "max_trades_per_day": 15,
+    "max_concurrent_positions": 2,
+    "loss_streak_cooldown": 3,
+    "cooldown_duration_minutes": 30,
+
+    "trailing_config": {
+      "atr_multiple": 2.5,
+      "min_step_pct": 0.2,
+      "update_cooldown_bars": 2
+    }
+  },
+
+  "llm_policy": {
+    "enabled": true,
+    "_note": "Model wird aus QSettings geladen (File -> Settings -> AI)"
+  },
+
+  "trading_hours": {
+    "mode": "ETH",
+    "pre_market_start": "04:00",
+    "market_open": "09:30",
+    "market_close": "16:00",
+    "post_market_end": "20:00",
+    "timezone": "America/New_York",
+    "avoid_first_minutes": 5,
+    "avoid_last_minutes": 5
+  }
+}

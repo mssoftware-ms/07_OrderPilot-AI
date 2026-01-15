@@ -10,17 +10,11 @@ Module 3/4 of historical_data_manager.py split (Lines 683-870).
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import pandas as pd
-
-from sqlalchemy import func
-from sqlalchemy.dialects.sqlite import insert
-
-from src.database.models import MarketBar
 
 if TYPE_CHECKING:
     from src.database.database import Database
@@ -42,6 +36,36 @@ class HistoricalDataDB:
             db: Database instance
         """
         self.db = db
+        self._ensure_table_exists()
+
+    def _ensure_table_exists(self) -> None:
+        """Create historical_bars table if it doesn't exist."""
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS historical_bars (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        symbol TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        open REAL NOT NULL,
+                        high REAL NOT NULL,
+                        low REAL NOT NULL,
+                        close REAL NOT NULL,
+                        volume REAL NOT NULL DEFAULT 0,
+                        source TEXT,
+                        UNIQUE(symbol, timestamp)
+                    )
+                """)
+                # Create index for fast lookups
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_historical_bars_symbol_timestamp
+                    ON historical_bars(symbol, timestamp)
+                """)
+                conn.commit()
+                logger.debug("historical_bars table ensured")
+        except Exception as e:
+            logger.error(f"Failed to create historical_bars table: {e}")
 
     async def delete_symbol_data(self, db_symbol: str) -> None:
         """
@@ -50,7 +74,7 @@ class HistoricalDataDB:
         Args:
             db_symbol: Database symbol identifier
         """
-        await asyncio.to_thread(self._delete_symbol_data_sync, db_symbol)
+        await self.db.run_in_executor(self._delete_symbol_data_sync, db_symbol)
 
     def _delete_symbol_data_sync(self, db_symbol: str) -> None:
         """
@@ -60,9 +84,13 @@ class HistoricalDataDB:
             db_symbol: Database symbol identifier
         """
         try:
-            with self.db.session() as session:
-                deleted = session.query(MarketBar).filter_by(symbol=db_symbol).delete()
-                session.commit()
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM historical_bars WHERE symbol = ?", (db_symbol,)
+                )
+                conn.commit()
+                deleted = cursor.rowcount
                 logger.info(f"🗑️  Deleted {deleted} existing bars for {db_symbol}")
         except Exception as e:
             logger.error(f"Error deleting data for {db_symbol}: {e}")
@@ -90,7 +118,7 @@ class HistoricalDataDB:
         batches = [bars[i : i + batch_size] for i in range(0, len(bars), batch_size)]
 
         for i, batch in enumerate(batches):
-            await asyncio.to_thread(
+            await self.db.run_in_executor(
                 self._save_batch_sync, batch, db_symbol, source
             )
             if i % 10 == 0 and i > 0:
@@ -106,38 +134,33 @@ class HistoricalDataDB:
             source: Data source name
         """
         try:
-            rows = []
-            for bar in batch:
-                ts = bar.timestamp
-                if isinstance(ts, str):
-                    ts = pd.to_datetime(ts).to_pydatetime()
-                if ts.tzinfo is not None:
-                    ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
-                rows.append(
-                    {
-                        "symbol": db_symbol,
-                        "timestamp": ts,
-                        "open": float(bar.open),
-                        "high": float(bar.high),
-                        "low": float(bar.low),
-                        "close": float(bar.close),
-                        "volume": float(bar.volume),
-                        "source": source,
-                    }
-                )
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
 
-            if not rows:
-                return
+                for bar in batch:
+                    ts = bar.timestamp
+                    if isinstance(ts, datetime):
+                        ts = ts.isoformat()
 
-            with self.db.session() as session:
-                stmt = insert(MarketBar).values(rows)
-                update_cols = {c: stmt.excluded[c] for c in ["open", "high", "low", "close", "volume", "source"]}
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["symbol", "timestamp"],
-                    set_=update_cols,
-                )
-                session.execute(stmt)
-                session.commit()
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO historical_bars
+                        (symbol, timestamp, open, high, low, close, volume, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            db_symbol,
+                            ts,
+                            float(bar.open),
+                            float(bar.high),
+                            float(bar.low),
+                            float(bar.close),
+                            float(bar.volume),
+                            source,
+                        ),
+                    )
+
+                conn.commit()
         except Exception as e:
             logger.error(f"Error saving batch for {db_symbol}: {e}")
             raise
@@ -152,7 +175,7 @@ class HistoricalDataDB:
         Returns:
             Dict with coverage info or None
         """
-        return await asyncio.to_thread(self._get_coverage_sync, db_symbol)
+        return await self.db.run_in_executor(self._get_coverage_sync, db_symbol)
 
     def _get_coverage_sync(self, db_symbol: str) -> dict | None:
         """
@@ -165,17 +188,21 @@ class HistoricalDataDB:
             Dict with first_date, last_date, total_bars, date_range_days
         """
         try:
-            with self.db.session() as session:
-                row = (
-                    session.query(
-                        func.min(MarketBar.timestamp),
-                        func.max(MarketBar.timestamp),
-                        func.count(MarketBar.id),
-                    )
-                    .filter(MarketBar.symbol == db_symbol)
-                    .one()
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT
+                        MIN(timestamp) as first_date,
+                        MAX(timestamp) as last_date,
+                        COUNT(*) as total_bars
+                    FROM historical_bars
+                    WHERE symbol = ?
+                    """,
+                    (db_symbol,),
                 )
 
+                row = cursor.fetchone()
                 if not row or row[0] is None:
                     return None
 
@@ -204,7 +231,7 @@ class HistoricalDataDB:
         Returns:
             Dict with integrity check results
         """
-        return await asyncio.to_thread(self._verify_integrity_sync, db_symbol)
+        return await self.db.run_in_executor(self._verify_integrity_sync, db_symbol)
 
     def _verify_integrity_sync(self, db_symbol: str) -> dict:
         """
@@ -267,38 +294,3 @@ class HistoricalDataDB:
         except Exception as e:
             logger.error(f"Error verifying integrity for {db_symbol}: {e}")
             return {"has_issues": True, "error": str(e)}
-
-    async def get_basic_stats(self, db_symbol: str) -> dict | None:
-        """
-        Lightweight stats for a symbol (min/max/count).
-
-        Args:
-            db_symbol: Database symbol identifier
-
-        Returns:
-            Dict with first_ts, last_ts, total or None if no rows.
-        """
-        return await asyncio.to_thread(self._get_basic_stats_sync, db_symbol)
-
-    def _get_basic_stats_sync(self, db_symbol: str) -> dict | None:
-        try:
-            with self.db.session() as session:
-                row = (
-                    session.query(
-                        func.min(MarketBar.timestamp),
-                        func.max(MarketBar.timestamp),
-                        func.count(MarketBar.id),
-                    )
-                    .filter(MarketBar.symbol == db_symbol)
-                    .one()
-                )
-                if not row or row[0] is None:
-                    return None
-                return {
-                    "first_ts": pd.to_datetime(row[0]),
-                    "last_ts": pd.to_datetime(row[1]),
-                    "total": row[2],
-                }
-        except Exception as e:
-            logger.error(f"Error getting basic stats for {db_symbol}: {e}")
-            return None

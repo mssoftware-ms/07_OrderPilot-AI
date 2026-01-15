@@ -1,0 +1,33 @@
+# config/profiles/paper.yaml
+profile: paper
+ai:
+  enabled: true
+  model_default: gpt-5-mini
+  model_critical: gpt-5
+  temperature: 0.2
+  max_output_tokens: 800
+  timeouts:
+    connect_ms: 5000
+    read_ms: 15000
+  rate_limits:
+    rps: 2
+    burst: 4
+  budget:
+    monthly_eur: 15
+    warn_eur: 12
+    block_at_eur: 15
+  features:
+    order_dialog_explain: true
+    alert_triage: true
+    backtest_review: true
+    strategy_post_signal: true
+    realtime: false
+marketdata:
+  ohlc_resample_default: "1s"
+  noise_filter:
+    type: median
+    window: 3
+execution:
+  manual_approval_default: true
+logging:
+  telemetry_ai: true

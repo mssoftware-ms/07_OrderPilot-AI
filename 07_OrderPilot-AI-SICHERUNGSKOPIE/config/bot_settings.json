@@ -1,0 +1,52 @@
+{
+  "symbol": "BTCUSDT",
+  "leverage": 10,
+  "paper_mode": true,
+  "risk_per_trade_percent": "10.0",
+  "max_daily_loss_percent": "100.0",
+  "sl_atr_multiplier": "1.5",
+  "tp_atr_multiplier": "2.0",
+  "trailing_stop_enabled": true,
+  "trailing_stop_atr_multiplier": "1.0",
+  "min_confluence_score": 3,
+  "analysis_interval_seconds": 60,
+  "session": {
+    "enabled": false,
+    "start_utc": "08:00",
+    "end_utc": "22:00",
+    "close_at_end": true
+  },
+  "ai": {
+    "enabled": true,
+    "_note": "Provider und Model werden aus QSettings geladen (File -> Settings -> AI)",
+    "confidence_threshold": 60,
+    "min_confluence_for_ai": 4
+  },
+  "BTCUSDT": {
+    "ki_mode": "FULL_KI",
+    "trailing_mode": "PCT",
+    "initial_sl_pct": 0.5,
+    "bot_capital": 10000.0,
+    "risk_per_trade_pct": 10.0,
+    "max_trades_per_day": 10,
+    "max_daily_loss_pct": 3.0,
+    "disable_restrictions": true,
+    "disable_macd_exit": true,
+    "disable_rsi_exit": true,
+    "enable_derivathandel": false,
+    "regime_adaptive": true,
+    "atr_multiplier": 2.5,
+    "atr_trending": 2.0,
+    "atr_ranging": 3.5,
+    "volatility_bonus": 0.5,
+    "min_step_pct": 0.05,
+    "trailing_activation_pct": 0.0,
+    "trailing_pct_distance": 0.1,
+    "min_score_pct": 60,
+    "use_pattern_check": false,
+    "pattern_similarity": 0.7,
+    "pattern_min_matches": 5,
+    "pattern_min_winrate_pct": 55
+  },
+  "whatsapp_notifications_enabled": true
+}

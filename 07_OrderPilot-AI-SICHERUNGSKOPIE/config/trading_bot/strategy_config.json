@@ -1,0 +1,380 @@
+{
+  "_comment": "Trading Bot Strategy Configuration - Alle Parameter hier konfigurierbar!",
+  "_version": "1.0.0",
+  "_last_modified": "2025-01-07",
+
+  "strategy": {
+    "name": "BTC Daytrading Confluence",
+    "description": "Multi-TF Confluence-basierte Strategie für BTCUSDT Daytrading",
+    "symbol": "BTCUSDT",
+    "enabled": true
+  },
+
+  "timeframes": {
+    "macro": {
+      "interval": "1D",
+      "source": "alpaca",
+      "lookback_bars": 200,
+      "update_interval_minutes": 60,
+      "purpose": "Langfristiger Trend"
+    },
+    "trend": {
+      "interval": "4h",
+      "source": "alpaca",
+      "lookback_bars": 100,
+      "update_interval_minutes": 15,
+      "purpose": "Mittelfristiger Trend"
+    },
+    "context": {
+      "interval": "1h",
+      "source": "bitunix",
+      "lookback_bars": 100,
+      "update_interval_minutes": 5,
+      "purpose": "Tageskontext"
+    },
+    "execution": {
+      "interval": "5m",
+      "source": "bitunix",
+      "lookback_bars": 200,
+      "update_interval_minutes": 1,
+      "purpose": "Entry/Exit Timing"
+    }
+  },
+
+  "indicators": {
+    "ema": {
+      "enabled": true,
+      "periods": [20, 50, 200],
+      "source": "close"
+    },
+    "rsi": {
+      "enabled": true,
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30,
+      "source": "close"
+    },
+    "macd": {
+      "enabled": true,
+      "fast_period": 12,
+      "slow_period": 26,
+      "signal_period": 9,
+      "source": "close"
+    },
+    "bollinger_bands": {
+      "enabled": true,
+      "period": 20,
+      "std_dev": 2.0,
+      "source": "close"
+    },
+    "atr": {
+      "enabled": true,
+      "period": 14
+    },
+    "adx": {
+      "enabled": true,
+      "period": 14,
+      "trend_threshold": 20
+    }
+  },
+
+  "entry_conditions": {
+    "long": {
+      "min_confluence": 4,
+      "max_confluence": 6,
+      "_comment": "KONSERVATIV: 4 von 6 Bedingungen müssen erfüllt sein",
+      "conditions": [
+        {
+          "id": "regime_check",
+          "name": "Regime Bullish",
+          "type": "regime",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "in": ["STRONG_TREND_BULL", "TREND_BULL", "NEUTRAL"]
+          },
+          "description": "Regime muss bullish oder neutral sein"
+        },
+        {
+          "id": "ema_alignment",
+          "name": "EMA Alignment",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "price", "operator": ">", "right": "ema_20"},
+              {"left": "ema_20", "operator": ">", "right": "ema_50"}
+            ],
+            "logic": "AND"
+          },
+          "description": "Preis > EMA20 > EMA50 (bullish alignment)"
+        },
+        {
+          "id": "rsi_range",
+          "name": "RSI Not Overbought",
+          "type": "indicator_range",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "indicator": "rsi_14",
+            "min": 35,
+            "max": 60
+          },
+          "description": "RSI 35-60: Nicht überkauft, Raum nach oben"
+        },
+        {
+          "id": "macd_bullish",
+          "name": "MACD Bullish",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "macd_line", "operator": ">", "right": "macd_signal"},
+              {"left": "macd_hist", "operator": ">", "right": 0}
+            ],
+            "logic": "AND"
+          },
+          "description": "MACD über Signal UND Histogramm positiv"
+        },
+        {
+          "id": "adx_trending",
+          "name": "ADX Trending",
+          "type": "indicator_threshold",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "indicator": "adx_14",
+            "operator": ">",
+            "threshold": 20
+          },
+          "description": "ADX > 20 (Trend vorhanden)"
+        },
+        {
+          "id": "bb_position",
+          "name": "Not at Upper Band",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "price", "operator": "<", "right": "bb_upper"},
+              {"left": "price", "operator": ">", "right": "bb_middle"}
+            ],
+            "logic": "AND"
+          },
+          "description": "Preis zwischen BB-Mitte und oberem Band (nicht überdehnt)"
+        }
+      ]
+    },
+
+    "short": {
+      "min_confluence": 4,
+      "max_confluence": 6,
+      "_comment": "KONSERVATIV: 4 von 6 Bedingungen müssen erfüllt sein",
+      "conditions": [
+        {
+          "id": "regime_check",
+          "name": "Regime Bearish",
+          "type": "regime",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "in": ["STRONG_TREND_BEAR", "TREND_BEAR", "NEUTRAL"]
+          },
+          "description": "Regime muss bearish oder neutral sein"
+        },
+        {
+          "id": "ema_alignment",
+          "name": "EMA Alignment",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "price", "operator": "<", "right": "ema_20"},
+              {"left": "ema_20", "operator": "<", "right": "ema_50"}
+            ],
+            "logic": "AND"
+          },
+          "description": "Preis < EMA20 < EMA50 (bearish alignment)"
+        },
+        {
+          "id": "rsi_range",
+          "name": "RSI Not Oversold",
+          "type": "indicator_range",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "indicator": "rsi_14",
+            "min": 40,
+            "max": 65
+          },
+          "description": "RSI 40-65: Nicht überverkauft, Raum nach unten"
+        },
+        {
+          "id": "macd_bearish",
+          "name": "MACD Bearish",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "macd_line", "operator": "<", "right": "macd_signal"},
+              {"left": "macd_hist", "operator": "<", "right": 0}
+            ],
+            "logic": "AND"
+          },
+          "description": "MACD unter Signal UND Histogramm negativ"
+        },
+        {
+          "id": "adx_trending",
+          "name": "ADX Trending",
+          "type": "indicator_threshold",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "indicator": "adx_14",
+            "operator": ">",
+            "threshold": 20
+          },
+          "description": "ADX > 20 (Trend vorhanden)"
+        },
+        {
+          "id": "bb_position",
+          "name": "Not at Lower Band",
+          "type": "indicator_comparison",
+          "enabled": true,
+          "weight": 1,
+          "rule": {
+            "conditions": [
+              {"left": "price", "operator": ">", "right": "bb_lower"},
+              {"left": "price", "operator": "<", "right": "bb_middle"}
+            ],
+            "logic": "AND"
+          },
+          "description": "Preis zwischen BB-Mitte und unterem Band (nicht überdehnt)"
+        }
+      ]
+    }
+  },
+
+  "exit_conditions": {
+    "stop_loss": {
+      "enabled": true,
+      "type": "percent_based",
+      "percent": 0.5,
+      "_comment": "0.5% Preis = 5% Verlust bei 10x Leverage (max 50 USDT bei 1000 Position)",
+      "description": "SL bei 0.5% vom Entry-Preis"
+    },
+    "take_profit": {
+      "enabled": true,
+      "type": "percent_based",
+      "percent": 1.0,
+      "_comment": "1.0% Preis = 10% Gewinn bei 10x Leverage, Risk:Reward 1:2",
+      "description": "TP bei 1.0% vom Entry-Preis"
+    },
+    "trailing_stop": {
+      "enabled": true,
+      "type": "percent_based",
+      "trail_percent": 0.3,
+      "activation_percent": 0.5,
+      "_comment": "Trailing nach 0.5% Profit (5% bei 10x), dann 0.3% Abstand",
+      "description": "Trailing Stop aktiviert bei 0.5% Profit, 0.3% Abstand"
+    },
+    "signal_reversal": {
+      "enabled": true,
+      "min_confluence": 3,
+      "description": "Exit bei Gegensignal mit min. 3 Confluence"
+    },
+    "rsi_extreme": {
+      "enabled": true,
+      "long_exit_above": 80,
+      "short_exit_below": 20,
+      "description": "Exit bei extremen RSI-Werten"
+    },
+    "session_end": {
+      "enabled": false,
+      "close_time_utc": "22:00",
+      "description": "Position am Session-Ende schließen"
+    }
+  },
+
+  "risk_management": {
+    "max_position_risk_percent": 1.0,
+    "max_daily_loss_percent": 100.0,
+    "_comment_daily_loss": "100% = deaktiviert für Paper Trading. Für Live: 3-5% empfohlen.",
+    "max_position_size_btc": 0.1,
+    "leverage": 10,
+    "single_position_only": true
+  },
+
+  "ai_validation": {
+    "enabled": true,
+    "_comment_enabled": "Hierarchische AI-Validierung: Quick -> Deep bei Bedarf",
+
+    "_comment_models": "WICHTIG: Provider und Model werden aus File->Settings->AI geladen! KEINE hardcodierten Models hier!",
+
+    "min_confluence_for_ai": 4,
+    "_comment_min_confluence": "AI wird NUR aufgerufen wenn confluence >= 4",
+
+    "confidence_threshold_trade": 70,
+    "_comment_trade": ">=70%: Trade ausführen",
+
+    "confidence_threshold_deep": 50,
+    "_comment_deep": "50-69%: Deep Analysis anfragen",
+
+    "skip_below_confidence": 50,
+    "_comment_skip": "<50%: Signal überspringen",
+
+    "deep_analysis_enabled": true,
+    "_comment_deep_enabled": "Deep Analysis für unsichere Signale aktivieren",
+
+    "fallback_to_technical": true,
+    "timeout_seconds": 30
+  },
+
+  "timing": {
+    "analysis_interval_seconds": 60,
+    "position_check_interval_ms": 1000,
+    "macro_update_minutes": 60,
+    "trend_update_minutes": 15,
+    "context_update_minutes": 5
+  },
+
+  "filters": {
+    "volume": {
+      "enabled": true,
+      "min_volume_ratio": 0.5,
+      "description": "Mindestens 50% des durchschnittlichen Volumens"
+    },
+    "spread": {
+      "enabled": false,
+      "max_spread_percent": 0.1,
+      "description": "Max 0.1% Spread"
+    },
+    "volatility": {
+      "enabled": true,
+      "min_atr_percent": 0.5,
+      "max_atr_percent": 5.0,
+      "description": "ATR zwischen 0.5% und 5% des Preises"
+    }
+  },
+
+  "logging": {
+    "enabled": true,
+    "log_directory": "logs/trades",
+    "format": "both",
+    "include_indicator_values": true,
+    "include_market_context": true,
+    "retention_days": 90
+  },
+
+  "_optimization_notes": {
+    "confluence_tuning": "Erhöhe min_confluence für weniger aber bessere Trades",
+    "atr_multipliers": "Niedrigere SL = mehr Stopouts, höhere SL = größere Verluste pro Trade",
+    "rsi_ranges": "Engere Ranges = weniger Signale aber bessere Qualität",
+    "adx_threshold": "Höhere Werte = nur stärkere Trends, weniger Signale"
+  }
+}

@@ -342,6 +342,42 @@ class DatabaseManager:
             self.engine.dispose()
             logger.info("Database connection closed")
 
+    # =========================================================================
+    # COMPATIBILITY METHODS for historical_data_db.py (backup version)
+    # =========================================================================
+
+    async def run_in_executor(self, func, *args) -> Any:
+        """Run a sync function in executor (compatibility method).
+
+        Args:
+            func: Synchronous function to run
+            *args: Arguments to pass to the function
+
+        Returns:
+            Result from the function
+        """
+        import asyncio
+        return await asyncio.to_thread(func, *args)
+
+    @contextmanager
+    def get_connection(self) -> Generator:
+        """Get a raw database connection (compatibility method).
+
+        Yields:
+            Raw SQLite connection
+
+        Note:
+            This provides raw SQLite connection for legacy code.
+        """
+        if not self.engine:
+            raise RuntimeError("Database engine not initialized")
+
+        conn = self.engine.raw_connection()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
 
 # Global database manager instance
 db_manager: DatabaseManager | None = None

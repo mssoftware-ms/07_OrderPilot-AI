@@ -56,7 +56,6 @@ class HistoricalBar:
     low: Decimal
     close: Decimal
     volume: int
-    symbol: str = ""
     vwap: Decimal | None = None
     trades: int | None = None
     source: str = ""

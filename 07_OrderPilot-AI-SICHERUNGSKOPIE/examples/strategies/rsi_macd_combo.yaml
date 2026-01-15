@@ -1,0 +1,190 @@
+# RSI + MACD Combo Strategy
+# Multi-indicator strategy combining RSI oversold/overbought with MACD momentum
+# Uses complex logic groups for precise entry/exit conditions
+
+name: RSI MACD Combo Strategy
+version: 2.1.0
+description: |
+  Advanced multi-indicator strategy combining:
+  - RSI for overbought/oversold conditions
+  - MACD for momentum confirmation
+  - SMA 200 for trend filter
+
+  LONG Entry: (RSI < 30 OR MACD crosses above 0) AND price > SMA 200
+  LONG Exit: RSI > 70 OR MACD crosses below 0
+
+  Supports both long and short positions.
+
+# Technical Indicators
+indicators:
+  - type: RSI
+    params:
+      period: 14
+    alias: rsi
+    source: close
+    plot: true
+
+  - type: MACD
+    params:
+      fast: 12
+      slow: 26
+      signal: 9
+    alias: macd
+    source: close
+    plot: true
+
+  - type: SMA
+    params:
+      period: 200
+    alias: sma_200
+    source: close
+    plot: true
+
+  - type: ATR
+    params:
+      period: 14
+    alias: atr
+    source: close
+    plot: false
+
+  - type: ADX
+    params:
+      period: 14
+    alias: adx
+    plot: true
+
+# Entry Logic (LONG)
+entry_long:
+  type: group
+  operator: AND
+  description: Bullish signal with trend confirmation
+  conditions:
+    # Sub-group: RSI oversold OR MACD bullish
+    - type: group
+      operator: OR
+      description: RSI oversold or MACD momentum
+      conditions:
+        - type: condition
+          left: rsi
+          operator: "<"
+          right: 30.0
+          description: RSI below 30 (oversold)
+
+        - type: condition
+          left: macd
+          operator: crosses_above
+          right: 0.0
+          description: MACD crosses above zero line
+
+    # Trend filter
+    - type: condition
+      left: close
+      operator: ">"
+      right: sma_200
+      description: Price above 200-day SMA (uptrend)
+
+    # Regime Filter
+    - type: condition
+      left: adx
+      operator: ">"
+      right: 20.0
+      description: Trend Strength > 20
+
+# Exit Logic (LONG)
+exit_long:
+  type: group
+  operator: OR
+  description: Exit on overbought or momentum reversal
+  conditions:
+    - type: condition
+      left: rsi
+      operator: ">"
+      right: 70.0
+      description: RSI above 70 (overbought)
+
+    - type: condition
+      left: macd
+      operator: crosses_below
+      right: 0.0
+      description: MACD crosses below zero line
+
+# Entry Logic (SHORT)
+entry_short:
+  type: group
+  operator: AND
+  description: Bearish signal with downtrend confirmation
+  conditions:
+    # Sub-group: RSI overbought OR MACD bearish
+    - type: group
+      operator: OR
+      description: RSI overbought or MACD momentum
+      conditions:
+        - type: condition
+          left: rsi
+          operator: ">"
+          right: 70.0
+          description: RSI above 70 (overbought)
+
+        - type: condition
+          left: macd
+          operator: crosses_below
+          right: 0.0
+          description: MACD crosses below zero line
+
+    # Trend filter
+    - type: condition
+      left: close
+      operator: "<"
+      right: sma_200
+      description: Price below 200-day SMA (downtrend)
+
+    # Regime Filter
+    - type: condition
+      left: adx
+      operator: ">"
+      right: 20.0
+      description: Trend Strength > 20
+
+# Exit Logic (SHORT)
+exit_short:
+  type: group
+  operator: OR
+  description: Exit on oversold or momentum reversal
+  conditions:
+    - type: condition
+      left: rsi
+      operator: "<"
+      right: 30.0
+      description: RSI below 30 (oversold)
+
+    - type: condition
+      left: macd
+      operator: crosses_above
+      right: 0.0
+      description: MACD crosses above zero line
+
+# Risk Management (ATR-based)
+risk_management:
+  stop_loss_atr: 2.0
+  take_profit_atr: 4.0
+  trailing_stop_pct: 3.0
+  max_risk_per_trade_pct: 2.0
+  max_position_size_pct: 50.0
+
+# Metadata
+meta:
+  author: OrderPilot-AI
+  category: Mean Reversion + Momentum
+  timeframe: 4H
+  asset_class: Stocks, Crypto
+  risk_level: Medium
+  tags:
+    - rsi
+    - macd
+    - multi_indicator
+    - long_short
+    - trend_filter
+    - atr_stops
+  notes: |
+    This strategy works best in volatile markets.
+    Consider adjusting RSI thresholds based on asset volatility.

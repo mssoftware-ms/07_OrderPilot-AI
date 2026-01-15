@@ -1,0 +1,47 @@
+{
+  "name": "Dual-Monitor-Setup",
+  "description": "Charts auf 2 Monitoren verteilt",
+  "windows": [
+    {
+      "symbol": "BTC/USD",
+      "timeframe": "1H",
+      "period": "1M",
+      "monitor": 0,
+      "x": 0,
+      "y": 0,
+      "width": 1920,
+      "height": 1080,
+      "indicators": [
+        "SMA",
+        "BB"
+      ],
+      "auto_stream": false
+    },
+    {
+      "symbol": "BTC/USD",
+      "timeframe": "5T",
+      "period": "5D",
+      "monitor": 1,
+      "x": 0,
+      "y": 0,
+      "width": 1920,
+      "height": 540,
+      "indicators": [],
+      "auto_stream": true
+    },
+    {
+      "symbol": "ETH/USD",
+      "timeframe": "5T",
+      "period": "5D",
+      "monitor": 1,
+      "x": 0,
+      "y": 540,
+      "width": 1920,
+      "height": 540,
+      "indicators": [],
+      "auto_stream": true
+    }
+  ],
+  "sync_crosshair": true,
+  "sync_time_range": false
+}

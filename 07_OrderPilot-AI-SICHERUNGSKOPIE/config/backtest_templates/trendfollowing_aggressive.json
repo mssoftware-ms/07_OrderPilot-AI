@@ -1,0 +1,57 @@
+{
+  "$schema": "../schemas/backtest_config_v2.schema.json",
+  "version": "2.0.0",
+  "extends": "base_trendfollowing.json",
+
+  "meta": {
+    "name": "Trendfollowing Aggressive",
+    "description": "Aggressives Trendfollowing: Fruehere Einstiege, engeres SL, schnellere Trailing-Aktivierung.",
+    "author": "OrderPilot-AI",
+    "tags": ["trendfollowing", "aggressive", "btc", "fast", "early-entry"],
+    "target_asset_class": "crypto",
+    "target_timeframe": "5m",
+    "scenario_type": "aggressive"
+  },
+
+  "overrides": {
+    "entry_score.thresholds.min_score_for_entry.value": 0.50,
+    "entry_score.thresholds.min_score_for_entry.range": [0.45, 0.50, 0.55, 0.60],
+    "entry_score.gates.allow_counter_trend_sfp": true,
+    "entry_triggers.sfp.enabled": true,
+    "entry_triggers.sfp.wick_body_ratio.value": 2.0,
+    "entry_triggers.sfp.wick_body_ratio.optimize": true,
+    "entry_triggers.sfp.wick_body_ratio.range": [1.5, 2.0, 2.5],
+    "exit_management.stop_loss.atr_multiplier.value": 1.3,
+    "exit_management.stop_loss.atr_multiplier.range": [1.0, 1.3, 1.6],
+    "exit_management.take_profit.atr_multiplier.value": 2.0,
+    "exit_management.take_profit.atr_multiplier.range": [1.5, 2.0, 2.5],
+    "exit_management.trailing_stop.activation_atr.value": 0.9,
+    "exit_management.trailing_stop.activation_atr.range": [0.6, 0.9, 1.2],
+    "exit_management.trailing_stop.distance_atr.value": 0.5,
+    "exit_management.trailing_stop.distance_atr.range": [0.4, 0.5, 0.7],
+    "risk_leverage.risk_per_trade_pct.value": 0.60,
+    "risk_leverage.risk_per_trade_pct.range": [0.40, 0.60, 0.80],
+    "risk_leverage.base_leverage.value": 8,
+    "risk_leverage.base_leverage.range": [5, 8, 10],
+    "risk_leverage.max_leverage": 20,
+    "constraints.min_trades": 60,
+    "constraints.max_drawdown_pct": 35,
+    "constraints.min_win_rate": 0.40
+  },
+
+  "parameter_groups": [
+    {
+      "name": "sl_tp_aggressive",
+      "description": "SL und TP Paare fuer aggressives Trading",
+      "parameters": [
+        "exit_management.stop_loss.atr_multiplier.value",
+        "exit_management.take_profit.atr_multiplier.value"
+      ],
+      "combinations": [
+        [1.0, 1.5],
+        [1.3, 2.0],
+        [1.6, 2.5]
+      ]
+    }
+  ]
+}

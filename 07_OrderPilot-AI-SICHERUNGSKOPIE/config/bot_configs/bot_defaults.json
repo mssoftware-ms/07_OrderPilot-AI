@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "saved_at": "2026-01-13T03:21:19.225683",
+    "version": "1.0",
+    "type": "bot_control_settings"
+  },
+  "settings": {
+    "ki_mode": "FULL_KI",
+    "trade_direction": "AUTO",
+    "trailing_mode": "PCT",
+    "initial_sl": 0.5,
+    "capital": 1000.0,
+    "risk_per_trade": 10.0,
+    "max_trades": 10,
+    "max_daily_loss": 3.0,
+    "disable_restrictions": true,
+    "disable_macd_exit": true,
+    "disable_rsi_exit": true,
+    "enable_derivathandel": false,
+    "leverage_override_enabled": true,
+    "leverage_value": 20,
+    "regime_adaptive": true,
+    "trailing_activation": 0.0,
+    "tra_percent": 0.1,
+    "trailing_distance": 0.1,
+    "atr_multiplier": 2.5,
+    "atr_trending": 2.0,
+    "atr_ranging": 3.5,
+    "volatility_bonus": 0.5,
+    "min_step": 0.05,
+    "min_score": 60,
+    "use_pattern": false,
+    "pattern_similarity": 0.7,
+    "pattern_matches": 5,
+    "pattern_winrate": 55,
+    "show_entry_markers": true,
+    "show_stop_lines": true,
+    "show_debug_hud": false
+  }
+}
