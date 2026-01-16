@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QSpinBox, QDoubleSpinBox,
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QMessageBox, QFileDialog, QProgressBar, QTabWidget, QLineEdit,
-    QHeaderView,
+    QHeaderView, QSplitter,
 )
 
 if TYPE_CHECKING:

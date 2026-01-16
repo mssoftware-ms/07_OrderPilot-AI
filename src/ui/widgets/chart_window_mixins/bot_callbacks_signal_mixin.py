@@ -12,7 +12,15 @@ class BotCallbacksSignalMixin:
     """BotCallbacksSignalMixin extracted from BotCallbacksMixin."""
     def _on_bot_signal(self, signal: Any) -> None:
         """Handle bot signal event."""
-        signal_type, side, entry_price, score, strategy_name, signal_stop_price = self._extract_signal_fields(signal)
+        (
+            signal_type,
+            side,
+            entry_price,
+            score,
+            strategy_name,
+            signal_stop_price,
+            signal_timestamp,
+        ) = self._extract_signal_fields(signal)
         status = self._map_signal_status(signal_type)
 
         # Gate: only one open position allowed. Ignore new signals while open.
@@ -60,6 +68,7 @@ class BotCallbacksSignalMixin:
                 initial_sl_pct,
                 trailing_pct,
                 trailing_activation,
+                signal_timestamp,
             )
             if not updated:
                 self._add_confirmed_signal(
@@ -73,6 +82,7 @@ class BotCallbacksSignalMixin:
                     initial_sl_pct,
                     trailing_pct,
                     trailing_activation,
+                    signal_timestamp,
                 )
             # Enforce single open position after confirming/adding
             self._enforce_single_open_signal(refresh=False)
@@ -83,7 +93,7 @@ class BotCallbacksSignalMixin:
                 logger.info("P&L update timer started for new ENTERED signal")
         else:
             self._update_or_add_candidate(
-                signal_type, side, score, strategy_name, entry_price, status
+                signal_type, side, score, strategy_name, entry_price, status, signal_timestamp
             )
 
         self._update_signals_table()
@@ -97,19 +107,25 @@ class BotCallbacksSignalMixin:
                 side,
                 signal_stop_price,
                 initial_sl_pct,
+                signal_timestamp,
             )
 
     def _has_open_signal(self) -> bool:
         return any(sig.get("is_open") for sig in self._signal_history)
 
-    def _extract_signal_fields(self, signal: Any) -> tuple[str, str, float, float, str, float]:
+    def _extract_signal_fields(self, signal: Any) -> tuple[str, str, float, float, str, float, int | None]:
         signal_type = signal.signal_type.value if hasattr(signal, 'signal_type') else "unknown"
         side = signal.side.value if hasattr(signal, 'side') else "unknown"
         entry_price = getattr(signal, 'entry_price', 0)
         score = getattr(signal, 'score', 0)
         strategy_name = getattr(signal, 'strategy_name', "Manual")
         signal_stop_price = getattr(signal, 'stop_loss_price', 0)
-        return signal_type, side, entry_price, score, strategy_name, signal_stop_price
+        ts = getattr(signal, 'timestamp', None)
+        try:
+            signal_ts = int(ts.timestamp()) if ts else None
+        except Exception:
+            signal_ts = None
+        return signal_type, side, entry_price, score, strategy_name, signal_stop_price, signal_ts
 
     def _map_signal_status(self, signal_type: str) -> str:
         if signal_type == "confirmed":
@@ -126,6 +142,15 @@ class BotCallbacksSignalMixin:
         trailing_pct = self.trailing_distance_spin.value() if hasattr(self, 'trailing_distance_spin') else 1.5
         trailing_activation = self.tra_percent_spin.value() if hasattr(self, 'tra_percent_spin') else 0.0
         return capital, risk_pct, invested, initial_sl_pct, trailing_pct, trailing_activation
+
+    def _snapshot_leverage_value(self) -> float:
+        """Capture current leverage override once for a signal (Issue #1)."""
+        leverage = 1.0
+        if hasattr(self, 'get_leverage_override'):
+            enabled, value = self.get_leverage_override()
+            if enabled and value > 0:
+                leverage = float(value)
+        return leverage
 
     def _ensure_stop_price(self, signal_stop_price: float, entry_price: float, initial_sl_pct: float, side: str) -> float:
         if signal_stop_price <= 0 and entry_price > 0 and initial_sl_pct > 0:
@@ -150,6 +175,7 @@ class BotCallbacksSignalMixin:
         initial_sl_pct: float,
         trailing_pct: float,
         trailing_activation: float,
+        signal_timestamp: int | None,
     ) -> bool:
         for sig in reversed(self._signal_history):
             if sig["type"] == "candidate" and sig["side"] == side and sig["status"] == "PENDING":
@@ -160,7 +186,7 @@ class BotCallbacksSignalMixin:
                 sig["price"] = entry_price
                 sig["is_open"] = True
                 sig["label"] = f"E:{int(score * 100)}"
-                sig["entry_timestamp"] = int(datetime.now().timestamp())
+                sig["entry_timestamp"] = signal_timestamp or int(datetime.now().timestamp())
                 sig["stop_price"] = signal_stop_price
                 sig["invested"] = invested
                 sig["initial_sl_pct"] = initial_sl_pct
@@ -168,6 +194,7 @@ class BotCallbacksSignalMixin:
                 sig["trailing_activation_pct"] = trailing_activation
                 sig["tr_lock_active"] = True
                 sig["tr_active"] = False
+                sig.setdefault("leverage", self._snapshot_leverage_value())
                 if trailing_pct > 0:
                     if side.lower() == "long":
                         sig["trailing_stop_price"] = entry_price * (1 - trailing_pct / 100)
@@ -192,6 +219,7 @@ class BotCallbacksSignalMixin:
         initial_sl_pct: float,
         trailing_pct: float,
         trailing_activation: float,
+        signal_timestamp: int | None = None,
     ) -> None:
         trailing_stop_price = 0.0
         if trailing_pct > 0:
@@ -216,13 +244,14 @@ class BotCallbacksSignalMixin:
             "pnl_percent": 0.0,
             "is_open": True,
             "label": f"E:{int(score * 100)}",
-            "entry_timestamp": int(datetime.now().timestamp()),
+            "entry_timestamp": signal_timestamp or int(datetime.now().timestamp()),
             "initial_sl_pct": initial_sl_pct,
             "trailing_stop_pct": trailing_pct,
             "trailing_stop_price": trailing_stop_price,
             "trailing_activation_pct": trailing_activation,
             "tr_active": False,
             "tr_lock_active": True,
+            "leverage": self._snapshot_leverage_value(),
         })
 
         # Ensure we never keep more than one open position
@@ -236,6 +265,7 @@ class BotCallbacksSignalMixin:
         strategy_name: str,
         entry_price: float,
         status: str,
+        signal_timestamp: int | None = None,
     ) -> None:
         existing_candidate = None
         for sig in reversed(self._signal_history):
@@ -249,6 +279,8 @@ class BotCallbacksSignalMixin:
             existing_candidate["strategy"] = strategy_name
             existing_candidate["price"] = entry_price
             existing_candidate["current_price"] = entry_price
+            if signal_timestamp:
+                existing_candidate["entry_timestamp"] = signal_timestamp
             logger.info(
                 f"Updated existing candidate: {side} @ {entry_price:.4f} "
                 f"(Score: {score:.2f}, Strategy: {strategy_name})"
@@ -278,7 +310,9 @@ class BotCallbacksSignalMixin:
             "pnl_currency": 0.0,
             "pnl_percent": 0.0,
             "is_open": False,
-            "label": ""
+            "label": "",
+            "entry_timestamp": signal_timestamp,
+            "leverage": self._snapshot_leverage_value(),
         }
         self._signal_history.append(new_signal)
 
@@ -297,10 +331,18 @@ class BotCallbacksSignalMixin:
         side: str,
         signal_stop_price: float,
         initial_sl_pct: float,
+        entry_timestamp: int | None = None,
     ) -> None:
         self._add_ki_log_entry("DEBUG", f"Chart-Elemente zeichnen: entry={entry_price:.2f}, SL={signal_stop_price:.2f}")
         try:
-            entry_ts = int(datetime.now().timestamp())
+            if entry_timestamp:
+                entry_ts = entry_timestamp
+            elif hasattr(self, "_bot_controller") and self._bot_controller and getattr(self._bot_controller, "_last_features", None):
+                # Fallback: use timestamp of last processed candle
+                features_dt = self._bot_controller._last_features.timestamp
+                entry_ts = int(features_dt.timestamp()) if features_dt else int(datetime.now().timestamp())
+            else:
+                entry_ts = int(datetime.now().timestamp())
             label = f"E:{int(score * 100)}"
             self.chart_widget.add_bot_marker(
                 timestamp=entry_ts,
@@ -630,7 +672,8 @@ class BotCallbacksSignalMixin:
 
         # Map state to status display
         state_colors = {
-            "idle": ("#9e9e9e", "IDLE"),
+            "idle": ("#26a69a", "RUNNING"),
+            "flat": ("#26a69a", "RUNNING"),
             "waiting_signal": ("#2196f3", "WAITING"),
             "in_position": ("#26a69a", "IN POSITION"),
             "paused": ("#ff9800", "PAUSED"),

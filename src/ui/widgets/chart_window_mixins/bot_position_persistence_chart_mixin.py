@@ -92,8 +92,8 @@ class BotPositionPersistenceChartMixin:
         - 6: TR% (Trailing Stop Percent from entry)
         - 7: TRA% (Trailing Activation Percent - when trailing activates)
         """
-        # Guard clauses - allow columns 5, 6, and 7
-        if self._signals_table_updating or column not in (5, 6, 7):
+        # Guard clauses - allow columns 6 (SL%), 7 (TR%), and 8 (TRA%) with new layout
+        if self._signals_table_updating or column not in (6, 7, 8):
             return
 
         # Parse and validate input
@@ -108,14 +108,14 @@ class BotPositionPersistenceChartMixin:
 
         logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%")
 
-        # Handle TRA% (column 7) separately - it's not a stop price calculation
-        if column == 7:  # TRA% (Trailing Activation)
+        # Handle TRA% (column 8) separately - it's not a stop price calculation
+        if column == 8:  # TRA% (Trailing Activation)
             self._update_trailing_activation(sig, new_pct)
             self._save_signal_history()
             self._refresh_signals_table()
             return
 
-        # For SL% and TR%, calculate new stop price
+        # For SL% and TR%, calculate new stop price (columns 6 and 7)
         new_stop_price = self._calculate_stop_price(sig, new_pct)
         if new_stop_price is None:
             return
@@ -123,9 +123,9 @@ class BotPositionPersistenceChartMixin:
         logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%, new_stop={new_stop_price:.2f}")
 
         # Update based on column type
-        if column == 5:  # SL%
+        if column == 6:  # SL%
             self._update_stop_loss(sig, new_stop_price, new_pct)
-        elif column == 6:  # TR%
+        elif column == 7:  # TR%
             self._update_trailing_stop(sig, new_stop_price, new_pct)
 
         # Sync and save

@@ -171,7 +171,14 @@ class HistoryProviderFetching:
             if source not in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX, DataSource.DATABASE]:
                 logger.debug(f"Skipping {source.value} for crypto asset class")
                 return True
-        elif request.asset_class == AssetClass.STOCK:
+        else:
+            # Additional safeguard: symbols like BTCUSDT should never hit Alpaca crypto even if asset_class not set
+            symbol = request.symbol
+            if source == DataSource.ALPACA_CRYPTO and ("USDT" in symbol or "USDC" in symbol) and "/" not in symbol:
+                logger.debug(f"Skipping Alpaca Crypto (safety) for Bitunix-style symbol {symbol}")
+                return True
+
+        if request.asset_class == AssetClass.STOCK:
             if source in [DataSource.ALPACA_CRYPTO, DataSource.BITUNIX]:
                 logger.debug(f"Skipping {source.value} for stock asset class")
                 return True

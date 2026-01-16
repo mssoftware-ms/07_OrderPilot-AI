@@ -199,6 +199,12 @@ class BotCallbacksPositionLifecycleMixin:
         self._remove_position_lines()
         self._reset_state_machine()
 
+        # Issue #31: Keep bot in RUNNING state after closing a trade
+        if hasattr(self, "_set_bot_run_status_label"):
+            self._set_bot_run_status_label(True)
+        if hasattr(self, "_update_bot_status"):
+            self._update_bot_status("RUNNING", "#26a69a")
+
     def _should_block_rsi_exit(self, reason_codes: list[str]) -> bool:
         if hasattr(self, 'disable_rsi_exit_cb') and self.disable_rsi_exit_cb.isChecked():
             current_price = self._get_current_price()

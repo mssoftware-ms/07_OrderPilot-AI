@@ -334,6 +334,8 @@ class BotUISignalsMixin:
         ts = timestamp or datetime.now().strftime("%H:%M:%S")
         entry = f"[{ts}] [{log_type.upper()}] {message}"
         self.bot_log_text.appendPlainText(entry)
+        # Mirror into KI raw log as well so nothing is lost
+        self._append_ki_message(entry, ts)
 
     def _set_bot_run_status_label(self, running: bool) -> None:
         if not hasattr(self, 'bot_run_status_label'):
@@ -370,42 +372,132 @@ class BotUISignalsMixin:
         except Exception as e:
             QMessageBox.critical(self, "Fehler", f"Log konnte nicht gespeichert werden: {e}")
 
-    def _build_bot_log_widget(self) -> QWidget:
-        """Create Trading Bot Log group for Signals tab (Issue #23)."""
-        group = QGroupBox("Log Trading Bot")
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+    # --- KI raw messages (Issue #2) ---
+    def _append_ki_message(self, message: str, timestamp: str | None = None) -> None:
+        if not hasattr(self, "ki_messages_text") or self.ki_messages_text is None:
+            return
+        ts = timestamp or datetime.now().strftime("%H:%M:%S")
+        entry = f"[{ts}] {message}"
+        self.ki_messages_text.appendPlainText(entry)
 
-        # Status label
+    def _clear_ki_messages(self) -> None:
+        if hasattr(self, "ki_messages_text"):
+            self.ki_messages_text.clear()
+
+    def _save_ki_messages(self) -> None:
+        if not hasattr(self, "ki_messages_text"):
+            return
+        content = self.ki_messages_text.toPlainText()
+        if not content.strip():
+            QMessageBox.information(self, "Keine Nachrichten", "Es sind keine KI-Nachrichten vorhanden.")
+            return
+        default_name = f"ki_messages_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "KI-Nachrichten speichern",
+            default_name,
+            "Text Files (*.txt);;Markdown (*.md);;All Files (*)",
+        )
+        if not file_path:
+            return
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            QMessageBox.information(self, "Gespeichert", f"KI-Nachrichten gespeichert: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Fehler", f"KI-Nachrichten konnten nicht gespeichert werden: {e}")
+
+    def _open_prompt_management(self) -> None:
+        try:
+            from src.ui.dialogs.prompt_management_dialog import PromptManagementDialog
+            dialog = PromptManagementDialog(self)
+            dialog.exec()
+        except Exception:
+            QMessageBox.information(
+                self,
+                "Prompt Management",
+                "Prompt Management Dialog ist in Entwicklung.\n"
+                "Hier werden Sie zukünftig die Bot-Prompts verwalten können."
+            )
+
+    def _build_bot_log_widget(self) -> QWidget:
+        """Create combined Bot Log + KI Nachrichten (Issue #2 & #23)."""
+        container = QWidget()
+        main_layout = QHBoxLayout(container)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(8)
+
+        # Left: Bot log
+        bot_group = QGroupBox("Log Trading Bot")
+        bot_layout = QVBoxLayout(bot_group)
+        bot_layout.setContentsMargins(6, 6, 6, 6)
+        bot_layout.setSpacing(6)
+
         status_row = QHBoxLayout()
         self.bot_run_status_label = QLabel("Status: STOPPED")
         self.bot_run_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
         status_row.addWidget(self.bot_run_status_label)
         status_row.addStretch()
-        layout.addLayout(status_row)
+        bot_layout.addLayout(status_row)
 
-        # Log text field
         self.bot_log_text = QPlainTextEdit()
         self.bot_log_text.setReadOnly(True)
         self.bot_log_text.setPlaceholderText("Bot-Aktivitäten, Status und Fehler werden hier protokolliert...")
         self.bot_log_text.setMinimumHeight(140)
-        layout.addWidget(self.bot_log_text)
+        bot_layout.addWidget(self.bot_log_text)
 
-        # Buttons
-        btn_row = QHBoxLayout()
+        bot_btn_row = QHBoxLayout()
         self.bot_log_save_btn = QPushButton("💾 Speichern")
         self.bot_log_save_btn.clicked.connect(self._save_bot_log)
-        btn_row.addWidget(self.bot_log_save_btn)
+        bot_btn_row.addWidget(self.bot_log_save_btn)
 
         self.bot_log_clear_btn = QPushButton("🧹 Leeren")
         self.bot_log_clear_btn.clicked.connect(self._clear_bot_log)
-        btn_row.addWidget(self.bot_log_clear_btn)
+        bot_btn_row.addWidget(self.bot_log_clear_btn)
+        bot_btn_row.addStretch()
+        bot_layout.addLayout(bot_btn_row)
 
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+        # Right: KI messages + prompt management
+        ki_group = QGroupBox("KI Nachrichten")
+        ki_layout = QVBoxLayout(ki_group)
+        ki_layout.setContentsMargins(6, 6, 6, 6)
+        ki_layout.setSpacing(6)
 
-        return group
+        info_row = QHBoxLayout()
+        info_label = QLabel("Ungefilterte Ausgaben des Trading Bots")
+        info_label.setStyleSheet("color: #888; font-size: 10px;")
+        info_row.addWidget(info_label)
+        info_row.addStretch()
+        ki_layout.addLayout(info_row)
+
+        self.ki_messages_text = QPlainTextEdit()
+        self.ki_messages_text.setReadOnly(True)
+        self.ki_messages_text.setPlaceholderText("Ungefilterte KI-Ausgaben erscheinen hier...")
+        self.ki_messages_text.setMinimumHeight(140)
+        self.ki_messages_text.setStyleSheet("""
+            QPlainTextEdit { background-color: #0d0d0d; color: #4CAF50; font-family: Consolas, monospace; font-size: 10px; }
+        """)
+        ki_layout.addWidget(self.ki_messages_text)
+
+        ki_btn_row = QHBoxLayout()
+        self.prompt_mgmt_btn = QPushButton("⚙️ Prompts verwalten")
+        self.prompt_mgmt_btn.setToolTip("Öffnet Dialog zur Verwaltung und Bearbeitung der Bot-Prompts")
+        self.prompt_mgmt_btn.clicked.connect(self._open_prompt_management)
+        ki_btn_row.addWidget(self.prompt_mgmt_btn)
+
+        self.ki_messages_save_btn = QPushButton("💾 Speichern")
+        self.ki_messages_save_btn.clicked.connect(self._save_ki_messages)
+        ki_btn_row.addWidget(self.ki_messages_save_btn)
+
+        self.ki_messages_clear_btn = QPushButton("🧹 Leeren")
+        self.ki_messages_clear_btn.clicked.connect(self._clear_ki_messages)
+        ki_btn_row.addWidget(self.ki_messages_clear_btn)
+        ki_btn_row.addStretch()
+        ki_layout.addLayout(ki_btn_row)
+
+        main_layout.addWidget(bot_group, stretch=1)
+        main_layout.addWidget(ki_group, stretch=1)
+        return container
 
     def _on_clear_selected_signal(self) -> None:
         """Löscht die ausgewählte Zeile aus der Signals-Tabelle."""
@@ -788,22 +880,46 @@ class BotUISignalsMixin:
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
-        self.signals_table.setColumnCount(20)  # Issue #6: Added "Fees €" column
+        # New layout with Strategy + Stück (Issue #5, #7) → 22 columns
+        self.signals_table.setColumnCount(22)
         self.signals_table.setHorizontalHeaderLabels(
             [
-                "Time", "Type", "Side", "Entry", "Stop", "SL%", "TR%",
+                "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
                 "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
-                "Fees €",  # Issue #6: BitUnix fees in Euro
+                "Fees €", "Stück",  # qty
                 "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
             ]
         )
-        # Hidden columns: D P&L € (14), D P&L % (15), Heb (16), WKN (17), Score (18)
-        for col in [14, 15, 16, 17]:
+        # Hidden columns: D P&L € (16), D P&L % (17), Heb (18), WKN (19), Score (20)
+        for col in [16, 17, 18, 19]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(18, True)
-        self.signals_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self.signals_table.setColumnHidden(20, True)
+
+        header = self.signals_table.horizontalHeader()
+        # Narrow columns (approx 6 chars) for compact view (Issue #4)
+        narrow_cols = [1, 3, 6, 7, 8, 9, 10, 18]
+        for col in narrow_cols:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Time fixed width
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(0, 70)
+
+        # Strategy can stretch but keep moderate size
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+
+        # P&L % fixed for readability
+        header.setSectionResizeMode(13, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(13, 70)
+
+        # Heb column fixed small
+        header.setSectionResizeMode(18, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(18, 50)
+
+        # Stretch remaining numeric/value columns
+        for col in [4, 5, 11, 12, 14, 15, 21]:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+
         self.signals_table.setAlternatingRowColors(True)
         self.signals_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.signals_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -819,14 +935,15 @@ class BotUISignalsMixin:
         self._signals_table_updating = False
 
     def _update_leverage_column_visibility(self) -> None:
-        """Issue #1: Show/hide leverage column based on leverage override state."""
+        """Issue #1: Show/hide leverage column based on stored signal leverage, not UI state."""
         if not hasattr(self, 'signals_table'):
             return
 
-        show_leverage = False
-        if hasattr(self, 'get_leverage_override'):
-            override_enabled, _ = self.get_leverage_override()
-            show_leverage = override_enabled
+        show_leverage = any(
+            (sig.get("leverage", 1) or 0) > 1
+            or (sig.get("derivative") and sig["derivative"].get("leverage", 0) > 0)
+            for sig in getattr(self, "_signal_history", [])
+        )
 
-        # Column 16 is "Heb" (Leverage) - shifted by 1 due to Issue #6 Fees € column
-        self.signals_table.setColumnHidden(16, not show_leverage)
+        # Column 18 is "Heb" with new layout (after Fees & Stück)
+        self.signals_table.setColumnHidden(18, not show_leverage)

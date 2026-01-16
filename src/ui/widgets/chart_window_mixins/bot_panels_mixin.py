@@ -236,6 +236,15 @@ class BotPanelsMixin(
         stop_price = sig.get("trailing_stop_price", sig.get("stop_price", 0))
         take_profit = sig.get("take_profit_price", sig.get("tp_price", 0))
 
+        # Issue #6: Ensure PnL bar is always driven; derive TP if missing
+        if take_profit <= 0 and entry_price > 0:
+            # Use symmetric target: entry + distance of stop in favorable direction
+            if stop_price > 0:
+                distance = abs(entry_price - stop_price)
+                take_profit = entry_price + distance if side.lower() == "long" else entry_price - distance
+            else:
+                take_profit = entry_price * (1 + 0.02) if side.lower() == "long" else entry_price * (1 - 0.02)
+
         # Calculate P&L (Issue #54: WITHOUT leverage)
         pnl_pct, pnl_currency = self._calculate_position_pnl(
             entry_price, current_price, invested, side

@@ -70,14 +70,12 @@ class BotPositionPersistencePnlMixin:
         sig["current_price"] = current_price
         pnl_pct = self._calculate_pnl_pct(entry_price, current_price, side)
 
-        # Issue #1: Apply manual leverage override if enabled
+        # Issue #1: Apply static leverage stored on the signal
         leverage = 1.0
-        if hasattr(self, 'get_leverage_override'):
-            override_enabled, override_value = self.get_leverage_override()
-            if override_enabled and override_value > 1:
-                leverage = float(override_value)
+        if hasattr(self, "_get_signal_leverage"):
+            leverage = self._get_signal_leverage(sig)
+            if leverage > 1:
                 pnl_pct = pnl_pct * leverage
-                sig["leverage"] = leverage
 
         # Issue #3: Subtract BitUnix fees from P&L
         if hasattr(self, 'get_bitunix_fees'):
