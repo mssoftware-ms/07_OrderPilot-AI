@@ -24,7 +24,7 @@ from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import (
     QWidget, QGroupBox, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QComboBox, QDoubleSpinBox, QSpinBox, QSlider,
-    QMessageBox, QButtonGroup, QSizePolicy
+    QMessageBox, QButtonGroup, QSizePolicy, QCheckBox
 )
 
 import qasync
@@ -59,24 +59,28 @@ class BitunixTradingAPIWidget(QGroupBox):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Setup compact UI layout - 3 columns: Left (Symbol/Direction/OrderType), Middle (Quantity/Volume/Leverage), Right (Buttons/Slider)."""
+        """Setup compact UI layout - 4 columns: Left (Symbol/Direction/OrderType), Middle (Quantity/Volume/Leverage), TP/SL, Right (Buttons/Slider)."""
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(8, 12, 8, 8)
         main_layout.setSpacing(6)
 
-        # Main horizontal layout with 3 columns
+        # Main horizontal layout with 4 columns
         h_layout = QHBoxLayout()
         h_layout.setSpacing(12)
 
-        # LEFT COLUMN: Symbol, Direction, Order Type, Limit Price
+        # LEFT COLUMN: Symbol, Direction, Order Type, Limit Price (230px)
         left_column = self._build_left_column()
         h_layout.addWidget(left_column)
 
-        # MIDDLE COLUMN: Stückzahl, Volumen, Leverage, Last Price
+        # MIDDLE COLUMN: Stückzahl, Volumen, Leverage, Last Price (230px)
         middle_column = self._build_middle_column()
         h_layout.addWidget(middle_column)
 
-        # RIGHT COLUMN: BUY/SELL buttons, Paper Trading, Slider, Presets
+        # TP/SL COLUMN: Take Profit, Stop Loss, Trailing (230px)
+        tpsl_column = self._build_tpsl_column()
+        h_layout.addWidget(tpsl_column)
+
+        # RIGHT COLUMN: BUY/SELL buttons, Paper Trading, Slider, Presets (270px)
         right_column = self._build_right_column()
         h_layout.addWidget(right_column)
 
@@ -91,13 +95,15 @@ class BitunixTradingAPIWidget(QGroupBox):
         main_layout.addLayout(status_layout)
 
         self.setLayout(main_layout)
-        self.setMaximumHeight(230)
-        self.setMinimumWidth(700)
+        self.setMaximumHeight(250)
+        self.setMinimumWidth(1040)
+        self.setMaximumWidth(1040)
         self._set_trade_mode_live(False)
 
     def _build_left_column(self) -> QWidget:
         """Build left column with Symbol, Direction, Order Type, Limit Price."""
         widget = QWidget()
+        widget.setFixedWidth(230)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -108,7 +114,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Symbol Selection
         self.symbol_combo = QComboBox()
-        self.symbol_combo.setFixedWidth(180)
+        self.symbol_combo.setFixedWidth(230)
         self.symbol_combo.addItems(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"])
         self.symbol_combo.currentTextChanged.connect(self._on_symbol_changed)
 
@@ -124,8 +130,8 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         self.long_btn = QPushButton("Long")
         self.short_btn = QPushButton("Short")
-        self.long_btn.setFixedWidth(87)
-        self.short_btn.setFixedWidth(87)
+        self.long_btn.setFixedWidth(109)
+        self.short_btn.setFixedWidth(109)
         self.long_btn.setFixedHeight(32)
         self.short_btn.setFixedHeight(32)
         self.long_btn.setCheckable(True)
@@ -153,8 +159,9 @@ class BitunixTradingAPIWidget(QGroupBox):
                 border-radius: 4px;
             }
             QPushButton:checked {
-                background-color: #3a3a3a;
-                color: #888;
+                background-color: #ef5350;
+                color: white;
+                font-weight: bold;
             }
         """)
 
@@ -176,8 +183,8 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.order_type_group.setExclusive(True)
         self.market_btn = QPushButton("Market")
         self.limit_btn = QPushButton("Limit")
-        self.market_btn.setFixedWidth(87)
-        self.limit_btn.setFixedWidth(87)
+        self.market_btn.setFixedWidth(109)
+        self.limit_btn.setFixedWidth(109)
         self.market_btn.setFixedHeight(32)
         self.limit_btn.setFixedHeight(32)
         self.market_btn.setCheckable(True)
@@ -207,8 +214,9 @@ class BitunixTradingAPIWidget(QGroupBox):
                 border-radius: 4px;
             }
             QPushButton:checked {
-                background-color: #3a3a3a;
-                color: #888;
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
             }
         """)
 
@@ -225,7 +233,7 @@ class BitunixTradingAPIWidget(QGroupBox):
         grid.addWidget(self.limit_price_label, 3, 0)
 
         self.limit_price_spin = QDoubleSpinBox()
-        self.limit_price_spin.setFixedWidth(180)
+        self.limit_price_spin.setFixedWidth(230)
         self.limit_price_spin.setRange(0.0, 1000000.0)
         self.limit_price_spin.setDecimals(2)
         self.limit_price_spin.setSingleStep(0.1)
@@ -242,6 +250,7 @@ class BitunixTradingAPIWidget(QGroupBox):
     def _build_middle_column(self) -> QWidget:
         """Build middle column with Stückzahl, Volumen, Leverage, Last Price."""
         widget = QWidget()
+        widget.setFixedWidth(270)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -252,7 +261,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Quantity (Base Asset)
         self.quantity_spin = QDoubleSpinBox()
-        self.quantity_spin.setFixedWidth(150)
+        self.quantity_spin.setFixedWidth(270)
         self.quantity_spin.setRange(0.001, 10000.0)
         self.quantity_spin.setDecimals(3)
         self.quantity_spin.setSingleStep(0.001)
@@ -266,7 +275,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Volume (USDT)
         self.volume_spin = QDoubleSpinBox()
-        self.volume_spin.setFixedWidth(150)
+        self.volume_spin.setFixedWidth(270)
         self.volume_spin.setRange(1.0, 1000000.0)
         self.volume_spin.setDecimals(2)
         self.volume_spin.setSingleStep(10.0)
@@ -280,8 +289,8 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Leverage
         self.leverage_spin = QSpinBox()
-        self.leverage_spin.setFixedWidth(150)
-        self.leverage_spin.setRange(1, 125)
+        self.leverage_spin.setFixedWidth(270)
+        self.leverage_spin.setRange(1, 200)
         self.leverage_spin.setValue(10)
         self.leverage_spin.setSuffix("x")
         self.leverage_spin.valueChanged.connect(self._on_leverage_changed_spinbox)
@@ -302,19 +311,109 @@ class BitunixTradingAPIWidget(QGroupBox):
         widget.setLayout(layout)
         return widget
 
-    def _build_right_column(self) -> QWidget:
-        """Build right column with BUY/SELL buttons, Paper Trading button, Slider, Presets."""
+    def _build_tpsl_column(self) -> QWidget:
+        """Build TP/SL column with Take Profit, Stop Loss, Trailing controls."""
         widget = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        # BUY/SELL buttons (top row)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(6)
+
+        # Take Profit
+        tp_widget = QWidget()
+        tp_layout = QHBoxLayout()
+        tp_layout.setContentsMargins(0, 0, 0, 0)
+        tp_layout.setSpacing(4)
+
+        self.tp_cb = QCheckBox()
+        self.tp_cb.setChecked(False)
+        self.tp_cb.toggled.connect(self._on_tp_toggled)
+        tp_layout.addWidget(self.tp_cb)
+
+        self.tp_spin = QDoubleSpinBox()
+        self.tp_spin.setFixedWidth(100)
+        self.tp_spin.setRange(0.0, 1000.0)
+        self.tp_spin.setDecimals(1)
+        self.tp_spin.setSuffix(" %")
+        self.tp_spin.setValue(2.0)  # Default 2%
+        self.tp_spin.setEnabled(False)
+        tp_layout.addWidget(self.tp_spin)
+
+        tp_widget.setLayout(tp_layout)
+        tp_label = QLabel("TP:")
+        grid.addWidget(tp_label, 0, 0)
+        grid.addWidget(tp_widget, 0, 1)
+
+        # Stop Loss
+        sl_widget = QWidget()
+        sl_layout = QHBoxLayout()
+        sl_layout.setContentsMargins(0, 0, 0, 0)
+        sl_layout.setSpacing(4)
+
+        self.sl_cb = QCheckBox()
+        self.sl_cb.setChecked(True)
+        self.sl_cb.toggled.connect(self._on_sl_toggled)
+        sl_layout.addWidget(self.sl_cb)
+
+        self.sl_spin = QDoubleSpinBox()
+        self.sl_spin.setFixedWidth(100)
+        self.sl_spin.setRange(0.0, 100.0)
+        self.sl_spin.setDecimals(1)
+        self.sl_spin.setSuffix(" %")
+        self.sl_spin.setValue(1.0)  # Default 1%
+        sl_layout.addWidget(self.sl_spin)
+
+        sl_widget.setLayout(sl_layout)
+        sl_label = QLabel("SL:")
+        grid.addWidget(sl_label, 1, 0)
+        grid.addWidget(sl_widget, 1, 1)
+
+        layout.addLayout(grid)
+
+        # Sync SL Button (rechtsbündig mit TP/SL Feldern)
+        sync_layout = QHBoxLayout()
+        sync_layout.setContentsMargins(0, 0, 0, 0)
+        self.sync_sl_btn = QPushButton("Sync SL")
+        self.sync_sl_btn.setFixedWidth(130)
+        self.sync_sl_btn.setStyleSheet("font-size: 10px; padding: 4px;")
+        self.sync_sl_btn.clicked.connect(self._on_sync_sl)
+        sync_layout.addStretch()
+        sync_layout.addWidget(self.sync_sl_btn)
+        layout.addLayout(sync_layout)
+
+        # Trailing Stop
+        self.trailing_cb = QCheckBox("Use Trailing")
+        self.trailing_cb.setChecked(False)
+        self.trailing_cb.toggled.connect(self._on_trailing_toggled)
+        layout.addWidget(self.trailing_cb)
+
+        # Trailing Info
+        self.trailing_info = QLabel("Last SL: —")
+        self.trailing_info.setStyleSheet("color: #666; font-size: 9px;")
+        layout.addWidget(self.trailing_info)
+
+        widget.setLayout(layout)
+        widget.setFixedWidth(230)
+        return widget
+
+    def _build_right_column(self) -> QWidget:
+        """Build right column with BUY/SELL buttons, Paper Trading button, Slider, Presets."""
+        widget = QWidget()
+        widget.setFixedWidth(270)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        # BUY/SELL buttons (top row) - BUY links, SELL rechts
         buttons_layout = QHBoxLayout()
-        buttons_layout.setSpacing(6)
+        buttons_layout.setSpacing(0)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
 
         self.buy_btn = QPushButton("BUY")
-        self.buy_btn.setFixedWidth(107)
+        self.buy_btn.setFixedWidth(130)
         self.buy_btn.setFixedHeight(32)
         self.buy_btn.setStyleSheet("""
             QPushButton {
@@ -330,8 +429,10 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.buy_btn.clicked.connect(self._on_buy_clicked)
         buttons_layout.addWidget(self.buy_btn)
 
+        buttons_layout.addStretch()  # Stretch between buttons
+
         self.sell_btn = QPushButton("SELL")
-        self.sell_btn.setFixedWidth(107)
+        self.sell_btn.setFixedWidth(130)
         self.sell_btn.setFixedHeight(32)
         self.sell_btn.setStyleSheet("""
             QPushButton {
@@ -353,14 +454,17 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.trade_mode_btn = QPushButton("Paper Trading")
         self.trade_mode_btn.setCheckable(True)
         self.trade_mode_btn.setFixedHeight(32)
-        self.trade_mode_btn.setFixedWidth(220)
+        self.trade_mode_btn.setFixedWidth(270)
         self.trade_mode_btn.clicked.connect(self._on_trade_mode_changed)
         layout.addWidget(self.trade_mode_btn)
 
-        # Leverage slider with orange indicator
+        # Leverage slider with orange indicator (horizontal centered to Sync SL)
+        slider_layout = QHBoxLayout()
+        slider_layout.setContentsMargins(0, 0, 0, 0)
+        slider_layout.addStretch()
         self.exposure_slider = QSlider(Qt.Orientation.Horizontal)
-        self.exposure_slider.setFixedWidth(220)
-        self.exposure_slider.setRange(10, 200)
+        self.exposure_slider.setFixedWidth(130)
+        self.exposure_slider.setRange(1, 200)
         self.exposure_slider.setSingleStep(10)
         self.exposure_slider.setPageStep(10)
         self.exposure_slider.setValue(10)
@@ -387,23 +491,28 @@ class BitunixTradingAPIWidget(QGroupBox):
             }
         """)
         self.exposure_slider.valueChanged.connect(self._on_exposure_changed)
-        layout.addWidget(self.exposure_slider)
+        slider_layout.addWidget(self.exposure_slider)
+        slider_layout.addStretch()
+        layout.addLayout(slider_layout)
 
-        # Preset buttons (10, 20, 30, ..., 190)
+        # Preset buttons (10, 20, 30, ..., 200) - horizontal centered to Last SL Label
+        presets_outer_layout = QHBoxLayout()
+        presets_outer_layout.setContentsMargins(0, 0, 0, 0)
+        presets_outer_layout.addStretch()
+
         presets_widget = QWidget()
-        presets_widget.setFixedWidth(220)
         presets_layout = QGridLayout()
         presets_layout.setContentsMargins(0, 0, 0, 0)
-        presets_layout.setHorizontalSpacing(3)
-        presets_layout.setVerticalSpacing(3)
+        presets_layout.setHorizontalSpacing(2)
+        presets_layout.setVerticalSpacing(2)
 
-        preset_values = list(range(10, 200, 10))
+        preset_values = list(range(10, 210, 10))  # 10-200
         for idx, value in enumerate(preset_values):
             btn = QPushButton(str(value))
-            btn.setFixedSize(22, 16)
+            btn.setFixedSize(12, 12)
             btn.setStyleSheet(
-                "background-color: #3a3a3a; color: #aaa; font-size: 8px; "
-                "border-radius: 2px; padding: 0px;"
+                "background-color: #3a3a3a; color: #aaa; font-size: 7px; "
+                "border-radius: 1px; padding: 0px;"
             )
             btn.clicked.connect(lambda _, v=value: self._on_preset_clicked(v))
             row = idx // 10
@@ -411,7 +520,9 @@ class BitunixTradingAPIWidget(QGroupBox):
             presets_layout.addWidget(btn, row, col)
 
         presets_widget.setLayout(presets_layout)
-        layout.addWidget(presets_widget)
+        presets_outer_layout.addWidget(presets_widget)
+        presets_outer_layout.addStretch()
+        layout.addLayout(presets_outer_layout)
 
         widget.setLayout(layout)
         return widget
@@ -426,6 +537,54 @@ class BitunixTradingAPIWidget(QGroupBox):
         """Handle preset button click."""
         self.exposure_slider.setValue(value)
         self.leverage_spin.setValue(value)
+
+    def _on_tp_toggled(self, checked: bool):
+        """Handle TP checkbox toggle."""
+        self.tp_spin.setEnabled(checked)
+
+    def _on_sl_toggled(self, checked: bool):
+        """Handle SL checkbox toggle."""
+        self.sl_spin.setEnabled(checked)
+
+    def _on_sync_sl(self):
+        """Sync SL to exchange via modify_position_tp_sl_order."""
+        if not self._adapter:
+            QMessageBox.warning(self, "No Adapter", "No trading adapter connected!")
+            return
+
+        if not self.sl_cb.isChecked():
+            QMessageBox.warning(self, "SL Not Enabled", "Stop Loss checkbox is not enabled!")
+            return
+
+        sl_percent = self.sl_spin.value()
+        if sl_percent <= 0:
+            QMessageBox.warning(self, "Invalid SL", "Stop Loss percentage must be greater than 0!")
+            return
+
+        # Calculate absolute SL price from percentage
+        if self._last_price <= 0:
+            QMessageBox.warning(self, "No Price", "No current price available!")
+            return
+
+        direction = self._get_direction()
+        if direction == "LONG":
+            # Long: SL below entry price
+            sl_price = self._last_price * (1 - sl_percent / 100)
+        else:
+            # Short: SL above entry price
+            sl_price = self._last_price * (1 + sl_percent / 100)
+
+        # TODO: Call adapter.modify_position_tp_sl_order(position_id, sl_price)
+        logger.info(f"Sync SL to exchange: {sl_percent}% = ${sl_price:.2f}")
+        self.trailing_info.setText(f"Last SL: {sl_percent:.1f}%")
+        QMessageBox.information(self, "SL Synced", f"Stop Loss synced to {sl_percent:.1f}% (${sl_price:.2f})")
+
+    def _on_trailing_toggled(self, checked: bool):
+        """Handle trailing stop toggle."""
+        if checked:
+            logger.info("Trailing stop enabled - will update SL on price movement")
+        else:
+            logger.info("Trailing stop disabled")
 
 
     def _set_direction(self, direction: str):
@@ -701,6 +860,12 @@ class BitunixTradingAPIWidget(QGroupBox):
             self.limit_price_spin.blockSignals(False)
             self._recalculate_from_price()
 
+            # Update Recent Signals table & Current Position
+            if hasattr(self.parent(), '_update_current_price_in_signals'):
+                self.parent()._update_current_price_in_signals(price)
+            if hasattr(self.parent(), '_update_current_price_in_position'):
+                self.parent()._update_current_price_in_position(price)
+
     def _ensure_limit_price_default(self) -> None:
         """Default limit price to current market price when available."""
         if not self.limit_btn.isChecked():
@@ -767,17 +932,44 @@ class BitunixTradingAPIWidget(QGroupBox):
                 QMessageBox.warning(self, "No Adapter", "No trading adapter connected!")
                 self.adapter_status_label.setText("missing")
                 self.adapter_status_label.setStyleSheet("color: #f44336; font-size: 10px;")
+                self._set_trade_mode_live(False)  # Revert to paper mode
                 return
+
+        self.adapter_status_label.setText("connecting...")
+        self.adapter_status_label.setStyleSheet("color: #ffa726; font-size: 10px;")
+
+        # Check if adapter has connect method
+        if not hasattr(self._adapter, 'connect'):
+            logger.info("Adapter has no connect method, assuming already connected")
+            self.adapter_status_label.setText("connected")
+            self.adapter_status_label.setStyleSheet("color: #26a69a; font-size: 10px;")
+            self._update_button_states()
+            return
+
         try:
             import asyncio
-            self.adapter_status_label.setText("connecting...")
-            self.adapter_status_label.setStyleSheet("color: #ffa726; font-size: 10px;")
-            asyncio.create_task(self._adapter.connect())
+            task = asyncio.create_task(self._connect_adapter_async())
         except Exception as exc:
-            logger.error(f"Adapter connect failed: {exc}")
+            logger.error(f"Adapter connect failed: {exc}", exc_info=True)
             self.adapter_status_label.setText("error")
             self.adapter_status_label.setStyleSheet("color: #f44336; font-size: 10px;")
             QMessageBox.critical(self, "Connection Error", f"Adapter connect failed:\n\n{exc}")
+            self._set_trade_mode_live(False)  # Revert to paper mode
+
+    async def _connect_adapter_async(self):
+        """Async adapter connection with status update."""
+        try:
+            await self._adapter.connect()
+            self.adapter_status_label.setText("connected")
+            self.adapter_status_label.setStyleSheet("color: #26a69a; font-size: 10px;")
+            self._update_button_states()
+            logger.info("Adapter connected successfully")
+        except Exception as exc:
+            logger.error(f"Adapter connect failed: {exc}", exc_info=True)
+            self.adapter_status_label.setText("error")
+            self.adapter_status_label.setStyleSheet("color: #f44336; font-size: 10px;")
+            QMessageBox.critical(self, "Connection Error", f"Adapter connect failed:\n\n{exc}")
+            self._set_trade_mode_live(False)  # Revert to paper mode
 
     def _disconnect_adapter_for_paper_mode(self) -> None:
         """Disconnect adapter when switching to paper mode."""

@@ -98,6 +98,14 @@ class BitunixStreamingMixin:
         print(f"📊 BITUNIX TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
         logger.info(f"📊 Bitunix live tick: {self.current_symbol} @ ${price:.2f}")
 
+        # Update Bitunix Trading API Widget with live price
+        # Widget is in parent ChartWindow, not in chart itself
+        parent = self.parent()
+        if parent and hasattr(parent, 'bitunix_trading_api_widget'):
+            if parent.bitunix_trading_api_widget:
+                parent.bitunix_trading_api_widget.set_price(price)
+                logger.debug(f"Updated trading API widget with price: {price:.2f}")
+
     def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
         ts = tick_data.get('timestamp')
         if ts is None:

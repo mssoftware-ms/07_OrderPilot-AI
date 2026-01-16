@@ -135,18 +135,128 @@ class BotUISignalsMixin:
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # Current Position direkt oben ohne Splitter
-        layout.addWidget(self._build_current_position_widget())
+        # Top row: Bitunix Trading API + Current Position
+        top_row_layout = QHBoxLayout()
+        top_row_layout.setSpacing(8)
 
-        # 20px Abstand vor Recent Signals
-        layout.addSpacing(20)
+        # Bitunix Trading API Widget (left side, takes most space)
+        trading_api_widget = self._build_bitunix_trading_api_widget()
+        top_row_layout.addWidget(trading_api_widget, stretch=1)
 
-        # Recent Signals expandiert den Rest
-        layout.addWidget(self._build_signals_widget(), stretch=1)
+        # Current Position (right side, fixed 420px width)
+        position_widget = self._build_current_position_widget()
+        position_widget.setMaximumWidth(420)
+        position_widget.setMinimumWidth(420)
+        top_row_layout.addWidget(position_widget, stretch=0)
 
-        # Trading Bot Log (Issue #23)
-        layout.addWidget(self._build_bot_log_widget())
+        layout.addLayout(top_row_layout)
+
+        # 10px Abstand vor Recent Signals
+        layout.addSpacing(10)
+
+        # Issue #68: Use QSplitter for Signals Table and Bot Log
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self._build_signals_widget())
+        splitter.addWidget(self._build_bot_log_widget())
+        splitter.setStretchFactor(0, 7)  # Signals table gets more space
+        splitter.setStretchFactor(1, 3)  # Log gets less
+
+        layout.addWidget(splitter)
+
         return widget
+
+    def _build_bitunix_trading_api_widget(self) -> QWidget:
+        """Build Bitunix Trading API Widget.
+
+        Compact order entry interface for quick trading.
+        Placed left of the HEDGE widget.
+        """
+        from src.ui.widgets.bitunix_trading_api_widget import BitunixTradingAPIWidget
+
+        try:
+            self.bitunix_trading_api_widget = BitunixTradingAPIWidget(parent=self)
+
+            # Wire up signals
+            self.bitunix_trading_api_widget.order_placed.connect(self._on_bitunix_api_order_placed)
+            self.bitunix_trading_api_widget.price_needed.connect(self._on_bitunix_api_price_needed)
+
+            # If adapter is already available, set it
+            if hasattr(self, '_bitunix_adapter') and self._bitunix_adapter:
+                self.bitunix_trading_api_widget.set_adapter(self._bitunix_adapter)
+
+            return self.bitunix_trading_api_widget
+
+        except Exception as e:
+            logger.error(f"Failed to create Bitunix Trading API widget: {e}", exc_info=True)
+            # Return placeholder on error
+            error_widget = QLabel(f"Bitunix Trading API: Init failed - {e}")
+            error_widget.setStyleSheet("color: #ff5555; padding: 8px;")
+            return error_widget
+
+    def _on_bitunix_api_order_placed(self, order_id: str):
+        """Handle Bitunix Trading API order placed event."""
+        logger.info(f"Bitunix API order placed: {order_id}")
+
+    def _on_bitunix_api_price_needed(self, symbol: str):
+        """Handle price request from Trading API widget."""
+        if hasattr(self, 'bitunix_trading_api_widget'):
+            price = self._get_current_price_for_symbol(symbol)
+            self.bitunix_trading_api_widget.set_price(price)
+
+    def _get_current_price_for_symbol(self, symbol: str) -> float:
+        """Get current price for a symbol (3-tier fallback)."""
+        # Tier 1: Chart tick data
+        if hasattr(self, 'current_symbol') and self.current_symbol == symbol:
+            if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
+                return self._last_tick_price
+
+        # Tier 2: Chart footer label
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'info_label'):
+            try:
+                label_text = self.chart_widget.info_label.text()
+                if label_text and "Last:" in label_text:
+                    price_text = label_text.split("Last:")[-1].strip().lstrip("$").replace(",", "")
+                    price = float(price_text)
+                    if price > 0:
+                        return price
+            except Exception:
+                pass
+
+        # Tier 3: History manager
+        if hasattr(self, '_history_manager') and self._history_manager:
+            try:
+                df = self._history_manager.get_data(symbol)
+                if df is not None and not df.empty and 'close' in df.columns:
+                    return float(df['close'].iloc[-1])
+            except Exception:
+                pass
+
+        return 0.0
+
+    def _update_current_price_in_signals(self, price: float):
+        """Update current price in Recent Signals table for ENTERED positions."""
+        if not hasattr(self, 'signals_table'):
+            return
+
+        try:
+            for row in range(self.signals_table.rowCount()):
+                # Get status from column 5
+                status_item = self.signals_table.item(row, 5)
+                if status_item and status_item.text().upper() == "ENTERED":
+                    # Update Current column (column 6)
+                    current_item = self.signals_table.item(row, 6)
+                    if current_item:
+                        current_item.setText(f"{price:.2f}")
+        except Exception as e:
+            logger.debug(f"Failed to update current price in signals table: {e}")
+
+    def _update_current_price_in_position(self, price: float):
+        """Update current price in Current Position widget."""
+        if hasattr(self, 'current_price_value_label'):
+            try:
+                self.current_price_value_label.setText(f"{price:.2f}")
+            except Exception as e:
+                logger.debug(f"Failed to update current price in position widget: {e}")
 
     def _build_current_position_widget(self) -> QWidget:
         position_widget = QWidget()

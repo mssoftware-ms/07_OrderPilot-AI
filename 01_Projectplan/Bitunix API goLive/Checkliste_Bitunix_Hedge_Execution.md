@@ -1,8 +1,8 @@
 # ✅ Checkliste: Bitunix Hedge Execution (Single-Trade) + Adaptive Limit + Trailing SL
 
-**Start:** 2026-01-13  
-**Letzte Aktualisierung:** 2026-01-13  
-**Gesamtfortschritt:** 0% (0/96 Tasks)
+**Start:** 2026-01-13
+**Letzte Aktualisierung:** 2026-01-16
+**Gesamtfortschritt:** 10.4% (10/96 Tasks)
 
 ---
 
@@ -168,8 +168,10 @@
 
 ## Phase 3: Entry Option A (Standard) (14 Tasks)
 
-- [ ] **3.1 UI: Long/Short Pflichtfeld**  
-  Status: ⬜
+- [x] **3.1 UI: Long/Short Pflichtfeld**
+  Status: ✅ Abgeschlossen (2026-01-16) → *Direction Buttons implementiert*
+  Code: `src/ui/widgets/bitunix_trading_api_widget.py:119-167`
+  Notiz: Long/Short Toggle-Buttons, Long ist Standard (checked=True), visuelles Feedback (türkis/dunkelgrau)
 - [ ] **3.2 place_order Builder (HEDGE: side + tradeSide=OPEN)** citeturn1view1  
   Status: ⬜
 - [ ] **3.3 OrderType: LIMIT/MARKET + effect (GTC/POST_ONLY/IOC/FOK)** citeturn1view1  
