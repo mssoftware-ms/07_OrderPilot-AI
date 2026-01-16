@@ -464,7 +464,11 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.limit_price_spin.setVisible(is_limit)
         self.limit_price_label.setVisible(is_limit)
         if is_limit:
-            self._ensure_limit_price_default()
+            # Statisch mit aktuellem Kurs befüllen beim Sichtbar-Werden
+            if self._last_price > 0:
+                self.limit_price_spin.blockSignals(True)
+                self.limit_price_spin.setValue(self._last_price)
+                self.limit_price_spin.blockSignals(False)
         self._recalculate_from_price()
 
 
