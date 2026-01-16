@@ -66,15 +66,23 @@
 
 ### 4. Live-Preis-Streaming
 **Status:** ✅ Abgeschlossen (2026-01-16)
+**Bugfix:** ✅ Parent-Referenz korrigiert (2026-01-16)
 
 #### Funktionsweise
-- Chart Streaming Mixin aktualisiert Widget bei jedem Tick
+- Chart Streaming Mixin aktualisiert **alle UI-Elemente** bei jedem Tick
 - Preis-Update-Flow:
   1. Bitunix WebSocket sendet Tick → `_on_market_tick(event)`
   2. `_log_tick(price, volume)` aktualisiert Chart Footer "Last: $..."
-  3. Widget wird via `bitunix_trading_api_widget.set_price(price)` aktualisiert
-  4. Widget aktualisiert "Last Price" Label und `_last_price` intern
-  5. Bidirektionale Quantity ↔ Volume Berechnung wird getriggert
+  3. **Trading API Widget:** `parent.bitunix_trading_api_widget.set_price(price)`
+  4. **Recent Signals Tabelle:** `parent._update_current_price_in_signals(price)`
+  5. **Current Position Widget:** `parent._update_current_price_in_position(price)`
+  6. Widget aktualisiert "Last Price" Label und `_last_price` intern
+  7. Bidirektionale Quantity ↔ Volume Berechnung wird getriggert
+
+#### Parent-Child-Hierarchie
+- **Widget Location:** Widget ist in `ChartWindow` parent, **nicht** im chart selbst
+- **Korrektur:** `self.bitunix_trading_api_widget` → `parent.bitunix_trading_api_widget`
+- **Update-Methoden:** Auch Recent Signals und Current Position werden aktualisiert
 
 #### 3-Tier Price Fallback (wenn Widget Symbol wechselt)
 - **Tier 1:** Chart Tick Data (`_last_tick_price`)
@@ -83,8 +91,8 @@
 - **Tier 4:** Default 0.0
 
 **Code:**
-- `src/ui/widgets/chart_mixins/bitunix_streaming_mixin.py:96-103` (Live-Update)
-- `src/ui/widgets/chart_window_mixins/bot_ui_signals_widgets_mixin.py:127-172` (Fallback)
+- `src/ui/widgets/chart_mixins/bitunix_streaming_mixin.py:96-119` (Live-Update + Bugfix)
+- `src/ui/widgets/chart_window_mixins/bot_ui_signals_mixin.py:236-259` (Update-Methoden)
 - `src/ui/widgets/bitunix_trading_api_widget.py:686-698` (`set_price`)
 
 ---

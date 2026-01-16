@@ -145,17 +145,23 @@ Backend-Integration (Adapter, State Machine, WebSocket) steht noch aus.
 ### Live-Preis-Streaming - **VOLLSTÄNDIG**
 - **Status:** ✅ Abgeschlossen (2026-01-16)
 - **Code:**
-  - `src/ui/widgets/chart_mixins/bitunix_streaming_mixin.py:96-103` (Live-Update)
-  - `src/ui/widgets/chart_window_mixins/bot_ui_signals_widgets_mixin.py:127-172` (Fallback)
+  - `src/ui/widgets/chart_mixins/bitunix_streaming_mixin.py:96-119` (Live-Update)
+  - `src/ui/widgets/chart_window_mixins/bot_ui_signals_mixin.py:236-259` (Update-Methoden)
   - `src/ui/widgets/bitunix_trading_api_widget.py:686-698` (`set_price`)
 - **Features:**
-  - Chart Streaming Mixin aktualisiert Widget bei jedem Tick
-  - "Last Price" Label zeigt aktuellen Preis in Echtzeit
+  - **Chart Streaming Mixin** aktualisiert alle UI-Elemente bei jedem Tick
+  - **Trading API Widget:** "Last Price" Label zeigt aktuellen Preis in Echtzeit
+  - **Recent Signals Tabelle:** Spalte "Current" wird für Status "ENTERED" aktualisiert
+  - **Current Position Widget:** "Current:" Label zeigt Live-Preis
+  - **Parent-Child-Hierarchie:** Widget ist in ChartWindow parent, nicht im chart selbst
   - 3-Tier Price Fallback bei Symbol-Wechsel:
     1. Chart Tick Data
     2. Chart Footer Label Parsing ("Last: $...")
     3. History Manager Last Close Price
     4. Default 0.0
+- **Bugfix (2026-01-16):**
+  - Korrektur von `self.bitunix_trading_api_widget` zu `parent.bitunix_trading_api_widget`
+  - Hinzugefügt: Updates für Recent Signals und Current Position
 
 ### Leverage Slider ↔ SpinBox Synchronisation - **VOLLSTÄNDIG**
 - **Status:** ✅ Abgeschlossen (2026-01-16)

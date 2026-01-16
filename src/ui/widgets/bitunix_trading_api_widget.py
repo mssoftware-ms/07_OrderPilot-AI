@@ -68,11 +68,11 @@ class BitunixTradingAPIWidget(QGroupBox):
         h_layout = QHBoxLayout()
         h_layout.setSpacing(12)
 
-        # LEFT COLUMN: Symbol, Direction, Order Type, Limit Price (230px)
+        # LEFT COLUMN: Symbol, Direction, Order Type, Limit Price (270px)
         left_column = self._build_left_column()
         h_layout.addWidget(left_column)
 
-        # MIDDLE COLUMN: Stückzahl, Volumen, Leverage, Last Price (230px)
+        # MIDDLE COLUMN: Stückzahl, Volumen, Leverage, Last Price (270px)
         middle_column = self._build_middle_column()
         h_layout.addWidget(middle_column)
 
@@ -96,14 +96,14 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         self.setLayout(main_layout)
         self.setMaximumHeight(250)
-        self.setMinimumWidth(1040)
-        self.setMaximumWidth(1040)
+        self.setMinimumWidth(1080)
+        self.setMaximumWidth(1080)
         self._set_trade_mode_live(False)
 
     def _build_left_column(self) -> QWidget:
         """Build left column with Symbol, Direction, Order Type, Limit Price."""
         widget = QWidget()
-        widget.setFixedWidth(230)
+        widget.setFixedWidth(270)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -114,7 +114,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Symbol Selection
         self.symbol_combo = QComboBox()
-        self.symbol_combo.setFixedWidth(230)
+        self.symbol_combo.setFixedWidth(190)
         self.symbol_combo.addItems(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"])
         self.symbol_combo.currentTextChanged.connect(self._on_symbol_changed)
 
@@ -130,8 +130,8 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         self.long_btn = QPushButton("Long")
         self.short_btn = QPushButton("Short")
-        self.long_btn.setFixedWidth(109)
-        self.short_btn.setFixedWidth(109)
+        self.long_btn.setFixedWidth(92)
+        self.short_btn.setFixedWidth(92)
         self.long_btn.setFixedHeight(32)
         self.short_btn.setFixedHeight(32)
         self.long_btn.setCheckable(True)
@@ -183,8 +183,8 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.order_type_group.setExclusive(True)
         self.market_btn = QPushButton("Market")
         self.limit_btn = QPushButton("Limit")
-        self.market_btn.setFixedWidth(109)
-        self.limit_btn.setFixedWidth(109)
+        self.market_btn.setFixedWidth(92)
+        self.limit_btn.setFixedWidth(92)
         self.market_btn.setFixedHeight(32)
         self.limit_btn.setFixedHeight(32)
         self.market_btn.setCheckable(True)
@@ -233,7 +233,7 @@ class BitunixTradingAPIWidget(QGroupBox):
         grid.addWidget(self.limit_price_label, 3, 0)
 
         self.limit_price_spin = QDoubleSpinBox()
-        self.limit_price_spin.setFixedWidth(230)
+        self.limit_price_spin.setFixedWidth(190)
         self.limit_price_spin.setRange(0.0, 1000000.0)
         self.limit_price_spin.setDecimals(2)
         self.limit_price_spin.setSingleStep(0.1)
@@ -252,7 +252,7 @@ class BitunixTradingAPIWidget(QGroupBox):
         widget = QWidget()
         widget.setFixedWidth(270)
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 0, 50, 0)  # 50px right margin = shift left
         layout.setSpacing(6)
 
         grid = QGridLayout()
@@ -261,7 +261,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Quantity (Base Asset)
         self.quantity_spin = QDoubleSpinBox()
-        self.quantity_spin.setFixedWidth(270)
+        self.quantity_spin.setFixedWidth(150)
         self.quantity_spin.setRange(0.001, 10000.0)
         self.quantity_spin.setDecimals(3)
         self.quantity_spin.setSingleStep(0.001)
@@ -275,7 +275,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Volume (USDT)
         self.volume_spin = QDoubleSpinBox()
-        self.volume_spin.setFixedWidth(270)
+        self.volume_spin.setFixedWidth(150)
         self.volume_spin.setRange(1.0, 1000000.0)
         self.volume_spin.setDecimals(2)
         self.volume_spin.setSingleStep(10.0)
@@ -289,7 +289,7 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         # Leverage
         self.leverage_spin = QSpinBox()
-        self.leverage_spin.setFixedWidth(270)
+        self.leverage_spin.setFixedWidth(150)
         self.leverage_spin.setRange(1, 200)
         self.leverage_spin.setValue(10)
         self.leverage_spin.setSuffix("x")
@@ -315,7 +315,7 @@ class BitunixTradingAPIWidget(QGroupBox):
         """Build TP/SL column with Take Profit, Stop Loss, Trailing controls."""
         widget = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(90, 0, 0, 0)  # 90px left margin for X offset
         layout.setSpacing(6)
 
         grid = QGridLayout()
@@ -458,12 +458,14 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.trade_mode_btn.clicked.connect(self._on_trade_mode_changed)
         layout.addWidget(self.trade_mode_btn)
 
+        # 8px vertical spacing before slider
+        layout.addSpacing(8)
+
         # Leverage slider with orange indicator (horizontal centered to Sync SL)
         slider_layout = QHBoxLayout()
         slider_layout.setContentsMargins(0, 0, 0, 0)
-        slider_layout.addStretch()
         self.exposure_slider = QSlider(Qt.Orientation.Horizontal)
-        self.exposure_slider.setFixedWidth(130)
+        self.exposure_slider.setFixedWidth(270)
         self.exposure_slider.setRange(1, 200)
         self.exposure_slider.setSingleStep(10)
         self.exposure_slider.setPageStep(10)
@@ -492,27 +494,23 @@ class BitunixTradingAPIWidget(QGroupBox):
         """)
         self.exposure_slider.valueChanged.connect(self._on_exposure_changed)
         slider_layout.addWidget(self.exposure_slider)
-        slider_layout.addStretch()
         layout.addLayout(slider_layout)
 
-        # Preset buttons (10, 20, 30, ..., 200) - horizontal centered to Last SL Label
-        presets_outer_layout = QHBoxLayout()
-        presets_outer_layout.setContentsMargins(0, 0, 0, 0)
-        presets_outer_layout.addStretch()
-
+        # Preset buttons (10, 20, 30, ..., 200) - 270px width
         presets_widget = QWidget()
+        presets_widget.setFixedWidth(270)
         presets_layout = QGridLayout()
         presets_layout.setContentsMargins(0, 0, 0, 0)
-        presets_layout.setHorizontalSpacing(2)
+        presets_layout.setHorizontalSpacing(4)
         presets_layout.setVerticalSpacing(2)
 
         preset_values = list(range(10, 210, 10))  # 10-200
         for idx, value in enumerate(preset_values):
             btn = QPushButton(str(value))
-            btn.setFixedSize(12, 12)
+            btn.setFixedSize(24, 14)
             btn.setStyleSheet(
-                "background-color: #3a3a3a; color: #aaa; font-size: 7px; "
-                "border-radius: 1px; padding: 0px;"
+                "background-color: #3a3a3a; color: #aaa; font-size: 8px; "
+                "border-radius: 2px; padding: 0px;"
             )
             btn.clicked.connect(lambda _, v=value: self._on_preset_clicked(v))
             row = idx // 10
@@ -520,9 +518,7 @@ class BitunixTradingAPIWidget(QGroupBox):
             presets_layout.addWidget(btn, row, col)
 
         presets_widget.setLayout(presets_layout)
-        presets_outer_layout.addWidget(presets_widget)
-        presets_outer_layout.addStretch()
-        layout.addLayout(presets_outer_layout)
+        layout.addWidget(presets_widget)
 
         widget.setLayout(layout)
         return widget

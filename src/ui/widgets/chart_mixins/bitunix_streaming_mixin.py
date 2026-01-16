@@ -106,6 +106,15 @@ class BitunixStreamingMixin:
                 parent.bitunix_trading_api_widget.set_price(price)
                 logger.debug(f"Updated trading API widget with price: {price:.2f}")
 
+        # Update Recent Signals table and Current Position widget
+        if parent and hasattr(parent, '_update_current_price_in_signals'):
+            parent._update_current_price_in_signals(price)
+            logger.debug(f"Updated signals table with price: {price:.2f}")
+
+        if parent and hasattr(parent, '_update_current_price_in_position'):
+            parent._update_current_price_in_position(price)
+            logger.debug(f"Updated position widget with price: {price:.2f}")
+
     def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
         ts = tick_data.get('timestamp')
         if ts is None:
