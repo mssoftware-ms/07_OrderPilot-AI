@@ -44,12 +44,12 @@ class BotDisplaySignalsMixin:
         current_price = 0.0
         if hasattr(self, '_get_current_price'):
             current_price = self._get_current_price()
-        
+
         # Fallback if _get_current_price not available (should not happen in mixin composition)
         if current_price <= 0:
             if self._bot_controller and self._bot_controller._last_features:
                 current_price = self._bot_controller._last_features.close
-            
+
             if current_price <= 0 and hasattr(self, 'chart_widget'):
                 if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                     try:
@@ -73,17 +73,23 @@ class BotDisplaySignalsMixin:
                     sig["current_price"] = current_price
                     leverage = self._get_signal_leverage(sig)
 
-                    # Calculate P&L
+                    # Calculate RAW P&L (without leverage)
                     if side.lower() == "long":
-                        pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                        raw_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                     else:
-                        pnl_pct = ((entry_price - current_price) / entry_price) * 100
+                        raw_pnl_pct = ((entry_price - current_price) / entry_price) * 100
 
-                    # Issue #1: Apply static leverage captured on signal
+                    # Issue #10: Store RAW P&L for Current Position display (WITHOUT leverage)
+                    raw_pnl_currency = invested * (raw_pnl_pct / 100) if invested > 0 else 0
+                    sig["pnl_percent_raw"] = raw_pnl_pct
+                    sig["pnl_currency_raw"] = raw_pnl_currency
+
+                    # Issue #1: Apply static leverage captured on signal for Trading Table
+                    pnl_pct = raw_pnl_pct
                     if leverage > 1:
                         pnl_pct = pnl_pct * leverage
 
-                    # Issue #3: Subtract BitUnix fees from P&L
+                    # Issue #3: Subtract BitUnix fees from P&L (leveraged)
                     if hasattr(self, 'get_bitunix_fees'):
                         maker_fee, taker_fee = self.get_bitunix_fees()
                         # BitUnix Futures: both entry AND exit are market (taker) orders
@@ -91,6 +97,7 @@ class BotDisplaySignalsMixin:
                         pnl_pct = pnl_pct - total_fees_pct
                         sig["fees_pct"] = total_fees_pct
 
+                    # Issue #10: pnl_currency and pnl_percent include leverage for Trading Table
                     if invested > 0:
                         pnl_currency = invested * (pnl_pct / 100)
                     elif quantity > 0:

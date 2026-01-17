@@ -101,9 +101,11 @@ class BotDisplayPositionMixin:
             self.position_current_label.setText(f"{current:.4f}")
             open_signal["current_price"] = current
             if entry_price > 0:
+                # Issue #10: _calculate_pnl returns raw P&L (without leverage)
+                # Store in raw fields, don't overwrite leveraged values in pnl_percent/pnl_currency
                 pnl_pct, pnl_currency = self._calculate_pnl(entry_price, current, invested, side)
-                open_signal["pnl_percent"] = pnl_pct
-                open_signal["pnl_currency"] = pnl_currency
+                open_signal["pnl_percent_raw"] = pnl_pct
+                open_signal["pnl_currency_raw"] = pnl_currency
                 self._set_pnl_display(pnl_pct, pnl_currency)
             else:
                 self.position_pnl_label.setText("-")
@@ -379,8 +381,13 @@ class BotDisplayPositionMixin:
         invested: float,
         quantity: float,
     ) -> tuple[float | None, float | None]:
-        pnl_percent = signal.get("pnl_percent")
-        pnl_currency = signal.get("pnl_currency")
+        # Issue #10: Use RAW P&L values (WITHOUT leverage) for Current Position display
+        # pnl_percent_raw/pnl_currency_raw are stored without leverage,
+        # pnl_percent/pnl_currency include leverage for the Trading Table
+        pnl_percent = signal.get("pnl_percent_raw")
+        pnl_currency = signal.get("pnl_currency_raw")
+
+        # Fallback: calculate if raw values not available
         if pnl_percent is None and entry_price > 0 and current_price > 0:
             if side_upper == "SHORT":
                 pnl_percent = ((entry_price - current_price) / entry_price) * 100

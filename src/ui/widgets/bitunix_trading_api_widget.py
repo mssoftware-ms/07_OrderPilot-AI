@@ -967,7 +967,19 @@ class BitunixTradingAPIWidget(QGroupBox):
             logger.error(f"Adapter connect failed: {exc}", exc_info=True)
             self.adapter_status_label.setText("error")
             self.adapter_status_label.setStyleSheet("color: #f44336; font-size: 10px;")
-            QMessageBox.critical(self, "Connection Error", f"Adapter connect failed:\n\n{exc}")
+
+            # Build helpful error message based on error code
+            error_str = str(exc)
+            if "MISSING_CREDENTIALS" in error_str:
+                error_msg = "API credentials not configured.\n\nSet BITUNIX_API_KEY and BITUNIX_API_SECRET as environment variables."
+            elif "AUTH_FAILED" in error_str:
+                error_msg = "Authentication failed.\n\nPlease verify your Bitunix API key and secret are correct."
+            elif "NETWORK_ERROR" in error_str:
+                error_msg = "Network error.\n\nPlease check your internet connection and try again."
+            else:
+                error_msg = f"Connection failed:\n\n{exc}"
+
+            QMessageBox.critical(self, "Bitunix Connection Error", error_msg)
             self._set_trade_mode_live(False)  # Revert to paper mode
 
     def _disconnect_adapter_for_paper_mode(self) -> None:

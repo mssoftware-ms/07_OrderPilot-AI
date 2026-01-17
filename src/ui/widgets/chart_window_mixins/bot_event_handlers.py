@@ -34,11 +34,18 @@ class BotEventHandlersMixin:
         except Exception as e:
             logger.error(f"Failed to start bot: {e}")
             self._update_bot_status("ERROR", "#f44336")
+            # Issue #9: Update Trading tab button on error
+            if hasattr(self, '_update_signals_tab_bot_button'):
+                self._update_signals_tab_bot_button(running=False)
             return
 
         self.bot_start_btn.setEnabled(False)
         self.bot_stop_btn.setEnabled(True)
         self.bot_pause_btn.setEnabled(True)
+
+        # Issue #9: Update Trading tab button to show running state (green)
+        if hasattr(self, '_update_signals_tab_bot_button'):
+            self._update_signals_tab_bot_button(running=True)
 
     def _on_bot_stop_clicked(self) -> None:
         """Handle bot stop button click."""
@@ -49,6 +56,10 @@ class BotEventHandlersMixin:
         self.bot_start_btn.setEnabled(True)
         self.bot_stop_btn.setEnabled(False)
         self.bot_pause_btn.setEnabled(False)
+
+        # Issue #9: Update Trading tab button to show stopped state (red)
+        if hasattr(self, '_update_signals_tab_bot_button'):
+            self._update_signals_tab_bot_button(running=False)
 
     def _on_bot_pause_clicked(self) -> None:
         """Handle bot pause button click."""

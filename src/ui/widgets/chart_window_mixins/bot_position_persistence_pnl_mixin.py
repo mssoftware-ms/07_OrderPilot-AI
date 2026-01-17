@@ -28,16 +28,18 @@ class BotPositionPersistencePnlMixin:
             if sig.get("status") == "ENTERED" and sig.get("is_open", False):
                 if not self._update_signal_pnl(sig, current_price):
                     continue
-                pnl_pct = sig.get("pnl_percent", 0)
-                pnl_currency = sig.get("pnl_currency", 0)
                 table_updated = True
 
                 # Check trailing stop activation (from BotDisplayManagerMixin)
                 if hasattr(self, '_check_tr_activation'):
                     self._check_tr_activation(sig, current_price)
 
-                # Update Current Position display
-                self._update_position_labels(current_price, pnl_pct, pnl_currency)
+                # Issue #10: Update Current Position display with RAW P&L (WITHOUT leverage)
+                # The signal's pnl_percent/pnl_currency includes leverage for the Trading Table,
+                # but Current Position should show raw P&L without leverage
+                raw_pnl_pct = sig.get("pnl_percent_raw", 0)
+                raw_pnl_currency = sig.get("pnl_currency_raw", 0)
+                self._update_position_labels(current_price, raw_pnl_pct, raw_pnl_currency)
 
                 # Update derivative P&L if enabled
                 self._update_derivative_pnl(sig, current_price)
@@ -68,22 +70,29 @@ class BotPositionPersistencePnlMixin:
             return False
 
         sig["current_price"] = current_price
-        pnl_pct = self._calculate_pnl_pct(entry_price, current_price, side)
+        raw_pnl_pct = self._calculate_pnl_pct(entry_price, current_price, side)
 
-        # Issue #1: Apply static leverage stored on the signal
+        # Issue #10: Store RAW P&L (without leverage) for Current Position display
+        raw_pnl_currency = invested * (raw_pnl_pct / 100) if invested > 0 else 0
+        sig["pnl_percent_raw"] = raw_pnl_pct
+        sig["pnl_currency_raw"] = raw_pnl_currency
+
+        # Issue #1: Apply static leverage stored on the signal for Trading Table
+        pnl_pct = raw_pnl_pct
         leverage = 1.0
         if hasattr(self, "_get_signal_leverage"):
             leverage = self._get_signal_leverage(sig)
             if leverage > 1:
                 pnl_pct = pnl_pct * leverage
 
-        # Issue #3: Subtract BitUnix fees from P&L
+        # Issue #3: Subtract BitUnix fees from P&L (leveraged)
         if hasattr(self, 'get_bitunix_fees'):
             maker_fee, taker_fee = self.get_bitunix_fees()
             total_fees_pct = taker_fee + maker_fee
             pnl_pct = pnl_pct - total_fees_pct
             sig["fees_pct"] = total_fees_pct
 
+        # Issue #10: pnl_percent and pnl_currency include leverage for Trading Table
         pnl_currency = invested * (pnl_pct / 100) if invested > 0 else 0
         sig["pnl_currency"] = pnl_currency
         sig["pnl_percent"] = pnl_pct

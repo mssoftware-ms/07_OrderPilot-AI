@@ -446,6 +446,20 @@ class BotUISignalsMixin:
         export_btn.clicked.connect(self._on_export_signals_clicked)
         toolbar.addWidget(export_btn)
 
+        # Issue #9: Start Bot Button (same function as in Bot tab, green/red status)
+        self.signals_tab_start_bot_btn = QPushButton("▶ Start Bot")
+        self.signals_tab_start_bot_btn.setFixedHeight(24)
+        self.signals_tab_start_bot_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 12px; background-color: #ef5350; color: white; font-weight: bold;"
+        )
+        self.signals_tab_start_bot_btn.setToolTip(
+            "Startet/Stoppt den Trading Bot\n"
+            "Grün = Bot läuft\n"
+            "Rot = Bot gestoppt"
+        )
+        self.signals_tab_start_bot_btn.clicked.connect(self._on_signals_tab_bot_toggle_clicked)
+        toolbar.addWidget(self.signals_tab_start_bot_btn)
+
         toolbar.addStretch()
 
         signals_inner.addLayout(toolbar)
@@ -1125,3 +1139,49 @@ class BotUISignalsMixin:
 
         # Issue #3: Hebel column is always visible now
         self.signals_table.setColumnHidden(19, False)
+
+    # =========================================================================
+    # Issue #9: Start Bot Toggle Button in Trading Tab
+    # =========================================================================
+
+    def _on_signals_tab_bot_toggle_clicked(self) -> None:
+        """Handle Start Bot button click in Trading (Signals) tab.
+
+        Toggles bot on/off and updates button appearance.
+        Same functionality as Start/Stop buttons in Bot tab.
+        """
+        # Check if bot is running by looking at bot_controller
+        is_running = (
+            hasattr(self, '_bot_controller')
+            and self._bot_controller is not None
+            and getattr(self._bot_controller, '_running', False)
+        )
+
+        if is_running:
+            # Stop the bot
+            logger.info("Signals Tab: Stopping bot")
+            self._on_bot_stop_clicked()
+        else:
+            # Start the bot
+            logger.info("Signals Tab: Starting bot")
+            self._on_bot_start_clicked()
+
+    def _update_signals_tab_bot_button(self, running: bool) -> None:
+        """Update the Start Bot button appearance in Trading tab.
+
+        Args:
+            running: True if bot is running (green), False if stopped (red)
+        """
+        if not hasattr(self, 'signals_tab_start_bot_btn'):
+            return
+
+        if running:
+            self.signals_tab_start_bot_btn.setText("⏹ Stop Bot")
+            self.signals_tab_start_bot_btn.setStyleSheet(
+                "font-size: 10px; padding: 2px 12px; background-color: #26a69a; color: white; font-weight: bold;"
+            )
+        else:
+            self.signals_tab_start_bot_btn.setText("▶ Start Bot")
+            self.signals_tab_start_bot_btn.setStyleSheet(
+                "font-size: 10px; padding: 2px 12px; background-color: #ef5350; color: white; font-weight: bold;"
+            )

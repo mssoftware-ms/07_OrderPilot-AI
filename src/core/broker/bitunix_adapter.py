@@ -147,6 +147,17 @@ class BitunixAdapter(BrokerAdapter):
                 details={}
             )
 
+        # Check if credentials are set
+        if not self.api_key or not self.api_secret:
+            self._auth_failed = True
+            raise BrokerConnectionError(
+                code="BITUNIX_MISSING_CREDENTIALS",
+                message="Bitunix API credentials not configured. Set BITUNIX_API_KEY and BITUNIX_API_SECRET environment variables.",
+                details={"api_key_set": bool(self.api_key), "api_secret_set": bool(self.api_secret)}
+            )
+
+        logger.info(f"Connecting to Bitunix API at {self.base_url} (API key: {self.api_key[:8]}...)")
+
         try:
             # Create aiohttp session
             self._session = aiohttp.ClientSession(
@@ -158,22 +169,38 @@ class BitunixAdapter(BrokerAdapter):
             if not balance:
                 raise BrokerConnectionError(
                     code="BITUNIX_AUTH_FAILED",
-                    message="Failed to authenticate with Bitunix API",
-                    details={"api_key": self.api_key[:8] + "..."}
+                    message="Failed to authenticate with Bitunix API. Check API key and secret.",
+                    details={"api_key": self.api_key[:8] + "...", "base_url": self.base_url}
                 )
 
             logger.info(f"✓ Connected to Bitunix ({self.base_url})")
 
+        except BrokerConnectionError:
+            # Don't wrap BrokerConnectionError again, just re-raise
+            if self._session:
+                await self._session.close()
+                self._session = None
+            self._auth_failed = True
+            raise
+        except aiohttp.ClientError as e:
+            if self._session:
+                await self._session.close()
+                self._session = None
+            self._auth_failed = True
+            raise BrokerConnectionError(
+                code="BITUNIX_NETWORK_ERROR",
+                message=f"Network error connecting to Bitunix: {str(e)}",
+                details={"error": str(e), "base_url": self.base_url}
+            )
         except Exception as e:
             if self._session:
                 await self._session.close()
                 self._session = None
-            # Flag auth failure to stop repeated attempts
             self._auth_failed = True
             raise BrokerConnectionError(
                 code="BITUNIX_CONNECT_FAILED",
                 message=f"Failed to connect to Bitunix: {str(e)}",
-                details={"error": str(e)}
+                details={"error": str(e), "error_type": type(e).__name__}
             )
 
     async def _cleanup_resources(self) -> None:

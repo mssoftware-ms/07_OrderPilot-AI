@@ -1,1 +1,1 @@
-READ-ONLY Modus aktiv. Nutze analyzer für Architekturanalyse, documenter für Dokumentationsbedarf.
+Nutze Subagenten für spezialisierte Aufgaben. Delegiere Tests an den tester-Agenten.
