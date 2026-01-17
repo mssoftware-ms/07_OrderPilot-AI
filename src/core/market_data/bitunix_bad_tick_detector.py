@@ -1,42 +1,51 @@
-"""Bitunix-specific Bad Tick Detector.
+"""Bad Tick Detector - Detection and Cleaning Logic.
 
-Handles bad tick detection for Bitunix HistoricalBar objects.
-Completely separate from Alpaca bad tick detection.
+Handles bad tick detection using multiple methods:
+- Hampel Filter (Modified Z-score with MAD)
+- Z-Score Outlier Detection
+- Basic OHLC Consistency Checks
+
+Module 2/4 of historical_data_manager.py split (Lines 415-682).
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from decimal import Decimal
 
 import numpy as np
 import pandas as pd
 
-from .historical_data_config import FilterConfig, FilterStats
-from .types import HistoricalBar
+from .bitunix_historical_data_config import FilterConfig, FilterStats
 
 logger = logging.getLogger(__name__)
 
 
-class BitunixBadTickDetector:
-    """Detects and cleans bad ticks for Bitunix data using HistoricalBar objects."""
+class BadTickDetector:
+    """Detects and cleans bad ticks using configurable methods.
 
-    def __init__(self, config: FilterConfig | None = None):
-        """Initialize detector with configuration.
+    Supports three detection methods:
+    - Hampel: Modified Z-score using Median Absolute Deviation (MAD)
+    - Z-score: Standard deviation-based outlier detection
+    - Basic: OHLC consistency and volume spike checks
+    """
+
+    def __init__(self, config: FilterConfig):
+        """
+        Initialize detector with configuration.
 
         Args:
-            config: Filter configuration (uses defaults if None)
+            config: FilterConfig instance
         """
-        self.config = config or FilterConfig()
+        self.config = config
 
     async def filter_bad_ticks(
-        self, bars: list[HistoricalBar], symbol: str
-    ) -> tuple[list[HistoricalBar], FilterStats]:
-        """Apply bad tick filtering to Bitunix bars.
+        self, bars: list, symbol: str
+    ) -> tuple[list, FilterStats]:
+        """
+        Apply bad tick filtering to bars.
 
         Args:
-            bars: List of HistoricalBar objects from Bitunix
+            bars: List of Bar objects
             symbol: Trading symbol for logging
 
         Returns:
@@ -45,15 +54,15 @@ class BitunixBadTickDetector:
         if not self.config.enabled or not bars:
             return bars, FilterStats(total_bars=len(bars))
 
-        # Convert HistoricalBar to DataFrame
+        # Convert to DataFrame
         df = pd.DataFrame([
             {
                 "timestamp": b.timestamp,
-                "open": float(b.open),
-                "high": float(b.high),
-                "low": float(b.low),
-                "close": float(b.close),
-                "volume": int(b.volume),
+                "open": b.open,
+                "high": b.high,
+                "low": b.low,
+                "close": b.close,
+                "volume": b.volume,
             }
             for b in bars
         ])
@@ -93,29 +102,41 @@ class BitunixBadTickDetector:
                 f"using {self.config.method} method, mode={self.config.cleaning_mode}"
             )
 
-        # Convert back to HistoricalBar objects (Bitunix-specific)
+        # Convert back to Bar objects
+        from alpaca.data.models.bars import Bar
+        from datetime import datetime
+
         cleaned_bars = []
         for _, row in df.iterrows():
             ts = row["timestamp"]
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
-
             cleaned_bars.append(
-                HistoricalBar(
+                Bar(
+                    symbol=bars[0].symbol if bars else symbol,
                     timestamp=ts,
-                    open=Decimal(str(row["open"])),
-                    high=Decimal(str(row["high"])),
-                    low=Decimal(str(row["low"])),
-                    close=Decimal(str(row["close"])),
-                    volume=int(row["volume"]),
-                    source="bitunix",
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["volume"]),
+                    trade_count=getattr(bars[0], "trade_count", 0) if bars else 0,
+                    vwap=getattr(bars[0], "vwap", None) if bars else None,
                 )
             )
 
         return cleaned_bars, stats
 
     def _detect_bad_ticks(self, df: pd.DataFrame) -> pd.Series:
-        """Detect bad ticks using configured method."""
+        """
+        Detect bad ticks using configured method.
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            Boolean mask (True = bad tick)
+        """
         if self.config.method == "hampel":
             return self._detect_hampel_outliers(df)
         elif self.config.method == "zscore":
@@ -127,14 +148,23 @@ class BitunixBadTickDetector:
             return self._detect_basic_outliers(df)
 
     def _detect_hampel_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """Hampel Filter (Modified Z-score with MAD)."""
+        """
+        Hampel Filter: Modified Z-score using Median Absolute Deviation (MAD).
+
+        More robust than standard Z-score for financial data with fat tails.
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            Boolean mask (True = outlier)
+        """
         bad_mask = pd.Series(False, index=df.index)
 
         for col in ["close", "high", "low", "open"]:
             if col not in df.columns:
                 continue
 
-            # Already converted to float in DataFrame creation
             values = df[col].values
             n = len(values)
             window = self.config.hampel_window
@@ -157,14 +187,21 @@ class BitunixBadTickDetector:
         return bad_mask
 
     def _detect_zscore_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """Z-Score outlier detection (standard deviations from mean)."""
+        """
+        Z-Score outlier detection (standard deviations from mean).
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            Boolean mask (True = outlier)
+        """
         bad_mask = pd.Series(False, index=df.index)
 
         for col in ["close", "high", "low", "open"]:
             if col not in df.columns:
                 continue
 
-            # Already converted to float in DataFrame creation
             values = df[col]
             mean = values.mean()
             std = values.std()
@@ -178,7 +215,20 @@ class BitunixBadTickDetector:
         return bad_mask
 
     def _detect_basic_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """Basic OHLC consistency checks and volume spikes."""
+        """
+        Basic OHLC consistency checks and volume spikes.
+
+        Detects:
+        - OHLC relationship violations (high < low, close outside high/low)
+        - Extreme volume spikes
+        - Zero or negative prices
+
+        Args:
+            df: DataFrame with OHLCV data
+
+        Returns:
+            Boolean mask (True = bad tick)
+        """
         bad_mask = pd.Series(False, index=df.index)
 
         # OHLC consistency
@@ -203,7 +253,16 @@ class BitunixBadTickDetector:
         return bad_mask
 
     def _interpolate_bad_ticks(self, df: pd.DataFrame, bad_mask: pd.Series) -> pd.DataFrame:
-        """Interpolate bad ticks using linear interpolation."""
+        """
+        Interpolate bad ticks using linear interpolation.
+
+        Args:
+            df: DataFrame with OHLCV data
+            bad_mask: Boolean mask of bad ticks
+
+        Returns:
+            DataFrame with interpolated values
+        """
         df = df.copy()
 
         for col in ["open", "high", "low", "close", "volume"]:
@@ -213,22 +272,28 @@ class BitunixBadTickDetector:
             # Set bad values to NaN
             df.loc[bad_mask, col] = np.nan
 
-            # Infer objects before interpolation
-            df[col] = df[col].infer_objects(copy=False)
-
             # Interpolate
             df[col] = df[col].interpolate(method="linear", limit_direction="both")
 
             # Forward fill if interpolation fails
-            df[col] = df[col].ffill()
+            df[col] = df[col].fillna(method="ffill")
 
             # Backward fill if still NaN
-            df[col] = df[col].bfill()
+            df[col] = df[col].fillna(method="bfill")
 
         return df
 
     def _forward_fill_bad_ticks(self, df: pd.DataFrame, bad_mask: pd.Series) -> pd.DataFrame:
-        """Forward fill bad ticks with previous valid values."""
+        """
+        Forward fill bad ticks with previous valid values.
+
+        Args:
+            df: DataFrame with OHLCV data
+            bad_mask: Boolean mask of bad ticks
+
+        Returns:
+            DataFrame with forward-filled values
+        """
         df = df.copy()
 
         for col in ["open", "high", "low", "close", "volume"]:
@@ -239,9 +304,9 @@ class BitunixBadTickDetector:
             df.loc[bad_mask, col] = np.nan
 
             # Forward fill
-            df[col] = df[col].ffill()
+            df[col] = df[col].fillna(method="ffill")
 
             # Backward fill if still NaN
-            df[col] = df[col].bfill()
+            df[col] = df[col].fillna(method="bfill")
 
         return df

@@ -15,7 +15,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from .historical_data_config import FilterConfig, FilterStats
+from .alpaca_historical_data_config import FilterConfig, FilterStats
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class BadTickDetector:
                 ts = pd.to_datetime(ts)
             cleaned_bars.append(
                 Bar(
-                    symbol=symbol,  # Use parameter directly (HistoricalBar has no symbol attribute)
+                    symbol=bars[0].symbol if bars else symbol,
                     timestamp=ts,
                     open=float(row["open"]),
                     high=float(row["high"]),
@@ -165,8 +165,7 @@ class BadTickDetector:
             if col not in df.columns:
                 continue
 
-            # Convert to float to handle Decimal values from Bitunix API
-            values = df[col].astype(float).values
+            values = df[col].values
             n = len(values)
             window = self.config.hampel_window
 
@@ -203,8 +202,7 @@ class BadTickDetector:
             if col not in df.columns:
                 continue
 
-            # Convert to float to handle Decimal values from Bitunix API
-            values = df[col].astype(float)
+            values = df[col]
             mean = values.mean()
             std = values.std()
 
@@ -274,17 +272,14 @@ class BadTickDetector:
             # Set bad values to NaN
             df.loc[bad_mask, col] = np.nan
 
-            # Infer objects before interpolation (fixes FutureWarning)
-            df[col] = df[col].infer_objects(copy=False)
-
             # Interpolate
             df[col] = df[col].interpolate(method="linear", limit_direction="both")
 
-            # Forward fill if interpolation fails (new pandas syntax)
-            df[col] = df[col].ffill()
+            # Forward fill if interpolation fails
+            df[col] = df[col].fillna(method="ffill")
 
-            # Backward fill if still NaN (new pandas syntax)
-            df[col] = df[col].bfill()
+            # Backward fill if still NaN
+            df[col] = df[col].fillna(method="bfill")
 
         return df
 
@@ -308,10 +303,10 @@ class BadTickDetector:
             # Set bad values to NaN
             df.loc[bad_mask, col] = np.nan
 
-            # Forward fill (new pandas syntax)
-            df[col] = df[col].ffill()
+            # Forward fill
+            df[col] = df[col].fillna(method="ffill")
 
-            # Backward fill if still NaN (new pandas syntax)
-            df[col] = df[col].bfill()
+            # Backward fill if still NaN
+            df[col] = df[col].fillna(method="bfill")
 
         return df

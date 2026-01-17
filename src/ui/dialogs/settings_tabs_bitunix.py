@@ -111,6 +111,15 @@ class SettingsTabsBitunix:
         self.parent.bitunix_dl_timeframe.setCurrentText("1min")
         download_layout.addRow("Timeframe:", self.parent.bitunix_dl_timeframe)
 
+        # Bad Tick Filter Checkbox
+        self.parent.bitunix_filter_bad_ticks = QCheckBox("Enable Bad Tick Filter (Hampel)")
+        self.parent.bitunix_filter_bad_ticks.setChecked(True)
+        self.parent.bitunix_filter_bad_ticks.setToolTip(
+            "Automatically detect and clean bad price ticks using Hampel filter. "
+            "Uncheck to download raw data without filtering."
+        )
+        download_layout.addRow(self.parent.bitunix_filter_bad_ticks)
+
         # Estimated info
         self.parent.bitunix_dl_estimate = QLabel("")
         self._update_bitunix_estimate()
@@ -191,6 +200,7 @@ class SettingsTabsBitunix:
 
         days = self.parent.bitunix_dl_days.value()
         timeframe = self.parent.bitunix_dl_timeframe.currentText()
+        enable_filter = self.parent.bitunix_filter_bad_ticks.isChecked()
 
         # Create worker
         self._bitunix_download_worker = HistoricalDownloadWorker(
@@ -199,6 +209,7 @@ class SettingsTabsBitunix:
             days=days,
             timeframe=timeframe,
             mode=mode,
+            enable_bad_tick_filter=enable_filter,
         )
 
         # Connect signals

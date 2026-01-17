@@ -27,6 +27,7 @@ class HistoricalDownloadWorker(QObject):
         days: int,
         timeframe: str,
         mode: str = "download",  # "download" or "sync"
+        enable_bad_tick_filter: bool = True,  # Enable/disable bad tick filtering
     ):
         """Initialize download worker.
 
@@ -36,6 +37,7 @@ class HistoricalDownloadWorker(QObject):
             days: Number of days of history (ignored in sync mode)
             timeframe: Timeframe string (1min, 5min, 15min, 1h, 4h, 1d)
             mode: "download" (replace existing) or "sync" (update missing)
+            enable_bad_tick_filter: Enable/disable bad tick filtering
         """
         super().__init__()
         self.provider_type = provider_type
@@ -43,6 +45,7 @@ class HistoricalDownloadWorker(QObject):
         self.days = days
         self.timeframe = timeframe
         self.mode = mode
+        self.enable_bad_tick_filter = enable_bad_tick_filter
         self._cancelled = False
 
     def cancel(self):
@@ -66,7 +69,6 @@ class HistoricalDownloadWorker(QObject):
     async def _download(self):
         """Async download implementation."""
         from src.config.loader import config_manager
-        from src.core.market_data.historical_data_manager import HistoricalDataManager
         from src.core.market_data.types import DataSource, Timeframe
         from src.database import initialize_database
 
@@ -83,17 +85,11 @@ class HistoricalDownloadWorker(QObject):
 
         self.progress.emit(5, "Initializing database...")
 
-        # Initialize database
-        try:
-            profile = config_manager.load_profile()
-            initialize_database(profile.database)
-        except Exception as e:
-            logger.warning(f"Database init issue: {e}, trying SQLite fallback")
-            # Fallback to SQLite
-            profile = config_manager.load_profile()
-            profile.database.engine = "sqlite"
-            profile.database.path = "./data/orderpilot_historical.db"
-            initialize_database(profile.database)
+        # Initialize database - use same SQLite DB as main app
+        profile = config_manager.load_profile()
+        profile.database.engine = "sqlite"
+        profile.database.path = "./data/orderpilot.db"  # Same as main app!
+        initialize_database(profile.database)
 
         if self._cancelled:
             self.finished.emit(False, "Download cancelled", {})
@@ -125,10 +121,10 @@ class HistoricalDownloadWorker(QObject):
         )
 
     async def _download_alpaca(self, timeframe) -> dict:
-        """Download from Alpaca."""
+        """Download from Alpaca - COMPLETELY SEPARATE from Bitunix workflow."""
         from src.config.loader import config_manager
         from src.core.market_data.alpaca_crypto_provider import AlpacaCryptoProvider
-        from src.core.market_data.historical_data_manager import HistoricalDataManager
+        from src.core.market_data.alpaca_historical_data_manager import AlpacaHistoricalDataManager
         from src.core.market_data.types import DataSource
 
         # Get credentials (optional for crypto)
@@ -142,22 +138,10 @@ class HistoricalDownloadWorker(QObject):
             self.progress.emit(15, "Using public Alpaca crypto API...")
             provider = AlpacaCryptoProvider()
 
-        manager = HistoricalDataManager()
+        # Alpaca-specific manager (NO shared code with Bitunix)
+        manager = AlpacaHistoricalDataManager()
 
         self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
-
-        # Calculate estimated batches for progress tracking
-        bars_per_day_map = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        bars_per_day = bars_per_day_map.get(self.timeframe, 1440)
-        total_bars_estimated = self.days * bars_per_day
-        estimated_batches = (total_bars_estimated // 200) + 1  # Alpaca also returns ~200 bars per request
 
         # Custom progress tracking
         results = {}
@@ -168,18 +152,11 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
-            # Create progress callback that calculates actual progress based on batch number
-            def make_progress_callback(sym: str, est_batches: int):
+            # Create progress callback that emits detailed updates
+            def make_progress_callback(sym: str, base_pct: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Calculate progress: 20% to 95% (75 percentage points available)
-                    if est_batches > 0:
-                        batch_progress = (batch_num / est_batches) * 75
-                        current_pct = 20 + min(int(batch_progress), 75)  # Cap at 95%
-                    else:
-                        current_pct = 20
-
-                    # Emit progress with detailed status
-                    self.progress.emit(current_pct, f"{sym}: {status_msg}")
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
@@ -191,7 +168,7 @@ class HistoricalDownloadWorker(QObject):
                     source=DataSource.ALPACA_CRYPTO,
                     batch_size=100,
                     replace_existing=True,  # Delete old data first (removes bad ticks)
-                    progress_callback=make_progress_callback(symbol, estimated_batches),
+                    progress_callback=make_progress_callback(symbol, progress_pct),
                 )
                 results.update(symbol_results)
             except Exception as e:
@@ -201,8 +178,8 @@ class HistoricalDownloadWorker(QObject):
         return results
 
     async def _download_bitunix(self, timeframe) -> dict:
-        """Download from Bitunix."""
-        from src.core.market_data.historical_data_manager import HistoricalDataManager
+        """Download from Bitunix - COMPLETELY SEPARATE from Alpaca workflow."""
+        from src.core.market_data.bitunix_historical_data_manager import BitunixHistoricalDataManager
         from src.core.market_data.providers.bitunix_provider import BitunixProvider
         from src.core.market_data.types import DataSource
 
@@ -217,22 +194,13 @@ class HistoricalDownloadWorker(QObject):
             max_batches=3000,
         )
 
-        manager = HistoricalDataManager()
+        # Bitunix-specific manager (NO shared code with Alpaca)
+        # Create FilterConfig based on checkbox setting
+        from src.core.market_data.bitunix_historical_data_config import FilterConfig
+        filter_config = FilterConfig(enabled=self.enable_bad_tick_filter)
+        manager = BitunixHistoricalDataManager(filter_config=filter_config)
 
         self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
-
-        # Calculate estimated batches for progress tracking
-        bars_per_day_map = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        bars_per_day = bars_per_day_map.get(self.timeframe, 1440)
-        total_bars_estimated = self.days * bars_per_day
-        estimated_batches = (total_bars_estimated // 200) + 1  # Bitunix returns ~200 bars per request
 
         results = {}
         for i, symbol in enumerate(self.symbols):
@@ -242,25 +210,18 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
-            # Create progress callback that calculates actual progress based on batch number
-            def make_progress_callback(sym: str, est_batches: int):
+            # Create progress callback that emits detailed updates
+            def make_progress_callback(sym: str, base_pct: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Calculate progress: 20% to 95% (75 percentage points available)
-                    if est_batches > 0:
-                        batch_progress = (batch_num / est_batches) * 75
-                        current_pct = 20 + min(int(batch_progress), 75)  # Cap at 95%
-                    else:
-                        current_pct = 20
-
-                    # Emit progress with detailed status
-                    self.progress.emit(current_pct, f"{sym}: {status_msg}")
+                    # Emit detailed progress with batch info
+                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
                 if self.mode == "sync":
                     # Smart Sync: Check coverage and download only missing data
                     self.progress.emit(progress_pct, f"Syncing {symbol} (filling gaps)...")
-
+                    
                     symbol_results = await manager.sync_history_to_now(
                         provider=provider,
                         symbols=[symbol],
@@ -268,7 +229,7 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         filter_config=None, # Use default
-                        progress_callback=make_progress_callback(symbol, estimated_batches)
+                        progress_callback=make_progress_callback(symbol, progress_pct)
                     )
                 else:
                     # Full Download: Replace existing data
@@ -280,7 +241,7 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         replace_existing=True,  # Delete old data first (removes bad ticks)
-                        progress_callback=make_progress_callback(symbol, estimated_batches),
+                        progress_callback=make_progress_callback(symbol, progress_pct),
                     )
                 results.update(symbol_results)
             except Exception as e:
