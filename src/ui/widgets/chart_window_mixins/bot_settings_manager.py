@@ -106,7 +106,9 @@ class BotSettingsManager:
             'max_daily_loss': ('max_daily_loss_spin', 'double'),
             'disable_restrictions': ('disable_restrictions_cb', 'check'),
             'disable_macd_exit': ('disable_macd_exit_cb', 'check'),
+            'disable_macd_entry': ('disable_macd_entry_cb', 'check'),
             'disable_rsi_exit': ('disable_rsi_exit_cb', 'check'),
+            'disable_rsi_entry': ('disable_rsi_entry_cb', 'check'),
             'enable_derivathandel': ('enable_derivathandel_cb', 'check'),
             # Leverage Override
             'leverage_override_enabled': ('leverage_override_cb', 'check'),

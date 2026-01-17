@@ -106,9 +106,21 @@ class BotConfig(BaseModel):
         default=True,
         description="Disable max trades/loss limits (for paper trading)"
     )
+    disable_macd_entry: bool = Field(
+        default=False,
+        description="Disable automatic entries triggered by MACD"
+    )
     disable_macd_exit: bool = Field(
         default=False,
         description="Disable automatic exit on MACD cross (use stop-loss only)"
+    )
+    disable_rsi_entry: bool = Field(
+        default=False,
+        description="Disable automatic entries triggered by RSI rules"
+    )
+    disable_rsi_exit: bool = Field(
+        default=False,
+        description="Disable automatic exits triggered by RSI extremes"
     )
     entry_score_threshold: float = Field(
         default=0.6,

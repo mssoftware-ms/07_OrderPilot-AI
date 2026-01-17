@@ -179,6 +179,7 @@ class BotCallbacksSignalMixin:
     ) -> bool:
         for sig in reversed(self._signal_history):
             if sig["type"] == "candidate" and sig["side"] == side and sig["status"] == "PENDING":
+                entry_ts = signal_timestamp or int(datetime.now().timestamp())
                 sig["type"] = "confirmed"
                 sig["status"] = "ENTERED"
                 sig["score"] = score
@@ -186,7 +187,8 @@ class BotCallbacksSignalMixin:
                 sig["price"] = entry_price
                 sig["is_open"] = True
                 sig["label"] = f"E:{int(score * 100)}"
-                sig["entry_timestamp"] = signal_timestamp or int(datetime.now().timestamp())
+                sig["entry_timestamp"] = entry_ts
+                sig["time"] = self._format_entry_time(entry_ts)
                 sig["stop_price"] = signal_stop_price
                 sig["invested"] = invested
                 sig["initial_sl_pct"] = initial_sl_pct
@@ -221,6 +223,7 @@ class BotCallbacksSignalMixin:
         trailing_activation: float,
         signal_timestamp: int | None = None,
     ) -> None:
+        entry_ts = signal_timestamp or int(datetime.now().timestamp())
         trailing_stop_price = 0.0
         if trailing_pct > 0:
             if side.lower() == "long":
@@ -229,7 +232,7 @@ class BotCallbacksSignalMixin:
                 trailing_stop_price = entry_price * (1 + trailing_pct / 100)
 
         self._signal_history.append({
-            "time": datetime.now().strftime("%H:%M:%S"),
+            "time": self._format_entry_time(entry_ts),
             "type": signal_type,
             "side": side,
             "score": score,
@@ -244,7 +247,7 @@ class BotCallbacksSignalMixin:
             "pnl_percent": 0.0,
             "is_open": True,
             "label": f"E:{int(score * 100)}",
-            "entry_timestamp": signal_timestamp or int(datetime.now().timestamp()),
+            "entry_timestamp": entry_ts,
             "initial_sl_pct": initial_sl_pct,
             "trailing_stop_pct": trailing_pct,
             "trailing_stop_price": trailing_stop_price,
@@ -343,7 +346,7 @@ class BotCallbacksSignalMixin:
                 entry_ts = int(features_dt.timestamp()) if features_dt else int(datetime.now().timestamp())
             else:
                 entry_ts = int(datetime.now().timestamp())
-            label = f"E:{int(score * 100)}"
+            label = f"{side.upper()} E:{int(score * 100)}"
             self.chart_widget.add_bot_marker(
                 timestamp=entry_ts,
                 price=entry_price,
@@ -415,6 +418,14 @@ class BotCallbacksSignalMixin:
                         self._add_ki_log_entry("DERIV", "KO-Suche (Fallback bei Bestätigung)")
                         self._fetch_derivative_for_signal(sig)
                     break
+
+    def _format_entry_time(self, entry_timestamp: int) -> str:
+        """Format entry timestamp into date + time for table display."""
+        try:
+            dt = datetime.fromtimestamp(entry_timestamp)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return datetime.now().strftime("%Y-%m-%d %H:%M")
     def _enforce_single_open_signal(self, refresh: bool = True) -> None:
         """Ensure at most one open position; drop newer duplicates instead of closing existing."""
         open_indices = [i for i, sig in enumerate(self._signal_history) if sig.get("is_open")]

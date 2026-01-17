@@ -82,6 +82,12 @@ class BotCallbacksLifecycleMixin:
             config.bot.disable_restrictions = self.disable_restrictions_cb.isChecked()
         if hasattr(self, 'disable_macd_exit_cb'):
             config.bot.disable_macd_exit = self.disable_macd_exit_cb.isChecked()
+        if hasattr(self, 'disable_macd_entry_cb'):
+            config.bot.disable_macd_entry = self.disable_macd_entry_cb.isChecked()
+        if hasattr(self, 'disable_rsi_exit_cb'):
+            config.bot.disable_rsi_exit = self.disable_rsi_exit_cb.isChecked()
+        if hasattr(self, 'disable_rsi_entry_cb'):
+            config.bot.disable_rsi_entry = self.disable_rsi_entry_cb.isChecked()
         if hasattr(self, 'min_score_spin'):
             config.bot.entry_score_threshold = self.min_score_spin.value() / 100.0
         if hasattr(self, 'use_pattern_cb'):

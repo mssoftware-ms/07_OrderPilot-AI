@@ -232,7 +232,13 @@ class BotEventHandlersMixin:
             self._apply_checkbox_setting(
                 settings, "disable_macd_exit", self.disable_macd_exit_cb
             )
+            self._apply_checkbox_setting(
+                settings, "disable_macd_entry", self.disable_macd_entry_cb
+            )
             self._apply_checkbox_setting(settings, "disable_rsi_exit", self.disable_rsi_exit_cb)
+            self._apply_checkbox_setting(
+                settings, "disable_rsi_entry", self.disable_rsi_entry_cb
+            )
             self._apply_checkbox_setting(
                 settings,
                 "enable_derivathandel",
@@ -317,7 +323,9 @@ class BotEventHandlersMixin:
             "max_daily_loss_pct": self.max_daily_loss_spin.value(),
             "disable_restrictions": self.disable_restrictions_cb.isChecked(),
             "disable_macd_exit": self.disable_macd_exit_cb.isChecked(),
+            "disable_macd_entry": self.disable_macd_entry_cb.isChecked(),
             "disable_rsi_exit": self.disable_rsi_exit_cb.isChecked(),
+            "disable_rsi_entry": self.disable_rsi_entry_cb.isChecked(),
             "enable_derivathandel": self.enable_derivathandel_cb.isChecked(),
 
             # Trailing stop settings

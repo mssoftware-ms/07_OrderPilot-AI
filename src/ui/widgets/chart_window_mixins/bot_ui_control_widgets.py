@@ -244,9 +244,11 @@ class BotUIControlWidgets:
         Displayed as separate GroupBox next to Leverage Override.
         """
         group = QGroupBox("⚡ Quick Toggles")
-        layout = QVBoxLayout(group)
+        from PyQt6.QtWidgets import QGridLayout
+        layout = QGridLayout(group)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(4)
 
         # Paper Mode
         self.parent.disable_restrictions_cb = QCheckBox("Paper Mode")
@@ -257,7 +259,7 @@ class BotUIControlWidgets:
             "Im Live-Modus sollten Restriktionen AKTIVIERT sein!"
         )
         self.parent.disable_restrictions_cb.setStyleSheet("color: #ff9800; font-weight: bold;")
-        layout.addWidget(self.parent.disable_restrictions_cb)
+        layout.addWidget(self.parent.disable_restrictions_cb, 0, 0)
 
         # MACD Exit
         self.parent.disable_macd_exit_cb = QCheckBox("MACD-Exit deaktiv.")
@@ -266,7 +268,16 @@ class BotUIControlWidgets:
             "Deaktiviert den automatischen Verkauf bei MACD-Kreuzungen.\n"
             "Position wird nur durch Stop-Loss geschlossen."
         )
-        layout.addWidget(self.parent.disable_macd_exit_cb)
+        layout.addWidget(self.parent.disable_macd_exit_cb, 1, 0)
+
+        # MACD Entry
+        self.parent.disable_macd_entry_cb = QCheckBox("MACD-Entry deaktiv.")
+        self.parent.disable_macd_entry_cb.setChecked(False)
+        self.parent.disable_macd_entry_cb.setToolTip(
+            "Deaktiviert automatische Einstiege basierend auf MACD-Signalen.\n"
+            "Bei Aktivierung werden MACD-Einstiegssignale ignoriert."
+        )
+        layout.addWidget(self.parent.disable_macd_entry_cb, 1, 1)
 
         # RSI Exit
         self.parent.disable_rsi_exit_cb = QCheckBox("RSI-Exit deaktiv.")
@@ -275,7 +286,16 @@ class BotUIControlWidgets:
             "Deaktiviert den automatischen Verkauf bei RSI-Extremwerten.\n"
             "Position wird nur durch Stop-Loss geschlossen."
         )
-        layout.addWidget(self.parent.disable_rsi_exit_cb)
+        layout.addWidget(self.parent.disable_rsi_exit_cb, 2, 0)
+
+        # RSI Entry
+        self.parent.disable_rsi_entry_cb = QCheckBox("RSI-Entry deaktiv.")
+        self.parent.disable_rsi_entry_cb.setChecked(False)
+        self.parent.disable_rsi_entry_cb.setToolTip(
+            "Deaktiviert automatische Einstiege basierend auf RSI-Regeln.\n"
+            "Bei Aktivierung werden RSI-Einstiegssignale ignoriert."
+        )
+        layout.addWidget(self.parent.disable_rsi_entry_cb, 2, 1)
 
         # Derivathandel
         self.parent.enable_derivathandel_cb = QCheckBox("Derivathandel")
@@ -288,9 +308,8 @@ class BotUIControlWidgets:
         self.parent.enable_derivathandel_cb.stateChanged.connect(
             self.parent._on_derivathandel_changed
         )
-        layout.addWidget(self.parent.enable_derivathandel_cb)
+        layout.addWidget(self.parent.enable_derivathandel_cb, 0, 1)
 
-        layout.addStretch()
         return group
 
     def build_leverage_override_group(self) -> QGroupBox:
