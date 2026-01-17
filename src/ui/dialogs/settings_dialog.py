@@ -256,7 +256,7 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         )
         self._set_credential_placeholder(
             self.bitunix_api_secret,
-            "bitunix_api_secret",
+            "bitunix_secret_key",
             "Enter Bitunix API secret",
             "API secret stored securely. Enter a new value to replace it.",
         )
@@ -578,7 +578,7 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         if bitunix_key and bitunix_secret:
             try:
                 config_manager.set_credential("bitunix_api_key", bitunix_key)
-                config_manager.set_credential("bitunix_api_secret", bitunix_secret)
+                config_manager.set_credential("bitunix_secret_key", bitunix_secret)
                 self.bitunix_api_key.clear()
                 self.bitunix_api_secret.clear()
             except Exception as e:

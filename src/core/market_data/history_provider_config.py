@@ -120,7 +120,7 @@ class HistoryProviderConfig:
         # Bitunix Futures
         if market_config.bitunix_enabled:
             api_key = config_manager.get_credential("bitunix_api_key")
-            api_secret = config_manager.get_credential("bitunix_api_secret")
+            api_secret = config_manager.get_credential("bitunix_secret_key")
             if api_key and api_secret:
                 from src.core.market_data.providers import BitunixProvider
                 use_testnet = market_config.bitunix_testnet

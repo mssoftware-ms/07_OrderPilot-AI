@@ -192,7 +192,7 @@ class BitunixTradingMixin:
             from src.config.loader import config_manager
 
             api_key = config_manager.get_credential("bitunix_api_key")
-            api_secret = config_manager.get_credential("bitunix_api_secret")
+            api_secret = config_manager.get_credential("bitunix_secret_key")
             use_testnet = config_manager.get_setting("bitunix_testnet", True)
 
             if not api_key or not api_secret:
