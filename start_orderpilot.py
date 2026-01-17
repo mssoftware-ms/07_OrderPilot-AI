@@ -34,11 +34,18 @@ def load_windows_env_vars_in_wsl() -> None:
     import subprocess
 
     env_vars = [
+        'ALPACA_API_KEY',
+        'ALPACA_API_SECRET',
         'BITUNIX_API_KEY',
         'BITUNIX_SECRET_KEY',
         'OPENAI_API_KEY',
         'ANTHROPIC_API_KEY',
         'GEMINI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'GITHUB_TOKEN',
+        'PERPLEXITY_API_KEY',
+        'FINNHUB_API_KEY',
+        'ALPHA_VANTAGE_API_KEY',
     ]
 
     for var_name in env_vars:
@@ -46,6 +53,7 @@ def load_windows_env_vars_in_wsl() -> None:
             continue  # Already set, skip
 
         try:
+            # Try User scope first
             result = subprocess.run(
                 ['powershell.exe', '-Command',
                  f'[System.Environment]::GetEnvironmentVariable("{var_name}", "User")'],
@@ -54,6 +62,18 @@ def load_windows_env_vars_in_wsl() -> None:
                 timeout=2
             )
             value = result.stdout.strip()
+
+            # If not found in User scope, try Machine scope
+            if not value:
+                result = subprocess.run(
+                    ['powershell.exe', '-Command',
+                     f'[System.Environment]::GetEnvironmentVariable("{var_name}", "Machine")'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                value = result.stdout.strip()
+
             if value:
                 os.environ[var_name] = value
         except Exception:
@@ -71,11 +91,18 @@ def check_ai_api_keys() -> None:
     print("=" * 50)
 
     keys = [
-        ("BITUNIX_API_KEY", "Bitunix"),
+        ("ALPACA_API_KEY", "Alpaca API Key"),
+        ("ALPACA_API_SECRET", "Alpaca Secret"),
+        ("BITUNIX_API_KEY", "Bitunix API Key"),
         ("BITUNIX_SECRET_KEY", "Bitunix Secret"),
         ("OPENAI_API_KEY", "OpenAI"),
         ("ANTHROPIC_API_KEY", "Anthropic"),
         ("GEMINI_API_KEY", "Gemini"),
+        ("DEEPSEEK_API_KEY", "DeepSeek"),
+        ("GITHUB_TOKEN", "GitHub Token"),
+        ("PERPLEXITY_API_KEY", "Perplexity"),
+        ("FINNHUB_API_KEY", "Finnhub"),
+        ("ALPHA_VANTAGE_API_KEY", "Alpha Vantage"),
     ]
 
     found_any = False

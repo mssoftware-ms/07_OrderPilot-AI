@@ -156,21 +156,43 @@ class ConfigManager:
         Returns:
             Credential value or None if not found
         """
+        # DEBUG: Log credential request
+        logger.debug(f"🔍 get_credential() called for key: '{key}'")
+
         cached = self._get_cached_credential(key)
         if cached is not None:
+            logger.debug(f"✅ Found '{key}' in cache: {cached[:10]}...")
             return cached
 
         # Check system env vars (uppercase)
-        env_val = os.environ.get(key.upper())
+        uppercase_key = key.upper()
+        logger.debug(f"🔍 Checking os.environ for: '{uppercase_key}'")
+        env_val = os.environ.get(uppercase_key)
         if env_val:
+            logger.debug(f"✅ Found '{uppercase_key}' in os.environ: {env_val[:10]}...")
             self._credentials[key] = env_val
             return env_val
+        else:
+            logger.debug(f"❌ '{uppercase_key}' NOT in os.environ")
+            # DEBUG: List all env vars starting with requested key prefix
+            matching_vars = [k for k in os.environ.keys() if key.upper().split('_')[0] in k]
+            if matching_vars:
+                logger.debug(f"   📋 Similar env vars found: {matching_vars}")
 
         env_value = self._get_env_credential(key)
         if env_value is not None:
+            logger.debug(f"✅ Found '{key}' in .env file: {env_value[:10]}...")
             return env_value
+        else:
+            logger.debug(f"❌ '{key}' NOT in .env file")
 
-        return self._get_keyring_credential(key, service)
+        keyring_value = self._get_keyring_credential(key, service)
+        if keyring_value:
+            logger.debug(f"✅ Found '{key}' in keyring: {keyring_value[:10]}...")
+        else:
+            logger.debug(f"❌ '{key}' NOT in keyring")
+            logger.warning(f"⚠️ Credential '{key}' not found in any source!")
+        return keyring_value
 
     def _get_cached_credential(self, key: str) -> str | None:
         return self._credentials.get(key)
