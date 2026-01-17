@@ -96,14 +96,15 @@ class BitunixTradingAPIWidget(QGroupBox):
 
         self.setLayout(main_layout)
         self.setMaximumHeight(250)
-        self.setMinimumWidth(1080)
-        self.setMaximumWidth(1080)
+        # Shift widget left; width widened by 50px vs previous 955 baseline
+        self.setMinimumWidth(1005)
+        self.setMaximumWidth(1005)
         self._set_trade_mode_live(False)
 
     def _build_left_column(self) -> QWidget:
         """Build left column with Symbol, Direction, Order Type, Limit Price."""
         widget = QWidget()
-        widget.setFixedWidth(270)
+        widget.setFixedWidth(240)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -250,9 +251,10 @@ class BitunixTradingAPIWidget(QGroupBox):
     def _build_middle_column(self) -> QWidget:
         """Build middle column with Stückzahl, Volumen, Leverage, Last Price."""
         widget = QWidget()
-        widget.setFixedWidth(270)
+        widget.setFixedWidth(220)
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 50, 0)  # 50px right margin = shift left
+        # Issue #1: Remove right margin to shift column left by 50px
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
         grid = QGridLayout()
@@ -315,7 +317,8 @@ class BitunixTradingAPIWidget(QGroupBox):
         """Build TP/SL column with Take Profit, Stop Loss, Trailing controls."""
         widget = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(90, 0, 0, 0)  # 90px left margin for X offset
+        # Issue #1: Remove left margin to shift column left by 90px
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
         grid = QGridLayout()
@@ -396,7 +399,7 @@ class BitunixTradingAPIWidget(QGroupBox):
         layout.addWidget(self.trailing_info)
 
         widget.setLayout(layout)
-        widget.setFixedWidth(230)
+        widget.setFixedWidth(180)
         return widget
 
     def _build_right_column(self) -> QWidget:

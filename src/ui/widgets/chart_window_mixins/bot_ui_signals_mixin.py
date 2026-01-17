@@ -141,7 +141,13 @@ class BotUISignalsMixin:
 
         # Bitunix Trading API Widget (left side, takes most space)
         trading_api_widget = self._build_bitunix_trading_api_widget()
-        top_row_layout.addWidget(trading_api_widget, stretch=1)
+        trading_api_container = QWidget()
+        trading_api_container_layout = QVBoxLayout(trading_api_container)
+        # Issue #5: Shift entire groupbox 125px left without moving inner elements
+        trading_api_container_layout.setContentsMargins(-125, 0, 0, 0)
+        trading_api_container_layout.setSpacing(0)
+        trading_api_container_layout.addWidget(trading_api_widget)
+        top_row_layout.addWidget(trading_api_container, stretch=1)
 
         # Current Position (right side, fixed 420px width)
         position_widget = self._build_current_position_widget()
@@ -234,27 +240,33 @@ class BotUISignalsMixin:
         return 0.0
 
     def _update_current_price_in_signals(self, price: float):
-        """Update current price in Recent Signals table for ENTERED positions."""
+        """Update current price in Recent Signals table for ENTERED positions.
+
+        Issue #2: Fixed column indices - Status is column 10, Current is column 11.
+        """
         if not hasattr(self, 'signals_table'):
             return
 
         try:
             for row in range(self.signals_table.rowCount()):
-                # Get status from column 5
-                status_item = self.signals_table.item(row, 5)
+                # Issue #2: Status is column 10 (not 5)
+                status_item = self.signals_table.item(row, 10)
                 if status_item and status_item.text().upper() == "ENTERED":
-                    # Update Current column (column 6)
-                    current_item = self.signals_table.item(row, 6)
+                    # Issue #2: Current column is 11 (not 6)
+                    current_item = self.signals_table.item(row, 11)
                     if current_item:
                         current_item.setText(f"{price:.2f}")
         except Exception as e:
             logger.debug(f"Failed to update current price in signals table: {e}")
 
     def _update_current_price_in_position(self, price: float):
-        """Update current price in Current Position widget."""
-        if hasattr(self, 'current_price_value_label'):
+        """Update current price in Current Position widget.
+
+        Issue #2: Fixed label name from 'current_price_value_label' to 'position_current_label'.
+        """
+        if hasattr(self, 'position_current_label'):
             try:
-                self.current_price_value_label.setText(f"{price:.2f}")
+                self.position_current_label.setText(f"{price:.2f}")
             except Exception as e:
                 logger.debug(f"Failed to update current price in position widget: {e}")
 
@@ -990,44 +1002,58 @@ class BotUISignalsMixin:
 
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
-        # New layout with Strategy + Stück (Issue #5, #7) → 22 columns
-        self.signals_table.setColumnCount(22)
+        # Issue #3: Updated layout - P&L % before P&L USDT, renamed columns
+        self.signals_table.setColumnCount(23)
         self.signals_table.setHorizontalHeaderLabels(
             [
                 "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
-                "TRA%", "TR Lock", "Status", "Current", "P&L €", "P&L %",
-                "Fees €", "Stück",  # qty
-                "D P&L €", "D P&L %", "Heb", "WKN", "Score", "TR Stop",
+                "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",  # Issue #3: Swapped order, renamed
+                "Trading fees", "Fees €", "Stück",  # qty
+                "D P&L €", "D P&L %", "Hebel", "WKN", "Score", "TR Stop",  # Issue #3: "Heb" → "Hebel"
             ]
         )
-        # Hidden columns: D P&L € (16), D P&L % (17), Heb (18), WKN (19), Score (20)
-        for col in [16, 17, 18, 19]:
+        # Hidden columns: D P&L € (17), D P&L % (18), WKN (20), Score (21)
+        # Issue #3: Hebel (19) is now VISIBLE
+        for col in [17, 18, 20]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(20, True)
+        self.signals_table.setColumnHidden(21, True)
 
         header = self.signals_table.horizontalHeader()
         # Narrow columns (approx 6 chars) for compact view (Issue #4)
-        narrow_cols = [1, 3, 6, 7, 8, 9, 10, 18]
+        narrow_cols = [1, 3, 6, 7, 8, 9, 10]
         for col in narrow_cols:
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Time fixed width
+        # Issue #3: Time fixed width 140px (was 70px)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(0, 70)
+        header.resizeSection(0, 140)
 
         # Strategy can stretch but keep moderate size
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
-        # P&L % fixed for readability
-        header.setSectionResizeMode(13, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(13, 70)
+        # Issue #3: Entry (4), Stop (5), Current (11) fixed at 110px
+        for col in [4, 5, 11]:
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+            header.resizeSection(col, 110)
 
-        # Heb column fixed small
-        header.setSectionResizeMode(18, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(18, 50)
+        # Issue #3: P&L % (12) fixed at 90px
+        header.setSectionResizeMode(12, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(12, 90)
+
+        # Issue #3: P&L USDT (13) fixed at 120px
+        header.setSectionResizeMode(13, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(13, 120)
+
+        # Issue #4: Trading fees (14) fixed at 120px
+        header.setSectionResizeMode(14, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(14, 120)
+
+        # Issue #3: Hebel column (19) fixed at 90px and VISIBLE
+        header.setSectionResizeMode(19, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(19, 90)
 
         # Stretch remaining numeric/value columns
-        for col in [4, 5, 11, 12, 14, 15, 21]:
+        for col in [15, 16, 22]:
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
 
         self.signals_table.setAlternatingRowColors(True)
@@ -1045,15 +1071,13 @@ class BotUISignalsMixin:
         self._signals_table_updating = False
 
     def _update_leverage_column_visibility(self) -> None:
-        """Issue #1: Show/hide leverage column based on stored signal leverage, not UI state."""
+        """Issue #3: Hebel column (19) is now always visible.
+
+        Previously this would hide the column if no signals had leverage > 1.
+        Now the column stays visible per Issue #3 requirements.
+        """
         if not hasattr(self, 'signals_table'):
             return
 
-        show_leverage = any(
-            (sig.get("leverage", 1) or 0) > 1
-            or (sig.get("derivative") and sig["derivative"].get("leverage", 0) > 0)
-            for sig in getattr(self, "_signal_history", [])
-        )
-
-        # Column 18 is "Heb" with new layout (after Fees & Stück)
-        self.signals_table.setColumnHidden(18, not show_leverage)
+        # Issue #3: Hebel column is always visible now
+        self.signals_table.setColumnHidden(19, False)

@@ -139,6 +139,26 @@ class AlpacaStreamingMixin:
         print(f"📊 ALPACA TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
         logger.info(f"📊 Alpaca live tick: {self.current_symbol} @ ${price:.2f}")
 
+        # Mirror price into Signals tab (Bitunix Trading API + Recent Signals + Current Position)
+        parent = self.parent()
+        if parent and hasattr(parent, 'bitunix_trading_api_widget'):
+            try:
+                parent.bitunix_trading_api_widget.set_price(price)
+            except Exception:
+                logger.debug("Failed to push price into BitunixTradingAPIWidget", exc_info=True)
+
+        if parent and hasattr(parent, '_update_current_price_in_signals'):
+            try:
+                parent._update_current_price_in_signals(price)
+            except Exception:
+                logger.debug("Failed to push price into signals table (Alpaca)", exc_info=True)
+
+        if parent and hasattr(parent, '_update_current_price_in_position'):
+            try:
+                parent._update_current_price_in_position(price)
+            except Exception:
+                logger.debug("Failed to push price into current position widget (Alpaca)", exc_info=True)
+
     def _resolve_tick_timestamp(self, event: Event, tick_data: dict):
         ts = tick_data.get('timestamp')
         if ts is None:
