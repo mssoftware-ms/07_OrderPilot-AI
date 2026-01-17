@@ -164,6 +164,32 @@ class DatabaseManager:
         finally:
             session.close()
 
+    @contextmanager
+    def get_connection(self):
+        """Provide a raw DBAPI connection for direct SQL operations.
+
+        Yields:
+            Raw database connection (DBAPI)
+
+        Example:
+            with db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM table")
+        """
+        if not self.engine:
+            raise RuntimeError("Database not initialized")
+
+        # Get raw connection from SQLAlchemy engine
+        connection = self.engine.raw_connection()
+        try:
+            yield connection
+        except Exception as e:
+            connection.rollback()
+            logger.error(f"Database operation failed: {e}")
+            raise
+        finally:
+            connection.close()
+
     def get_session(self) -> Session:
         """Get a new database session.
 
@@ -276,6 +302,27 @@ class DatabaseManager:
             session.expunge_all()
             return bars
 
+    async def run_in_executor(self, func, *args, **kwargs):
+        """Run a synchronous function in an executor.
+
+        Args:
+            func: Synchronous function to run
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+
+        Returns:
+            Result from the function
+        """
+        import asyncio
+        from functools import partial
+
+        loop = asyncio.get_event_loop()
+        if kwargs:
+            func_with_args = partial(func, *args, **kwargs)
+            return await loop.run_in_executor(None, func_with_args)
+        else:
+            return await loop.run_in_executor(None, func, *args)
+
     async def get_bars_async(
         self,
         symbol: str,
@@ -294,12 +341,8 @@ class DatabaseManager:
         Returns:
             List of MarketBar objects
         """
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.get_bars(symbol, start_ts, end_ts, limit)
+        return await self.run_in_executor(
+            self.get_bars, symbol, start_ts, end_ts, limit
         )
 
     def cleanup_old_data(self, days_to_keep: int = 30) -> None:

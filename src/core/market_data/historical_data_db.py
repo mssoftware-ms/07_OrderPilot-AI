@@ -57,7 +57,7 @@ class HistoricalDataDB:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "DELETE FROM historical_bars WHERE symbol = ?", (db_symbol,)
+                    "DELETE FROM market_bars WHERE symbol = ?", (db_symbol,)
                 )
                 conn.commit()
                 deleted = cursor.rowcount
@@ -114,7 +114,7 @@ class HistoricalDataDB:
 
                     cursor.execute(
                         """
-                        INSERT OR REPLACE INTO historical_bars
+                        INSERT OR REPLACE INTO market_bars
                         (symbol, timestamp, open, high, low, close, volume, source)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
@@ -166,7 +166,7 @@ class HistoricalDataDB:
                         MIN(timestamp) as first_date,
                         MAX(timestamp) as last_date,
                         COUNT(*) as total_bars
-                    FROM historical_bars
+                    FROM market_bars
                     WHERE symbol = ?
                     """,
                     (db_symbol,),
@@ -223,7 +223,7 @@ class HistoricalDataDB:
                 df = pd.read_sql_query(
                     """
                     SELECT timestamp, open, high, low, close, volume
-                    FROM historical_bars
+                    FROM market_bars
                     WHERE symbol = ?
                     ORDER BY timestamp
                     """,
