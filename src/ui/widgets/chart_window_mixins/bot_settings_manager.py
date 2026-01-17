@@ -29,28 +29,30 @@ class BotSettingsManager:
     """
 
     # Factory Defaults für Micro-Account (100€ Kapital)
+    # Issue #16: Keys müssen mit widget_map übereinstimmen!
     FACTORY_DEFAULTS = {
         'meta': {'type': 'factory_defaults'},
         'settings': {
-            # Bot Settings
+            # Bot Settings - Keys müssen mit widget_map übereinstimmen
             'ki_mode': 'NO_KI',
             'trade_direction': 'AUTO',  # Wird durch Backtesting ermittelt
             'trailing_mode': 'ATR',
-            'initial_sl': 2.0,
-            'capital': 100,
-            'risk_per_trade': 50.0,
-            'max_trades': 10,
-            'max_daily_loss': 5.0,
+            'initial_sl_pct': 2.0,  # Issue #16: Korrigiert von 'initial_sl'
+            'bot_capital': 100,  # Issue #16: Korrigiert von 'capital'
+            'risk_per_trade_pct': 50.0,  # Issue #16: Korrigiert von 'risk_per_trade'
+            'max_trades_per_day': 10,  # Issue #16: Korrigiert von 'max_trades'
+            'max_daily_loss_pct': 5.0,  # Issue #16: Korrigiert von 'max_daily_loss'
             'disable_restrictions': True,
             'disable_macd_exit': True,
+            'disable_macd_entry': False,  # Issue #16: Hinzugefügt
             'disable_rsi_exit': True,
+            'disable_rsi_entry': False,  # Issue #16: Hinzugefügt
             'enable_derivathandel': False,
             # Leverage Override
             'leverage_override_enabled': True,
             'leverage_value': 20,
             # Trailing Settings (optimiert für enge Stops)
             'regime_adaptive': True,
-            # Issue #32: 'trailing_activation' entfernt (doppelte Funktion mit TRA Prozent)
             'tra_percent': 0.3,
             'trailing_distance': 1.0,  # Eng!
             'atr_multiplier': 1.5,  # Eng!
@@ -233,12 +235,48 @@ class BotSettingsManager:
                 self.parent, "Gespeichert",
                 f"Einstellungen wurden als Standard gespeichert.\n\n"
                 f"Datei: {default_file}\n"
-                f"Parameter: {len(settings['settings'])}"
+                f"Felder: {len(settings['settings'])}"
             )
+
+            self._sync_symbol_settings()
 
         except Exception as e:
             logger.exception("Failed to save defaults")
             QMessageBox.critical(self.parent, "Fehler", f"Speichern fehlgeschlagen:\n{e}")
+
+    def _sync_symbol_settings(self) -> None:
+        """Sync defaults to current symbol settings to prevent overrides on restart."""
+        if not hasattr(self.parent, "_save_bot_settings"):
+            return
+
+        symbol = None
+        if hasattr(self.parent, "_resolve_bot_symbol"):
+            try:
+                symbol = self.parent._resolve_bot_symbol()
+            except Exception:
+                symbol = None
+
+        if not symbol:
+            symbol = getattr(self.parent, "_current_bot_symbol", None)
+
+        if not symbol and hasattr(self.parent, "current_symbol"):
+            symbol = getattr(self.parent, "current_symbol", None)
+
+        if not symbol and hasattr(self.parent, "chart_widget"):
+            symbol = getattr(self.parent.chart_widget, "current_symbol", None)
+
+        if not symbol and hasattr(self.parent, "bot_symbol_label"):
+            label_text = self.parent.bot_symbol_label.text()
+            symbol = label_text if label_text and label_text != "-" else None
+
+        if not symbol:
+            return
+
+        try:
+            self.parent._save_bot_settings(symbol)
+            logger.info("Synced bot defaults to symbol settings for %s", symbol)
+        except Exception as e:
+            logger.warning("Failed to sync symbol settings after saving defaults: %s", e)
 
     def on_load_defaults_clicked(self) -> None:
         """Lädt gespeicherte Standard-Einstellungen."""

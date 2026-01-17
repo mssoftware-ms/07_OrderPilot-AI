@@ -151,21 +151,43 @@ class BotPositionPersistenceRestoreMixin:
         self._restore_trailing_stop_line(position)
 
     def _restore_entry_marker(self, position: dict, side: str, entry_price: float) -> None:
+        """Restore entry marker and entry line.
+
+        Issue #14: Also draws the entry line (horizontal line at entry price),
+        not just the marker.
+        """
         timestamp = position.get("entry_timestamp", 0)
         label = position.get("label", "E")
-        if not (timestamp and entry_price > 0):
-            return
-        try:
-            self.chart_widget.add_bot_marker(
-                timestamp=timestamp,
-                price=entry_price,
-                marker_type=MarkerType.ENTRY_CONFIRMED,
-                side=side,
-                text=label
-            )
-            logger.info(f"Restored entry marker: {label} @ {entry_price:.2f}")
-        except Exception as e:
-            logger.error(f"Failed to restore entry marker: {e}")
+
+        # Draw entry marker
+        if timestamp and entry_price > 0:
+            try:
+                self.chart_widget.add_bot_marker(
+                    timestamp=timestamp,
+                    price=entry_price,
+                    marker_type=MarkerType.ENTRY_CONFIRMED,
+                    side=side,
+                    text=label
+                )
+                logger.info(f"Restored entry marker: {label} @ {entry_price:.2f}")
+            except Exception as e:
+                logger.error(f"Failed to restore entry marker: {e}")
+
+        # Issue #14: Draw entry line (horizontal line)
+        if entry_price > 0:
+            try:
+                entry_label = f"Entry @ {entry_price:.2f}"
+                entry_color = "#26a69a" if side.lower() == "long" else "#ef5350"
+                self.chart_widget.add_stop_line(
+                    "entry_line",
+                    entry_price,
+                    line_type="target",
+                    color=entry_color,
+                    label=entry_label
+                )
+                logger.info(f"Restored entry line @ {entry_price:.2f}")
+            except Exception as e:
+                logger.error(f"Failed to restore entry line: {e}")
 
     def _restore_initial_stop_line(self, position: dict, stop_price: float) -> None:
         if stop_price <= 0:

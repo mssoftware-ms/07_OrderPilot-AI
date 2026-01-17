@@ -48,7 +48,15 @@ class BotPositionPersistencePnlMixin:
             self._update_signals_table()
 
     def _get_chart_current_price(self) -> float:
-        """Get current price from chart - prefers live streaming price over DataFrame."""
+        """Get current price from chart - prefers live streaming price over DataFrame.
+
+        Issue #12: Use consistent price source - delegate to _get_current_price for consistency.
+        """
+        # Delegate to the centralized _get_current_price method for consistency
+        if hasattr(self, '_get_current_price'):
+            return self._get_current_price()
+
+        # Fallback if _get_current_price not available
         if hasattr(self, 'chart_widget'):
             # Priority 1: Live streaming price (_last_price is updated on every tick)
             if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:

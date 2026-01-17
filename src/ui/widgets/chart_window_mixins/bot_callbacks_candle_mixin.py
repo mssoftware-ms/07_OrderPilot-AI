@@ -130,7 +130,7 @@ class BotCallbacksCandleMixin:
     def _find_active_position(self) -> dict | None:
         """Find active position in signal history."""
         for sig in self._signal_history:
-            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+            if sig.get("status") == "ENTERED" and sig.get("is_open") is not False:
                 return sig
         return None
 

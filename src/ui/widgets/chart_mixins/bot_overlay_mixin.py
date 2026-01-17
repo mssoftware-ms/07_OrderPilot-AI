@@ -64,6 +64,8 @@ class BotOverlayMixin:
     ) -> None:
         """Add a bot marker to the chart.
 
+        Issue #13: Prevents duplicate markers at the same timestamp/price/type.
+
         Args:
             timestamp: Bar timestamp (datetime or Unix timestamp)
             price: Price level for marker
@@ -80,6 +82,21 @@ class BotOverlayMixin:
             ts = int(timestamp.timestamp())
         else:
             ts = timestamp
+
+        # Issue #13: Check for duplicate markers (same timestamp, type, and side)
+        # This prevents markers from being drawn multiple times on chart refresh
+        for existing in self._bot_overlay_state.markers:
+            if (existing.timestamp == ts and
+                existing.marker_type == marker_type and
+                existing.side == side):
+                # Allow price tolerance of 0.01% for floating point comparison
+                price_tolerance = price * 0.0001 if price > 0 else 0.01
+                if abs(existing.price - price) < price_tolerance:
+                    logger.debug(
+                        f"Skipping duplicate marker: {marker_type.value} at {ts} "
+                        f"(already exists at price {existing.price:.4f})"
+                    )
+                    return
 
         marker = BotMarker(
             timestamp=ts,

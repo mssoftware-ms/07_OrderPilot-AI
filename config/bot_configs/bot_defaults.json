@@ -1,6 +1,6 @@
 {
   "meta": {
-    "saved_at": "2026-01-17T04:09:45.575132",
+    "saved_at": "2026-01-17T22:13:01.841786",
     "version": "1.0",
     "type": "bot_control_settings"
   },
@@ -11,8 +11,8 @@
     "initial_sl_pct": 0.15,
     "bot_capital": 1000.0,
     "risk_per_trade_pct": 10.0,
-    "max_trades_per_day": 100,
-    "max_daily_loss_pct": 10.0,
+    "max_trades_per_day": 10,
+    "max_daily_loss_pct": 3.0,
     "disable_restrictions": true,
     "disable_macd_exit": true,
     "disable_macd_entry": false,
@@ -28,7 +28,7 @@
     "atr_trending": 2.0,
     "atr_ranging": 3.5,
     "volatility_bonus": 0.5,
-    "min_step": 0.05,
+    "min_step": 0.01,
     "min_score": 55,
     "use_pattern": false,
     "pattern_similarity": 0.7,

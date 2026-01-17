@@ -538,17 +538,17 @@ class BotUIControlWidgets:
         )
         trailing_layout.addRow("Vol. Bonus:", self.parent.volatility_bonus_spin)
 
-        # Min Step
+        # Min Step - Issue #17: SingleStep von 0.05 auf 0.01 geändert
         self.parent.min_step_spin = QDoubleSpinBox()
-        self.parent.min_step_spin.setRange(0.05, 2.0)
+        self.parent.min_step_spin.setRange(0.01, 2.0)  # Issue #17: Min auf 0.01
         self.parent.min_step_spin.setValue(0.3)
-        self.parent.min_step_spin.setSingleStep(0.05)
+        self.parent.min_step_spin.setSingleStep(0.01)  # Issue #17: Step auf 0.01
         self.parent.min_step_spin.setSuffix(" %")
         self.parent.min_step_spin.setDecimals(2)
         self.parent.min_step_spin.setToolTip(
             "Mindest-Bewegung fuer Stop-Update.\n"
             "Verhindert zu haeufige kleine Anpassungen.\n"
-            "Empfohlen: 0.2-0.5% fuer Crypto"
+            "Empfohlen: 0.1-0.5% fuer Crypto"
         )
         trailing_layout.addRow("Min Step:", self.parent.min_step_spin)
 

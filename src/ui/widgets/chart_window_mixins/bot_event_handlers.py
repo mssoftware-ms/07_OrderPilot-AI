@@ -163,9 +163,11 @@ class BotEventHandlersMixin:
         is_enabled = self.enable_derivathandel_cb.isChecked()
         logger.info(f"Derivathandel: {'enabled' if is_enabled else 'disabled'}")
 
-        # Toggle derivative columns visibility in signals table (Spalten 13-16)
+        # Toggle derivative columns visibility in signals table
+        # Issue #19 FIX: Correct columns are 18, 19, 20, 21 (D P&L €, D P&L %, Hebel, WKN)
+        # NOT 13, 14, 15, 16, 17 which are P&L USDT, Trading fees %, Trading fees, Invest, Stück!
         if hasattr(self, 'signals_table'):
-            for col in [13, 14, 15, 16]:  # D P&L €, D P&L %, Heb, WKN
+            for col in [18, 19, 20, 21]:  # D P&L €, D P&L %, Hebel, WKN
                 self.signals_table.setColumnHidden(col, not is_enabled)
 
         # Toggle derivative labels visibility in Current Position GroupBox

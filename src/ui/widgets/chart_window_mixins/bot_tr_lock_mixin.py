@@ -61,7 +61,7 @@ class BotTRLockMixin:
         locked_signals = []
         for signal in self._signal_history:
             if signal.get("tr_lock_active", False):
-                if signal.get("status") == "ENTERED" and signal.get("is_open", False):
+                if signal.get("status") == "ENTERED" and signal.get("is_open") is not False:
                     locked_signals.append(signal)
         return locked_signals
 
@@ -114,7 +114,8 @@ class BotTRLockMixin:
             signal["trailing_stop_price"] = new_trailing_price
             entry_price = signal.get("price", current_price)
             new_tr_pct = abs((entry_price - new_trailing_price) / entry_price) * 100
-            signal["trailing_stop_pct"] = new_tr_pct
+            if signal.get("trailing_stop_pct", 0) <= 0:
+                signal["trailing_stop_pct"] = new_tr_pct
             signal["current_price"] = current_price
             signal["tr_lock_last_close"] = current_price
 

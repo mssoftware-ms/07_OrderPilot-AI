@@ -85,25 +85,54 @@ class BotPositionPersistenceChartMixin:
                 self._update_signals_table()
                 break
     def _on_signals_table_cell_changed(self, row: int, column: int) -> None:
-        """Handle table cell editing - update SL%, TR%, or TRA% values.
+        """Handle table cell editing - update editable values.
+
+        Issue #3: Extended to support more editable columns for ENTERED positions.
 
         Column mapping:
-        - 5: SL% (Stop Loss Percent from entry)
-        - 6: TR% (Trailing Stop Percent from entry)
-        - 7: TRA% (Trailing Activation Percent - when trailing activates)
+        - 4: Entry (entry price)
+        - 5: Stop (stop price)
+        - 6: SL% (Stop Loss Percent from entry)
+        - 7: TR% (Trailing Stop Percent from entry)
+        - 8: TRA% (Trailing Activation Percent - when trailing activates)
         """
-        # Guard clauses - allow columns 6 (SL%), 7 (TR%), and 8 (TRA%) with new layout
-        if self._signals_table_updating or column not in (6, 7, 8):
+        # Guard clauses - allow columns 4, 5, 6, 7, and 8 (Issue #3: added 4, 5)
+        if self._signals_table_updating or column not in (4, 5, 6, 7, 8):
             return
 
-        # Parse and validate input
-        new_pct = self._parse_percentage_input(row, column)
-        if new_pct is None or new_pct < 0:
-            return
-
-        # Get signal
+        # Get signal first
         sig = self._get_editable_signal(row)
         if not sig:
+            return
+
+        # Issue #3: Handle Entry price (column 4)
+        if column == 4:
+            new_entry = self._parse_price_input(row, column)
+            if new_entry is None or new_entry <= 0:
+                return
+            self._update_entry_price(sig, new_entry)
+            self._save_signal_history()
+            self._refresh_signals_table()
+            return
+
+        # Issue #3: Handle Stop price (column 5)
+        if column == 5:
+            new_stop = self._parse_price_input(row, column)
+            if new_stop is None or new_stop <= 0:
+                return
+            # Calculate new SL% from new stop price
+            entry_price = sig.get("price", 0)
+            if entry_price > 0:
+                new_sl_pct = abs((new_stop - entry_price) / entry_price) * 100
+                self._update_stop_loss(sig, new_stop, new_sl_pct)
+                self._sync_stop_to_bot_controller(new_stop)
+            self._save_signal_history()
+            self._refresh_signals_table()
+            return
+
+        # Parse and validate input for percentage columns
+        new_pct = self._parse_percentage_input(row, column)
+        if new_pct is None or new_pct < 0:
             return
 
         logger.info(f"Table edit: col={column}, new_pct={new_pct:.2f}%")
@@ -133,6 +162,68 @@ class BotPositionPersistenceChartMixin:
         self._save_signal_history()
         self._refresh_signals_table()
 
+    def _parse_price_input(self, row: int, column: int) -> float | None:
+        """Parse price input from table cell (Issue #3)."""
+        item = self.signals_table.item(row, column)
+        if not item:
+            return None
+
+        try:
+            return float(item.text().replace(",", ".").strip())
+        except (ValueError, AttributeError):
+            logger.warning(f"Invalid price value in row {row}, column {column}")
+            return None
+
+    def _update_entry_price(self, sig: dict, new_entry: float) -> None:
+        """Update entry price on signal and recalculate dependent values (Issue #3)."""
+        old_entry = sig.get("price", 0)
+        sig["price"] = new_entry
+
+        # Recalculate stop prices based on percentages
+        side = sig.get("side", "long")
+        initial_sl_pct = sig.get("initial_sl_pct", 0)
+        trailing_stop_pct = sig.get("trailing_stop_pct", 0)
+
+        if initial_sl_pct > 0:
+            if side == "long":
+                new_stop = new_entry * (1 - initial_sl_pct / 100)
+            else:
+                new_stop = new_entry * (1 + initial_sl_pct / 100)
+            sig["stop_price"] = new_stop
+
+        if trailing_stop_pct > 0:
+            if side == "long":
+                new_trailing = new_entry * (1 - trailing_stop_pct / 100)
+            else:
+                new_trailing = new_entry * (1 + trailing_stop_pct / 100)
+            sig["trailing_stop_price"] = new_trailing
+
+        # Update chart lines if available
+        if hasattr(self, "chart_widget") and self.chart_widget:
+            entry_label = f"Entry @ {new_entry:.2f}"
+            entry_color = "#26a69a" if side.lower() == "long" else "#ef5350"
+            self.chart_widget.add_stop_line(
+                line_id="entry_line",
+                price=new_entry,
+                line_type="target",
+                color=entry_color,
+                label=entry_label
+            )
+
+            if sig.get("stop_price", 0) > 0:
+                sl_label = f"SL @ {sig['stop_price']:.2f} ({initial_sl_pct:.2f}%)"
+                self.chart_widget.add_stop_line(
+                    line_id="initial_stop",
+                    price=sig["stop_price"],
+                    line_type="initial",
+                    label=sl_label
+                )
+
+        self._add_ki_log_entry(
+            "TABLE",
+            f"Entry-Preis geaendert: {old_entry:.2f} -> {new_entry:.2f}"
+        )
+
     def _parse_percentage_input(self, row: int, column: int) -> float | None:
         """Parse percentage input from table cell."""
         item = self.signals_table.item(row, column)
@@ -146,17 +237,32 @@ class BotPositionPersistenceChartMixin:
             return None
 
     def _get_editable_signal(self, row: int) -> dict | None:
-        """Get signal that can be edited from table row."""
-        visible_signals = [s for s in self._signal_history if s.get("status") in ("ENTERED", "EXITED")]
-        signal_idx = len(visible_signals) - 1 - row
+        """Get signal that can be edited from table row.
 
-        if signal_idx < 0 or signal_idx >= len(visible_signals):
+        Issue #3: The table shows the last 20 signals in reversed order
+        (newest at top). We need to map the row index back to _signal_history.
+        """
+        # Table shows last 20 signals, reversed (newest at top)
+        recent_signals = self._signal_history[-20:]
+        signal_idx = len(recent_signals) - 1 - row
+
+        if signal_idx < 0 or signal_idx >= len(recent_signals):
             return None
 
-        sig = visible_signals[signal_idx]
+        # Map back to actual signal_history index
+        actual_idx = len(self._signal_history) - 20 + signal_idx
+        if actual_idx < 0:
+            actual_idx = signal_idx
 
-        # Only allow editing open positions
-        if not (sig.get("status") == "ENTERED" and sig.get("is_open", False)):
+        if actual_idx < 0 or actual_idx >= len(self._signal_history):
+            return None
+
+        sig = self._signal_history[actual_idx]
+
+        # Only allow editing open positions (Issue #3)
+        if sig.get("status") != "ENTERED":
+            return None
+        if sig.get("is_open") is False:
             return None
 
         return sig

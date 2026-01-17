@@ -1027,20 +1027,20 @@ class BotUISignalsMixin:
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
         # Issue #3: Updated layout - P&L % before P&L USDT, renamed columns
-        self.signals_table.setColumnCount(23)
+        self.signals_table.setColumnCount(24)
         self.signals_table.setHorizontalHeaderLabels(
             [
                 "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
-                "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",  # Issue #3: Swapped order, renamed
-                "Trading fees", "Fees €", "Stück",  # qty
-                "D P&L €", "D P&L %", "Hebel", "WKN", "Score", "TR Stop",  # Issue #3: "Heb" → "Hebel"
+                "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",  # Issue #19: P&L % before P&L USDT
+                "Trading fees %", "Trading fees", "Invest", "Stück",  # Issue #18: "Fees €" -> "Invest"
+                "D P&L €", "D P&L %", "Hebel", "WKN", "Score", "TR Stop",
             ]
         )
-        # Hidden columns: D P&L € (17), D P&L % (18), WKN (20), Score (21)
-        # Issue #3: Hebel (19) is now VISIBLE
-        for col in [17, 18, 20]:
+        # Hidden columns: D P&L € (18), D P&L % (19), WKN (21), Score (22)
+        # Issue #3: Hebel (20) is now VISIBLE
+        for col in [18, 19, 21]:
             self.signals_table.setColumnHidden(col, True)
-        self.signals_table.setColumnHidden(21, True)
+        self.signals_table.setColumnHidden(22, True)
 
         header = self.signals_table.horizontalHeader()
         # Narrow columns (approx 6 chars) for compact view (Issue #4)
@@ -1060,24 +1060,32 @@ class BotUISignalsMixin:
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
             header.resizeSection(col, 110)
 
-        # Issue #3: P&L % (12) fixed at 90px
+        # Issue #19: P&L % (12) fixed at 90px (before P&L USDT)
         header.setSectionResizeMode(12, QHeaderView.ResizeMode.Fixed)
         header.resizeSection(12, 90)
 
-        # Issue #3: P&L USDT (13) fixed at 120px
+        # Issue #19: P&L USDT (13) fixed at 120px
         header.setSectionResizeMode(13, QHeaderView.ResizeMode.Fixed)
         header.resizeSection(13, 120)
 
-        # Issue #4: Trading fees (14) fixed at 120px
+        # Issue #5: Trading fees % (14) fixed at 90px
         header.setSectionResizeMode(14, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(14, 120)
+        header.resizeSection(14, 90)
 
-        # Issue #3: Hebel column (19) fixed at 90px and VISIBLE
-        header.setSectionResizeMode(19, QHeaderView.ResizeMode.Fixed)
-        header.resizeSection(19, 90)
+        # Issue #4: Trading fees (15) fixed at 120px
+        header.setSectionResizeMode(15, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(15, 120)
+
+        # Issue #18: Invest (16) fixed at 100px
+        header.setSectionResizeMode(16, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(16, 100)
+
+        # Issue #3: Hebel column (20) fixed at 90px and VISIBLE
+        header.setSectionResizeMode(20, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(20, 90)
 
         # Stretch remaining numeric/value columns
-        for col in [15, 16, 22]:
+        for col in [17, 23]:
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
 
         self.signals_table.setAlternatingRowColors(True)
@@ -1129,7 +1137,7 @@ class BotUISignalsMixin:
             QMessageBox.critical(self, "Export fehlgeschlagen", str(e))
 
     def _update_leverage_column_visibility(self) -> None:
-        """Issue #3: Hebel column (19) is now always visible.
+        """Issue #3: Hebel column (20) is now always visible.
 
         Previously this would hide the column if no signals had leverage > 1.
         Now the column stays visible per Issue #3 requirements.
@@ -1138,7 +1146,7 @@ class BotUISignalsMixin:
             return
 
         # Issue #3: Hebel column is always visible now
-        self.signals_table.setColumnHidden(19, False)
+        self.signals_table.setColumnHidden(20, False)
 
     # =========================================================================
     # Issue #9: Start Bot Toggle Button in Trading Tab

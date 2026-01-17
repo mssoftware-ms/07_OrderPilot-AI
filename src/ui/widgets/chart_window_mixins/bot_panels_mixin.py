@@ -206,7 +206,7 @@ class BotPanelsMixin(
 
     def _find_active_signal(self) -> dict | None:
         for sig in self._signal_history:
-            if sig.get("status") == "ENTERED" and sig.get("is_open", False):
+            if sig.get("status") == "ENTERED" and sig.get("is_open") is not False:
                 return sig
         return None
 

@@ -46,6 +46,8 @@ class BotPositionPersistenceStorageMixin:
                 else:
                     self._signal_history = history_json
 
+                self._normalize_signal_history()
+
                 # Ensure only one open position after loading; drop newer duplicates
                 if hasattr(self, "_enforce_single_open_signal"):
                     self._enforce_single_open_signal(refresh=False)
@@ -72,3 +74,14 @@ class BotPositionPersistenceStorageMixin:
 
         except Exception as e:
             logger.error(f"Failed to load signal history: {e}")
+
+    def _normalize_signal_history(self) -> None:
+        """Ensure required signal fields exist for restored history."""
+        if not isinstance(self._signal_history, list):
+            return
+
+        for sig in self._signal_history:
+            if not isinstance(sig, dict):
+                continue
+            if "is_open" not in sig or sig.get("is_open") is None:
+                sig["is_open"] = sig.get("status") == "ENTERED"

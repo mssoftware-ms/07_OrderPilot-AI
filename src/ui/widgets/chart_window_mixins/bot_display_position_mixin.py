@@ -154,22 +154,34 @@ class BotDisplayPositionMixin:
 
     def _get_current_price(self, from_bot: bool = True) -> float:
         """Get current market price.
-        
-        Priority:
-        1. Live tick price (from streaming)
-        2. Bot controller last features (closed candle)
-        3. Chart widget data (last row)
+
+        Issue #12: Consistent price source to avoid jumping values.
+
+        Priority (strict order):
+        1. _last_tick_price - set by tick_price_updated signal from streaming
+        2. chart_widget._last_price - set by streaming mixin directly
+        3. Bot controller last features (closed candle) - only if from_bot=True
+        4. Chart widget DataFrame (last row close)
+
+        Note: Sources 1 and 2 are live streaming prices (updated on every tick).
+        Sources 3 and 4 are historical data (last closed candle).
+        Mixing these causes the "jumping" issue described in Issue #12.
         """
-        # 1. Live tick price (most recent)
+        # 1. Live tick price (most recent, from tick_price_updated signal)
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
             return self._last_tick_price
 
-        # 2. Bot controller features (usually last closed bar)
+        # 2. Chart widget's streaming price (set directly by streaming mixin)
+        if hasattr(self, 'chart_widget'):
+            if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
+                return float(self.chart_widget._last_price)
+
+        # 3. Bot controller features (usually last closed bar)
         current = 0.0
         if from_bot and self._bot_controller and self._bot_controller._last_features:
             current = self._bot_controller._last_features.close
-            
-        # 3. Chart data fallback
+
+        # 4. Chart data fallback (last row of DataFrame)
         if current <= 0 and hasattr(self, 'chart_widget'):
             if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                 try:

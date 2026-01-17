@@ -98,9 +98,14 @@ class BotCallbacksPositionLifecycleMixin:
         if not active_sig:
             return
 
+        stored_trailing_pct = active_sig.get("trailing_stop_pct", 0.0)
+        if stored_trailing_pct > 0:
+            trailing_pct = stored_trailing_pct
+
         active_sig["stop_price"] = new_stop
         active_sig["trailing_stop_price"] = new_stop
-        active_sig["trailing_stop_pct"] = trailing_pct
+        if stored_trailing_pct <= 0:
+            active_sig["trailing_stop_pct"] = trailing_pct
 
         if active_sig.get("tr_active", False):
             tr_label = f"TSL @ {new_stop:.2f} ({trailing_pct:.2f}% / TRA: {tra_pct:.2f}%)"
@@ -231,4 +236,3 @@ class BotCallbacksPositionLifecycleMixin:
             )
             return True
         return False
-
