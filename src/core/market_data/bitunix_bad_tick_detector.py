@@ -54,15 +54,15 @@ class BadTickDetector:
         if not self.config.enabled or not bars:
             return bars, FilterStats(total_bars=len(bars))
 
-        # Convert to DataFrame
+        # Convert to DataFrame (convert Decimal to float for numpy compatibility)
         df = pd.DataFrame([
             {
                 "timestamp": b.timestamp,
-                "open": b.open,
-                "high": b.high,
-                "low": b.low,
-                "close": b.close,
-                "volume": b.volume,
+                "open": float(b.open),
+                "high": float(b.high),
+                "low": float(b.low),
+                "close": float(b.close),
+                "volume": float(b.volume),
             }
             for b in bars
         ])
@@ -102,9 +102,10 @@ class BadTickDetector:
                 f"using {self.config.method} method, mode={self.config.cleaning_mode}"
             )
 
-        # Convert back to Bar objects
-        from alpaca.data.models.bars import Bar
+        # Convert back to HistoricalBar objects
+        from src.core.market_data.types import HistoricalBar
         from datetime import datetime
+        from decimal import Decimal
 
         cleaned_bars = []
         for _, row in df.iterrows():
@@ -112,16 +113,16 @@ class BadTickDetector:
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
             cleaned_bars.append(
-                Bar(
-                    symbol=bars[0].symbol if bars else symbol,
+                HistoricalBar(
                     timestamp=ts,
-                    open=float(row["open"]),
-                    high=float(row["high"]),
-                    low=float(row["low"]),
-                    close=float(row["close"]),
-                    volume=float(row["volume"]),
-                    trade_count=getattr(bars[0], "trade_count", 0) if bars else 0,
-                    vwap=getattr(bars[0], "vwap", None) if bars else None,
+                    open=Decimal(str(row["open"])),
+                    high=Decimal(str(row["high"])),
+                    low=Decimal(str(row["low"])),
+                    close=Decimal(str(row["close"])),
+                    volume=int(row["volume"]),
+                    vwap=Decimal(str(bars[0].vwap)) if bars and bars[0].vwap else None,
+                    trades=bars[0].trades if bars and bars[0].trades else None,
+                    source="bitunix"
                 )
             )
 
@@ -276,10 +277,10 @@ class BadTickDetector:
             df[col] = df[col].interpolate(method="linear", limit_direction="both")
 
             # Forward fill if interpolation fails
-            df[col] = df[col].fillna(method="ffill")
+            df[col] = df[col].ffill()
 
             # Backward fill if still NaN
-            df[col] = df[col].fillna(method="bfill")
+            df[col] = df[col].bfill()
 
         return df
 
@@ -304,9 +305,9 @@ class BadTickDetector:
             df.loc[bad_mask, col] = np.nan
 
             # Forward fill
-            df[col] = df[col].fillna(method="ffill")
+            df[col] = df[col].ffill()
 
             # Backward fill if still NaN
-            df[col] = df[col].fillna(method="bfill")
+            df[col] = df[col].bfill()
 
         return df

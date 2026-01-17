@@ -37,21 +37,27 @@ class HistoricalDataDB:
         """
         self.db = db
 
-    async def delete_symbol_data(self, db_symbol: str) -> None:
+    async def delete_symbol_data(self, db_symbol: str) -> int:
         """
         Delete all data for a symbol (async).
 
         Args:
             db_symbol: Database symbol identifier
-        """
-        await self.db.run_in_executor(self._delete_symbol_data_sync, db_symbol)
 
-    def _delete_symbol_data_sync(self, db_symbol: str) -> None:
+        Returns:
+            Number of bars deleted
+        """
+        return await self.db.run_in_executor(self._delete_symbol_data_sync, db_symbol)
+
+    def _delete_symbol_data_sync(self, db_symbol: str) -> int:
         """
         Delete all data for a symbol (sync).
 
         Args:
             db_symbol: Database symbol identifier
+
+        Returns:
+            Number of bars deleted
         """
         try:
             with self.db.get_connection() as conn:
@@ -61,7 +67,8 @@ class HistoricalDataDB:
                 )
                 conn.commit()
                 deleted = cursor.rowcount
-                logger.info(f"🗑️  Deleted {deleted} existing bars for {db_symbol}")
+                logger.info(f"🗑️  Deleted {deleted:,} existing bars for {db_symbol}")
+                return deleted
         except Exception as e:
             logger.error(f"Error deleting data for {db_symbol}: {e}")
             raise

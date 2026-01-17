@@ -6,6 +6,3 @@ model: haiku
 ---
 
 Du analysierst Stack Traces.
-- Von unten nach oben lesen
-- Eigenen Code vs. Library unterscheiden
-- Exception Chain beachten

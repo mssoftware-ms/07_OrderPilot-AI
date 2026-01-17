@@ -116,8 +116,19 @@ class BitunixHistoricalDataManager:
 
                 # Delete existing data if replace mode is enabled
                 if replace_existing:
-                    await self._db_handler.delete_symbol_data(db_symbol)
-                    logger.info(f"🗑️  Deleted existing Bitunix data for {db_symbol}")
+                    # Notify UI about deletion
+                    if progress_callback:
+                        progress_callback(0, 0, f"🗑️ Deleting existing data for {symbol}...")
+
+                    deleted_count = await self._db_handler.delete_symbol_data(db_symbol)
+                    logger.info(f"🗑️  Deleted {deleted_count:,} existing bars for {db_symbol}")
+
+                    # Notify UI that deletion is complete
+                    if progress_callback:
+                        if deleted_count > 0:
+                            progress_callback(0, 0, f"✅ Deleted {deleted_count:,} old bars, starting download...")
+                        else:
+                            progress_callback(0, 0, f"✅ No old data found, starting fresh download...")
 
                 logger.info(f"📡 Downloading Bitunix {symbol} from {source.value}...")
 

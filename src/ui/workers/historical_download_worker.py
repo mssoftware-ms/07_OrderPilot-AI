@@ -28,6 +28,7 @@ class HistoricalDownloadWorker(QObject):
         timeframe: str,
         mode: str = "download",  # "download" or "sync"
         enable_bad_tick_filter: bool = True,  # Enable/disable bad tick filtering
+        enable_ohlc_validation: bool = True,  # Enable/disable OHLC validation during download
     ):
         """Initialize download worker.
 
@@ -38,6 +39,12 @@ class HistoricalDownloadWorker(QObject):
             timeframe: Timeframe string (1min, 5min, 15min, 1h, 4h, 1d)
             mode: "download" (replace existing) or "sync" (update missing)
             enable_bad_tick_filter: Enable/disable bad tick filtering
+            enable_ohlc_validation: Enable/disable OHLC validation during download
+
+        Note:
+            For Bitunix: enable_ohlc_validation controls provider-level validation during parsing.
+            When disabled, raw OHLC data is stored (may have rendering issues).
+            Manual validation can be triggered later via Settings button.
         """
         super().__init__()
         self.provider_type = provider_type
@@ -46,6 +53,7 @@ class HistoricalDownloadWorker(QObject):
         self.timeframe = timeframe
         self.mode = mode
         self.enable_bad_tick_filter = enable_bad_tick_filter
+        self.enable_ohlc_validation = enable_ohlc_validation
         self._cancelled = False
 
     def cancel(self):
@@ -72,6 +80,19 @@ class HistoricalDownloadWorker(QObject):
         from src.core.market_data.types import DataSource, Timeframe
         from src.database import initialize_database
 
+        # CRITICAL DEBUG: Log the timeframe being used
+        logger.info("=" * 80)
+        logger.info("🚀 DOWNLOAD WORKER STARTED")
+        logger.info("=" * 80)
+        logger.info(f"📊 Provider:        {self.provider_type}")
+        logger.info(f"📊 Symbols:         {', '.join(self.symbols)}")
+        logger.info(f"📊 Timeframe STR:   '{self.timeframe}' (from Settings UI)")
+        logger.info(f"📊 Days back:       {self.days}")
+        logger.info(f"📊 Mode:            {self.mode}")
+        logger.info(f"📊 Bad tick filter: {self.enable_bad_tick_filter}")
+        logger.info(f"📊 OHLC validation: {self.enable_ohlc_validation}")
+        logger.info("=" * 80)
+
         # Map timeframe string to enum
         timeframe_map = {
             "1min": Timeframe.MINUTE_1,
@@ -83,7 +104,14 @@ class HistoricalDownloadWorker(QObject):
         }
         tf = timeframe_map.get(self.timeframe, Timeframe.MINUTE_1)
 
-        self.progress.emit(5, "Initializing database...")
+        logger.info(f"📊 Timeframe ENUM:  {tf.value} (mapped from '{self.timeframe}')")
+        if self.timeframe not in timeframe_map:
+            logger.warning(f"⚠️ Unknown timeframe '{self.timeframe}', defaulting to 1min!")
+        logger.info("=" * 80)
+
+        status_msg = "📂 Initializing database..."
+        logger.info(status_msg)
+        self.progress.emit(5, status_msg)
 
         # Initialize database - use same SQLite DB as main app
         profile = config_manager.load_profile()
@@ -91,11 +119,17 @@ class HistoricalDownloadWorker(QObject):
         profile.database.path = "./data/orderpilot.db"  # Same as main app!
         initialize_database(profile.database)
 
+        status_msg = "✅ Database ready"
+        logger.info(status_msg)
+        self.progress.emit(8, status_msg)
+
         if self._cancelled:
             self.finished.emit(False, "Download cancelled", {})
             return
 
-        self.progress.emit(10, f"Creating {self.provider_type} provider...")
+        status_msg = f"🔧 Creating {self.provider_type} provider..."
+        logger.info(status_msg)
+        self.progress.emit(10, status_msg)
 
         results = {}
         total_bars = 0
@@ -113,12 +147,18 @@ class HistoricalDownloadWorker(QObject):
         for symbol, count in results.items():
             total_bars += count
 
-        self.progress.emit(100, "Download complete!")
-        self.finished.emit(
-            True,
-            f"Downloaded {total_bars:,} bars for {len(self.symbols)} symbol(s)",
-            results
-        )
+        status_msg = "🎉 Finalizing..."
+        logger.info(status_msg)
+        self.progress.emit(95, status_msg)
+
+        status_msg = "✅ Download complete!"
+        logger.info(status_msg)
+        self.progress.emit(100, status_msg)
+
+        # Build completion message
+        message = f"Downloaded {total_bars:,} bars for {len(self.symbols)} symbol(s)"
+
+        self.finished.emit(True, message, results)
 
     async def _download_alpaca(self, timeframe) -> dict:
         """Download from Alpaca - COMPLETELY SEPARATE from Bitunix workflow."""
@@ -183,7 +223,9 @@ class HistoricalDownloadWorker(QObject):
         from src.core.market_data.providers.bitunix_provider import BitunixProvider
         from src.core.market_data.types import DataSource
 
-        self.progress.emit(15, "Using public Bitunix API (no keys required)...")
+        status_msg = "🌐 Using public Bitunix API (no keys required)..."
+        logger.info(status_msg)
+        self.progress.emit(15, status_msg)
 
         # Bitunix public API - no keys needed for kline data
         provider = BitunixProvider(
@@ -192,6 +234,7 @@ class HistoricalDownloadWorker(QObject):
             use_testnet=False,
             max_bars=525600,  # 1 year of 1min bars
             max_batches=3000,
+            validate_ohlc=self.enable_ohlc_validation,  # User-controlled OHLC validation
         )
 
         # Bitunix-specific manager (NO shared code with Alpaca)
@@ -200,28 +243,58 @@ class HistoricalDownloadWorker(QObject):
         filter_config = FilterConfig(enabled=self.enable_bad_tick_filter)
         manager = BitunixHistoricalDataManager(filter_config=filter_config)
 
-        self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
+        status_msg = f"📊 Preparing download for {', '.join(self.symbols)}..."
+        logger.info(status_msg)
+        self.progress.emit(20, status_msg)
+
+        # Calculate estimated batches for progress calculation
+        bars_per_day = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bpd = bars_per_day.get(self.timeframe, 1440)
+        total_bars_estimated = self.days * bpd
+        estimated_batches = max(1, (total_bars_estimated // 200) + 1)  # 200 bars per batch
+
+        logger.info(f"📊 Download estimates: {total_bars_estimated:,} bars, ~{estimated_batches:,} batches")
 
         results = {}
         for i, symbol in enumerate(self.symbols):
             if self._cancelled:
                 break
 
-            progress_pct = 20 + int((i / len(self.symbols)) * 70)
-            self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
+            # Calculate progress range for this symbol (20-90% for downloads)
+            symbol_progress_start = 20 + int((i / len(self.symbols)) * 70)
+            symbol_progress_range = int(70 / len(self.symbols))
 
-            # Create progress callback that emits detailed updates
-            def make_progress_callback(sym: str, base_pct: int):
+            status_msg = f"🚀 Starting download for {symbol}..."
+            logger.info(status_msg)
+            self.progress.emit(symbol_progress_start, status_msg)
+
+            # Create progress callback that calculates real progress based on batch_num
+            def make_progress_callback(sym: str, start_pct: int, pct_range: int, est_batches: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Emit detailed progress with batch info
-                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
+                    if self._cancelled:
+                        return
+                    # Calculate progress within this symbol's range
+                    batch_progress = min(99, int((batch_num / est_batches) * pct_range))
+                    current_pct = start_pct + batch_progress
+                    full_msg = f"{sym}: {status_msg}"
+                    # Log every 100th batch to avoid spam
+                    if batch_num % 100 == 0 or batch_num == 1:
+                        logger.info(f"[{current_pct:3d}%] {full_msg}")
+                    self.progress.emit(current_pct, full_msg)
                 return callback
 
             try:
                 if self.mode == "sync":
                     # Smart Sync: Check coverage and download only missing data
-                    self.progress.emit(progress_pct, f"Syncing {symbol} (filling gaps)...")
-                    
+                    self.progress.emit(symbol_progress_start, f"Syncing {symbol} (filling gaps)...")
+
                     symbol_results = await manager.sync_history_to_now(
                         provider=provider,
                         symbols=[symbol],
@@ -229,10 +302,15 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         filter_config=None, # Use default
-                        progress_callback=make_progress_callback(symbol, progress_pct)
+                        progress_callback=make_progress_callback(symbol, symbol_progress_start, symbol_progress_range, estimated_batches)
                     )
                 else:
                     # Full Download: Replace existing data
+                    logger.info(f"📥 Starting full download for {symbol}")
+                    logger.info(f"   Timeframe: {self.timeframe} → {timeframe.value}")
+                    logger.info(f"   Days back: {self.days}")
+                    logger.info(f"   Estimated batches: ~{estimated_batches:,}")
+
                     symbol_results = await manager.bulk_download(
                         provider=provider,
                         symbols=[symbol],
@@ -241,14 +319,36 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         replace_existing=True,  # Delete old data first (removes bad ticks)
-                        progress_callback=make_progress_callback(symbol, progress_pct),
+                        progress_callback=make_progress_callback(symbol, symbol_progress_start, symbol_progress_range, estimated_batches),
                     )
                 results.update(symbol_results)
             except Exception as e:
                 logger.error(f"Failed to download {symbol}: {e}")
-                self.progress.emit(progress_pct, f"Error downloading {symbol}: {e}")
+                self.progress.emit(symbol_progress_start, f"Error downloading {symbol}: {e}")
 
         return results
+
+    async def _auto_validate_ohlc(self) -> dict:
+        """Auto-validate and fix OHLC data after download.
+
+        Returns:
+            Validation results dictionary
+        """
+        try:
+            from src.database.ohlc_validator import validate_and_fix_ohlc
+
+            # Validate only the symbols we just downloaded
+            # For now, validate all symbols (could be optimized to validate only downloaded symbols)
+            results = validate_and_fix_ohlc(
+                symbol=None,  # Validate all
+                dry_run=False,  # Apply fixes
+                progress_callback=None  # No UI updates during auto-validation
+            )
+
+            return results
+        except Exception as e:
+            logger.error(f"Auto-validation error: {e}", exc_info=True)
+            return {}
 
 
 class DownloadThread(QThread):

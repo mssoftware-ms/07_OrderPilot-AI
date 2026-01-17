@@ -39,6 +39,14 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
     def init_ui(self):
         """Initialize the settings dialog UI."""
         self.setMinimumSize(600, 400)
+        self.setMaximumHeight(750)
+
+        # Set smaller font for compact layout
+        from PyQt6.QtGui import QFont
+        font = QFont()
+        font.setPointSize(9)
+        self.setFont(font)
+
         layout = QVBoxLayout(self)
 
         # Tab widget
@@ -49,6 +57,7 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         tabs.addTab(self._create_trading_tab(), "Trading")
         tabs.addTab(self._create_broker_tab(), "Brokers")
         tabs.addTab(self._create_market_data_tab(), "Market Data")
+        tabs.addTab(self._create_data_quality_tab(), "Data Quality")
         tabs.addTab(self._create_ai_tab(), "AI")
         tabs.addTab(self._create_notifications_tab(), "Notifications")
 

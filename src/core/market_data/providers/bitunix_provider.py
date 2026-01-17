@@ -45,6 +45,7 @@ class BitunixProvider(HistoricalDataProvider):
         enable_cache: bool = True,
         max_bars: int = 525600,  # 1 year of 1min bars
         max_batches: int = 3000,  # 525600 / 200 = 2628 batches for 1 year
+        validate_ohlc: bool = True,  # Enable/disable OHLC validation during parsing
     ):
         """Initialize Bitunix provider.
 
@@ -55,6 +56,7 @@ class BitunixProvider(HistoricalDataProvider):
             enable_cache: Enable response caching
             max_bars: Safety cap for total bars fetched (default: 525600 = 1 year 1min)
             max_batches: Safety cap for request batches (default: 3000 for 1 year)
+            validate_ohlc: Validate and fix OHLC inconsistencies during parsing (default: True)
         """
         super().__init__("Bitunix Futures", enable_cache)
         self.api_key = api_key
@@ -64,6 +66,7 @@ class BitunixProvider(HistoricalDataProvider):
         self.rate_limit_delay = 0.15  # 10 req/s limit → 0.1s, use 0.15s to be safe
         self.max_bars = max_bars
         self.max_batches = max_batches
+        self.validate_ohlc = validate_ohlc
 
     def _get_base_url(self) -> str:
         """Get API base URL based on environment.
@@ -359,7 +362,7 @@ class BitunixProvider(HistoricalDataProvider):
             symbol: Trading symbol for logging
 
         Returns:
-            List of HistoricalBar objects
+            List of HistoricalBar objects with validated OHLC data
         """
         bars = []
 
@@ -380,17 +383,48 @@ class BitunixProvider(HistoricalDataProvider):
             logger.warning(f"   Full Response: {data}")
             return []
 
+        validation_errors = 0
         for kline in klines:
             try:
                 # Bitunix returns time as string or int in milliseconds
                 ts_ms = int(kline['time'])
 
+                # Parse OHLC values
+                o = Decimal(str(kline['open']))
+                h = Decimal(str(kline['high']))
+                l = Decimal(str(kline['low']))
+                c = Decimal(str(kline['close']))
+
+                # Optional OHLC validation (controlled by validate_ohlc flag)
+                if self.validate_ohlc:
+                    # Validate and correct OHLC consistency
+                    # Bitunix sometimes returns high < open/close or low > open/close due to rounding
+                    # This causes candles without body/wick in lightweight-charts
+                    corrected_high = max(o, h, c)
+                    corrected_low = min(o, l, c)
+
+                    if h != corrected_high or l != corrected_low:
+                        validation_errors += 1
+                        if validation_errors <= 5:  # Log first 5 errors only
+                            logger.debug(
+                                f"OHLC validation fix: {symbol} @ {datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)} | "
+                                f"Original H={h} L={l} | Corrected H={corrected_high} L={corrected_low}"
+                            )
+
+                    # Use corrected values
+                    final_high = corrected_high
+                    final_low = corrected_low
+                else:
+                    # Use raw values without validation
+                    final_high = h
+                    final_low = l
+
                 bar = HistoricalBar(
                     timestamp=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
-                    open=Decimal(str(kline['open'])),
-                    high=Decimal(str(kline['high'])),
-                    low=Decimal(str(kline['low'])),
-                    close=Decimal(str(kline['close'])),
+                    open=o,
+                    high=final_high,
+                    low=final_low,
+                    close=c,
                     volume=int(float(kline['baseVol'])),  # Base asset volume
                     source="bitunix"
                 )
@@ -398,6 +432,9 @@ class BitunixProvider(HistoricalDataProvider):
             except (KeyError, ValueError, TypeError) as e:
                 logger.warning(f"Skipping invalid kline: {e} | Data: {kline}")
                 continue
+
+        if self.validate_ohlc and validation_errors > 0:
+            logger.info(f"✅ Fixed {validation_errors} OHLC inconsistencies in {symbol} data")
 
         # IMPORTANT: Sort bars by timestamp (ascending order)
         # Bitunix API may return bars in descending order, but charts expect ascending

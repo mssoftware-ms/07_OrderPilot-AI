@@ -49,7 +49,7 @@ class HistoryProviderFetching:
         self,
         request: DataRequest
     ) -> tuple[list[HistoricalBar], str]:
-        """Fetch historical data with fallback.
+        """Fetch historical data WITHOUT fallback when specific source is requested.
 
         Args:
             request: Data request
@@ -59,11 +59,16 @@ class HistoryProviderFetching:
         """
         needs_fresh_data = self._needs_fresh_data(request)
 
-        bars, source_used = await self._try_specific_source(request)
-        if bars:
-            return bars, source_used
+        # CRITICAL FIX: If specific source is requested, ONLY try that source (no fallback)
+        if request.source:
+            bars, source_used = await self._try_specific_source(request)
+            if bars:
+                return bars, source_used
+            # No fallback - user explicitly requested this source
+            logger.error(f"Failed to get data from requested source {request.source.value} for {request.symbol}")
+            return [], "none"
 
-        # Try providers in priority order
+        # No specific source requested - try providers in priority order (with fallback)
         for source in self.parent.priority_order:
             bars = await self._try_provider_source(request, source, needs_fresh_data)
             if bars:
@@ -95,21 +100,36 @@ class HistoryProviderFetching:
             return [], ""
         provider = self.parent.providers[request.source]
         if not await provider.is_available():
-            logger.warning(f"Provider {request.source.value} not available, trying fallback...")
+            from src.ui.dialogs.error_dialog import show_error_dialog
+            error_msg = f"Provider {request.source.value} ist nicht verfügbar!"
+            logger.error(error_msg)
+            show_error_dialog("Provider Fehler", error_msg)
             return [], ""
 
         logger.info(f"Using specific source: {request.source.value} for {request.symbol}")
-        bars = await provider.fetch_bars(
-            request.symbol,
-            request.start_date,
-            request.end_date,
-            request.timeframe,
-        )
+        try:
+            bars = await provider.fetch_bars(
+                request.symbol,
+                request.start_date,
+                request.end_date,
+                request.timeframe,
+            )
+        except Exception as e:
+            from src.ui.dialogs.error_dialog import show_error_dialog
+            error_msg = f"Fehler beim Laden von {request.symbol} von {request.source.value}:\n{str(e)}"
+            logger.error(error_msg, exc_info=True)
+            show_error_dialog("Datenfehler", error_msg)
+            return [], ""
+
         if bars:
             await self._store_to_database(bars, request.symbol)
             logger.info(f"Got {len(bars)} bars from {request.source.value}")
             return bars, request.source.value
-        logger.warning(f"No bars returned from {request.source.value}, trying fallback...")
+
+        from src.ui.dialogs.error_dialog import show_error_dialog
+        error_msg = f"Keine Daten von {request.source.value} für {request.symbol} erhalten!"
+        logger.error(error_msg)
+        show_error_dialog("Keine Daten", error_msg)
         return [], ""
 
     async def _try_provider_source(

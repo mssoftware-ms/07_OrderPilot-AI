@@ -29,6 +29,7 @@ from src.ui.dialogs.settings_tabs_alpaca import SettingsTabsAlpaca
 from src.ui.dialogs.settings_tabs_bitunix import SettingsTabsBitunix
 from src.ui.dialogs.settings_tabs_market_main import SettingsTabsMarketMain
 from src.ui.dialogs.settings_tabs_ai import SettingsTabsAI
+from src.ui.dialogs.settings_tabs_data_quality import SettingsTabsDataQuality
 
 
 class SettingsTabsMixin:
@@ -53,6 +54,7 @@ class SettingsTabsMixin:
         self._bitunix_helper = SettingsTabsBitunix(parent=self)
         self._market_main_helper = SettingsTabsMarketMain(parent=self)
         self._ai_helper = SettingsTabsAI(parent=self)
+        self._data_quality_helper = SettingsTabsDataQuality(parent=self)
 
     # ========================================================================
     # Basic Settings Tabs (General, Trading, Broker)
@@ -100,6 +102,17 @@ class SettingsTabsMixin:
         Delegates to SettingsTabsAI.create_ai_tab().
         """
         return self._ai_helper.create_ai_tab()
+
+    # ========================================================================
+    # Data Quality Tab
+    # ========================================================================
+
+    def _create_data_quality_tab(self) -> QWidget:
+        """Create data quality tab.
+
+        Delegates to SettingsTabsDataQuality.create_data_quality_tab().
+        """
+        return self._data_quality_helper.create_data_quality_tab()
 
     # ========================================================================
     # Notifications Tab
