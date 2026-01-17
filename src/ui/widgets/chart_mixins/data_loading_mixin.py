@@ -2,13 +2,14 @@
 
 Contains data loading methods (load_data, load_symbol).
 
-REFACTORED: Split into 6 helper modules using composition pattern:
+REFACTORED: Split into 5 helper modules using composition pattern:
 - data_loading_utils.py: Timezone utilities
-- data_loading_cleaning.py: Bad tick cleaning
 - data_loading_series.py: Chart series building
 - data_loading_resolution.py: Resolution helpers (asset class, timeframe, provider, date range)
 - data_loading_symbol.py: Main load_symbol orchestration
 - data_loading_mixin.py: Orchestrator + event handlers
+
+NOTE: Bad tick cleaning removed from chart display - data must be clean in database!
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas as pd
 
-from .data_loading_cleaning import DataLoadingCleaning
 from .data_loading_series import DataLoadingSeries
 from .data_loading_resolution import DataLoadingResolution
 from .data_loading_symbol import DataLoadingSymbol
@@ -38,7 +38,6 @@ class DataLoadingMixin:
     def _setup_data_loading(self) -> None:
         """Initialize data loading helpers (composition pattern)."""
         # Composition pattern
-        self._cleaning = DataLoadingCleaning(parent=self)
         self._series = DataLoadingSeries(parent=self)
         self._resolution = DataLoadingResolution(parent=self)
         self._symbol_loader = DataLoadingSymbol(parent=self)
@@ -46,10 +45,6 @@ class DataLoadingMixin:
     # =============================================================================
     # PUBLIC API - DELEGATES TO HELPERS
     # =============================================================================
-
-    def _clean_bad_ticks(self, data: "pd.DataFrame") -> "pd.DataFrame":
-        """Delegate to cleaning helper."""
-        return self._cleaning.clean_bad_ticks(data)
 
     def load_data(self, data: "pd.DataFrame"):
         """Load market data into chart.

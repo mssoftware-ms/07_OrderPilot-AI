@@ -52,13 +52,12 @@ class DataLoadingSeries:
         self.parent = parent
 
     def prepare_chart_data(self, data: "pd.DataFrame") -> "pd.DataFrame":
-        """Clean bad ticks and store data.
+        """Prepare and store data for chart display.
 
-        New: Forward-fill gaps for 1-second candles if requested by user.
+        NOTE: No cleaning/filtering here - data must be clean in database!
+        Forward-fill gaps for 1-second candles if requested by user.
         Issue #42: Filter to specific hour ranges for short periods (1H, 2H, 4H, 8H).
         """
-        data = self.parent._cleaning.clean_bad_ticks(data)
-
         # Forward-fill gaps for 1-second candles (user request 2026-01-13)
         if hasattr(self.parent, 'current_timeframe') and self.parent.current_timeframe == "1S":
             data = self._fill_one_second_gaps(data)
@@ -153,17 +152,15 @@ class DataLoadingSeries:
 
         Issue #40: Volume colors now match user's candle color settings.
 
+        TradingView Lightweight Charts expects Unix timestamps in seconds (UTC).
+        timestamp.timestamp() already returns correct Unix timestamp for both
+        timezone-aware and naive datetime objects, so NO offset adjustment needed.
+
         Returns:
             Tuple of (candle_data, volume_data)
         """
-        from .data_loading_utils import get_local_timezone_offset_seconds
-
         candle_data = []
         volume_data = []
-        local_offset = get_local_timezone_offset_seconds()
-        logger.debug(
-            f"Local timezone offset: {local_offset} seconds ({local_offset // 3600}h)"
-        )
 
         # Issue #40: Get volume colors from settings
         vol_colors = _get_volume_colors()
@@ -173,7 +170,9 @@ class DataLoadingSeries:
             if any(pd.isna(x) for x in [row['open'], row['high'], row['low'], row['close']]):
                 continue
 
-            unix_time = int(timestamp.timestamp()) + local_offset
+            # TradingView expects Unix timestamps in seconds (UTC)
+            # timestamp.timestamp() already returns correct value - NO offset needed!
+            unix_time = int(timestamp.timestamp())
             candle_data.append({
                 'time': unix_time,
                 'open': float(row['open']),

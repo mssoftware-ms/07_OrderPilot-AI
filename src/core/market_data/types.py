@@ -75,37 +75,52 @@ class DataRequest:
 
 
 def format_symbol_with_source(symbol: str, source: DataSource) -> str:
-    """Format symbol with source prefix for unique database storage.
+    """Return symbol without prefix (source is stored in separate 'source' column).
+
+    MIGRATION NOTE (2026-01-17):
+    - Old behavior: Added prefix like "bitunix:BTCUSDT"
+    - New behavior: Returns symbol as-is "BTCUSDT"
+    - Source tracking: Now via 'source' column in database
 
     Args:
         symbol: Raw symbol (e.g., "BTC/USD", "BTCUSDT")
-        source: Data source provider
+        source: Data source provider (stored separately in DB)
 
     Returns:
-        Formatted symbol with source prefix (e.g., "alpaca_crypto:BTC/USD", "bitunix:BTCUSDT")
+        Symbol without prefix (e.g., "BTC/USD", "BTCUSDT")
 
     Examples:
         >>> format_symbol_with_source("BTC/USD", DataSource.ALPACA_CRYPTO)
-        "alpaca_crypto:BTC/USD"
+        "BTC/USD"
         >>> format_symbol_with_source("BTCUSDT", DataSource.BITUNIX)
-        "bitunix:BTCUSDT"
+        "BTCUSDT"
     """
-    return f"{source.value}:{symbol}"
+    # Migration 2026-01-17: No longer add prefix, return symbol as-is
+    # Source is tracked via separate 'source' column in database
+    return symbol
 
 
 def parse_symbol_with_source(formatted_symbol: str) -> tuple[str, str]:
-    """Parse formatted symbol back to raw symbol and source.
+    """Parse symbol and extract source prefix if present.
+
+    MIGRATION NOTE (2026-01-17):
+    - Old data: May have prefix like "bitunix:BTCUSDT"
+    - New data: No prefix, just "BTCUSDT"
+    - This function handles both formats for backwards compatibility
 
     Args:
-        formatted_symbol: Symbol with source prefix (e.g., "bitunix:BTCUSDT")
+        formatted_symbol: Symbol with or without source prefix
 
     Returns:
         Tuple of (symbol, source_name)
+        If no prefix: (symbol, "unknown")
 
     Examples:
-        >>> parse_symbol_with_source("bitunix:BTCUSDT")
+        >>> parse_symbol_with_source("bitunix:BTCUSDT")  # Old format
         ("BTCUSDT", "bitunix")
-        >>> parse_symbol_with_source("alpaca_crypto:BTC/USD")
+        >>> parse_symbol_with_source("BTCUSDT")  # New format
+        ("BTCUSDT", "unknown")
+        >>> parse_symbol_with_source("alpaca_crypto:BTC/USD")  # Old format
         ("BTC/USD", "alpaca_crypto")
     """
     if ":" in formatted_symbol:

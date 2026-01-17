@@ -163,9 +163,7 @@ class DataLoadingResolution:
     ) -> tuple[datetime, datetime]:
         """Calculate start/end dates with market hours logic.
 
-        For crypto:
-          - Intraday (1D): Use current UTC calendar day (00:00 - 23:59)
-          - Multi-day: Simple lookback from now
+        For crypto: Simple lookback from now
         For stocks: Adjust for weekends and market hours
 
         Args:
@@ -179,27 +177,11 @@ class DataLoadingResolution:
         now_ny = datetime.now(ny_tz)
         end_date = now_ny
 
-        # Crypto: 24/7 trading
+        # Crypto: 24/7 trading, simple lookback
         if asset_class == AssetClass.CRYPTO:
-            # Intraday (1D): Use current UTC calendar day for database consistency
-            # User's DB stores data from 00:00-23:59 UTC per day
-            if self.parent.current_period == "1D":
-                utc_tz = pytz.timezone('UTC')
-                now_utc = datetime.now(utc_tz)
-                # Start of today 00:00:00 UTC
-                start_date_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-                # End of today 23:59:59 UTC
-                end_date_utc = now_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
-                # Convert to NY timezone for consistency with API
-                start_date = start_date_utc.astimezone(ny_tz)
-                end_date = end_date_utc.astimezone(ny_tz)
-                logger.info(f"Crypto Intraday: Using UTC calendar day {start_date_utc.strftime('%Y-%m-%d')} (00:00-23:59 UTC)")
-                return start_date, end_date
-            else:
-                # Multi-day: Rolling window from now
-                start_date = end_date - timedelta(days=lookback_days)
-                logger.info(f"Crypto multi-day: Using rolling {lookback_days}-day window (24/7 trading)")
-                return start_date, end_date
+            start_date = end_date - timedelta(days=lookback_days)
+            logger.info("Crypto asset: Using current time (24/7 trading)")
+            return start_date, end_date
 
         # Stocks: Complex market hours logic
         market_open_hour = 9

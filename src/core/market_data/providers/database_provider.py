@@ -87,35 +87,6 @@ class DatabaseProvider(HistoricalDataProvider):
         """Check if database is available."""
         return True  # Always available
 
-    async def get_last_timestamp(self, symbol: str) -> datetime | None:
-        """Get timestamp of last bar in database for symbol.
-
-        Args:
-            symbol: Trading symbol
-
-        Returns:
-            Timestamp of last bar, or None if no data exists
-        """
-        try:
-            return await asyncio.to_thread(self._get_last_timestamp_sync, symbol)
-        except Exception as e:
-            logger.error(f"Error getting last timestamp for {symbol}: {e}")
-            return None
-
-    def _get_last_timestamp_sync(self, symbol: str) -> datetime | None:
-        """Synchronous get last timestamp (runs in thread)."""
-        with self.db_manager.session() as session:
-            last_bar = session.query(MarketBar).filter(
-                MarketBar.symbol == symbol
-            ).order_by(MarketBar.timestamp.desc()).first()
-
-            if last_bar:
-                logger.debug(f"Last bar for {symbol}: {last_bar.timestamp}")
-                return last_bar.timestamp
-            else:
-                logger.debug(f"No data in database for {symbol}")
-                return None
-
     def _resample_bars(
         self,
         bars: list[HistoricalBar],

@@ -399,9 +399,14 @@ class BitunixProvider(HistoricalDataProvider):
                 if self.validate_ohlc:
                     # Validate and correct OHLC consistency
                     # Bitunix sometimes returns high < open/close or low > open/close due to rounding
-                    # This causes candles without body/wick in lightweight-charts
-                    corrected_high = max(o, h, c)
-                    corrected_low = min(o, l, c)
+                    # FIX: Only correct if values are INVALID, don't remove legitimate wicks!
+                    body_high = max(o, c)
+                    body_low = min(o, c)
+
+                    # Ensure high is at least as high as the body's highest point
+                    corrected_high = max(h, body_high)
+                    # Ensure low is at least as low as the body's lowest point
+                    corrected_low = min(l, body_low)
 
                     if h != corrected_high or l != corrected_low:
                         validation_errors += 1
