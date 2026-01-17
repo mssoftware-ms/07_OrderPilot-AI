@@ -10,6 +10,9 @@ from typing import Any
 
 import pandas as pd
 
+# Initialize logger BEFORE any usage
+logger = logging.getLogger(__name__)
+
 # Try to import TA-Lib (optional dependency)
 try:
     import talib
@@ -27,8 +30,6 @@ except ImportError:
     logger.debug("pandas_ta not installed. Some indicators will be unavailable.")
 
 from .types import IndicatorConfig, IndicatorResult, IndicatorType
-
-logger = logging.getLogger(__name__)
 
 
 class BaseIndicatorCalculator:
