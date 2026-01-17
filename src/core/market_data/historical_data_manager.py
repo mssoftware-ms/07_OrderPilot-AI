@@ -148,11 +148,16 @@ class HistoricalDataManager:
 
                 # Apply bad tick filtering before saving (delegated)
                 if config.enabled:
-                    # Update detector config if different from instance config
-                    if config != self.filter_config:
-                        detector = BadTickDetector(config)
+                    # Use separate detector for Bitunix (HistoricalBar) vs Alpaca (Bar)
+                    if source == DataSource.BITUNIX:
+                        from .bitunix_bad_tick_detector import BitunixBadTickDetector
+                        detector = BitunixBadTickDetector(config)
                     else:
-                        detector = self._detector
+                        # Update detector config if different from instance config
+                        if config != self.filter_config:
+                            detector = BadTickDetector(config)
+                        else:
+                            detector = self._detector
 
                     bars, stats = await detector.filter_bad_ticks(bars, symbol)
                     total_filter_stats.total_bars += stats.total_bars

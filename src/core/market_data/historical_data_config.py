@@ -29,9 +29,9 @@ class FilterConfig:
     method: str = "hampel"  # "hampel", "zscore", or "basic"
     cleaning_mode: str = "interpolate"  # "interpolate", "remove", "forward_fill"
     hampel_window: int = 15
-    hampel_threshold: float = 3.5
-    zscore_threshold: float = 4.0
-    volume_multiplier: float = 10.0
+    hampel_threshold: float = 5.0  # Erhöht von 3.5 → weniger streng
+    zscore_threshold: float = 5.0  # Erhöht von 4.0 → weniger streng
+    volume_multiplier: float = 15.0  # Erhöht von 10.0 → nur extreme Spikes
     log_stats: bool = True
 
 

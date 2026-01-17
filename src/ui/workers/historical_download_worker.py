@@ -146,6 +146,19 @@ class HistoricalDownloadWorker(QObject):
 
         self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
 
+        # Calculate estimated batches for progress tracking
+        bars_per_day_map = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bars_per_day = bars_per_day_map.get(self.timeframe, 1440)
+        total_bars_estimated = self.days * bars_per_day
+        estimated_batches = (total_bars_estimated // 200) + 1  # Alpaca also returns ~200 bars per request
+
         # Custom progress tracking
         results = {}
         for i, symbol in enumerate(self.symbols):
@@ -155,11 +168,18 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
-            # Create progress callback that emits detailed updates
-            def make_progress_callback(sym: str, base_pct: int):
+            # Create progress callback that calculates actual progress based on batch number
+            def make_progress_callback(sym: str, est_batches: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Emit detailed progress with batch info
-                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
+                    # Calculate progress: 20% to 95% (75 percentage points available)
+                    if est_batches > 0:
+                        batch_progress = (batch_num / est_batches) * 75
+                        current_pct = 20 + min(int(batch_progress), 75)  # Cap at 95%
+                    else:
+                        current_pct = 20
+
+                    # Emit progress with detailed status
+                    self.progress.emit(current_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
@@ -171,7 +191,7 @@ class HistoricalDownloadWorker(QObject):
                     source=DataSource.ALPACA_CRYPTO,
                     batch_size=100,
                     replace_existing=True,  # Delete old data first (removes bad ticks)
-                    progress_callback=make_progress_callback(symbol, progress_pct),
+                    progress_callback=make_progress_callback(symbol, estimated_batches),
                 )
                 results.update(symbol_results)
             except Exception as e:
@@ -201,6 +221,19 @@ class HistoricalDownloadWorker(QObject):
 
         self.progress.emit(20, f"Downloading {', '.join(self.symbols)}...")
 
+        # Calculate estimated batches for progress tracking
+        bars_per_day_map = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bars_per_day = bars_per_day_map.get(self.timeframe, 1440)
+        total_bars_estimated = self.days * bars_per_day
+        estimated_batches = (total_bars_estimated // 200) + 1  # Bitunix returns ~200 bars per request
+
         results = {}
         for i, symbol in enumerate(self.symbols):
             if self._cancelled:
@@ -209,18 +242,25 @@ class HistoricalDownloadWorker(QObject):
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
             self.progress.emit(progress_pct, f"Deleting old data & downloading {symbol}...")
 
-            # Create progress callback that emits detailed updates
-            def make_progress_callback(sym: str, base_pct: int):
+            # Create progress callback that calculates actual progress based on batch number
+            def make_progress_callback(sym: str, est_batches: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    # Emit detailed progress with batch info
-                    self.progress.emit(base_pct, f"{sym}: {status_msg}")
+                    # Calculate progress: 20% to 95% (75 percentage points available)
+                    if est_batches > 0:
+                        batch_progress = (batch_num / est_batches) * 75
+                        current_pct = 20 + min(int(batch_progress), 75)  # Cap at 95%
+                    else:
+                        current_pct = 20
+
+                    # Emit progress with detailed status
+                    self.progress.emit(current_pct, f"{sym}: {status_msg}")
                 return callback
 
             try:
                 if self.mode == "sync":
                     # Smart Sync: Check coverage and download only missing data
                     self.progress.emit(progress_pct, f"Syncing {symbol} (filling gaps)...")
-                    
+
                     symbol_results = await manager.sync_history_to_now(
                         provider=provider,
                         symbols=[symbol],
@@ -228,7 +268,7 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         filter_config=None, # Use default
-                        progress_callback=make_progress_callback(symbol, progress_pct)
+                        progress_callback=make_progress_callback(symbol, estimated_batches)
                     )
                 else:
                     # Full Download: Replace existing data
@@ -240,7 +280,7 @@ class HistoricalDownloadWorker(QObject):
                         source=DataSource.BITUNIX,
                         batch_size=100,
                         replace_existing=True,  # Delete old data first (removes bad ticks)
-                        progress_callback=make_progress_callback(symbol, progress_pct),
+                        progress_callback=make_progress_callback(symbol, estimated_batches),
                     )
                 results.update(symbol_results)
             except Exception as e:
