@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -240,6 +241,16 @@ class WhatsAppService:
                     tab_close=True,
                     close_time=3
                 )
+
+                # Optional: ENTER-Tastendruck erzwingen, falls Browser die Nachricht nicht automatisch sendet
+                try:
+                    import pyautogui  # type: ignore
+
+                    time.sleep(2)
+                    pyautogui.press("enter")
+                    logger.debug("WhatsAppService: ENTER nach Senden ausgelöst (pyautogui)")
+                except Exception:
+                    logger.debug("WhatsAppService: pyautogui nicht verfügbar oder ENTER-Send nicht möglich")
 
                 self._emit_status(f"✅ Nachricht gesendet an {target_number}")
                 logger.info(f"WhatsAppService: Nachricht erfolgreich gesendet")

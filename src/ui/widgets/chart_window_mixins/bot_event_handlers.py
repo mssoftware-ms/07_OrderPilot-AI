@@ -258,18 +258,18 @@ class BotEventHandlersMixin:
             if hasattr(self, 'volatility_bonus_spin'):
                 self._apply_spin_setting(settings, "volatility_bonus", self.volatility_bonus_spin)
             if hasattr(self, 'min_step_spin'):
-                self._apply_spin_setting(settings, "min_step_pct", self.min_step_spin)
-            if hasattr(self, 'trailing_activation_spin'):
+                self._apply_spin_setting(settings, "min_step", self.min_step_spin)
+            if hasattr(self, 'tra_percent_spin'):
                 self._apply_spin_setting(
-                    settings, "trailing_activation_pct", self.trailing_activation_spin
+                    settings, "tra_percent", self.tra_percent_spin
                 )
             if hasattr(self, 'trailing_distance_spin'):
                 self._apply_spin_setting(
-                    settings, "trailing_pct_distance", self.trailing_distance_spin
+                    settings, "trailing_distance", self.trailing_distance_spin
                 )
             if hasattr(self, 'min_score_spin'):
-                self._apply_spin_setting(settings, "min_score_pct", self.min_score_spin)
-            self._apply_checkbox_setting(settings, "use_pattern_check", self.use_pattern_cb)
+                self._apply_spin_setting(settings, "min_score", self.min_score_spin)
+            self._apply_checkbox_setting(settings, "use_pattern", self.use_pattern_cb)
             self._apply_spin_setting(
                 settings, "pattern_similarity", self.pattern_similarity_spin
             )
@@ -277,7 +277,7 @@ class BotEventHandlersMixin:
                 settings, "pattern_min_matches", self.pattern_matches_spin
             )
             self._apply_spin_setting(
-                settings, "pattern_min_winrate_pct", self.pattern_winrate_spin
+                settings, "pattern_winrate", self.pattern_winrate_spin
             )
 
             # Update UI state
@@ -330,10 +330,12 @@ class BotEventHandlersMixin:
 
             # Trailing stop settings
             "regime_adaptive": self.regime_adaptive_cb.isChecked(),
-            "use_pattern_check": self.use_pattern_cb.isChecked(),
+            "tra_percent": self.tra_percent_spin.value() if hasattr(self, 'tra_percent_spin') else None,
+            "trailing_distance": self.trailing_distance_spin.value() if hasattr(self, 'trailing_distance_spin') else None,
+            "use_pattern": self.use_pattern_cb.isChecked(),
             "pattern_similarity": self.pattern_similarity_spin.value(),
             "pattern_min_matches": self.pattern_matches_spin.value(),
-            "pattern_min_winrate_pct": self.pattern_winrate_spin.value(),
+            "pattern_winrate": self.pattern_winrate_spin.value(),
         }
 
         # Issue #44: Add optional settings only if widgets exist
@@ -346,13 +348,9 @@ class BotEventHandlersMixin:
         if hasattr(self, 'volatility_bonus_spin'):
             settings["volatility_bonus"] = self.volatility_bonus_spin.value()
         if hasattr(self, 'min_step_spin'):
-            settings["min_step_pct"] = self.min_step_spin.value()
-        if hasattr(self, 'trailing_activation_spin'):
-            settings["trailing_activation_pct"] = self.trailing_activation_spin.value()
-        if hasattr(self, 'trailing_distance_spin'):
-            settings["trailing_pct_distance"] = self.trailing_distance_spin.value()
+            settings["min_step"] = self.min_step_spin.value()
         if hasattr(self, 'min_score_spin'):
-            settings["min_score_pct"] = self.min_score_spin.value()
+            settings["min_score"] = self.min_score_spin.value()
 
         self._bot_settings_manager.save_settings(symbol, settings)
         logger.info(f"Saved bot settings for {symbol}")

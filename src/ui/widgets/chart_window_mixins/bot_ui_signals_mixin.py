@@ -386,7 +386,7 @@ class BotUISignalsMixin:
         signals_layout = QVBoxLayout(signals_widget)
         signals_layout.setContentsMargins(0, 0, 0, 0)
 
-        signals_group = QGroupBox("Recent Signals")
+        signals_group = QGroupBox("Trading Table")
         signals_inner = QVBoxLayout()
 
         # === TOOLBAR mit Clear-Buttons ===
@@ -435,6 +435,16 @@ class BotUISignalsMixin:
         self.draw_chart_elements_btn.clicked.connect(self._on_draw_chart_elements_clicked)
         self.draw_chart_elements_btn.setEnabled(False)  # Initially disabled
         toolbar.addWidget(self.draw_chart_elements_btn)
+
+        # Issue #4: XLSX export
+        export_btn = QPushButton("📤 XLSX exportieren")
+        export_btn.setFixedHeight(24)
+        export_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 8px; background-color: #4caf50; color: white;"
+        )
+        export_btn.setToolTip("Exportiert die Trading-Tabelle als XLSX")
+        export_btn.clicked.connect(self._on_export_signals_clicked)
+        toolbar.addWidget(export_btn)
 
         toolbar.addStretch()
 
@@ -1069,6 +1079,40 @@ class BotUISignalsMixin:
             self._on_signals_table_selection_changed
         )
         self._signals_table_updating = False
+
+    def _on_export_signals_clicked(self) -> None:
+        """Export current signals table / history to XLSX."""
+        try:
+            import pandas as pd  # type: ignore
+        except Exception as e:
+            QMessageBox.critical(self, "Export fehlgeschlagen", f"pandas nicht verfügbar: {e}")
+            return
+
+        if not hasattr(self, "_signal_history") or not self._signal_history:
+            QMessageBox.information(self, "Keine Daten", "Keine Einträge zum Export vorhanden.")
+            return
+
+        default_name = f"trading_signals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Trading-Tabelle exportieren",
+            default_name,
+            "Excel Files (*.xlsx);;CSV (*.csv);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            df = pd.DataFrame(self._signal_history)
+            if file_path.lower().endswith(".csv"):
+                df.to_csv(file_path, index=False)
+            else:
+                # Excel export requires openpyxl/xlsxwriter; pandas will raise if missing
+                df.to_excel(file_path, index=False)
+            QMessageBox.information(self, "Exportiert", f"Datei gespeichert:\n{file_path}")
+        except Exception as e:
+            logger.error(f"Export failed: {e}", exc_info=True)
+            QMessageBox.critical(self, "Export fehlgeschlagen", str(e))
 
     def _update_leverage_column_visibility(self) -> None:
         """Issue #3: Hebel column (19) is now always visible.

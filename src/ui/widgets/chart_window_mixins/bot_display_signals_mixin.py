@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 class BotDisplaySignalsMixin:
     """BotDisplaySignalsMixin extracted from BotDisplayManagerMixin."""
+    def _make_non_editable(self, item: QTableWidgetItem) -> None:
+        """Remove editable flag from a table item."""
+        if item:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
     def _get_signal_leverage(self, sig: dict) -> float:
         """Return persisted leverage for a signal, snapshotting once if missing (Issue #1)."""
         leverage = sig.get("leverage")
@@ -378,6 +383,7 @@ class BotDisplaySignalsMixin:
             else:
                 current_item = QTableWidgetItem(f"{current_price:.2f}")
             self.signals_table.setItem(row, 11, current_item)
+            self._make_non_editable(current_item)
 
             # Issue #3: Calculate P&L USDT = (Entry - Current) * Hebel (for Long) or (Current - Entry) * Hebel (for Short)
             # P&L % = ((Entry - Current) / Entry * 100) * Hebel
@@ -400,6 +406,7 @@ class BotDisplaySignalsMixin:
             pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
             pct_item.setForeground(QColor(pnl_color))
             self.signals_table.setItem(row, 12, pct_item)
+            self._make_non_editable(pct_item)
 
             # P&L USDT column (13) with color
             pnl_usdt_color = "#26a69a" if pnl_usdt >= 0 else "#ef5350"
@@ -407,6 +414,7 @@ class BotDisplaySignalsMixin:
             pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_usdt:.2f}")
             pnl_item.setForeground(QColor(pnl_usdt_color))
             self.signals_table.setItem(row, 13, pnl_item)
+            self._make_non_editable(pnl_item)
 
             # Issue #6 & Issue #4: Calculate and display BitUnix fees
             # Fees are calculated on the leveraged position size (entry + exit taker)
@@ -439,12 +447,14 @@ class BotDisplaySignalsMixin:
                 f"Round-trip total: {fees_usdt:.4f} USDT"
             )
             self.signals_table.setItem(row, 14, trading_fees_item)
+            self._make_non_editable(trading_fees_item)
 
             # Legacy Fees € column (15) – mirror amount for compatibility
             fees_item = QTableWidgetItem(f"{fees_usdt:.2f}")
             fees_item.setForeground(QColor("#ff9800"))  # Orange for fees
             fees_item.setToolTip(trading_fees_item.toolTip())
             self.signals_table.setItem(row, 15, fees_item)
+            self._make_non_editable(fees_item)
 
             # Stück / quantity column (16)
             qty_item = QTableWidgetItem(f"{quantity:.6f}" if quantity else "-")

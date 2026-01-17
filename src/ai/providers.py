@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import AsyncIterator, TypeVar
 
 from pydantic import BaseModel
@@ -64,14 +63,19 @@ class OpenAIProvider(AIProviderBase):
         """
         super().__init__(config)
 
-        # Set defaults
+        # Set defaults - use ConfigManager for multi-source credential lookup
         if not config.api_key:
-            config.api_key = os.getenv("OPENAI_API_KEY")
+            from src.config.loader import config_manager
+            config.api_key = config_manager.get_credential("openai_api_key")
         if not config.base_url:
             config.base_url = "https://api.openai.com/v1"
 
         if not config.api_key:
-            raise ValueError("OPENAI_API_KEY not found in environment variables")
+            raise ValueError(
+                "OPENAI_API_KEY not found. "
+                "Set as Windows environment variable, in config/secrets/.env, "
+                "or save to Windows Credential Manager via Settings."
+            )
 
         self.headers = {
             "Authorization": f"Bearer {config.api_key}",
@@ -256,14 +260,19 @@ class AnthropicProvider(AIProviderBase):
         """
         super().__init__(config)
 
-        # Set defaults
+        # Set defaults - use ConfigManager for multi-source credential lookup
         if not config.api_key:
-            config.api_key = os.getenv("ANTHROPIC_API_KEY")
+            from src.config.loader import config_manager
+            config.api_key = config_manager.get_credential("anthropic_api_key")
         if not config.base_url:
             config.base_url = "https://api.anthropic.com/v1"
 
         if not config.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+            raise ValueError(
+                "ANTHROPIC_API_KEY not found. "
+                "Set as Windows environment variable, in config/secrets/.env, "
+                "or save to Windows Credential Manager via Settings."
+            )
 
         self.headers = {
             "x-api-key": config.api_key,

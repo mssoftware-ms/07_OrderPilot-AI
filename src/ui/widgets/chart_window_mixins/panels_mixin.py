@@ -63,7 +63,7 @@ class PanelsMixin:
 
             # Tab 3: Signals & Trade Management
             self.bot_signals_tab = self._create_signals_tab()
-            self.panel_tabs.addTab(self.bot_signals_tab, "Signals")
+            self.panel_tabs.addTab(self.bot_signals_tab, "Trading")
 
             # Tab 4: KI Logs
             self.bot_ki_tab = self._create_ki_logs_tab()

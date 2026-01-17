@@ -182,7 +182,7 @@ class BotUIControlWidgets:
 
         # Max Trades per Day
         self.parent.max_trades_spin = QSpinBox()
-        self.parent.max_trades_spin.setRange(1, 50)
+        self.parent.max_trades_spin.setRange(0, 1000000)
         self.parent.max_trades_spin.setValue(10)
         settings_layout.addRow("Max Trades/Day:", self.parent.max_trades_spin)
 

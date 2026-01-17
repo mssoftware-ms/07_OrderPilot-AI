@@ -16,7 +16,7 @@ try:
     TALIB_AVAILABLE = True
 except ImportError:
     TALIB_AVAILABLE = False
-    warnings.warn("TA-Lib not installed. Some indicators will be unavailable.")
+    logger.debug("TA-Lib not installed. Some indicators will be unavailable.")
 
 # Try to import pandas_ta (fallback for TA-Lib)
 try:
@@ -24,7 +24,7 @@ try:
     PANDAS_TA_AVAILABLE = True
 except ImportError:
     PANDAS_TA_AVAILABLE = False
-    warnings.warn("pandas_ta not installed. Some indicators will be unavailable.")
+    logger.debug("pandas_ta not installed. Some indicators will be unavailable.")
 
 from .types import IndicatorConfig, IndicatorResult, IndicatorType
 

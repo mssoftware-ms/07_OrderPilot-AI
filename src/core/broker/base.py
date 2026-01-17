@@ -119,6 +119,13 @@ class BrokerAdapter(ABC):
             self._last_connection_error = None
             logger.info(f"Successfully connected to {self.name}")
 
+        except BrokerConnectionError as e:
+            self._connected = False
+            self._last_connection_error = e
+            e.details.setdefault("broker", self.name)
+            e.details.setdefault("attempts", self._connection_attempts)
+            logger.error(f"Failed to connect to {self.name}: {e}")
+            raise
         except Exception as e:
             self._connected = False
             self._last_connection_error = e
