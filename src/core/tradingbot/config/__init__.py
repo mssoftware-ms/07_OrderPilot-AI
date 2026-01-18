@@ -15,6 +15,7 @@ Architecture:
     router.py -> StrategyRouter (routes regimes to strategy sets)
 """
 
+from .loader import ConfigLoader, ConfigLoadError
 from .models import (
     # Enums
     ConditionOperator,
@@ -41,6 +42,10 @@ from .models import (
 )
 
 __all__ = [
+    # Loader
+    "ConfigLoader",
+    "ConfigLoadError",
+
     # Enums
     "ConditionOperator",
     "IndicatorType",
