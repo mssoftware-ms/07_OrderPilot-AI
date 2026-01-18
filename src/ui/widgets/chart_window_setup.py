@@ -217,6 +217,8 @@ class ChartWindowSetup:
         self.parent.chart_widget.data_loaded.connect(self.parent._restore_chart_state)
         self.parent.chart_widget.data_loaded.connect(self.parent._restore_indicators_after_data_load)
         self.parent.chart_widget.data_loaded.connect(self.activate_live_stream)
+        if hasattr(self.parent, "_update_compact_chart_from_main"):
+            self.parent.chart_widget.data_loaded.connect(self.parent._update_compact_chart_from_main)
 
     def activate_live_stream(self):
         """Activate live streaming when chart data is loaded."""
