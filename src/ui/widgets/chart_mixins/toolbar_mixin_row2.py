@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QLabel, QMenu, QPushButton, QToolBar
 
+from src.ui.icons import get_icon
+
 if TYPE_CHECKING:
     pass
 
@@ -45,6 +47,7 @@ class ToolbarMixinRow2:
         self.add_ai_chat_button(toolbar)
         self.add_ai_analysis_button(toolbar)
         self.add_bitunix_trading_button(toolbar)
+        self.add_settings_button(toolbar)
         toolbar.addSeparator()
         self.add_bot_toggle_button(toolbar)
         toolbar.addSeparator()
@@ -351,6 +354,41 @@ class ToolbarMixinRow2:
         self.parent.bitunix_trading_button.setVisible(True)
         toolbar.addWidget(self.parent.bitunix_trading_button)
         logger.info("Toolbar: Bitunix trading button created and added (visible)")
+
+    def add_settings_button(self, toolbar: QToolBar) -> None:
+        """Add settings button (gear icon) to toolbar."""
+        self.parent.settings_button = QPushButton()
+        self.parent.settings_button.setIcon(get_icon("settings"))
+        self.parent.settings_button.setToolTip("Settings öffnen")
+        self.parent.settings_button.setFixedHeight(26)
+        self.parent.settings_button.setFixedWidth(30)
+        self.parent.settings_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+            }
+        """
+        )
+        self.parent.settings_button.clicked.connect(self._open_settings_dialog)
+        toolbar.addWidget(self.parent.settings_button)
+
+    def _open_settings_dialog(self) -> None:
+        if hasattr(self.parent, "open_main_settings_dialog"):
+            self.parent.open_main_settings_dialog()
+            return
+        widget = self.parent
+        while widget is not None:
+            if hasattr(widget, "show_settings_dialog"):
+                widget.show_settings_dialog()
+                return
+            widget = widget.parent()
+        logger.warning("Settings dialog not available from toolbar")
 
     def add_bot_toggle_button(self, toolbar: QToolBar) -> None:
         self.parent.toggle_panel_button = QPushButton("▼ Trading Bot")

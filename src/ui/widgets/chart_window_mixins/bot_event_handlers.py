@@ -63,13 +63,14 @@ class BotEventHandlersMixin:
 
     def _on_bot_pause_clicked(self) -> None:
         """Handle bot pause button click."""
-        if self._bot_controller:
+        bot_controller = getattr(self, "_bot_controller", None)
+        if bot_controller:
             if self.bot_pause_btn.text() == "Pause":
-                self._bot_controller.pause()
+                bot_controller.pause()
                 self.bot_pause_btn.setText("Resume")
                 self._update_bot_status("PAUSED", "#ff9800")
             else:
-                self._bot_controller.resume()
+                bot_controller.resume()
                 self.bot_pause_btn.setText("Pause")
                 self._update_bot_status("RUNNING", "#26a69a")
 
@@ -78,8 +79,9 @@ class BotEventHandlersMixin:
     def _on_ki_mode_changed(self, mode: str) -> None:
         """Handle KI mode change."""
         logger.info(f"KI mode changed to: {mode}")
-        if self._bot_controller:
-            self._bot_controller.set_ki_mode(mode)
+        bot_controller = getattr(self, "_bot_controller", None)
+        if bot_controller:
+            bot_controller.set_ki_mode(mode)
 
     def _on_trailing_mode_changed(self, mode: str = "") -> None:
         """Handle trailing mode change - toggle field visibility based on mode."""
@@ -150,8 +152,10 @@ class BotEventHandlersMixin:
         if hasattr(self.chart_widget, '_bot_overlay_state'):
             if not show_stops:
                 self.chart_widget.clear_stop_lines()
-            elif self._bot_controller and self._bot_controller.position:
-                self.chart_widget.display_position(self._bot_controller.position)
+            else:
+                bot_controller = getattr(self, "_bot_controller", None)
+                if bot_controller and bot_controller.position:
+                    self.chart_widget.display_position(bot_controller.position)
 
     def _on_debug_hud_changed(self, state: int) -> None:
         """Handle debug HUD checkbox change."""
@@ -183,8 +187,9 @@ class BotEventHandlersMixin:
     def _on_force_reselect(self) -> None:
         """Handle force re-selection button click."""
         logger.info("Forcing strategy re-selection")
-        if self._bot_controller:
-            self._bot_controller.force_strategy_reselection()
+        bot_controller = getattr(self, "_bot_controller", None)
+        if bot_controller:
+            bot_controller.force_strategy_reselection()
 
     def _clear_ki_log(self) -> None:
         """Clear KI log display."""

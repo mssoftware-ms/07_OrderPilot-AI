@@ -47,6 +47,9 @@ from .models import (
     TradingBotConfig,
 )
 
+# Provide canonical alias for JSON strategy model in public API.
+StrategyDefinition = JSONStrategyDefinition
+
 # Legacy runtime config models live in src/core/tradingbot/config.py, but the
 # package name "config" shadows that module. Load it explicitly to preserve
 # backwards compatibility for imports like `from src.core.tradingbot import BotConfig`.
@@ -108,6 +111,7 @@ __all__ = [
     "ConditionGroup",
     "RegimeDefinition",
     "RiskSettings",
+    "StrategyDefinition",
     "JSONStrategyDefinition",
     "StrategyReference",
     "StrategySetDefinition",

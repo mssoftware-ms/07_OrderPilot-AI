@@ -18,10 +18,20 @@ from .models import TradingBotConfig
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_SCHEMA_PATH = Path("03_JSON/schema/strategy_config_schema.json")
 
 class ConfigLoadError(Exception):
     """Exception raised when config loading fails."""
     pass
+
+
+def _prune_nones(data: Any) -> Any:
+    """Remove None-valued keys from dictionaries recursively."""
+    if isinstance(data, dict):
+        return {key: _prune_nones(value) for key, value in data.items() if value is not None}
+    if isinstance(data, list):
+        return [_prune_nones(value) for value in data]
+    return data
 
 
 class ConfigLoader:
@@ -38,15 +48,17 @@ class ConfigLoader:
         '1.0'
     """
 
-    def __init__(self, schema_path: Path | str):
+    def __init__(self, schema_path: Path | str | None = None):
         """Initialize ConfigLoader with JSON Schema.
 
         Args:
-            schema_path: Path to strategy_config_schema.json
+            schema_path: Path to strategy_config_schema.json. Uses default if None.
 
         Raises:
             ConfigLoadError: If schema file cannot be loaded
         """
+        if schema_path is None:
+            schema_path = DEFAULT_SCHEMA_PATH
         self.schema_path = Path(schema_path)
         self.schema = self._load_schema()
 
@@ -111,6 +123,8 @@ class ConfigLoader:
                 f"Invalid JSON in {config_path}: {e}"
             ) from e
 
+        config_data = _prune_nones(config_data)
+
         # Stage 2: JSON Schema validation
         try:
             jsonschema.validate(instance=config_data, schema=self.schema)
@@ -162,6 +176,8 @@ class ConfigLoader:
         Raises:
             ConfigLoadError: If validation fails
         """
+        config_data = _prune_nones(config_data)
+
         # JSON Schema validation
         try:
             jsonschema.validate(instance=config_data, schema=self.schema)

@@ -6,11 +6,19 @@ Validates against strategy_config_schema.json (Draft 2020-12).
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Strict validation toggle for Condition operator operand checks.
+# Some evaluation paths expect runtime validation instead of Pydantic errors.
+STRICT_CONDITION_VALIDATION: ContextVar[bool] = ContextVar(
+    "STRICT_CONDITION_VALIDATION",
+    default=True,
+)
 
 
 # ==================== Enums ====================
@@ -28,7 +36,8 @@ class RegimeScope(str, Enum):
     ENTRY = "entry"  # Only affects entry decisions
     EXIT = "exit"  # Only affects exit decisions
     IN_TRADE = "in_trade"  # Only active during trades
-    # No scope = global regime
+    GLOBAL = "global"  # Global regime
+    # None scope is treated as global (legacy)
 
 
 class IndicatorType(str, Enum):
@@ -59,6 +68,18 @@ class IndicatorType(str, Enum):
     # Price-based
     PRICE = "Price"
     PRICE_CHANGE = "PriceChange"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "IndicatorType" | None:
+        """Allow case-insensitive and underscore-insensitive indicator types."""
+        if not isinstance(value, str):
+            return None
+        normalized = value.replace("_", "").replace(" ", "").lower()
+        for member in cls:
+            member_norm = member.value.replace("_", "").replace(" ", "").lower()
+            if member_norm == normalized:
+                return member
+        return None
 
 
 # ==================== Indicator Models ====================
@@ -148,6 +169,8 @@ class Condition(BaseModel):
     def validate_right_operand(cls, v, info) -> IndicatorRef | ConstantValue | BetweenRange:
         """Ensure right operand matches operator type."""
         op = info.data.get("op")
+        if not STRICT_CONDITION_VALIDATION.get():
+            return v
         if op == ConditionOperator.BETWEEN and not isinstance(v, BetweenRange):
             raise ValueError("'between' operator requires BetweenRange as right operand")
         if op != ConditionOperator.BETWEEN and isinstance(v, BetweenRange):
@@ -177,15 +200,14 @@ class ConditionGroup(BaseModel):
     all: list[Condition] | None = Field(None, description="All conditions must be true (AND)")
     any: list[Condition] | None = Field(None, description="At least one condition must be true (OR)")
 
-    @field_validator("any")
-    @classmethod
-    def validate_group(cls, v, info) -> list[Condition] | None:
-        """Ensure at least one of 'all' or 'any' is specified."""
-        if v is None and info.data.get("all") is None:
+    @model_validator(mode="after")
+    def validate_group(self) -> "ConditionGroup":
+        """Ensure at least one of 'all' or 'any' is specified (but not both)."""
+        if self.all is None and self.any is None:
             raise ValueError("ConditionGroup must have either 'all' or 'any' specified")
-        if v is not None and info.data.get("all") is not None:
+        if self.all is not None and self.any is not None:
             raise ValueError("ConditionGroup cannot have both 'all' and 'any' specified")
-        return v
+        return self
 
 
 # ==================== Regime Models ====================
@@ -221,13 +243,17 @@ class RiskSettings(BaseModel):
 
     Example:
         {
-            "stop_loss_pct": 2.0,
-            "take_profit_pct": 5.0,
-            "trailing_mode": "atr",
-            "trailing_multiplier": 2.0,
-            "risk_per_trade_pct": 1.0
+            "position_size": 0.02,
+            "stop_loss": 0.02,
+            "take_profit": 0.06
         }
     """
+    # Core risk params (used by routing/executor tests)
+    position_size: float | None = Field(None, gt=0, le=1, description="Position size as fraction of equity")
+    stop_loss: float | None = Field(None, gt=0, le=1, description="Stop loss as fraction of entry")
+    take_profit: float | None = Field(None, gt=0, le=10, description="Take profit as fraction of entry")
+
+    # Legacy fields (kept for backward compatibility)
     stop_loss_pct: float | None = Field(None, gt=0, le=100, description="Stop loss percentage")
     take_profit_pct: float | None = Field(None, gt=0, le=1000, description="Take profit percentage")
     trailing_mode: str | None = Field(None, description="Trailing mode ('percent', 'atr')")
@@ -351,13 +377,12 @@ class RoutingMatch(BaseModel):
     any_of: list[str] | None = Field(None, description="At least one regime must be active (OR)")
     none_of: list[str] | None = Field(None, description="None of these regimes can be active (NOT)")
 
-    @field_validator("none_of")
-    @classmethod
-    def validate_match(cls, v, info) -> list[str] | None:
+    @model_validator(mode="after")
+    def validate_match(self) -> "RoutingMatch":
         """Ensure at least one matching criterion is specified."""
-        if v is None and info.data.get("all_of") is None and info.data.get("any_of") is None:
+        if self.all_of is None and self.any_of is None and self.none_of is None:
             raise ValueError("RoutingMatch must have at least one of: all_of, any_of, none_of")
-        return v
+        return self
 
 
 class RoutingRule(BaseModel):

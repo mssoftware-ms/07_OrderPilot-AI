@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
     QMessageBox, QPlainTextEdit, QFileDialog
 )
 
+from src.ui.icons import get_icon
+
 logger = logging.getLogger(__name__)
 
 
@@ -459,6 +461,18 @@ class BotUISignalsMixin:
         )
         self.signals_tab_start_bot_btn.clicked.connect(self._on_signals_tab_bot_toggle_clicked)
         toolbar.addWidget(self.signals_tab_start_bot_btn)
+
+        # Issue #8: Settings button next to Start/Stop Bot
+        self.signals_tab_settings_btn = QPushButton()
+        self.signals_tab_settings_btn.setIcon(get_icon("settings"))
+        self.signals_tab_settings_btn.setFixedHeight(24)
+        self.signals_tab_settings_btn.setFixedWidth(28)
+        self.signals_tab_settings_btn.setToolTip("Settings öffnen")
+        self.signals_tab_settings_btn.setStyleSheet(
+            "padding: 0px; background-color: #2a2a2a; border: 1px solid #555; border-radius: 3px;"
+        )
+        self.signals_tab_settings_btn.clicked.connect(self._open_main_settings_dialog)
+        toolbar.addWidget(self.signals_tab_settings_btn)
 
         toolbar.addStretch()
 
@@ -1151,6 +1165,19 @@ class BotUISignalsMixin:
     # =========================================================================
     # Issue #9: Start Bot Toggle Button in Trading Tab
     # =========================================================================
+
+    def _open_main_settings_dialog(self) -> None:
+        """Open the main Settings dialog."""
+        if hasattr(self, 'chart_widget') and hasattr(self.chart_widget, 'open_main_settings_dialog'):
+            self.chart_widget.open_main_settings_dialog()
+            return
+        widget = self
+        while widget is not None:
+            if hasattr(widget, "show_settings_dialog"):
+                widget.show_settings_dialog()
+                return
+            widget = widget.parent()
+        logger.warning("Settings dialog not available from Trading tab")
 
     def _on_signals_tab_bot_toggle_clicked(self) -> None:
         """Handle Start Bot button click in Trading (Signals) tab.

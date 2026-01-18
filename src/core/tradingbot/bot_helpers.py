@@ -232,6 +232,118 @@ class BotHelpersMixin:
             logger.error(f"Failed to get JSON strategies: {e}")
             return []
 
+    def _execute_json_strategy_sets_with_overrides(
+        self,
+        features: FeatureVector
+    ) -> dict[str, Any]:
+        """Execute matched strategy sets with parameter overrides applied.
+
+        This method:
+        1. Gets active strategy sets from JSON config
+        2. Applies parameter overrides (indicators, strategy params)
+        3. Returns strategy execution context with overridden values
+        4. Caller is responsible for restoring state after execution
+
+        Args:
+            features: Current feature vector
+
+        Returns:
+            Dict with:
+                - matched_sets: List of MatchedStrategySet
+                - execution_contexts: List of ExecutionContext (for state restoration)
+                - active_strategy_ids: List of strategy IDs to execute
+                - current_indicators: Current indicator definitions (with overrides)
+                - current_strategies: Current strategy definitions (with overrides)
+        """
+        if not hasattr(self, '_json_catalog') or not self._json_catalog:
+            return {
+                "matched_sets": [],
+                "execution_contexts": [],
+                "active_strategy_ids": [],
+                "current_indicators": {},
+                "current_strategies": {},
+            }
+
+        try:
+            # Get matched strategy sets
+            matched_sets = self._json_catalog.get_active_strategy_sets(features)
+
+            if not matched_sets:
+                return {
+                    "matched_sets": [],
+                    "execution_contexts": [],
+                    "active_strategy_ids": [],
+                    "current_indicators": {},
+                    "current_strategies": {},
+                }
+
+            # Prepare execution contexts for each matched set
+            execution_contexts = []
+            active_strategy_ids = []
+
+            for matched_set in matched_sets:
+                # Prepare execution (applies overrides)
+                context = self._json_catalog.strategy_executor.prepare_execution(
+                    matched_set
+                )
+                execution_contexts.append(context)
+
+                # Collect strategy IDs
+                strategy_ids = self._json_catalog.strategy_executor.get_strategy_ids_from_set(
+                    matched_set.strategy_set
+                )
+                active_strategy_ids.extend(strategy_ids)
+
+            # Get current (overridden) indicators and strategies
+            current_indicators = self._json_catalog.strategy_executor.current_indicators
+            current_strategies = self._json_catalog.strategy_executor.current_strategies
+
+            logger.info(
+                f"Executed {len(matched_sets)} strategy sets with overrides. "
+                f"Active strategies: {active_strategy_ids}"
+            )
+
+            return {
+                "matched_sets": matched_sets,
+                "execution_contexts": execution_contexts,
+                "active_strategy_ids": active_strategy_ids,
+                "current_indicators": current_indicators,
+                "current_strategies": current_strategies,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to execute JSON strategy sets: {e}")
+            return {
+                "matched_sets": [],
+                "execution_contexts": [],
+                "active_strategy_ids": [],
+                "current_indicators": {},
+                "current_strategies": {},
+            }
+
+    def _restore_json_strategy_state(
+        self,
+        execution_contexts: list
+    ) -> None:
+        """Restore original state after JSON strategy execution.
+
+        Args:
+            execution_contexts: List of ExecutionContext from prepare_execution
+        """
+        if not hasattr(self, '_json_catalog') or not self._json_catalog:
+            return
+
+        try:
+            for context in execution_contexts:
+                self._json_catalog.strategy_executor.restore_state(context)
+
+            logger.debug(
+                f"Restored state for {len(execution_contexts)} execution contexts"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to restore JSON strategy state: {e}")
+
     def _create_entry_order(
         self,
         features: FeatureVector,

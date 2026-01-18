@@ -103,6 +103,9 @@ class BotPositionPersistenceContextMixin:
         self._update_signals_table()
         self._add_ki_log_entry("MANUAL", f"Position manuell geschlossen @ {current_price:.4f}")
         logger.info(f"Manually closed position: {signal.get('side')} @ {signal.get('price'):.4f}")
+        # Issue #6: Keep bot running after manual close
+        if hasattr(self, "_ensure_bot_running_status"):
+            self._ensure_bot_running_status()
     def _delete_signal(self, row: int, signal: dict) -> None:
         """Delete a signal from history."""
         reply = QMessageBox.question(

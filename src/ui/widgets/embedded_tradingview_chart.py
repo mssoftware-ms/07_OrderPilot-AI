@@ -225,6 +225,19 @@ class EmbeddedTradingViewChart(
         except Exception as exc:
             logger.error("add_rect_range failed: %s", exc)
 
+    def open_main_settings_dialog(self) -> None:
+        """Open the main Settings dialog by walking up the parent chain."""
+        widget = self
+        while widget is not None:
+            if hasattr(widget, "show_settings_dialog"):
+                try:
+                    widget.show_settings_dialog()
+                except Exception as exc:
+                    logger.error(f"Failed to open settings dialog: {exc}")
+                return
+            widget = widget.parent()
+        logger.warning("Settings dialog not available from chart widget")
+
     def add_horizontal_line(self, price: float, label: str = "", color: str | None = None) -> None:
         """Draw a horizontal line at given price.
         

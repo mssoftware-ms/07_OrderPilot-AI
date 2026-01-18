@@ -289,3 +289,7 @@ class BotCallbacksCandleMixin:
                     self._add_ki_log_entry("BOT", "State Machine zurückgesetzt -> FLAT (bereit für neue Signale)")
                 except Exception as e:
                     logger.error(f"Failed to reset state machine: {e}")
+
+        # Issue #6: Keep bot running after SL/TR exit
+        if hasattr(self, "_ensure_bot_running_status"):
+            self._ensure_bot_running_status()

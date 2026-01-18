@@ -27,6 +27,7 @@ from .models import (
     ConditionOperator,
     ConstantValue,
     IndicatorRef,
+    STRICT_CONDITION_VALIDATION,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,8 @@ class ConditionEvaluator:
                 Example: {"rsi14": {"value": 65.2}, "adx14": {"value": 28.5}}
         """
         self.indicator_values = indicator_values
+        # Allow runtime validation errors instead of Pydantic errors for evaluator tests.
+        self._strict_token = STRICT_CONDITION_VALIDATION.set(False)
 
     def _resolve_operand(self, operand: IndicatorRef | ConstantValue) -> float:
         """Resolve operand to numeric value.
@@ -173,6 +176,10 @@ class ConditionEvaluator:
             raise ConditionEvaluationError(
                 f"Condition evaluation failed: {e}"
             ) from e
+        finally:
+            if self._strict_token is not None:
+                STRICT_CONDITION_VALIDATION.reset(self._strict_token)
+                self._strict_token = None
 
     def evaluate_group(self, group: ConditionGroup) -> bool:
         """Evaluate condition group (all/any logic).

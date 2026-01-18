@@ -13,7 +13,8 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import AliasChoices, ConfigDict
 
 from .config import TrailingMode
 
@@ -77,35 +78,68 @@ class FeatureVector(BaseModel):
     Contains all indicator values and derived features
     used for entry/exit scoring and LLM input.
     """
+    model_config = ConfigDict(populate_by_name=True)
+
     timestamp: datetime = Field(..., description="Feature calculation timestamp")
-    symbol: str = Field(..., description="Trading symbol")
+    symbol: str | None = Field(None, description="Trading symbol")
 
     # Price data
-    open: float = Field(..., description="Current bar open")
-    high: float = Field(..., description="Current bar high")
-    low: float = Field(..., description="Current bar low")
+    open: float | None = Field(None, description="Current bar open")
+    high: float | None = Field(None, description="Current bar high")
+    low: float | None = Field(None, description="Current bar low")
     close: float = Field(..., description="Current bar close")
-    volume: float = Field(..., description="Current bar volume")
+    volume: float | None = Field(None, description="Current bar volume")
 
     # Trend indicators
-    sma_20: float | None = Field(None, description="20-period SMA")
-    sma_50: float | None = Field(None, description="50-period SMA")
-    ema_12: float | None = Field(None, description="12-period EMA")
-    ema_26: float | None = Field(None, description="26-period EMA")
+    sma_20: float | None = Field(
+        None,
+        description="20-period SMA",
+        validation_alias=AliasChoices("sma_fast", "sma20")
+    )
+    sma_50: float | None = Field(
+        None,
+        description="50-period SMA",
+        validation_alias=AliasChoices("sma_slow", "sma50")
+    )
+    ema_12: float | None = Field(
+        None,
+        description="12-period EMA",
+        validation_alias=AliasChoices("ema_fast", "ema12")
+    )
+    ema_26: float | None = Field(
+        None,
+        description="26-period EMA",
+        validation_alias=AliasChoices("ema_slow", "ema26")
+    )
     ma_slope_20: float | None = Field(None, description="MA slope (normalized)")
 
     # Momentum indicators
-    rsi_14: float | None = Field(None, ge=0, le=100, description="14-period RSI")
+    rsi_14: float | None = Field(
+        None,
+        ge=0,
+        le=100,
+        description="14-period RSI",
+        validation_alias=AliasChoices("rsi", "rsi14")
+    )
     macd: float | None = Field(None, description="MACD line")
     macd_signal: float | None = Field(None, description="MACD signal line")
-    macd_hist: float | None = Field(None, description="MACD histogram")
+    macd_hist: float | None = Field(
+        None,
+        description="MACD histogram",
+        validation_alias=AliasChoices("macd_histogram", "macd_hist")
+    )
     stoch_k: float | None = Field(None, ge=0, le=100, description="Stochastic %K")
     stoch_d: float | None = Field(None, ge=0, le=100, description="Stochastic %D")
     cci: float | None = Field(None, description="CCI value")
     mfi: float | None = Field(None, ge=0, le=100, description="Money Flow Index")
 
     # Volatility indicators
-    atr_14: float | None = Field(None, ge=0, description="14-period ATR")
+    atr_14: float | None = Field(
+        None,
+        ge=0,
+        description="14-period ATR",
+        validation_alias=AliasChoices("atr", "atr14")
+    )
     bb_upper: float | None = Field(None, description="Bollinger upper band")
     bb_middle: float | None = Field(None, description="Bollinger middle band")
     bb_lower: float | None = Field(None, description="Bollinger lower band")
@@ -120,6 +154,42 @@ class FeatureVector(BaseModel):
     # Derived features
     price_vs_sma20: float | None = Field(None, description="Price relative to SMA20 (%)")
     volume_ratio: float | None = Field(None, ge=0, description="Volume vs avg volume ratio")
+    volume_sma: float | None = Field(None, description="Volume moving average")
+
+    @property
+    def rsi(self) -> float | None:
+        """Alias for 14-period RSI (compatibility)."""
+        return self.rsi_14
+
+    @property
+    def sma_fast(self) -> float | None:
+        """Alias for SMA 20 (compatibility)."""
+        return self.sma_20
+
+    @property
+    def sma_slow(self) -> float | None:
+        """Alias for SMA 50 (compatibility)."""
+        return self.sma_50
+
+    @property
+    def ema_fast(self) -> float | None:
+        """Alias for EMA 12 (compatibility)."""
+        return self.ema_12
+
+    @property
+    def ema_slow(self) -> float | None:
+        """Alias for EMA 26 (compatibility)."""
+        return self.ema_26
+
+    @property
+    def atr(self) -> float | None:
+        """Alias for ATR 14 (compatibility)."""
+        return self.atr_14
+
+    @property
+    def macd_histogram(self) -> float | None:
+        """Alias for MACD histogram (compatibility)."""
+        return self.macd_hist
 
     def to_dict_normalized(self) -> dict[str, float]:
         """Export as normalized dict for LLM input.
@@ -164,21 +234,55 @@ class RegimeState(BaseModel):
         description="Confidence in volatility classification"
     )
 
+    # Legacy/compat fields (JSON integration expects these)
+    trending: bool | None = Field(None, description="Legacy trending flag")
+    ranging: bool | None = Field(None, description="Legacy ranging flag")
+    volatile: bool | None = Field(None, description="Legacy volatile flag")
+    regime_strength: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Legacy regime strength"
+    )
+    regime_name: str | None = Field(None, description="Legacy regime name")
+    last_updated: datetime | None = Field(None, description="Legacy last updated timestamp")
+
     # Underlying metrics
     adx_value: float | None = Field(None, description="ADX value used")
     atr_pct: float | None = Field(None, description="ATR as % of price")
     bb_width_pct: float | None = Field(None, description="BB width as % of price")
 
+    @model_validator(mode="after")
+    def _populate_legacy_fields(self) -> "RegimeState":
+        """Populate legacy fields when not explicitly provided."""
+        if self.trending is None:
+            self.trending = self.regime in (RegimeType.TREND_UP, RegimeType.TREND_DOWN)
+        if self.ranging is None:
+            self.ranging = self.regime == RegimeType.RANGE
+        if self.volatile is None:
+            self.volatile = self.volatility in (VolatilityLevel.HIGH, VolatilityLevel.EXTREME)
+        if self.regime_strength is None:
+            self.regime_strength = self.regime_confidence
+        if self.regime_name is None:
+            self.regime_name = self.regime_label
+        if self.last_updated is None:
+            self.last_updated = self.timestamp
+        return self
+
     @computed_field
     @property
     def is_trending(self) -> bool:
         """Check if market is trending."""
+        if self.trending is not None:
+            return self.trending
         return self.regime in (RegimeType.TREND_UP, RegimeType.TREND_DOWN)
 
     @computed_field
     @property
     def regime_label(self) -> str:
         """Human-readable regime label."""
+        if self.regime_name:
+            return self.regime_name
         return f"{self.regime.value}/{self.volatility.value}"
 
 

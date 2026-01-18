@@ -19,6 +19,7 @@ from typing import Any
 from .models import (
     IndicatorDefinition,
     IndicatorOverride,
+    RiskSettings,
     StrategyDefinition,
     StrategyReference,
     StrategySetDefinition,
@@ -178,11 +179,33 @@ class StrategySetExecutor:
         if "risk" in overrides:
             applied["risk"] = deepcopy(strategy.risk)
             # Merge risk params (not replace entirely)
+            risk_override = overrides["risk"]
             if strategy.risk is None:
-                strategy.risk = overrides["risk"]
+                if isinstance(risk_override, RiskSettings):
+                    strategy.risk = deepcopy(risk_override)
+                elif isinstance(risk_override, dict):
+                    strategy.risk = RiskSettings(**risk_override)
+                else:
+                    logger.warning(
+                        f"Unsupported risk override type for '{strategy_id}': "
+                        f"{type(risk_override)}. Skipping."
+                    )
             else:
-                # Update individual risk params
-                for key, value in overrides["risk"].items():
+                if isinstance(risk_override, RiskSettings):
+                    risk_data = risk_override.model_dump(exclude_none=True)
+                elif isinstance(risk_override, dict):
+                    risk_data = {
+                        key: value for key, value in risk_override.items()
+                        if value is not None
+                    }
+                else:
+                    logger.warning(
+                        f"Unsupported risk override type for '{strategy_id}': "
+                        f"{type(risk_override)}. Skipping."
+                    )
+                    risk_data = {}
+
+                for key, value in risk_data.items():
                     setattr(strategy.risk, key, value)
             logger.debug(f"Applied risk override for '{strategy_id}'")
 

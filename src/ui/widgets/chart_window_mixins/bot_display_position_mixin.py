@@ -14,6 +14,19 @@ class BotDisplayPositionMixin:
         # Mirror to Signals tab log status (Issue #23)
         if hasattr(self, '_set_bot_run_status_label'):
             self._set_bot_run_status_label(status.upper() == "RUNNING")
+
+    def _ensure_bot_running_status(self) -> None:
+        """Keep bot UI/status in RUNNING state after a position closes (Issue #6)."""
+        bot_controller = getattr(self, "_bot_controller", None)
+        if not bot_controller:
+            return
+        # If something set the running flag to False, restore it so the bot continues
+        if hasattr(bot_controller, "_running") and not bot_controller._running:
+            bot_controller._running = True
+        self._update_bot_status("RUNNING", "#26a69a")
+        if hasattr(self, "_ensure_bot_update_timer"):
+            self._ensure_bot_update_timer()
+
     def _update_bot_display(self) -> None:
         """Update bot display with current state."""
         if self._bot_controller:

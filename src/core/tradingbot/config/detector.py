@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from .evaluator import ConditionEvaluator
+from .evaluator import ConditionEvaluator, ConditionEvaluationError
 from .models import RegimeDefinition, RegimeScope
 
 logger = logging.getLogger(__name__)
@@ -130,17 +130,28 @@ class RegimeDetector:
 
         evaluator = ConditionEvaluator(indicator_values)
         active_regimes = []
+        error_count = 0
+        last_error: Exception | None = None
 
         # Evaluate each regime
         for regime_def in self.regime_definitions:
             # Skip if scope filter doesn't match
-            if scope is not None and regime_def.scope is not None:
-                if regime_def.scope != scope:
-                    logger.debug(
-                        f"Skipping regime '{regime_def.id}' (scope={regime_def.scope.value}, "
-                        f"requested={scope.value})"
-                    )
-                    continue
+            if scope is not None:
+                if scope == RegimeScope.GLOBAL:
+                    if regime_def.scope not in (None, RegimeScope.GLOBAL):
+                        logger.debug(
+                            f"Skipping regime '{regime_def.id}' (scope={regime_def.scope}, "
+                            f"requested={scope.value})"
+                        )
+                        continue
+                else:
+                    if regime_def.scope != scope:
+                        if regime_def.scope is not None:
+                            logger.debug(
+                                f"Skipping regime '{regime_def.id}' (scope={regime_def.scope.value}, "
+                                f"requested={scope.value})"
+                            )
+                        continue
 
             # Evaluate regime conditions
             try:
@@ -159,6 +170,8 @@ class RegimeDetector:
                     )
 
             except Exception as e:
+                error_count += 1
+                last_error = e
                 logger.error(
                     f"Error evaluating regime '{regime_def.id}': {e}. "
                     f"Treating as inactive."
@@ -166,6 +179,13 @@ class RegimeDetector:
 
         # Sort by priority (highest first)
         active_regimes.sort(key=lambda r: r.priority, reverse=True)
+
+        if self.regime_definitions and indicator_values and error_count == len(self.regime_definitions):
+            if isinstance(last_error, ConditionEvaluationError):
+                raise last_error
+            raise ConditionEvaluationError(
+                f"All regime evaluations failed: {last_error}"
+            ) from last_error
 
         logger.info(
             f"Detected {len(active_regimes)} active regime(s): "
@@ -231,7 +251,7 @@ class RegimeDetector:
         }
 
         for regime in all_active:
-            if regime.scope is None:
+            if regime.scope in (None, RegimeScope.GLOBAL):
                 result["global"].append(regime)
             else:
                 result[regime.scope.value].append(regime)

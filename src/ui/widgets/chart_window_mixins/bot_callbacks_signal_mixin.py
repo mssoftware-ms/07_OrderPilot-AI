@@ -567,6 +567,9 @@ class BotCallbacksSignalMixin:
 
         self._remove_position_lines()
         self._reset_state_machine()
+        # Issue #6: Ensure bot stays running after a position closes
+        if hasattr(self, "_ensure_bot_running_status"):
+            self._ensure_bot_running_status()
 
     def _find_active_signal(self) -> dict[str, Any] | None:
         for sig in reversed(self._signal_history):

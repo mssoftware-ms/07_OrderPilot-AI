@@ -6,6 +6,3 @@ model: haiku
 ---
 
 Du schreibst pytest Tests für neuen Code.
-- Nutze Fixtures und Parametrize
-- Teste Edge Cases
-- Mocke externe Abhängigkeiten

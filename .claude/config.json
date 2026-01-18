@@ -113,8 +113,8 @@
     "topology": "hierarchical",
     "max_agents": 11,
     "queen_type": "strategic",
-    "task": "Bearbeite alle offenen Issues im Ordner Root->issues. Stelle sicher, dass WIRKLICH ALLE AUFGABEN, einschließlich aller Teilaufgaben im jeweiligen Issue, vollständig durchgeführt, abgeschlossen und getestet sind, bevor du das Issue auf \"closed\" setzt. Bei Fehlern oder nicht lösbaren Aufgaben melde dies im CMD-Fenster und lasse das Issue auf \"open\". Beachte dabei die Anweisungen in der Description sowie in den Feldern Additional und Comments. Arbeite die Issues Schritt für Schritt ab, z.B. Issue_1.json, Issue_2.json usw. Nach Abschluss jeder Aufgabe setze den Status auf \"closed\". Die Änderungen werden live vom AI-Modell direkt im vorhandenen lokalen Python 3.12 Code umgesetzt."
+    "task": "Der trading bot im Fenster Trading Bot verwendet strategy sets, die bisher im code hard gecodet sind. \nDies möchte ich nun ändern und die strategien aus json dateien einlesen. Dies ist der Projektplan dafür. \nAls zweiter step soll 'AI Analysis' auch die datenformate lesen und schreiben können. AI Analyse soll zum professionellen Backtest und Strategieentwicklungstool ausgebaut werden.\nRoot/03_JSON/Trading Bot\nRoot/03_JSON/AI_Analyse\nsind die speicherpfade.\n\nBitte erstelle einen Integrationsplan."
   },
-  "created_at": "2026-01-17T20:54:49.292716",
+  "created_at": "2026-01-18T02:40:38.546356",
   "last_session": null
 }
