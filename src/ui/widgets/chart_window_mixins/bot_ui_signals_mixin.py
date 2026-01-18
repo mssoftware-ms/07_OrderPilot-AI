@@ -284,6 +284,26 @@ class BotUISignalsMixin:
         except Exception as e:
             logger.debug(f"Failed to update current price in signals table: {e}")
 
+    def _update_compact_chart_from_main(self) -> None:
+        """Sync compact chart with main chart data (1h view)."""
+        if not hasattr(self, 'compact_chart_widget'):
+            return
+
+        chart_widget = getattr(self, "chart_widget", None)
+        if not chart_widget:
+            return
+
+        chart_data = getattr(chart_widget, "data", None)
+        if chart_data is None or chart_data.empty:
+            self.compact_chart_widget.clear_data()
+            return
+
+        symbol = getattr(chart_widget, "current_symbol", None) or getattr(self, "symbol", None)
+        if symbol:
+            self.compact_chart_widget.update_symbol(symbol)
+
+        self.compact_chart_widget.update_chart_data(chart_data)
+
     def _update_current_price_in_position(self, price: float):
         """Update current price in Current Position widget.
 

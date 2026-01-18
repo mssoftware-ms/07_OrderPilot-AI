@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING
 import pandas as pd
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QSettings, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QDialog, QSizeGrip
@@ -55,6 +55,7 @@ class CompactChartWidget(QWidget):
 
         self._parent_chart = parent_chart
         self._chart = None
+        self._last_chart_data: pd.DataFrame | None = None
 
         if not LIGHTWEIGHT_CHARTS_AVAILABLE:
             logger.warning("lightweight-charts not installed. Widget will show installation instructions.")
@@ -120,33 +121,7 @@ class CompactChartWidget(QWidget):
         if LIGHTWEIGHT_CHARTS_AVAILABLE:
             self._chart = QtChart(chart_container)
 
-            # Chart Layout & Styling (matching reference)
-            self._chart.layout(background_color='#1a1a2e', text_color='#ffffff')
-
-            # Candlestick Styling
-            self._chart.candle_style(
-                up_color='#26a69a',
-                down_color='#ef5350',
-                border_up_color='#26a69a',
-                border_down_color='#ef5350',
-                wick_up_color='#26a69a',
-                wick_down_color='#ef5350'
-            )
-
-            # Volume Histogram - bottom 25% of chart
-            self._chart.volume_config(
-                up_color='rgba(38, 166, 154, 0.6)',
-                down_color='rgba(239, 83, 80, 0.6)',
-                scale_margin_top=0.75,  # Volume in bottom 25%
-                scale_margin_bottom=0.0
-            )
-
-            # Crosshair & Navigation
-            self._chart.crosshair(mode='normal')
-            self._chart.time_scale(right_offset=10, min_bar_spacing=3)
-
-            # Legend
-            self._chart.legend(visible=True, font_size=10)
+            self._apply_chart_styling(self._chart, font_size=10)
 
             # Add chart webview to layout
             chart_inner_layout.addWidget(self._chart.get_webview())
@@ -174,6 +149,114 @@ class CompactChartWidget(QWidget):
         group.setLayout(group_layout)
         layout.addWidget(group)
 
+    @staticmethod
+    def _apply_chart_styling(chart: QtChart, font_size: int) -> None:
+        """Apply shared chart styling with user-configured colors."""
+        bullish_color, bearish_color = CompactChartWidget._get_candle_colors()
+
+        # Chart Layout & Styling (matching reference)
+        chart.layout(background_color='#1a1a2e', text_color='#ffffff')
+
+        # Candlestick Styling
+        chart.candle_style(
+            up_color=bullish_color,
+            down_color=bearish_color,
+            border_up_color=bullish_color,
+            border_down_color=bearish_color,
+            wick_up_color=bullish_color,
+            wick_down_color=bearish_color
+        )
+
+        # Volume Histogram - bottom 25% of chart
+        chart.volume_config(
+            up_color=CompactChartWidget._format_rgba(bullish_color, 0.6),
+            down_color=CompactChartWidget._format_rgba(bearish_color, 0.6),
+            scale_margin_top=0.75,  # Volume in bottom 25%
+            scale_margin_bottom=0.0
+        )
+
+        # Crosshair & Navigation
+        chart.crosshair(mode='normal')
+        chart.time_scale(right_offset=0, min_bar_spacing=2)
+
+        # Legend
+        chart.legend(visible=True, font_size=font_size)
+
+    @staticmethod
+    def _get_candle_colors() -> tuple[str, str]:
+        """Fetch candle colors from settings (fallback to defaults)."""
+        settings = QSettings("OrderPilot", "TradingApp")
+        bullish = settings.value("chart_bullish_color", "#26a69a")
+        bearish = settings.value("chart_bearish_color", "#ef5350")
+        return bullish, bearish
+
+    @staticmethod
+    def _format_rgba(hex_color: str, alpha: float) -> str:
+        """Convert hex color to rgba() string with given alpha."""
+        color = hex_color.lstrip("#")
+        if len(color) != 6:
+            return f"rgba(38, 166, 154, {alpha})"
+        r = int(color[0:2], 16)
+        g = int(color[2:4], 16)
+        b = int(color[4:6], 16)
+        return f"rgba({r}, {g}, {b}, {alpha})"
+
+    def _resample_to_hourly(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Resample OHLCV data to 1-hour candles for the compact view."""
+        if df is None or df.empty:
+            return df
+
+        data = df.copy()
+        if "time" in data.columns:
+            time_series = data["time"]
+        else:
+            time_series = data.index
+
+        try:
+            if pd.api.types.is_numeric_dtype(time_series):
+                time_index = pd.to_datetime(time_series, unit="s", utc=True)
+            else:
+                time_index = pd.to_datetime(time_series, utc=True)
+        except Exception as exc:
+            logger.warning(f"Failed to parse time values for compact chart: {exc}")
+            return df
+
+        data.index = time_index
+        if "volume" not in data.columns:
+            data["volume"] = 0.0
+
+        hourly = (
+            data.resample("1H")
+            .agg(
+                {
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last",
+                    "volume": "sum",
+                }
+            )
+            .dropna(subset=["open", "high", "low", "close"])
+        )
+
+        if hourly.empty:
+            return hourly
+
+        hourly = hourly.reset_index()
+        hourly["time"] = (hourly["index"].astype("int64") // 10**9).astype(int)
+        return hourly[["time", "open", "high", "low", "close", "volume"]]
+
+    @staticmethod
+    def _calculate_bar_spacing(bar_count: int) -> int:
+        """Calculate bar spacing for fitting data into the compact view."""
+        if bar_count >= 300:
+            return 1
+        if bar_count >= 160:
+            return 2
+        if bar_count >= 80:
+            return 3
+        return 4
+
     def update_symbol(self, symbol: str) -> None:
         """Update displayed symbol.
 
@@ -197,22 +280,30 @@ class CompactChartWidget(QWidget):
             return
 
         try:
-            # Ensure DataFrame has required columns
-            required_cols = ['time', 'open', 'high', 'low', 'close', 'volume']
-            if not all(col in df.columns for col in required_cols):
-                logger.error(f"DataFrame missing required columns. Has: {df.columns.tolist()}")
+            chart_df = self._resample_to_hourly(df)
+            if chart_df is None or chart_df.empty:
+                logger.debug("No hourly data to update compact chart")
                 return
 
-            # Update chart with latest data (last 100 candles for compact view)
-            chart_df = df[required_cols].tail(100).copy()
+            required_cols = ['time', 'open', 'high', 'low', 'close', 'volume']
+            if not all(col in chart_df.columns for col in required_cols):
+                logger.error(f"DataFrame missing required columns. Has: {chart_df.columns.tolist()}")
+                return
+
             self._chart.set(chart_df)
+            self._chart.time_scale(
+                right_offset=0,
+                min_bar_spacing=self._calculate_bar_spacing(len(chart_df)),
+            )
+
+            self._last_chart_data = chart_df
 
             # Update price label with latest close
             if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:
                 latest_price = chart_df.iloc[-1]['close']
                 self._price_label.setText(f"${latest_price:,.2f}")
 
-            logger.debug(f"Updated compact chart with {len(chart_df)} candles")
+            logger.debug(f"Updated compact chart with {len(chart_df)} candles (1h)")
 
         except Exception as e:
             logger.error(f"Failed to update compact chart: {e}", exc_info=True)
@@ -263,9 +354,8 @@ class CompactChartWidget(QWidget):
             logger.warning("Cannot enlarge chart: lightweight-charts not available")
             return
 
-        # Get current data from parent chart if available
-        chart_data = None
-        if self._parent_chart and hasattr(self._parent_chart, 'get_chart_data'):
+        chart_data = self._last_chart_data
+        if chart_data is None and self._parent_chart and hasattr(self._parent_chart, 'get_chart_data'):
             chart_data = self._parent_chart.get_chart_data()
 
         # Create enlarged dialog
@@ -350,28 +440,7 @@ class EnlargedChartDialog(QDialog):
             # Create enlarged chart
             self._chart = QtChart(chart_container)
 
-            # Apply same styling as compact chart
-            self._chart.layout(background_color='#1a1a2e', text_color='#ffffff')
-
-            self._chart.candle_style(
-                up_color='#26a69a',
-                down_color='#ef5350',
-                border_up_color='#26a69a',
-                border_down_color='#ef5350',
-                wick_up_color='#26a69a',
-                wick_down_color='#ef5350'
-            )
-
-            self._chart.volume_config(
-                up_color='rgba(38, 166, 154, 0.6)',
-                down_color='rgba(239, 83, 80, 0.6)',
-                scale_margin_top=0.75,
-                scale_margin_bottom=0.0
-            )
-
-            self._chart.crosshair(mode='normal')
-            self._chart.time_scale(right_offset=15, min_bar_spacing=6)
-            self._chart.legend(visible=True, font_size=12)
+            CompactChartWidget._apply_chart_styling(self._chart, font_size=12)
 
             # Set data if available
             if self._chart_data is not None and not self._chart_data.empty:
