@@ -6,6 +6,7 @@ This module provides:
 - Condition evaluation system
 - Regime detection
 - Strategy routing
+- Strategy set execution with parameter overrides
 
 Architecture:
     models.py -> Core Pydantic models (Indicators, Regimes, Strategies, etc.)
@@ -13,10 +14,12 @@ Architecture:
     evaluator.py -> ConditionEvaluator (evaluates condition logic)
     detector.py -> RegimeDetector (detects active regimes)
     router.py -> StrategyRouter (routes regimes to strategy sets)
+    executor.py -> StrategySetExecutor (executes with parameter overrides)
 """
 
 from .detector import ActiveRegime, RegimeDetector
 from .evaluator import ConditionEvaluationError, ConditionEvaluator
+from .executor import ExecutionContext, StrategySetExecutor
 from .loader import ConfigLoader, ConfigLoadError
 from .router import MatchedStrategySet, StrategyRouter
 from .models import (
@@ -86,6 +89,10 @@ __all__ = [
     # Router
     "StrategyRouter",
     "MatchedStrategySet",
+
+    # Executor
+    "StrategySetExecutor",
+    "ExecutionContext",
 
     # Enums
     "ConditionOperator",
