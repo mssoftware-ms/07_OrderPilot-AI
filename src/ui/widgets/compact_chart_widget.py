@@ -137,6 +137,23 @@ class CompactChartWidget(QWidget):
         self._refresh_btn.clicked.connect(self._on_refresh_clicked)
         header_layout.addWidget(self._refresh_btn)
 
+        # Zoom All Button (requested feature)
+        self._zoom_all_btn = QPushButton("⤢")
+        self._zoom_all_btn.setFixedSize(24, 20)
+        self._zoom_all_btn.setToolTip("Alles zoomen")
+        self._zoom_all_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 12px;
+                background-color: #2a2a2a;
+                border: 1px solid #555;
+                border-radius: 3px;
+                color: white;
+            }
+            QPushButton:hover { background-color: #3a3a3a; }
+        """)
+        self._zoom_all_btn.clicked.connect(self._on_zoom_all_clicked)
+        header_layout.addWidget(self._zoom_all_btn)
+
         # Enlarge button
         self._enlarge_btn = QPushButton("🔍")
         self._enlarge_btn.setFixedSize(24, 20)
@@ -210,6 +227,14 @@ class CompactChartWidget(QWidget):
         self._current_timeframe = tf
         if self._last_raw_data is not None:
             self.update_chart_data(self._last_raw_data)
+
+    def _on_zoom_all_clicked(self) -> None:
+        """Handle zoom all click."""
+        if self._chart:
+            try:
+                self._chart.fit()
+            except Exception as e:
+                logger.error(f"Failed to fit chart: {e}")
 
     def _on_refresh_clicked(self) -> None:
         """Handle refresh click."""
@@ -393,6 +418,7 @@ class CompactChartWidget(QWidget):
                 right_offset=5,
                 min_bar_spacing=spacing,
             )
+            self._chart.fit()  # Ensure chart is fitted to available space
 
             # Update price label with latest close
             if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:
