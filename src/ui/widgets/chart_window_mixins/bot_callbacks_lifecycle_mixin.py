@@ -235,3 +235,79 @@ class BotCallbacksLifecycleMixin:
             self._set_bot_run_status_label(False)
 
         logger.info("Bot stopped")
+
+    def _start_bot_with_json_config(self, config_path: str, matched_strategy_set: any) -> None:
+        """Start bot with JSON config and matched strategy set.
+
+        Args:
+            config_path: Path to JSON config file
+            matched_strategy_set: Matched strategy set from routing
+        """
+        from src.core.tradingbot import (
+            BotConfig,
+            FullBotConfig,
+            KIMode,
+            MarketType,
+            RiskConfig,
+            TrailingMode,
+        )
+        from src.core.tradingbot.config.loader import ConfigLoader
+
+        symbol = self._resolve_bot_symbol()
+        ki_mode = KIMode(self.ki_mode_combo.currentText().lower())
+        trailing_mode = TrailingMode(self.trailing_mode_combo.currentText().lower())
+        market_type = MarketType.CRYPTO if '/' in symbol else MarketType.NASDAQ
+
+        # Load JSON config
+        loader = ConfigLoader()
+        json_config = loader.load_config(config_path)
+
+        # Create base config
+        config = FullBotConfig.create_default(symbol, market_type)
+        self._apply_bot_ui_config(config, ki_mode, trailing_mode)
+
+        # Create and start controller with callbacks + JSON config
+        from src.core.tradingbot.bot_controller import BotController
+
+        self._bot_controller = BotController(
+            config,
+            on_signal=self._on_bot_signal,
+            on_decision=self._on_bot_decision,
+            on_order=self._on_bot_order,
+            on_log=self._on_bot_log,
+            on_trading_blocked=self._on_trading_blocked,
+            on_macd_signal=self._on_macd_signal,
+        )
+
+        # Set JSON config on bot controller
+        if hasattr(self._bot_controller, 'set_json_config'):
+            self._bot_controller.set_json_config(json_config)
+            logger.info(f"JSON config loaded: {config_path}")
+
+        # Set initial strategy from matched set
+        if hasattr(self._bot_controller, 'set_initial_strategy'):
+            self._bot_controller.set_initial_strategy(matched_strategy_set)
+            logger.info(f"Initial strategy set: {matched_strategy_set.strategy_set.id if hasattr(matched_strategy_set.strategy_set, 'id') else 'unknown'}")
+
+        # Update bot log UI status (Issue #23)
+        if hasattr(self, '_set_bot_run_status_label'):
+            self._set_bot_run_status_label(True)
+
+        # Register state change callback
+        self._bot_controller._state_machine._on_transition = lambda t: (
+            self._on_bot_state_change(t.from_state.value, t.to_state.value)
+        )
+
+        self._warmup_bot_from_chart()
+
+        # Start the bot
+        self._bot_controller.start()
+        self._update_bot_status("RUNNING", "#26a69a")
+
+        # Start update timer
+        self._ensure_bot_update_timer()
+
+        # Save settings for this symbol
+        self._save_bot_settings(symbol)
+
+        logger.info(f"Bot started with JSON strategy for {symbol} ({ki_mode.value} mode)")

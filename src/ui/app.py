@@ -114,7 +114,7 @@ def _apply_saved_debug_level(level_str: str) -> None:
         if isinstance(handler, logging.StreamHandler):
             handler.setLevel(level)
 
-    # Stream/chart provider loggers - suppress at WARNING level unless DEBUG
+    # Stream/chart provider loggers - suppress at WARNING level to reduce noise
     stream_loggers = [
         'src.core.market_data.bitunix_stream',
         'src.core.market_data.bitunix_stream_connection',
@@ -124,17 +124,19 @@ def _apply_saved_debug_level(level_str: str) -> None:
         'src.core.market_data.history_provider',
         'src.core.market_data.history_provider_streaming',
         'src.ui.widgets.chart_mixins',
+        'src.common.event_bus',
         'urllib3',
         'websockets',
+        'websockets.client',
+        'websockets.protocol',
         'aiohttp',
+        'qasync',
+        'qasync._QEventLoop',
+        'qasync._windows',
     ]
 
-    if level >= logging.WARNING:
-        for logger_name in stream_loggers:
-            logging.getLogger(logger_name).setLevel(logging.WARNING)
-    else:
-        for logger_name in stream_loggers:
-            logging.getLogger(logger_name).setLevel(level)
+    for logger_name in stream_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
     logging.getLogger(__name__).info(f"Console debug level applied: {level_str}")
 

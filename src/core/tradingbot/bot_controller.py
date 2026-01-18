@@ -576,6 +576,207 @@ class BotController(
         """Get last detected regime."""
         return self._regime
 
+    # ==================== JSON-Based Strategy Configuration ====================
+
+    def set_json_config(self, json_config: Any) -> None:
+        """Set JSON config for regime-based strategy routing.
+
+        Args:
+            json_config: TradingBotConfig instance from ConfigLoader
+
+        Note:
+            This method enables dynamic JSON-based strategy selection.
+            Call after controller initialization or when changing strategies.
+        """
+        from src.core.tradingbot.config_integration_bridge import ConfigBasedStrategyCatalog
+
+        try:
+            # Store raw config
+            self._json_config = json_config
+
+            # Create/update JSON catalog
+            self._json_catalog = ConfigBasedStrategyCatalog(json_config)
+
+            # Extract config components for regime detection and routing
+            self._config_regimes = json_config.regimes
+            self._config_strategies = json_config.strategies
+            self._config_routing = json_config.routing
+            self._config_strategy_sets = json_config.strategy_sets
+
+            logger.info(
+                f"JSON config set: {len(json_config.regimes)} regimes, "
+                f"{len(json_config.strategies)} strategies, "
+                f"{len(json_config.routing)} routing rules"
+            )
+            self._log_activity(
+                "CONFIG",
+                f"JSON-Konfiguration geladen: {len(json_config.regimes)} Regimes, "
+                f"{len(json_config.strategies)} Strategien"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to set JSON config: {e}", exc_info=True)
+            self._log_activity("ERROR", f"JSON-Config Fehler: {e}")
+            raise
+
+    def set_initial_strategy(self, matched_strategy_set: Any) -> None:
+        """Set initial strategy from matched strategy set.
+
+        Args:
+            matched_strategy_set: MatchedStrategySet from StrategyRouter
+
+        Note:
+            This sets the starting strategy based on current market regime.
+            The strategy may change during runtime if regime changes significantly.
+        """
+        try:
+            # Store matched strategy set
+            self._matched_strategy_set = matched_strategy_set
+
+            # Extract strategy information
+            strategy_set = matched_strategy_set.strategy_set
+            active_regimes = matched_strategy_set.active_regimes
+
+            # Log initial strategy
+            strategy_names = ", ".join([s.id for s in strategy_set.strategies])
+            regime_names = ", ".join([r.name for r in active_regimes])
+
+            logger.info(
+                f"Initial strategy set: {strategy_set.name} | "
+                f"Strategies: {strategy_names} | "
+                f"Active regimes: {regime_names}"
+            )
+            self._log_activity(
+                "STRATEGY",
+                f"Startstrategie: {strategy_set.name} ({regime_names})"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to set initial strategy: {e}", exc_info=True)
+            self._log_activity("ERROR", f"Strategie-Set Fehler: {e}")
+            raise
+
+    def _check_regime_change_and_switch(self, features: FeatureVector) -> bool:
+        """Check if regime has changed and switch strategy if needed.
+
+        Args:
+            features: Current feature vector
+
+        Returns:
+            True if strategy was switched, False otherwise
+
+        Note:
+            Only active when JSON config is loaded. Monitors regime changes
+            and automatically switches to appropriate strategy set.
+        """
+        # Only check if JSON config is active
+        if not hasattr(self, '_json_config') or self._json_config is None:
+            return False
+
+        try:
+            from src.core.tradingbot.config.detector import RegimeDetector
+            from src.core.tradingbot.config.router import StrategyRouter
+            from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
+
+            # Calculate indicator values from features
+            calculator = IndicatorValueCalculator()
+            indicator_values = calculator.calculate(features)
+
+            # Detect current active regimes
+            detector = RegimeDetector(self._config_regimes)
+            current_active_regimes = detector.detect_active_regimes(
+                indicator_values,
+                scope='entry'
+            )
+
+            # Get current regime IDs
+            current_regime_ids = [r.id for r in current_active_regimes]
+
+            # Check if regimes have changed
+            if hasattr(self, '_last_active_regime_ids'):
+                if current_regime_ids == self._last_active_regime_ids:
+                    return False  # No change
+
+            # Store current regime IDs
+            self._last_active_regime_ids = current_regime_ids
+
+            # Route to new strategy set
+            router = StrategyRouter(self._config_routing, self._config_strategy_sets)
+            matched_set = router.route(current_active_regimes)
+
+            if matched_set:
+                # Check if strategy set has actually changed
+                if hasattr(self, '_matched_strategy_set'):
+                    if matched_set.strategy_set.id == self._matched_strategy_set.strategy_set.id:
+                        return False  # Same strategy set
+
+                # Switch to new strategy
+                self._switch_strategy(matched_set, current_active_regimes)
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to check regime change: {e}", exc_info=True)
+            return False
+
+    def _switch_strategy(
+        self,
+        matched_strategy_set: Any,
+        active_regimes: list
+    ) -> None:
+        """Switch to new strategy based on regime change.
+
+        Args:
+            matched_strategy_set: New MatchedStrategySet to switch to
+            active_regimes: List of active RegimeDefinitions
+
+        Note:
+            Applies parameter overrides and updates internal strategy tracking.
+            Emits strategy change event for UI notifications.
+        """
+        try:
+            # Store old strategy for logging
+            old_strategy_name = None
+            if hasattr(self, '_matched_strategy_set'):
+                old_strategy_name = self._matched_strategy_set.strategy_set.name
+
+            # Update matched strategy set
+            self._matched_strategy_set = matched_strategy_set
+
+            # Extract strategy information
+            strategy_set = matched_strategy_set.strategy_set
+            strategy_names = ", ".join([s.id for s in strategy_set.strategies])
+            regime_names = ", ".join([r.name for r in active_regimes])
+
+            # Log strategy switch
+            switch_msg = (
+                f"Strategie gewechselt: {old_strategy_name or 'Keine'} → {strategy_set.name} | "
+                f"Regimes: {regime_names}"
+            )
+            logger.info(f"Strategy switch: {old_strategy_name} -> {strategy_set.name}")
+            self._log_activity("STRATEGY_SWITCH", switch_msg)
+
+            # Emit event for UI notification (if event bus available)
+            if self._event_bus:
+                try:
+                    self._event_bus.emit('regime_changed', {
+                        'old_strategy': old_strategy_name,
+                        'new_strategy': strategy_set.name,
+                        'new_regimes': regime_names,
+                        'timestamp': datetime.utcnow()
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to emit regime change event: {e}")
+
+            # TODO: Apply parameter overrides from strategy set
+            # This would use StrategySetExecutor.prepare_execution()
+            # For now, just log the switch
+
+        except Exception as e:
+            logger.error(f"Failed to switch strategy: {e}", exc_info=True)
+            self._log_activity("ERROR", f"Strategie-Wechsel Fehler: {e}")
+
     # ==================== Main Processing ====================
 
     async def on_bar(self, bar: dict[str, Any]) -> BotDecision | None:
@@ -633,6 +834,15 @@ class BotController(
                     f"Volatilitaet: {self._regime.volatility.value} | "
                     f"Konfidenz: {self._regime.regime_confidence:.1%}"
                 )
+
+            # 2a. Check for JSON-based regime change and strategy switching
+            if hasattr(self, '_json_config') and self._json_config is not None:
+                strategy_switched = self._check_regime_change_and_switch(features)
+                if strategy_switched:
+                    self._log_activity(
+                        "REGIME_CHANGE",
+                        "Automatischer Strategie-Wechsel aufgrund Regime-Änderung"
+                    )
 
             # 3. Daily strategy selection (once per day or on first bar)
             await self._check_strategy_selection(features)

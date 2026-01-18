@@ -387,6 +387,25 @@ class ChartChatUIMixin:
         header_label.setStyleSheet("color: #999; font-size: 11px;")
         header_layout.addWidget(header_label)
 
+        if role == "assistant" and hasattr(self, "_show_evaluation_popup"):
+            eval_btn = QPushButton("📊")
+            eval_btn.setMaximumSize(20, 20)
+            eval_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                    font-size: 12px;
+                    padding: 0;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 255, 255, 0.1);
+                    border-radius: 3px;
+                }
+            """)
+            eval_btn.setToolTip("Auswertung öffnen")
+            eval_btn.clicked.connect(lambda: self._show_evaluation_popup(content=content))
+            header_layout.addWidget(eval_btn)
+
         # Copy to clipboard button
         copy_btn = QPushButton("📋")
         copy_btn.setMaximumSize(20, 20)

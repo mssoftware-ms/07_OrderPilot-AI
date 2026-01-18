@@ -146,28 +146,67 @@ class BetweenRange(BaseModel):
 class Condition(BaseModel):
     """Single comparison condition.
 
-    Example (gt):
+    Supports two modes:
+    1. Operator-based: left, op, right (legacy)
+    2. CEL expression: cel_expression (new)
+
+    Example (gt operator):
         {
             "left": {"indicator_id": "rsi14", "field": "value"},
             "op": "gt",
             "right": {"value": 60}
         }
 
-    Example (between):
+    Example (between operator):
         {
             "left": {"indicator_id": "rsi14", "field": "value"},
             "op": "between",
             "right": {"min": 45, "max": 55}
         }
+
+    Example (CEL expression):
+        {
+            "cel_expression": "rsi14.value > 60 && adx14.value > 25"
+        }
     """
-    left: IndicatorRef | ConstantValue = Field(..., description="Left operand")
-    op: ConditionOperator = Field(..., description="Comparison operator")
-    right: IndicatorRef | ConstantValue | BetweenRange = Field(..., description="Right operand")
+    # Operator-based condition (legacy, optional if CEL is used)
+    left: IndicatorRef | ConstantValue | None = Field(None, description="Left operand")
+    op: ConditionOperator | None = Field(None, description="Comparison operator")
+    right: IndicatorRef | ConstantValue | BetweenRange | None = Field(None, description="Right operand")
+
+    # CEL expression-based condition (new, optional if operator is used)
+    cel_expression: str | None = Field(
+        None,
+        description="CEL expression for complex conditions (e.g., 'rsi14.value > 60 && adx14.value > 25')"
+    )
+
+    @model_validator(mode="after")
+    def validate_condition_mode(self) -> "Condition":
+        """Ensure either operator-based OR CEL expression is provided, not both."""
+        has_operator_mode = self.left is not None and self.op is not None and self.right is not None
+        has_cel_mode = self.cel_expression is not None
+
+        if not has_operator_mode and not has_cel_mode:
+            raise ValueError(
+                "Condition must have either operator-based fields (left, op, right) "
+                "OR cel_expression, but neither was provided"
+            )
+
+        if has_operator_mode and has_cel_mode:
+            raise ValueError(
+                "Condition cannot have both operator-based fields (left, op, right) "
+                "AND cel_expression. Choose one mode."
+            )
+
+        return self
 
     @field_validator("right")
     @classmethod
-    def validate_right_operand(cls, v, info) -> IndicatorRef | ConstantValue | BetweenRange:
+    def validate_right_operand(cls, v, info) -> IndicatorRef | ConstantValue | BetweenRange | None:
         """Ensure right operand matches operator type."""
+        if v is None:
+            return v  # Allow None for CEL mode
+
         op = info.data.get("op")
         if not STRICT_CONDITION_VALIDATION.get():
             return v

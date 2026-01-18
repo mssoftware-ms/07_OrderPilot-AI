@@ -29,6 +29,8 @@ class EmbeddedTradingViewChartUIMixin:
 
         # Toolbar (from ToolbarMixin) - Two rows
         toolbar1, toolbar2 = self._create_toolbar()
+        self.toolbar_row1 = toolbar1
+        self.toolbar_row2 = toolbar2
         layout.addWidget(toolbar1)
         layout.addWidget(toolbar2)
 

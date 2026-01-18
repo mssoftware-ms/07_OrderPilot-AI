@@ -25,18 +25,57 @@ class BotEventHandlersMixin:
     # ==================== BUTTON EVENT HANDLERS ====================
 
     def _on_bot_start_clicked(self) -> None:
-        """Handle bot start button click."""
-        logger.info("Bot start requested")
+        """Handle bot start button click - opens strategy selection dialog first."""
+        logger.info("Bot start requested - opening strategy selection dialog")
+
+        # Open strategy selection dialog
+        from src.ui.dialogs.bot_start_strategy_dialog import BotStartStrategyDialog
+
+        dialog = BotStartStrategyDialog(parent=self)
+
+        # Connect strategy applied signal
+        dialog.strategy_applied.connect(self._on_strategy_selected)
+
+        result = dialog.exec()
+
+        if result != BotStartStrategyDialog.DialogCode.Accepted:
+            logger.info("Bot start cancelled by user")
+            return
+
+        # If accepted, strategy has been applied and bot will start via signal
+
+    def _on_strategy_selected(self, config_path: str, matched_strategy_set: Any) -> None:
+        """Handle strategy selection from dialog - starts bot with selected strategy.
+
+        Args:
+            config_path: Path to selected JSON config
+            matched_strategy_set: Matched strategy set from routing
+        """
+        logger.info(f"Strategy selected: {config_path}")
         self._update_bot_status("STARTING", "#ffeb3b")
 
         try:
-            self._start_bot_with_config()
+            # Store config path and strategy set for bot initialization
+            self._selected_config_path = config_path
+            self._selected_strategy_set = matched_strategy_set
+
+            # Start bot with JSON config
+            self._start_bot_with_json_config(config_path, matched_strategy_set)
+
         except Exception as e:
-            logger.error(f"Failed to start bot: {e}")
+            logger.error(f"Failed to start bot: {e}", exc_info=True)
             self._update_bot_status("ERROR", "#f44336")
             # Issue #9: Update Trading tab button on error
             if hasattr(self, '_update_signals_tab_bot_button'):
                 self._update_signals_tab_bot_button(running=False)
+
+            # Show error message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Bot Start Error",
+                f"Failed to start bot:\n{e}"
+            )
             return
 
         self.bot_start_btn.setEnabled(False)
@@ -46,6 +85,120 @@ class BotEventHandlersMixin:
         # Issue #9: Update Trading tab button to show running state (green)
         if hasattr(self, '_update_signals_tab_bot_button'):
             self._update_signals_tab_bot_button(running=True)
+
+        # Subscribe to regime_changed events for UI notifications
+        self._subscribe_to_regime_changes()
+
+    def _subscribe_to_regime_changes(self) -> None:
+        """Subscribe to regime_changed events from BotController."""
+        try:
+            # Check if bot controller has event bus
+            if not self._bot_controller or not hasattr(self._bot_controller, '_event_bus'):
+                logger.debug("Bot controller has no event bus - skipping regime change subscription")
+                return
+
+            event_bus = self._bot_controller._event_bus
+            if event_bus is None:
+                logger.debug("Event bus is None - skipping regime change subscription")
+                return
+
+            # Subscribe to regime_changed event
+            event_bus.subscribe('regime_changed', self._on_regime_changed_notification)
+            logger.info("Subscribed to regime_changed events")
+
+        except Exception as e:
+            logger.error(f"Failed to subscribe to regime changes: {e}", exc_info=True)
+
+    def _on_regime_changed_notification(self, event_data: dict) -> None:
+        """Handle regime_changed event from BotController.
+
+        Args:
+            event_data: Dictionary with keys:
+                - old_strategy: Previous strategy name
+                - new_strategy: New strategy name
+                - new_regimes: Comma-separated regime names
+                - timestamp: Event timestamp
+        """
+        try:
+            old_strategy = event_data.get('old_strategy', 'None')
+            new_strategy = event_data.get('new_strategy', 'Unknown')
+            new_regimes = event_data.get('new_regimes', 'Unknown')
+
+            # Log notification
+            logger.info(
+                f"Regime changed notification: {old_strategy} -> {new_strategy} "
+                f"(Regimes: {new_regimes})"
+            )
+
+            # Update regime badge if available
+            if hasattr(self, '_regime_badge') and self._regime_badge:
+                regime_text = f"{new_regimes}"
+                self._regime_badge.set_regime(regime_text)
+                self._regime_badge.setToolTip(f"Current Strategy: {new_strategy}")
+
+            # Show notification message in status bar or bot log
+            notification_msg = (
+                f"⚠ Regime-Wechsel: Neue Strategie '{new_strategy}' aktiv "
+                f"(Regimes: {new_regimes})"
+            )
+
+            # Log to bot activity log
+            if self._bot_controller and hasattr(self._bot_controller, '_log_activity'):
+                self._bot_controller._log_activity("STRATEGY_SWITCH", notification_msg)
+
+            # Show visual notification (yellow background, auto-hide after 10 seconds)
+            if hasattr(self, 'bot_status_label'):
+                self._show_strategy_change_notification(new_strategy, new_regimes)
+
+        except Exception as e:
+            logger.error(f"Error handling regime change notification: {e}", exc_info=True)
+
+    def _show_strategy_change_notification(self, strategy_name: str, regimes: str) -> None:
+        """Show visual notification for strategy change.
+
+        Args:
+            strategy_name: Name of new strategy
+            regimes: Comma-separated regime names
+        """
+        try:
+            # Create notification label if not exists
+            if not hasattr(self, '_strategy_notification_label'):
+                from PyQt6.QtWidgets import QLabel
+                from PyQt6.QtCore import QTimer
+
+                self._strategy_notification_label = QLabel()
+                self._strategy_notification_label.setStyleSheet(
+                    "background-color: #ffa726; color: white; "
+                    "padding: 8px; border-radius: 4px; font-weight: bold;"
+                )
+                self._strategy_notification_label.setWordWrap(True)
+
+                # Add to bot tab layout if available
+                if hasattr(self, 'bot_tab') and hasattr(self.bot_tab, 'layout'):
+                    layout = self.bot_tab.layout()
+                    if layout:
+                        # Insert at top of layout
+                        layout.insertWidget(0, self._strategy_notification_label)
+
+                # Create timer for auto-hide
+                self._strategy_notification_timer = QTimer()
+                self._strategy_notification_timer.setSingleShot(True)
+                self._strategy_notification_timer.timeout.connect(
+                    lambda: self._strategy_notification_label.setVisible(False)
+                )
+
+            # Update notification text
+            self._strategy_notification_label.setText(
+                f"⚠ Strategy switched to: {strategy_name} (Regimes: {regimes})"
+            )
+            self._strategy_notification_label.setVisible(True)
+
+            # Auto-hide after 10 seconds
+            if hasattr(self, '_strategy_notification_timer'):
+                self._strategy_notification_timer.start(10000)
+
+        except Exception as e:
+            logger.error(f"Failed to show strategy change notification: {e}", exc_info=True)
 
     def _on_bot_stop_clicked(self) -> None:
         """Handle bot stop button click."""

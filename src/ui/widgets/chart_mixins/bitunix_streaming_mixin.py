@@ -140,6 +140,7 @@ class BitunixStreamingMixin:
         timeframe_to_seconds = {
             "1T": 60,      # 1 minute
             "5T": 300,     # 5 minutes
+            "10T": 600,    # 10 minutes
             "15T": 900,    # 15 minutes
             "30T": 1800,   # 30 minutes
             "1H": 3600,    # 1 hour

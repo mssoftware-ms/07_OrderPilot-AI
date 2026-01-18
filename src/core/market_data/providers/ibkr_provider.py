@@ -117,6 +117,7 @@ class IBKRHistoricalProvider(HistoricalDataProvider):
             Timeframe.SECOND_30: "30 secs",
             Timeframe.MINUTE_1: "1 min",
             Timeframe.MINUTE_5: "5 mins",
+            Timeframe.MINUTE_10: "10 mins",
             Timeframe.MINUTE_15: "15 mins",
             Timeframe.MINUTE_30: "30 mins",
             Timeframe.HOUR_1: "1 hour",

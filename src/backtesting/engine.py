@@ -33,14 +33,45 @@ class BacktestEngine:
         self.data_loader = DataLoader()
         self.indicators_cache = {} # Cache computed indicators
 
-    def run(self, config: TradingBotConfig, symbol: str, start_date=None, end_date=None, initial_capital=10000.0) -> Dict[str, Any]:
+    def run(self, config: TradingBotConfig, symbol: str, start_date=None, end_date=None, initial_capital=10000.0, chart_data: pd.DataFrame = None, data_timeframe: str = None) -> Dict[str, Any]:
         """
         Run the backtest.
+
+        Args:
+            config: Trading bot configuration
+            symbol: Trading symbol
+            start_date: Backtest start date (optional if chart_data provided)
+            end_date: Backtest end date (optional if chart_data provided)
+            initial_capital: Starting capital
+            chart_data: Pre-loaded chart data (DataFrame with OHLCV) - if provided, skips database loading
+            data_timeframe: Timeframe of chart_data (e.g., "15m", "1h") - for documentation purposes
         """
-        # 1. Load Data (1m base)
-        df_1m = self.data_loader.load_data(symbol, start_date, end_date)
-        if df_1m.empty:
-            return {"error": "No data found"}
+        # 1. Load Data (1m base or use chart data)
+        if chart_data is not None and not chart_data.empty:
+            # Use pre-loaded chart data
+            df_1m = chart_data.copy()
+            logger.info(f"Using pre-loaded chart data: {len(df_1m)} candles, timeframe={data_timeframe or 'unknown'}")
+
+            # Extract date range from chart data
+            if not start_date:
+                start_date = df_1m.index[0]
+            if not end_date:
+                end_date = df_1m.index[-1]
+        else:
+            # Fallback to database/API loading
+            df_1m = self.data_loader.load_data(symbol, start_date, end_date)
+            if df_1m.empty:
+                error_msg = (
+                    f"No data found for symbol '{symbol}'\n\n"
+                    f"Database: {self.data_loader.db_path}\n"
+                    f"Date range: {start_date} to {end_date}\n\n"
+                    f"Suggestions:\n"
+                    f"1. Check if symbol format is correct (try 'bitunix:BTCUSDT' or 'BTCUSDT')\n"
+                    f"2. Verify data exists in the database for this date range\n"
+                    f"3. Check database health (main DB might be corrupted)"
+                )
+                logger.error(error_msg)
+                return {"error": error_msg}
 
         # 2. Determine required timeframes from indicators
         required_timeframes = set()
@@ -75,7 +106,11 @@ class BacktestEngine:
         trades: List[Trade] = []
         active_trade: Trade = None
         equity = initial_capital
-        
+
+        # Track regime changes for visualization
+        regime_history: List[Dict[str, Any]] = []
+        prev_regime_ids: List[str] = []
+
         # Pre-align data to 1m index (forward fill HTF data)
         combined_df = df_1m.copy()
         
@@ -99,7 +134,16 @@ class BacktestEngine:
             # 1. Determine Active Regimes
             active_regimes = self._evaluate_regimes(config.regimes, row, config.indicators)
             regime_ids = [r.id for r in active_regimes]
-            
+
+            # Track regime changes for visualization
+            if regime_ids != prev_regime_ids:
+                regime_history.append({
+                    'timestamp': timestamp,
+                    'regime_ids': regime_ids.copy(),
+                    'regimes': [{'id': r.id, 'name': r.name} for r in active_regimes]
+                })
+                prev_regime_ids = regime_ids.copy()
+
             # 2. Routing -> Strategy Set
             active_strategy_set_id = self._route_regimes(config.routing, regime_ids)
             if not active_strategy_set_id:
@@ -177,7 +221,7 @@ class BacktestEngine:
                         equity += active_trade.pnl
                         active_trade = None
 
-        return self._calculate_stats(trades, initial_capital, equity)
+        return self._calculate_stats(trades, initial_capital, equity, regime_history, data_timeframe, start_date, end_date, len(df_1m))
 
     def _calculate_indicators(self, df: pd.DataFrame, indicators: List, tf_suffix: str):
         """
@@ -312,14 +356,25 @@ class BacktestEngine:
             
         return None
 
-    def _calculate_stats(self, trades: List[Trade], initial_capital: float, final_equity: float) -> Dict[str, Any]:
+    def _calculate_stats(self, trades: List[Trade], initial_capital: float, final_equity: float, regime_history: List[Dict[str, Any]], data_timeframe: str = None, start_date=None, end_date=None, total_candles: int = 0) -> Dict[str, Any]:
+        # Build data source metadata
+        data_source_metadata = {
+            "timeframe": data_timeframe or "1m",
+            "start_date": start_date.strftime("%Y-%m-%d %H:%M") if start_date else "Unknown",
+            "end_date": end_date.strftime("%Y-%m-%d %H:%M") if end_date else "Unknown",
+            "total_candles": total_candles,
+            "source": "Chart Data" if data_timeframe else "Database/API"
+        }
+
         if not trades:
             return {
                 "total_trades": 0,
                 "net_profit": 0.0,
                 "win_rate": 0.0,
                 "final_equity": final_equity,
-                "trades": []
+                "trades": [],
+                "regime_history": regime_history,
+                "data_source": data_source_metadata
             }
             
         wins = [t for t in trades if t.pnl > 0]
@@ -347,5 +402,7 @@ class BacktestEngine:
             "final_equity": final_equity,
             "max_drawdown": 0.0, # TODO: implement
             "profit_factor": (sum(t.pnl for t in wins) / abs(sum(t.pnl for t in losses))) if losses else float('inf'),
-            "trades": trade_list
+            "trades": trade_list,
+            "regime_history": regime_history,
+            "data_source": data_source_metadata
         }

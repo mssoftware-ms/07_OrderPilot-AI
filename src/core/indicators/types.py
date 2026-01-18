@@ -40,6 +40,7 @@ class IndicatorType(Enum):
     ATR = "atr"  # Average True Range
     NATR = "natr"  # Normalized ATR
     STD = "std"  # Standard Deviation
+    CHOP = "chop"  # Choppiness Index (range-bound indicator)
 
     # Volume
     OBV = "obv"  # On-Balance Volume

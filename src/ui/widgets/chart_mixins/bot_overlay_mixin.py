@@ -17,6 +17,7 @@ from .bot_overlay_types import (
     BotMarker,
     BotOverlayState,
     MarkerType,
+    RegimeLine,
     StopLine,
     build_hud_content,
 )
@@ -359,6 +360,79 @@ class BotOverlayMixin:
     def _remove_chart_line(self, line_id: str) -> None:
         """Remove a line from the chart by ID."""
         # Note: The chart API stores line IDs internally
+        self._execute_js(f"window.chartAPI?.removeDrawingById('{line_id}');")
+
+    # ==================== REGIME LINES ====================
+
+    def add_regime_line(
+        self,
+        line_id: str,
+        timestamp: datetime | int,
+        regime_name: str,
+        color: str | None = None,
+        label: str = ""
+    ) -> None:
+        """Add a vertical regime boundary line on the chart.
+
+        Args:
+            line_id: Unique identifier for the line
+            timestamp: Regime change timestamp
+            regime_name: Regime name (e.g., "TREND_UP", "RANGE")
+            color: Line color (auto-selected if None)
+            label: Optional label text
+        """
+        # Convert timestamp to Unix timestamp
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                from datetime import timezone
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            ts = int(timestamp.timestamp())
+        else:
+            ts = timestamp
+
+        # Auto-select color based on regime name if not provided
+        if color is None:
+            if "TREND_UP" in regime_name.upper() or "UP" in regime_name.upper():
+                color = "#26a69a"  # Green for trend up
+            elif "TREND_DOWN" in regime_name.upper() or "DOWN" in regime_name.upper():
+                color = "#ef5350"  # Red for trend down
+            elif "RANGE" in regime_name.upper() or "SIDEWAYS" in regime_name.upper():
+                color = "#ffa726"  # Orange for range
+            else:
+                color = "#9e9e9e"  # Grey for unknown
+
+        # Remove existing line if updating
+        if line_id in self._bot_overlay_state.regime_lines:
+            self._remove_chart_regime_line(line_id)
+
+        # Create label
+        display_label = label or regime_name
+
+        regime_line = RegimeLine(
+            line_id=line_id,
+            timestamp=ts,
+            color=color,
+            regime_name=regime_name,
+            label=display_label
+        )
+        self._bot_overlay_state.regime_lines[line_id] = regime_line
+
+        # Add vertical line to chart
+        # Note: Assuming chartAPI has addVerticalLine similar to addHorizontalLine
+        self._execute_js(
+            f"window.chartAPI?.addVerticalLine({ts}, '{color}', '{display_label}', 'solid', '{line_id}');"
+        )
+        logger.info(f"Added regime line: {line_id} at {ts} ({display_label})")
+
+    def clear_regime_lines(self) -> None:
+        """Clear all regime lines from chart."""
+        for line_id in list(self._bot_overlay_state.regime_lines.keys()):
+            self._remove_chart_regime_line(line_id)
+        self._bot_overlay_state.regime_lines.clear()
+        logger.debug("Cleared all regime lines")
+
+    def _remove_chart_regime_line(self, line_id: str) -> None:
+        """Remove a regime line from the chart by ID."""
         self._execute_js(f"window.chartAPI?.removeDrawingById('{line_id}');")
 
     # ==================== DEBUG HUD ====================

@@ -71,6 +71,7 @@ class DataLoadingResolution:
             "1S": Timeframe.SECOND_1,  # Issue #42: Added 1-second mapping
             "1T": Timeframe.MINUTE_1,
             "5T": Timeframe.MINUTE_5,
+            "10T": Timeframe.MINUTE_10,
             "15T": Timeframe.MINUTE_15,
             "30T": Timeframe.MINUTE_30,
             "1H": Timeframe.HOUR_1,

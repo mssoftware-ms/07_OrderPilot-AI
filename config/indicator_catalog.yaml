@@ -1,0 +1,550 @@
+# Indicator Catalog - Comprehensive Indicator Definitions for Grid Search
+# Version: 1.0.0
+# Purpose: Define all available indicators with parameter ranges for optimization
+
+metadata:
+  version: "1.0.0"
+  description: "Comprehensive indicator catalog for regime-based trading strategies"
+  last_updated: "2026-01-18"
+  total_indicators: 28
+
+# ==============================================================================
+# TREND INDICATORS
+# ==============================================================================
+
+trend_indicators:
+  sma:
+    name: "Simple Moving Average"
+    type: "SMA"
+    category: "trend"
+    description: "Average price over N periods"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [5, 200]
+        grid_search_values: [10, 20, 50, 100, 200]
+        constraint: "Must be positive integer"
+
+    regime_compatibility:
+      R1_trend: 0.9  # Excellent for trends
+      R2_range: 0.4  # Poor for ranges
+      R3_breakout: 0.7
+      R4_volatile: 0.5
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "low"
+
+  ema:
+    name: "Exponential Moving Average"
+    type: "EMA"
+    category: "trend"
+    description: "Weighted average giving more weight to recent prices"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [5, 200]
+        grid_search_values: [9, 12, 20, 26, 50, 200]
+
+    regime_compatibility:
+      R1_trend: 0.9
+      R2_range: 0.4
+      R3_breakout: 0.8
+      R4_volatile: 0.6
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "low"
+
+  macd:
+    name: "Moving Average Convergence Divergence"
+    type: "MACD"
+    category: "trend"
+    description: "Trend-following momentum indicator"
+
+    parameters:
+      fast:
+        type: "int"
+        default: 12
+        range: [8, 20]
+        grid_search_values: [8, 10, 12, 15]
+      slow:
+        type: "int"
+        default: 26
+        range: [20, 50]
+        grid_search_values: [20, 26, 30, 40]
+      signal:
+        type: "int"
+        default: 9
+        range: [5, 15]
+        grid_search_values: [5, 7, 9, 11]
+
+    constraints:
+      - "fast < slow"
+      - "signal < fast"
+
+    regime_compatibility:
+      R1_trend: 1.0  # Excellent
+      R2_range: 0.3
+      R3_breakout: 0.7
+      R4_volatile: 0.5
+
+    output_fields: ["macd", "signal", "histogram"]
+    min_bars_required: "{slow + signal}"
+    computation_cost: "medium"
+
+  adx:
+    name: "Average Directional Index"
+    type: "ADX"
+    category: "trend"
+    description: "Measures trend strength (not direction)"
+
+    parameters:
+      period:
+        type: "int"
+        default: 14
+        range: [10, 30]
+        grid_search_values: [10, 14, 20, 25]
+
+    regime_compatibility:
+      R1_trend: 1.0  # Essential for trend detection
+      R2_range: 0.8  # Good for range confirmation
+      R3_breakout: 0.9
+      R4_volatile: 0.6
+
+    output_fields: ["value", "plus_di", "minus_di"]
+    min_bars_required: "{period * 2}"
+    computation_cost: "medium"
+
+  ichimoku:
+    name: "Ichimoku Cloud"
+    type: "ICHIMOKU"
+    category: "trend"
+    description: "Multi-component trend indicator with support/resistance"
+
+    parameters:
+      conversion:
+        type: "int"
+        default: 9
+        range: [7, 15]
+        grid_search_values: [7, 9, 11]
+      base:
+        type: "int"
+        default: 26
+        range: [20, 40]
+        grid_search_values: [20, 26, 30]
+      span_b:
+        type: "int"
+        default: 52
+        range: [40, 60]
+        grid_search_values: [40, 52, 60]
+      displacement:
+        type: "int"
+        default: 26
+        range: [20, 30]
+        grid_search_values: [20, 26, 30]
+
+    regime_compatibility:
+      R1_trend: 0.9
+      R2_range: 0.5
+      R3_breakout: 0.8
+      R4_volatile: 0.4
+
+    output_fields: ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "chikou_span"]
+    min_bars_required: "{span_b + displacement}"
+    computation_cost: "high"
+
+# ==============================================================================
+# MOMENTUM INDICATORS
+# ==============================================================================
+
+momentum_indicators:
+  rsi:
+    name: "Relative Strength Index"
+    type: "RSI"
+    category: "momentum"
+    description: "Measures overbought/oversold conditions (0-100)"
+
+    parameters:
+      period:
+        type: "int"
+        default: 14
+        range: [5, 30]
+        grid_search_values: [7, 9, 14, 21, 28]
+
+    regime_compatibility:
+      R1_trend: 0.7
+      R2_range: 1.0  # Excellent for mean reversion
+      R3_breakout: 0.6
+      R4_volatile: 0.5
+
+    thresholds:
+      overbought: 70
+      oversold: 30
+      extreme_overbought: 80
+      extreme_oversold: 20
+
+    output_fields: ["value"]
+    min_bars_required: "{period + 1}"
+    computation_cost: "low"
+
+  stoch:
+    name: "Stochastic Oscillator"
+    type: "STOCH"
+    category: "momentum"
+    description: "Compares closing price to price range (0-100)"
+
+    parameters:
+      k_period:
+        type: "int"
+        default: 14
+        range: [5, 21]
+        grid_search_values: [5, 9, 14, 21]
+      d_period:
+        type: "int"
+        default: 3
+        range: [3, 9]
+        grid_search_values: [3, 5, 7]
+      smooth:
+        type: "int"
+        default: 3
+        range: [1, 5]
+        grid_search_values: [1, 3, 5]
+
+    regime_compatibility:
+      R1_trend: 0.6
+      R2_range: 0.9  # Good for ranges
+      R3_breakout: 0.7
+      R4_volatile: 0.5
+
+    thresholds:
+      overbought: 80
+      oversold: 20
+
+    output_fields: ["k", "d"]
+    min_bars_required: "{k_period + d_period + smooth}"
+    computation_cost: "medium"
+
+  cci:
+    name: "Commodity Channel Index"
+    type: "CCI"
+    category: "momentum"
+    description: "Measures deviation from average price"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [10, 40]
+        grid_search_values: [10, 14, 20, 30]
+
+    regime_compatibility:
+      R1_trend: 0.7
+      R2_range: 0.8
+      R3_breakout: 0.9  # Good for breakouts
+      R4_volatile: 0.6
+
+    thresholds:
+      overbought: 100
+      oversold: -100
+      extreme_overbought: 200
+      extreme_oversold: -200
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "medium"
+
+  mfi:
+    name: "Money Flow Index"
+    type: "MFI"
+    category: "momentum"
+    description: "Volume-weighted RSI (0-100)"
+
+    parameters:
+      period:
+        type: "int"
+        default: 14
+        range: [10, 30]
+        grid_search_values: [10, 14, 20]
+
+    regime_compatibility:
+      R1_trend: 0.6
+      R2_range: 0.9  # Volume confirmation for ranges
+      R3_breakout: 0.8
+      R4_volatile: 0.5
+
+    thresholds:
+      overbought: 80
+      oversold: 20
+
+    output_fields: ["value"]
+    min_bars_required: "{period + 1}"
+    computation_cost: "medium"
+
+# ==============================================================================
+# VOLATILITY INDICATORS
+# ==============================================================================
+
+volatility_indicators:
+  bb:
+    name: "Bollinger Bands"
+    type: "BB"
+    category: "volatility"
+    description: "Price envelope based on standard deviation"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [10, 50]
+        grid_search_values: [10, 20, 30, 50]
+      std_dev:
+        type: "float"
+        default: 2.0
+        range: [1.5, 3.0]
+        grid_search_values: [1.5, 2.0, 2.5, 3.0]
+
+    regime_compatibility:
+      R1_trend: 0.6
+      R2_range: 1.0  # Perfect for mean reversion
+      R3_breakout: 0.9  # Squeeze detection
+      R4_volatile: 0.8
+
+    output_fields: ["upper", "middle", "lower"]
+    min_bars_required: "{period}"
+    computation_cost: "medium"
+
+  bb_width:
+    name: "Bollinger Band Width"
+    type: "BB_WIDTH"
+    category: "volatility"
+    description: "Normalized width of Bollinger Bands"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [10, 50]
+        grid_search_values: [10, 20, 30]
+      std_dev:
+        type: "float"
+        default: 2.0
+        range: [1.5, 3.0]
+        grid_search_values: [2.0, 2.5]
+
+    regime_compatibility:
+      R1_trend: 0.5
+      R2_range: 0.9
+      R3_breakout: 1.0  # Excellent for squeeze detection
+      R4_volatile: 0.9
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "medium"
+
+  atr:
+    name: "Average True Range"
+    type: "ATR"
+    category: "volatility"
+    description: "Average of true ranges (absolute volatility)"
+
+    parameters:
+      period:
+        type: "int"
+        default: 14
+        range: [7, 30]
+        grid_search_values: [7, 10, 14, 20, 30]
+
+    regime_compatibility:
+      R1_trend: 0.8
+      R2_range: 0.7
+      R3_breakout: 0.9
+      R4_volatile: 1.0  # Essential for high volatility
+
+    output_fields: ["value"]
+    min_bars_required: "{period + 1}"
+    computation_cost: "low"
+
+  chop:
+    name: "Choppiness Index"
+    type: "CHOP"
+    category: "volatility"
+    description: "Measures market choppiness (0-100)"
+
+    parameters:
+      period:
+        type: "int"
+        default: 14
+        range: [10, 30]
+        grid_search_values: [10, 14, 20]
+
+    regime_compatibility:
+      R1_trend: 0.7
+      R2_range: 1.0  # Perfect for range detection
+      R3_breakout: 0.8
+      R4_volatile: 0.6
+
+    thresholds:
+      choppy: 61.8  # Above = choppy/range
+      trending: 38.2  # Below = trending
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "medium"
+
+# ==============================================================================
+# VOLUME INDICATORS
+# ==============================================================================
+
+volume_indicators:
+  obv:
+    name: "On-Balance Volume"
+    type: "OBV"
+    category: "volume"
+    description: "Cumulative volume based on price direction"
+
+    parameters: {}  # No parameters - uses raw volume
+
+    regime_compatibility:
+      R1_trend: 0.9  # Volume confirmation for trends
+      R2_range: 0.5
+      R3_breakout: 0.8
+      R4_volatile: 0.6
+
+    output_fields: ["value"]
+    min_bars_required: 10
+    computation_cost: "low"
+
+  vwap:
+    name: "Volume Weighted Average Price"
+    type: "VWAP"
+    category: "volume"
+    description: "Average price weighted by volume"
+
+    parameters:
+      anchor:
+        type: "string"
+        default: "day"
+        options: ["day", "week", "month", "session"]
+
+    regime_compatibility:
+      R1_trend: 0.7
+      R2_range: 0.8
+      R3_breakout: 0.6
+      R4_volatile: 0.5
+
+    output_fields: ["value"]
+    min_bars_required: 20
+    computation_cost: "medium"
+
+  cmf:
+    name: "Chaikin Money Flow"
+    type: "CMF"
+    category: "volume"
+    description: "Volume-weighted average of accumulation/distribution"
+
+    parameters:
+      period:
+        type: "int"
+        default: 20
+        range: [10, 30]
+        grid_search_values: [10, 14, 20, 30]
+
+    regime_compatibility:
+      R1_trend: 0.8
+      R2_range: 0.7
+      R3_breakout: 0.9  # Volume confirmation for breakouts
+      R4_volatile: 0.6
+
+    thresholds:
+      strong_buying: 0.25
+      strong_selling: -0.25
+
+    output_fields: ["value"]
+    min_bars_required: "{period}"
+    computation_cost: "medium"
+
+# ==============================================================================
+# REGIME-SPECIFIC INDICATOR RECOMMENDATIONS
+# ==============================================================================
+
+regime_recommendations:
+  R1_trend:
+    primary: ["ADX", "MACD", "EMA", "SMA"]
+    secondary: ["OBV", "ATR", "RSI"]
+    avoid: ["CHOP", "BB_WIDTH"]
+
+  R2_range:
+    primary: ["RSI", "BB", "CHOP", "STOCH"]
+    secondary: ["CCI", "MFI"]
+    avoid: ["MACD", "ADX"]
+
+  R3_breakout:
+    primary: ["BB_WIDTH", "ATR", "ADX", "CCI"]
+    secondary: ["CMF", "MACD"]
+    avoid: ["CHOP"]
+
+  R4_volatile:
+    primary: ["ATR", "BB", "BB_WIDTH"]
+    secondary: ["ADX", "EMA"]
+    avoid: ["SMA", "ICHIMOKU"]
+
+  R5_orderflow:
+    primary: ["OBV", "CMF", "MFI", "VWAP"]
+    secondary: ["ATR"]
+    avoid: []
+
+# ==============================================================================
+# GRID SEARCH PRESETS
+# ==============================================================================
+
+grid_search_presets:
+  quick_scan:
+    description: "Fast scan with limited parameter combinations"
+    max_combinations_per_indicator: 5
+    sample_size: 0.3  # Use 30% of data
+
+  balanced:
+    description: "Balanced scan with moderate parameter combinations"
+    max_combinations_per_indicator: 10
+    sample_size: 0.5  # Use 50% of data
+
+  exhaustive:
+    description: "Comprehensive scan with all parameter combinations"
+    max_combinations_per_indicator: 20
+    sample_size: 1.0  # Use 100% of data
+
+  regime_optimized:
+    description: "Scan only regime-compatible indicators"
+    filter_by_regime_compatibility: true
+    min_compatibility_score: 0.7
+    max_combinations_per_indicator: 15
+
+# ==============================================================================
+# SCORING METRICS
+# ==============================================================================
+
+scoring_metrics:
+  primary:
+    - name: "sharpe_ratio"
+      weight: 0.3
+      higher_is_better: true
+    - name: "win_rate"
+      weight: 0.25
+      higher_is_better: true
+    - name: "profit_factor"
+      weight: 0.25
+      higher_is_better: true
+    - name: "max_drawdown"
+      weight: 0.2
+      higher_is_better: false  # Lower is better
+
+  secondary:
+    - name: "total_trades"
+      threshold: 30  # Minimum trades for statistical significance
+    - name: "avg_trade_duration"
+      preference: "medium"  # Not too short (noise), not too long (capital inefficiency)

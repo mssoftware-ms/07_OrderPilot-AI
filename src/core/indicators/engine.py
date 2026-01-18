@@ -64,6 +64,7 @@ class IndicatorEngine:
             IndicatorType.ATR: VolatilityIndicators.calculate_atr,
             IndicatorType.NATR: VolatilityIndicators.calculate_natr,
             IndicatorType.STD: VolatilityIndicators.calculate_std,
+            IndicatorType.CHOP: VolatilityIndicators.calculate_chop,
 
             # Volume
             IndicatorType.OBV: VolumeIndicators.calculate_obv,

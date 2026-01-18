@@ -178,12 +178,18 @@ def configure_module_loggers():
     # Reduce noise from third-party libraries
     logging.getLogger('urllib3').setLevel(logging.WARNING)
     logging.getLogger('websockets').setLevel(logging.WARNING)
+    logging.getLogger('websockets.client').setLevel(logging.WARNING)
+    logging.getLogger('websockets.protocol').setLevel(logging.WARNING)
     logging.getLogger('aiohttp').setLevel(logging.WARNING)
+    logging.getLogger('qasync').setLevel(logging.WARNING)
+    logging.getLogger('qasync._QEventLoop').setLevel(logging.WARNING)
+    logging.getLogger('qasync._windows').setLevel(logging.WARNING)
 
     # Set specific levels for app modules
     logging.getLogger('tradingapp.broker').setLevel(logging.INFO)
     logging.getLogger('tradingapp.strategy').setLevel(logging.INFO)
     logging.getLogger('tradingapp.ai').setLevel(logging.DEBUG)
+    logging.getLogger('src.common.event_bus').setLevel(logging.WARNING)
 
 
 def log_order_action(

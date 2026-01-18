@@ -568,12 +568,46 @@ class BotDisplaySignalsMixin:
             )
             self.signals_table.setItem(row, 17, qty_item)
 
+            mm_rate, mm_rate_default = self._resolve_maintenance_margin_rate(signal)
+            liquidation_price = None
+            margin_buffer = None
+            if entry_price > 0 and invested > 0 and leverage > 0 and quantity > 0:
+                maintenance_margin = position_size * mm_rate
+                margin_buffer = invested - maintenance_margin
+                if margin_buffer > 0:
+                    price_distance = margin_buffer / quantity
+                    if side.lower() == "short":
+                        liquidation_price = entry_price + price_distance
+                    else:
+                        liquidation_price = entry_price - price_distance
+
+            if liquidation_price and liquidation_price > 0:
+                liq_item = QTableWidgetItem(f"{liquidation_price:.2f}")
+            else:
+                liq_item = QTableWidgetItem("-")
+            default_note = " (default)" if mm_rate_default else ""
+            buffer_text = f"{margin_buffer:.2f} USDT" if margin_buffer is not None else "N/A"
+            liq_item.setToolTip(
+                "Liquidation (approx.)\n"
+                f"Entry: {entry_price:.2f}\n"
+                f"Invested: {invested:.2f} USDT\n"
+                f"Leverage: {leverage:.0f}x\n"
+                f"MM rate: {mm_rate * 100:.2f}%{default_note}\n"
+                f"Notional: {position_size:.2f} USDT\n"
+                f"Quantity: {quantity:.6f}\n"
+                f"Margin buffer: {buffer_text}\n"
+                "Formula: Pliq = Entry +/- (Buffer / Q)\n"
+                "Note: Fees/Funding not included"
+            )
+            self.signals_table.setItem(row, 24, liq_item)
+            self._make_non_editable(liq_item)
+
             # Issue #1: Pass leverage to derivative columns (shifted by new Trading fees column)
             self._set_derivative_columns(row, signal, current_price, leverage)
             self.signals_table.setItem(row, 22, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
             self._set_tr_stop_column(row, trailing_price, tr_is_active)
         else:
-            for col in range(11, 24):
+            for col in range(11, 25):
                 self.signals_table.setItem(row, col, QTableWidgetItem("-"))
 
     def _set_derivative_columns(self, row: int, signal: dict, current_price: float, leverage: float = 1.0) -> None:
@@ -644,3 +678,15 @@ class BotDisplaySignalsMixin:
             self.signals_table.setItem(row, 23, tr_price_item)
         else:
             self.signals_table.setItem(row, 23, QTableWidgetItem("-"))
+
+    def _resolve_maintenance_margin_rate(self, signal: dict) -> tuple[float, bool]:
+        rate = signal.get("maintenance_margin_rate")
+        if rate is None:
+            rate = signal.get("mm_rate")
+        if rate is None:
+            rate_pct = signal.get("maintenance_margin_pct")
+            if rate_pct is not None:
+                return float(rate_pct) / 100, False
+        if rate is None:
+            return 0.005, True
+        return float(rate), False

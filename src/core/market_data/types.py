@@ -36,6 +36,7 @@ class Timeframe(Enum):
     SECOND_30 = "30s"
     MINUTE_1 = "1min"
     MINUTE_5 = "5min"
+    MINUTE_10 = "10min"
     MINUTE_15 = "15min"
     MINUTE_30 = "30min"
     HOUR_1 = "1h"

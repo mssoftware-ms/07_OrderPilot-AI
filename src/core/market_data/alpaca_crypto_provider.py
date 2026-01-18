@@ -261,6 +261,7 @@ class AlpacaCryptoProvider(HistoricalDataProvider):
         mapping = {
             Timeframe.MINUTE_1: AlpacaTimeFrame(1, TimeFrameUnit.Minute),
             Timeframe.MINUTE_5: AlpacaTimeFrame(5, TimeFrameUnit.Minute),
+            Timeframe.MINUTE_10: AlpacaTimeFrame(10, TimeFrameUnit.Minute),
             Timeframe.MINUTE_15: AlpacaTimeFrame(15, TimeFrameUnit.Minute),
             Timeframe.MINUTE_30: AlpacaTimeFrame(30, TimeFrameUnit.Minute),
             Timeframe.HOUR_1: AlpacaTimeFrame(1, TimeFrameUnit.Hour),

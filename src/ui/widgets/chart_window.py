@@ -86,6 +86,7 @@ class ChartWindow(
         # Setup sequence (delegates to helpers)
         self._setup.setup_window()
         self._setup.setup_chart_widget()
+        self._setup.setup_live_data_toggle()
         self._setup.setup_dock()
         self._load_window_state()
         self._setup.restore_after_state_load()
@@ -100,6 +101,13 @@ class ChartWindow(
         self._setup.connect_data_loaded_signals()
 
         logger.info(f"ChartWindow created for {symbol}")
+
+    def _get_main_window(self) -> Optional[QMainWindow]:
+        """Return the main window if available."""
+        main_window = self.parent()
+        if main_window and hasattr(main_window, "toggle_live_data"):
+            return main_window
+        return None
 
     def closeEvent(self, event: QCloseEvent):
         """Handle window close event with async state saving.

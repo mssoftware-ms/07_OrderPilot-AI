@@ -10,7 +10,10 @@ import logging
 from datetime import datetime
 
 from .models import (
+    Direction,
+    ExtendedRegimeState,
     FeatureVector,
+    RegimeID,
     RegimeState,
     RegimeType,
     VolatilityLevel,
@@ -112,6 +115,257 @@ class RegimeEngine:
         )
 
         return state
+
+    def classify_extended(self, features: FeatureVector) -> ExtendedRegimeState:
+        """Classify market regime using extended R0-R5 system.
+
+        Uses composite detection with priority-based logic:
+        1. R5 if |OBI| very high (orderflow dominant)
+        2. R3 if Squeeze ON or BBWidth very low (breakout setup)
+        3. R4 if ATRP or BBWidth very high (high volatility)
+        4. R1 if ADX >25 or CHOP <38.2 (trending)
+        5. R2 if ADX <20 or CHOP >61.8 (ranging)
+        6. R0 otherwise (neutral/unclear)
+
+        Args:
+            features: Feature vector with indicator values
+
+        Returns:
+            ExtendedRegimeState with regime_id (R0-R5), direction, features
+        """
+        # 1. Calculate segment features
+        segment_features = self._calc_segment_features(features)
+
+        # 2. Composite detection with priority logic
+        regime_id, confidence = self._composite_detect(segment_features, features)
+
+        # 3. Detect direction for the regime
+        direction = self._detect_direction_for_regime(regime_id, segment_features, features)
+
+        # 4. Classify volatility (reuse existing logic)
+        volatility, _ = self._classify_volatility(features)
+
+        # 5. Build extended regime state
+        state = ExtendedRegimeState(
+            timestamp=features.timestamp,
+            regime_id=regime_id,
+            direction=direction,
+            volatility=volatility,
+            confidence=confidence,
+            features=segment_features,
+            bars_in_regime=0,  # Will be updated by RegimeTracker
+            regime_start_time=None,
+            prev_regime_id=None
+        )
+
+        logger.debug(
+            f"Extended regime classified: {state.regime_label} "
+            f"(confidence={confidence:.2f})"
+        )
+
+        return state
+
+    def _calc_segment_features(self, features: FeatureVector) -> dict[str, float | None]:
+        """Calculate segment features for regime detection and scoring.
+
+        Features:
+        - atrp: ATR as percentage of price
+        - bbwidth: Bollinger Band width
+        - bbwidth_pctl: BBWidth percentile (requires historical data - placeholder)
+        - atrp_pctl: ATRP percentile (requires historical data - placeholder)
+        - range_pct: High-Low range as percentage (for current bar)
+        - squeeze_on: Squeeze indicator (BBWidth < threshold)
+        - obi: Order Book Imbalance (if available)
+        - spread_bps: Spread in basis points (if available)
+        - depth_bid, depth_ask: Order book depth (if available)
+        - adx: ADX value
+        - chop: Choppiness Index (placeholder - needs implementation)
+
+        Args:
+            features: Feature vector
+
+        Returns:
+            Dict with calculated segment features
+        """
+        segment = {}
+
+        # ATRP (ATR as %)
+        atrp = self._calc_atr_pct(features)
+        segment["atrp"] = atrp
+
+        # BBWidth
+        segment["bbwidth"] = features.bb_width
+
+        # Percentiles (placeholder - would need rolling window)
+        # In full implementation, this would track last N bars
+        segment["bbwidth_pctl"] = None  # TODO: Implement with rolling stats
+        segment["atrp_pctl"] = None     # TODO: Implement with rolling stats
+
+        # Range% for current bar
+        if features.high and features.low and features.close > 0:
+            mid = (features.high + features.low) / 2
+            range_pct = ((features.high - features.low) / mid) * 100 if mid > 0 else 0
+            segment["range_pct"] = range_pct
+        else:
+            segment["range_pct"] = None
+
+        # Squeeze detection
+        if features.bb_width is not None:
+            segment["squeeze_on"] = features.bb_width < self.BB_SQUEEZE
+        else:
+            segment["squeeze_on"] = False
+
+        # Orderflow/Liquidity (placeholder - would need order book data)
+        segment["obi"] = None           # Order Book Imbalance
+        segment["obi_pctl"] = None      # OBI percentile
+        segment["spread_bps"] = None    # Spread in basis points
+        segment["depth_bid"] = None     # Bid depth
+        segment["depth_ask"] = None     # Ask depth
+
+        # Existing indicators
+        segment["adx"] = features.adx
+        segment["plus_di"] = features.plus_di
+        segment["minus_di"] = features.minus_di
+        segment["rsi"] = features.rsi_14
+
+        # CHOP (placeholder - would need implementation)
+        segment["chop"] = None  # TODO: Implement Choppiness Index
+
+        return segment
+
+    def _composite_detect(
+        self,
+        segment_features: dict[str, float | None],
+        features: FeatureVector
+    ) -> tuple[RegimeID, float]:
+        """Composite regime detection with priority-based logic.
+
+        Priority order:
+        1. R5 if |OBI| > P90 (orderflow dominant)
+        2. R3 if Squeeze ON or BBWidth < P20 (breakout setup)
+        3. R4 if ATRP > P80 or BBWidth > P80 (high volatility)
+        4. R1 if ADX > 25 or CHOP < 38.2 (trending)
+        5. R2 if ADX < 20 or CHOP > 61.8 (ranging)
+        6. R0 otherwise (neutral/unclear)
+
+        Args:
+            segment_features: Calculated segment features
+            features: Original feature vector
+
+        Returns:
+            (RegimeID, confidence)
+        """
+        # Priority 1: Orderflow dominant (R5)
+        obi = segment_features.get("obi")
+        obi_pctl = segment_features.get("obi_pctl")
+        if obi is not None and obi_pctl is not None and abs(obi) > 0.7:
+            # In full implementation: obi_pctl > 90
+            # For now: use absolute threshold
+            return RegimeID.R5, 0.8
+
+        # Priority 2: Breakout Setup (R3)
+        squeeze_on = segment_features.get("squeeze_on", False)
+        bbwidth_pctl = segment_features.get("bbwidth_pctl")
+        if squeeze_on:
+            return RegimeID.R3, 0.85
+        # Placeholder: bbwidth_pctl < 20 would also trigger R3
+        # if bbwidth_pctl is not None and bbwidth_pctl < 20:
+        #     return RegimeID.R3, 0.75
+
+        # Priority 3: High Volatility (R4)
+        atrp = segment_features.get("atrp")
+        atrp_pctl = segment_features.get("atrp_pctl")
+        bbwidth = segment_features.get("bbwidth")
+
+        # Placeholder: use absolute thresholds instead of percentiles
+        if atrp is not None and atrp > self.VOL_HIGH_PCT:
+            return RegimeID.R4, 0.8
+        if bbwidth is not None and bbwidth > self.BB_EXPANSION:
+            return RegimeID.R4, 0.75
+        # Full implementation: atrp_pctl > 80 or bbwidth_pctl > 80
+
+        # Priority 4: Trend (R1)
+        adx = segment_features.get("adx")
+        chop = segment_features.get("chop")
+
+        if adx is not None and adx >= self.ADX_TRENDING:
+            return RegimeID.R1, min(0.9, 0.6 + (adx - self.ADX_TRENDING) / 20 * 0.3)
+        if chop is not None and chop < 38.2:
+            return RegimeID.R1, 0.7
+
+        # Priority 5: Range (R2)
+        if adx is not None and adx < self.ADX_WEAK:
+            return RegimeID.R2, 0.8
+        if chop is not None and chop > 61.8:
+            return RegimeID.R2, 0.75
+
+        # Default: Neutral/Unclear (R0)
+        return RegimeID.R0, 0.4
+
+    def _detect_direction_for_regime(
+        self,
+        regime_id: RegimeID,
+        segment_features: dict[str, float | None],
+        features: FeatureVector
+    ) -> Direction:
+        """Detect directional bias for a given regime.
+
+        Direction detection logic by regime:
+        - R5: sign(OBI) if available, else NONE
+        - R1: UP if +DI > -DI (or Ichimoku above cloud), else DOWN
+        - R3: NONE until Donchian breakout, then UP/DOWN
+        - R0, R2, R4: NONE (no clear direction)
+
+        Args:
+            regime_id: Detected regime ID
+            segment_features: Calculated segment features
+            features: Original feature vector
+
+        Returns:
+            Direction enum (UP, DOWN, NONE)
+        """
+        # R5: Orderflow direction
+        if regime_id == RegimeID.R5:
+            obi = segment_features.get("obi")
+            if obi is not None:
+                if obi > 0:
+                    return Direction.UP
+                elif obi < 0:
+                    return Direction.DOWN
+            return Direction.NONE
+
+        # R1: Trend direction
+        if regime_id == RegimeID.R1:
+            plus_di = segment_features.get("plus_di")
+            minus_di = segment_features.get("minus_di")
+
+            if plus_di is not None and minus_di is not None:
+                di_diff = plus_di - minus_di
+                if di_diff > self.DI_MIN_DIFF:
+                    return Direction.UP
+                if di_diff < -self.DI_MIN_DIFF:
+                    return Direction.DOWN
+
+            # Fallback: use RSI
+            rsi = segment_features.get("rsi")
+            if rsi is not None:
+                if rsi > self.RSI_STRONG_UP:
+                    return Direction.UP
+                if rsi < self.RSI_STRONG_DOWN:
+                    return Direction.DOWN
+
+            return Direction.NONE
+
+        # R3: Breakout direction (placeholder - would need Donchian)
+        # For now: NONE until breakout detected
+        if regime_id == RegimeID.R3:
+            # TODO: Check Donchian Upper/Lower breakout
+            # if close > donchian_upper: return Direction.UP
+            # if close < donchian_lower: return Direction.DOWN
+            return Direction.NONE
+
+        # R0, R2, R4: No clear direction
+        return Direction.NONE
 
     def _classify_regime(
         self,
@@ -378,3 +632,215 @@ class RegimeEngine:
             'volatility_changed': vol_changed,
             'significant_change': significant
         }
+
+
+class RegimeTracker:
+    """Anti-flap regime tracker with confirmation and cooldown logic.
+
+    Prevents regime oscillation by requiring N consecutive bars
+    in new regime before switching, plus optional cooldown period.
+
+    Configuration:
+    - confirm_bars: Bars required in new regime before switching (default: 3)
+    - cooldown_bars: Minimum bars before allowing another switch (default: 5)
+    - min_segment_bars: Minimum bars per regime segment (default: 10)
+    """
+
+    def __init__(
+        self,
+        confirm_bars: int = 3,
+        cooldown_bars: int = 5,
+        min_segment_bars: int = 10
+    ):
+        """Initialize regime tracker.
+
+        Args:
+            confirm_bars: Consecutive bars needed to confirm regime change
+            cooldown_bars: Minimum bars before allowing another switch
+            min_segment_bars: Minimum bars per regime segment
+        """
+        self.confirm_bars = confirm_bars
+        self.cooldown_bars = cooldown_bars
+        self.min_segment_bars = min_segment_bars
+
+        # State tracking
+        self.current_regime_id: RegimeID = RegimeID.R0
+        self.current_direction: Direction = Direction.NONE
+        self.bars_in_current: int = 0
+        self.regime_start_time: datetime | None = None
+
+        # Candidate tracking (for confirmation)
+        self.candidate_regime_id: RegimeID | None = None
+        self.candidate_direction: Direction | None = None
+        self.candidate_bars: int = 0
+
+        # Cooldown tracking
+        self.bars_since_last_switch: int = 0
+        self.last_switch_time: datetime | None = None
+
+        logger.info(
+            f"RegimeTracker initialized (confirm={confirm_bars}, "
+            f"cooldown={cooldown_bars}, min_segment={min_segment_bars})"
+        )
+
+    def update(
+        self,
+        detected_regime: ExtendedRegimeState,
+        current_time: datetime
+    ) -> ExtendedRegimeState:
+        """Update tracker with newly detected regime.
+
+        Applies anti-flap logic:
+        1. If detected regime == current: reset candidate, increment bars_in_current
+        2. If detected regime != current:
+           a. Check if in cooldown → reject, return current
+           b. Check if bars_in_current < min_segment → reject, return current
+           c. If candidate matches detected → increment candidate_bars
+           d. If candidate != detected → reset candidate to detected
+           e. If candidate_bars >= confirm_bars → SWITCH to candidate
+
+        Args:
+            detected_regime: Newly detected regime from classify_extended()
+            current_time: Current bar timestamp
+
+        Returns:
+            Final regime state (may be current or newly confirmed)
+        """
+        detected_id = detected_regime.regime_id
+        detected_dir = detected_regime.direction
+
+        # Case 1: Detected regime matches current → no change
+        if detected_id == self.current_regime_id and detected_dir == self.current_direction:
+            self.bars_in_current += 1
+            self.bars_since_last_switch += 1
+            # Reset candidate
+            self.candidate_regime_id = None
+            self.candidate_direction = None
+            self.candidate_bars = 0
+
+            # Update state object with tracking data
+            detected_regime.bars_in_regime = self.bars_in_current
+            detected_regime.regime_start_time = self.regime_start_time
+            detected_regime.prev_regime_id = None
+
+            return detected_regime
+
+        # Case 2: Detected regime differs → apply anti-flap
+
+        # Check cooldown
+        if self.bars_since_last_switch < self.cooldown_bars:
+            logger.debug(
+                f"Regime change rejected (cooldown): {detected_id} "
+                f"(bars_since_switch={self.bars_since_last_switch} < {self.cooldown_bars})"
+            )
+            # Return current regime, not detected
+            return self._build_current_state(current_time, detected_regime)
+
+        # Check min segment length
+        if self.bars_in_current < self.min_segment_bars:
+            logger.debug(
+                f"Regime change rejected (min_segment): {detected_id} "
+                f"(bars_in_current={self.bars_in_current} < {self.min_segment_bars})"
+            )
+            return self._build_current_state(current_time, detected_regime)
+
+        # Check if candidate matches detected
+        if (
+            self.candidate_regime_id == detected_id and
+            self.candidate_direction == detected_dir
+        ):
+            # Increment candidate bars
+            self.candidate_bars += 1
+            logger.debug(
+                f"Candidate confirmed: {detected_id} "
+                f"({self.candidate_bars}/{self.confirm_bars})"
+            )
+
+            # Check if confirmed
+            if self.candidate_bars >= self.confirm_bars:
+                # SWITCH to new regime
+                prev_regime = self.current_regime_id
+                self.current_regime_id = detected_id
+                self.current_direction = detected_dir
+                self.bars_in_current = self.candidate_bars  # Start count from candidate
+                self.regime_start_time = current_time
+                self.bars_since_last_switch = 0
+                self.last_switch_time = current_time
+
+                # Reset candidate
+                self.candidate_regime_id = None
+                self.candidate_direction = None
+                self.candidate_bars = 0
+
+                logger.info(
+                    f"Regime switched: {prev_regime} → {self.current_regime_id} "
+                    f"(direction={self.current_direction.value})"
+                )
+
+                # Update state object
+                detected_regime.bars_in_regime = self.bars_in_current
+                detected_regime.regime_start_time = self.regime_start_time
+                detected_regime.prev_regime_id = prev_regime
+
+                return detected_regime
+            else:
+                # Still confirming → return current
+                return self._build_current_state(current_time, detected_regime)
+
+        else:
+            # New candidate (different from current or existing candidate)
+            logger.debug(
+                f"New candidate: {detected_id} (direction={detected_dir.value})"
+            )
+            self.candidate_regime_id = detected_id
+            self.candidate_direction = detected_dir
+            self.candidate_bars = 1
+
+            # Return current regime while confirming
+            return self._build_current_state(current_time, detected_regime)
+
+    def _build_current_state(
+        self,
+        current_time: datetime,
+        template: ExtendedRegimeState
+    ) -> ExtendedRegimeState:
+        """Build regime state representing current tracked regime.
+
+        Copies features/volatility from template but uses tracked regime_id.
+
+        Args:
+            current_time: Current timestamp
+            template: Detected regime (for features/volatility)
+
+        Returns:
+            State with current tracked regime
+        """
+        return ExtendedRegimeState(
+            timestamp=current_time,
+            regime_id=self.current_regime_id,
+            direction=self.current_direction,
+            volatility=template.volatility,
+            confidence=template.confidence,
+            features=template.features,
+            bars_in_regime=self.bars_in_current,
+            regime_start_time=self.regime_start_time,
+            prev_regime_id=None
+        )
+
+    def reset(self, initial_regime: ExtendedRegimeState) -> None:
+        """Reset tracker to a specific regime state.
+
+        Args:
+            initial_regime: Regime to initialize with
+        """
+        self.current_regime_id = initial_regime.regime_id
+        self.current_direction = initial_regime.direction
+        self.bars_in_current = 0
+        self.regime_start_time = initial_regime.timestamp
+        self.candidate_regime_id = None
+        self.candidate_direction = None
+        self.candidate_bars = 0
+        self.bars_since_last_switch = 0
+        self.last_switch_time = None
+
+        logger.info(f"RegimeTracker reset to {self.current_regime_id}")

@@ -297,6 +297,7 @@ class BitunixPaperAdapter(BrokerAdapter):
             tf_map = {
                 "1m": Timeframe.MINUTE_1,
                 "5m": Timeframe.MINUTE_5,
+                "10m": Timeframe.MINUTE_10,
                 "15m": Timeframe.MINUTE_15,
                 "30m": Timeframe.MINUTE_30,
                 "1h": Timeframe.HOUR_1,

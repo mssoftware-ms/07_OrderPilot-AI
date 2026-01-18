@@ -86,10 +86,21 @@ class StopLine:
 
 
 @dataclass
+class RegimeLine:
+    """Regime boundary line data."""
+    line_id: str
+    timestamp: int  # Unix timestamp
+    color: str
+    regime_name: str
+    label: str = ""
+
+
+@dataclass
 class BotOverlayState:
     """State tracking for bot overlay elements."""
     markers: list[BotMarker] = field(default_factory=list)
     stop_lines: dict[str, StopLine] = field(default_factory=dict)
+    regime_lines: dict[str, RegimeLine] = field(default_factory=dict)
     debug_hud_visible: bool = False
     last_regime: str = ""
     last_strategy: str = ""

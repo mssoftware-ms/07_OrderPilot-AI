@@ -8,6 +8,7 @@ Contains:
 - setup_window(): Window configuration
 - setup_chart_widget(): Central chart widget setup
 - setup_dock(): Dock widget with custom title bar
+- setup_live_data_toggle(): Chart window live data toggle
 - setup_shortcuts(): Keyboard shortcuts (Ctrl+R, F1, Ctrl+Shift+C, Ctrl+Shift+A)
 - setup_chat(): Chart chat integration
 - setup_bitunix_trading(): Bitunix trading widget
@@ -20,7 +21,7 @@ from __future__ import annotations
 import logging
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QDockWidget, QWidget
+from PyQt6.QtWidgets import QDockWidget, QWidget, QToolBar, QPushButton
 from PyQt6.QtGui import QShortcut, QKeySequence
 
 from src.ui.widgets.chart_window_dock_titlebar import DockTitleBar
@@ -108,6 +109,38 @@ class ChartWindowSetup:
                 self.parent.chart_widget.toggle_panel_button.setChecked(False)
 
         logger.info(f"TradingBotWindow created for {self.parent.symbol}")
+
+    def setup_live_data_toggle(self) -> None:
+        """Add a main-window-style live data toggle to the chart window."""
+        toolbar = QToolBar("Live Data", self.parent)
+        toolbar.setMovable(False)
+        self.parent.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+
+        self.parent.chart_live_data_toggle = QPushButton("Live Data: OFF")
+        self.parent.chart_live_data_toggle.setCheckable(True)
+        self.parent.chart_live_data_toggle.setToolTip(
+            "Toggle live market data in paper mode\n"
+            "• ON: Use real-time market data from providers\n"
+            "• OFF: Use cached/simulated data"
+        )
+        self.parent.chart_live_data_toggle.clicked.connect(
+            self.parent._handlers.on_chart_live_data_toggle_clicked
+        )
+        toolbar.addWidget(self.parent.chart_live_data_toggle)
+
+        main_window = self.parent._get_main_window()
+        if main_window and hasattr(main_window, "live_data_toggle"):
+            self.parent._handlers.on_main_live_data_toggled(main_window.live_data_toggle.isChecked())
+            main_window.live_data_toggle.toggled.connect(
+                self.parent._handlers.on_main_live_data_toggled
+            )
+        else:
+            live_data_enabled = self.parent.settings.value("live_data_enabled", False, type=bool)
+            self.parent._handlers.update_chart_live_data_toggle(live_data_enabled)
+            if hasattr(self.parent.chart_widget, "live_stream_button"):
+                self.parent.chart_widget.live_stream_button.toggled.connect(
+                    self.parent._handlers.on_chart_stream_button_toggled
+                )
 
     def _on_trading_bot_window_closed(self) -> None:
         """Handle Trading Bot window close event."""

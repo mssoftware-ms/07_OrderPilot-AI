@@ -185,7 +185,7 @@ class HistoryProviderFetching:
 
         if source == DataSource.YAHOO:
             intraday_timeframes = [
-                Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_15,
+                Timeframe.MINUTE_1, Timeframe.MINUTE_5, Timeframe.MINUTE_10, Timeframe.MINUTE_15,
                 Timeframe.MINUTE_30, Timeframe.HOUR_1, Timeframe.HOUR_4,
             ]
             if request.timeframe in intraday_timeframes:
@@ -193,6 +193,16 @@ class HistoryProviderFetching:
                     f"Skipping Yahoo Finance for intraday timeframe {request.timeframe.value}"
                 )
                 return True
+
+        if request.timeframe == Timeframe.MINUTE_10 and source in [
+            DataSource.ALPHA_VANTAGE,
+            DataSource.FINNHUB,
+        ]:
+            logger.debug(
+                "Skipping %s for 10-minute timeframe (unsupported)",
+                source.value,
+            )
+            return True
 
         return False
 

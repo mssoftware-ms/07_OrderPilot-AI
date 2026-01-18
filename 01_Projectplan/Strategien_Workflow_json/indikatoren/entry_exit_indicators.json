@@ -1,0 +1,90 @@
+{
+  "_meta": {
+    "description": "Code locations for MACD/RSI entry and exit indicators in Trading Bot -> Tab Bot",
+    "ui_path": "Trading Bot -> Tab Bot -> Quick Toggles",
+    "note": "Entry toggles exist in UI/config; entry scoring currently does not check disable_*_entry flags. RSI exit does not check disable_rsi_exit."
+  },
+  "macd_exit": {
+    "ui_checkbox": {
+      "label": "MACD-Exit deaktiv.",
+      "path": "src/ui/widgets/chart_window_mixins/bot_ui_control_widgets.py:264",
+      "settings_load": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:250",
+      "settings_save": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:343"
+    },
+    "config_flag": {
+      "name": "disable_macd_exit",
+      "path": "src/core/tradingbot/config.py:113"
+    },
+    "logic": {
+      "path": "src/core/tradingbot/bot_state_handlers_exit.py:139",
+      "summary": "Exit when MACD crosses signal against position with histogram confirmation; honored by disable_macd_exit.",
+      "dependencies": [
+        "features.macd",
+        "features.macd_signal",
+        "features.macd_hist",
+        "active position"
+      ]
+    }
+  },
+  "rsi_exit": {
+    "ui_checkbox": {
+      "label": "RSI-Exit deaktiv.",
+      "path": "src/ui/widgets/chart_window_mixins/bot_ui_control_widgets.py:282",
+      "settings_load": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:256",
+      "settings_save": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:345"
+    },
+    "config_flag": {
+      "name": "disable_rsi_exit",
+      "path": "src/core/tradingbot/config.py:121"
+    },
+    "logic": {
+      "path": "src/core/tradingbot/bot_state_handlers_exit.py:129",
+      "summary": "Exit on RSI extremes (LONG: rsi_14 > 80; SHORT: rsi_14 < 20).",
+      "dependencies": [
+        "features.rsi_14",
+        "active position"
+      ]
+    }
+  },
+  "macd_entry": {
+    "ui_checkbox": {
+      "label": "MACD-Entry deaktiv.",
+      "path": "src/ui/widgets/chart_window_mixins/bot_ui_control_widgets.py:273",
+      "settings_load": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:253",
+      "settings_save": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:344"
+    },
+    "config_flag": {
+      "name": "disable_macd_entry",
+      "path": "src/core/tradingbot/config.py:109"
+    },
+    "logic": {
+      "entry_score_flow": "src/core/tradingbot/bot_signal_logic.py:34",
+      "indicator_score": "src/core/tradingbot/bot_signal_logic.py:98",
+      "summary": "Entry scoring uses MACD line vs signal as weighted component; no disable_macd_entry check in scoring.",
+      "dependencies": [
+        "features.macd",
+        "features.macd_signal"
+      ]
+    }
+  },
+  "rsi_entry": {
+    "ui_checkbox": {
+      "label": "RSI-Entry deaktiv.",
+      "path": "src/ui/widgets/chart_window_mixins/bot_ui_control_widgets.py:291",
+      "settings_load": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:258",
+      "settings_save": "src/ui/widgets/chart_window_mixins/bot_event_handlers.py:346"
+    },
+    "config_flag": {
+      "name": "disable_rsi_entry",
+      "path": "src/core/tradingbot/config.py:117"
+    },
+    "logic": {
+      "entry_score_flow": "src/core/tradingbot/bot_signal_logic.py:34",
+      "indicator_score": "src/core/tradingbot/bot_signal_logic.py:82",
+      "summary": "Entry scoring uses RSI ranges as weighted component; no disable_rsi_entry check in scoring.",
+      "dependencies": [
+        "features.rsi_14"
+      ]
+    }
+  }
+}

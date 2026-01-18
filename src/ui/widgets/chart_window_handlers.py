@@ -8,6 +8,8 @@ Contains:
 - on_ai_chat_button_clicked(): Handle AI chat button
 - on_bitunix_trading_button_clicked(): Handle Bitunix trading button
 - on_ai_analysis_button_clicked(): Handle AI analysis popup button
+- on_chart_live_data_toggle_clicked(): Handle chart live data toggle
+- on_main_live_data_toggled(): Sync chart toggle with main window
 - on_analysis_window_closed(): Handle analysis window close
 - on_dock_visibility_changed(): Handle dock visibility change
 - on_bitunix_visibility_changed(): Handle Bitunix widget visibility
@@ -89,6 +91,29 @@ class ChartWindowHandlers:
             if self.parent._ai_analysis_window:
                 self.parent._ai_analysis_window.hide()
 
+    def on_chart_live_data_toggle_clicked(self, checked: bool) -> None:
+        """Handle chart window live data toggle."""
+        main_window = self.parent._get_main_window()
+        if main_window and hasattr(main_window, "live_data_toggle") and hasattr(main_window, "toggle_live_data"):
+            if main_window.live_data_toggle.isChecked() != checked:
+                main_window.live_data_toggle.setChecked(checked)
+                main_window.toggle_live_data()
+            self.update_chart_live_data_toggle(checked)
+            return
+
+        if hasattr(self.parent.chart_widget, "live_stream_button"):
+            if self.parent.chart_widget.live_stream_button.isChecked() != checked:
+                self.parent.chart_widget.live_stream_button.click()
+        self.update_chart_live_data_toggle(checked)
+
+    def on_main_live_data_toggled(self, checked: bool) -> None:
+        """Sync chart toggle with main window live data state."""
+        self.update_chart_live_data_toggle(checked)
+
+    def on_chart_stream_button_toggled(self, checked: bool) -> None:
+        """Sync chart toggle with chart stream state (fallback without main window)."""
+        self.update_chart_live_data_toggle(checked)
+
     def on_analysis_window_closed(self, result: int) -> None:
         """Handle analysis window close event to uncheck the button."""
         self.parent._ai_analysis_window = None
@@ -108,3 +133,21 @@ class ChartWindowHandlers:
         """Ensure the toolbar toggle reflects the Bitunix widget visibility."""
         if hasattr(self.parent.chart_widget, 'bitunix_trading_button') and getattr(self.parent, "_bitunix_widget", None):
             self.parent.chart_widget.bitunix_trading_button.setChecked(self.parent._bitunix_widget.isVisible())
+
+    def update_chart_live_data_toggle(self, checked: bool) -> None:
+        """Update chart window live data toggle state and styling."""
+        button = getattr(self.parent, "chart_live_data_toggle", None)
+        if not button:
+            return
+
+        if button.isChecked() != checked:
+            button.blockSignals(True)
+            button.setChecked(checked)
+            button.blockSignals(False)
+
+        if checked:
+            button.setText("Live Data: ON")
+            button.setStyleSheet("background-color: #2ECC71; color: white; font-weight: bold;")
+        else:
+            button.setText("Live Data: OFF")
+            button.setStyleSheet("")

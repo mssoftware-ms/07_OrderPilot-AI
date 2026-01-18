@@ -3,6 +3,10 @@
 Evaluates condition logic (gt, lt, eq, between) against indicator values
 to determine if regimes are active.
 
+Supports two evaluation modes:
+1. Operator-based: gt, lt, eq, between (legacy)
+2. CEL expressions: Complex conditions with CEL syntax (new)
+
 Architecture:
     IndicatorValues -> ConditionEvaluator -> bool
 
@@ -30,6 +34,14 @@ from .models import (
     STRICT_CONDITION_VALIDATION,
 )
 
+# Import CEL engine (lazy import to avoid circular dependencies)
+try:
+    from ..cel_engine import get_cel_engine
+    CEL_AVAILABLE = True
+except ImportError:
+    CEL_AVAILABLE = False
+    get_cel_engine = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,10 +53,13 @@ class ConditionEvaluationError(Exception):
 class ConditionEvaluator:
     """Evaluates conditions against indicator values.
 
-    Supports operators: gt, lt, eq, between
+    Supports two evaluation modes:
+    1. Operator-based: gt, lt, eq, between (legacy)
+    2. CEL expressions: Complex conditions with CEL syntax (new)
+
     Supports logic: all (AND), any (OR)
 
-    Example:
+    Example (operator-based):
         >>> indicator_values = {
         ...     "rsi14": {"value": 65.2},
         ...     "adx14": {"value": 28.5}
@@ -58,16 +73,34 @@ class ConditionEvaluator:
         ...     right=ConstantValue(value=60)
         ... )
         >>> result = evaluator.evaluate_condition(condition)  # True
+
+    Example (CEL expression):
+        >>> condition = Condition(
+        ...     cel_expression="rsi14.value > 60 && adx14.value > 25"
+        ... )
+        >>> result = evaluator.evaluate_condition(condition)  # True
     """
 
-    def __init__(self, indicator_values: dict[str, dict[str, float]]):
+    def __init__(self, indicator_values: dict[str, dict[str, float]], enable_cel: bool = True):
         """Initialize evaluator with indicator values.
 
         Args:
             indicator_values: Dict mapping indicator_id -> {field -> value}
                 Example: {"rsi14": {"value": 65.2}, "adx14": {"value": 28.5}}
+            enable_cel: Enable CEL expression evaluation (default True)
         """
         self.indicator_values = indicator_values
+        self.enable_cel = enable_cel and CEL_AVAILABLE
+
+        # Initialize CEL engine if available
+        if self.enable_cel:
+            self.cel_engine = get_cel_engine()
+            logger.debug("CEL engine enabled for condition evaluation")
+        else:
+            self.cel_engine = None
+            if enable_cel and not CEL_AVAILABLE:
+                logger.warning("CEL requested but cel-python not available. Install with: pip install cel-python")
+
         # Allow runtime validation errors instead of Pydantic errors for evaluator tests.
         self._strict_token = STRICT_CONDITION_VALIDATION.set(False)
 
@@ -112,6 +145,10 @@ class ConditionEvaluator:
     def evaluate_condition(self, condition: Condition) -> bool:
         """Evaluate single comparison condition.
 
+        Supports two modes:
+        1. CEL expression: If condition.cel_expression is set
+        2. Operator-based: If condition.left/op/right are set
+
         Args:
             condition: Condition to evaluate
 
@@ -122,6 +159,39 @@ class ConditionEvaluator:
             ConditionEvaluationError: If evaluation fails
         """
         try:
+            # Mode 1: CEL Expression
+            if condition.cel_expression is not None:
+                if not self.enable_cel:
+                    raise ConditionEvaluationError(
+                        "CEL expression provided but CEL engine is not available. "
+                        "Install cel-python: pip install cel-python"
+                    )
+
+                # Build CEL context from indicator values
+                # Format: {"rsi14": {"value": 65.2}, "adx14": {"value": 28.5}}
+                # CEL can access as: rsi14.value, adx14.value
+                cel_context = dict(self.indicator_values)
+
+                # Evaluate CEL expression
+                result = self.cel_engine.evaluate(
+                    condition.cel_expression,
+                    cel_context,
+                    default=False  # Default to False if evaluation fails
+                )
+
+                logger.debug(
+                    f"CEL: '{condition.cel_expression}' = {result}"
+                )
+
+                # Ensure result is boolean
+                if not isinstance(result, bool):
+                    raise ConditionEvaluationError(
+                        f"CEL expression must return boolean, got {type(result)}: {result}"
+                    )
+
+                return result
+
+            # Mode 2: Operator-based (legacy)
             # Resolve operands
             left_value = self._resolve_operand(condition.left)
 

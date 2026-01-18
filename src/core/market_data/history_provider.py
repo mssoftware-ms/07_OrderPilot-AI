@@ -235,6 +235,7 @@ class HistoryManager:
                 "1s": Timeframe.SECOND_1,
                 "1m": Timeframe.MINUTE_1,
                 "5m": Timeframe.MINUTE_5,
+                "10m": Timeframe.MINUTE_10,
                 "15m": Timeframe.MINUTE_15,
                 "30m": Timeframe.MINUTE_30,
                 "1h": Timeframe.HOUR_1,
@@ -251,6 +252,8 @@ class HistoryManager:
                 delta = timedelta(minutes=limit)
             elif tf == Timeframe.MINUTE_5:
                 delta = timedelta(minutes=limit * 5)
+            elif tf == Timeframe.MINUTE_10:
+                delta = timedelta(minutes=limit * 10)
             elif tf == Timeframe.MINUTE_15:
                 delta = timedelta(minutes=limit * 15)
             elif tf == Timeframe.MINUTE_30:

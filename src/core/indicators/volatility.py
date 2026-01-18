@@ -304,3 +304,66 @@ class VolatilityIndicators(BaseIndicatorCalculator):
         return VolatilityIndicators.create_result(
             IndicatorType.STD, values, params
         )
+
+    @staticmethod
+    def calculate_chop(
+        data: pd.DataFrame,
+        params: dict[str, Any],
+        use_talib: bool
+    ) -> IndicatorResult:
+        """Calculate Choppiness Index (CHOP).
+
+        The Choppiness Index is a volatility indicator that determines
+        whether the market is choppy (trading sideways) or trending.
+
+        Formula: CHOP = 100 * log10(sum(ATR, n) / (max(high, n) - min(low, n))) / log10(n)
+
+        Range: 0 to 100
+        - Values > 61.8: Market is choppy (sideways/ranging)
+        - Values < 38.2: Market is trending
+        - Values between 38.2 and 61.8: Transitional
+
+        Args:
+            data: Price data with 'high', 'low', 'close' columns
+            params: Parameters (period, default 14)
+            use_talib: Ignored for CHOP (no TALib implementation)
+
+        Returns:
+            IndicatorResult with CHOP values (0-100)
+        """
+        period = params.get('period', 14)
+
+        # Calculate ATR first (using existing method)
+        atr_result = VolatilityIndicators.calculate_atr(
+            data,
+            {'period': period},
+            use_talib
+        )
+        atr = atr_result.values
+
+        # Sum of ATR over period
+        atr_sum = atr.rolling(window=period).sum()
+
+        # Highest high and lowest low over period
+        high_max = data['high'].rolling(window=period).max()
+        low_min = data['low'].rolling(window=period).min()
+
+        # High-Low range
+        hl_range = high_max - low_min
+
+        # Avoid division by zero
+        hl_range = hl_range.replace(0, np.nan)
+
+        # CHOP formula
+        # log10(sum(ATR) / (high_max - low_min)) / log10(period)
+        log_numerator = np.log10(atr_sum / hl_range)
+        log_denominator = np.log10(period)
+
+        values = 100 * log_numerator / log_denominator
+
+        # Clip to 0-100 range (handle edge cases)
+        values = values.clip(0, 100)
+
+        return VolatilityIndicators.create_result(
+            IndicatorType.CHOP, values, params
+        )

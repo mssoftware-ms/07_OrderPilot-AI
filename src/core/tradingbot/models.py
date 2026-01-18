@@ -38,11 +38,32 @@ class BotAction(str, Enum):
 
 
 class RegimeType(str, Enum):
-    """Market regime types."""
+    """Market regime types (legacy 3-regime system)."""
     TREND_UP = "trend_up"
     TREND_DOWN = "trend_down"
     RANGE = "range"
     UNKNOWN = "unknown"
+
+
+class RegimeID(str, Enum):
+    """Extended 6-regime classification (R0-R5).
+
+    Used for advanced market analysis and indicator optimization.
+    Maps to specific market conditions for regime-based strategy selection.
+    """
+    R0 = "R0"  # Neutral/Unclear (transition phase)
+    R1 = "R1"  # Trend (Up/Down with ADX >25)
+    R2 = "R2"  # Range/Chop (ADX <20, sideways with range%)
+    R3 = "R3"  # Breakout Setup (compression → expansion, squeeze)
+    R4 = "R4"  # High Volatility (extreme ATR/BBWidth)
+    R5 = "R5"  # Orderflow/Liquidity Dominant (order book imbalance)
+
+
+class Direction(str, Enum):
+    """Directional bias within a regime."""
+    UP = "UP"
+    DOWN = "DOWN"
+    NONE = "NONE"
 
 
 class VolatilityLevel(str, Enum):
@@ -145,6 +166,19 @@ class FeatureVector(BaseModel):
     bb_lower: float | None = Field(None, description="Bollinger lower band")
     bb_width: float | None = Field(None, ge=0, description="Bollinger band width")
     bb_pct: float | None = Field(None, description="Price position in BB (%)")
+    chop: float | None = Field(
+        None,
+        ge=0,
+        le=100,
+        description="Choppiness Index (0-100, >61.8=choppy, <38.2=trending)"
+    )
+
+    # Ichimoku Cloud
+    ichimoku_tenkan: float | None = Field(None, description="Ichimoku Conversion Line")
+    ichimoku_kijun: float | None = Field(None, description="Ichimoku Base Line")
+    ichimoku_senkou_a: float | None = Field(None, description="Ichimoku Leading Span A")
+    ichimoku_senkou_b: float | None = Field(None, description="Ichimoku Leading Span B")
+    ichimoku_chikou: float | None = Field(None, description="Ichimoku Lagging Span")
 
     # Trend strength
     adx: float | None = Field(None, ge=0, le=100, description="ADX value")
@@ -284,6 +318,82 @@ class RegimeState(BaseModel):
         if self.regime_name:
             return self.regime_name
         return f"{self.regime.value}/{self.volatility.value}"
+
+
+class ExtendedRegimeState(BaseModel):
+    """Extended 6-regime classification state (R0-R5).
+
+    Provides detailed regime analysis with composite detection,
+    segment features, and anti-flap tracking for advanced
+    market analysis and indicator optimization.
+    """
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    # Core classification
+    regime_id: RegimeID = Field(..., description="6-regime classification (R0-R5)")
+    direction: Direction = Field(default=Direction.NONE, description="Directional bias")
+    volatility: VolatilityLevel = Field(default=VolatilityLevel.NORMAL)
+
+    # Confidence scores
+    confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Overall regime confidence"
+    )
+
+    # Segment features (for scoring and analysis)
+    features: dict[str, float | None] = Field(
+        default_factory=dict,
+        description="Segment features: range_pct, atrp, bbwidth, obi, etc."
+    )
+
+    # Anti-flap tracking
+    bars_in_regime: int = Field(default=0, description="Bars since regime started")
+    regime_start_time: datetime | None = Field(None, description="When regime started")
+    prev_regime_id: RegimeID | None = Field(None, description="Previous regime")
+
+    # Legacy compatibility
+    legacy_regime: RegimeType | None = Field(
+        None,
+        description="Legacy 3-regime mapping for backward compatibility"
+    )
+
+    @computed_field
+    @property
+    def regime_label(self) -> str:
+        """Human-readable regime label."""
+        direction_str = f" {self.direction.value}" if self.direction != Direction.NONE else ""
+        return f"{self.regime_id.value}{direction_str} ({self.volatility.value})"
+
+    def to_legacy_regime_state(self) -> RegimeState:
+        """Convert to legacy RegimeState for backward compatibility.
+
+        Maps R0-R5 → TREND_UP/DOWN/RANGE/UNKNOWN.
+        """
+        # Map R0-R5 to legacy regime
+        if self.regime_id == RegimeID.R1:
+            if self.direction == Direction.UP:
+                legacy_regime = RegimeType.TREND_UP
+            elif self.direction == Direction.DOWN:
+                legacy_regime = RegimeType.TREND_DOWN
+            else:
+                legacy_regime = RegimeType.UNKNOWN
+        elif self.regime_id in (RegimeID.R2, RegimeID.R3):
+            legacy_regime = RegimeType.RANGE
+        else:
+            legacy_regime = RegimeType.UNKNOWN
+
+        return RegimeState(
+            timestamp=self.timestamp,
+            regime=legacy_regime,
+            volatility=self.volatility,
+            regime_confidence=self.confidence,
+            volatility_confidence=self.confidence,
+            adx_value=self.features.get("adx"),
+            atr_pct=self.features.get("atrp"),
+            bb_width_pct=self.features.get("bbwidth")
+        )
 
 
 # ==================== Signal Models ====================

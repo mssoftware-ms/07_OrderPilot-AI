@@ -47,6 +47,10 @@ class FeatureEngine:
         'macd_fast': 12,
         'macd_slow': 26,
         'macd_signal': 9,
+        'chop': 14,  # Choppiness Index
+        'ichimoku_tenkan': 9,  # Ichimoku Conversion Line
+        'ichimoku_kijun': 26,  # Ichimoku Base Line
+        'ichimoku_senkou': 52,  # Ichimoku Leading Span B
     }
 
     # Minimum bars needed for valid features
@@ -154,6 +158,22 @@ class FeatureEngine:
             IndicatorConfig(
                 indicator_type=IndicatorType.ATR,
                 params={'period': self.periods['atr']},
+                cache_results=True
+            ),
+            # Choppiness Index (range-bound indicator)
+            IndicatorConfig(
+                indicator_type=IndicatorType.CHOP,
+                params={'period': self.periods['chop']},
+                cache_results=True
+            ),
+            # Ichimoku Cloud (trend indicator)
+            IndicatorConfig(
+                indicator_type=IndicatorType.ICHIMOKU,
+                params={
+                    'tenkan': self.periods['ichimoku_tenkan'],
+                    'kijun': self.periods['ichimoku_kijun'],
+                    'senkou': self.periods['ichimoku_senkou']
+                },
                 cache_results=True
             ),
         ]
@@ -324,6 +344,18 @@ class FeatureEngine:
         atr_key = f"atr_period{self.periods['atr']}"
         self._set_feature_from_result(results, atr_key, 'atr_14', features)
 
+        # CHOP (Choppiness Index)
+        chop_key = f"chop_period{self.periods['chop']}"
+        self._set_feature_from_result(results, chop_key, 'chop', features)
+
+        # Ichimoku Cloud (multi-column result)
+        ichimoku_key = (
+            f"ichimoku_kijun{self.periods['ichimoku_kijun']}_"
+            f"senkou{self.periods['ichimoku_senkou']}_"
+            f"tenkan{self.periods['ichimoku_tenkan']}"
+        )
+        self._extract_ichimoku(results, ichimoku_key, features)
+
         return features
 
     def _set_feature_from_result(
@@ -400,6 +432,33 @@ class FeatureEngine:
             features['bb_upper'] = self._get_last_value(bb_result.get('upper'))
             features['bb_middle'] = self._get_last_value(bb_result.get('middle'))
             features['bb_lower'] = self._get_last_value(bb_result.get('lower'))
+
+    def _extract_ichimoku(
+        self,
+        results: dict[str, IndicatorResult],
+        key: str,
+        features: dict[str, float | None],
+    ) -> None:
+        """Extract Ichimoku Cloud indicator values."""
+        if key not in results:
+            return
+        ichimoku_result = results[key].values
+        if isinstance(ichimoku_result, pd.DataFrame) or isinstance(ichimoku_result, dict):
+            features['ichimoku_tenkan'] = self._get_last_value(
+                ichimoku_result.get('tenkan_sen', ichimoku_result.get('tenkan'))
+            )
+            features['ichimoku_kijun'] = self._get_last_value(
+                ichimoku_result.get('kijun_sen', ichimoku_result.get('kijun'))
+            )
+            features['ichimoku_senkou_a'] = self._get_last_value(
+                ichimoku_result.get('senkou_span_a', ichimoku_result.get('senkou_a'))
+            )
+            features['ichimoku_senkou_b'] = self._get_last_value(
+                ichimoku_result.get('senkou_span_b', ichimoku_result.get('senkou_b'))
+            )
+            features['ichimoku_chikou'] = self._get_last_value(
+                ichimoku_result.get('chikou_span', ichimoku_result.get('chikou'))
+            )
 
     def _get_last_value(self, values) -> float | None:
         """Safely extract last value from Series, array, or scalar."""

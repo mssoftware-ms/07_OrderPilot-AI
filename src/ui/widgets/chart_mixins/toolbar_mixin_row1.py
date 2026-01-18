@@ -50,6 +50,7 @@ class ToolbarMixinRow1:
             ("1 Sekunde", "1S"),
             ("1 Minute", "1T"),
             ("5 Minuten", "5T"),
+            ("10 Minuten", "10T"),
             ("15 Minuten", "15T"),
             ("30 Minuten", "30T"),
             ("1 Stunde", "1H"),

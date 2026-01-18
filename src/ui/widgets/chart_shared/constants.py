@@ -54,6 +54,7 @@ DEFAULT_CRYPTO_SYMBOLS: List[str] = [
 TIMEFRAMES: Dict[str, str] = {
     "1m": "1min",      # 1 minute (Alpaca: 1Min)
     "5m": "5min",      # 5 minutes (Alpaca: 5Min)
+    "10m": "10min",    # 10 minutes (Alpaca: 10Min)
     "15m": "15min",    # 15 minutes (Alpaca: 15Min)
     "30m": "30min",    # 30 minutes (Alpaca: 30Min)
     "1H": "1hour",     # 1 hour (Alpaca: 1Hour)
@@ -66,6 +67,7 @@ TIMEFRAMES: Dict[str, str] = {
 TIMEFRAME_DISPLAY_NAMES: Dict[str, str] = {
     "1m": "1 Minute",
     "5m": "5 Minutes",
+    "10m": "10 Minutes",
     "15m": "15 Minutes",
     "30m": "30 Minutes",
     "1H": "1 Hour",

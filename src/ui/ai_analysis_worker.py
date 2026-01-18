@@ -61,6 +61,7 @@ class AnalysisWorker(QThread):
             timeframe_map = {
                 "1T": TF.MINUTE_1,
                 "5T": TF.MINUTE_5,
+                "10T": TF.MINUTE_10,
                 "15T": TF.MINUTE_15,
                 "1H": TF.HOUR_1,
                 "1D": TF.DAY_1

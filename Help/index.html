@@ -3,513 +3,2233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OrderPilot-AI Documentation</title>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>OrderPilot-AI Hilfe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-darker: #0f0f0f;
+            --bg-light: #2a2a2a;
+            --orange-primary: #ff8c00;
+            --orange-light: #ffa726;
+            --orange-dark: #e67e00;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --border-color: #3a3a3a;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --error: #f44336;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-darker);
+            border-bottom: 2px solid var(--orange-primary);
+            padding: 1.5rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            color: var(--orange-primary);
+            font-size: 2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header h1::before {
+            content: "🚀";
+            font-size: 2.5rem;
+        }
+
+        /* Search Bar */
+        .search-container {
+            margin-top: 1rem;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 3rem;
+            background: var(--bg-light);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--orange-primary);
+            box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        /* Main Layout */
+        .container {
+            display: flex;
+            min-height: calc(100vh - 150px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-darker);
+            border-right: 2px solid var(--border-color);
+            padding: 2rem 0;
+            position: sticky;
+            top: 150px;
+            height: calc(100vh - 150px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--orange-primary) var(--bg-darker);
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: var(--bg-darker);
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: var(--orange-primary);
+            border-radius: 4px;
+        }
+
+        .nav-section {
+            margin-bottom: 2rem;
+        }
+
+        .nav-title {
+            padding: 0.5rem 2rem;
+            color: var(--orange-primary);
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 0.75rem 2rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-link:hover {
+            color: var(--orange-light);
+            background: rgba(255, 140, 0, 0.05);
+            border-left-color: var(--orange-light);
+        }
+
+        .nav-link.active {
+            color: var(--orange-primary);
+            background: rgba(255, 140, 0, 0.1);
+            border-left-color: var(--orange-primary);
+            font-weight: 600;
+        }
+
+        /* Content */
+        .content {
+            flex: 1;
+            padding: 3rem;
+            max-width: 1200px;
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            color: var(--orange-primary);
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 3px solid var(--orange-primary);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            color: var(--orange-light);
+            font-size: 1.8rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h4 {
+            color: var(--text-primary);
+            font-size: 1.3rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s;
+        }
+
+        .card:hover {
+            border-color: var(--orange-primary);
+            box-shadow: 0 4px 20px rgba(255, 140, 0, 0.1);
+        }
+
+        .card-title {
+            color: var(--orange-primary);
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: var(--bg-darker);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--orange-primary);
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+        }
+
+        .code-block code {
+            color: var(--text-primary);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+
+        .badge-primary {
+            background: var(--orange-primary);
+            color: var(--bg-darker);
+        }
+
+        .badge-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .badge-warning {
+            background: var(--warning);
+            color: var(--bg-darker);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: var(--orange-primary);
+            color: var(--bg-darker);
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background: var(--orange-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3);
+        }
+
+        /* Collapsible Sections */
+        .collapsible {
+            background: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+
+        .collapsible-header:hover {
+            background: rgba(255, 140, 0, 0.05);
+        }
+
+        .collapsible-header h4 {
+            margin: 0;
+            color: var(--orange-light);
+        }
+
+        .collapsible-icon {
+            font-size: 1.5rem;
+            transition: transform 0.3s;
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .collapsible.open .collapsible-content {
+            max-height: 2000px;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .collapsible.open .collapsible-icon {
+            transform: rotate(180deg);
+        }
+
+        /* Alert Boxes */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background: rgba(33, 150, 243, 0.1);
+            border-left-color: #2196f3;
+            color: #64b5f6;
+        }
+
+        .alert-warning {
+            background: rgba(255, 152, 0, 0.1);
+            border-left-color: var(--warning);
+            color: var(--orange-light);
+        }
+
+        .alert-success {
+            background: rgba(76, 175, 80, 0.1);
+            border-left-color: var(--success);
+            color: #81c784;
+        }
+
+        /* Steps */
+        .steps {
+            counter-reset: step-counter;
+        }
+
+        .step {
+            position: relative;
+            padding-left: 3rem;
+            margin-bottom: 2rem;
+        }
+
+        .step::before {
+            counter-increment: step-counter;
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 2rem;
+            height: 2rem;
+            background: var(--orange-primary);
+            color: var(--bg-darker);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: static;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            h2 {
+                font-size: 2rem;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--orange-primary);
+            border-radius: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--orange-light);
+        }
+    </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="main-header">
-        <div class="container">
-            <div class="header-content">
-                <h1><i class="fas fa-rocket"></i> OrderPilot-AI</h1>
-                <p class="subtitle">Interaktive Dokumentation & Benutzerhandbuch</p>
+    <div class="header">
+        <h1>OrderPilot-AI Hilfe</h1>
+        <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="searchInput" placeholder="Suche nach Themen, Funktionen...">
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="nav-section">
+                <div class="nav-title">Trading Bot</div>
+                <a href="#bot-quickstart" class="nav-link active">⚡ Quickstart</a>
+                <a href="#bot-config" class="nav-link">⚙️ Konfiguration</a>
+                <a href="#bot-json-strategies" class="nav-link">📄 JSON Strategien</a>
+                <a href="#bot-cel-rules" class="nav-link">🧠 CEL Rules Engine</a>
+                <a href="#bot-regime-detection" class="nav-link">🎯 Regime Erkennung</a>
+                <a href="#bot-execution" class="nav-link">▶️ Bot Ausführung</a>
+                <a href="#bot-monitoring" class="nav-link">📊 Monitoring</a>
             </div>
-            <div class="version-badge">v5.0 - Migration Framework</div>
-        </div>
-    </header>
 
-    <!-- Navigation -->
-    <nav class="main-nav">
-        <div class="container">
-            <ul class="nav-list">
-                <li class="nav-item active">
-                    <a href="#overview"><i class="fas fa-home"></i> Übersicht</a>
-                </li>
-                <li class="nav-item">
-                    <a href="#modules"><i class="fas fa-cube"></i> Module</a>
-                </li>
-                <li class="nav-item">
-                    <a href="#quickstart"><i class="fas fa-bolt"></i> Schnellstart</a>
-                </li>
-                <li class="nav-item">
-                    <a href="#migration"><i class="fas fa-exchange-alt"></i> Migration</a>
-                </li>
-            </ul>
-        </div>
-    </nav>
+            <div class="nav-section">
+                <div class="nav-title">Entry Analyzer</div>
+                <a href="#analyzer-quickstart" class="nav-link">⚡ Quickstart</a>
+                <a href="#analyzer-backtest" class="nav-link">📈 Backtesting</a>
+                <a href="#analyzer-optimization" class="nav-link">🔧 Indikator-Optimierung</a>
+                <a href="#analyzer-regime-sets" class="nav-link">📦 Regime Sets</a>
+                <a href="#analyzer-pattern" class="nav-link">🔍 Mustererkennung</a>
+                <a href="#analyzer-results" class="nav-link">📊 Ergebnisse</a>
+            </div>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="container">
+            <div class="nav-section">
+                <div class="nav-title">Weitere Themen</div>
+                <a href="#faq" class="nav-link">❓ FAQ</a>
+                <a href="#troubleshooting" class="nav-link">🔧 Troubleshooting</a>
+            </div>
+        </nav>
 
-            <!-- Overview Section -->
-            <section id="overview" class="section">
-                <h2 class="section-title">
-                    <i class="fas fa-info-circle"></i> Übersicht
-                </h2>
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Trading Bot Quickstart -->
+            <section id="bot-quickstart" class="section active">
+                <h2>🚀 Trading Bot - Quickstart</h2>
+
+                <div class="alert alert-info">
+                    <strong>💡 Tipp:</strong> Der Trading Bot verwendet JSON-basierte Strategien mit automatischer Regime-Erkennung für adaptives Trading.
+                </div>
 
                 <div class="card">
-                    <h3>Willkommen bei OrderPilot-AI</h3>
-                    <p class="lead">
-                        OrderPilot-AI ist eine umfassende Trading-Plattform mit automatisierter
-                        Strategieverwaltung, JSON-basierter Konfiguration und vollständig validiertem
-                        Migrationssystem.
-                    </p>
+                    <div class="card-title">In 3 Minuten zum ersten Bot</div>
 
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
-                            <div class="stat-value">100%</div>
-                            <div class="stat-label">Migration Success</div>
+                    <div class="steps">
+                        <div class="step">
+                            <h4>JSON-Strategie auswählen</h4>
+                            <p>Wähle eine vorgefertigte Strategie aus <code>03_JSON/Trading_Bot/</code> oder erstelle deine eigene.</p>
+                            <div class="code-block">
+                                <code>Verfügbare Strategien:
+- trend_following_conservative.json
+- momentum_macd.json
+- mean_reversion_rsi.json
+- breakout_volatility.json
+- scalping_range.json</code>
+                            </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
-                            <div class="stat-value">9/9</div>
-                            <div class="stat-label">Strategien Migriert</div>
+
+                        <div class="step">
+                            <h4>Bot starten</h4>
+                            <p>Klicke auf den <span class="badge badge-primary">Start Bot</span> Button im Trading Tab.</p>
+                            <ul>
+                                <li>Wähle deine JSON-Config-Datei</li>
+                                <li>Bot analysiert das aktuelle Marktregime</li>
+                                <li>Passende Strategie wird automatisch geladen</li>
+                            </ul>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fas fa-vial"></i></div>
-                            <div class="stat-value">46/46</div>
-                            <div class="stat-label">Tests Bestanden</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon"><i class="fas fa-rocket"></i></div>
-                            <div class="stat-value">Production</div>
-                            <div class="stat-label">Ready</div>
+
+                        <div class="step">
+                            <h4>Monitoring</h4>
+                            <p>Der Bot läuft nun im Hintergrund und:</p>
+                            <ul>
+                                <li>✅ Überwacht Marktregime kontinuierlich</li>
+                                <li>✅ Wechselt Strategien bei Regime-Änderungen</li>
+                                <li>✅ Führt Trades gemäß Entry/Exit-Conditions aus</li>
+                                <li>✅ Zeigt Live-Status im Bot-Panel</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
 
-                <div class="feature-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-file-code"></i></div>
-                        <h4>JSON Configuration</h4>
-                        <p>Deklarative Strategiekonfiguration ohne Code-Änderungen</p>
+                <div class="alert alert-warning">
+                    <strong>⚠️ Wichtig:</strong> Der Bot startet standardmäßig im Paper-Trading-Modus. Für Live-Trading siehe "Bot Ausführung".
+                </div>
+            </section>
+
+            <!-- Bot Configuration -->
+            <section id="bot-config" class="section">
+                <h2>⚙️ Trading Bot - Konfiguration</h2>
+
+                <h3>JSON-Strategie Struktur</h3>
+                <p>Eine Trading-Strategie besteht aus mehreren Komponenten:</p>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>1. Indikatoren</h4>
+                        <span class="collapsible-icon">▼</span>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-exchange-alt"></i></div>
-                        <h4>Automatische Migration</h4>
-                        <p>Hardcoded Strategien → JSON mit 100% Äquivalenz-Verifikation</p>
+                    <div class="collapsible-content">
+                        <p>Definiere die Indikatoren, die deine Strategie verwendet:</p>
+                        <div class="code-block">
+                            <code>"indicators": [
+  {
+    "id": "rsi_14",
+    "type": "RSI",
+    "timeframe": "1m",
+    "params": {"period": 14}
+  },
+  {
+    "id": "macd_12_26_9",
+    "type": "MACD",
+    "timeframe": "1m",
+    "params": {"fast": 12, "slow": 26, "signal": 9}
+  }
+]</code>
+                        </div>
+                        <p><strong>Unterstützte Indikatoren:</strong> RSI, MACD, ADX, BB (Bollinger Bands), SMA, EMA, ATR, VWAP</p>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
-                        <h4>Validierung</h4>
-                        <p>Pydantic-basierte Schema-Validierung für sichere Konfiguration</p>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>2. Regimes</h4>
+                        <span class="collapsible-icon">▼</span>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon"><i class="fas fa-terminal"></i></div>
-                        <h4>CLI Tools</h4>
-                        <p>Leistungsstarke Command-Line Tools für alle Workflows</p>
+                    <div class="collapsible-content">
+                        <p>Definiere Marktregimes für adaptive Strategien:</p>
+                        <div class="code-block">
+                            <code>"regimes": [
+  {
+    "id": "regime_trend_up",
+    "name": "TREND_UP",
+    "conditions": {
+      "type": "group",
+      "operator": "and",
+      "conditions": [
+        {"type": "condition", "indicator": "adx_14", "operator": "gt", "value": 25},
+        {"type": "condition", "indicator": "close", "operator": "gt", "indicator_ref": "sma_200"}
+      ]
+    }
+  }
+]</code>
+                        </div>
+                        <p><strong>Regime-Typen:</strong> TREND_UP, TREND_DOWN, RANGE, VOLATILE</p>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>3. Strategien</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Definiere Entry- und Exit-Bedingungen:</p>
+                        <div class="code-block">
+                            <code>"strategies": [
+  {
+    "id": "strategy_trend",
+    "name": "Trend Following",
+    "entry_conditions": {
+      "type": "group",
+      "operator": "and",
+      "conditions": [
+        {"type": "condition", "indicator": "rsi_14", "operator": "gt", "value": 50},
+        {"type": "condition", "indicator": "macd_histogram", "operator": "gt", "value": 0}
+      ]
+    },
+    "exit_conditions": {
+      "type": "group",
+      "operator": "or",
+      "conditions": [
+        {"type": "stop_loss"},
+        {"type": "take_profit"}
+      ]
+    },
+    "risk": {
+      "position_size_pct": 2.0,
+      "stop_loss_pct": 2.0,
+      "take_profit_pct": 6.0
+    }
+  }
+]</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>4. Routing</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Verbinde Regimes mit Strategien:</p>
+                        <div class="code-block">
+                            <code>"routing": [
+  {
+    "regimes": {"all_of": ["regime_trend_up"]},
+    "strategy_set_id": "set_trend"
+  },
+  {
+    "regimes": {"all_of": ["regime_range"]},
+    "strategy_set_id": "set_range"
+  }
+]</code>
+                        </div>
+                        <p><strong>Routing-Optionen:</strong> all_of (UND), any_of (ODER), none_of (NICHT)</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Modules Section -->
-            <section id="modules" class="section">
-                <h2 class="section-title">
-                    <i class="fas fa-cube"></i> Module & Komponenten
-                </h2>
+            <!-- Bot JSON Strategies -->
+            <section id="bot-json-strategies" class="section">
+                <h2>📄 JSON Strategien</h2>
 
-                <div class="module-grid">
-                    <!-- Strategy Analyzer -->
-                    <a href="modules/strategy-analyzer.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-search"></i>
-                        </div>
-                        <h3>Strategy Analyzer</h3>
-                        <p>Analysiert hardcoded Python-Strategien und extrahiert Entry/Exit-Logik, Indikatoren und Risk-Parameter</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-info">AST-based</span>
-                        </div>
-                    </a>
-
-                    <!-- JSON Generator -->
-                    <a href="modules/json-generator.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-file-code"></i>
-                        </div>
-                        <h3>JSON Config Generator</h3>
-                        <p>Generiert validierte JSON-Konfigurationen aus Strategy Analysis mit 56 Indicator-Mappings</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-warning">56 Mappings</span>
-                        </div>
-                    </a>
-
-                    <!-- Strategy Comparator -->
-                    <a href="modules/strategy-comparator.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-balance-scale"></i>
-                        </div>
-                        <h3>Strategy Comparator</h3>
-                        <p>Vergleicht JSON-Configs mit hardcoded Strategien und berechnet gewichtete Similarity-Scores</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-info">95%+ Threshold</span>
-                        </div>
-                    </a>
-
-                    <!-- Config Loader -->
-                    <a href="modules/config-loader.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-file-import"></i>
-                        </div>
-                        <h3>Config Loader & Validator</h3>
-                        <p>Lädt und validiert JSON-Configs mit Pydantic-Schema-Validierung</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-info">Pydantic</span>
-                        </div>
-                    </a>
-
-                    <!-- CLI Tools -->
-                    <a href="modules/cli-tools.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-terminal"></i>
-                        </div>
-                        <h3>CLI Tools</h3>
-                        <p>Command-Line Interface für convert, compare, validate und list-strategies</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-warning">4 Commands</span>
-                        </div>
-                    </a>
-
-                    <!-- Strategy Catalog -->
-                    <a href="modules/strategy-catalog.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-book"></i>
-                        </div>
-                        <h3>Strategy Catalog</h3>
-                        <p>Zentrale Registry für alle verfügbaren Strategien mit Metadata und Profilen</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-warning">9 Strategies</span>
-                        </div>
-                    </a>
-
-                    <!-- Trading Bot Core -->
-                    <a href="modules/tradingbot-core.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-robot"></i>
-                        </div>
-                        <h3>Trading Bot Core</h3>
-                        <p>Kern-Engine für Strategie-Execution, Order-Management und Risk-Control</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">Production Ready</span>
-                            <span class="badge badge-info">Event-Driven</span>
-                        </div>
-                    </a>
-
-                    <!-- Migration Testing -->
-                    <a href="modules/migration-testing.html" class="module-card">
-                        <div class="module-icon">
-                            <i class="fas fa-vial"></i>
-                        </div>
-                        <h3>Migration Testing</h3>
-                        <p>Automatisierte Test-Suite für vollständige Migrations-Validierung</p>
-                        <div class="module-meta">
-                            <span class="badge badge-success">46/46 Tests</span>
-                            <span class="badge badge-info">100% Pass</span>
-                        </div>
-                    </a>
-                </div>
-            </section>
-
-            <!-- Quick Start Section -->
-            <section id="quickstart" class="section">
-                <h2 class="section-title">
-                    <i class="fas fa-bolt"></i> Schnellstart
-                </h2>
+                <h3>Vorgefertigte Strategien</h3>
+                <p>OrderPilot-AI enthält 9 produktionsreife Strategien:</p>
 
                 <div class="card">
-                    <h3>In 5 Minuten loslegen</h3>
+                    <div class="card-title">🎯 Trend Following</div>
+                    <ul>
+                        <li><code>trend_following_conservative.json</code> - Konservatives Trend-Trading mit hoher Sicherheit</li>
+                        <li><code>trend_following_aggressive.json</code> - Aggressives Trend-Trading für starke Trends</li>
+                    </ul>
+                    <span class="badge badge-success">Empfohlen für Anfänger</span>
+                </div>
 
-                    <div class="tabs">
-                        <div class="tab-headers">
-                            <button class="tab-header active" data-tab="install">
-                                <i class="fas fa-download"></i> Installation
-                            </button>
-                            <button class="tab-header" data-tab="convert">
-                                <i class="fas fa-exchange-alt"></i> Konvertieren
-                            </button>
-                            <button class="tab-header" data-tab="validate">
-                                <i class="fas fa-check-circle"></i> Validieren
-                            </button>
-                            <button class="tab-header" data-tab="compare">
-                                <i class="fas fa-balance-scale"></i> Vergleichen
-                            </button>
-                        </div>
+                <div class="card">
+                    <div class="card-title">⚡ Momentum</div>
+                    <ul>
+                        <li><code>momentum_macd.json</code> - MACD-basierte Momentum-Strategie</li>
+                    </ul>
+                    <span class="badge badge-warning">Mittleres Risiko</span>
+                </div>
 
-                        <div class="tab-content active" id="install">
-                            <h4>1. Installation</h4>
-                            <div class="code-block">
-                                <div class="code-header">
-                                    <span>bash</span>
-                                    <button class="copy-btn" data-clipboard-target="#install-code">
-                                        <i class="fas fa-copy"></i> Kopieren
-                                    </button>
-                                </div>
-                                <pre id="install-code"><code># Virtual Environment aktivieren
-source .wsl_venv/bin/activate
+                <div class="card">
+                    <div class="card-title">🔄 Mean Reversion</div>
+                    <ul>
+                        <li><code>mean_reversion_rsi.json</code> - RSI-basierte Mean-Reversion</li>
+                        <li><code>mean_reversion_bb.json</code> - Bollinger Bands Mean-Reversion</li>
+                    </ul>
+                    <span class="badge badge-warning">Für Range-Märkte</span>
+                </div>
 
-# Dependencies installieren
-pip install -e .
+                <div class="card">
+                    <div class="card-title">💥 Breakout</div>
+                    <ul>
+                        <li><code>breakout_momentum.json</code> - Momentum-Breakout-Strategie</li>
+                        <li><code>breakout_volatility.json</code> - Volatility-Breakout-Strategie</li>
+                    </ul>
+                    <span class="badge badge-warning">Hohes Risiko/Ertrag</span>
+                </div>
 
-# CLI verfügbar machen
-tradingbot-config --help</code></pre>
-                            </div>
-                        </div>
+                <div class="card">
+                    <div class="card-title">📊 Scalping & Range</div>
+                    <ul>
+                        <li><code>scalping_range.json</code> - Kurzfristige Range-Scalping</li>
+                        <li><code>sideways_range_bounce.json</code> - Seitwärts-Range-Trading</li>
+                    </ul>
+                    <span class="badge badge-warning">Für erfahrene Trader</span>
+                </div>
 
-                        <div class="tab-content" id="convert">
-                            <h4>2. Strategie zu JSON konvertieren</h4>
-                            <div class="code-block">
-                                <div class="code-header">
-                                    <span>bash</span>
-                                    <button class="copy-btn" data-clipboard-target="#convert-code">
-                                        <i class="fas fa-copy"></i> Kopieren
-                                    </button>
-                                </div>
-                                <pre id="convert-code"><code># Einzelne Strategie konvertieren
-tradingbot-config convert trend_following_conservative -o configs/trend.json
-
-# Alle Strategien batch-konvertieren
-for strategy in trend_following_conservative trend_following_aggressive \
-    mean_reversion_bb mean_reversion_rsi breakout_volatility \
-    breakout_momentum momentum_macd scalping_range sideways_range_bounce; do
-    tradingbot-config convert "$strategy" -o "configs/$strategy.json"
-done</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="tab-content" id="validate">
-                            <h4>3. JSON Config validieren</h4>
-                            <div class="code-block">
-                                <div class="code-header">
-                                    <span>bash</span>
-                                    <button class="copy-btn" data-clipboard-target="#validate-code">
-                                        <i class="fas fa-copy"></i> Kopieren
-                                    </button>
-                                </div>
-                                <pre id="validate-code"><code># Config validieren
-tradingbot-config validate configs/trend.json
-
-# Ausgabe:
-# ✓ Schema validation passed
-# ✓ All indicators valid
-# ✓ All strategies valid
-# ✓ Config ready for use</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="tab-content" id="compare">
-                            <h4>4. Äquivalenz verifizieren</h4>
-                            <div class="code-block">
-                                <div class="code-header">
-                                    <span>bash</span>
-                                    <button class="copy-btn" data-clipboard-target="#compare-code">
-                                        <i class="fas fa-copy"></i> Kopieren
-                                    </button>
-                                </div>
-                                <pre id="compare-code"><code># Mit hardcoded vergleichen
-tradingbot-config compare configs/trend.json trend_following_conservative
-
-# Ausgabe:
-# ✓ Strategies are EQUIVALENT
-#   Similarity: 100.0%
-#   Entry conditions: ✓ Match
-#   Exit conditions: ✓ Match
-#   Risk parameters: ✓ Match</code></pre>
-                            </div>
-                        </div>
+                <h3>Eigene Strategie erstellen</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Template kopieren</h4>
+                        <p>Kopiere eine bestehende JSON-Datei als Ausgangspunkt</p>
+                    </div>
+                    <div class="step">
+                        <h4>Anpassen</h4>
+                        <p>Ändere Indikatoren, Regimes, Entry/Exit-Conditions und Risk-Parameter</p>
+                    </div>
+                    <div class="step">
+                        <h4>Validieren</h4>
+                        <p>Lade die JSON-Datei im Entry Analyzer für Backtest-Validierung</p>
+                    </div>
+                    <div class="step">
+                        <h4>Deployen</h4>
+                        <p>Speichere in <code>03_JSON/Trading_Bot/</code> und verwende im Bot</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Migration Guide Section -->
-            <section id="migration" class="section">
-                <h2 class="section-title">
-                    <i class="fas fa-exchange-alt"></i> Migration Guide
-                </h2>
+            <!-- Bot CEL Rules Engine -->
+            <section id="bot-cel-rules" class="section">
+                <h2>🧠 CEL Rules Engine</h2>
 
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <strong>Migration Complete!</strong> Alle 9 Strategien erfolgreich migriert mit 100% Äquivalenz-Verifikation.
+                <div class="alert alert-info">
+                    <strong>💡 Neu in Phase 1:</strong> CEL (Common Expression Language) ermöglicht dynamische Trading-Regeln ohne Code-Änderungen!
+                </div>
+
+                <h3>Was ist CEL?</h3>
+                <p>CEL ist eine sichere, nicht-Turing-vollständige Ausdruckssprache für Runtime-Rule-Evaluation. Im Gegensatz zu Python-Code:</p>
+                <ul>
+                    <li>✅ <strong>Sicher:</strong> Keine Loops, keine Rekursion, keine File-I/O</li>
+                    <li>✅ <strong>Schnell:</strong> Sub-Millisekunden-Auswertung dank Compilation-Caching</li>
+                    <li>✅ <strong>Flexibel:</strong> Regeln in JSON-Configs zur Laufzeit ändern</li>
+                    <li>✅ <strong>Validierbar:</strong> Syntax-Checks vor Deployment</li>
+                </ul>
+
+                <h3>CEL vs. Operator-Modus</h3>
+                <div class="card">
+                    <div class="card-title">Vergleich: Zwei Evaluation-Modi</div>
+                    <table style="width: 100%; margin-top: 1rem;">
+                        <tr>
+                            <th>Aspekt</th>
+                            <th>Operator-Modus (Legacy)</th>
+                            <th>CEL-Modus (Neu)</th>
+                        </tr>
+                        <tr>
+                            <td><strong>Syntax</strong></td>
+                            <td>
+                                <pre><code>{
+  "left": {"indicator_id": "rsi14", "field": "value"},
+  "op": "GT",
+  "right": {"value": 60}
+}</code></pre>
+                            </td>
+                            <td>
+                                <pre><code>{
+  "cel_expression": "rsi14.value > 60"
+}</code></pre>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Komplexität</strong></td>
+                            <td>⚠️ Verschachtelte Groups für AND/OR</td>
+                            <td>✅ Native Logical Operators</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Lesbarkeit</strong></td>
+                            <td>⚠️ Verbose JSON-Struktur</td>
+                            <td>✅ Python-ähnliche Syntax</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Performance</strong></td>
+                            <td>✅ Direkte Python-Evaluation</td>
+                            <td>✅ Compilation Caching (LRU-128)</td>
+                        </tr>
+                    </table>
+                    <p style="margin-top: 1rem;"><strong>Empfehlung:</strong> Nutze CEL für neue Strategien, Operator-Modus für bestehende Backward Compatibility.</p>
+                </div>
+
+                <h3>CEL Syntax - Die Basics</h3>
+                <div class="card">
+                    <div class="card-title">Vergleichsoperatoren</div>
+                    <pre><code>// Greater Than
+rsi14.value > 60
+
+// Less Than
+atrp.value < 0.20
+
+// Equal
+regime == 'R1'
+
+// Not Equal
+direction != 'DOWN'
+
+// Greater/Less or Equal
+adx14.value >= 25
+volume_pctl.value <= 20</code></pre>
                 </div>
 
                 <div class="card">
-                    <h3>Migration Workflow</h3>
-                    <div class="workflow">
-                        <div class="workflow-step">
-                            <div class="step-number">1</div>
-                            <div class="step-content">
-                                <h4>Analyze</h4>
-                                <p>Hardcoded Strategie analysieren und Logik extrahieren</p>
-                                <code>StrategyAnalyzer.analyze_strategy_definition()</code>
-                            </div>
-                        </div>
+                    <div class="card-title">Logische Operatoren</div>
+                    <pre><code>// AND: Beide Bedingungen müssen wahr sein
+rsi14.value > 60 && adx14.value > 25
 
-                        <div class="workflow-arrow">
-                            <i class="fas fa-arrow-down"></i>
-                        </div>
+// OR: Mindestens eine Bedingung muss wahr sein
+rsi14.value > 70 || adx14.value > 30
 
-                        <div class="workflow-step">
-                            <div class="step-number">2</div>
-                            <div class="step-content">
-                                <h4>Generate</h4>
-                                <p>JSON Config aus Analysis generieren</p>
-                                <code>JSONConfigGenerator.generate_from_analysis()</code>
-                            </div>
-                        </div>
+// NOT: Negation
+!(volume_pctl.value < 20)
 
-                        <div class="workflow-arrow">
-                            <i class="fas fa-arrow-down"></i>
-                        </div>
+// Komplexe Verschachtelung mit Klammern
+(rsi14.value > 60 && adx14.value > 25) || (atrp.value > 1.0 && bbwidth.value > 0.03)</code></pre>
+                </div>
 
-                        <div class="workflow-step">
-                            <div class="step-number">3</div>
-                            <div class="step-content">
-                                <h4>Validate</h4>
-                                <p>Schema-Validierung mit Pydantic durchführen</p>
-                                <code>ConfigLoader.load_config()</code>
-                            </div>
-                        </div>
+                <div class="card">
+                    <div class="card-title">Arithmetische Operationen</div>
+                    <pre><code>// Addition/Subtraktion
+rsi14.value + rsi14.signal > 130
+macd.histogram - macd.signal < 0
 
-                        <div class="workflow-arrow">
-                            <i class="fas fa-arrow-down"></i>
-                        </div>
+// Multiplikation/Division
+atrp.value * 100 > 2.0
+price.close / price.open > 1.02
 
-                        <div class="workflow-step">
-                            <div class="step-number">4</div>
-                            <div class="step-content">
-                                <h4>Compare</h4>
-                                <p>Äquivalenz mit hardcoded verifizieren</p>
-                                <code>StrategyComparator.compare_json_to_hardcoded()</code>
-                            </div>
-                        </div>
+// Ternary Conditional
+trade.side == 'long' ? trade.current_price <= trade.stop_price : trade.current_price >= trade.stop_price</code></pre>
+                </div>
 
-                        <div class="workflow-arrow">
-                            <i class="fas fa-arrow-down"></i>
-                        </div>
+                <div class="card">
+                    <div class="card-title">Nested Field Access</div>
+                    <pre><code>// Verschachtelte Objekte mit Dot-Notation
+rsi14.value > cfg.min_rsi
+trade.pnl_pct >= trade.tr_lock_pct
+indicators.macd.histogram > 0</code></pre>
+                </div>
 
-                        <div class="workflow-step workflow-step-success">
-                            <div class="step-number"><i class="fas fa-check"></i></div>
-                            <div class="step-content">
-                                <h4>Deploy</h4>
-                                <p>In Production deployen (100% äquivalent)</p>
-                                <code>✓ Ready for Production</code>
-                            </div>
-                        </div>
+                <h3>Custom Trading Functions</h3>
+                <p>CEL Engine bietet 8 spezialisierte Trading-Funktionen:</p>
+
+                <div class="card">
+                    <div class="card-title">📊 pctl() - Percentile Berechnung</div>
+                    <p><strong>Signatur:</strong> <code>pctl(series: list, percentile: float, window: int = None)</code></p>
+                    <p><strong>Beschreibung:</strong> Berechnet Perzentil eines Datensatzes (z.B. für Volume-Rank)</p>
+                    <pre><code>// Volume ist im oberen Quartil (> 75. Perzentil)
+pctl(volume_series, 75) < current_volume
+
+// Rolling Window: Letzten 20 Bars
+pctl(volume_series, 50, 20) > 1000000</code></pre>
+                    <span class="badge badge-success">Verfügbar</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📈 crossover() - Bullish Crossover</div>
+                    <p><strong>Signatur:</strong> <code>crossover(series1: list, series2: list)</code></p>
+                    <p><strong>Beschreibung:</strong> Erkennt bullischen Crossover (series1 kreuzt series2 von unten)</p>
+                    <pre><code>// Golden Cross: Fast MA kreuzt Slow MA
+crossover([sma_fast_current, sma_fast_prev], [sma_slow_current, sma_slow_prev])
+
+// MACD Crossover
+crossover([macd_current, macd_prev], [macd_signal_current, macd_signal_prev])</code></pre>
+                    <span class="badge badge-success">Verfügbar</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">❓ isnull() / nz() / coalesce()</div>
+                    <p><strong>Null-Handling-Funktionen:</strong></p>
+                    <pre><code>// isnull: Prüft auf None/NaN
+isnull(obi.value) ? 0.5 : obi.value
+
+// nz: Nutze Default bei Null
+nz(obi.value, 0.5) > 0.7
+
+// coalesce: Erste nicht-null Wert
+coalesce(obi.value, orderflow.value, 0.5) > 0.6</code></pre>
+                    <span class="badge badge-success">Verfügbar</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🔢 abs() / min() / max()</div>
+                    <p><strong>Mathematische Helper-Funktionen:</strong></p>
+                    <pre><code>// abs: Absolute Value
+abs(trade.pnl_pct) > 2.0
+
+// min: Minimum von zwei Werten
+min(atrp.value, range_pct.value) > 0.5
+
+// max: Maximum von zwei Werten
+max(atrp.value, range_pct.value) < 2.0</code></pre>
+                    <span class="badge badge-success">Verfügbar</span>
+                </div>
+
+                <h3>Real-World Trading Rules</h3>
+                <div class="card">
+                    <div class="card-title">🚫 No-Trade Rule: Niedrige Liquidität</div>
+                    <pre><code>{
+  "cel_expression": "volume_pctl.value < cfg.min_volume_pctl && atrp.value < cfg.min_atrp_pct"
+}
+
+// Beispiel-Context:
+// volume_pctl.value = 15.0, cfg.min_volume_pctl = 20
+// atrp.value = 0.15, cfg.min_atrp_pct = 0.20
+// Ergebnis: true (Kein Trade wegen niedriger Liquidität + Volatilität)</code></pre>
+                    <span class="badge badge-danger">No-Trade</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">✅ Entry Rule: Trend + Momentum</div>
+                    <pre><code>{
+  "cel_expression": "regime == 'R1' && direction == 'UP' && rsi14.value > 50 && rsi14.value < 80"
+}
+
+// Beispiel-Context:
+// regime = 'R1', direction = 'UP'
+// rsi14.value = 65.2
+// Ergebnis: true (Trend Up mit gesundem RSI-Momentum)</code></pre>
+                    <span class="badge badge-success">Entry</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🛑 Exit Rule: Stop Loss Hit</div>
+                    <pre><code>{
+  "cel_expression": "trade.side == 'long' ? trade.current_price <= trade.stop_price : trade.current_price >= trade.stop_price"
+}
+
+// Beispiel-Context (Long):
+// trade.side = 'long', trade.current_price = 95159.70, trade.stop_price = 95171.63
+// Ergebnis: true (Kurs unter Stop → Exit Long)
+
+// Beispiel-Context (Short):
+// trade.side = 'short', trade.current_price = 95210.00, trade.stop_price = 95200.00
+// Ergebnis: true (Kurs über Stop → Exit Short)</code></pre>
+                    <span class="badge badge-danger">Exit</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🔒 Update-Stop Rule: Break-Even Lock</div>
+                    <pre><code>{
+  "cel_expression": "trade.pnl_pct >= trade.tr_lock_pct ? max(trade.stop_price, trade.entry_price) : trade.stop_price"
+}
+
+// Beispiel-Context:
+// trade.pnl_pct = 1.5, trade.tr_lock_pct = 1.0
+// trade.stop_price = 94000, trade.entry_price = 95000
+// Ergebnis: 95000 (Stop wird auf Entry verschoben → Break-Even Lock)</code></pre>
+                    <span class="badge badge-warning">Stop Update</span>
+                </div>
+
+                <h3>JSON Integration</h3>
+                <div class="card">
+                    <div class="card-title">CEL in JSON Strategy Config</div>
+                    <pre><code>{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {"id": "rsi14", "type": "RSI", "params": {"period": 14}},
+    {"id": "adx14", "type": "ADX", "params": {"period": 14}}
+  ],
+  "strategies": [
+    {
+      "id": "trend_momentum",
+      "entry_conditions": {
+        "all": [
+          {
+            "cel_expression": "rsi14.value > 60 && adx14.value > 25"
+          }
+        ]
+      },
+      "exit_conditions": {
+        "any": [
+          {
+            "cel_expression": "rsi14.value < 40"
+          },
+          {
+            "cel_expression": "adx14.value < 20"
+          }
+        ]
+      }
+    }
+  ]
+}</code></pre>
+                    <p><strong>Hinweis:</strong> CEL-Expressions können mit Operator-basierten Conditions in derselben Config gemischt werden!</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Mixed Mode: CEL + Operator</div>
+                    <pre><code>{
+  "entry_conditions": {
+    "all": [
+      {
+        "cel_expression": "rsi14.value > 60 && adx14.value > 25"
+      },
+      {
+        "left": {"indicator_id": "volume_pctl", "field": "value"},
+        "op": "GT",
+        "right": {"value": 50}
+      }
+    ]
+  }
+}
+
+// Beide Modi funktionieren nahtlos zusammen!
+// CEL für komplexe Logic, Operator für einfache Vergleiche</code></pre>
+                    <span class="badge badge-success">Backward Compatible</span>
+                </div>
+
+                <h3>Error Handling & Debugging</h3>
+                <div class="alert alert-warning">
+                    <strong>⚠️ Häufige Fehler:</strong>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">❌ Non-Boolean Result</div>
+                    <pre><code>// FALSCH: Arithmetischer Ausdruck gibt Zahl zurück
+{
+  "cel_expression": "rsi14.value + adx14.value"
+}
+// ERROR: CEL expression must return boolean
+
+// RICHTIG: Mit Vergleichsoperator
+{
+  "cel_expression": "rsi14.value + adx14.value > 90"
+}</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">❌ Syntax Error</div>
+                    <pre><code>// FALSCH: Ungültiger Operator
+{
+  "cel_expression": "rsi14.value >>> 60"
+}
+// ERROR: Invalid syntax
+
+// RICHTIG: Gültiger Operator
+{
+  "cel_expression": "rsi14.value > 60"
+}</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">⚠️ Missing Field Handling</div>
+                    <pre><code>// CEL Engine nutzt default=False bei fehlenden Feldern
+{
+  "cel_expression": "nonexistent_indicator.value > 60"
+}
+// Gibt False zurück statt Exception zu werfen
+
+// Best Practice: Null-Checks
+{
+  "cel_expression": "!isnull(obi.value) && obi.value > 0.7"
+}</code></pre>
+                </div>
+
+                <h3>Validation vor Deployment</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>1. Syntax-Check</h4>
+                        <pre><code>from src.core.tradingbot.cel_engine import get_cel_engine
+
+engine = get_cel_engine()
+is_valid, error = engine.validate_expression(
+    "rsi14.value > 60 && adx14.value > 25"
+)
+
+if not is_valid:
+    print(f"Syntax error: {error}")</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>2. Test mit Sample-Context</h4>
+                        <pre><code>test_context = {
+    "rsi14": {"value": 65.2},
+    "adx14": {"value": 28.5}
+}
+
+result = engine.evaluate(
+    "rsi14.value > 60 && adx14.value > 25",
+    test_context
+)
+
+assert result is True</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>3. JSON Config Validierung</h4>
+                        <pre><code>from src.core.tradingbot.config.loader import ConfigLoader
+
+loader = ConfigLoader()
+config = loader.load_config("my_strategy.json")
+
+# Pydantic validiert:
+# - Entweder CEL OR Operator-Modus
+# - Nicht beide gleichzeitig
+# - Mindestens einer vorhanden</code></pre>
                     </div>
                 </div>
 
+                <h3>Performance</h3>
                 <div class="card">
-                    <h3>Migration Status</h3>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Strategy</th>
-                                <th>Analysis</th>
-                                <th>Generate</th>
-                                <th>Validate</th>
-                                <th>Equivalent</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>trend_following_conservative</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>trend_following_aggressive</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>mean_reversion_bb</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>mean_reversion_rsi</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>breakout_volatility</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>breakout_momentum</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>momentum_macd</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>scalping_range</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                            <tr>
-                                <td>sideways_range_bounce</td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">✓</span></td>
-                                <td><span class="status-badge status-success">100%</span></td>
-                            </tr>
-                        </tbody>
-                        <tfoot>
-                            <tr class="total-row">
-                                <th>TOTAL</th>
-                                <th><span class="status-badge status-success">9/9</span></th>
-                                <th><span class="status-badge status-success">9/9</span></th>
-                                <th><span class="status-badge status-success">9/9</span></th>
-                                <th><span class="status-badge status-success">9/9</span></th>
-                            </tr>
-                        </tfoot>
+                    <div class="card-title">📊 Performance-Charakteristik</div>
+                    <table style="width: 100%; margin-top: 1rem;">
+                        <tr>
+                            <th>Metrik</th>
+                            <th>First Call (Compilation)</th>
+                            <th>Cached Call</th>
+                        </tr>
+                        <tr>
+                            <td><strong>Simple Expression</strong></td>
+                            <td>~5-10ms</td>
+                            <td>~0.1-0.5ms</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Complex Nested</strong></td>
+                            <td>~20-50ms</td>
+                            <td>~1-2ms</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cache Hit Rate</strong></td>
+                            <td colspan="2">>90% in Production</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Memory per Program</strong></td>
+                            <td colspan="2">~2KB (128 cached = ~256KB)</td>
+                        </tr>
                     </table>
                 </div>
+
+                <div class="alert alert-success">
+                    <strong>✅ Production Ready:</strong> 45 Tests passing (23 CEL Engine + 22 ConditionEvaluator)
+                </div>
+
+                <h3>Best Practices</h3>
+                <ul>
+                    <li>✅ Nutze CEL für komplexe Logic mit AND/OR/NOT</li>
+                    <li>✅ Halte Expressions kurz und lesbar (max 2-3 Operatoren)</li>
+                    <li>✅ Nutze Custom Functions (pctl, crossover) für Trading-spezifische Logic</li>
+                    <li>✅ Teste mit validate_expression() vor Deployment</li>
+                    <li>✅ Nutze Null-Handling (isnull, nz, coalesce) für robuste Regeln</li>
+                    <li>⚠️ Vermeide übermäßige Verschachtelung (Lesbarkeit leidet)</li>
+                    <li>⚠️ Performance: Cache-Hit-Rate bei 90%+ halten (wiederkehrende Expressions)</li>
+                </ul>
             </section>
 
-        </div>
-    </main>
+            <!-- Bot Regime Detection -->
+            <section id="bot-regime-detection" class="section">
+                <h2>🎯 Regime Erkennung</h2>
 
-    <!-- Footer -->
-    <footer class="main-footer">
-        <div class="container">
-            <p>&copy; 2024 OrderPilot-AI. Migration Framework v5.0 - 100% Production Ready</p>
-            <p class="footer-links">
-                <a href="https://github.com/anthropics/claude-code">Documentation</a> |
-                <a href="https://github.com/anthropics/claude-code/issues">Support</a> |
-                <a href="#modules">Module Reference</a>
-            </p>
-        </div>
-    </footer>
+                <h3>Was ist Regime-basiertes Trading?</h3>
+                <p>Der Bot klassifiziert Marktbedingungen automatisch in verschiedene "Regimes" und passt seine Strategie dynamisch an.</p>
 
-    <script src="assets/script.js"></script>
+                <div class="card">
+                    <div class="card-title">📈 TREND_UP (Aufwärtstrend)</div>
+                    <p><strong>Erkennungsmerkmale:</strong></p>
+                    <ul>
+                        <li>ADX > 25 (starker Trend)</li>
+                        <li>Kurs über langfristigem Durchschnitt</li>
+                        <li>+DI > -DI</li>
+                    </ul>
+                    <p><strong>Beste Strategien:</strong> Trend Following, Momentum</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📉 TREND_DOWN (Abwärtstrend)</div>
+                    <p><strong>Erkennungsmerkmale:</strong></p>
+                    <ul>
+                        <li>ADX > 25 (starker Trend)</li>
+                        <li>Kurs unter langfristigem Durchschnitt</li>
+                        <li>-DI > +DI</li>
+                    </ul>
+                    <p><strong>Beste Strategien:</strong> Short-Selling, Put-Options</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">↔️ RANGE (Seitwärts)</div>
+                    <p><strong>Erkennungsmerkmale:</strong></p>
+                    <ul>
+                        <li>ADX < 25 (schwacher Trend)</li>
+                        <li>Kurs oszilliert in definiertem Band</li>
+                        <li>Niedrige Volatilität</li>
+                    </ul>
+                    <p><strong>Beste Strategien:</strong> Mean Reversion, Range Bounce, Scalping</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">💥 VOLATILE (Hohe Volatilität)</div>
+                    <p><strong>Erkennungsmerkmale:</strong></p>
+                    <ul>
+                        <li>ATR > historischer Durchschnitt</li>
+                        <li>Große Kursausschläge</li>
+                        <li>Erhöhtes Handelsvolumen</li>
+                    </ul>
+                    <p><strong>Beste Strategien:</strong> Breakout, Volatility Expansion</p>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>🔄 Automatisches Umschalten:</strong> Der Bot erkennt Regime-Änderungen in Echtzeit und wechselt automatisch zur optimalen Strategie.
+                </div>
+            </section>
+
+            <!-- Bot Execution -->
+            <section id="bot-execution" class="section">
+                <h2>▶️ Bot Ausführung</h2>
+
+                <h3>Bot starten</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Trading Tab öffnen</h4>
+                        <p>Navigiere zum Trading Tab in der Hauptanwendung</p>
+                    </div>
+                    <div class="step">
+                        <h4>Start Bot klicken</h4>
+                        <p>Der Strategy Settings Dialog öffnet sich</p>
+                    </div>
+                    <div class="step">
+                        <h4>JSON-Config wählen</h4>
+                        <p>Browse zu deiner Strategie-Datei in <code>03_JSON/Trading_Bot/</code></p>
+                    </div>
+                    <div class="step">
+                        <h4>Marktanalyse</h4>
+                        <p>Klicke "🔍 Analyze Current Market":</p>
+                        <ul>
+                            <li>Bot erkennt aktuelles Regime</li>
+                            <li>Matched Strategy wird angezeigt</li>
+                            <li>Entry/Exit-Conditions werden geladen</li>
+                        </ul>
+                    </div>
+                    <div class="step">
+                        <h4>Bot starten</h4>
+                        <p>Klicke "✓ Apply Strategy" zum Starten</p>
+                    </div>
+                </div>
+
+                <h3>Bot-Status überwachen</h3>
+                <div class="card">
+                    <div class="card-title">Live-Monitoring</div>
+                    <p>Das Bot-Control-Panel zeigt:</p>
+                    <ul>
+                        <li><span class="badge badge-success">Status</span> RUNNING / STOPPED / PAUSED</li>
+                        <li><strong>Aktuelles Regime:</strong> z.B. TREND_UP (NORMAL)</li>
+                        <li><strong>Aktive Strategie:</strong> z.B. Trend Following Conservative</li>
+                        <li><strong>Offene Positionen:</strong> Anzahl und Gesamtwert</li>
+                        <li><strong>P&L:</strong> Aktueller Gewinn/Verlust</li>
+                    </ul>
+                </div>
+
+                <h3>Bot stoppen/pausieren</h3>
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>⏸️ Pause (ohne Positionen schließen)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Klicke <span class="badge badge-warning">Pause</span> um:</p>
+                        <ul>
+                            <li>Neue Entry-Signale zu ignorieren</li>
+                            <li>Bestehende Positionen offen zu lassen</li>
+                            <li>Exit-Conditions weiter zu überwachen</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>⏹️ Stop (alle Positionen schließen)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Klicke <span class="badge badge-primary">Stop</span> um:</p>
+                        <ul>
+                            <li>Alle offenen Positionen zu schließen</li>
+                            <li>Bot komplett zu stoppen</li>
+                            <li>In Safe-State zu wechseln</li>
+                        </ul>
+                        <div class="alert alert-warning">
+                            <strong>⚠️ Warnung:</strong> Stop schließt alle Positionen zu Marktpreisen!
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Paper vs. Live Trading</h3>
+                <div class="card">
+                    <div class="card-title">🧪 Paper Trading (Standard)</div>
+                    <ul>
+                        <li>✅ Simuliert Trades ohne echtes Geld</li>
+                        <li>✅ Ideal zum Testen neuer Strategien</li>
+                        <li>✅ Volle Funktionalität ohne Risiko</li>
+                        <li>✅ Automatisch aktiviert beim ersten Start</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">💰 Live Trading</div>
+                    <div class="alert alert-warning">
+                        <strong>⚠️ ACHTUNG:</strong> Live Trading verwendet echtes Geld!
+                    </div>
+                    <p>Um Live Trading zu aktivieren:</p>
+                    <ol>
+                        <li>Gehe zu <strong>Einstellungen → Trading</strong></li>
+                        <li>Setze <code>TRADING_ENV=live</code></li>
+                        <li>Konfiguriere Live-API-Keys</li>
+                        <li>Bestätige Risikohinweise</li>
+                    </ol>
+                    <p><strong>Empfohlene Vorbereitung:</strong></p>
+                    <ul>
+                        <li>Mindestens 2 Wochen erfolgreiche Paper-Trading-Tests</li>
+                        <li>Win-Rate > 55% im Backtest</li>
+                        <li>Profit-Factor > 1.5</li>
+                        <li>Max-Drawdown < 15%</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Bot Monitoring -->
+            <section id="bot-monitoring" class="section">
+                <h2>📊 Monitoring & Logs</h2>
+
+                <h3>Event-Log</h3>
+                <p>Alle Bot-Aktivitäten werden in Echtzeit geloggt:</p>
+
+                <div class="card">
+                    <div class="card-title">Log-Typen</div>
+                    <ul>
+                        <li><span class="badge badge-success">INFO</span> Normale Operationen (z.B. Regime erkannt, Strategie gewechselt)</li>
+                        <li><span class="badge badge-warning">WARNING</span> Warnungen (z.B. hohe Volatilität, Slippage)</li>
+                        <li><span class="badge badge-primary">TRADE</span> Trade-Ausführungen (Entry/Exit)</li>
+                        <li><span class="badge badge-primary">REGIME</span> Regime-Änderungen</li>
+                    </ul>
+                </div>
+
+                <h3>Notifications</h3>
+                <p>Der Bot sendet Benachrichtigungen bei wichtigen Events:</p>
+                <ul>
+                    <li>🔔 Regime-Änderung mit neuem Strategiewechsel</li>
+                    <li>🔔 Trade-Ausführung (Entry/Exit)</li>
+                    <li>🔔 Stop-Loss oder Take-Profit erreicht</li>
+                    <li>🔔 Fehler oder Warnungen</li>
+                </ul>
+
+                <h3>Performance-Metriken</h3>
+                <div class="card">
+                    <div class="card-title">Live-Statistiken</div>
+                    <p>Im Bot-Panel werden kontinuierlich angezeigt:</p>
+                    <ul>
+                        <li><strong>Total P&L:</strong> Gesamtgewinn/-verlust</li>
+                        <li><strong>Win Rate:</strong> Prozentsatz gewonnener Trades</li>
+                        <li><strong>Total Trades:</strong> Anzahl ausgeführter Trades</li>
+                        <li><strong>Average Return:</strong> Durchschnittlicher Return pro Trade</li>
+                        <li><strong>Max Drawdown:</strong> Größter Verlust vom Peak</li>
+                        <li><strong>Sharpe Ratio:</strong> Risiko-adjustierter Return</li>
+                    </ul>
+                </div>
+
+                <h3>Trade-Historie</h3>
+                <p>Alle Trades werden persistent gespeichert mit:</p>
+                <ul>
+                    <li>Entry/Exit Timestamp</li>
+                    <li>Entry/Exit Price</li>
+                    <li>Position Size</li>
+                    <li>P&L (absolut und prozentual)</li>
+                    <li>Strategie und Regime zum Entry-Zeitpunkt</li>
+                    <li>Ausführungsgrund (Signal-Type)</li>
+                </ul>
+            </section>
+
+            <!-- Entry Analyzer Quickstart -->
+            <section id="analyzer-quickstart" class="section">
+                <h2>⚡ Entry Analyzer - Quickstart</h2>
+
+                <div class="alert alert-info">
+                    <strong>💡 Was ist der Entry Analyzer?</strong><br>
+                    Ein leistungsstarkes Tool zum Backtesten, Optimieren und Validieren von Trading-Strategien.
+                </div>
+
+                <div class="card">
+                    <div class="card-title">5-Minuten Quick-Demo</div>
+
+                    <div class="steps">
+                        <div class="step">
+                            <h4>Entry Analyzer öffnen</h4>
+                            <p>Klicke auf den <span class="badge badge-primary">📊 Entry Analyzer</span> Button in der Toolbar</p>
+                        </div>
+
+                        <div class="step">
+                            <h4>JSON-Strategie laden</h4>
+                            <p>Im "Backtest Setup" Tab:</p>
+                            <ul>
+                                <li>Wähle JSON-Datei (z.B. <code>trend_following_conservative.json</code>)</li>
+                                <li>Setze Date Range (z.B. letzten 6 Monate)</li>
+                                <li>Initial Capital: 10,000 USD</li>
+                            </ul>
+                        </div>
+
+                        <div class="step">
+                            <h4>Backtest starten</h4>
+                            <p>Klicke <span class="badge badge-success">▶️ Run Backtest</span></p>
+                            <p>Der Bot simuliert nun alle Trades basierend auf deiner Strategie über den gewählten Zeitraum.</p>
+                        </div>
+
+                        <div class="step">
+                            <h4>Ergebnisse analysieren</h4>
+                            <p>Wechsle zum "Backtest Results" Tab:</p>
+                            <ul>
+                                <li>📊 Performance-Metriken (Win Rate, Profit Factor, Sharpe Ratio)</li>
+                                <li>📈 Equity Curve</li>
+                                <li>📋 Trade-Liste mit Details</li>
+                                <li>🎯 Regime-Visualisierung im Chart</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-success">
+                    <strong>✅ Nächste Schritte:</strong> Probiere die Indikator-Optimierung aus, um die beste Parameter-Kombination zu finden!
+                </div>
+            </section>
+
+            <!-- Analyzer Backtest -->
+            <section id="analyzer-backtest" class="section">
+                <h2>📈 Backtesting</h2>
+
+                <h3>Was ist Backtesting?</h3>
+                <p>Backtesting simuliert deine Trading-Strategie mit historischen Daten, um die Performance zu bewerten ohne echtes Geld zu riskieren.</p>
+
+                <div class="card">
+                    <div class="card-title">Backtest-Workflow</div>
+                    <ol>
+                        <li><strong>Daten laden:</strong> Historische OHLCV-Daten für gewähltes Symbol und Zeitraum</li>
+                        <li><strong>Indikatoren berechnen:</strong> Alle in JSON definierten Indikatoren</li>
+                        <li><strong>Regimes evaluieren:</strong> Bestimme Marktregime für jeden Bar</li>
+                        <li><strong>Entry/Exit-Signals:</strong> Prüfe Conditions und generiere Trades</li>
+                        <li><strong>Performance berechnen:</strong> P&L, Drawdown, Sharpe, etc.</li>
+                    </ol>
+                </div>
+
+                <h3>Backtest-Einstellungen</h3>
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Symbol & Zeitraum</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <ul>
+                            <li><strong>Symbol:</strong> Wähle Aktie oder Crypto (z.B. AAPL, BTCUSD)</li>
+                            <li><strong>Start Date:</strong> Beginn des Backtest-Zeitraums</li>
+                            <li><strong>End Date:</strong> Ende des Backtest-Zeitraums</li>
+                        </ul>
+                        <div class="alert alert-info">
+                            <strong>💡 Empfehlung:</strong> Mindestens 3-6 Monate für aussagekräftige Ergebnisse
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Initial Capital</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Startkapital für die Simulation (Standard: 10,000 USD)</p>
+                        <p>Position Sizes werden als Prozentsatz des aktuellen Kapitals berechnet.</p>
+                    </div>
+                </div>
+
+                <h3>Ergebnis-Interpretation</h3>
+                <div class="card">
+                    <div class="card-title">📊 Key Performance Indicators (KPIs)</div>
+                    <ul>
+                        <li><strong>Net Profit:</strong> Gesamtgewinn/-verlust absolut
+                            <ul>
+                                <li>✅ Gut: > 15% des Initial Capital</li>
+                                <li>⚠️ Mäßig: 5-15%</li>
+                                <li>❌ Schlecht: < 5%</li>
+                            </ul>
+                        </li>
+                        <li><strong>Win Rate:</strong> Prozentsatz gewonnener Trades
+                            <ul>
+                                <li>✅ Gut: > 55%</li>
+                                <li>⚠️ Mäßig: 45-55%</li>
+                                <li>❌ Schlecht: < 45%</li>
+                            </ul>
+                        </li>
+                        <li><strong>Profit Factor:</strong> Gewinn/Verlust-Ratio
+                            <ul>
+                                <li>✅ Gut: > 1.5</li>
+                                <li>⚠️ Mäßig: 1.2-1.5</li>
+                                <li>❌ Schlecht: < 1.2</li>
+                            </ul>
+                        </li>
+                        <li><strong>Sharpe Ratio:</strong> Risiko-adjustierter Return
+                            <ul>
+                                <li>✅ Gut: > 1.0</li>
+                                <li>⚠️ Mäßig: 0.5-1.0</li>
+                                <li>❌ Schlecht: < 0.5</li>
+                            </ul>
+                        </li>
+                        <li><strong>Max Drawdown:</strong> Größter Peak-to-Trough Verlust
+                            <ul>
+                                <li>✅ Gut: < 10%</li>
+                                <li>⚠️ Mäßig: 10-20%</li>
+                                <li>❌ Schlecht: > 20%</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <h3>Regime-Visualisierung</h3>
+                <p>Nach dem Backtest werden Regime-Änderungen im Chart visualisiert:</p>
+                <ul>
+                    <li><span style="color: #4caf50;">█</span> Grüne Linie: TREND_UP</li>
+                    <li><span style="color: #f44336;">█</span> Rote Linie: TREND_DOWN</li>
+                    <li><span style="color: #ff9800;">█</span> Orange Linie: RANGE</li>
+                    <li><span style="color: #9c27b0;">█</span> Lila Linie: VOLATILE</li>
+                </ul>
+            </section>
+
+            <!-- Analyzer Optimization -->
+            <section id="analyzer-optimization" class="section">
+                <h2>🔧 Indikator-Optimierung</h2>
+
+                <div class="alert alert-info">
+                    <strong>🎯 Ziel:</strong> Finde die optimale Parameter-Kombination für jeden Indikator in verschiedenen Marktregimes.
+                </div>
+
+                <h3>Optimization-Workflow</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Indikatoren auswählen</h4>
+                        <p>Im "Indicator Optimization" Tab:</p>
+                        <ul>
+                            <li>✅ Wähle Indikatoren (z.B. RSI, MACD, ADX)</li>
+                            <li>📊 Für jeden Indikator verfügbar</li>
+                        </ul>
+                    </div>
+
+                    <div class="step">
+                        <h4>Parameter-Ranges definieren</h4>
+                        <p>Setze Min/Max/Step für jeden Parameter:</p>
+                        <div class="code-block">
+                            <code>RSI Period: Min=10, Max=20, Step=2
+→ Testet: 10, 12, 14, 16, 18, 20 (6 Kombinationen)
+
+MACD Fast: Min=8, Max=16, Step=2
+→ Testet: 8, 10, 12, 14, 16 (5 Kombinationen)
+
+ADX Period: Min=10, Max=20, Step=2
+→ Testet: 10, 12, 14, 16, 18, 20 (6 Kombinationen)</code>
+                        </div>
+                        <p><strong>Total Kombinationen:</strong> 6 × 5 × 6 = 180 Backtests</p>
+                    </div>
+
+                    <div class="step">
+                        <h4>Optimization starten</h4>
+                        <p>Klicke <span class="badge badge-success">🚀 Optimize Indicators</span></p>
+                        <p>Der Thread führt nun alle Backtests im Hintergrund aus:</p>
+                        <ul>
+                            <li>⏱️ Progress-Bar zeigt Fortschritt</li>
+                            <li>📊 UI bleibt responsive</li>
+                            <li>⚡ Parallelisierung für schnellere Ausführung (optional)</li>
+                        </ul>
+                    </div>
+
+                    <div class="step">
+                        <h4>Ergebnisse analysieren</h4>
+                        <p>Nach Abschluss zeigt die Tabelle:</p>
+                        <ul>
+                            <li><strong>Indicator:</strong> z.B. RSI</li>
+                            <li><strong>Parameters:</strong> z.B. {'period': 14}</li>
+                            <li><strong>Regime:</strong> z.B. TREND_UP</li>
+                            <li><strong>Score (0-100):</strong> Composite-Score basierend auf Win Rate, Profit Factor, Avg Return</li>
+                            <li><strong>Win Rate:</strong> z.B. 65%</li>
+                            <li><strong>Profit Factor:</strong> z.B. 2.3</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Scoring-Algorithmus</h3>
+                <p>Der Composite-Score (0-100) wird berechnet aus:</p>
+                <div class="code-block">
+                    <code>Score = (Win_Rate × 50) +
+       (Profit_Factor / 3 × 30) +
+       (Normalized_Avg_Return × 20)
+
+Beispiel:
+Win_Rate = 0.65 → 32.5 Punkte
+Profit_Factor = 2.4 → 24 Punkte
+Avg_Return = 5% (normiert) → 10 Punkte
+─────────────────────────────
+Total Score = 66.5 / 100</code>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Score-Interpretation</div>
+                    <ul>
+                        <li><span class="badge badge-success">80-100</span> Exzellent - Produktionsreif</li>
+                        <li><span class="badge badge-success">70-79</span> Sehr gut - Empfohlen</li>
+                        <li><span class="badge badge-warning">60-69</span> Gut - Mit Vorsicht verwenden</li>
+                        <li><span class="badge badge-warning">50-59</span> Durchschnitt - Weitere Tests nötig</li>
+                        <li><span class="badge badge-primary">< 50</span> Schwach - Nicht empfohlen</li>
+                    </ul>
+                </div>
+
+                <h3>Best Practices</h3>
+                <ul>
+                    <li>✅ Teste über verschiedene Zeiträume (3-6-12 Monate)</li>
+                    <li>✅ Validiere Ergebnisse mit Walk-Forward-Analyse</li>
+                    <li>✅ Berücksichtige alle Regimes (nicht nur Trends)</li>
+                    <li>⚠️ Vorsicht vor Overfitting (zu eng gefittete Parameter)</li>
+                    <li>⚠️ Mehr Kombinationen = längere Laufzeit (nutze vernünftige Ranges)</li>
+                </ul>
+            </section>
+
+            <!-- Analyzer Regime Sets -->
+            <section id="analyzer-regime-sets" class="section">
+                <h2>📦 Regime Sets erstellen</h2>
+
+                <div class="alert alert-info">
+                    <strong>💡 Konzept:</strong> Kombiniere die besten Indikatoren für jedes Regime in einem optimierten Strategie-Set.
+                </div>
+
+                <h3>Von Optimization zu Regime Set</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Optimization durchführen</h4>
+                        <p>Führe zunächst die Indikator-Optimierung durch (siehe vorheriger Abschnitt)</p>
+                    </div>
+
+                    <div class="step">
+                        <h4>"Create Regime Set" klicken</h4>
+                        <p>Nach Abschluss der Optimization:</p>
+                        <p>Klicke <span class="badge badge-primary">📦 Create Regime Set from Results</span></p>
+                    </div>
+
+                    <div class="step">
+                        <h4>Automatische Gruppierung</h4>
+                        <p>Der Builder:</p>
+                        <ul>
+                            <li>Gruppiert Ergebnisse nach Regime</li>
+                            <li>Wählt Top 3 Indikatoren pro Regime (basierend auf Score)</li>
+                            <li>Berechnet Gewichte (normalisierte Scores)</li>
+                            <li>Generiert vollständige JSON-Config</li>
+                        </ul>
+                    </div>
+
+                    <div class="step">
+                        <h4>JSON-Config speichern</h4>
+                        <p>Der generierte Regime Set wird als JSON-Datei gespeichert:</p>
+                        <div class="code-block">
+                            <code>03_JSON/Trading_Bot/regime_set_[timestamp].json</code>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h4>Backtest des Regime Sets</h4>
+                        <p>Optional: Teste das komplette Regime Set mit:</p>
+                        <p><span class="badge badge-success">▶️ Backtest Regime Set</span></p>
+                        <p>Vergleiche die Performance mit einzelnen Indikatoren!</p>
+                    </div>
+                </div>
+
+                <h3>Regime Set Struktur</h3>
+                <p>Ein generiertes Regime Set enthält:</p>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Indicators (Top 3 pro Regime)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="code-block">
+                            <code>"indicators": [
+  {"id": "ind_1_rsi", "type": "RSI", "params": {"period": 14}},
+  {"id": "ind_2_macd", "type": "MACD", "params": {"fast": 12, ...}},
+  {"id": "ind_3_adx", "type": "ADX", "params": {"period": 14}},
+  ...
+]</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Regimes (Auto-generiert)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="code-block">
+                            <code>"regimes": [
+  {
+    "id": "regime_trend_up",
+    "name": "TREND_UP",
+    "conditions": {
+      "type": "group",
+      "operator": "and",
+      "conditions": [
+        {"indicator": "adx", "operator": "gt", "value": 25},
+        {"indicator": "close", "operator": "gt", "indicator_ref": "sma_200"}
+      ]
+    }
+  }
+]</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Strategies (Eine pro Regime)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="code-block">
+                            <code>"strategies": [
+  {
+    "id": "strategy_1_trend_up",
+    "name": "TREND_UP Strategy",
+    "entry_conditions": {...},  // Basierend auf Top-Indikatoren
+    "exit_conditions": {...},
+    "risk": {...}
+  }
+]</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Weights (Score-basiert)</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Gewichte werden aus Scores berechnet:</p>
+                        <div class="code-block">
+                            <code>Beispiel TREND_UP:
+RSI(14): Score 85.5 → Weight 0.36 (36%)
+MACD(12,26,9): Score 78.3 → Weight 0.33 (33%)
+ADX(14): Score 72.1 → Weight 0.31 (31%)
+─────────────────────────────────
+Total: 1.0 (100%)</code>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Vorteile von Regime Sets</h3>
+                <ul>
+                    <li>✅ <strong>Adaptive Performance:</strong> Beste Indikatoren für jedes Regime</li>
+                    <li>✅ <strong>Automatische Optimierung:</strong> Kein manuelles Trial-and-Error</li>
+                    <li>✅ <strong>Gewichtete Signale:</strong> Stärkere Indikatoren haben mehr Einfluss</li>
+                    <li>✅ <strong>Produktionsreif:</strong> Direkt im Trading Bot verwendbar</li>
+                    <li>✅ <strong>Backtesting validiert:</strong> Performance auf historischen Daten geprüft</li>
+                </ul>
+            </section>
+
+            <!-- Analyzer Pattern Recognition -->
+            <section id="analyzer-pattern" class="section">
+                <h2>🔍 Mustererkennung</h2>
+
+                <div class="alert alert-info">
+                    <strong>💡 Pattern Recognition:</strong> Vergleiche aktuelle Chart-Situationen mit historischen Mustern und finde ähnliche Setups.
+                </div>
+
+                <h3>Wie funktioniert's?</h3>
+                <p>Das System verwendet Vector-basierte Pattern-Matching mit HNSW-Indexierung:</p>
+
+                <div class="steps">
+                    <div class="step">
+                        <h4>Pattern-Extraktion</h4>
+                        <p>Aus der aktuellen Chart-Situation werden Features extrahiert:</p>
+                        <ul>
+                            <li>Indikatorwerte (RSI, MACD, ADX, etc.)</li>
+                            <li>Preisbewegungen (Close, High, Low)</li>
+                            <li>Volumen-Profile</li>
+                            <li>Regime-Information</li>
+                        </ul>
+                    </div>
+
+                    <div class="step">
+                        <h4>Vector-Embedding</h4>
+                        <p>Features werden in 384-dimensionale Vektoren umgewandelt</p>
+                    </div>
+
+                    <div class="step">
+                        <h4>Similarity Search</h4>
+                        <p>HNSW-Index findet ähnlichste historische Patterns in <strong>&lt;50ms</strong></p>
+                    </div>
+
+                    <div class="step">
+                        <h4>Outcome-Analyse</h4>
+                        <p>Für jedes gefundene Pattern wird analysiert:</p>
+                        <ul>
+                            <li>Was passierte danach? (Kursanstieg/-abfall)</li>
+                            <li>Welche Strategie war erfolgreich?</li>
+                            <li>Risiko-Metriken (Max DD, Win Rate)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>Pattern Recognition verwenden</h3>
+                <div class="card">
+                    <div class="card-title">Im Entry Analyzer</div>
+                    <ol>
+                        <li>Wechsle zum "Pattern Recognition" Tab</li>
+                        <li>Stelle Similarity Threshold ein (0.7-0.95 empfohlen)</li>
+                        <li>Klicke <span class="badge badge-primary">🔍 Find Similar Patterns</span></li>
+                        <li>Analysiere die Top 10 ähnlichsten Setups</li>
+                        <li>Klicke auf ein Pattern für Details und Side-by-Side-Vergleich</li>
+                    </ol>
+                </div>
+
+                <h3>Pattern-Details</h3>
+                <p>Für jedes gefundene Pattern siehst du:</p>
+                <ul>
+                    <li><strong>Similarity Score:</strong> 0-100% (wie ähnlich)</li>
+                    <li><strong>Timestamp:</strong> Wann trat das Pattern historisch auf</li>
+                    <li><strong>Outcome:</strong> Was passierte danach (z.B. +5.2% in 3 Tagen)</li>
+                    <li><strong>Regime:</strong> Marktregime zum damaligen Zeitpunkt</li>
+                    <li><strong>Strategy:</strong> Welche Strategie war erfolgreich</li>
+                    <li><strong>Risk Metrics:</strong> Win Rate, Profit Factor, Max DD</li>
+                </ul>
+
+                <h3>Best Practices</h3>
+                <div class="alert alert-warning">
+                    <strong>⚠️ Wichtig:</strong> Pattern Recognition ist ein unterstützendes Tool, keine Garantie für zukünftige Performance!
+                </div>
+                <ul>
+                    <li>✅ Verwende hohe Similarity Thresholds (>0.85) für verlässlichere Matches</li>
+                    <li>✅ Betrachte mehrere ähnliche Patterns, nicht nur das Top-Match</li>
+                    <li>✅ Kombiniere mit technischer Analyse und Fundamentaldaten</li>
+                    <li>⚠️ Beachte unterschiedliche Marktbedingungen (Volatilität, News, Events)</li>
+                </ul>
+            </section>
+
+            <!-- Analyzer Results -->
+            <section id="analyzer-results" class="section">
+                <h2>📊 Ergebnisse & Reports</h2>
+
+                <h3>Backtest Results Tab</h3>
+                <p>Nach jedem Backtest werden detaillierte Ergebnisse angezeigt:</p>
+
+                <div class="card">
+                    <div class="card-title">📈 Performance Summary</div>
+                    <ul>
+                        <li><strong>Net Profit:</strong> Absoluter Gewinn/Verlust</li>
+                        <li><strong>Return %:</strong> Prozentuale Performance</li>
+                        <li><strong>Total Trades:</strong> Anzahl Trades</li>
+                        <li><strong>Win Rate:</strong> % gewonnener Trades</li>
+                        <li><strong>Profit Factor:</strong> Gewinn/Verlust-Ratio</li>
+                        <li><strong>Sharpe Ratio:</strong> Risiko-adjustierter Return</li>
+                        <li><strong>Max Drawdown:</strong> Größter Verlust vom Peak</li>
+                        <li><strong>Avg Trade Return:</strong> Durchschnitt pro Trade</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📋 Trade List</div>
+                    <p>Alle Trades in einer scrollbaren Tabelle:</p>
+                    <ul>
+                        <li>Entry/Exit Timestamp</li>
+                        <li>Entry/Exit Price</li>
+                        <li>Position Size</li>
+                        <li>P&L ($ und %)</li>
+                        <li>Regime beim Entry</li>
+                        <li>Strategy verwendet</li>
+                        <li>Ausführungsgrund (Signal Type)</li>
+                    </ul>
+                </div>
+
+                <h3>Equity Curve</h3>
+                <p>Visueller Graph der Account-Balance über Zeit:</p>
+                <ul>
+                    <li>Zeigt Kapitalwachstum/-verlust</li>
+                    <li>Markiert Drawdown-Perioden</li>
+                    <li>Overlay mit Regime-Änderungen</li>
+                </ul>
+
+                <h3>Regime Distribution</h3>
+                <div class="card">
+                    <div class="card-title">Regime-Verteilung im Backtest</div>
+                    <p>Zeigt, wie viel Zeit in jedem Regime verbracht wurde:</p>
+                    <ul>
+                        <li>TREND_UP: z.B. 35%</li>
+                        <li>TREND_DOWN: z.B. 25%</li>
+                        <li>RANGE: z.B. 30%</li>
+                        <li>VOLATILE: z.B. 10%</li>
+                    </ul>
+                    <p>Hilft zu verstehen, für welche Marktbedingungen die Strategie optimiert ist.</p>
+                </div>
+
+                <h3>Report generieren</h3>
+                <p>Klicke <span class="badge badge-primary">📄 Generate Report</span> um einen umfassenden PDF/HTML-Report zu erstellen mit:</p>
+                <ul>
+                    <li>Alle Performance-Metriken</li>
+                    <li>Charts und Visualisierungen</li>
+                    <li>Trade-Liste (gefiltert)</li>
+                    <li>Regime-Analyse</li>
+                    <li>Optimierungs-Empfehlungen</li>
+                    <li>Risk-Assessment</li>
+                </ul>
+
+                <h3>Ergebnisse im Chart visualisieren</h3>
+                <p>Klicke <span class="badge badge-success">📍 Draw on Chart</span> um:</p>
+                <ul>
+                    <li>Entry-Points als Pfeile im Chart zu zeichnen</li>
+                    <li>Exit-Points zu markieren</li>
+                    <li>Regime-Grenzen als vertikale Linien anzuzeigen</li>
+                    <li>P&L-Labels an jedem Trade</li>
+                </ul>
+            </section>
+
+            <!-- FAQ -->
+            <section id="faq" class="section">
+                <h2>❓ Häufig gestellte Fragen (FAQ)</h2>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Wie erstelle ich meine erste Strategie?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>Empfohlener Weg für Anfänger:</strong></p>
+                        <ol>
+                            <li>Kopiere eine bestehende JSON-Strategie (z.B. <code>trend_following_conservative.json</code>)</li>
+                            <li>Benenne sie um (z.B. <code>my_first_strategy.json</code>)</li>
+                            <li>Ändere einzelne Parameter (z.B. RSI Period von 14 auf 12)</li>
+                            <li>Teste im Entry Analyzer mit Backtest</li>
+                            <li>Iteriere basierend auf Ergebnissen</li>
+                        </ol>
+                        <p><strong>Fortgeschritten:</strong> Nutze Indikator-Optimierung um beste Parameter zu finden, dann Regime Set Builder.</p>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Wie lange dauert ein Backtest?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Abhängig von:</p>
+                        <ul>
+                            <li><strong>Zeitraum:</strong> 3 Monate ≈ 10-20 Sekunden, 1 Jahr ≈ 30-60 Sekunden</li>
+                            <li><strong>Anzahl Indikatoren:</strong> Mehr Indikatoren = längere Berechnung</li>
+                            <li><strong>Timeframe:</strong> 1m = viele Bars = länger als 1h</li>
+                        </ul>
+                        <p><strong>Optimization:</strong> 100+ Parameter-Kombinationen können 5-15 Minuten dauern.</p>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Was ist der Unterschied zwischen Paper und Live Trading?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>Paper Trading:</strong></p>
+                        <ul>
+                            <li>✅ Simuliert Trades mit echten Marktdaten</li>
+                            <li>✅ Kein echtes Geld beteiligt</li>
+                            <li>✅ Ideal zum Testen und Lernen</li>
+                            <li>✅ Standardmäßig aktiviert</li>
+                        </ul>
+                        <p><strong>Live Trading:</strong></p>
+                        <ul>
+                            <li>💰 Verwendet echtes Geld</li>
+                            <li>⚠️ Muss explizit in Settings aktiviert werden</li>
+                            <li>⚠️ Nur nach erfolgreichen Paper-Tests empfohlen</li>
+                            <li>⚠️ Nicht rückgängig machbar!</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Wie interpretiere ich die Performance-Metriken?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p>Siehe "Backtest Results" Sektion für detaillierte KPI-Erklärungen.</p>
+                        <p><strong>Quick Reference:</strong></p>
+                        <ul>
+                            <li><strong>Win Rate > 55%:</strong> Gut</li>
+                            <li><strong>Profit Factor > 1.5:</strong> Profitabel</li>
+                            <li><strong>Sharpe Ratio > 1.0:</strong> Gutes Risiko/Ertrag-Verhältnis</li>
+                            <li><strong>Max Drawdown < 15%:</strong> Akzeptables Risiko</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Kann ich mehrere Bots gleichzeitig laufen lassen?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>Aktuell:</strong> Nein, nur ein Bot pro Instanz.</p>
+                        <p><strong>Workaround:</strong> Öffne mehrere OrderPilot-AI Instanzen (verschiedene Ports/Configs).</p>
+                        <p><strong>Geplant:</strong> Multi-Bot-Support in zukünftiger Version.</p>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <h4>Was mache ich bei einem Bot-Fehler?</h4>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <p><strong>Sofort-Maßnahmen:</strong></p>
+                        <ol>
+                            <li>Klicke <span class="badge badge-primary">Stop Bot</span> um alle Positionen zu schließen</li>
+                            <li>Prüfe Event-Log für Fehlerdetails</li>
+                            <li>Überprüfe JSON-Config auf Syntaxfehler</li>
+                        </ol>
+                        <p><strong>Troubleshooting:</strong></p>
+                        <ul>
+                            <li>Validiere JSON mit <code>ConfigLoader</code></li>
+                            <li>Teste Strategie im Entry Analyzer Backtest</li>
+                            <li>Prüfe API-Verbindung (Alpaca Status)</li>
+                            <li>Siehe "Troubleshooting" Sektion</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Troubleshooting -->
+            <section id="troubleshooting" class="section">
+                <h2>🔧 Troubleshooting</h2>
+
+                <div class="card">
+                    <div class="card-title">❌ Bot startet nicht</div>
+                    <p><strong>Mögliche Ursachen:</strong></p>
+                    <ul>
+                        <li><strong>JSON-Syntax-Fehler:</strong> Validiere JSON mit Online-Validator oder <code>ConfigLoader</code></li>
+                        <li><strong>Fehlende Indikatoren:</strong> Prüfe, ob alle referenzierten Indikatoren definiert sind</li>
+                        <li><strong>API-Keys ungültig:</strong> Prüfe Alpaca API-Keys in Settings</li>
+                        <li><strong>Netzwerkfehler:</strong> Prüfe Internetverbindung zu Alpaca</li>
+                    </ul>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Prüfe Event-Log für detaillierte Fehlermeldung</li>
+                        <li>Validiere JSON-Config im Entry Analyzer</li>
+                        <li>Teste mit einfacher Default-Config</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">⚠️ Bot führt keine Trades aus</div>
+                    <p><strong>Mögliche Ursachen:</strong></p>
+                    <ul>
+                        <li><strong>Keine Entry-Signals:</strong> Conditions nicht erfüllt</li>
+                        <li><strong>Falsches Regime:</strong> Bot wartet auf passendes Marktregime</li>
+                        <li><strong>Risk-Limits erreicht:</strong> Max Positions oder Max Daily Loss</li>
+                    </ul>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Prüfe aktuelles Regime im Bot-Panel</li>
+                        <li>Überprüfe Entry-Conditions im Event-Log</li>
+                        <li>Teste Entry-Conditions mit Entry Analyzer "Visible Range Analysis"</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📊 Backtest schlägt fehl</div>
+                    <p><strong>Mögliche Ursachen:</strong></p>
+                    <ul>
+                        <li><strong>Keine historischen Daten:</strong> Symbol oder Zeitraum nicht verfügbar</li>
+                        <li><strong>JSON-Schema-Fehler:</strong> Config nicht valide</li>
+                        <li><strong>Memory-Fehler:</strong> Zu großer Zeitraum oder zu viele Kombinationen</li>
+                    </ul>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Prüfe ob Symbol valide ist (z.B. AAPL, nicht aapl)</li>
+                        <li>Reduziere Zeitraum (z.B. 3 Monate statt 3 Jahre)</li>
+                        <li>Validiere JSON mit <code>ConfigLoader.load_config()</code></li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🔧 Indikator-Optimization dauert zu lange</div>
+                    <p><strong>Ursache:</strong> Zu viele Parameter-Kombinationen</p>
+                    <p><strong>Lösung:</strong></p>
+                    <ul>
+                        <li>Reduziere Parameter-Ranges (z.B. Step von 1 auf 2)</li>
+                        <li>Wähle weniger Indikatoren aus</li>
+                        <li>Verkürze Backtest-Zeitraum</li>
+                        <li>Nutze <strong>Cancel</strong> Button zum Abbrechen</li>
+                    </ul>
+                    <p><strong>Geschwindigkeit-Tipps:</strong></p>
+                    <ul>
+                        <li>10 Kombinationen ≈ 2 Minuten</li>
+                        <li>100 Kombinationen ≈ 15-20 Minuten</li>
+                        <li>1000+ Kombinationen ≈ mehrere Stunden (nicht empfohlen)</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🎯 Pattern Recognition findet keine Matches</div>
+                    <p><strong>Mögliche Ursachen:</strong></p>
+                    <ul>
+                        <li><strong>Similarity Threshold zu hoch:</strong> Senke auf 0.75-0.80</li>
+                        <li><strong>Zu wenig historische Daten:</strong> Pattern-DB noch nicht gefüllt</li>
+                        <li><strong>Einzigartige Situation:</strong> Aktuelles Setup noch nie gesehen</li>
+                    </ul>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Senke Similarity Threshold schrittweise</li>
+                        <li>Führe mehr Backtests aus um Pattern-DB zu füllen</li>
+                        <li>Prüfe ob genug historische Daten vorhanden sind</li>
+                    </ol>
+                </div>
+
+                <h3>Log-Dateien</h3>
+                <p>Alle Operationen werden geloggt in:</p>
+                <div class="code-block">
+                    <code>logs/orderpilot-ai.log
+logs/bot-trades.log
+logs/backtest-results.log</code>
+                </div>
+                <p>Bei Support-Anfragen bitte relevante Log-Einträge mitschicken!</p>
+
+                <h3>Support kontaktieren</h3>
+                <p>Bei ungelösten Problemen:</p>
+                <ul>
+                    <li>📧 Email: support@orderpilot-ai.com</li>
+                    <li>💬 GitHub Issues: <a href="https://github.com/your-repo/issues" style="color: var(--orange-primary);">GitHub</a></li>
+                    <li>📖 Dokumentation: <a href="https://docs.orderpilot-ai.com" style="color: var(--orange-primary);">docs.orderpilot-ai.com</a></li>
+                </ul>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Navigation
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                // Remove active class from all links and sections
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+
+                // Add active class to clicked link
+                link.classList.add('active');
+
+                // Show corresponding section
+                const targetId = link.getAttribute('href').substring(1);
+                document.getElementById(targetId).classList.add('active');
+
+                // Scroll to top of content
+                document.querySelector('.content').scrollTop = 0;
+            });
+        });
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+
+            if (query.length < 2) {
+                // Reset search
+                document.querySelectorAll('.section').forEach(section => {
+                    section.style.display = section.classList.contains('active') ? 'block' : 'none';
+                });
+                return;
+            }
+
+            // Search through all sections
+            document.querySelectorAll('.section').forEach(section => {
+                const text = section.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    section.style.display = 'block';
+
+                    // Highlight matching text (simple implementation)
+                    // In production, use a proper highlighting library
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        });
+
+        // Collapsible sections
+        function toggleCollapsible(header) {
+            const collapsible = header.parentElement;
+            collapsible.classList.toggle('open');
+        }
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                const href = this.getAttribute('href');
+                if (href !== '#') {
+                    e.preventDefault();
+                    const target = document.querySelector(href);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
+                }
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + K for search focus
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInput.focus();
+            }
+
+            // Escape to clear search
+            if (e.key === 'Escape' && document.activeElement === searchInput) {
+                searchInput.value = '';
+                searchInput.dispatchEvent(new Event('input'));
+            }
+        });
+
+        // Add tooltips for badges (optional enhancement)
+        document.querySelectorAll('.badge').forEach(badge => {
+            badge.title = badge.textContent;
+        });
+
+        console.log('OrderPilot-AI Help System loaded successfully! 🚀');
+    </script>
 </body>
 </html>

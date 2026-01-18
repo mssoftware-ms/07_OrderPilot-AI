@@ -149,6 +149,7 @@ class BitunixProvider(HistoricalDataProvider):
         mapping = {
             Timeframe.MINUTE_1: "1m",
             Timeframe.MINUTE_5: "5m",
+            Timeframe.MINUTE_10: "10m",
             Timeframe.MINUTE_15: "15m",
             Timeframe.MINUTE_30: "30m",
             Timeframe.HOUR_1: "1h",
@@ -167,6 +168,7 @@ class BitunixProvider(HistoricalDataProvider):
         table = {
             "1m": 60_000,
             "5m": 5 * 60_000,
+            "10m": 10 * 60_000,
             "15m": 15 * 60_000,
             "30m": 30 * 60_000,
             "1h": 60 * 60_000,
