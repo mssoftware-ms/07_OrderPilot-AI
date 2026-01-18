@@ -149,6 +149,18 @@
             "type": "object",
             "description": "Risikomanagement-Parameter der Strategie.",
             "properties": {
+              "position_size": {
+                "type": "number",
+                "description": "Positionsgröße als Anteil der Equity (0-1)."
+              },
+              "stop_loss": {
+                "type": "number",
+                "description": "Stop-Loss als Anteil vom Einstieg (0-1)."
+              },
+              "take_profit": {
+                "type": "number",
+                "description": "Take-Profit als Anteil vom Einstieg (0-10)."
+              },
               "stop_loss_pct": {
                 "type": "number",
                 "description": "Stop-Loss in % vom Einstiegs-/Kaufpreis."
@@ -411,6 +423,9 @@
       "type": "object",
       "description": "Risikoparameter-Überschreibungen.",
       "properties": {
+        "position_size": { "type": "number" },
+        "stop_loss": { "type": "number" },
+        "take_profit": { "type": "number" },
         "stop_loss_pct": { "type": "number" },
         "take_profit_pct": { "type": "number" },
         "trailing_mode": { "type": "string" },

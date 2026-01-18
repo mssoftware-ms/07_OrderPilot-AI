@@ -141,6 +141,7 @@ class BotController(
 
         # Try to load JSON config if path provided
         self._json_catalog = None
+        self._json_config_path = json_config_path  # Store for reloading
         if json_config_path:
             try:
                 from .config_integration_bridge import (
@@ -440,6 +441,114 @@ class BotController(
     def get_strategy_selection(self):
         """Get current strategy selection result (if any)."""
         return self._strategy_selector.get_current_selection()
+
+    # ==================== JSON Config Reloading ====================
+
+    def reload_json_config(self) -> bool:
+        """Reload JSON configuration (if JSON catalog active).
+
+        Thread-safe reload of JSON strategy configuration without
+        restarting the bot. Uses existing config path.
+
+        Returns:
+            True if reload successful, False if failed or not using JSON config
+
+        Example:
+            >>> controller.reload_json_config()
+            True
+        """
+        if self._json_catalog is None:
+            logger.warning("Cannot reload: not using JSON config")
+            return False
+
+        if self._json_config_path is None:
+            logger.error("Cannot reload: JSON config path not stored")
+            return False
+
+        try:
+            logger.info(f"Reloading JSON config from {self._json_config_path}")
+
+            # Use catalog's reload method
+            self._json_catalog.reload_config()
+
+            logger.info("JSON config reloaded successfully")
+            self._log_activity("CONFIG", f"JSON-Konfiguration neu geladen")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to reload JSON config: {e}", exc_info=True)
+            self._log_activity("ERROR", f"Config-Reload fehlgeschlagen: {e}")
+            return False
+
+    def enable_json_config_auto_reload(self) -> bool:
+        """Enable automatic JSON config reloading with file watching.
+
+        Monitors config file for changes and reloads automatically.
+        Only works if JSON catalog is active.
+
+        Returns:
+            True if auto-reload enabled, False if failed or not using JSON config
+
+        Example:
+            >>> controller.enable_json_config_auto_reload()
+            True
+        """
+        if self._json_catalog is None:
+            logger.warning("Cannot enable auto-reload: not using JSON config")
+            return False
+
+        if self._json_config_path is None:
+            logger.error("Cannot enable auto-reload: JSON config path not stored")
+            return False
+
+        try:
+            logger.info(f"Enabling auto-reload for {self._json_config_path}")
+
+            # Enable auto-reload on catalog
+            self._json_catalog.enable_auto_reload(
+                config_path=self._json_config_path,
+                event_bus=self._event_bus
+            )
+
+            logger.info("JSON config auto-reload enabled")
+            self._log_activity("CONFIG", "Auto-Reload aktiviert")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to enable auto-reload: {e}", exc_info=True)
+            self._log_activity("ERROR", f"Auto-Reload Aktivierung fehlgeschlagen: {e}")
+            return False
+
+    def disable_json_config_auto_reload(self) -> bool:
+        """Disable automatic JSON config reloading.
+
+        Returns:
+            True if auto-reload disabled, False if failed or not active
+        """
+        if self._json_catalog is None:
+            logger.warning("Cannot disable auto-reload: not using JSON config")
+            return False
+
+        try:
+            self._json_catalog.disable_auto_reload()
+            logger.info("JSON config auto-reload disabled")
+            self._log_activity("CONFIG", "Auto-Reload deaktiviert")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to disable auto-reload: {e}", exc_info=True)
+            return False
+
+    def is_json_config_auto_reload_enabled(self) -> bool:
+        """Check if JSON config auto-reload is enabled.
+
+        Returns:
+            True if auto-reload active, False otherwise
+        """
+        if self._json_catalog is None or self._json_catalog.config_reloader is None:
+            return False
+
+        return self._json_catalog.config_reloader.is_watching()
 
     def get_strategy_score_rows(self) -> list[dict]:
         """Get strategy score rows for UI display."""

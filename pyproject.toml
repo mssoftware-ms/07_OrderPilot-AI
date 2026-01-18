@@ -27,10 +27,16 @@ dependencies = [
   "jsonschema>=4.23",
   "pyyaml>=6.0.2",
   "sqlalchemy>=2.0",
+  "click>=8.1",
+  "rich>=13.7",
+  "watchdog>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "pytest-qt>=4.4", "ruff>=0.6", "mypy>=1.11", "types-PyYAML", "types-requests"]
+
+[project.scripts]
+tradingbot-config = "src.core.tradingbot.config.cli:cli"
 
 [tool.ruff]
 line-length = 100

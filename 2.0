@@ -1,0 +1,29 @@
+Collecting lightweight-charts
+  Using cached lightweight_charts-2.1-py3-none-any.whl.metadata (8.0 kB)
+Requirement already satisfied: pandas in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from lightweight-charts) (2.3.3)
+Collecting pywebview>=5.0.5 (from lightweight-charts)
+  Using cached pywebview-6.1-py3-none-any.whl.metadata (4.7 kB)
+Collecting pythonnet (from pywebview>=5.0.5->lightweight-charts)
+  Using cached pythonnet-3.0.5-py3-none-any.whl.metadata (6.6 kB)
+Collecting proxy_tools (from pywebview>=5.0.5->lightweight-charts)
+  Using cached proxy_tools-0.1.0-py3-none-any.whl
+Collecting bottle (from pywebview>=5.0.5->lightweight-charts)
+  Using cached bottle-0.13.4-py2.py3-none-any.whl.metadata (1.6 kB)
+Requirement already satisfied: typing_extensions in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from pywebview>=5.0.5->lightweight-charts) (4.15.0)
+Requirement already satisfied: numpy>=1.26.0 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from pandas->lightweight-charts) (2.2.6)
+Requirement already satisfied: python-dateutil>=2.8.2 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from pandas->lightweight-charts) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from pandas->lightweight-charts) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from pandas->lightweight-charts) (2025.2)
+Requirement already satisfied: six>=1.5 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from python-dateutil>=2.8.2->pandas->lightweight-charts) (1.17.0)
+Collecting clr_loader<0.3.0,>=0.2.7 (from pythonnet->pywebview>=5.0.5->lightweight-charts)
+  Using cached clr_loader-0.2.10-py3-none-any.whl.metadata (1.5 kB)
+Requirement already satisfied: cffi>=1.17 in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from clr_loader<0.3.0,>=0.2.7->pythonnet->pywebview>=5.0.5->lightweight-charts) (2.0.0)
+Requirement already satisfied: pycparser in d:\03_git\02_python\07_orderpilot-ai\.venv\lib\site-packages (from cffi>=1.17->clr_loader<0.3.0,>=0.2.7->pythonnet->pywebview>=5.0.5->lightweight-charts) (2.23)
+Using cached lightweight_charts-2.1-py3-none-any.whl (96 kB)
+Using cached pywebview-6.1-py3-none-any.whl (511 kB)
+Using cached bottle-0.13.4-py2.py3-none-any.whl (103 kB)
+Using cached pythonnet-3.0.5-py3-none-any.whl (297 kB)
+Using cached clr_loader-0.2.10-py3-none-any.whl (56 kB)
+Installing collected packages: proxy_tools, bottle, clr_loader, pythonnet, pywebview, lightweight-charts
+
+Successfully installed bottle-0.13.4 clr_loader-0.2.10 lightweight-charts-2.1 proxy_tools-0.1.0 pythonnet-3.0.5 pywebview-6.1

@@ -31,6 +31,7 @@ from .config import (
     StrategySetExecutor,
     TradingBotConfig,
 )
+from .config_reloader import ConfigReloader
 from .models import FeatureVector, RegimeState
 from .strategy_definitions import StrategyDefinition
 
@@ -230,15 +231,18 @@ class ConfigBasedStrategyCatalog:
     def __init__(
         self,
         config: TradingBotConfig,
-        feature_vector: FeatureVector | None = None
+        feature_vector: FeatureVector | None = None,
+        config_reloader: ConfigReloader | None = None
     ):
         """Initialize catalog from JSON config.
 
         Args:
             config: Loaded TradingBotConfig from JSON
             feature_vector: Optional current feature vector for regime detection
+            config_reloader: Optional ConfigReloader for live reloading
         """
         self.config = config
+        self.config_reloader = config_reloader
 
         # Initialize components
         self.regime_detector = RegimeDetector(config.regimes)
@@ -386,6 +390,94 @@ class ConfigBasedStrategyCatalog:
             List of regime IDs from JSON config
         """
         return [r.id for r in self.config.regimes]
+
+    # ==================== Config Reloading ====================
+
+    def reload_config(self, new_config: TradingBotConfig | None = None) -> None:
+        """Reload configuration (thread-safe).
+
+        Reinitializes all components with new config. Can be called
+        with explicit config or will use ConfigReloader if available.
+
+        Args:
+            new_config: New config to load, or None to reload from ConfigReloader
+
+        Raises:
+            ValueError: If neither new_config nor config_reloader provided
+        """
+        import threading
+
+        # Get new config
+        if new_config is None:
+            if self.config_reloader is None:
+                raise ValueError("No config provided and no ConfigReloader available")
+            new_config = self.config_reloader.reload_config()
+
+        # Rebuild components with new config
+        logger.info(f"Reloading catalog with new config...")
+
+        # Thread-safe update
+        with threading.RLock():
+            self.config = new_config
+
+            # Rebuild components
+            self.regime_detector = RegimeDetector(new_config.regimes)
+            self.strategy_router = StrategyRouter(
+                new_config.routing,
+                new_config.strategy_sets
+            )
+            self.strategy_executor = StrategySetExecutor(
+                new_config.indicators,
+                new_config.strategies
+            )
+            self.regime_bridge = RegimeDetectorBridge(self.regime_detector)
+
+        logger.info(
+            f"Catalog reloaded: "
+            f"{len(new_config.indicators)} indicators, "
+            f"{len(new_config.regimes)} regimes, "
+            f"{len(new_config.strategies)} strategies, "
+            f"{len(new_config.strategy_sets)} strategy sets"
+        )
+
+    def enable_auto_reload(
+        self,
+        config_path: Path | str,
+        schema_path: Path | str | None = None,
+        event_bus: "EventBus | None" = None
+    ) -> None:
+        """Enable automatic config reloading with file watching.
+
+        Args:
+            config_path: Path to JSON config file
+            schema_path: Path to JSON schema (optional)
+            event_bus: Event bus for reload events (optional)
+        """
+        if self.config_reloader is not None:
+            logger.warning("Auto-reload already enabled")
+            return
+
+        # Create reloader with callback
+        self.config_reloader = ConfigReloader(
+            config_path=config_path,
+            schema_path=schema_path,
+            on_reload=self.reload_config,
+            event_bus=event_bus,
+            auto_reload=True
+        )
+
+        # Start watching
+        self.config_reloader.start_watching()
+        logger.info(f"Auto-reload enabled for {config_path}")
+
+    def disable_auto_reload(self) -> None:
+        """Disable automatic config reloading."""
+        if self.config_reloader is None:
+            logger.debug("Auto-reload not enabled")
+            return
+
+        self.config_reloader.stop_watching()
+        logger.info("Auto-reload disabled")
 
 
 def load_json_config_if_available(

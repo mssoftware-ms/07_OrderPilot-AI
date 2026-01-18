@@ -144,7 +144,7 @@ class StreamingMixin:
     def _log_tick(self, price: float, volume: float) -> None:
         self.info_label.setText(f"Last: ${price:.2f}")
         print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
-        logger.info(f"📊 Live tick: {self.current_symbol} @ ${price:.2f}")
+        # logger.info removed - print statement is sufficient
 
         # Forward live price into Signals tab (Bitunix Trading API + tables)
         parent = self.parent()
@@ -206,10 +206,9 @@ class StreamingMixin:
         # Use chart's actual resolution instead of hardcoded 60 seconds
         resolution_seconds = self._get_resolution_seconds()
         current_candle_start = current_tick_time - (current_tick_time % resolution_seconds)
-        logger.debug(
-            f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
-            f"TickUnix: {current_tick_time} | CandleStart: {current_candle_start} | Resolution: {resolution_seconds}s"
-        )
+        # Verbose debug logging removed - not needed for normal operation
+        # logger.debug(f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
+        #              f"TickUnix: {current_tick_time} | CandleStart: {current_candle_start} | Resolution: {resolution_seconds}s")
         return current_tick_time, current_candle_start
 
     def _initialize_candle(self, current_minute_start: int, price: float) -> None:

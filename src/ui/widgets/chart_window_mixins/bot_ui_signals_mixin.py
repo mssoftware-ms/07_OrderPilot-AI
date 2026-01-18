@@ -151,6 +151,23 @@ class BotUISignalsMixin:
         trading_api_container_layout.addWidget(trading_api_widget)
         top_row_layout.addWidget(trading_api_container, stretch=1)
 
+        # Issue #9: Compact Chart Widget ZWISCHEN den beiden GroupBoxes (horizontal)
+        try:
+            from src.ui.widgets.compact_chart_widget import CompactChartWidget
+            self.compact_chart_widget = CompactChartWidget(parent_chart=self)
+            self.compact_chart_widget.setVisible(True)  # Explicitly show widget
+            self.compact_chart_widget.show()  # Force show
+            top_row_layout.addWidget(self.compact_chart_widget, stretch=0)
+
+            # Update symbol if available
+            if hasattr(self, 'symbol'):
+                self.compact_chart_widget.update_symbol(self.symbol)
+
+            logger.info(f"Issue #9: Compact Chart Widget created (size: {self.compact_chart_widget.size().width()}x{self.compact_chart_widget.size().height()})")
+            logger.info(f"Issue #9: Widget visible: {self.compact_chart_widget.isVisible()}, shown: {not self.compact_chart_widget.isHidden()}")
+        except Exception as e:
+            logger.error(f"Issue #9: Failed to create compact chart widget: {e}", exc_info=True)
+
         # Current Position (right side, fixed 420px width)
         position_widget = self._build_current_position_widget()
         position_widget.setMaximumWidth(420)
@@ -245,6 +262,7 @@ class BotUISignalsMixin:
         """Update current price in Recent Signals table for ENTERED positions.
 
         Issue #2: Fixed column indices - Status is column 10, Current is column 11.
+        Issue #9: Also updates compact chart widget.
         """
         if not hasattr(self, 'signals_table'):
             return
@@ -258,6 +276,11 @@ class BotUISignalsMixin:
                     current_item = self.signals_table.item(row, 11)
                     if current_item:
                         current_item.setText(f"{price:.2f}")
+
+            # Issue #9: Update compact chart widget
+            if hasattr(self, 'compact_chart_widget') and price > 0:
+                self.compact_chart_widget.update_price(price)
+
         except Exception as e:
             logger.debug(f"Failed to update current price in signals table: {e}")
 
