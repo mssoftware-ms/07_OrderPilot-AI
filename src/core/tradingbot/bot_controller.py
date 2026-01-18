@@ -79,6 +79,7 @@ class BotController(
         on_log: Callable[[str, str], None] | None = None,
         on_trading_blocked: Callable[[list[str]], None] | None = None,
         on_macd_signal: Callable[[str, float], None] | None = None,
+        json_config_path: str | None = None,
     ):
         """Initialize bot controller.
 
@@ -91,6 +92,7 @@ class BotController(
             on_log: Callback for activity logging (log_type, message)
             on_trading_blocked: Callback when trading is blocked (list of reasons)
             on_macd_signal: Callback for MACD cross signals (signal_type, price) for chart markers
+            json_config_path: Optional path to JSON strategy config (enables JSON-based regime/strategy detection)
         """
         self.config = config
         self.symbol = config.bot.symbol
@@ -136,6 +138,33 @@ class BotController(
         # Strategy selection
         # NOTE: Daytrading mode - no fixed daily strategy, only directional bias
         # allow_intraday_switch=True allows strategy to change with market conditions
+
+        # Try to load JSON config if path provided
+        self._json_catalog = None
+        if json_config_path:
+            try:
+                from .config_integration_bridge import (
+                    ConfigBasedStrategyCatalog,
+                    load_json_config_if_available,
+                )
+                json_config = load_json_config_if_available(json_config_path)
+                if json_config:
+                    self._json_catalog = ConfigBasedStrategyCatalog(json_config)
+                    logger.info(
+                        f"JSON-based strategy catalog loaded from: {json_config_path}"
+                    )
+                else:
+                    logger.warning(
+                        f"JSON config path provided but failed to load: {json_config_path}. "
+                        f"Falling back to hardcoded strategies."
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to load JSON config: {e}. "
+                    f"Falling back to hardcoded strategies."
+                )
+
+        # Hardcoded catalog (fallback or primary if no JSON)
         self._strategy_catalog = StrategyCatalog()
         self._strategy_selector = StrategySelector(
             catalog=self._strategy_catalog,

@@ -133,12 +133,32 @@ class BotHelpersMixin:
     async def _update_regime(self, features: FeatureVector) -> RegimeState:
         """Update regime classification.
 
+        Uses JSON-based regime detection if available, otherwise falls back
+        to hardcoded regime classification.
+
         Args:
             features: Current features
 
         Returns:
             Updated RegimeState
         """
+        # Try JSON-based regime detection first
+        if hasattr(self, '_json_catalog') and self._json_catalog:
+            try:
+                regime_state = self._json_catalog.get_current_regime(features)
+                logger.debug(
+                    f"JSON regime detected: {regime_state.regime_name} "
+                    f"(strength: {regime_state.regime_strength:.2f})"
+                )
+                return regime_state
+            except Exception as e:
+                logger.error(
+                    f"JSON regime detection failed: {e}. "
+                    f"Falling back to hardcoded detection."
+                )
+                # Fall through to hardcoded detection
+
+        # Hardcoded regime detection (fallback)
         regime = RegimeType.UNKNOWN
         volatility = VolatilityLevel.NORMAL
 
@@ -180,6 +200,37 @@ class BotHelpersMixin:
             atr_pct=(features.atr_14 / features.close * 100) if features.atr_14 and features.close else None,
             bb_width_pct=features.bb_width
         )
+
+    def _get_active_json_strategies(
+        self,
+        features: FeatureVector
+    ) -> list[str]:
+        """Get active strategy IDs from JSON config.
+
+        Args:
+            features: Current feature vector
+
+        Returns:
+            List of strategy IDs to execute, or empty list if JSON not available
+        """
+        if not hasattr(self, '_json_catalog') or not self._json_catalog:
+            return []
+
+        try:
+            matched_sets = self._json_catalog.get_active_strategy_sets(features)
+            strategy_ids = self._json_catalog.get_strategy_ids_from_sets(matched_sets)
+
+            if matched_sets:
+                logger.info(
+                    f"JSON strategies active: {strategy_ids} "
+                    f"(from {len(matched_sets)} strategy sets)"
+                )
+
+            return strategy_ids
+
+        except Exception as e:
+            logger.error(f"Failed to get JSON strategies: {e}")
+            return []
 
     def _create_entry_order(
         self,
