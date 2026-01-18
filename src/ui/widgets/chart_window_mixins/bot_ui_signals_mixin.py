@@ -285,7 +285,7 @@ class BotUISignalsMixin:
             logger.debug(f"Failed to update current price in signals table: {e}")
 
     def _update_compact_chart_from_main(self) -> None:
-        """Sync compact chart with main chart data (1h view)."""
+        """Sync compact chart with main chart data (dynamic timeframe)."""
         if not hasattr(self, 'compact_chart_widget'):
             return
 
@@ -1084,13 +1084,13 @@ class BotUISignalsMixin:
     def _build_signals_table(self) -> None:
         self.signals_table = QTableWidget()
         # Issue #3: Updated layout - P&L % before P&L USDT, renamed columns
-        self.signals_table.setColumnCount(24)
+        self.signals_table.setColumnCount(25)
         self.signals_table.setHorizontalHeaderLabels(
             [
                 "Time", "Type", "Strategy", "Side", "Entry", "Stop", "SL%", "TR%",
                 "TRA%", "TR Lock", "Status", "Current", "P&L %", "P&L USDT",  # Issue #19: P&L % before P&L USDT
                 "Trading fees %", "Trading fees", "Invest", "Stück",  # Issue #18: "Fees €" -> "Invest"
-                "D P&L €", "D P&L %", "Hebel", "WKN", "Score", "TR Stop",
+                "D P&L €", "D P&L %", "Hebel", "WKN", "Score", "TR Stop", "Liquidation",
             ]
         )
         # Hidden columns: D P&L € (18), D P&L % (19), WKN (21), Score (22)
@@ -1140,6 +1140,10 @@ class BotUISignalsMixin:
         # Issue #3: Hebel column (20) fixed at 90px and VISIBLE
         header.setSectionResizeMode(20, QHeaderView.ResizeMode.Fixed)
         header.resizeSection(20, 90)
+
+        # Liquidation (24) fixed at 110px
+        header.setSectionResizeMode(24, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(24, 110)
 
         # Stretch remaining numeric/value columns
         for col in [17, 23]:
