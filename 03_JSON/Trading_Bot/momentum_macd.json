@@ -1,0 +1,153 @@
+{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {
+      "id": "macd12_26_9",
+      "type": "MACD",
+      "params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "momentum_regime",
+      "name": "Momentum Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 20.0
+            }
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "momentum_macd",
+      "name": "momentum_macd",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 20.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss": 0.02,
+        "take_profit": 0.06
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_momentum_macd",
+      "name": "momentum_macd Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_macd"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_momentum_macd",
+      "match": {
+        "all_of": [
+          "momentum_regime"
+        ]
+      }
+    }
+  ]
+}

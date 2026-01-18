@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Catalog - OrderPilot-AI Help</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <h1>OrderPilot-AI Help <span class="version-badge">v1.0.0</span></h1>
+            </div>
+        </div>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="../index.html">← Zurück zur Übersicht</a></li>
+            <li><a href="#overview">Übersicht</a></li>
+            <li><a href="#api">API</a></li>
+            <li><a href="#strategies">Strategien</a></li>
+            <li><a href="#examples">Beispiele</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <section id="overview">
+            <h2>📚 Strategy Catalog - Übersicht</h2>
+
+            <div class="alert info">
+                <strong>Zweck:</strong> Der StrategyCatalog ist die zentrale Registry für alle hardkodierten Trading-Strategien mit Metadaten, Kategorisierung und einfachem Zugriff.
+            </div>
+
+            <h3>Hauptfunktionen</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3>Zentrale Registry</h3>
+                    <p>Alle 9 Strategien an einem Ort registriert.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🏷️</div>
+                    <h3>Metadaten</h3>
+                    <p>Name, Typ, Beschreibung, Risk-Profile für jede Strategie.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Kategorisierung</h3>
+                    <p>Gruppierung nach Strategy-Type (Trend, Mean-Reversion, etc.).</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Einfacher Zugriff</h3>
+                    <p>Get-by-ID oder List-All mit einem Aufruf.</p>
+                </div>
+            </div>
+
+            <h3>Registrierte Strategien</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Typ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>trend_following_conservative</code></td><td>Trend Following Conservative</td><td>trend_following</td></tr>
+                    <tr><td><code>trend_following_aggressive</code></td><td>Trend Following Aggressive</td><td>trend_following</td></tr>
+                    <tr><td><code>mean_reversion_bb</code></td><td>Mean Reversion Bollinger Bands</td><td>mean_reversion</td></tr>
+                    <tr><td><code>mean_reversion_rsi</code></td><td>Mean Reversion RSI</td><td>mean_reversion</td></tr>
+                    <tr><td><code>breakout_volatility</code></td><td>Breakout Volatility</td><td>breakout</td></tr>
+                    <tr><td><code>breakout_momentum</code></td><td>Breakout Momentum</td><td>breakout</td></tr>
+                    <tr><td><code>momentum_macd</code></td><td>Momentum MACD</td><td>momentum</td></tr>
+                    <tr><td><code>scalping_range</code></td><td>Scalping Range</td><td>scalping</td></tr>
+                    <tr><td><code>sideways_range_bounce</code></td><td>Sideways Range Bounce</td><td>sideways</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="api">
+            <h2>🔧 API Dokumentation</h2>
+
+            <h3>Klasse: <code>StrategyCatalog</code></h3>
+
+            <div class="accordion-header">
+                <span><strong>__init__()</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <pre><code class="language-python">from src.core.tradingbot.strategies.catalog import StrategyCatalog
+
+catalog = StrategyCatalog()
+print(f"Loaded {len(catalog.list_strategies())} strategies")</code></pre>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>get_strategy(strategy_id: str) → StrategyDefinition</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Beschreibung:</strong> Strategie nach ID laden.</p>
+                <p><strong>Parameter:</strong> <code>strategy_id</code> - Eindeutige Strategy-ID</p>
+                <p><strong>Rückgabe:</strong> <code>StrategyDefinition</code> mit Klasse & Metadaten</p>
+                <p><strong>Exception:</strong> <code>KeyError</code> wenn ID nicht existiert</p>
+                <pre><code class="language-python">strategy = catalog.get_strategy("trend_following_conservative")
+
+print(f"Name: {strategy.name}")
+print(f"Class: {strategy.strategy_class}")
+print(f"Type: {strategy.strategy_type}")
+print(f"Description: {strategy.description}")</code></pre>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>list_strategies() → list[str]</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Beschreibung:</strong> Alle Strategy-IDs auflisten.</p>
+                <p><strong>Rückgabe:</strong> Liste aller IDs (sortiert)</p>
+                <pre><code class="language-python">all_strategies = catalog.list_strategies()
+print(f"Available strategies: {all_strategies}")
+
+# Output:
+# ['breakout_momentum', 'breakout_volatility', 'mean_reversion_bb', ...]</code></pre>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>get_strategies_by_type(strategy_type: str) → list[StrategyDefinition]</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Beschreibung:</strong> Alle Strategien eines Types laden.</p>
+                <p><strong>Parameter:</strong> <code>strategy_type</code> - Typ (z.B. "trend_following", "mean_reversion")</p>
+                <p><strong>Rückgabe:</strong> Liste von StrategyDefinitions</p>
+                <pre><code class="language-python">trend_strategies = catalog.get_strategies_by_type("trend_following")
+
+print(f"Found {len(trend_strategies)} trend strategies:")
+for strategy in trend_strategies:
+    print(f"  - {strategy.name}")</code></pre>
+            </div>
+
+            <h3>Klasse: <code>StrategyDefinition</code></h3>
+            <pre><code class="language-python">@dataclass
+class StrategyDefinition:
+    """Metadata for a hardcoded strategy."""
+
+    id: str                          # Unique ID (snake_case)
+    name: str                        # Display name
+    strategy_class: type             # Python class (BaseStrategy subclass)
+    strategy_type: str               # Type (trend_following, mean_reversion, etc.)
+    description: str                 # Human-readable description
+    risk_profile: str                # "conservative", "moderate", "aggressive"
+    timeframes: list[str]            # Recommended timeframes (e.g., ["1h", "4h"])
+    markets: list[str]               # Recommended markets (e.g., ["stocks", "crypto"])
+    metadata: dict[str, Any]         # Additional custom metadata</code></pre>
+        </section>
+
+        <section id="strategies">
+            <h2>📊 Strategie-Details</h2>
+
+            <h3>Trend Following Strategien (2)</h3>
+            <div class="accordion-header">
+                <span><strong>Trend Following Conservative</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>trend_following_conservative</code></li>
+                    <li><strong>Risk Profile:</strong> Conservative</li>
+                    <li><strong>Entry:</strong> ADX > 25, RSI 30-70, SMA alignment</li>
+                    <li><strong>Exit:</strong> RSI overbought/oversold, SMA reversal</li>
+                    <li><strong>Risk:</strong> 2% position, 2% SL, 6% TP</li>
+                </ul>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Trend Following Aggressive</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>trend_following_aggressive</code></li>
+                    <li><strong>Risk Profile:</strong> Aggressive</li>
+                    <li><strong>Entry:</strong> ADX > 30, RSI > 50, Strong trend</li>
+                    <li><strong>Exit:</strong> ADX < 20 or RSI extreme</li>
+                    <li><strong>Risk:</strong> 5% position, 3% SL, 9% TP</li>
+                </ul>
+            </div>
+
+            <h3>Mean Reversion Strategien (2)</h3>
+            <div class="accordion-header">
+                <span><strong>Mean Reversion Bollinger Bands</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>mean_reversion_bb</code></li>
+                    <li><strong>Entry:</strong> Price touches BB lower/upper band</li>
+                    <li><strong>Exit:</strong> Price crosses BB middle or opposite band</li>
+                    <li><strong>Risk:</strong> 2% position, 2% SL, 4% TP</li>
+                </ul>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Mean Reversion RSI</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>mean_reversion_rsi</code></li>
+                    <li><strong>Entry:</strong> RSI < 30 (oversold) or RSI > 70 (overbought)</li>
+                    <li><strong>Exit:</strong> RSI returns to 50 (mean)</li>
+                    <li><strong>Risk:</strong> 2% position, 2% SL, 4% TP</li>
+                </ul>
+            </div>
+
+            <h3>Breakout Strategien (2)</h3>
+            <div class="accordion-header">
+                <span><strong>Breakout Volatility</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>breakout_volatility</code></li>
+                    <li><strong>Entry:</strong> ATR spike + price breakout</li>
+                    <li><strong>Exit:</strong> ATR normalization or profit target</li>
+                    <li><strong>Risk:</strong> 3% position, 2.5% SL, 7.5% TP</li>
+                </ul>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Breakout Momentum</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <ul>
+                    <li><strong>ID:</strong> <code>breakout_momentum</code></li>
+                    <li><strong>Entry:</strong> Price breaks resistance + high volume</li>
+                    <li><strong>Exit:</strong> Momentum loss or resistance turned support breaks</li>
+                    <li><strong>Risk:</strong> 3% position, 2.5% SL, 7.5% TP</li>
+                </ul>
+            </div>
+
+            <h3>Weitere Strategien (3)</h3>
+            <p><strong>Momentum MACD:</strong> MACD crossover strategy with trend confirmation.</p>
+            <p><strong>Scalping Range:</strong> Quick trades within range-bound markets.</p>
+            <p><strong>Sideways Range Bounce:</strong> Range-bounce trading for consolidation phases.</p>
+        </section>
+
+        <section id="examples">
+            <h2>💡 Praktische Beispiele</h2>
+
+            <h3>Beispiel 1: Alle Strategien auflisten</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from src.core.tradingbot.strategies.catalog import StrategyCatalog
+
+catalog = StrategyCatalog()
+
+print("=== All Strategies ===")
+for strategy_id in catalog.list_strategies():
+    strategy = catalog.get_strategy(strategy_id)
+    print(f"{strategy_id:30s} - {strategy.name:40s} ({strategy.strategy_type})")</code></pre>
+            </div>
+
+            <h3>Beispiel 2: Strategien nach Typ gruppieren</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from collections import defaultdict
+
+strategies_by_type = defaultdict(list)
+
+for strategy_id in catalog.list_strategies():
+    strategy = catalog.get_strategy(strategy_id)
+    strategies_by_type[strategy.strategy_type].append(strategy)
+
+print("=== Strategies by Type ===")
+for stype, strategies in sorted(strategies_by_type.items()):
+    print(f"\n{stype.upper()} ({len(strategies)}):")
+    for strategy in strategies:
+        print(f"  - {strategy.name}")</code></pre>
+            </div>
+
+            <h3>Beispiel 3: Strategien nach Risk Profile filtern</h3>
+            <div class="code-block">
+                <pre><code class="language-python">def get_strategies_by_risk(catalog, risk_profile):
+    """Get all strategies with specific risk profile."""
+    matching = []
+    for strategy_id in catalog.list_strategies():
+        strategy = catalog.get_strategy(strategy_id)
+        if strategy.risk_profile == risk_profile:
+            matching.append(strategy)
+    return matching
+
+# Conservative Strategien finden
+conservative = get_strategies_by_risk(catalog, "conservative")
+print(f"Conservative strategies: {[s.name for s in conservative]}")</code></pre>
+            </div>
+
+            <h3>Beispiel 4: Custom Metadata nutzen</h3>
+            <div class="code-block">
+                <pre><code class="language-python">strategy = catalog.get_strategy("trend_following_conservative")
+
+# Metadata zugreifen
+print(f"Timeframes: {strategy.timeframes}")
+print(f"Markets: {strategy.markets}")
+print(f"Custom Metadata: {strategy.metadata}")
+
+# Prüfen ob Strategie für Crypto geeignet
+if "crypto" in strategy.markets:
+    print("✓ Strategy is suitable for crypto trading")</code></pre>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>Dokumentation</h3>
+                <ul>
+                    <li><a href="../index.html">Hauptseite</a></li>
+                    <li><a href="strategy-analyzer.html">Strategy Analyzer</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 OrderPilot-AI. Migration Framework Documentation.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/script.js"></script>
+</body>
+</html>

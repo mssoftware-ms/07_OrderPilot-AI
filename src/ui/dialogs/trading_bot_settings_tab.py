@@ -131,11 +131,25 @@ class TradingBotSettingsTab(QWidget):
         # Global action buttons
         button_layout = QHBoxLayout()
 
+        # NEUER BUTTON: Settings Bot (JSON Strategy Management)
+        self._strategy_settings_btn = QPushButton("⚙️ Settings Bot")
+        self._strategy_settings_btn.setStyleSheet(
+            "background-color: #ff6b35; color: white; font-weight: bold; padding: 8px 16px;"
+        )
+        self._strategy_settings_btn.setToolTip(
+            "JSON-basiertes Strategy Management:\n"
+            "- Strategien laden/löschen\n"
+            "- Live Regime-Anzeige\n"
+            "- Indikatorenset-Verwaltung"
+        )
+        self._strategy_settings_btn.clicked.connect(self._open_strategy_settings)
+        button_layout.addWidget(self._strategy_settings_btn)
+
+        button_layout.addStretch()
+
         self._reset_all_btn = QPushButton("Alle zurücksetzen")
         self._reset_all_btn.clicked.connect(self._reset_all)
         button_layout.addWidget(self._reset_all_btn)
-
-        button_layout.addStretch()
 
         self._apply_all_btn = QPushButton("Alle übernehmen")
         self._apply_all_btn.setStyleSheet(
@@ -164,6 +178,24 @@ class TradingBotSettingsTab(QWidget):
     def _on_settings_changed(self, settings: dict = None) -> None:
         """Handle settings change from any sub-widget."""
         self.settings_changed.emit()
+
+    def _open_strategy_settings(self) -> None:
+        """Open Strategy Settings Dialog (JSON Management)."""
+        try:
+            from src.ui.dialogs.strategy_settings_dialog import StrategySettingsDialog
+
+            dialog = StrategySettingsDialog(self)
+            dialog.exec()
+
+            logger.info("Strategy Settings Dialog opened")
+
+        except Exception as e:
+            logger.error(f"Failed to open Strategy Settings Dialog: {e}")
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Strategy Settings Dialog konnte nicht geöffnet werden:\n{e}"
+            )
 
     def _apply_all(self) -> None:
         """Apply all settings."""

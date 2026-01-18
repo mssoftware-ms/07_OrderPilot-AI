@@ -223,8 +223,8 @@ class JSONConfigGenerator:
             "stoch_k": {"type": "STOCH", "params": {"k_period": 14, "d_period": 3}},
             "stoch_d": {"type": "STOCH", "params": {"k_period": 14, "d_period": 3}},
             # Volume
-            "volume": {"type": "Volume", "params": {}},
-            "volume_ratio": {"type": "Volume", "params": {}},
+            "volume": {"type": "Volume", "params": {"window": 1}},  # Raw volume (window=1 means current bar)
+            "volume_ratio": {"type": "Volume", "params": {"window": 20}},  # Volume ratio vs 20-period average
             # Custom/Derived Indicators (map to base indicator type)
             "sma_alignment": {"type": "SMA", "params": {"period": 20}},  # Trend alignment from SMA
             "macd_hist": {"type": "MACD", "params": {"fast": 12, "slow": 26, "signal": 9}},  # MACD histogram

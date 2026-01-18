@@ -14,18 +14,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QDate, Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
+    QDateEdit,
     QDialog,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QTabWidget,
     QTableWidget,
@@ -118,6 +123,62 @@ class ValidationWorker(QThread):
             self.error.emit(str(e))
 
 
+class BacktestWorker(QThread):
+    """Background worker for full history backtesting."""
+
+    finished = pyqtSignal(object)  # Dict[str, Any] stats
+    error = pyqtSignal(str)
+    progress = pyqtSignal(str)
+
+    def __init__(
+        self,
+        config_path: str,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        initial_capital: float = 10000.0,
+        parent: Any = None
+    ) -> None:
+        super().__init__(parent)
+        self.config_path = config_path
+        self.symbol = symbol
+        self.start_date = start_date
+        self.end_date = end_date
+        self.initial_capital = initial_capital
+
+    def run(self) -> None:
+        try:
+            import json
+            from src.backtesting.engine import BacktestEngine
+            from src.backtesting.schema_types import TradingBotConfig
+
+            self.progress.emit("Loading strategy configuration...")
+            with open(self.config_path, 'r') as f:
+                config_data = json.load(f)
+            
+            config = TradingBotConfig(**config_data)
+            
+            engine = BacktestEngine()
+            
+            self.progress.emit(f"Loading data for {self.symbol}...")
+            # Note: Engine handles data loading from SQLite
+            
+            self.progress.emit("Running backtest simulation...")
+            results = engine.run(
+                config=config,
+                symbol=self.symbol,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                initial_capital=self.initial_capital
+            )
+            
+            self.finished.emit(results)
+            
+        except Exception as e:
+            logger.exception("Backtest failed")
+            self.error.emit(str(e))
+
+
 class EntryAnalyzerPopup(QDialog):
     """Popup dialog for Entry Analyzer results.
 
@@ -128,6 +189,7 @@ class EntryAnalyzerPopup(QDialog):
     - AI Copilot recommendations (Phase 5)
     - Walk-forward validation (Phase 4)
     - Report generation (Phase 4.5)
+    - Full History Backtesting (New)
     """
 
     analyze_requested = pyqtSignal()
@@ -136,18 +198,20 @@ class EntryAnalyzerPopup(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("🎯 Entry Analyzer - Visible Chart")
-        self.setMinimumSize(750, 650)
-        self.resize(850, 700)
+        self.setWindowTitle("🎯 Entry Analyzer & Backtester")
+        self.setMinimumSize(900, 750)
+        self.resize(1000, 800)
 
         self._result: AnalysisResult | None = None
         self._validation_result: Any = None
         self._copilot_response: Any = None
+        self._backtest_result: Any = None
         self._candles: list[dict] = []
         self._symbol: str = "UNKNOWN"
         self._timeframe: str = "1m"
         self._copilot_worker: CopilotWorker | None = None
         self._validation_worker: ValidationWorker | None = None
+        self._backtest_worker: BacktestWorker | None = None
 
         self._setup_ui()
 
@@ -161,17 +225,27 @@ class EntryAnalyzerPopup(QDialog):
         # Tab widget for different views
         self._tabs = QTabWidget()
 
-        # Tab 1: Analysis (entries + indicators)
+        # Tab 0: Backtest Setup (New)
+        setup_tab = QWidget()
+        self._setup_backtest_config_tab(setup_tab)
+        self._tabs.addTab(setup_tab, "⚙️ Backtest Setup")
+
+        # Tab 1: Analysis (entries + indicators) - Existing
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
-        self._tabs.addTab(analysis_tab, "📊 Analysis")
+        self._tabs.addTab(analysis_tab, "📊 Visible Range")
 
-        # Tab 2: AI Copilot
+        # Tab 2: Backtest Results (New)
+        bt_results_tab = QWidget()
+        self._setup_backtest_results_tab(bt_results_tab)
+        self._tabs.addTab(bt_results_tab, "📈 Backtest Results")
+
+        # Tab 3: AI Copilot
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
         self._tabs.addTab(ai_tab, "🤖 AI Copilot")
 
-        # Tab 3: Validation
+        # Tab 4: Validation
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, "✅ Validation")
@@ -181,6 +255,179 @@ class EntryAnalyzerPopup(QDialog):
         # Footer with actions
         footer = self._create_footer()
         layout.addWidget(footer)
+
+    def _setup_backtest_config_tab(self, tab: QWidget) -> None:
+        layout = QVBoxLayout(tab)
+        
+        # Strategy Selection
+        group_strat = QGroupBox("Strategy Configuration")
+        layout_strat = QHBoxLayout(group_strat)
+        
+        self._strategy_path_edit = QLineEdit()
+        self._strategy_path_edit.setPlaceholderText("Path to strategy JSON file...")
+        self._strategy_load_btn = QPushButton("📂 Load")
+        self._strategy_load_btn.clicked.connect(self._on_load_strategy_clicked)
+        
+        layout_strat.addWidget(self._strategy_path_edit)
+        layout_strat.addWidget(self._strategy_load_btn)
+        layout.addWidget(group_strat)
+        
+        # Data Selection
+        group_data = QGroupBox("Data Selection (Bitunix SQLite)")
+        layout_data = QGridLayout(group_data)
+        
+        layout_data.addWidget(QLabel("Symbol:"), 0, 0)
+        self._bt_symbol_combo = QComboBox()
+        self._bt_symbol_combo.addItems(["BTCUSDT", "ETHUSDT", "bitunix:BTCUSDT", "bitunix:ETHUSDT"])
+        self._bt_symbol_combo.setEditable(True)
+        layout_data.addWidget(self._bt_symbol_combo, 0, 1)
+        
+        layout_data.addWidget(QLabel("Start Date:"), 1, 0)
+        self._bt_start_date = QDateEdit()
+        self._bt_start_date.setCalendarPopup(True)
+        self._bt_start_date.setDate(QDate.currentDate().addDays(-30)) # Default last 30 days
+        layout_data.addWidget(self._bt_start_date, 1, 1)
+        
+        layout_data.addWidget(QLabel("End Date:"), 2, 0)
+        self._bt_end_date = QDateEdit()
+        self._bt_end_date.setCalendarPopup(True)
+        self._bt_end_date.setDate(QDate.currentDate())
+        layout_data.addWidget(self._bt_end_date, 2, 1)
+        
+        layout_data.addWidget(QLabel("Capital ($):"), 3, 0)
+        self._bt_capital = QSpinBox()
+        self._bt_capital.setRange(100, 1000000)
+        self._bt_capital.setValue(10000)
+        layout_data.addWidget(self._bt_capital, 3, 1)
+        
+        layout.addWidget(group_data)
+        
+        # Action
+        self._bt_run_btn = QPushButton("🚀 Run Backtest")
+        self._bt_run_btn.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 10px; background-color: #2563eb;")
+        self._bt_run_btn.clicked.connect(self._on_run_backtest_clicked)
+        layout.addWidget(self._bt_run_btn)
+        
+        self._bt_status_label = QLabel("Ready")
+        self._bt_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._bt_status_label)
+        
+        layout.addStretch()
+
+    def _setup_backtest_results_tab(self, tab: QWidget) -> None:
+        layout = QVBoxLayout(tab)
+        
+        # Summary Metrics
+        self._bt_summary_group = QGroupBox("Performance Summary")
+        layout_sum = QGridLayout(self._bt_summary_group)
+        
+        self._lbl_net_profit = QLabel("--")
+        self._lbl_net_profit.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        layout_sum.addWidget(QLabel("Net Profit:"), 0, 0)
+        layout_sum.addWidget(self._lbl_net_profit, 0, 1)
+        
+        self._lbl_win_rate = QLabel("--")
+        layout_sum.addWidget(QLabel("Win Rate:"), 1, 0)
+        layout_sum.addWidget(self._lbl_win_rate, 1, 1)
+        
+        self._lbl_profit_factor = QLabel("--")
+        layout_sum.addWidget(QLabel("Profit Factor:"), 0, 2)
+        layout_sum.addWidget(self._lbl_profit_factor, 0, 3)
+        
+        self._lbl_trades = QLabel("--")
+        layout_sum.addWidget(QLabel("Total Trades:"), 1, 2)
+        layout_sum.addWidget(self._lbl_trades, 1, 3)
+        
+        layout.addWidget(self._bt_summary_group)
+        
+        # Trade List
+        layout.addWidget(QLabel("Trade History:"))
+        self._bt_trades_table = QTableWidget()
+        self._bt_trades_table.setColumnCount(6)
+        self._bt_trades_table.setHorizontalHeaderLabels(["Entry Time", "Side", "Entry Price", "Exit Price", "PnL", "Reason"])
+        self._bt_trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self._bt_trades_table)
+
+    def _on_load_strategy_clicked(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Load Strategy JSON", str(Path.cwd()), "JSON Files (*.json)"
+        )
+        if file_path:
+            self._strategy_path_edit.setText(file_path)
+
+    def _on_run_backtest_clicked(self) -> None:
+        config_path = self._strategy_path_edit.text()
+        if not config_path or not Path(config_path).exists():
+            QMessageBox.warning(self, "Error", "Please select a valid strategy JSON file.")
+            return
+            
+        symbol = self._bt_symbol_combo.currentText()
+        start_date = datetime.combine(self._bt_start_date.date().toPyDate(), datetime.min.time())
+        end_date = datetime.combine(self._bt_end_date.date().toPyDate(), datetime.max.time())
+        capital = self._bt_capital.value()
+        
+        self._bt_run_btn.setEnabled(False)
+        self._bt_status_label.setText("Initializing Backtest...")
+        
+        self._backtest_worker = BacktestWorker(
+            config_path=config_path,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=float(capital),
+            parent=self
+        )
+        self._backtest_worker.progress.connect(self._bt_status_label.setText)
+        self._backtest_worker.finished.connect(self._on_backtest_finished)
+        self._backtest_worker.error.connect(self._on_backtest_error)
+        self._backtest_worker.start()
+
+    def _on_backtest_finished(self, results: dict) -> None:
+        self._backtest_result = results
+        self._bt_run_btn.setEnabled(True)
+        self._bt_status_label.setText("Backtest Complete")
+        
+        # Switch to results tab
+        self._tabs.setCurrentIndex(2)
+        
+        # Populate Results
+        if "error" in results:
+            QMessageBox.critical(self, "Backtest Error", results["error"])
+            return
+            
+        net_profit = results.get("net_profit", 0.0)
+        net_profit_pct = results.get("net_profit_pct", 0.0)
+        color = "green" if net_profit >= 0 else "red"
+        
+        self._lbl_net_profit.setText(f"${net_profit:,.2f} ({net_profit_pct:+.2%})")
+        self._lbl_net_profit.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: {color};")
+        
+        self._lbl_win_rate.setText(f"{results.get('win_rate', 0.0):.1%}")
+        self._lbl_profit_factor.setText(f"{results.get('profit_factor', 0.0):.2f}")
+        self._lbl_trades.setText(str(results.get("total_trades", 0)))
+        
+        # Fill trade table
+        trades = results.get("trades", [])
+        self._bt_trades_table.setRowCount(len(trades))
+        for row, t in enumerate(trades):
+            self._bt_trades_table.setItem(row, 0, QTableWidgetItem(t["entry_time"]))
+            self._bt_trades_table.setItem(row, 1, QTableWidgetItem(t["side"].upper()))
+            self._bt_trades_table.setItem(row, 2, QTableWidgetItem(f"{t['entry_price']:.2f}"))
+            self._bt_trades_table.setItem(row, 3, QTableWidgetItem(f"{t['exit_price']:.2f}" if t['exit_price'] else "--"))
+            
+            pnl_item = QTableWidgetItem(f"{t['pnl']:+.2f} ({t['pnl_pct']:+.2%})")
+            pnl_color = "green" if t["pnl"] > 0 else "red"
+            pnl_item.setForeground(Qt.GlobalColor.green if t["pnl"] > 0 else Qt.GlobalColor.red)
+            self._bt_trades_table.setItem(row, 4, pnl_item)
+            
+            self._bt_trades_table.setItem(row, 5, QTableWidgetItem(t["reason"]))
+
+    def _on_backtest_error(self, error: str) -> None:
+        self._bt_run_btn.setEnabled(True)
+        self._bt_status_label.setText("Error")
+        QMessageBox.critical(self, "Backtest Failed", error)
+
+
 
     def _create_header(self) -> QWidget:
         widget = QWidget()

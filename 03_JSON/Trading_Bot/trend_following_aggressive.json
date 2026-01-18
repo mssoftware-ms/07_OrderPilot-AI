@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "volume",
+      "type": "Volume",
+      "params": {
+        "window": 20
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "trend_following_regime",
+      "name": "Trend Following Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 30.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 10.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.2
+            }
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "trend_following_aggressive",
+      "name": "trend_following_aggressive",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 30.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 10.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.2
+            }
+          }
+        ]
+      },
+      "exit": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 0.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss": 0.02,
+        "take_profit": 0.06
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_trend_following_aggressive",
+      "name": "trend_following_aggressive Set",
+      "strategies": [
+        {
+          "strategy_id": "trend_following_aggressive"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_trend_following_aggressive",
+      "match": {
+        "all_of": [
+          "trend_following_regime"
+        ]
+      }
+    }
+  ]
+}

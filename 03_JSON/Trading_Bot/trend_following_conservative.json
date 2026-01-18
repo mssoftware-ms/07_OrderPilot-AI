@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {
+      "id": "sma20",
+      "type": "SMA",
+      "params": {
+        "period": 20
+      }
+    },
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "macd12_26_9",
+      "type": "MACD",
+      "params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "trend_following_regime",
+      "name": "Trend Following Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "sma20",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 25.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 30.0,
+              "max": 70.0
+            }
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "trend_following_conservative",
+      "name": "trend_following_conservative",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "sma20",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 25.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "eq",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 30.0,
+              "max": 70.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "sma20",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 20
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss": 0.025,
+        "take_profit": 0.06
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_trend_following_conservative",
+      "name": "trend_following_conservative Set",
+      "strategies": [
+        {
+          "strategy_id": "trend_following_conservative"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_trend_following_conservative",
+      "match": {
+        "all_of": [
+          "trend_following_regime"
+        ]
+      }
+    }
+  ]
+}

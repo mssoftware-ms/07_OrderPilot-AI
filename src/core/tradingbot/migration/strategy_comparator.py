@@ -304,9 +304,10 @@ class StrategyComparator:
         Returns:
             ConditionDiff if conditions differ, None if they match
         """
-        # Compare indicator
-        json_indicator = json_cond.left.indicator_id
-        if json_indicator != hardcoded_cond.indicator:
+        # Compare indicator (normalize both sides)
+        json_indicator = self._normalize_indicator_id(json_cond.left.indicator_id)
+        hardcoded_indicator = self._normalize_indicator_id(hardcoded_cond.indicator)
+        if json_indicator != hardcoded_indicator:
             return ConditionDiff(
                 field=field,
                 index=index,
@@ -424,8 +425,9 @@ class StrategyComparator:
         Returns:
             Tuple of (indicators_match, missing_indicators, extra_indicators)
         """
-        json_indicators = {ind.id for ind in json_config.indicators}
-        hardcoded_indicators = {dep.name for dep in hardcoded_analysis.required_indicators}
+        # Normalize both sides for comparison
+        json_indicators = {self._normalize_indicator_id(ind.id) for ind in json_config.indicators}
+        hardcoded_indicators = {self._normalize_indicator_id(dep.name) for dep in hardcoded_analysis.required_indicators}
 
         missing = list(hardcoded_indicators - json_indicators)
         extra = list(json_indicators - hardcoded_indicators)
@@ -567,3 +569,62 @@ class StrategyComparator:
             result.notes.append("Strategies are somewhat similar (>75% match)")
         else:
             result.notes.append("Strategies differ significantly (<75% match)")
+
+    def _normalize_indicator_id(self, indicator_name: str) -> str:
+        """Normalize indicator name to standard ID for comparison.
+        
+        Args:
+            indicator_name: Raw indicator name from hardcoded or JSON
+            
+        Returns:
+            Normalized indicator ID
+        """
+        # Same mapping as JSONConfigGenerator
+        id_map = {
+            # RSI
+            "rsi": "rsi14",
+            "rsi_14": "rsi14",
+            # ADX
+            "adx": "adx14",
+            "adx_14": "adx14",
+            # SMA
+            "sma_fast": "sma20",
+            "sma_20": "sma20",
+            "sma_slow": "sma50",
+            "sma_50": "sma50",
+            # EMA
+            "ema_fast": "ema12",
+            "ema_12": "ema12",
+            "ema_slow": "ema26",
+            "ema_26": "ema26",
+            # ATR
+            "atr": "atr14",
+            "atr_14": "atr14",
+            # MACD
+            "macd": "macd12_26_9",
+            "macd_signal": "macd_signal9",
+            # Bollinger Bands
+            "bb_upper": "bbands20_upper",
+            "bb_lower": "bbands20_lower",
+            "bb_middle": "bbands20_middle",
+            "bb_width": "bbands20_width",
+            # Stochastic
+            "stoch_k": "stoch14_k",
+            "stoch_d": "stoch14_d",
+            # Volume
+            "volume": "volume",
+            # Custom/Derived Indicators
+            "sma_alignment": "sma20",
+            "macd_hist": "macd12_26_9",
+            "bb_pct": "bbands20_middle",
+            "di_spread": "adx14",
+            "rsi_momentum": "rsi14",
+            "rsi_divergence": "rsi14",
+            "sma_distance": "sma20",
+            "price_vs_sma20": "sma20",
+            "price_position": "sma20",
+            "atr_ratio": "atr14",
+            "volume_ratio": "volume",
+        }
+        
+        return id_map.get(indicator_name, indicator_name)

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Bot Core - OrderPilot-AI Help</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <h1>OrderPilot-AI Help <span class="version-badge">v1.0.0</span></h1>
+            </div>
+        </div>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="../index.html">← Zurück zur Übersicht</a></li>
+            <li><a href="#overview">Übersicht</a></li>
+            <li><a href="#architecture">Architektur</a></li>
+            <li><a href="#usage">Nutzung</a></li>
+            <li><a href="#examples">Beispiele</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <section id="overview">
+            <h2>🤖 Trading Bot Core - Übersicht</h2>
+
+            <div class="alert info">
+                <strong>Zweck:</strong> Das Trading Bot Core System ist die Ausführungsengine, die JSON-Konfigurationen lädt, Strategien instanziiert und Live-/Paper-Trading durchführt.
+            </div>
+
+            <h3>Kernkomponenten</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚙️</div>
+                    <h3>Engine</h3>
+                    <p>Lädt JSON-Configs, initialisiert Strategien, führt Trading-Loop aus.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <h3>Strategy Executor</h3>
+                    <p>Evaluiert Entry/Exit-Conditions, sendet Orders an Broker.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Regime Detection</h3>
+                    <p>Erkennt Marktregimes, routet zu passenden Strategy Sets.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Indicator Engine</h3>
+                    <p>Berechnet technische Indikatoren aus Marktdaten.</p>
+                </div>
+            </div>
+
+            <h3>Architektur</h3>
+            <pre><code>TradingBot (Main Engine)
+├── ConfigLoader           # Lädt & validiert JSON
+├── IndicatorEngine        # Berechnet Indikatoren
+├── RegimeDetector         # Erkennt Marktregimes
+├── StrategyRouter         # Routet zu passenden Strategien
+├── StrategyExecutor       # Führt Strategien aus
+└── BrokerConnector        # Sendet Orders (Alpaca/etc)</code></pre>
+        </section>
+
+        <section id="architecture">
+            <h2>🏗️ Architektur</h2>
+
+            <h3>Trading-Loop</h3>
+            <div class="workflow">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Market Data Update</h3>
+                        <p>Neue Candlestick-Daten vom Broker empfangen.</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Indicator Calculation</h3>
+                        <p>Alle benötigten Indikatoren berechnen (RSI, SMA, ADX, etc.).</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Regime Detection</h3>
+                        <p>Aktuelles Marktregime ermitteln (Trend/Range/Volatility).</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Strategy Routing</h3>
+                        <p>Passende Strategien für aktuelles Regime auswählen.</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Strategy Execution</h3>
+                        <p>Entry/Exit-Conditions evaluieren, Orders generieren.</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>Order Management</h3>
+                        <p>Orders an Broker senden, Positions tracken, Risk Management.</p>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Config → Execution Flow</h3>
+            <pre><code class="language-python"># 1. Config laden
+config = ConfigLoader().load_config("config/strategy.json")
+
+# 2. Bot initialisieren
+bot = TradingBot(config)
+
+# 3. Indicators registrieren
+for indicator in config.indicators:
+    bot.register_indicator(indicator)
+
+# 4. Strategien registrieren
+for strategy in config.strategies:
+    bot.register_strategy(strategy)
+
+# 5. Regime-Routing konfigurieren
+for routing in config.routing:
+    bot.configure_routing(routing)
+
+# 6. Trading starten
+bot.start()  # Startet Event-Loop</code></pre>
+        </section>
+
+        <section id="usage">
+            <h2>💻 Nutzung</h2>
+
+            <h3>Basic Setup</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from src.core.tradingbot.bot import TradingBot
+from src.core.tradingbot.config.config_loader import ConfigLoader
+
+# Config laden
+loader = ConfigLoader()
+config = loader.load_config("config/bot_configs/production.json")
+
+# Bot initialisieren
+bot = TradingBot(
+    config=config,
+    mode="paper",  # oder "live"
+    broker="alpaca"
+)
+
+# Event-Callbacks registrieren
+bot.on_trade(lambda trade: print(f"Trade: {trade}"))
+bot.on_position_update(lambda pos: print(f"Position: {pos}"))
+bot.on_error(lambda error: print(f"Error: {error}"))
+
+# Bot starten
+print("Starting bot...")
+bot.start()  # Blocking call
+
+# Bot stoppen (z.B. via Signal Handler)
+bot.stop()
+bot.wait_for_shutdown()</code></pre>
+            </div>
+
+            <h3>Config-Switching zur Laufzeit</h3>
+            <div class="code-block">
+                <pre><code class="language-python"># Bot läuft mit Config A
+bot = TradingBot(config_a, mode="paper")
+bot.start_async()
+
+# Nach 1 Stunde: Wechsel zu Config B
+new_config = loader.load_config("config/config_b.json")
+bot.reload_config(new_config)  # Hot-reload
+
+# Strategien wurden getauscht ohne Bot-Neustart</code></pre>
+            </div>
+
+            <h3>Monitoring & Logging</h3>
+            <div class="code-block">
+                <pre><code class="language-python"># Detailliertes Logging aktivieren
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Bot mit Metriken
+bot = TradingBot(config, mode="paper", enable_metrics=True)
+
+# Metriken abfragen
+print(f"Active Positions: {bot.metrics.active_positions}")
+print(f"Total Trades: {bot.metrics.total_trades}")
+print(f"Win Rate: {bot.metrics.win_rate:.1%}")
+print(f"Sharpe Ratio: {bot.metrics.sharpe_ratio:.2f}")</code></pre>
+            </div>
+        </section>
+
+        <section id="examples">
+            <h2>💡 Praktische Beispiele</h2>
+
+            <h3>Beispiel 1: Paper Trading mit Single Strategy</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from src.core.tradingbot.bot import TradingBot
+from src.core.tradingbot.config.config_loader import ConfigLoader
+
+# Config laden (Trend Following Conservative)
+config = loader.load_config("config/trend_following_conservative.json")
+
+# Bot im Paper-Mode
+bot = TradingBot(config, mode="paper", broker="alpaca")
+
+# Callbacks
+bot.on_signal(lambda sig: print(f"Signal: {sig.type} at {sig.price}"))
+bot.on_trade(lambda trade: print(f"Executed: {trade}"))
+
+# Start
+bot.start()  # Ctrl+C zum Stoppen</code></pre>
+            </div>
+
+            <h3>Beispiel 2: Multi-Strategy mit Regime Routing</h3>
+            <div class="code-block">
+                <pre><code class="language-python"># Config mit 3 Strategien + Routing
+config = loader.load_config("config/multi_strategy.json")
+# - Trend Strategy (wenn ADX > 25)
+# - Range Strategy (wenn ADX < 20)
+# - Volatility Strategy (wenn ATR spike)
+
+bot = TradingBot(config, mode="paper")
+
+# Regime-Wechsel tracken
+bot.on_regime_change(lambda regime: print(f"Regime changed to: {regime}"))
+
+bot.start()</code></pre>
+            </div>
+
+            <h3>Beispiel 3: Backtesting-Mode</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from datetime import datetime, timedelta
+
+# Historische Daten
+start_date = datetime.now() - timedelta(days=90)
+end_date = datetime.now()
+
+# Backtest konfigurieren
+bot = TradingBot(
+    config=config,
+    mode="backtest",
+    start_date=start_date,
+    end_date=end_date,
+    initial_capital=10000
+)
+
+# Backtest ausführen
+results = bot.run_backtest()
+
+# Ergebnisse
+print(f"Total Return: {results.total_return:.2%}")
+print(f"Sharpe Ratio: {results.sharpe_ratio:.2f}")
+print(f"Max Drawdown: {results.max_drawdown:.2%}")
+print(f"Win Rate: {results.win_rate:.2%}")
+print(f"Total Trades: {results.total_trades}")</code></pre>
+            </div>
+
+            <h3>Beispiel 4: Live Trading mit Risk Limits</h3>
+            <div class="code-block">
+                <pre><code class="language-python"># ACHTUNG: LIVE TRADING - Echtes Geld!
+config = loader.load_config("config/production.json")
+
+bot = TradingBot(
+    config=config,
+    mode="live",  # !!! LIVE !!!
+    broker="alpaca",
+    # Risk Limits
+    max_position_size=0.02,  # Max 2% pro Trade
+    max_total_exposure=0.20,  # Max 20% total
+    max_daily_loss=0.05,      # Max 5% daily loss
+    enable_kill_switch=True   # Auto-stop bei Limits
+)
+
+# Critical Error Handler
+bot.on_critical_error(lambda e: bot.emergency_close_all())
+
+# Start nur nach manueller Bestätigung
+if input("Start LIVE trading? (yes/no): ") == "yes":
+    bot.start()
+else:
+    print("Aborted.")</code></pre>
+            </div>
+        </section>
+
+        <section id="safety">
+            <h2>🛡️ Safety & Best Practices</h2>
+
+            <div class="alert error">
+                <strong>WARNUNG - Live Trading:</strong><br>
+                - Immer zuerst im Paper-Mode testen<br>
+                - Risk Limits konfigurieren<br>
+                - Kill-Switch aktivieren<br>
+                - Niemals ohne Monitoring laufen lassen
+            </div>
+
+            <div class="alert warning">
+                <strong>Position Sizing:</strong><br>
+                - Max 2-5% des Kapitals pro Trade<br>
+                - Max 20-30% total Exposure<br>
+                - Anpassen an Volatilität (ATR-basiert)
+            </div>
+
+            <div class="alert info">
+                <strong>Config Validation:</strong><br>
+                - Configs immer validieren vor Live-Use<br>
+                - Compare mit hardcoded für Equivalence<br>
+                - Backtest vor Deployment
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>Dokumentation</h3>
+                <ul>
+                    <li><a href="../index.html">Hauptseite</a></li>
+                    <li><a href="config-loader.html">Config Loader</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 OrderPilot-AI. Migration Framework Documentation.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/script.js"></script>
+</body>
+</html>

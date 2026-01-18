@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config Loader & Validator - OrderPilot-AI Help</title>
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <h1>OrderPilot-AI Help <span class="version-badge">v1.0.0</span></h1>
+            </div>
+        </div>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="../index.html">← Zurück zur Übersicht</a></li>
+            <li><a href="#overview">Übersicht</a></li>
+            <li><a href="#api">API</a></li>
+            <li><a href="#validation">Validierung</a></li>
+            <li><a href="#examples">Beispiele</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <section id="overview">
+            <h2>📁 Config Loader & Validator - Übersicht</h2>
+
+            <div class="alert info">
+                <strong>Zweck:</strong> Der ConfigLoader lädt JSON-Konfigurationsdateien, validiert sie gegen das Pydantic-Schema und gibt typsichere TradingBotConfig-Objekte zurück.
+            </div>
+
+            <h3>Hauptfunktionen</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">✓</div>
+                    <h3>Schema Validation</h3>
+                    <p>Pydantic-basierte Validierung aller Felder und Typen.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Type Safety</h3>
+                    <p>Typsichere Config-Objekte mit vollständigem IDE-Support.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3>Error Reporting</h3>
+                    <p>Detaillierte Fehlermeldungen bei Validierungsfehlern.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🌍</div>
+                    <h3>UTF-8 Support</h3>
+                    <p>Korrekte Verarbeitung von Umlauten und Sonderzeichen.</p>
+                </div>
+            </div>
+
+            <h3>Validierungs-Pipeline</h3>
+            <div class="workflow">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>JSON Parsing</h3>
+                        <p>Datei laden und als Dict parsen (UTF-8).</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Schema Validation</h3>
+                        <p>Pydantic validiert alle Felder gegen TradingBotConfig Model.</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Business Logic Checks</h3>
+                        <p>Custom Validators prüfen Konsistenz (z.B. Strategy-IDs existieren).</p>
+                    </div>
+                </div>
+
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Object Creation</h3>
+                        <p>Typsicheres TradingBotConfig-Objekt zurückgeben.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="api">
+            <h2>🔧 API Dokumentation</h2>
+
+            <h3>Klasse: <code>ConfigLoader</code></h3>
+
+            <div class="accordion-header">
+                <span><strong>load_config(config_path: Path | str) → TradingBotConfig</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Beschreibung:</strong> Lädt und validiert eine JSON-Config-Datei.</p>
+                <p><strong>Parameter:</strong></p>
+                <ul>
+                    <li><code>config_path</code>: Pfad zur JSON-Datei</li>
+                </ul>
+                <p><strong>Rückgabe:</strong> <code>TradingBotConfig</code> - Validiertes Config-Objekt</p>
+                <p><strong>Exceptions:</strong></p>
+                <ul>
+                    <li><code>FileNotFoundError</code>: Datei existiert nicht</li>
+                    <li><code>json.JSONDecodeError</code>: Ungültiges JSON-Format</li>
+                    <li><code>pydantic.ValidationError</code>: Schema-Validierung fehlgeschlagen</li>
+                    <li><code>ConfigLoadError</code>: Allgemeiner Ladefehler</li>
+                </ul>
+                <pre><code class="language-python">from src.core.tradingbot.config.config_loader import ConfigLoader
+
+loader = ConfigLoader()
+config = loader.load_config("config/my_strategy.json")
+
+# Typsicherer Zugriff
+print(f"Schema Version: {config.schema_version}")
+print(f"Indicators: {len(config.indicators)}")
+print(f"Strategies: {len(config.strategies)}")</code></pre>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>validate_config_dict(config_dict: dict) → TradingBotConfig</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Beschreibung:</strong> Validiert ein bereits geladenes Dict.</p>
+                <p><strong>Parameter:</strong></p>
+                <ul>
+                    <li><code>config_dict</code>: Config als Python Dict</li>
+                </ul>
+                <p><strong>Rückgabe:</strong> <code>TradingBotConfig</code></p>
+                <pre><code class="language-python">import json
+
+# JSON manuell laden
+with open("config.json") as f:
+    config_dict = json.load(f)
+
+# Nur validieren
+config = loader.validate_config_dict(config_dict)</code></pre>
+            </div>
+
+            <h3>Klasse: <code>TradingBotConfig</code> (Pydantic Model)</h3>
+            <pre><code class="language-python">class TradingBotConfig(BaseModel):
+    schema_version: str
+    indicators: list[IndicatorDefinition]
+    regimes: list[RegimeDefinition]
+    strategies: list[StrategyDefinition]
+    strategy_sets: list[StrategySet]
+    routing: list[RoutingRule]
+
+    # Custom Validators
+    @validator("schema_version")
+    def validate_schema_version(cls, v):
+        if not v.startswith("1."):
+            raise ValueError("Only schema version 1.x supported")
+        return v
+
+    @validator("strategies")
+    def validate_unique_strategy_ids(cls, v):
+        ids = [s.id for s in v]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate strategy IDs")
+        return v</code></pre>
+        </section>
+
+        <section id="validation">
+            <h2>✓ Validierungs-Regeln</h2>
+
+            <h3>Pflichtfelder</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feld</th>
+                        <th>Typ</th>
+                        <th>Regel</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>schema_version</code></td><td>str</td><td>Muss mit "1." beginnen</td></tr>
+                    <tr><td><code>indicators</code></td><td>list</td><td>Mindestens 1 Indicator (wenn Strategies vorhanden)</td></tr>
+                    <tr><td><code>strategies</code></td><td>list</td><td>Mindestens 1 Strategy</td></tr>
+                    <tr><td><code>regimes</code></td><td>list</td><td>Optional (kann leer sein)</td></tr>
+                    <tr><td><code>strategy_sets</code></td><td>list</td><td>Optional (kann leer sein)</td></tr>
+                    <tr><td><code>routing</code></td><td>list</td><td>Optional (kann leer sein)</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Indicator Validation</h3>
+            <div class="code-block">
+                <pre><code class="language-python">class IndicatorDefinition(BaseModel):
+    id: str                          # Unique ID (z.B. "rsi14")
+    type: IndicatorType              # Enum: RSI, SMA, EMA, ...
+    params: dict[str, Any]           # Nicht leer!
+
+    @validator("id")
+    def validate_id(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Indicator ID cannot be empty")
+        return v
+
+    @validator("params")
+    def validate_params(cls, v):
+        if not v:
+            raise ValueError("Indicator params cannot be empty")
+        return v</code></pre>
+            </div>
+
+            <h3>Strategy Validation</h3>
+            <div class="code-block">
+                <pre><code class="language-python">class StrategyDefinition(BaseModel):
+    id: str
+    name: str
+    entry: ConditionGroup
+    exit: ConditionGroup
+    risk: RiskSettings
+
+    @validator("id")
+    def validate_id(cls, v):
+        # Snake_case only
+        if not re.match(r'^[a-z_]+$', v):
+            raise ValueError("Strategy ID must be snake_case")
+        return v</code></pre>
+            </div>
+
+            <h3>Condition Validation</h3>
+            <div class="code-block">
+                <pre><code class="language-python">class Condition(BaseModel):
+    left: IndicatorRef
+    op: Operator                     # Enum: GT, LT, GTE, LTE, EQ, NE, BETWEEN
+    right: Value | IndicatorRef | Range
+
+    @validator("op")
+    def validate_op(cls, v, values):
+        # "between" requires Range
+        if v == Operator.BETWEEN and not isinstance(values.get('right'), Range):
+            raise ValueError("BETWEEN operator requires Range")
+        return v</code></pre>
+            </div>
+        </section>
+
+        <section id="examples">
+            <h2>💡 Praktische Beispiele</h2>
+
+            <h3>Beispiel 1: Basic Config Loading</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from src.core.tradingbot.config.config_loader import ConfigLoader
+from pydantic import ValidationError
+
+loader = ConfigLoader()
+
+try:
+    config = loader.load_config("config/my_strategy.json")
+    print(f"✓ Config loaded successfully")
+    print(f"  Schema: {config.schema_version}")
+    print(f"  Indicators: {len(config.indicators)}")
+    print(f"  Strategies: {len(config.strategies)}")
+
+except FileNotFoundError:
+    print("❌ Config file not found")
+except ValidationError as e:
+    print(f"❌ Validation failed:\n{e}")
+except Exception as e:
+    print(f"❌ Error: {e}")</code></pre>
+            </div>
+
+            <h3>Beispiel 2: Batch Validation</h3>
+            <div class="code-block">
+                <pre><code class="language-python">from pathlib import Path
+
+config_dir = Path("config/migrated")
+loader = ConfigLoader()
+
+valid_configs = []
+invalid_configs = []
+
+for config_file in config_dir.glob("*.json"):
+    try:
+        config = loader.load_config(config_file)
+        valid_configs.append(config_file.name)
+    except ValidationError as e:
+        invalid_configs.append((config_file.name, str(e)))
+
+print(f"✓ Valid: {len(valid_configs)}/{len(list(config_dir.glob('*.json')))}")
+print(f"❌ Invalid: {len(invalid_configs)}")
+
+for filename, error in invalid_configs:
+    print(f"\n{filename}:")
+    print(f"  {error}")</code></pre>
+            </div>
+
+            <h3>Beispiel 3: Typsicherer Zugriff</h3>
+            <div class="code-block">
+                <pre><code class="language-python">config = loader.load_config("config/trend_strategy.json")
+
+# Indicators iterieren (typsicher!)
+for indicator in config.indicators:
+    print(f"Indicator: {indicator.id}")
+    print(f"  Type: {indicator.type}")
+    print(f"  Params: {indicator.params}")
+
+# Strategien iterieren
+for strategy in config.strategies:
+    print(f"\nStrategy: {strategy.name}")
+    print(f"  ID: {strategy.id}")
+
+    # Entry Conditions
+    if strategy.entry.all:
+        print(f"  Entry Conditions ({len(strategy.entry.all)}):")
+        for cond in strategy.entry.all:
+            print(f"    - {cond.left.indicator_id} {cond.op} ...")
+
+    # Risk Parameters
+    print(f"  Risk:")
+    print(f"    - Position Size: {strategy.risk.position_size * 100}%")
+    print(f"    - Stop Loss: {strategy.risk.stop_loss * 100}%")
+    print(f"    - Take Profit: {strategy.risk.take_profit * 100}%")</code></pre>
+            </div>
+
+            <h3>Beispiel 4: Validierung ohne Datei</h3>
+            <div class="code-block">
+                <pre><code class="language-python"># Programmatisch generierte Config
+config_dict = {
+    "schema_version": "1.0.0",
+    "indicators": [
+        {"id": "rsi14", "type": "RSI", "params": {"period": 14}}
+    ],
+    "regimes": [],
+    "strategies": [
+        {
+            "id": "my_strategy",
+            "name": "My Strategy",
+            "entry": {"all": [...]},
+            "exit": {"all": [...]},
+            "risk": {
+                "position_size": 0.02,
+                "stop_loss": 0.02,
+                "take_profit": 0.06
+            }
+        }
+    ],
+    "strategy_sets": [],
+    "routing": []
+}
+
+# Validieren
+try:
+    config = loader.validate_config_dict(config_dict)
+    print("✓ Config valid!")
+except ValidationError as e:
+    print(f"❌ Invalid: {e}")</code></pre>
+            </div>
+        </section>
+
+        <section id="errors">
+            <h2>⚠️ Häufige Validierungsfehler</h2>
+
+            <div class="accordion-header">
+                <span><strong>Fehler: "Input should be 'RSI', 'SMA', ..."</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Ursache:</strong> Indicator-Typ ist nicht in UPPERCASE oder ungültig.</p>
+                <p><strong>Lösung:</strong></p>
+                <pre><code class="language-python"># ❌ FALSCH
+{"type": "rsi", ...}
+
+# ✅ RICHTIG
+{"type": "RSI", ...}</code></pre>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Fehler: "Field required"</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Ursache:</strong> Pflichtfeld fehlt in der Config.</p>
+                <p><strong>Häufig vergessene Felder:</strong></p>
+                <ul>
+                    <li><code>schema_version</code></li>
+                    <li><code>strategy.id</code></li>
+                    <li><code>strategy.risk.position_size</code></li>
+                    <li><code>indicator.params</code></li>
+                </ul>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Fehler: "Duplicate strategy IDs"</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Ursache:</strong> Zwei Strategien haben die gleiche ID.</p>
+                <p><strong>Lösung:</strong> Jede Strategy braucht eine unique ID.</p>
+            </div>
+
+            <div class="accordion-header">
+                <span><strong>Fehler: "Indicator params cannot be empty"</strong></span>
+            </div>
+            <div class="accordion-content" style="display: none;">
+                <p><strong>Ursache:</strong> <code>"params": {}</code> ist nicht erlaubt.</p>
+                <p><strong>Lösung:</strong></p>
+                <pre><code class="language-python"># ❌ FALSCH
+{"id": "volume", "type": "Volume", "params": {}}
+
+# ✅ RICHTIG
+{"id": "volume", "type": "Volume", "params": {"window": 1}}</code></pre>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>Dokumentation</h3>
+                <ul>
+                    <li><a href="../index.html">Hauptseite</a></li>
+                    <li><a href="json-generator.html">JSON Generator</a></li>
+                    <li><a href="strategy-comparator.html">Strategy Comparator</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 OrderPilot-AI. Migration Framework Documentation.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/script.js"></script>
+</body>
+</html>

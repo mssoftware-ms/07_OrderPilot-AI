@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {
+      "id": "sma20",
+      "type": "SMA",
+      "params": {
+        "period": 20
+      }
+    },
+    {
+      "id": "macd12_26_9",
+      "type": "MACD",
+      "params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      }
+    },
+    {
+      "id": "volume",
+      "type": "Volume",
+      "params": {
+        "window": 20
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "breakout_regime",
+      "name": "Breakout Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "sma20",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 20.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.0
+            }
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "breakout_momentum",
+      "name": "breakout_momentum",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "sma20",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 20.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "macd12_26_9",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss": 0.025,
+        "take_profit": 0.06
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_breakout_momentum",
+      "name": "breakout_momentum Set",
+      "strategies": [
+        {
+          "strategy_id": "breakout_momentum"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_breakout_momentum",
+      "match": {
+        "all_of": [
+          "breakout_regime"
+        ]
+      }
+    }
+  ]
+}
