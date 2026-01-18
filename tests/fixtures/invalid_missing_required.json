@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "indicators": [
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {"period": 14}
+    }
+  ],
+  "regimes": []
+}

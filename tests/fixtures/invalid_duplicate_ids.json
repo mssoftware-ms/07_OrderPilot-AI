@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "indicators": [
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {"period": 14}
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {"period": 21}
+    }
+  ],
+  "regimes": [
+    {
+      "id": "trending",
+      "name": "Trending",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "rsi14", "field": "value"},
+            "op": "gt",
+            "right": {"value": 60}
+          }
+        ]
+      }
+    }
+  ],
+  "strategies": [
+    {
+      "id": "trend",
+      "name": "Trend"
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set1",
+      "strategies": [
+        {
+          "strategy_id": "trend"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set1",
+      "match": {
+        "all_of": ["trending"]
+      }
+    }
+  ]
+}

@@ -230,3 +230,49 @@ class ConfigLoader:
 
         logger.info(f"Loaded {len(configs)} valid configs from {directory}")
         return configs
+
+    def save_config(
+        self,
+        config: TradingBotConfig,
+        output_path: Path | str,
+        indent: int = 2,
+        validate: bool = True
+    ) -> None:
+        """Save configuration to JSON file.
+
+        Args:
+            config: TradingBotConfig instance to save
+            output_path: Target JSON file path
+            indent: JSON indentation (default: 2)
+            validate: Validate before saving (default: True)
+
+        Raises:
+            ConfigLoadError: If validation fails or file write fails
+        """
+        output_path = Path(output_path)
+
+        # Optional validation before saving
+        if validate:
+            try:
+                # Convert to dict, validate against schema
+                config_dict = config.model_dump(mode="json", exclude_none=True)
+                jsonschema.validate(instance=config_dict, schema=self.schema)
+                logger.debug("Pre-save validation passed")
+            except jsonschema.ValidationError as e:
+                raise ConfigLoadError(
+                    f"Config validation failed before save: {e.message}"
+                ) from e
+
+        # Save to file
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            config_json = config.model_dump_json(
+                indent=indent,
+                exclude_none=True
+            )
+            output_path.write_text(config_json, encoding="utf-8")
+            logger.info(f"Saved config to {output_path}")
+        except Exception as e:
+            raise ConfigLoadError(
+                f"Failed to write config to {output_path}: {e}"
+            ) from e
