@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/trading-bot-config.schema.json",
+  "title": "Trading Bot Configuration Schema",
+  "description": "JSON Schema für die Konfiguration von Trading-Bot Indikatoren, Regimes und Strategien.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "indicators",
+    "regimes",
+    "strategies",
+    "strategy_sets",
+    "routing"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema-/Konfigurations-Versionskennung für Kompatibilität."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Metadaten zur Konfiguration (Autor, Erstellungsdatum, Tags, Notizen, etc.).",
+      "properties": {
+        "author": {
+          "type": "string",
+          "description": "Autor oder Ersteller der Konfiguration."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Erstellungs- bzw. Zeitstempel der Konfiguration."
+        },
+        "tags": {
+          "type": "array",
+          "description": "Liste von Schlagwörtern/Tags für diese Konfiguration.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Freitext-Notizen oder Beschreibung der Konfiguration."
+        },
+        "dataset_id": {
+          "type": "string",
+          "description": "Identifier des Datensatzes/Marktumfelds (z.B. für Backtests)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "indicators": {
+      "type": "array",
+      "description": "Liste der Indikator-Definitionen, die in Bedingungen referenziert werden können.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "params"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutiger Bezeichner für den Indikator (wird in Bedingungen referenziert)."
+          },
+          "type": {
+            "type": "string",
+            "description": "Indikator-Typ/Name (z.B. RSI, SMA, MACD, ATR, Volume ...)."
+          },
+          "params": {
+            "type": "object",
+            "description": "Parameter des Indikators (z.B. Periodenlänge, etc.).",
+            "additionalProperties": true
+          },
+          "timeframe": {
+            "type": "string",
+            "description": "Optionaler Zeitraum/Timeframe des Indikators (z.B. '5m', '1h', '1d'; wenn nicht angegeben, gilt der Standard-Zeitraum)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "regimes": {
+      "type": "array",
+      "description": "Definitionen von Marktregimes (Marktphasen) mit Aktivierungsbedingungen.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "conditions"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutiger Regime-Bezeichner."
+          },
+          "name": {
+            "type": "string",
+            "description": "Anzeigename des Regimes (für Logging/Dokumentation)."
+          },
+          "conditions": {
+            "type": "object",
+            "description": "Bedingungen, unter denen dieses Regime als 'aktiv' gilt.",
+            "properties": {
+              "all": {
+                "type": "array",
+                "description": "Alle Bedingungen in dieser Liste müssen erfüllt sein (logisches UND).",
+                "items": { "$ref": "#/$defs/Condition" }
+              },
+              "any": {
+                "type": "array",
+                "description": "Mindestens eine der Bedingungen in dieser Liste muss erfüllt sein (logisches ODER).",
+                "items": { "$ref": "#/$defs/Condition" }
+              }
+            },
+            "additionalProperties": false
+          },
+          "priority": {
+            "type": "number",
+            "description": "Optionale Priorität des Regimes (höherer Wert = wichtiger bei Konflikten)."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Optionaler Geltungsbereich des Regimes (z.B. 'entry', 'exit', 'in_trade'; ohne Angabe gilt global).",
+            "enum": ["entry", "exit", "in_trade"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "description": "Definition einzelner Handelsstrategien (Entry/Exit-Regeln und Risikoparameter).",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutiger Strategie-Bezeichner."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name der Strategie (beschreibend)."
+          },
+          "entry": {
+            "description": "Einstiegssignal-Bedingungen der Strategie (wann gekauft wird).",
+            "$ref": "#/$defs/ConditionGroup"
+          },
+          "exit": {
+            "description": "Ausstiegssignal-Bedingungen der Strategie (wann verkauft wird).",
+            "$ref": "#/$defs/ConditionGroup"
+          },
+          "risk": {
+            "type": "object",
+            "description": "Risikomanagement-Parameter der Strategie.",
+            "properties": {
+              "stop_loss_pct": {
+                "type": "number",
+                "description": "Stop-Loss in % vom Einstiegs-/Kaufpreis."
+              },
+              "take_profit_pct": {
+                "type": "number",
+                "description": "Take-Profit in % vom Einstiegs-/Kaufpreis."
+              },
+              "trailing_mode": {
+                "type": "string",
+                "description": "Trailing-Stop Modus (z.B. 'percent' oder 'atr')."
+              },
+              "trailing_multiplier": {
+                "type": "number",
+                "description": "Multiplikator für den Trailing-Stop (z.B. ATR-Faktor oder Prozentwert)."
+              },
+              "risk_per_trade_pct": {
+                "type": "number",
+                "description": "Max. pro Trade zu riskierender Anteil der Account-Equity (in %)."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "strategy_sets": {
+      "type": "array",
+      "description": "Strategie-Sets (Bündel von Strategien) inklusive etwaiger Parameter-Überschreibungen für bestimmte Regime.",
+      "items": {
+        "type": "object",
+        "required": ["id", "strategies"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Eindeutiger Bezeichner des Strategy-Sets."
+          },
+          "name": {
+            "type": "string",
+            "description": "Anzeigename des Strategy-Sets."
+          },
+          "strategies": {
+            "type": "array",
+            "description": "Liste der in diesem Set aktiven Strategien (Verweis auf Strategy-IDs) mit möglichen Overrides.",
+            "items": {
+              "type": "object",
+              "required": ["strategy_id"],
+              "properties": {
+                "strategy_id": {
+                  "type": "string",
+                  "description": "Referenz auf die ID einer Basis-Strategie."
+                },
+                "strategy_overrides": {
+                  "type": "object",
+                  "description": "Optionale Überschreibungen für Strategie-Parameter in diesem Set.",
+                  "properties": {
+                    "entry": {
+                      "description": "Override der Entry-Bedingungen dieser Strategie im Set.",
+                      "$ref": "#/$defs/ConditionGroup"
+                    },
+                    "exit": {
+                      "description": "Override der Exit-Bedingungen dieser Strategie im Set.",
+                      "$ref": "#/$defs/ConditionGroup"
+                    },
+                    "risk": {
+                      "$ref": "#/$defs/RiskSettings",
+                      "description": "Override der Risikoparameter dieser Strategie im Set."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "indicator_overrides": {
+            "type": "array",
+            "description": "Liste von Indikator-Parameter-Überschreibungen in diesem Set.",
+            "items": {
+              "type": "object",
+              "required": ["indicator_id", "params"],
+              "properties": {
+                "indicator_id": {
+                  "type": "string",
+                  "description": "ID eines Indikators, der in diesem Set anders parametriert werden soll."
+                },
+                "params": {
+                  "type": "object",
+                  "description": "Neue Parameterwerte für den Indikator innerhalb dieses Sets.",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "routing": {
+      "type": "array",
+      "description": "Regeln zur Zuordnung von aktiven Regime-Kombinationen zu Strategy-Sets.",
+      "items": {
+        "type": "object",
+        "required": ["strategy_set_id", "match"],
+        "properties": {
+          "strategy_set_id": {
+            "type": "string",
+            "description": "ID des Strategy-Sets, das aktiviert werden soll, wenn die Bedingung erfüllt ist."
+          },
+          "match": {
+            "type": "object",
+            "description": "Kriterium (aktive Regimes) für diese Routing-Regel.",
+            "properties": {
+              "all_of": {
+                "type": "array",
+                "description": "Liste von Regime-IDs, die alle aktiv sein müssen (UND-Bedingung).",
+                "items": { "type": "string" }
+              },
+              "any_of": {
+                "type": "array",
+                "description": "Liste von Regime-IDs, von denen mindestens eine aktiv sein muss (ODER-Bedingung).",
+                "items": { "type": "string" }
+              },
+              "none_of": {
+                "type": "array",
+                "description": "Liste von Regime-IDs, die **nicht** aktiv sein dürfen.",
+                "items": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "Condition": {
+      "type": "object",
+      "description": "Einzelne Vergleichsbedingung zwischen einem Indikator-Output und einem Wert oder anderen Indikator.",
+      "required": ["left", "op", "right"],
+      "properties": {
+        "left": {
+          "description": "Linker Operand: Referenz auf Indikator-Wert oder Konstantwert.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["indicator_id", "field"],
+              "properties": {
+                "indicator_id": {
+                  "type": "string",
+                  "description": "Referenz auf eine Indikator-ID."
+                },
+                "field": {
+                  "type": "string",
+                  "description": "Ausgabefeld des Indikators (z.B. 'value', 'signal', 'histogram')."
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["value"],
+              "properties": {
+                "value": {
+                  "type": "number",
+                  "description": "Konstanter Zahlenwert."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "op": {
+          "type": "string",
+          "description": "Vergleichsoperator: größer, kleiner, gleich oder zwischen zwei Werten.",
+          "enum": ["gt", "lt", "eq", "between"]
+        },
+        "right": {
+          "description": "Rechter Operand: Indikator-Referenz, Konstantwert oder Zahlenbereich (bei 'between')."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "op": { "const": "between" } }
+          },
+          "then": {
+            "properties": {
+              "right": {
+                "type": "object",
+                "required": ["min", "max"],
+                "properties": {
+                  "min": {
+                    "type": "number",
+                    "description": "Minimalwert (inklusive) für 'between'-Vergleich."
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximalwert (inklusive) für 'between'-Vergleich."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "right": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["indicator_id", "field"],
+                    "properties": {
+                      "indicator_id": { "type": "string" },
+                      "field": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": ["value"],
+                    "properties": {
+                      "value": { "type": "number" }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ConditionGroup": {
+      "type": "object",
+      "description": "Gruppe von Bedingungen (all/any), die als Block ausgewertet werden.",
+      "properties": {
+        "all": {
+          "type": "array",
+          "description": "Alle aufgeführten Bedingungen müssen wahr sein.",
+          "items": { "$ref": "#/$defs/Condition" }
+        },
+        "any": {
+          "type": "array",
+          "description": "Mindestens eine der aufgeführten Bedingungen muss wahr sein.",
+          "items": { "$ref": "#/$defs/Condition" }
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["all"] },
+        { "required": ["any"] }
+      ]
+    },
+    "RiskSettings": {
+      "type": "object",
+      "description": "Risikoparameter-Überschreibungen.",
+      "properties": {
+        "stop_loss_pct": { "type": "number" },
+        "take_profit_pct": { "type": "number" },
+        "trailing_mode": { "type": "string" },
+        "trailing_multiplier": { "type": "number" },
+        "risk_per_trade_pct": { "type": "number" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
