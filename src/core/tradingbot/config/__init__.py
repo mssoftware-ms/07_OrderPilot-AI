@@ -18,6 +18,7 @@ Architecture:
 from .detector import ActiveRegime, RegimeDetector
 from .evaluator import ConditionEvaluationError, ConditionEvaluator
 from .loader import ConfigLoader, ConfigLoadError
+from .router import MatchedStrategySet, StrategyRouter
 from .models import (
     # Enums
     ConditionOperator,
@@ -43,6 +44,32 @@ from .models import (
     TradingBotConfig,
 )
 
+# Legacy runtime config models live in src/core/tradingbot/config.py, but the
+# package name "config" shadows that module. Load it explicitly to preserve
+# backwards compatibility for imports like `from src.core.tradingbot import BotConfig`.
+from importlib import util
+from pathlib import Path
+
+_legacy_config_path = Path(__file__).resolve().parent.parent / "config.py"
+_legacy_spec = util.spec_from_file_location(
+    "src.core.tradingbot._legacy_config", _legacy_config_path
+)
+if _legacy_spec and _legacy_spec.loader:
+    _legacy_config = util.module_from_spec(_legacy_spec)
+    _legacy_spec.loader.exec_module(_legacy_config)
+else:
+    _legacy_config = None
+
+if _legacy_config is not None:
+    BotConfig = _legacy_config.BotConfig
+    FullBotConfig = _legacy_config.FullBotConfig
+    KIMode = _legacy_config.KIMode
+    LLMPolicyConfig = _legacy_config.LLMPolicyConfig
+    MarketType = _legacy_config.MarketType
+    RiskConfig = _legacy_config.RiskConfig
+    TrailingMode = _legacy_config.TrailingMode
+    TradingEnvironment = _legacy_config.TradingEnvironment
+
 __all__ = [
     # Loader
     "ConfigLoader",
@@ -55,6 +82,10 @@ __all__ = [
     # Detector
     "RegimeDetector",
     "ActiveRegime",
+
+    # Router
+    "StrategyRouter",
+    "MatchedStrategySet",
 
     # Enums
     "ConditionOperator",
@@ -76,4 +107,13 @@ __all__ = [
     "RoutingMatch",
     "RoutingRule",
     "TradingBotConfig",
+    # Legacy runtime config (compatibility)
+    "BotConfig",
+    "FullBotConfig",
+    "KIMode",
+    "LLMPolicyConfig",
+    "MarketType",
+    "RiskConfig",
+    "TrailingMode",
+    "TradingEnvironment",
 ]
