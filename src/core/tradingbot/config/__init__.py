@@ -15,6 +15,8 @@ Architecture:
     router.py -> StrategyRouter (routes regimes to strategy sets)
 """
 
+from .detector import ActiveRegime, RegimeDetector
+from .evaluator import ConditionEvaluationError, ConditionEvaluator
 from .loader import ConfigLoader, ConfigLoadError
 from .models import (
     # Enums
@@ -45,6 +47,14 @@ __all__ = [
     # Loader
     "ConfigLoader",
     "ConfigLoadError",
+
+    # Evaluator
+    "ConditionEvaluator",
+    "ConditionEvaluationError",
+
+    # Detector
+    "RegimeDetector",
+    "ActiveRegime",
 
     # Enums
     "ConditionOperator",
