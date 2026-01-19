@@ -139,6 +139,18 @@ _ICONS = {
         <circle cx="12" cy="18" r="2" fill="{{secondary}}" stroke="{{primary}}" stroke-width="1"/>
     </svg>
     """,
+
+    "zoom_all": """
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke="{{primary}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    """,
+
+    "expand": """
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15 3h6v6M14 10l7-7M9 21H3v-6M10 14l-7 7" stroke="{{primary}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    """,
 }
 
 

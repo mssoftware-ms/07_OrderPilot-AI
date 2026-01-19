@@ -20,6 +20,8 @@ from PyQt6.QtWidgets import (
     QGroupBox, QDialog, QSizeGrip, QComboBox
 )
 
+from src.ui.icons import get_icon
+
 try:
     from lightweight_charts.widgets import QtChart
     LIGHTWEIGHT_CHARTS_AVAILABLE = True
@@ -121,16 +123,15 @@ class CompactChartWidget(QWidget):
         header_layout.addWidget(self._tf_combo)
 
         # Refresh Button
-        self._refresh_btn = QPushButton("🔄")
+        self._refresh_btn = QPushButton()
+        self._refresh_btn.setIcon(get_icon("refresh"))
         self._refresh_btn.setFixedSize(24, 20)
         self._refresh_btn.setToolTip("Chart aktualisieren")
         self._refresh_btn.setStyleSheet("""
             QPushButton {
-                font-size: 10px;
                 background-color: #2a2a2a;
                 border: 1px solid #555;
                 border-radius: 3px;
-                color: white;
             }
             QPushButton:hover { background-color: #3a3a3a; }
         """)
@@ -138,16 +139,15 @@ class CompactChartWidget(QWidget):
         header_layout.addWidget(self._refresh_btn)
 
         # Zoom All Button (requested feature)
-        self._zoom_all_btn = QPushButton("⤢")
+        self._zoom_all_btn = QPushButton()
+        self._zoom_all_btn.setIcon(get_icon("zoom_all"))
         self._zoom_all_btn.setFixedSize(24, 20)
         self._zoom_all_btn.setToolTip("Alles zoomen")
         self._zoom_all_btn.setStyleSheet("""
             QPushButton {
-                font-size: 12px;
                 background-color: #2a2a2a;
                 border: 1px solid #555;
                 border-radius: 3px;
-                color: white;
             }
             QPushButton:hover { background-color: #3a3a3a; }
         """)
@@ -155,16 +155,15 @@ class CompactChartWidget(QWidget):
         header_layout.addWidget(self._zoom_all_btn)
 
         # Enlarge button
-        self._enlarge_btn = QPushButton("🔍")
+        self._enlarge_btn = QPushButton()
+        self._enlarge_btn.setIcon(get_icon("expand"))
         self._enlarge_btn.setFixedSize(24, 20)
         self._enlarge_btn.setToolTip("Chart vergrößern")
         self._enlarge_btn.setStyleSheet("""
             QPushButton {
-                font-size: 10px;
                 background-color: #2a2a2a;
                 border: 1px solid #555;
                 border-radius: 3px;
-                color: white;
             }
             QPushButton:hover { background-color: #3a3a3a; }
         """)
@@ -186,7 +185,7 @@ class CompactChartWidget(QWidget):
                 # Create chart with toolbox enabled for zooming
                 self._chart = QtChart(chart_container, toolbox=False) # Toolbox false because we have custom header
 
-                self._apply_chart_styling(self._chart, font_size=10)
+                self._apply_chart_styling(self._chart, font_size=10, show_volume=False)
 
                 # Add chart webview to layout
                 chart_inner_layout.addWidget(self._chart.get_webview())
@@ -200,6 +199,22 @@ class CompactChartWidget(QWidget):
 
         group.setLayout(group_layout)
         layout.addWidget(group)
+
+    def resizeEvent(self, event) -> None:
+        """Handle resize event to ensure chart fits."""
+        super().resizeEvent(event)
+        if self._chart:
+            # Delay fit slightly to ensure layout is complete
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self.fit_chart)
+
+    def fit_chart(self):
+        """Fit chart to view."""
+        if self._chart:
+            try:
+                self._chart.fit()
+            except Exception:
+                pass
 
     def _show_fallback(self, layout: QVBoxLayout, message: str | None = None) -> None:
         """Show fallback widget if chart cannot be loaded."""
@@ -248,7 +263,7 @@ class CompactChartWidget(QWidget):
                 self.update_chart_data(self._parent_chart.df)
 
     @staticmethod
-    def _apply_chart_styling(chart: QtChart, font_size: int) -> None:
+    def _apply_chart_styling(chart: QtChart, font_size: int, show_volume: bool = True) -> None:
         """Apply shared chart styling with user-configured colors."""
         bullish_color, bearish_color = CompactChartWidget._get_candle_colors()
 
@@ -265,13 +280,23 @@ class CompactChartWidget(QWidget):
             wick_down_color=bearish_color
         )
 
-        # Volume Histogram - bottom 25% of chart
-        chart.volume_config(
-            up_color=CompactChartWidget._format_rgba(bullish_color, 0.6),
-            down_color=CompactChartWidget._format_rgba(bearish_color, 0.6),
-            scale_margin_top=0.75,  # Volume in bottom 25%
-            scale_margin_bottom=0.0
-        )
+        # Volume Histogram
+        if show_volume:
+            chart.volume_config(
+                up_color=CompactChartWidget._format_rgba(bullish_color, 0.6),
+                down_color=CompactChartWidget._format_rgba(bearish_color, 0.6),
+                scale_margin_top=0.75,  # Volume in bottom 25%
+                scale_margin_bottom=0.0
+            )
+        else:
+            # Disable volume by setting transparent colors or not calling volume_config if possible
+            # Lightweight-charts doesn't have explicit 'visible=False' for volume in python wrapper
+            # But scale_margin_top=1.0 effectively pushes it out of view or making it invisible
+            chart.volume_config(
+                visible=False,
+                scale_margin_top=1.0,
+                scale_margin_bottom=0.0
+            )
 
         # Crosshair & Navigation
         chart.crosshair(mode='normal')
@@ -333,9 +358,9 @@ class CompactChartWidget(QWidget):
 
         # Map UI timeframe to pandas freq
         tf_map = {
-            "1m": "1T",
-            "5m": "5T",
-            "15m": "15T",
+            "1m": "1min",
+            "5m": "5min",
+            "15m": "15min",
             "1h": "1H",
             "4h": "4H",
             "1d": "1D"
@@ -359,8 +384,9 @@ class CompactChartWidget(QWidget):
         if resampled.empty:
             return resampled
 
-        resampled = resampled.reset_index()
-        resampled["time"] = (resampled["index"].astype("int64") // 10**9).astype(int)
+        # Convert timestamp index to Unix time BEFORE reset_index
+        resampled["time"] = (resampled.index.astype("int64") // 10**9).astype(int)
+        resampled = resampled.reset_index(drop=True)  # Drop the old index
         return resampled[["time", "open", "high", "low", "close", "volume"]]
 
     @staticmethod
@@ -556,7 +582,7 @@ class EnlargedChartDialog(QDialog):
             # Create enlarged chart
             self._chart = QtChart(chart_container)
 
-            CompactChartWidget._apply_chart_styling(self._chart, font_size=12)
+            CompactChartWidget._apply_chart_styling(self._chart, font_size=12, show_volume=True)
 
             # Set data if available
             if self._chart_data is not None and not self._chart_data.empty:
