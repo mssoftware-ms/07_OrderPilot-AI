@@ -2,6 +2,24 @@
 
 Classifies market regime (Trend/Range) and volatility level
 based on technical indicators for strategy selection.
+
+⚠️ DEPRECATION NOTICE:
+This hardcoded regime engine is being replaced by RegimeEngineJSON.
+New code should use:
+    from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+
+Migration path:
+    OLD: RegimeEngine().classify(features) -> RegimeState
+    NEW: RegimeEngineJSON().classify_from_config(data, config_path) -> RegimeState
+
+Advantages of JSON-based approach:
+- Configurable thresholds (no hardcoded values)
+- Uses IndicatorEngine for calculations
+- Uses RegimeDetector for condition evaluation
+- Supports multi-regime detection with priorities
+- Better testability and maintainability
+
+This legacy engine will remain available for backward compatibility.
 """
 
 from __future__ import annotations
@@ -57,6 +75,15 @@ class RegimeEngine:
     RSI_OVERSOLD = 30.0
     RSI_STRONG_UP = 60.0
     RSI_STRONG_DOWN = 40.0
+
+    # MOMENTUM/PRICE-BASED TREND DETECTION (ADX fallback)
+    # For detecting strong moves even when ADX is low
+    STRONG_MOVE_PCT = 2.0    # 2% move over lookback = strong trend
+    EXTREME_MOVE_PCT = 4.0   # 4% move = extreme trend (overrides ADX)
+
+    # VOLUME MOMENTUM thresholds
+    VOLUME_SPIKE_RATIO = 1.5  # Volume > 1.5x MA = high volume confirmation
+    VOLUME_EXTREME_RATIO = 2.5  # Volume > 2.5x MA = extreme volume
 
     def __init__(
         self,
@@ -373,6 +400,8 @@ class RegimeEngine:
     ) -> tuple[RegimeType, float]:
         """Classify regime as trend up/down or range.
 
+        Enhanced with momentum-based detection that works even with low ADX.
+
         Returns:
             (RegimeType, confidence)
         """
@@ -385,6 +414,26 @@ class RegimeEngine:
         if adx is None:
             return RegimeType.UNKNOWN, 0.3
 
+        # PRIORITY 1: Check for strong price moves (even if ADX is low)
+        # This catches fast drops/rallies that ADX misses
+        strong_move = self._detect_strong_move(features)
+        if strong_move is not None:
+            direction, move_pct, confidence = strong_move
+            # If extreme move (>4%), ALWAYS override ADX
+            if abs(move_pct) >= self.EXTREME_MOVE_PCT:
+                logger.info(
+                    f"⚡ EXTREME MOVE detected: {move_pct:+.2f}% → {direction.name} "
+                    f"(overriding ADX={adx:.1f})"
+                )
+                return direction, confidence
+            # If strong move (>2%) and ADX is weak, use momentum
+            elif abs(move_pct) >= self.STRONG_MOVE_PCT and adx < self.ADX_TRENDING:
+                logger.info(
+                    f"💪 STRONG MOVE detected: {move_pct:+.2f}% with low ADX={adx:.1f} → {direction.name}"
+                )
+                return direction, confidence
+
+        # PRIORITY 2: ADX-based classification (original logic)
         # Ranging market
         if adx < self.ADX_WEAK:
             return RegimeType.RANGE, min(0.9, 1.0 - (adx / self.ADX_WEAK) * 0.5)
@@ -529,6 +578,105 @@ class RegimeEngine:
         if features.atr_14 is None or features.close <= 0:
             return None
         return (features.atr_14 / features.close) * 100
+
+    def _detect_strong_move(
+        self,
+        features: FeatureVector
+    ) -> tuple[RegimeType, float, float] | None:
+        """Detect strong price moves based on momentum and volume.
+
+        Uses multiple indicators:
+        - SMA slope (fast SMA vs slow SMA)
+        - RSI extremes
+        - Price position relative to BBands
+        - Volume confirmation (volume spike = higher confidence)
+
+        Returns:
+            (RegimeType, move_percentage, confidence) or None if no strong move
+        """
+        # Get indicators
+        close = features.close
+        sma_fast = features.sma_20
+        sma_slow = features.sma_50
+        rsi = features.rsi_14
+        bb_upper = features.bb_upper
+        bb_lower = features.bb_lower
+        volume = features.volume
+        volume_sma = features.volume_sma
+
+        # Validate required indicators
+        if None in (close, sma_fast, sma_slow):
+            return None
+
+        # 1. CALCULATE PRICE MOMENTUM
+        # Method A: SMA crossover distance (measures trend strength)
+        sma_diff_pct = ((sma_fast - sma_slow) / sma_slow) * 100 if sma_slow > 0 else 0
+
+        # Method B: Price vs SMA distance (current momentum)
+        price_vs_fast_pct = ((close - sma_fast) / sma_fast) * 100 if sma_fast > 0 else 0
+
+        # Combined momentum score
+        momentum_pct = (sma_diff_pct * 0.6) + (price_vs_fast_pct * 0.4)
+
+        # 2. VOLUME CONFIRMATION
+        volume_multiplier = 1.0
+        if volume is not None and volume_sma is not None and volume_sma > 0:
+            volume_ratio = volume / volume_sma
+            if volume_ratio >= self.VOLUME_EXTREME_RATIO:
+                volume_multiplier = 1.3  # +30% confidence with extreme volume
+                logger.debug(f"📊 EXTREME VOLUME: {volume_ratio:.2f}x average")
+            elif volume_ratio >= self.VOLUME_SPIKE_RATIO:
+                volume_multiplier = 1.15  # +15% confidence with high volume
+                logger.debug(f"📊 HIGH VOLUME: {volume_ratio:.2f}x average")
+
+        # 3. RSI CONFIRMATION
+        rsi_multiplier = 1.0
+        if rsi is not None:
+            # Strong RSI extremes add confidence
+            if rsi > self.RSI_OVERBOUGHT or rsi < self.RSI_OVERSOLD:
+                rsi_multiplier = 1.1  # +10% confidence
+
+        # 4. BOLLINGER BAND POSITION
+        bb_multiplier = 1.0
+        if bb_upper is not None and bb_lower is not None:
+            bb_range = bb_upper - bb_lower
+            if bb_range > 0:
+                # Price near/beyond bands = stronger move
+                if close > bb_upper:
+                    bb_multiplier = 1.15  # Price above upper band
+                elif close < bb_lower:
+                    bb_multiplier = 1.15  # Price below lower band
+
+        # 5. DETERMINE DIRECTION AND BASE CONFIDENCE
+        abs_momentum = abs(momentum_pct)
+
+        if abs_momentum < self.STRONG_MOVE_PCT:
+            return None  # Not a strong move
+
+        # Calculate base confidence (0.6 for 2%, 0.9 for 4%+)
+        if abs_momentum >= self.EXTREME_MOVE_PCT:
+            base_confidence = 0.9
+        else:
+            # Linear interpolation between 0.6 and 0.9
+            base_confidence = 0.6 + ((abs_momentum - self.STRONG_MOVE_PCT) /
+                                     (self.EXTREME_MOVE_PCT - self.STRONG_MOVE_PCT)) * 0.3
+
+        # Apply multipliers (volume, RSI, BB)
+        final_confidence = min(1.0, base_confidence * volume_multiplier * rsi_multiplier * bb_multiplier)
+
+        # Determine direction
+        if momentum_pct > 0:
+            direction = RegimeType.TREND_UP
+        else:
+            direction = RegimeType.TREND_DOWN
+
+        logger.debug(
+            f"💹 Strong move: {momentum_pct:+.2f}% ({direction.name}), "
+            f"confidence={final_confidence:.2f} (base={base_confidence:.2f}, "
+            f"vol={volume_multiplier:.2f}x, rsi={rsi_multiplier:.2f}x, bb={bb_multiplier:.2f}x)"
+        )
+
+        return direction, abs_momentum, final_confidence
 
     def is_favorable_for_trend(self, state: RegimeState) -> bool:
         """Check if regime is favorable for trend-following strategies.

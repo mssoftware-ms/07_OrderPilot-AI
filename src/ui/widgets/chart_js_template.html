@@ -435,6 +435,12 @@
 
                     addIndicator: (name, color) => {
                         try {
+                            // Remove existing indicator if it exists to prevent duplicates on refresh
+                            if (overlaySeries[name]) {
+                                chart.removeSeries(overlaySeries[name]);
+                                delete overlaySeries[name];
+                            }
+
                             const s = chart.addSeries(LineSeries, {
                                 color,
                                 lineWidth: 2,

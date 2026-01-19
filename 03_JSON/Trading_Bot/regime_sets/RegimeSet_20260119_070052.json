@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0.0",
+  "name": "RegimeSet_20260119_070052",
+  "description": "Auto-generated regime set from optimization results at 2026-01-19T07:01:04.503761",
+  "indicators": [
+    {
+      "id": "ind_1_cmf",
+      "type": "CMF",
+      "timeframe": "1m",
+      "params": {
+        "period": 16
+      }
+    },
+    {
+      "id": "ind_2_bb_width",
+      "type": "BB_WIDTH",
+      "timeframe": "1m",
+      "params": {
+        "period": 25,
+        "std": 2.0
+      }
+    },
+    {
+      "id": "ind_3_bb_width",
+      "type": "BB_WIDTH",
+      "timeframe": "1m",
+      "params": {
+        "period": 25,
+        "std": 2.5
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "regime_range",
+      "name": "RANGE",
+      "description": "Auto-generated regime definition for RANGE",
+      "conditions": {
+        "type": "group",
+        "operator": "and",
+        "conditions": [
+          {
+            "type": "condition",
+            "indicator": "adx",
+            "operator": "lt",
+            "value": 25
+          },
+          {
+            "type": "condition",
+            "indicator": "bb_width",
+            "operator": "lt",
+            "value": 0.05
+          }
+        ]
+      }
+    }
+  ],
+  "strategies": [
+    {
+      "id": "strategy_1_range",
+      "name": "RANGE Strategy",
+      "description": "Auto-generated strategy for RANGE regime",
+      "entry_conditions": {
+        "type": "group",
+        "operator": "and",
+        "conditions": [
+          {
+            "type": "condition",
+            "indicator": "close",
+            "operator": "gt",
+            "value": 0
+          }
+        ]
+      },
+      "exit_conditions": {
+        "type": "group",
+        "operator": "or",
+        "conditions": [
+          {
+            "type": "stop_loss"
+          },
+          {
+            "type": "take_profit"
+          },
+          {
+            "type": "trailing_stop"
+          }
+        ]
+      },
+      "risk": {
+        "position_size_pct": 2.0,
+        "stop_loss_pct": 2.0,
+        "take_profit_pct": 6.0
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_range",
+      "name": "RANGE Set",
+      "strategies": [
+        "strategy_1_range"
+      ],
+      "weights": {
+        "strategy_1_range": 1.0
+      }
+    }
+  ],
+  "routing": [
+    {
+      "regimes": {
+        "all_of": [
+          "regime_range"
+        ]
+      },
+      "strategy_set_id": "set_range"
+    }
+  ]
+}

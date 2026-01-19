@@ -139,8 +139,8 @@ class DataLoader:
 
                 return df  # Return empty DataFrame if all methods fail
 
-            # Parse timestamp
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            # Parse timestamp with mixed format support (handles multiple timestamp formats)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', utc=True)
             df.set_index('timestamp', inplace=True)
 
             # Ensure numeric columns
@@ -167,7 +167,7 @@ class DataLoader:
             
         # Map generic timeframes to pandas offsets
         tf_map = {
-            '1m': '1T', '3m': '3T', '5m': '5T', '15m': '15T', '30m': '30T',
+            '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min',
             '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6H', '8h': '8H', '12h': '12H',
             '1d': '1D', '1w': '1W'
         }

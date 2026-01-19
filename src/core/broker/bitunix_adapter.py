@@ -405,8 +405,11 @@ class BitunixAdapter(BrokerAdapter):
             logger.error(f"Failed to get positions: {e}")
             return []
 
-    async def get_balance(self) -> Balance | None:
+    async def get_balance(self, margin_coin: str = "USDT") -> Balance | None:
         """Get account balance.
+
+        Args:
+            margin_coin: Margin currency (default: USDT)
 
         Returns:
             Account balance information
@@ -414,13 +417,17 @@ class BitunixAdapter(BrokerAdapter):
         if not self._session:
             return None
 
-        # No params for this endpoint
-        # Build authenticated headers (GET with no query params)
-        headers = self._build_headers(query_params="", body="")
+        # Bitunix requires marginCoin parameter for account endpoint
+        params = {"marginCoin": margin_coin}
+        query_params = self._sort_params(params)
+
+        # Build authenticated headers (GET with query params)
+        headers = self._build_headers(query_params=query_params, body="")
 
         try:
             async with self._session.get(
                 f"{self.base_url}/api/v1/futures/account",
+                params=params,  # Pass params as dict for URL construction
                 headers=headers
             ) as response:
                 if response.status == 200:
@@ -530,6 +537,23 @@ class BitunixAdapter(BrokerAdapter):
     def _parse_balance(self, data: dict) -> Balance:
         """Parse Bitunix balance response.
 
+        Bitunix Response Format:
+        {
+            "code": 0,
+            "data": {
+                "marginCoin": "USDT",
+                "available": "100",           # Available balance
+                "frozen": "0",                # Frozen balance
+                "margin": "0",                # Margin used
+                "transfer": "100",            # Transferable balance
+                "positionMode": "HEDGE",      # Position mode
+                "crossUnrealizedPNL": "0",    # Cross unrealized PNL
+                "isolationUnrealizedPNL": "0", # Isolated unrealized PNL
+                "bonus": "0"                  # Bonus balance
+            },
+            "msg": "Success"
+        }
+
         Args:
             data: API response data
 
@@ -538,14 +562,26 @@ class BitunixAdapter(BrokerAdapter):
         """
         account_data = data.get('data', {})
 
+        available = Decimal(str(account_data.get('available', 0)))
+        frozen = Decimal(str(account_data.get('frozen', 0)))
+        margin = Decimal(str(account_data.get('margin', 0)))
+        transfer = Decimal(str(account_data.get('transfer', 0)))
+        cross_pnl = Decimal(str(account_data.get('crossUnrealizedPNL', 0)))
+        isolation_pnl = Decimal(str(account_data.get('isolationUnrealizedPNL', 0)))
+        bonus = Decimal(str(account_data.get('bonus', 0)))
+
+        # Calculate total equity: available + frozen + unrealized PNL
+        total_pnl = cross_pnl + isolation_pnl
+        total_equity = available + frozen + total_pnl
+
         return Balance(
-            currency="USDT",
-            cash=Decimal(str(account_data.get('availableBalance', 0))),
-            market_value=Decimal(str(account_data.get('positionValue', 0))),
-            total_equity=Decimal(str(account_data.get('totalEquity', 0))),
-            buying_power=Decimal(str(account_data.get('availableMargin', 0))),
-            margin_used=Decimal(str(account_data.get('usedMargin', 0))),
-            margin_available=Decimal(str(account_data.get('availableMargin', 0))),
-            daily_pnl=Decimal(str(account_data.get('dailyPnl', 0))),
-            daily_pnl_percentage=float(account_data.get('dailyPnlPercentage', 0))
+            currency=account_data.get('marginCoin', 'USDT'),
+            cash=available,                    # Available balance
+            market_value=margin,               # Margin used (value of positions)
+            total_equity=total_equity,         # Total account equity
+            buying_power=transfer,             # Transferable/available for new positions
+            margin_used=margin,                # Margin used
+            margin_available=available,        # Available margin (same as available)
+            daily_pnl=total_pnl,              # Total unrealized PNL
+            daily_pnl_percentage=0.0          # Not provided by Bitunix
         )

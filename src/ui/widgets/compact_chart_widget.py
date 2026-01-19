@@ -2,7 +2,7 @@
 
 Provides a small lightweight chart display (max 450px x 250px) with:
 - Real-time OHLCV candlestick chart
-- Volume histogram (bottom 25%)
+- Volume hidden in compact view, shown in popup
 - Pop-up enlargement functionality
 - Integration with parent ChartWindow data
 - Timeframe selection and Zoom support
@@ -14,6 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 import pandas as pd
 
+from PyQt6 import QtCore
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -40,7 +41,7 @@ class CompactChartWidget(QWidget):
 
     Features:
         - Maximum size: 450px x 250px
-        - QtChart with candlesticks and volume histogram
+        - QtChart with candlesticks
         - Click to enlarge in pop-up
         - Real-time OHLCV data updates
         - Timeframe selection (1m, 5m, 15m, 1h, 4h, 1d)
@@ -74,7 +75,7 @@ class CompactChartWidget(QWidget):
         # Set widget size FIRST (critical for layout visibility)
         self.setMinimumSize(450, 250)
         self.setMaximumSize(450, 250)
-        self.setVisible(True)  # Explicitly make visible
+        self.setVisible(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -91,7 +92,7 @@ class CompactChartWidget(QWidget):
 
         # Header with symbol, controls and enlarge button
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(8)
+        header_layout.setSpacing(4)
 
         self._symbol_label = QLabel("--")
         self._symbol_label.setStyleSheet("font-weight: bold; font-size: 11px;")
@@ -108,7 +109,7 @@ class CompactChartWidget(QWidget):
         self._tf_combo.addItems(["1m", "5m", "15m", "1h", "4h", "1d"])
         self._tf_combo.setCurrentText(self._current_timeframe)
         self._tf_combo.setFixedWidth(50)
-        self._tf_combo.setFixedHeight(20)
+        self._tf_combo.setFixedHeight(22)
         self._tf_combo.setStyleSheet("""
             QComboBox {
                 font-size: 10px;
@@ -116,8 +117,9 @@ class CompactChartWidget(QWidget):
                 border: 1px solid #555;
                 border-radius: 3px;
                 color: white;
+                padding-left: 2px;
             }
-            QComboBox::drop-down { border: none; }
+            QComboBox::drop-down { border: none; width: 0px; }
         """)
         self._tf_combo.currentTextChanged.connect(self._on_timeframe_changed)
         header_layout.addWidget(self._tf_combo)
@@ -125,7 +127,8 @@ class CompactChartWidget(QWidget):
         # Refresh Button
         self._refresh_btn = QPushButton()
         self._refresh_btn.setIcon(get_icon("refresh"))
-        self._refresh_btn.setFixedSize(24, 20)
+        self._refresh_btn.setIconSize(QtCore.QSize(16, 16))
+        self._refresh_btn.setFixedSize(26, 22)
         self._refresh_btn.setToolTip("Chart aktualisieren")
         self._refresh_btn.setStyleSheet("""
             QPushButton {
@@ -138,10 +141,11 @@ class CompactChartWidget(QWidget):
         self._refresh_btn.clicked.connect(self._on_refresh_clicked)
         header_layout.addWidget(self._refresh_btn)
 
-        # Zoom All Button (requested feature)
+        # Zoom All Button
         self._zoom_all_btn = QPushButton()
         self._zoom_all_btn.setIcon(get_icon("zoom_all"))
-        self._zoom_all_btn.setFixedSize(24, 20)
+        self._zoom_all_btn.setIconSize(QtCore.QSize(16, 16))
+        self._zoom_all_btn.setFixedSize(26, 22)
         self._zoom_all_btn.setToolTip("Alles zoomen")
         self._zoom_all_btn.setStyleSheet("""
             QPushButton {
@@ -157,7 +161,8 @@ class CompactChartWidget(QWidget):
         # Enlarge button
         self._enlarge_btn = QPushButton()
         self._enlarge_btn.setIcon(get_icon("expand"))
-        self._enlarge_btn.setFixedSize(24, 20)
+        self._enlarge_btn.setIconSize(QtCore.QSize(16, 16))
+        self._enlarge_btn.setFixedSize(26, 22)
         self._enlarge_btn.setToolTip("Chart vergrößern")
         self._enlarge_btn.setStyleSheet("""
             QPushButton {
@@ -182,12 +187,9 @@ class CompactChartWidget(QWidget):
         # Initialize lightweight chart
         if LIGHTWEIGHT_CHARTS_AVAILABLE:
             try:
-                # Create chart with toolbox enabled for zooming
-                self._chart = QtChart(chart_container, toolbox=False) # Toolbox false because we have custom header
-
+                # Create chart with volume disabled for compact view
+                self._chart = QtChart(chart_container, volume_enabled=False, toolbox=False)
                 self._apply_chart_styling(self._chart, font_size=10, show_volume=False)
-
-                # Add chart webview to layout
                 chart_inner_layout.addWidget(self._chart.get_webview())
             except Exception as e:
                 logger.error(f"Failed to initialize QtChart: {e}")
@@ -196,7 +198,6 @@ class CompactChartWidget(QWidget):
             self._show_fallback(chart_inner_layout)
 
         group_layout.addWidget(chart_container)
-
         group.setLayout(group_layout)
         layout.addWidget(group)
 
@@ -204,9 +205,7 @@ class CompactChartWidget(QWidget):
         """Handle resize event to ensure chart fits."""
         super().resizeEvent(event)
         if self._chart:
-            # Delay fit slightly to ensure layout is complete
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, self.fit_chart)
+            QtCore.QTimer.singleShot(200, self.fit_chart)
 
     def fit_chart(self):
         """Fit chart to view."""
@@ -254,7 +253,6 @@ class CompactChartWidget(QWidget):
     def _on_refresh_clicked(self) -> None:
         """Handle refresh click."""
         if self._parent_chart:
-            # Try to fetch fresh data from parent
             if hasattr(self._parent_chart, 'get_chart_data'):
                 data = self._parent_chart.get_chart_data()
                 if data is not None and not data.empty:
@@ -267,10 +265,7 @@ class CompactChartWidget(QWidget):
         """Apply shared chart styling with user-configured colors."""
         bullish_color, bearish_color = CompactChartWidget._get_candle_colors()
 
-        # Chart Layout & Styling
         chart.layout(background_color='#1a1a2e', text_color='#ffffff')
-
-        # Candlestick Styling
         chart.candle_style(
             up_color=bullish_color,
             down_color=bearish_color,
@@ -280,37 +275,22 @@ class CompactChartWidget(QWidget):
             wick_down_color=bearish_color
         )
 
-        # Volume Histogram
         if show_volume:
             chart.volume_config(
                 up_color=CompactChartWidget._format_rgba(bullish_color, 0.6),
                 down_color=CompactChartWidget._format_rgba(bearish_color, 0.6),
-                scale_margin_top=0.75,  # Volume in bottom 25%
+                scale_margin_top=0.75,
                 scale_margin_bottom=0.0
             )
         else:
-            # Disable volume by setting transparent colors or not calling volume_config if possible
-            # Lightweight-charts doesn't have explicit 'visible=False' for volume in python wrapper
-            # But scale_margin_top=1.0 effectively pushes it out of view or making it invisible
-            chart.volume_config(
-                visible=False,
-                scale_margin_top=1.0,
-                scale_margin_bottom=0.0
-            )
+            try:
+                # Standard library may not have 'visible' param, so we push it out of view
+                chart.volume_config(scale_margin_top=1.0, scale_margin_bottom=0.0)
+            except:
+                pass
 
-        # Crosshair & Navigation
         chart.crosshair(mode='normal')
-        
-        # Time Scale
-        chart.time_scale(
-            right_offset=5, 
-            min_bar_spacing=0.5,
-            visible=True,
-            time_visible=True,
-            seconds_visible=False
-        )
-
-        # Legend
+        chart.time_scale(right_offset=5, min_bar_spacing=0.5, visible=True, time_visible=True)
         chart.legend(visible=True, font_size=font_size)
 
     @staticmethod
@@ -337,142 +317,78 @@ class CompactChartWidget(QWidget):
         if df is None or df.empty:
             return df
 
-        data = df.copy()
-        if "time" in data.columns:
-            time_series = data["time"]
-        else:
-            time_series = data.index
-
-        try:
-            if pd.api.types.is_numeric_dtype(time_series):
-                time_index = pd.to_datetime(time_series, unit="s", utc=True)
-            else:
-                time_index = pd.to_datetime(time_series, utc=True)
-        except Exception as exc:
-            logger.warning(f"Failed to parse time values for compact chart: {exc}")
+        required = ['open', 'high', 'low', 'close']
+        if not all(col in df.columns for col in required):
             return df
 
-        data.index = time_index
+        data = df.copy()
+        if "time" in data.columns:
+            if pd.api.types.is_numeric_dtype(data["time"]):
+                data.index = pd.to_datetime(data["time"], unit="s", utc=True)
+            else:
+                data.index = pd.to_datetime(data["time"], utc=True)
+        elif not isinstance(data.index, pd.DatetimeIndex):
+            try:
+                data.index = pd.to_datetime(data.index, utc=True)
+            except:
+                return df
+
         if "volume" not in data.columns:
             data["volume"] = 0.0
 
-        # Map UI timeframe to pandas freq
-        tf_map = {
-            "1m": "1min",
-            "5m": "5min",
-            "15m": "15min",
-            "1h": "1H",
-            "4h": "4H",
-            "1d": "1D"
-        }
+        tf_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1H", "4h": "4H", "1d": "1D"}
         freq = tf_map.get(timeframe, "1H")
 
-        resampled = (
-            data.resample(freq)
-            .agg(
-                {
-                    "open": "first",
-                    "high": "max",
-                    "low": "min",
-                    "close": "last",
-                    "volume": "sum",
-                }
-            )
-            .dropna(subset=["open", "high", "low", "close"])
-        )
+        resampled = data.resample(freq).agg({
+            "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
+        }).dropna(subset=["open", "high", "low", "close"])
 
         if resampled.empty:
             return resampled
 
-        # Convert timestamp index to Unix time BEFORE reset_index
-        resampled["time"] = (resampled.index.astype("int64") // 10**9).astype(int)
-        resampled = resampled.reset_index(drop=True)  # Drop the old index
+        resampled = resampled.reset_index()
+        resampled["time"] = (resampled["index"].astype("int64") // 10**9).astype(int)
         return resampled[["time", "open", "high", "low", "close", "volume"]]
 
-    @staticmethod
-    def _calculate_bar_spacing(bar_count: int) -> int:
-        """Calculate bar spacing for fitting data into the compact view."""
-        if bar_count >= 300:
-            return 1
-        if bar_count >= 160:
-            return 2
-        if bar_count >= 80:
-            return 3
-        return 4
-
     def update_symbol(self, symbol: str) -> None:
-        """Update displayed symbol.
-
-        Args:
-            symbol: Trading symbol (e.g., BTC/USD)
-        """
+        """Update displayed symbol."""
         if hasattr(self, '_symbol_label') and self._symbol_label:
             self._symbol_label.setText(symbol)
 
     def update_chart_data(self, df: pd.DataFrame) -> None:
-        """Update chart with OHLCV DataFrame.
-
-        Args:
-            df: DataFrame with columns: time, open, high, low, close, volume
-        """
+        """Update chart with OHLCV DataFrame."""
         if not LIGHTWEIGHT_CHARTS_AVAILABLE or self._chart is None:
             return
 
         if df is None or df.empty:
-            logger.debug("No data to update compact chart")
             return
             
-        # Store raw data for resampling
         self._last_raw_data = df
 
         try:
             chart_df = self._resample_data(df, self._current_timeframe)
             if chart_df is None or chart_df.empty:
-                logger.debug(f"No {self._current_timeframe} data to update compact chart")
-                return
-
-            required_cols = ['time', 'open', 'high', 'low', 'close', 'volume']
-            if not all(col in chart_df.columns for col in required_cols):
-                logger.error(f"DataFrame missing required columns. Has: {chart_df.columns.tolist()}")
                 return
 
             self._chart.set(chart_df)
-            
-            # Use dynamic spacing but allow zooming
             spacing = self._calculate_bar_spacing(len(chart_df))
-            self._chart.time_scale(
-                right_offset=5,
-                min_bar_spacing=spacing,
-            )
-            self._chart.fit()  # Ensure chart is fitted to available space
+            self._chart.time_scale(right_offset=5, min_bar_spacing=spacing)
+            
+            QtCore.QTimer.singleShot(100, self.fit_chart)
 
-            # Update price label with latest close
             if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:
                 latest_price = chart_df.iloc[-1]['close']
                 self._price_label.setText(f"${latest_price:,.2f}")
-
-            logger.debug(f"Updated compact chart with {len(chart_df)} candles ({self._current_timeframe})")
 
         except Exception as e:
             logger.error(f"Failed to update compact chart: {e}", exc_info=True)
 
     def update_price(self, price: float) -> None:
-        """Update current price display (backward compatibility).
-
-        This method only updates the price label. For full chart functionality,
-        use update_chart_data() with OHLCV DataFrame.
-
-        Args:
-            price: Current price
-        """
+        """Update current price display."""
         if price <= 0:
             return
-
-        # Update price label only
         if hasattr(self, '_price_label') and self._price_label:
             self._price_label.setText(f"${price:,.2f}")
-
-        # Try to fetch full chart data from parent if available
         if self._parent_chart and self._last_raw_data is None:
             self._on_refresh_clicked()
 
@@ -480,12 +396,10 @@ class CompactChartWidget(QWidget):
         """Clear chart data."""
         if self._chart:
             try:
-                # Clear by setting empty DataFrame
                 empty_df = pd.DataFrame(columns=['time', 'open', 'high', 'low', 'close', 'volume'])
                 self._chart.set(empty_df)
             except Exception as e:
                 logger.error(f"Failed to clear compact chart: {e}")
-
         if hasattr(self, '_price_label') and self._price_label:
             self._price_label.setText("--")
         self._last_raw_data = None
@@ -493,66 +407,35 @@ class CompactChartWidget(QWidget):
     def _on_enlarge_clicked(self) -> None:
         """Handle enlarge button click."""
         if not LIGHTWEIGHT_CHARTS_AVAILABLE:
-            logger.warning("Cannot enlarge chart: lightweight-charts not available")
             return
-
         chart_data = self._last_raw_data
         if chart_data is None and self._parent_chart and hasattr(self._parent_chart, 'get_chart_data'):
             chart_data = self._parent_chart.get_chart_data()
-
-        # Create enlarged dialog
-        dialog = EnlargedChartDialog(
-            chart_data=chart_data,
-            symbol=self._symbol_label.text(),
-            parent=self
-        )
+        dialog = EnlargedChartDialog(chart_data=chart_data, symbol=self._symbol_label.text(), parent=self)
         dialog.exec()
 
 
 class EnlargedChartDialog(QDialog):
     """Pop-up dialog showing enlarged chart with Lightweight Charts."""
 
-    def __init__(
-        self,
-        chart_data: pd.DataFrame | None,
-        symbol: str,
-        parent: QWidget | None = None
-    ):
-        """Initialize enlarged chart dialog.
-
-        Args:
-            chart_data: OHLCV DataFrame to display
-            symbol: Trading symbol
-            parent: Parent widget
-        """
+    def __init__(self, chart_data: pd.DataFrame | None, symbol: str, parent: QWidget | None = None):
         super().__init__(parent)
-
         self._chart_data = chart_data
         self._symbol = symbol
         self._chart = None
-
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Setup dialog UI."""
         self.setWindowTitle(f"Chart - {self._symbol}")
         self.setModal(False)
         self.resize(800, 600)
-
-        # Window flags for resizing
-        self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowMinimizeButtonHint |
-            Qt.WindowType.WindowMaximizeButtonHint |
-            Qt.WindowType.WindowCloseButtonHint
-        )
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowMinimizeButtonHint |
+                           Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Header
         header = QHBoxLayout()
-
         symbol_label = QLabel(self._symbol)
         symbol_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         header.addWidget(symbol_label)
@@ -564,30 +447,22 @@ class EnlargedChartDialog(QDialog):
             header.addWidget(price_label)
 
         header.addStretch()
-
         close_btn = QPushButton("✕ Schließen")
         close_btn.setFixedHeight(28)
         close_btn.clicked.connect(self.close)
         header.addWidget(close_btn)
-
         layout.addLayout(header)
 
-        # Chart container
         chart_container = QWidget()
         chart_container.setMinimumSize(760, 520)
         chart_inner_layout = QVBoxLayout(chart_container)
         chart_inner_layout.setContentsMargins(0, 0, 0, 0)
 
         if LIGHTWEIGHT_CHARTS_AVAILABLE:
-            # Create enlarged chart
             self._chart = QtChart(chart_container)
-
             CompactChartWidget._apply_chart_styling(self._chart, font_size=12, show_volume=True)
-
-            # Set data if available
             if self._chart_data is not None and not self._chart_data.empty:
                 self._chart.set(self._chart_data)
-
             chart_inner_layout.addWidget(self._chart.get_webview())
         else:
             error_label = QLabel("lightweight-charts nicht installiert")
@@ -596,8 +471,6 @@ class EnlargedChartDialog(QDialog):
             chart_inner_layout.addWidget(error_label)
 
         layout.addWidget(chart_container)
-
-        # Size grip for resizing
         size_grip = QSizeGrip(self)
         grip_layout = QHBoxLayout()
         grip_layout.addStretch()

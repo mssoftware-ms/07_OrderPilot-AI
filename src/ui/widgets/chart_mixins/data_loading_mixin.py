@@ -126,8 +126,11 @@ class DataLoadingMixin:
             logger.error(f"Failed to load chart: {e}")
 
     def _on_refresh(self):
-        """Refresh current chart."""
+        """Refresh current chart and all active indicators."""
         if self.data is not None:
             self.load_data(self.data)
         else:
             self._on_load_chart()
+
+        # Refresh all active indicators after chart data is reloaded
+        self._refresh_all_indicators()

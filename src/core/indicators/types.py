@@ -54,6 +54,11 @@ class IndicatorType(Enum):
     SUPPORT_RESISTANCE = "sup_res"  # Support/Resistance Levels
     PATTERN = "pattern"  # Price Patterns
 
+    # Regime Detection (composite indicators)
+    MOMENTUM_SCORE = "momentum_score"  # Price momentum with SMA analysis
+    VOLUME_RATIO = "volume_ratio"  # Volume relative to moving average
+    PRICE_STRENGTH = "price_strength"  # Combined price strength indicator
+
 
 @dataclass
 class IndicatorConfig:

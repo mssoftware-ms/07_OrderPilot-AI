@@ -78,16 +78,40 @@ class BacktestEngine:
         for ind in config.indicators:
             tf = ind.timeframe or "1m" # Default to 1m if not specified
             required_timeframes.add(tf)
-        
+
+        # 2.5. Validate chart data timeframe compatibility
+        if data_timeframe and chart_data is not None:
+            # Check if any required timeframe is smaller than chart timeframe
+            # (Downsampling is not possible: cannot create 5m from 15m data)
+            chart_tf_minutes = self._timeframe_to_minutes(data_timeframe)
+            for req_tf in required_timeframes:
+                req_tf_minutes = self._timeframe_to_minutes(req_tf)
+                if req_tf_minutes < chart_tf_minutes:
+                    error_msg = (
+                        f"⚠️ TIMEFRAME INCOMPATIBILITY\n\n"
+                        f"Chart data has {data_timeframe} timeframe, but strategy requires {req_tf} indicators.\n"
+                        f"Downsampling ({data_timeframe} → {req_tf}) is not possible.\n\n"
+                        f"Solutions:\n"
+                        f"1. Load chart with {req_tf} or 1m timeframe\n"
+                        f"2. Use a strategy that requires only {data_timeframe} or higher timeframes\n"
+                        f"3. Let system load data from Database/API (close chart, reopen Entry Analyzer)"
+                    )
+                    logger.error(error_msg)
+                    return {"error": error_msg}
+
         # Always ensure we have the execution timeframe (e.g. 1m or higher)
         # For simplicity, we execute on the lowest granularity available (1m) but evaluate higher TFs
-        
+
         # 3. Resample & Calculate Indicators
         datasets = {}
+        base_timeframe = data_timeframe if data_timeframe else "1m"
+
         for tf in required_timeframes:
-            if tf == "1m":
+            if tf == base_timeframe:
+                # Use base data directly (either 1m from DB/API or chart timeframe)
                 df_tf = df_1m.copy()
             else:
+                # Resample to higher timeframe
                 df_tf = self.data_loader.resample_data(df_1m, tf)
             
             # Calculate indicators for this timeframe
@@ -126,14 +150,72 @@ class BacktestEngine:
             aligned = df_tf_renamed.reindex(combined_df.index, method='ffill')
             combined_df = pd.concat([combined_df, aligned], axis=1)
 
+        # Import RegimeEngine for fallback regime detection
+        from src.core.tradingbot.regime_engine import RegimeEngine, FeatureVector
+        regime_engine = RegimeEngine()
+
         # Iterate rows
         for i in range(len(combined_df)):
             row = combined_df.iloc[i]
             timestamp = combined_df.index[i]
-            
+
             # 1. Determine Active Regimes
             active_regimes = self._evaluate_regimes(config.regimes, row, config.indicators)
             regime_ids = [r.id for r in active_regimes]
+
+            # FALLBACK: If no JSON regimes defined or no regimes active, use RegimeEngine
+            if not regime_ids and len(row) >= 5:
+                try:
+                    # Convert pandas Timestamp to Python datetime if needed
+                    from datetime import datetime
+                    if hasattr(timestamp, 'to_pydatetime'):
+                        dt_timestamp = timestamp.to_pydatetime()
+                    elif isinstance(timestamp, datetime):
+                        dt_timestamp = timestamp
+                    else:
+                        dt_timestamp = datetime.now()
+
+                    # Build FeatureVector from row data
+                    # Note: This requires OHLCV + indicators to be present
+                    feature_vector = FeatureVector(
+                        timestamp=dt_timestamp,
+                        symbol=symbol,
+                        close=float(row.get('close', 0)),
+                        high=float(row.get('high', 0)),
+                        low=float(row.get('low', 0)),
+                        open=float(row.get('open', 0)),
+                        volume=float(row.get('volume', 0)),
+                        # Try to get indicators from row (RSI, MACD, etc.)
+                        rsi=float(row.get('rsi14_value', row.get('1m_rsi14_value', 50))),
+                        macd_line=float(row.get('macd12_26_value', row.get('1m_macd12_26_value', 0))),
+                        macd_signal=float(row.get('macd12_26_signal', row.get('1m_macd12_26_signal', 0))),
+                        adx=float(row.get('adx14_value', row.get('1m_adx14_value', 25))),
+                        atr=float(row.get('atr14_value', row.get('1m_atr14_value', 0)))
+                    )
+
+                    # Classify regime
+                    regime_state = regime_engine.classify(feature_vector)
+
+                    # Create synthetic regime IDs from RegimeEngine result
+                    regime_ids = [
+                        f"regime_{regime_state.regime.name.lower()}",
+                        f"volatility_{regime_state.volatility.name.lower()}"
+                    ]
+
+                    # Create regime objects for visualization
+                    active_regimes = [
+                        type('Regime', (), {
+                            'id': f"regime_{regime_state.regime.name.lower()}",
+                            'name': regime_state.regime.name
+                        })(),
+                        type('Regime', (), {
+                            'id': f"volatility_{regime_state.volatility.name.lower()}",
+                            'name': f"Volatility: {regime_state.volatility.name}"
+                        })()
+                    ]
+                except Exception as e:
+                    logger.debug(f"Fallback regime detection failed at {timestamp}: {e}")
+                    regime_ids = []
 
             # Track regime changes for visualization
             if regime_ids != prev_regime_ids:
@@ -222,6 +304,32 @@ class BacktestEngine:
                         active_trade = None
 
         return self._calculate_stats(trades, initial_capital, equity, regime_history, data_timeframe, start_date, end_date, len(df_1m))
+
+    def _timeframe_to_minutes(self, timeframe: str) -> int:
+        """Convert timeframe string to minutes for comparison.
+
+        Args:
+            timeframe: e.g. "1m", "5m", "15m", "1h", "1d"
+
+        Returns:
+            Minutes as integer
+        """
+        tf_map = {
+            '1m': 1,
+            '3m': 3,
+            '5m': 5,
+            '15m': 15,
+            '30m': 30,
+            '1h': 60,
+            '2h': 120,
+            '4h': 240,
+            '6h': 360,
+            '8h': 480,
+            '12h': 720,
+            '1d': 1440,
+            '1w': 10080
+        }
+        return tf_map.get(timeframe, 1)  # Default to 1m if unknown
 
     def _calculate_indicators(self, df: pd.DataFrame, indicators: List, tf_suffix: str):
         """

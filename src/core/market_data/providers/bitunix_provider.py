@@ -190,6 +190,9 @@ class BitunixProvider(HistoricalDataProvider):
         Bitunix API returns data in DESCENDING order (newest first).
         We paginate backwards from end_date to start_date.
 
+        Special Handling for unsupported timeframes:
+        - 10m: Fetches 5m data and resamples to 10m (Bitunix API doesn't support 10m)
+
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT', 'ETHUSDT')
             start_date: Start date for data
@@ -203,6 +206,16 @@ class BitunixProvider(HistoricalDataProvider):
         Raises:
             aiohttp.ClientError: On API request failures
         """
+        # Special handling for 10m timeframe (not supported by Bitunix API)
+        needs_resampling = False
+        original_timeframe = timeframe
+
+        if timeframe == Timeframe.MINUTE_10:
+            logger.info("📊 10m timeframe requested but not supported by Bitunix API")
+            logger.info("📊 Fetching 5m data and resampling to 10m...")
+            timeframe = Timeframe.MINUTE_5  # Fetch 5m instead
+            needs_resampling = True
+
         interval = self._timeframe_to_bitunix(timeframe)
         interval_ms = self._interval_ms(interval)
         start_ms = int(start_date.timestamp() * 1000)
@@ -314,6 +327,50 @@ class BitunixProvider(HistoricalDataProvider):
             # Deduplicate and sort
             dedup = {int(bar.timestamp.timestamp() * 1000): bar for bar in all_bars}
             bars_sorted = [dedup[k] for k in sorted(dedup.keys())]
+
+            # Resample 5m → 10m if needed (Bitunix doesn't support 10m natively)
+            if needs_resampling and bars_sorted:
+                logger.info(f"📊 Resampling {len(bars_sorted)} bars from 5m to 10m...")
+
+                import pandas as pd
+
+                # Convert HistoricalBar objects to DataFrame
+                df = pd.DataFrame([{
+                    'timestamp': bar.timestamp,
+                    'open': float(bar.open),
+                    'high': float(bar.high),
+                    'low': float(bar.low),
+                    'close': float(bar.close),
+                    'volume': float(bar.volume)
+                } for bar in bars_sorted])
+
+                df.set_index('timestamp', inplace=True)
+                df.sort_index(inplace=True)
+
+                # Resample 5m → 10m
+                resampled_df = df.resample('10min').agg({
+                    'open': 'first',
+                    'high': 'max',
+                    'low': 'min',
+                    'close': 'last',
+                    'volume': 'sum'
+                }).dropna()
+
+                # Convert back to HistoricalBar objects
+                bars_sorted = [
+                    HistoricalBar(
+                        timestamp=ts,
+                        open=Decimal(str(row['open'])),
+                        high=Decimal(str(row['high'])),
+                        low=Decimal(str(row['low'])),
+                        close=Decimal(str(row['close'])),
+                        volume=int(row['volume']),
+                        source="bitunix"
+                    )
+                    for ts, row in resampled_df.iterrows()
+                ]
+
+                logger.info(f"📊 Resampled to {len(bars_sorted)} 10m bars")
 
             logger.info(f"✅ Bitunix Provider: Fetched {len(bars_sorted)} bars for {symbol} ({batches} requests, interval {interval})")
             return bars_sorted

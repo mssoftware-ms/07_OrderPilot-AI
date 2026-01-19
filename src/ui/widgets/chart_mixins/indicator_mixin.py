@@ -73,6 +73,73 @@ class IndicatorMixin:
         self._ensure_indicator_helpers()
         self._realtime.update_indicators_realtime(candle)
 
+    def _cleanup_all_chart_indicators(self):
+        """Remove ALL chart indicators/panels (JavaScript cleanup).
+
+        This is a nuclear option to clear all duplicate chart objects
+        that may have accumulated due to bugs.
+        """
+        if not hasattr(self, 'active_indicators'):
+            return
+
+        try:
+            # Remove all visual chart elements for each active indicator
+            for instance_id, inst in list(self.active_indicators.items()):
+                try:
+                    display_name = inst.get('display_name', instance_id)
+                    is_overlay = inst.get('is_overlay', True)
+                    self._chart_ops.remove_indicator_from_chart(instance_id, display_name, is_overlay)
+                except Exception as e:
+                    logger.warning(f"Could not remove chart element for {instance_id}: {e}")
+
+            logger.info("Cleaned up all chart indicators (visual removal)")
+
+        except Exception as e:
+            logger.error(f"Error during chart indicator cleanup: {e}", exc_info=True)
+
+    def _refresh_all_indicators(self):
+        """Refresh all active indicators with updated chart data.
+
+        This removes chart-visual elements first, then re-creates them,
+        but keeps the same instance IDs in active_indicators dict.
+        """
+        if not hasattr(self, 'active_indicators') or not self.active_indicators:
+            return
+
+        try:
+            # Store active indicators data BEFORE visual removal
+            indicators_data = []
+            for instance_id, inst in list(self.active_indicators.items()):
+                indicators_data.append({
+                    'instance_id': instance_id,
+                    'inst': inst,
+                    'display_name': inst.get('display_name', instance_id),
+                    'is_overlay': inst.get('is_overlay', True)
+                })
+
+            # STEP 1: Remove visual chart elements (JavaScript objects)
+            # BUT keep active_indicators dict intact
+            for data in indicators_data:
+                try:
+                    self._chart_ops.remove_indicator_from_chart(
+                        data['instance_id'],
+                        data['display_name'],
+                        data['is_overlay']
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not remove chart element for {data['instance_id']}: {e}")
+
+            # STEP 2: Re-create visual chart elements with SAME instance IDs
+            # This calls add_indicator_instance_to_chart() which creates NEW chart objects
+            # but uses the EXISTING instance data from active_indicators
+            self._update_indicators()
+
+            active_count = len(self.active_indicators)
+            logger.info(f"Refreshed {active_count} indicators with updated chart data")
+
+        except Exception as e:
+            logger.error(f"Error refreshing indicators: {e}", exc_info=True)
+
     # =============================================================================
     # UI - BUTTON BADGE & TOGGLE HANDLER
     # =============================================================================

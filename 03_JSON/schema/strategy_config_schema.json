@@ -400,17 +400,27 @@
     },
     "ConditionGroup": {
       "type": "object",
-      "description": "Gruppe von Bedingungen (all/any), die als Block ausgewertet werden.",
+      "description": "Gruppe von Bedingungen (all/any), die als Block ausgewertet werden. Unterstützt rekursive Verschachtelung.",
       "properties": {
         "all": {
           "type": "array",
           "description": "Alle aufgeführten Bedingungen müssen wahr sein.",
-          "items": { "$ref": "#/$defs/Condition" }
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/Condition" },
+              { "$ref": "#/$defs/ConditionGroup" }
+            ]
+          }
         },
         "any": {
           "type": "array",
           "description": "Mindestens eine der aufgeführten Bedingungen muss wahr sein.",
-          "items": { "$ref": "#/$defs/Condition" }
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/Condition" },
+              { "$ref": "#/$defs/ConditionGroup" }
+            ]
+          }
         }
       },
       "additionalProperties": false,

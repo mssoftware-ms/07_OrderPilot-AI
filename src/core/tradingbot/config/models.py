@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -56,24 +56,42 @@ class IndicatorType(str, Enum):
 
     # Volatility Indicators
     ATR = "ATR"
-    BBANDS = "BBANDS"
+    BB = "BB"  # Bollinger Bands (types.py uses "bb")
 
     # Trend Strength
     ADX = "ADX"
 
     # Volume
     VOLUME = "Volume"
-    VOLUME_RATIO = "VolumeRatio"
+    VOLUME_RATIO = "volume_ratio"  # Match types.py enum (lowercase with underscore)
 
     # Price-based
     PRICE = "Price"
     PRICE_CHANGE = "PriceChange"
 
+    # Regime Detection (Composite Indicators)
+    MOMENTUM_SCORE = "momentum_score"  # Match types.py enum (lowercase with underscore)
+    PRICE_STRENGTH = "price_strength"  # Match types.py enum (lowercase with underscore)
+    CHOP = "chop"  # Choppiness Index for range detection (match types.py enum)
+
     @classmethod
     def _missing_(cls, value: object) -> "IndicatorType" | None:
-        """Allow case-insensitive and underscore-insensitive indicator types."""
+        """Allow case-insensitive and underscore-insensitive indicator types.
+
+        Also handles aliases for backward compatibility:
+        - BBANDS → BB (Bollinger Bands)
+        """
         if not isinstance(value, str):
             return None
+
+        # Handle aliases
+        aliases = {
+            "bbands": "bb",  # BBANDS is an alias for BB
+        }
+        value_lower = value.lower()
+        if value_lower in aliases:
+            value = aliases[value_lower]
+
         normalized = value.replace("_", "").replace(" ", "").lower()
         for member in cls:
             member_norm = member.value.replace("_", "").replace(" ", "").lower()
@@ -218,7 +236,7 @@ class Condition(BaseModel):
 
 
 class ConditionGroup(BaseModel):
-    """Group of conditions with AND/OR logic.
+    """Group of conditions with AND/OR logic. Supports recursive nesting.
 
     Example (all = AND):
         {
@@ -235,9 +253,17 @@ class ConditionGroup(BaseModel):
                 {"left": {"indicator_id": "rsi14", "field": "value"}, "op": "gt", "right": {"value": 70}}
             ]
         }
+
+    Example (nested groups):
+        {
+            "any": [
+                {"all": [condition1, condition2]},
+                {"all": [condition3, condition4]}
+            ]
+        }
     """
-    all: list[Condition] | None = Field(None, description="All conditions must be true (AND)")
-    any: list[Condition] | None = Field(None, description="At least one condition must be true (OR)")
+    all: list[Union[Condition, "ConditionGroup"]] | None = Field(None, description="All conditions must be true (AND)")
+    any: list[Union[Condition, "ConditionGroup"]] | None = Field(None, description="At least one condition must be true (OR)")
 
     @model_validator(mode="after")
     def validate_group(self) -> "ConditionGroup":

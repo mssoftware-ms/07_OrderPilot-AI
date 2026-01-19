@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
@@ -9,6 +9,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
+
+logger = logging.getLogger(__name__)
 
 class EmbeddedTradingViewChartUIMixin:
     """EmbeddedTradingViewChartUIMixin extracted from EmbeddedTradingViewChart."""
@@ -95,6 +97,11 @@ class EmbeddedTradingViewChartUIMixin:
         self._add_zone_menu(menu)
         self._add_structure_menu(menu)
         self._add_lines_menu(menu)
+
+        # Indicators Toggle
+        menu.addSeparator()
+        self._add_indicators_toggle_menu(menu)
+
         self._add_clear_actions(menu)
 
         # Chart Markings Manager
@@ -326,3 +333,134 @@ class EmbeddedTradingViewChartUIMixin:
                 "Feature Not Available",
                 "Entry Analyzer mixin not loaded.",
             )
+
+    def _add_indicators_toggle_menu(self, menu):
+        """Add indicator visibility controls to context menu."""
+        try:
+            from PyQt6.QtGui import QAction
+
+            # Check if indicators exist
+            if not hasattr(self, 'active_indicators'):
+                return
+
+            # Get active indicators count
+            active_count = len(getattr(self, "active_indicators", {}))
+            if active_count == 0:
+                return
+
+            indicators_menu = menu.addMenu(f"📊 Indicators ({active_count})")
+
+            # Hide All action
+            hide_all_action = QAction("🔒 Hide All Indicators", self)
+            hide_all_action.triggered.connect(self._hide_all_indicators)
+            indicators_menu.addAction(hide_all_action)
+
+            # Show All action (in case some were hidden)
+            show_all_action = QAction("👁️ Show All Indicators", self)
+            show_all_action.triggered.connect(self._show_all_indicators)
+            indicators_menu.addAction(show_all_action)
+
+            # Individual toggles
+            indicators_menu.addSeparator()
+
+            for instance_id, indicator_data in self.active_indicators.items():
+                # Extract indicator name and params
+                ind_id = indicator_data.get('ind_id', instance_id)
+                params = indicator_data.get('params', {})
+
+                # Format display name
+                if params:
+                    params_str = ', '.join(f"{k}={v}" for k, v in params.items())
+                    display_name = f"{ind_id}({params_str})"
+                else:
+                    display_name = ind_id
+
+                # Add checkbox action for each indicator
+                toggle_action = QAction(f"☑️ {display_name}", self)
+                toggle_action.setCheckable(True)
+                toggle_action.setChecked(indicator_data.get('visible', True))
+                toggle_action.triggered.connect(
+                    lambda checked, iid=instance_id: self._toggle_indicator_visibility(iid, checked)
+                )
+                indicators_menu.addAction(toggle_action)
+        except Exception as e:
+            # Log error but don't break the context menu
+            logger.error(f"Error adding indicators toggle menu: {e}", exc_info=True)
+
+    def _hide_all_indicators(self):
+        """Hide all active indicators from chart (visual only, keep instance data)."""
+        if not hasattr(self, 'active_indicators') or not hasattr(self, '_chart_ops'):
+            return
+
+        hidden_count = 0
+        for instance_id, inst in list(self.active_indicators.items()):
+            try:
+                # Mark as hidden
+                inst['visible'] = False
+
+                # Remove from chart VISUALLY only (don't delete from active_indicators)
+                display_name = inst.get('display_name', instance_id)
+                is_overlay = inst.get('is_overlay', True)
+                self._chart_ops.remove_indicator_from_chart(instance_id, display_name, is_overlay)
+
+                hidden_count += 1
+            except Exception as e:
+                logger.warning(f"Could not hide indicator {instance_id}: {e}")
+
+        logger.info(f"Hidden {hidden_count} indicators (kept in active_indicators)")
+
+        # Update button badge
+        self._update_indicators_button_badge()
+
+    def _show_all_indicators(self):
+        """Show all hidden indicators on chart (re-create visuals with same instance data)."""
+        if not hasattr(self, 'active_indicators') or not hasattr(self, '_instance_mgr'):
+            return
+
+        shown_count = 0
+        for instance_id, inst in self.active_indicators.items():
+            try:
+                # Check if hidden
+                if not inst.get('visible', True):
+                    # Re-create chart visual with EXISTING instance data
+                    # This keeps the same instance_id and display_name
+                    self._instance_mgr.add_indicator_instance_to_chart(inst)
+                    inst['visible'] = True
+                    shown_count += 1
+            except Exception as e:
+                logger.warning(f"Could not show indicator {instance_id}: {e}")
+
+        logger.info(f"Shown {shown_count} indicators with existing instance IDs")
+
+        # Update button badge
+        self._update_indicators_button_badge()
+
+    def _toggle_indicator_visibility(self, instance_id: str, visible: bool):
+        """Toggle visibility of a single indicator (visual only, keep instance data)."""
+        if not hasattr(self, 'active_indicators') or not hasattr(self, '_instance_mgr'):
+            return
+
+        if instance_id not in self.active_indicators:
+            return
+
+        try:
+            inst = self.active_indicators[instance_id]
+
+            if visible:
+                # Show indicator - re-create visual with EXISTING instance data
+                self._instance_mgr.add_indicator_instance_to_chart(inst)
+                inst['visible'] = True
+                logger.info(f"Showing indicator: {instance_id}")
+            else:
+                # Hide indicator - remove visual only
+                display_name = inst.get('display_name', instance_id)
+                is_overlay = inst.get('is_overlay', True)
+                self._chart_ops.remove_indicator_from_chart(instance_id, display_name, is_overlay)
+                inst['visible'] = False
+                logger.info(f"Hiding indicator: {instance_id}")
+
+            # Update button badge
+            self._update_indicators_button_badge()
+
+        except Exception as e:
+            logger.error(f"Error toggling indicator {instance_id}: {e}")

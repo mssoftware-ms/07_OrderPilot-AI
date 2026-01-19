@@ -1,0 +1,396 @@
+{
+  "schema_version": "1.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI Regime System",
+    "created_at": "2025-01-19T00:00:00Z",
+    "tags": ["momentum", "uptrend", "volume-confirmation", "regime-based"],
+    "notes": "Momentum-basierte Uptrend-Erkennung mit Volume-Confirmation. Erkennt starke Aufwärtsbewegungen (>2% und >4%) auch bei niedrigem ADX."
+  },
+  "indicators": [
+    {
+      "id": "momentum_score",
+      "type": "MOMENTUM_SCORE",
+      "params": {
+        "sma_fast": 20,
+        "sma_slow": 50,
+        "use_price_distance": true
+      }
+    },
+    {
+      "id": "volume_ratio",
+      "type": "VOLUME_RATIO",
+      "params": {
+        "period": 20,
+        "smoothing": false
+      }
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "atr14",
+      "type": "ATR",
+      "params": {
+        "period": 14
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "extreme_uptrend",
+      "name": "Extreme Uptrend (>4% rally)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 4.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.5
+            }
+          }
+        ]
+      },
+      "priority": 100,
+      "scope": "entry"
+    },
+    {
+      "id": "strong_uptrend",
+      "name": "Strong Uptrend (>2% rally)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.5
+            }
+          }
+        ]
+      },
+      "priority": 80,
+      "scope": "entry"
+    },
+    {
+      "id": "moderate_uptrend",
+      "name": "Moderate Uptrend",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 0.5,
+              "max": 2.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "priority": 60,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "momentum_long_extreme",
+      "name": "Momentum Long - Extreme Rally",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 4.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 60.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.03,
+        "stop_loss_pct": 2.0,
+        "take_profit_pct": 6.0,
+        "trailing_mode": "atr",
+        "trailing_multiplier": 2.0
+      }
+    },
+    {
+      "id": "momentum_long_strong",
+      "name": "Momentum Long - Strong Rally",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 2.0,
+              "max": 4.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.5
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.8
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.025,
+        "stop_loss_pct": 2.5,
+        "take_profit_pct": 5.0,
+        "trailing_mode": "percent",
+        "trailing_multiplier": 1.5
+      }
+    },
+    {
+      "id": "momentum_long_moderate",
+      "name": "Momentum Long - Moderate",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 0.5,
+              "max": 2.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 45.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 4.0
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_extreme_uptrend",
+      "name": "Extreme Uptrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_long_extreme"
+        }
+      ]
+    },
+    {
+      "id": "set_strong_uptrend",
+      "name": "Strong Uptrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_long_strong"
+        }
+      ]
+    },
+    {
+      "id": "set_moderate_uptrend",
+      "name": "Moderate Uptrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_long_moderate"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_extreme_uptrend",
+      "match": {
+        "all_of": [
+          "extreme_uptrend"
+        ]
+      }
+    },
+    {
+      "strategy_set_id": "set_strong_uptrend",
+      "match": {
+        "all_of": [
+          "strong_uptrend"
+        ],
+        "none_of": [
+          "extreme_uptrend"
+        ]
+      }
+    },
+    {
+      "strategy_set_id": "set_moderate_uptrend",
+      "match": {
+        "all_of": [
+          "moderate_uptrend"
+        ],
+        "none_of": [
+          "extreme_uptrend",
+          "strong_uptrend"
+        ]
+      }
+    }
+  ]
+}

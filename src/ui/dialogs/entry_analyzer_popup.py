@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from PyQt6.QtCore import QDate, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -34,6 +35,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QRadioButton,
+    QScrollArea,
     QSpinBox,
     QSplitter,
     QTabWidget,
@@ -211,8 +214,8 @@ class EntryAnalyzerPopup(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("🎯 Entry Analyzer & Backtester")
-        self.setMinimumSize(900, 750)
-        self.resize(1000, 800)
+        self.setMinimumSize(900, 820)  # +70px height
+        self.resize(1000, 870)  # +70px height
 
         self._result: AnalysisResult | None = None
         self._validation_result: Any = None
@@ -237,30 +240,30 @@ class EntryAnalyzerPopup(QDialog):
         # Tab widget for different views
         self._tabs = QTabWidget()
 
-        # Tab 0: Backtest Setup (New)
+        # Tab 0: Backtest Setup
         setup_tab = QWidget()
         self._setup_backtest_config_tab(setup_tab)
         self._tabs.addTab(setup_tab, "⚙️ Backtest Setup")
 
-        # Tab 1: Indicator Optimization (Phase 1.3)
+        # Tab 1: Backtest Results (direkt nach Setup)
+        bt_results_tab = QWidget()
+        self._setup_backtest_results_tab(bt_results_tab)
+        self._tabs.addTab(bt_results_tab, "📈 Backtest Results")
+
+        # Tab 2: Indicator Optimization
         optimization_tab = QWidget()
         self._setup_indicator_optimization_tab(optimization_tab)
         self._tabs.addTab(optimization_tab, "🔧 Indicator Optimization")
 
-        # Tab 2: Pattern Recognition (NEW)
+        # Tab 3: Pattern Recognition
         pattern_tab = QWidget()
         self._setup_pattern_recognition_tab(pattern_tab)
         self._tabs.addTab(pattern_tab, "🔍 Pattern Recognition")
 
-        # Tab 3: Analysis (entries + indicators) - Existing
+        # Tab 4: Analysis (entries + indicators)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
         self._tabs.addTab(analysis_tab, "📊 Visible Range")
-
-        # Tab 4: Backtest Results (New)
-        bt_results_tab = QWidget()
-        self._setup_backtest_results_tab(bt_results_tab)
-        self._tabs.addTab(bt_results_tab, "📈 Backtest Results")
 
         # Tab 5: AI Copilot
         ai_tab = QWidget()
@@ -324,12 +327,24 @@ class EntryAnalyzerPopup(QDialog):
         
         layout.addWidget(group_data)
         
-        # Action
+        # Actions
+        actions_layout = QHBoxLayout()
+
+        # Analyze Current Regime Button
+        self._analyze_regime_btn = QPushButton("🔍 Analyze Current Regime")
+        self._analyze_regime_btn.setStyleSheet("font-weight: bold; font-size: 11pt; padding: 8px; background-color: #16a34a;")
+        self._analyze_regime_btn.setToolTip("Analyze current market regime without running full backtest")
+        self._analyze_regime_btn.clicked.connect(self._on_analyze_current_regime_clicked)
+        actions_layout.addWidget(self._analyze_regime_btn)
+
+        # Run Backtest Button
         self._bt_run_btn = QPushButton("🚀 Run Backtest")
         self._bt_run_btn.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 10px; background-color: #2563eb;")
         self._bt_run_btn.clicked.connect(self._on_run_backtest_clicked)
-        layout.addWidget(self._bt_run_btn)
-        
+        actions_layout.addWidget(self._bt_run_btn)
+
+        layout.addLayout(actions_layout)
+
         self._bt_status_label = QLabel("Ready")
         self._bt_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._bt_status_label)
@@ -399,6 +414,170 @@ class EntryAnalyzerPopup(QDialog):
         )
         if file_path:
             self._strategy_path_edit.setText(file_path)
+
+    def _on_analyze_current_regime_clicked(self) -> None:
+        """Analyze current market regime without running full backtest."""
+        import pandas as pd
+        import pandas_ta as ta
+        from src.core.tradingbot.regime_engine import RegimeEngine, FeatureVector
+
+        try:
+            # Get parent chart widget (NOT chart window)
+            parent = self.parent()
+            if not parent:
+                QMessageBox.warning(self, "Error", "No chart found. Please open this dialog from a chart.")
+                return
+
+            # Get chart data (DataFrame with OHLCV)
+            # The parent is the ChartWidget (e.g., EmbeddedTradingViewChart) which has a 'data' attribute
+            if not hasattr(parent, 'data') or parent.data is None or parent.data.empty:
+                QMessageBox.warning(self, "Error", "No market data available. Please load a symbol first.")
+                return
+
+            df = parent.data.copy()
+
+            if len(df) < 50:
+                QMessageBox.warning(self, "Error", f"Not enough data for regime analysis (need at least 50 candles, got {len(df)}).")
+                return
+
+            # Ensure required columns exist
+            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                QMessageBox.warning(self, "Error", f"Missing required data columns: {', '.join(missing_cols)}")
+                return
+
+            # Calculate indicators using pandas_ta
+            df['rsi'] = ta.rsi(df['close'], length=14)
+
+            macd_result = ta.macd(df['close'], fast=12, slow=26, signal=9)
+            if macd_result is not None and not macd_result.empty:
+                df['macd_line'] = macd_result.iloc[:, 0]
+                df['macd_signal'] = macd_result.iloc[:, 1]
+            else:
+                df['macd_line'] = 0
+                df['macd_signal'] = 0
+
+            adx_result = ta.adx(df['high'], df['low'], df['close'], length=14)
+            if adx_result is not None and not adx_result.empty:
+                df['adx'] = adx_result.iloc[:, 0]
+            else:
+                df['adx'] = 25  # Default
+
+            df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
+
+            # Calculate Bollinger Bands for BB Width%
+            bb_result = ta.bbands(df['close'], length=20, std=2)
+            if bb_result is not None and not bb_result.empty:
+                df['bb_lower'] = bb_result.iloc[:, 0]
+                df['bb_middle'] = bb_result.iloc[:, 1]
+                df['bb_upper'] = bb_result.iloc[:, 2]
+
+            # Get latest values
+            last_row = df.iloc[-1]
+
+            # Get timestamp from index or use current time
+            from datetime import datetime
+            if hasattr(df.index[-1], 'to_pydatetime'):
+                timestamp = df.index[-1].to_pydatetime()
+            elif isinstance(df.index[-1], datetime):
+                timestamp = df.index[-1]
+            else:
+                timestamp = datetime.now()
+
+            # Get symbol from parent if available
+            symbol = getattr(parent, '_symbol', None) or getattr(parent, 'current_symbol', 'UNKNOWN')
+
+            # Build FeatureVector
+            features = FeatureVector(
+                timestamp=timestamp,
+                symbol=symbol,
+                close=float(last_row['close']),
+                high=float(last_row['high']),
+                low=float(last_row['low']),
+                open=float(last_row['open']),
+                volume=float(last_row['volume']),
+                rsi=float(last_row['rsi']) if pd.notna(last_row['rsi']) else 50.0,
+                macd_line=float(last_row['macd_line']) if pd.notna(last_row['macd_line']) else 0.0,
+                macd_signal=float(last_row['macd_signal']) if pd.notna(last_row['macd_signal']) else 0.0,
+                adx=float(last_row['adx']) if pd.notna(last_row['adx']) else 25.0,
+                atr=float(last_row['atr']) if pd.notna(last_row['atr']) else 0.0
+            )
+
+            # Detect current regime using RegimeEngine
+            regime_engine = RegimeEngine()
+            current_regime = regime_engine.classify(features)
+
+            # Calculate ATR% and BB Width% for display
+            atr_pct = (float(last_row['atr']) / float(last_row['close']) * 100.0) if pd.notna(last_row['atr']) and last_row['close'] > 0 else 0.0
+
+            # Calculate BB Width% if we have BB bands
+            bb_width_pct = 0.0
+            if 'bb_upper' in df.columns and 'bb_lower' in df.columns:
+                bb_upper = float(last_row.get('bb_upper', 0))
+                bb_lower = float(last_row.get('bb_lower', 0))
+                bb_middle = (bb_upper + bb_lower) / 2.0
+                if bb_middle > 0:
+                    bb_width_pct = ((bb_upper - bb_lower) / bb_middle) * 100.0
+
+            # Build result message
+            message = "<h3>📊 Current Market Regime Analysis</h3>"
+            message += f"<p><b>Regime:</b> <span style='color: #2563eb; font-size: 14pt; font-weight: bold;'>{current_regime.regime.name}</span></p>"
+            message += f"<p><b>Volatility:</b> <span style='color: #ea580c; font-size: 14pt; font-weight: bold;'>{current_regime.volatility.name}</span></p>"
+            message += "<hr>"
+            message += f"<p><b>ADX:</b> {float(last_row['adx']):.2f}</p>" if pd.notna(last_row['adx']) else "<p><b>ADX:</b> N/A</p>"
+            message += f"<p><b>ATR%:</b> {atr_pct:.2f}%</p>"
+            if bb_width_pct > 0:
+                message += f"<p><b>BB Width%:</b> {bb_width_pct:.2f}%</p>"
+            message += f"<p><b>RSI:</b> {float(last_row['rsi']):.2f}</p>" if pd.notna(last_row['rsi']) else "<p><b>RSI:</b> N/A</p>"
+            message += "<hr>"
+            message += f"<p><b>Regime Confidence:</b> {current_regime.regime_confidence:.1%}</p>"
+            message += f"<p><b>Volatility Confidence:</b> {current_regime.volatility_confidence:.1%}</p>"
+
+            # Add interpretation
+            message += "<hr>"
+            message += "<h4>💡 Interpretation</h4>"
+
+            if current_regime.regime.name == "TREND_UP":
+                message += "<p>✅ <b>Bullish Trend</b> - Consider trend-following strategies</p>"
+            elif current_regime.regime.name == "TREND_DOWN":
+                message += "<p>🔻 <b>Bearish Trend</b> - Consider short positions or defensive strategies</p>"
+            elif current_regime.regime.name == "RANGE":
+                message += "<p>↔️ <b>Range-Bound Market</b> - Consider mean-reversion strategies</p>"
+
+            if current_regime.volatility.name == "LOW":
+                message += "<p>📉 <b>Low Volatility</b> - Tight stops, smaller position sizes</p>"
+            elif current_regime.volatility.name == "EXTREME":
+                message += "<p>⚡ <b>Extreme Volatility</b> - Wide stops, reduced position sizes, increased risk</p>"
+
+            # Show result in message box
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Current Regime Analysis")
+            msg_box.setTextFormat(Qt.TextFormat.RichText)
+            msg_box.setText(message)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.exec()
+
+            # Update header label
+            regime_str = f"Regime: {current_regime.regime.name} - {current_regime.volatility.name}"
+            self._regime_label.setText(regime_str)
+
+            # Change color based on regime
+            if current_regime.regime.name == "TREND_UP":
+                color = "#16a34a"  # Green
+            elif current_regime.regime.name == "TREND_DOWN":
+                color = "#dc2626"  # Red
+            else:
+                color = "#ea580c"  # Orange
+
+            self._regime_label.setStyleSheet(f"font-weight: bold; font-size: 14pt; padding: 5px; color: {color};")
+
+            logger.info(f"Current regime analyzed: {current_regime.regime.name} - {current_regime.volatility.name}")
+
+        except Exception as e:
+            logger.error(f"Failed to analyze current regime: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to analyze regime:\n{str(e)}")
 
     def _on_run_backtest_clicked(self) -> None:
         config_path = self._strategy_path_edit.text()
@@ -1102,109 +1281,190 @@ class EntryAnalyzerPopup(QDialog):
         logger.error("Validation error: %s", error_msg)
 
     def _setup_indicator_optimization_tab(self, tab: QWidget) -> None:
-        """Setup Indicator Optimization tab (Phase 1.3).
+        """Setup Indicator Optimization tab with sub-tabs (Phase 1.3 - Improved UI).
 
-        Allows testing individual indicators with different parameters
-        to find optimal settings per regime.
+        Sub-tabs:
+        - Setup: Indicator selection + parameter ranges
+        - Results: Optimization results table
         """
+        # Create sub-tabs
+        sub_tabs = QTabWidget(tab)
+        main_layout = QVBoxLayout(tab)
+        main_layout.addWidget(sub_tabs)
+
+        # Setup Tab
+        setup_tab = QWidget()
+        sub_tabs.addTab(setup_tab, "⚙️ Setup")
+        self._setup_optimization_setup_tab(setup_tab)
+
+        # Results Tab
+        results_tab = QWidget()
+        sub_tabs.addTab(results_tab, "📊 Results")
+        self._setup_optimization_results_tab(results_tab)
+
+    def _setup_optimization_setup_tab(self, tab: QWidget) -> None:
+        """Setup the Setup sub-tab with indicator selection and parameter ranges."""
         layout = QVBoxLayout(tab)
 
         # Header with description
         header_label = QLabel(
-            "Test individual indicators with various parameter settings to find "
-            "optimal configurations for each market regime."
+            "Select indicators and configure parameter ranges for optimization. "
+            "Parameter ranges are shown only for selected indicators."
         )
         header_label.setWordWrap(True)
         header_label.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
         layout.addWidget(header_label)
 
-        # Indicator Selection Group
-        indicator_group = QGroupBox("Indicator Selection")
-        indicator_layout = QVBoxLayout(indicator_group)
+        # Indicator Selection Group (Multi-column with ScrollArea)
+        indicator_group = QGroupBox("Indicator Selection (20 available)")
+        indicator_group_layout = QVBoxLayout(indicator_group)
+
+        # Scroll area for indicators
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumHeight(180)  # -20px
+        scroll_area.setMaximumHeight(280)  # -20px
+
+        scroll_widget = QWidget()
+        scroll_area.setWidget(scroll_widget)
+
+        # Grid layout for multi-column checkboxes
+        grid_layout = QGridLayout(scroll_widget)
+        grid_layout.setSpacing(5)
 
         self._opt_indicator_checkboxes = {}
-        indicators = [
-            ('RSI', 'Relative Strength Index'),
-            ('MACD', 'Moving Average Convergence Divergence'),
-            ('ADX', 'Average Directional Index'),
-            ('BB', 'Bollinger Bands'),
-            ('SMA', 'Simple Moving Average'),
-            ('EMA', 'Exponential Moving Average'),
-            ('ATR', 'Average True Range'),
+
+        # Define indicators by category
+        indicator_categories = [
+            ("TREND & OVERLAY", [
+                ('SMA', 'Simple Moving Average'),
+                ('EMA', 'Exponential Moving Average'),
+                ('ICHIMOKU', 'Ichimoku Cloud'),
+                ('PSAR', 'Parabolic SAR'),
+                ('VWAP', 'VWAP'),
+                ('PIVOTS', 'Pivot Points'),
+            ]),
+            ("BREAKOUT & CHANNELS", [
+                ('BB', 'Bollinger Bands'),
+                ('KC', 'Keltner Channels'),
+            ]),
+            ("REGIME & TREND", [
+                ('ADX', 'ADX'),
+                ('CHOP', 'Choppiness'),
+            ]),
+            ("MOMENTUM", [
+                ('RSI', 'RSI'),
+                ('MACD', 'MACD'),
+                ('STOCH', 'Stochastic'),
+                ('CCI', 'CCI'),
+            ]),
+            ("VOLATILITY", [
+                ('ATR', 'ATR'),
+                ('BB_WIDTH', 'BB Bandwidth'),
+            ]),
+            ("VOLUME", [
+                ('OBV', 'OBV'),
+                ('MFI', 'MFI'),
+                ('AD', 'A/D'),
+                ('CMF', 'CMF'),
+            ]),
         ]
 
-        for indicator_id, indicator_name in indicators:
-            cb = QCheckBox(f"{indicator_id} - {indicator_name}")
-            cb.setChecked(indicator_id in ['RSI', 'MACD', 'ADX'])  # Default: RSI, MACD, ADX
-            self._opt_indicator_checkboxes[indicator_id] = cb
-            indicator_layout.addWidget(cb)
+        # Create checkboxes in 3-column grid
+        row = 0
+        col = 0
+        max_cols = 3
 
+        for category_name, indicators in indicator_categories:
+            # Add category header spanning all columns
+            category_label = QLabel(f"=== {category_name} ===")
+            category_label.setStyleSheet("font-weight: bold; color: #2196f3; margin-top: 5px;")
+            grid_layout.addWidget(category_label, row, 0, 1, max_cols)
+            row += 1
+
+            # Add indicators in columns
+            for indicator_id, indicator_name in indicators:
+                cb = QCheckBox(f"{indicator_id}")
+                cb.setToolTip(indicator_name)
+                cb.setChecked(False)  # Default: None selected
+                cb.stateChanged.connect(self._on_indicator_selection_changed)
+                self._opt_indicator_checkboxes[indicator_id] = cb
+
+                grid_layout.addWidget(cb, row, col)
+
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+
+            # Start new category on new row
+            if col != 0:
+                col = 0
+                row += 1
+
+        indicator_group_layout.addWidget(scroll_area)
         layout.addWidget(indicator_group)
 
-        # Parameter Ranges Group
-        param_group = QGroupBox("Parameter Ranges")
-        param_layout = QFormLayout(param_group)
+        # Test Mode Selection Group
+        test_mode_group = QGroupBox("Test Mode")
+        test_mode_layout = QHBoxLayout(test_mode_group)
 
-        # RSI Period Range
-        rsi_range_layout = QHBoxLayout()
-        self.rsi_min_spin = QSpinBox()
-        self.rsi_min_spin.setRange(5, 50)
-        self.rsi_min_spin.setValue(10)
-        self.rsi_max_spin = QSpinBox()
-        self.rsi_max_spin.setRange(5, 50)
-        self.rsi_max_spin.setValue(20)
-        self.rsi_step_spin = QSpinBox()
-        self.rsi_step_spin.setRange(1, 10)
-        self.rsi_step_spin.setValue(2)
-        rsi_range_layout.addWidget(QLabel("Min:"))
-        rsi_range_layout.addWidget(self.rsi_min_spin)
-        rsi_range_layout.addWidget(QLabel("Max:"))
-        rsi_range_layout.addWidget(self.rsi_max_spin)
-        rsi_range_layout.addWidget(QLabel("Step:"))
-        rsi_range_layout.addWidget(self.rsi_step_spin)
-        param_layout.addRow("RSI Period Range:", rsi_range_layout)
+        # Test Type: Entry vs Exit
+        test_type_label = QLabel("Test Type:")
+        test_type_layout = QHBoxLayout()
+        self._test_type_entry = QRadioButton("Entry")
+        self._test_type_exit = QRadioButton("Exit")
+        self._test_type_entry.setChecked(True)
+        test_type_layout.addWidget(self._test_type_entry)
+        test_type_layout.addWidget(self._test_type_exit)
 
-        # MACD Fast Period Range
-        macd_fast_layout = QHBoxLayout()
-        self.macd_fast_min_spin = QSpinBox()
-        self.macd_fast_min_spin.setRange(5, 30)
-        self.macd_fast_min_spin.setValue(8)
-        self.macd_fast_max_spin = QSpinBox()
-        self.macd_fast_max_spin.setRange(5, 30)
-        self.macd_fast_max_spin.setValue(16)
-        self.macd_fast_step_spin = QSpinBox()
-        self.macd_fast_step_spin.setRange(1, 5)
-        self.macd_fast_step_spin.setValue(2)
-        macd_fast_layout.addWidget(QLabel("Min:"))
-        macd_fast_layout.addWidget(self.macd_fast_min_spin)
-        macd_fast_layout.addWidget(QLabel("Max:"))
-        macd_fast_layout.addWidget(self.macd_fast_max_spin)
-        macd_fast_layout.addWidget(QLabel("Step:"))
-        macd_fast_layout.addWidget(self.macd_fast_step_spin)
-        param_layout.addRow("MACD Fast Period:", macd_fast_layout)
+        # Trade Side: Long vs Short
+        trade_side_label = QLabel("Trade Side:")
+        trade_side_layout = QHBoxLayout()
+        self._trade_side_long = QRadioButton("Long")
+        self._trade_side_short = QRadioButton("Short")
+        self._trade_side_long.setChecked(True)
+        trade_side_layout.addWidget(self._trade_side_long)
+        trade_side_layout.addWidget(self._trade_side_short)
 
-        # ADX Period Range
-        adx_range_layout = QHBoxLayout()
-        self.adx_min_spin = QSpinBox()
-        self.adx_min_spin.setRange(5, 30)
-        self.adx_min_spin.setValue(10)
-        self.adx_max_spin = QSpinBox()
-        self.adx_max_spin.setRange(5, 30)
-        self.adx_max_spin.setValue(20)
-        self.adx_step_spin = QSpinBox()
-        self.adx_step_spin.setRange(1, 5)
-        self.adx_step_spin.setValue(2)
-        adx_range_layout.addWidget(QLabel("Min:"))
-        adx_range_layout.addWidget(self.adx_min_spin)
-        adx_range_layout.addWidget(QLabel("Max:"))
-        adx_range_layout.addWidget(self.adx_max_spin)
-        adx_range_layout.addWidget(QLabel("Step:"))
-        adx_range_layout.addWidget(self.adx_step_spin)
-        param_layout.addRow("ADX Period Range:", adx_range_layout)
+        test_mode_layout.addWidget(test_type_label)
+        test_mode_layout.addLayout(test_type_layout)
+        test_mode_layout.addSpacing(20)
+        test_mode_layout.addWidget(trade_side_label)
+        test_mode_layout.addLayout(trade_side_layout)
+        test_mode_layout.addStretch()
 
-        layout.addWidget(param_group)
+        layout.addWidget(test_mode_group)
 
-        # Progress bar (hidden by default)
+        # Dynamic Parameter Ranges Group
+        self._param_ranges_group = QGroupBox("Parameter Ranges (shown for selected indicators)")
+        self._param_ranges_group.setMaximumHeight(162)  # User requested: 162px height
+        self._param_ranges_layout = QVBoxLayout(self._param_ranges_group)
+        self._param_ranges_layout.setContentsMargins(5, 5, 5, 5)
+
+        # Scroll area for parameter ranges
+        self._param_scroll = QScrollArea()
+        self._param_scroll.setWidgetResizable(True)
+        self._param_scroll.setMinimumHeight(120)  # Adjusted to fit within 162px GroupBox
+        self._param_scroll.setMaximumHeight(120)  # Adjusted to fit within 162px GroupBox
+        self._param_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+
+        self._param_scroll_widget = QWidget()
+        self._param_scroll.setWidget(self._param_scroll_widget)
+        self._param_scroll_content_layout = QVBoxLayout(self._param_scroll_widget)
+        self._param_scroll_content_layout.setSpacing(5)
+        self._param_scroll_content_layout.setContentsMargins(5, 5, 5, 5)
+
+        self._param_ranges_layout.addWidget(self._param_scroll)
+        layout.addWidget(self._param_ranges_group)
+
+        # Store parameter widgets dynamically
+        self._param_widgets = {}
+
+        # Initialize parameter ranges for default selection
+        self._update_parameter_ranges()
+
+        # Progress bar
         self._opt_progress = QProgressBar()
         self._opt_progress.setVisible(False)
         layout.addWidget(self._opt_progress)
@@ -1218,40 +1478,214 @@ class EntryAnalyzerPopup(QDialog):
         self._optimize_btn.clicked.connect(self._on_optimize_indicators_clicked)
         layout.addWidget(self._optimize_btn)
 
-        # Results Table
+        # Info label
+        info_label = QLabel(
+            "💡 Tip: Select indicators to see their parameter ranges. "
+            "Click Optimize to find the best configurations for each regime."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #666; font-size: 10px; padding: 5px;")
+        layout.addWidget(info_label)
+
+        layout.addStretch()
+
+    def _setup_optimization_results_tab(self, tab: QWidget) -> None:
+        """Setup the Results sub-tab with optimization results table."""
+        layout = QVBoxLayout(tab)
+
+        # Header
+        header_label = QLabel("Optimization Results - Best parameter combinations per regime")
+        header_label.setStyleSheet("font-weight: bold; font-size: 12px; padding: 5px;")
+        layout.addWidget(header_label)
+
+        # Results Table (full height)
         self._optimization_results_table = QTableWidget()
-        self._optimization_results_table.setColumnCount(7)
+        self._optimization_results_table.setColumnCount(9)
         self._optimization_results_table.setHorizontalHeaderLabels([
-            "Indicator", "Parameters", "Regime", "Score (0-100)",
-            "Win Rate", "Profit Factor", "Trades"
+            "Indicator", "Parameters", "Regime", "Test Type", "Trade Side",
+            "Score (0-100)", "Win Rate", "Profit Factor", "Trades"
         ])
         self._optimization_results_table.horizontalHeader().setStretchLastSection(True)
         self._optimization_results_table.setAlternatingRowColors(True)
         self._optimization_results_table.setSortingEnabled(True)
+        self._optimization_results_table.setMinimumHeight(400)
+        self._optimization_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._optimization_results_table.setSelectionMode(QTableWidget.SelectionMode.MultiSelection)
         layout.addWidget(self._optimization_results_table)
 
+        # Buttons layout
+        buttons_layout = QHBoxLayout()
+
+        # Draw Selected Indicators Button
+        self._draw_indicators_btn = QPushButton("📊 Draw Indicators")
+        self._draw_indicators_btn.setEnabled(False)
+        self._draw_indicators_btn.setStyleSheet(
+            "background-color: #4caf50; color: white; font-weight: bold; "
+            "padding: 8px; font-size: 13px;"
+        )
+        self._draw_indicators_btn.setToolTip(
+            "Draw selected indicators on the chart with optimized parameters"
+        )
+        self._draw_indicators_btn.clicked.connect(self._on_draw_indicators_clicked)
+        buttons_layout.addWidget(self._draw_indicators_btn)
+
+        # Show Entry Signals Button
+        self._show_entries_btn = QPushButton("📍 Show Entry Signals")
+        self._show_entries_btn.setEnabled(False)
+        self._show_entries_btn.setStyleSheet(
+            "background-color: #ff9800; color: white; font-weight: bold; "
+            "padding: 8px; font-size: 13px;"
+        )
+        self._show_entries_btn.setToolTip(
+            "Calculate and show entry signals for selected indicators as arrows on chart"
+        )
+        self._show_entries_btn.clicked.connect(self._on_show_entries_clicked)
+        buttons_layout.addWidget(self._show_entries_btn)
+
         # Regime Set Builder Button
-        self._create_regime_set_btn = QPushButton("📦 Create Regime Set from Results")
-        self._create_regime_set_btn.setEnabled(False)  # Enabled after optimization
+        self._create_regime_set_btn = QPushButton("📦 Create Regime Set")
+        self._create_regime_set_btn.setEnabled(False)
         self._create_regime_set_btn.setStyleSheet(
             "background-color: #2196f3; color: white; font-weight: bold; "
             "padding: 8px; font-size: 13px;"
         )
         self._create_regime_set_btn.setToolTip(
-            "Automatically create a regime-based strategy set from the top-performing "
-            "indicators in each regime. Generates a JSON config and runs backtest."
+            "Create a regime-based strategy set from top-performing indicators"
         )
         self._create_regime_set_btn.clicked.connect(self._on_create_regime_set_clicked)
-        layout.addWidget(self._create_regime_set_btn)
+        buttons_layout.addWidget(self._create_regime_set_btn)
 
-        # Info label
-        info_label = QLabel(
-            "💡 Tip: Select indicators and adjust parameter ranges, then click Optimize. "
-            "Results will show the best parameter combinations for each market regime."
-        )
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; font-size: 10px; padding: 5px;")
-        layout.addWidget(info_label)
+        layout.addLayout(buttons_layout)
+
+    def _on_indicator_selection_changed(self) -> None:
+        """Handle indicator selection change to update parameter ranges."""
+        self._update_parameter_ranges()
+
+    def _update_parameter_ranges(self) -> None:
+        """Dynamically update parameter range widgets based on selected indicators."""
+        # Clear existing widgets
+        while self._param_scroll_content_layout.count():
+            child = self._param_scroll_content_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        self._param_widgets.clear()
+
+        # Get selected indicators
+        selected_indicators = [
+            ind_id for ind_id, cb in self._opt_indicator_checkboxes.items()
+            if cb.isChecked()
+        ]
+
+        if not selected_indicators:
+            no_selection_label = QLabel("No indicators selected")
+            no_selection_label.setStyleSheet("color: #999; font-style: italic; padding: 10px;")
+            self._param_scroll_content_layout.addWidget(no_selection_label)
+            return
+
+        # Define parameter configurations for each indicator
+        param_configs = {
+            'RSI': [('period', 5, 50, 10, 20, 2)],
+            'MACD': [('fast', 5, 30, 8, 16, 2), ('slow', 15, 50, 20, 30, 5)],
+            'ADX': [('period', 5, 30, 10, 20, 2)],
+            'SMA': [('period', 10, 200, 20, 100, 10)],
+            'EMA': [('period', 10, 200, 20, 100, 10)],
+            'BB': [('period', 10, 40, 20, 30, 5), ('std', 1.5, 3.0, 2.0, 2.5, 0.5)],
+            'ATR': [('period', 7, 21, 14, 21, 7)],
+            'ICHIMOKU': [('tenkan', 5, 20, 9, 18, 3), ('kijun', 20, 80, 26, 52, 13)],
+            'PSAR': [('accel', 0.01, 0.03, 0.02, 0.02, 0.005)],
+            'KC': [('period', 10, 30, 20, 30, 5), ('atr_mult', 1.0, 3.0, 1.5, 2.5, 0.5)],
+            'CHOP': [('period', 10, 20, 14, 20, 2)],
+            'STOCH': [('k_period', 5, 20, 10, 14, 2), ('d_period', 3, 7, 3, 5, 1)],
+            'CCI': [('period', 10, 30, 14, 20, 2)],
+            'BB_WIDTH': [('period', 10, 40, 20, 30, 5)],
+            'MFI': [('period', 10, 20, 10, 14, 2)],
+            'CMF': [('period', 10, 30, 14, 20, 2)],
+        }
+
+        # Create parameter widgets for selected indicators (wider fields with separate labels)
+        for indicator_id in selected_indicators:
+            if indicator_id in ['VWAP', 'OBV', 'AD', 'PIVOTS']:
+                # No parameters for these indicators
+                label = QLabel(f"{indicator_id}: No parameters")
+                label.setStyleSheet("color: #666; font-style: italic; padding: 5px;")
+                self._param_scroll_content_layout.addWidget(label)
+                continue
+
+            if indicator_id not in param_configs:
+                continue
+
+            # Add indicator header
+            indicator_header = QLabel(f"--- {indicator_id} ---")
+            indicator_header.setStyleSheet("font-weight: bold; color: #2196f3; padding: 5px 0px; margin-top: 10px;")
+            self._param_scroll_content_layout.addWidget(indicator_header)
+
+            self._param_widgets[indicator_id] = {}
+
+            # Add each parameter in its own row with wider fields
+            for param_name, min_val, max_val, default_min, default_max, default_step in param_configs[indicator_id]:
+                # Create widget container for this parameter row
+                param_container = QWidget()
+                param_container_layout = QHBoxLayout(param_container)
+                param_container_layout.setContentsMargins(20, 2, 5, 2)
+                param_container_layout.setSpacing(15)
+
+                # Parameter name label
+                name_label = QLabel(f"{param_name}:")
+                name_label.setMinimumWidth(60)
+                param_container_layout.addWidget(name_label)
+
+                # Min label and spinbox
+                min_label = QLabel("Min:")
+                min_label.setMinimumWidth(35)
+                param_container_layout.addWidget(min_label)
+                is_float_param = isinstance(min_val, float) or isinstance(max_val, float)
+                min_spin = QDoubleSpinBox() if is_float_param else QSpinBox()
+                min_spin.setRange(min_val, max_val)
+                min_spin.setValue(default_min)
+                min_spin.setSingleStep(default_step if isinstance(default_step, int) else 0.01)
+                min_spin.setMinimumWidth(80)
+                param_container_layout.addWidget(min_spin)
+
+                # Max label and spinbox
+                max_label = QLabel("Max:")
+                max_label.setMinimumWidth(35)
+                param_container_layout.addWidget(max_label)
+                max_spin = QDoubleSpinBox() if is_float_param else QSpinBox()
+                max_spin.setRange(min_val, max_val)
+                max_spin.setValue(default_max)
+                max_spin.setSingleStep(default_step if isinstance(default_step, int) else 0.01)
+                max_spin.setMinimumWidth(80)
+                param_container_layout.addWidget(max_spin)
+
+                # Step label and spinbox
+                step_label = QLabel("Step:")
+                step_label.setMinimumWidth(35)
+                param_container_layout.addWidget(step_label)
+                step_spin = QDoubleSpinBox() if is_float_param else QSpinBox()
+                if is_float_param:
+                    step_spin.setRange(0.01, max_val / 2)
+                else:
+                    step_spin.setRange(1, int(max_val / 2))
+                step_spin.setValue(default_step)
+                step_spin.setSingleStep(0.01 if is_float_param else 1)
+                step_spin.setMinimumWidth(80)
+                param_container_layout.addWidget(step_spin)
+
+                param_container_layout.addStretch()
+
+                # Store widgets
+                self._param_widgets[indicator_id][param_name] = {
+                    'min': min_spin,
+                    'max': max_spin,
+                    'step': step_spin
+                }
+
+                # Add parameter container to main layout
+                self._param_scroll_content_layout.addWidget(param_container)
+
+        # Add stretch at the end to push widgets to the top
+        self._param_scroll_content_layout.addStretch()
 
     def _on_optimize_indicators_clicked(self) -> None:
         """Handle optimize indicators button click."""
@@ -1270,31 +1704,26 @@ class EntryAnalyzerPopup(QDialog):
             )
             return
 
-        # Get parameter ranges
-        param_ranges = {
-            'RSI': {
-                'min': self.rsi_min_spin.value(),
-                'max': self.rsi_max_spin.value(),
-                'step': self.rsi_step_spin.value()
-            },
-            'MACD_fast': {
-                'min': self.macd_fast_min_spin.value(),
-                'max': self.macd_fast_max_spin.value(),
-                'step': self.macd_fast_step_spin.value()
-            },
-            'ADX': {
-                'min': self.adx_min_spin.value(),
-                'max': self.adx_max_spin.value(),
-                'step': self.adx_step_spin.value()
-            }
-        }
+        # Get parameter ranges from dynamic widgets
+        param_ranges = {}
+        for indicator_id, params in self._param_widgets.items():
+            if indicator_id not in selected_indicators:
+                continue
 
-        # Validate date range and config
-        if not self.json_file_input.text():
+            param_ranges[indicator_id] = {}
+            for param_name, widgets in params.items():
+                param_ranges[indicator_id][param_name] = {
+                    'min': widgets['min'].value(),
+                    'max': widgets['max'].value(),
+                    'step': widgets['step'].value()
+                }
+
+        # Validate symbol selection
+        if not self._bt_symbol_combo.currentText():
             QMessageBox.warning(
                 self,
-                "No Config Selected",
-                "Please select a JSON strategy configuration first."
+                "No Symbol Selected",
+                "Please select a trading symbol first."
             )
             return
 
@@ -1312,26 +1741,36 @@ class EntryAnalyzerPopup(QDialog):
         )
 
         # Get dates from UI
-        start_date = self.start_date_edit.date().toPyDate()
-        end_date = self.end_date_edit.date().toPyDate()
+        start_date = self._bt_start_date.date().toPyDate()
+        end_date = self._bt_end_date.date().toPyDate()
 
         # Get symbol
-        symbol = self.symbol_combo.currentText()
+        symbol = self._bt_symbol_combo.currentText()
 
         # Get initial capital
-        capital = self.capital_spin.value()
+        capital = self._bt_capital.value()
+
+        # Get test mode
+        test_type = "entry" if self._test_type_entry.isChecked() else "exit"
+        trade_side = "long" if self._trade_side_long.isChecked() else "short"
+
+        logger.info(f"Optimization mode: {test_type} - {trade_side}")
 
         # Create and start optimization thread
-        from src.ui.threads import IndicatorOptimizationThread
+        from src.ui.threads.indicator_optimization_thread import IndicatorOptimizationThread
 
         self._optimization_thread = IndicatorOptimizationThread(
             selected_indicators=selected_indicators,
             param_ranges=param_ranges,
-            json_config_path=self.json_file_input.text(),
+            json_config_path=None,  # Not needed for indicator optimization
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,
             initial_capital=capital,
+            test_type=test_type,
+            trade_side=trade_side,
+            chart_data=self._convert_candles_to_dataframe(self._candles) if self._candles else None,
+            data_timeframe=self._timeframe if self._candles else None,
             parent=self
         )
 
@@ -1339,6 +1778,7 @@ class EntryAnalyzerPopup(QDialog):
         self._optimization_thread.finished.connect(self._on_optimization_finished)
         self._optimization_thread.progress.connect(self._on_optimization_progress)
         self._optimization_thread.error.connect(self._on_optimization_error)
+        self._optimization_thread.regime_history_ready.connect(self._on_regime_history_ready)
 
         # Start thread
         self._optimization_thread.start()
@@ -1360,8 +1800,10 @@ class EntryAnalyzerPopup(QDialog):
         # Store results for regime set building
         self._optimization_results = results
 
-        # Enable regime set builder button if we have results
+        # Enable buttons if we have results
         self._create_regime_set_btn.setEnabled(len(results) > 0)
+        self._draw_indicators_btn.setEnabled(len(results) > 0)
+        self._show_entries_btn.setEnabled(len(results) > 0)
 
         # Sort results by score (descending)
         sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
@@ -1383,6 +1825,14 @@ class EntryAnalyzerPopup(QDialog):
             regime_item = QTableWidgetItem(result['regime'])
             self._optimization_results_table.setItem(row, 2, regime_item)
 
+            # Test Type column
+            test_type_item = QTableWidgetItem(result.get('test_type', 'entry').upper())
+            self._optimization_results_table.setItem(row, 3, test_type_item)
+
+            # Trade Side column
+            trade_side_item = QTableWidgetItem(result.get('trade_side', 'long').upper())
+            self._optimization_results_table.setItem(row, 4, trade_side_item)
+
             # Score column (colored by value)
             score = result['score']
             score_item = QTableWidgetItem(f"{score:.2f}")
@@ -1393,23 +1843,19 @@ class EntryAnalyzerPopup(QDialog):
                 score_item.setForeground(QColor("#ff9800"))  # Orange
             else:
                 score_item.setForeground(QColor("#f44336"))  # Red
-            self._optimization_results_table.setItem(row, 3, score_item)
+            self._optimization_results_table.setItem(row, 5, score_item)
 
             # Win Rate column
             win_rate_item = QTableWidgetItem(f"{result['win_rate']:.1%}")
-            self._optimization_results_table.setItem(row, 4, win_rate_item)
+            self._optimization_results_table.setItem(row, 6, win_rate_item)
 
             # Profit Factor column
             pf_item = QTableWidgetItem(f"{result['profit_factor']:.2f}")
-            self._optimization_results_table.setItem(row, 5, pf_item)
+            self._optimization_results_table.setItem(row, 7, pf_item)
 
             # Total Trades column
             trades_item = QTableWidgetItem(str(result['total_trades']))
-            self._optimization_results_table.setItem(row, 6, trades_item)
-
-            # Avg Return column
-            avg_ret_item = QTableWidgetItem(f"{result['avg_return']:.2f}%")
-            self._optimization_results_table.setItem(row, 7, avg_ret_item)
+            self._optimization_results_table.setItem(row, 8, trades_item)
 
         # Show completion message
         QMessageBox.information(
@@ -1449,6 +1895,22 @@ class EntryAnalyzerPopup(QDialog):
             "Optimization Error",
             f"An error occurred during optimization:\n\n{error_message}"
         )
+
+    def _on_regime_history_ready(self, regime_history: list) -> None:
+        """Handle regime history data from optimization thread.
+
+        Draws regime boundaries on the chart using vertical lines.
+
+        Args:
+            regime_history: List of regime changes with timestamps
+        """
+        logger.info(f"Received {len(regime_history)} regime boundaries for visualization")
+
+        # Create results dict with regime_history for _draw_regime_boundaries
+        results = {'regime_history': regime_history}
+
+        # Draw regime boundaries on chart
+        self._draw_regime_boundaries(results)
 
     def _on_create_regime_set_clicked(self) -> None:
         """Handle create regime set button click.
@@ -1538,6 +2000,419 @@ class EntryAnalyzerPopup(QDialog):
                 "Regime Set Error",
                 f"Failed to create regime set:\n\n{str(e)}"
             )
+
+    def _on_draw_indicators_clicked(self) -> None:
+        """Draw selected indicators on chart with optimized parameters."""
+        # Get selected rows
+        selected_rows = self._optimization_results_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select one or more indicators from the results table."
+            )
+            return
+
+        # Get parent chart window
+        parent = self.parent()
+        if not hasattr(parent, '_add_indicator_instance'):
+            QMessageBox.warning(
+                self,
+                "Chart Not Available",
+                "Cannot access chart window to draw indicators."
+            )
+            logger.error("Parent window does not have _add_indicator_instance method")
+            return
+
+        # Color palette for indicators
+        colors = [
+            "#2196f3",  # Blue
+            "#4caf50",  # Green
+            "#ff9800",  # Orange
+            "#9c27b0",  # Purple
+            "#f44336",  # Red
+            "#00bcd4",  # Cyan
+            "#ffeb3b",  # Yellow
+            "#795548",  # Brown
+        ]
+
+        drawn_count = 0
+        errors = []
+
+        for i, row_index in enumerate(selected_rows):
+            row = row_index.row()
+
+            try:
+                # Extract indicator info from table
+                indicator_name = self._optimization_results_table.item(row, 0).text()  # Indicator column
+                params_str = self._optimization_results_table.item(row, 1).text()  # Parameters column
+
+                # Parse parameters string (e.g., "period=14, std=2.0")
+                params = {}
+                for param_pair in params_str.split(','):
+                    param_pair = param_pair.strip()
+                    if '=' in param_pair:
+                        key, value = param_pair.split('=')
+                        key = key.strip()
+                        value = value.strip()
+                        # Try to convert to int/float
+                        try:
+                            if '.' in value:
+                                params[key] = float(value)
+                            else:
+                                params[key] = int(value)
+                        except ValueError:
+                            params[key] = value
+
+                # Select color (cycle through palette)
+                color = colors[i % len(colors)]
+
+                # Draw indicator on chart
+                parent._add_indicator_instance(
+                    ind_id=indicator_name,
+                    params=params,
+                    color=color
+                )
+
+                drawn_count += 1
+                logger.info(f"Drew indicator: {indicator_name} with params {params}")
+
+            except Exception as e:
+                error_msg = f"{indicator_name}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(f"Failed to draw indicator {indicator_name}: {e}")
+
+        # Show result message
+        if drawn_count > 0:
+            msg = f"Successfully drew {drawn_count} indicator(s) on chart."
+            if errors:
+                msg += f"\n\nErrors ({len(errors)}):\n" + "\n".join(errors)
+            QMessageBox.information(self, "Indicators Drawn", msg)
+        else:
+            QMessageBox.warning(
+                self,
+                "Draw Failed",
+                f"Failed to draw indicators:\n\n" + "\n".join(errors)
+            )
+
+    def _on_show_entries_clicked(self) -> None:
+        """Calculate and show entry signals for selected indicators."""
+        # Get selected rows
+        selected_rows = self._optimization_results_table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select one or more indicators from the results table."
+            )
+            return
+
+        # Get parent chart window
+        parent = self.parent()
+        if not hasattr(parent, 'add_bot_marker'):
+            QMessageBox.warning(
+                self,
+                "Chart Not Available",
+                "Cannot access chart window to draw entry signals."
+            )
+            logger.error("Parent window does not have add_bot_marker method")
+            return
+
+        # Use the same data that was used for optimization (from self._candles)
+        if not self._candles or len(self._candles) == 0:
+            QMessageBox.warning(
+                self,
+                "No Optimization Data",
+                "No data available from indicator optimization.\n\n"
+                "Please run 'Optimize Indicators' first before showing entry signals."
+            )
+            logger.error("No candles data available for entry signal calculation")
+            return
+
+        # Convert candles to DataFrame
+        import pandas as pd
+        try:
+            chart_data = self._convert_candles_to_dataframe(self._candles)
+            logger.info(f"Converted {len(chart_data)} candles to DataFrame for entry signals")
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Data Conversion Error",
+                f"Could not convert candle data to DataFrame.\n\nError: {str(e)}"
+            )
+            logger.error(f"Failed to convert candles: {e}")
+            return
+
+        if chart_data is None or len(chart_data) == 0:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "Chart data is empty after conversion."
+            )
+            return
+
+        # Prepare DataFrame for indicator calculation
+        df = chart_data.copy()
+
+        # _convert_candles_to_dataframe() returns a DataFrame with:
+        # - Index: timestamp (already DatetimeIndex)
+        # - Columns: open, high, low, close, volume
+        # So we should already have the right structure
+
+        # Verify structure just in case
+        if df.index.name != 'timestamp' and 'timestamp' not in df.columns:
+            QMessageBox.warning(
+                self,
+                "Data Format Error",
+                "Chart data does not have proper timestamp index."
+            )
+            logger.error(f"DataFrame index: {df.index.name}, columns: {df.columns.tolist()}")
+            return
+
+        # Ensure we have required OHLCV columns
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            QMessageBox.warning(
+                self,
+                "Data Format Error",
+                f"Chart data missing required columns: {', '.join(missing_cols)}\n\n"
+                f"Available columns: {', '.join(df.columns.tolist())}"
+            )
+            logger.error(f"Missing columns: {missing_cols}, available: {df.columns.tolist()}")
+            return
+
+        df = df[required_cols]
+        logger.info(f"Prepared DataFrame for entry signals: {len(df)} rows, index: {df.index.name}")
+
+        # Import pandas_ta for indicator calculations
+        import pandas_ta as ta
+
+        total_signals = 0
+        errors = []
+
+        for row_index in selected_rows:
+            row = row_index.row()
+
+            try:
+                # Extract indicator info from table
+                indicator_name = self._optimization_results_table.item(row, 0).text()
+                params_str = self._optimization_results_table.item(row, 1).text()
+                test_type = self._optimization_results_table.item(row, 3).text().lower()  # entry/exit
+                trade_side = self._optimization_results_table.item(row, 4).text().lower()  # long/short
+
+                # Parse parameters
+                params = {}
+                for param_pair in params_str.split(','):
+                    param_pair = param_pair.strip()
+                    if '=' in param_pair:
+                        key, value = param_pair.split('=')
+                        key = key.strip()
+                        value = value.strip()
+                        try:
+                            if '.' in value:
+                                params[key] = float(value)
+                            else:
+                                params[key] = int(value)
+                        except ValueError:
+                            params[key] = value
+
+                # Calculate indicator and find entry signals
+                signals = self._calculate_entry_signals(df, indicator_name, params, trade_side)
+
+                # Draw signals on chart
+                from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+
+                for signal in signals:
+                    marker_type = MarkerType.ENTRY_CONFIRMED
+
+                    # Text for marker
+                    text = f"{trade_side.upper()} {indicator_name}"
+                    if params:
+                        param_str = ", ".join([f"{k}={v}" for k, v in list(params.items())[:2]])
+                        text += f" [{param_str}]"
+
+                    parent.add_bot_marker(
+                        timestamp=signal['timestamp'],
+                        price=signal['price'],
+                        marker_type=marker_type,
+                        side=trade_side,
+                        text=text,
+                        score=signal.get('confidence', 0.8),
+                    )
+
+                total_signals += len(signals)
+                logger.info(f"Drew {len(signals)} entry signals for {indicator_name} {params}")
+
+            except Exception as e:
+                error_msg = f"{indicator_name}: {str(e)}"
+                errors.append(error_msg)
+                logger.error(f"Failed to calculate entry signals for {indicator_name}: {e}")
+
+        # Show result message
+        if total_signals > 0:
+            msg = f"Successfully drew {total_signals} entry signal(s) on chart."
+            if errors:
+                msg += f"\n\nErrors ({len(errors)}):\n" + "\n".join(errors)
+            QMessageBox.information(self, "Entry Signals Drawn", msg)
+        else:
+            msg = "No entry signals found for selected indicators."
+            if errors:
+                msg += f"\n\nErrors:\n" + "\n".join(errors)
+            QMessageBox.warning(self, "No Signals", msg)
+
+    def _calculate_entry_signals(self, df: pd.DataFrame, indicator: str, params: dict, side: str) -> list:
+        """Calculate entry signals for a specific indicator.
+
+        Args:
+            df: DataFrame with OHLCV data
+            indicator: Indicator name (RSI, BB, MACD, etc.)
+            params: Indicator parameters
+            side: 'long' or 'short'
+
+        Returns:
+            List of signal dictionaries with timestamp, price, confidence
+        """
+        import pandas_ta as ta
+        signals = []
+
+        try:
+            if indicator == 'BB':
+                # Bollinger Bands entry logic
+                period = params.get('period', 20)
+                std = params.get('std', 2.0)
+
+                bbands = ta.bbands(df['close'], length=period, std=std)
+                if bbands is None or bbands.empty:
+                    return signals
+
+                bb_lower = bbands.iloc[:, 0]
+                bb_middle = bbands.iloc[:, 1]
+                bb_upper = bbands.iloc[:, 2]
+
+                if side == 'long':
+                    # LONG: Price touches lower band (oversold)
+                    touches_lower = df['low'] <= bb_lower * 1.001  # 0.1% tolerance
+                    bouncing_up = df['close'] > bb_lower
+
+                    for i in range(1, len(df)):
+                        if touches_lower.iloc[i] and bouncing_up.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.75
+                            })
+
+                else:  # short
+                    # SHORT: Price touches upper band (overbought)
+                    touches_upper = df['high'] >= bb_upper * 0.999
+                    bouncing_down = df['close'] < bb_upper
+
+                    for i in range(1, len(df)):
+                        if touches_upper.iloc[i] and bouncing_down.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.75
+                            })
+
+            elif indicator == 'RSI':
+                # RSI entry logic
+                period = params.get('period', 14)
+                rsi = ta.rsi(df['close'], length=period)
+
+                if rsi is None:
+                    return signals
+
+                if side == 'long':
+                    # LONG: RSI crosses above 30 (oversold bounce)
+                    for i in range(1, len(df)):
+                        if rsi.iloc[i-1] < 30 and rsi.iloc[i] >= 30:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.7
+                            })
+
+                else:  # short
+                    # SHORT: RSI crosses below 70 (overbought reversal)
+                    for i in range(1, len(df)):
+                        if rsi.iloc[i-1] > 70 and rsi.iloc[i] <= 70:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.7
+                            })
+
+            elif indicator == 'MACD':
+                # MACD entry logic
+                fast = params.get('fast', 12)
+                slow = params.get('slow', 26)
+                signal = params.get('signal', 9)
+
+                macd = ta.macd(df['close'], fast=fast, slow=slow, signal=signal)
+                if macd is None or macd.empty:
+                    return signals
+
+                macd_line = macd.iloc[:, 0]
+                signal_line = macd.iloc[:, 1]
+
+                if side == 'long':
+                    # LONG: MACD crosses above signal
+                    for i in range(1, len(df)):
+                        if macd_line.iloc[i-1] < signal_line.iloc[i-1] and macd_line.iloc[i] > signal_line.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.8
+                            })
+
+                else:  # short
+                    # SHORT: MACD crosses below signal
+                    for i in range(1, len(df)):
+                        if macd_line.iloc[i-1] > signal_line.iloc[i-1] and macd_line.iloc[i] < signal_line.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.8
+                            })
+
+            elif indicator == 'SMA':
+                # SMA crossover logic
+                period = params.get('period', 20)
+                sma = ta.sma(df['close'], length=period)
+
+                if sma is None:
+                    return signals
+
+                if side == 'long':
+                    # LONG: Price crosses above SMA
+                    for i in range(1, len(df)):
+                        if df['close'].iloc[i-1] < sma.iloc[i-1] and df['close'].iloc[i] > sma.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.65
+                            })
+
+                else:  # short
+                    # SHORT: Price crosses below SMA
+                    for i in range(1, len(df)):
+                        if df['close'].iloc[i-1] > sma.iloc[i-1] and df['close'].iloc[i] < sma.iloc[i]:
+                            signals.append({
+                                'timestamp': df.index[i],
+                                'price': df['close'].iloc[i],
+                                'confidence': 0.65
+                            })
+
+            # Add more indicators as needed (ADX, PSAR, etc.)
+
+        except Exception as e:
+            logger.error(f"Error calculating entry signals for {indicator}: {e}")
+
+        return signals
 
     def _build_regime_set(self, results: list, top_n: int = 3) -> dict:
         """Build regime set from optimization results.
@@ -1801,13 +2676,13 @@ class EntryAnalyzerPopup(QDialog):
             config = loader.load_config(str(config_path))
 
             # Get parameters from UI
-            symbol = self.symbol_combo.currentText()
-            start_date = self.start_date_edit.date().toPyDate()
-            end_date = self.end_date_edit.date().toPyDate()
-            capital = self.capital_spin.value()
+            symbol = self._bt_symbol_combo.currentText()
+            start_date = self._bt_start_date.date().toPyDate()
+            end_date = self._bt_end_date.date().toPyDate()
+            capital = self._bt_capital.value()
 
             # Show progress
-            self._run_backtest_btn.setEnabled(False)
+            self._bt_run_btn.setEnabled(False)
             QMessageBox.information(
                 self,
                 "Backtest Started",
@@ -1833,13 +2708,13 @@ class EntryAnalyzerPopup(QDialog):
             # Switch to Results tab
             self.tab_widget.setCurrentIndex(3)  # Results tab
 
-            self._run_backtest_btn.setEnabled(True)
+            self._bt_run_btn.setEnabled(True)
 
             logger.info(f"Regime set backtest completed")
 
         except Exception as e:
             logger.error(f"Regime set backtest failed: {e}", exc_info=True)
-            self._run_backtest_btn.setEnabled(True)
+            self._bt_run_btn.setEnabled(True)
 
             QMessageBox.critical(
                 self,

@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QDockWidget, QWidget, QToolBar, QPushButton
+from PyQt6.QtWidgets import QDockWidget, QWidget, QPushButton
 from PyQt6.QtGui import QShortcut, QKeySequence
 
 from src.ui.widgets.chart_window_dock_titlebar import DockTitleBar
@@ -111,10 +111,11 @@ class ChartWindowSetup:
         logger.info(f"TradingBotWindow created for {self.parent.symbol}")
 
     def setup_live_data_toggle(self) -> None:
-        """Add a main-window-style live data toggle to the chart window."""
-        toolbar = QToolBar("Live Data", self.parent)
-        toolbar.setMovable(False)
-        self.parent.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+        """Add a main-window-style live data toggle next to the zoom-back button."""
+        toolbar = getattr(self.parent.chart_widget, "toolbar_row1", None)
+        if toolbar is None:
+            logger.warning("Chart toolbar row1 missing - live data toggle not added")
+            return
 
         self.parent.chart_live_data_toggle = QPushButton("Live Data: OFF")
         self.parent.chart_live_data_toggle.setCheckable(True)
@@ -126,6 +127,15 @@ class ChartWindowSetup:
         self.parent.chart_live_data_toggle.clicked.connect(
             self.parent._handlers.on_chart_live_data_toggle_clicked
         )
+
+        if hasattr(self.parent.chart_widget, "zoom_back_button"):
+            ref_button = self.parent.chart_widget.zoom_back_button
+            ref_height = ref_button.sizeHint().height()
+            ref_width = ref_button.sizeHint().width()
+            if ref_height > 0:
+                self.parent.chart_live_data_toggle.setFixedHeight(ref_height)
+            self.parent.chart_live_data_toggle.setMinimumWidth(max(ref_width + 70, 130))
+
         toolbar.addWidget(self.parent.chart_live_data_toggle)
 
         main_window = self.parent._get_main_window()

@@ -145,8 +145,8 @@ class BotUISignalsMixin:
         trading_api_widget = self._build_bitunix_trading_api_widget()
         trading_api_container = QWidget()
         trading_api_container_layout = QVBoxLayout(trading_api_container)
-        # Issue #5: Shift entire groupbox 125px left without moving inner elements
-        trading_api_container_layout.setContentsMargins(-125, 0, 0, 0)
+        # Removed negative margins that caused layout issues
+        trading_api_container_layout.setContentsMargins(0, 0, 0, 0)
         trading_api_container_layout.setSpacing(0)
         trading_api_container_layout.addWidget(trading_api_widget)
         top_row_layout.addWidget(trading_api_container, stretch=1)

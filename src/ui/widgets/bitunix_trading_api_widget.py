@@ -921,7 +921,8 @@ class BitunixTradingAPIWidget(QGroupBox):
         self.buy_btn.setEnabled(enabled)
         self.sell_btn.setEnabled(enabled)
 
-    def _connect_adapter_for_live_mode(self) -> None:
+    @qasync.asyncSlot()
+    async def _connect_adapter_for_live_mode(self) -> None:
         """Ensure adapter is connected when live mode is enabled."""
         if not self._adapter:
             parent = self.parent_widget or self.parent()
@@ -946,8 +947,8 @@ class BitunixTradingAPIWidget(QGroupBox):
             return
 
         try:
-            import asyncio
-            task = asyncio.create_task(self._connect_adapter_async())
+            # Properly await the async connection
+            await self._connect_adapter_async()
         except Exception as exc:
             logger.error(f"Adapter connect failed: {exc}", exc_info=True)
             self.adapter_status_label.setText("error")

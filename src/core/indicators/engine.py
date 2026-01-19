@@ -15,6 +15,7 @@ from src.common.event_bus import Event, EventType, event_bus
 from .base import BaseIndicatorCalculator, PANDAS_TA_AVAILABLE, TALIB_AVAILABLE
 from .custom import CustomIndicators
 from .momentum import MomentumIndicators
+from .regime import RegimeIndicators
 from .trend import TrendIndicators
 from .types import IndicatorConfig, IndicatorResult, IndicatorType
 from .volatility import VolatilityIndicators
@@ -76,7 +77,12 @@ class IndicatorEngine:
             # Custom
             IndicatorType.PIVOTS: CustomIndicators.calculate_pivots,
             IndicatorType.SUPPORT_RESISTANCE: CustomIndicators.calculate_support_resistance,
-            IndicatorType.PATTERN: CustomIndicators.calculate_patterns
+            IndicatorType.PATTERN: CustomIndicators.calculate_patterns,
+
+            # Regime Detection
+            IndicatorType.MOMENTUM_SCORE: RegimeIndicators.calculate_momentum_score,
+            IndicatorType.VOLUME_RATIO: RegimeIndicators.calculate_volume_ratio,
+            IndicatorType.PRICE_STRENGTH: RegimeIndicators.calculate_price_strength
         }
 
         logger.info(f"Indicator engine initialized (TA-Lib: {TALIB_AVAILABLE}, pandas_ta: {PANDAS_TA_AVAILABLE})")

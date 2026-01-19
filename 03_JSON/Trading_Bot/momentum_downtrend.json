@@ -1,0 +1,396 @@
+{
+  "schema_version": "1.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI Regime System",
+    "created_at": "2025-01-19T00:00:00Z",
+    "tags": ["momentum", "downtrend", "volume-confirmation", "regime-based"],
+    "notes": "Momentum-basierte Downtrend-Erkennung mit Volume-Confirmation. Erkennt starke Abwärtsbewegungen (>2% und >4%) auch bei niedrigem ADX."
+  },
+  "indicators": [
+    {
+      "id": "momentum_score",
+      "type": "MOMENTUM_SCORE",
+      "params": {
+        "sma_fast": 20,
+        "sma_slow": 50,
+        "use_price_distance": true
+      }
+    },
+    {
+      "id": "volume_ratio",
+      "type": "VOLUME_RATIO",
+      "params": {
+        "period": 20,
+        "smoothing": false
+      }
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "atr14",
+      "type": "ATR",
+      "params": {
+        "period": 14
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "extreme_downtrend",
+      "name": "Extreme Downtrend (>4% drop)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": -4.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.5
+            }
+          }
+        ]
+      },
+      "priority": 100,
+      "scope": "entry"
+    },
+    {
+      "id": "strong_downtrend",
+      "name": "Strong Downtrend (>2% drop)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": -2.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.5
+            }
+          }
+        ]
+      },
+      "priority": 80,
+      "scope": "entry"
+    },
+    {
+      "id": "moderate_downtrend",
+      "name": "Moderate Downtrend",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": -2.0,
+              "max": -0.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "priority": 60,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "momentum_short_extreme",
+      "name": "Momentum Short - Extreme Drop",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": -4.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 2.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 40.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": -1.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.03,
+        "stop_loss_pct": 2.0,
+        "take_profit_pct": 6.0,
+        "trailing_mode": "atr",
+        "trailing_multiplier": 2.0
+      }
+    },
+    {
+      "id": "momentum_short_strong",
+      "name": "Momentum Short - Strong Drop",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": -4.0,
+              "max": -2.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.5
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": -0.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.8
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.025,
+        "stop_loss_pct": 2.5,
+        "take_profit_pct": 5.0,
+        "trailing_mode": "percent",
+        "trailing_multiplier": 1.5
+      }
+    },
+    {
+      "id": "momentum_short_moderate",
+      "name": "Momentum Short - Moderate",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": -2.0,
+              "max": -0.5
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 50.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "momentum_score",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 0.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 55.0
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss_pct": 3.0,
+        "take_profit_pct": 4.0
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_extreme_downtrend",
+      "name": "Extreme Downtrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_short_extreme"
+        }
+      ]
+    },
+    {
+      "id": "set_strong_downtrend",
+      "name": "Strong Downtrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_short_strong"
+        }
+      ]
+    },
+    {
+      "id": "set_moderate_downtrend",
+      "name": "Moderate Downtrend Strategy Set",
+      "strategies": [
+        {
+          "strategy_id": "momentum_short_moderate"
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_extreme_downtrend",
+      "match": {
+        "all_of": [
+          "extreme_downtrend"
+        ]
+      }
+    },
+    {
+      "strategy_set_id": "set_strong_downtrend",
+      "match": {
+        "all_of": [
+          "strong_downtrend"
+        ],
+        "none_of": [
+          "extreme_downtrend"
+        ]
+      }
+    },
+    {
+      "strategy_set_id": "set_moderate_downtrend",
+      "match": {
+        "all_of": [
+          "moderate_downtrend"
+        ],
+        "none_of": [
+          "extreme_downtrend",
+          "strong_downtrend"
+        ]
+      }
+    }
+  ]
+}

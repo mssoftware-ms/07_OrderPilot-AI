@@ -125,6 +125,17 @@ class StrategySettingsDialog(QDialog):
 
         main_layout.addWidget(regime_group)
 
+        # === Matched Strategy Section ===
+        matched_group = QGroupBox("🎯 Matched Strategy (from Analysis)")
+        matched_layout = QVBoxLayout(matched_group)
+
+        self._matched_strategy_label = QLabel("No analysis performed yet")
+        self._matched_strategy_label.setStyleSheet("font-size: 14px; color: #888;")
+        self._matched_strategy_label.setWordWrap(True)
+        matched_layout.addWidget(self._matched_strategy_label)
+
+        main_layout.addWidget(matched_group)
+
         # === Strategy Table ===
         table_group = QGroupBox("📋 Verfügbare Strategien")
         table_layout = QVBoxLayout(table_group)
@@ -179,6 +190,12 @@ class StrategySettingsDialog(QDialog):
         button_layout.addWidget(self._edit_btn)
 
         button_layout.addStretch()
+
+        self._analyze_btn = QPushButton("🔍 Analyze Current Market")
+        self._analyze_btn.setStyleSheet("background-color: #2196f3; font-weight: bold;")
+        self._analyze_btn.setToolTip("Analyze current market regime and match strategy")
+        self._analyze_btn.clicked.connect(self._analyze_current_market)
+        button_layout.addWidget(self._analyze_btn)
 
         self._refresh_btn = QPushButton("🔄 Aktualisieren")
         self._refresh_btn.clicked.connect(self._load_strategies)
@@ -435,10 +452,234 @@ class StrategySettingsDialog(QDialog):
         self._refresh_timer.start(5000)  # Update every 5 seconds
 
     def _update_regime(self) -> None:
-        """Update live regime display (TODO: Connect to actual RegimeDetector)."""
-        # TODO: Get actual regime from RegimeDetector
-        # For now, placeholder
-        pass
+        """Update live regime display."""
+        try:
+            # Try to get regime from parent chart window
+            parent = self.parent()
+            if parent and hasattr(parent, 'get_current_regime'):
+                regime = parent.get_current_regime()
+                if regime:
+                    self.set_current_regime(str(regime))
+        except Exception as e:
+            logger.debug(f"Could not update regime from parent: {e}")
+            # Keep current regime display
+
+    def _analyze_current_market(self) -> None:
+        """Analyze current market and match strategy.
+
+        This method:
+        1. Gets current market data from parent chart
+        2. Detects current regime using RegimeEngine
+        3. Routes regime to matching strategy
+        4. Displays matched strategy with conditions
+        """
+        try:
+            # Get parent chart window
+            parent = self.parent()
+            if not parent:
+                QMessageBox.warning(
+                    self,
+                    "No Chart Data",
+                    "Cannot analyze market: No chart window found.\n"
+                    "Please open this dialog from a chart window."
+                )
+                return
+
+            # Get current market data
+            if not hasattr(parent, 'get_current_features'):
+                QMessageBox.warning(
+                    self,
+                    "No Market Data",
+                    "Cannot analyze market: Chart window has no market data.\n"
+                    "Please ensure candles are loaded."
+                )
+                return
+
+            features = parent.get_current_features()
+            if not features:
+                QMessageBox.warning(
+                    self,
+                    "No Market Data",
+                    "Cannot analyze market: No feature data available.\n"
+                    "Please wait for market data to load."
+                )
+                return
+
+            # Detect current regime
+            from src.core.tradingbot.regime_engine import RegimeEngine
+            from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
+
+            regime_engine = RegimeEngine()
+            current_regime = regime_engine.classify(features)
+
+            # Update regime display
+            regime_str = f"{current_regime.regime.name} - {current_regime.volatility.name}"
+            self.set_current_regime(regime_str)
+
+            # Get selected strategy from table
+            selected_rows = self._strategy_table.selectedIndexes()
+            if not selected_rows:
+                QMessageBox.information(
+                    self,
+                    "Market Analysis",
+                    f"Current Market Regime: {regime_str}\n\n"
+                    f"ADX: {current_regime.adx:.2f}\n"
+                    f"ATR%: {current_regime.atr_pct:.2f}%\n"
+                    f"Confidence: {current_regime.regime_confidence:.2%}\n\n"
+                    "Select a strategy from the table to check if it matches this regime."
+                )
+                return
+
+            # Get selected strategy config
+            row = selected_rows[0].row()
+            strategy_name = self._strategy_table.item(row, 0).text()
+
+            # Find strategy ID
+            strategy_id = None
+            for sid, config in self.strategies.items():
+                strat = config.get("strategies", [{}])[0]
+                if strat.get("name", sid) == strategy_name:
+                    strategy_id = sid
+                    break
+
+            if not strategy_id or strategy_id not in self.strategies:
+                QMessageBox.warning(
+                    self,
+                    "Strategy Not Found",
+                    f"Could not find strategy config for '{strategy_name}'"
+                )
+                return
+
+            config = self.strategies[strategy_id]
+
+            # Try to route regime to strategy
+            try:
+                from src.core.tradingbot.config.loader import ConfigLoader
+                from src.core.tradingbot.config.detector import RegimeDetector
+                from src.core.tradingbot.config.router import StrategyRouter
+
+                # Load config properly
+                loader = ConfigLoader()
+                json_path = JSON_DIR / f"{strategy_id}.json"
+                loaded_config = loader.load_config(str(json_path))
+
+                # Calculate indicator values
+                indicator_calc = IndicatorValueCalculator()
+                indicator_values = indicator_calc.calculate(features)
+
+                # Detect active regimes
+                detector = RegimeDetector(loaded_config.regimes)
+                active_regimes = detector.detect_active_regimes(indicator_values, scope='entry')
+
+                # Route to strategy
+                router = StrategyRouter(loaded_config.routing, loaded_config.strategy_sets)
+                matched_set = router.route(active_regimes)
+
+                # Display results
+                self._display_analysis_results(
+                    current_regime=regime_str,
+                    strategy_name=strategy_name,
+                    active_regimes=active_regimes,
+                    matched_set=matched_set,
+                    loaded_config=loaded_config
+                )
+
+            except Exception as route_error:
+                logger.error(f"Routing error: {route_error}", exc_info=True)
+                # Still show basic regime info
+                QMessageBox.information(
+                    self,
+                    "Market Analysis",
+                    f"Current Market Regime: {regime_str}\n\n"
+                    f"ADX: {current_regime.adx:.2f}\n"
+                    f"ATR%: {current_regime.atr_pct:.2f}%\n"
+                    f"Confidence: {current_regime.regime_confidence:.2%}\n\n"
+                    f"Selected Strategy: {strategy_name}\n\n"
+                    f"Note: Could not perform regime routing:\n{str(route_error)}"
+                )
+
+        except Exception as e:
+            logger.error(f"Market analysis failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Analysis Error",
+                f"Failed to analyze market:\n\n{str(e)}"
+            )
+
+    def _display_analysis_results(
+        self,
+        current_regime: str,
+        strategy_name: str,
+        active_regimes: list,
+        matched_set: any,
+        loaded_config: any
+    ) -> None:
+        """Display market analysis results in a detailed message box.
+
+        Args:
+            current_regime: Current regime string (e.g. "TREND_UP - NORMAL")
+            strategy_name: Name of selected strategy
+            active_regimes: List of active regime IDs
+            matched_set: Matched StrategySet or None
+            loaded_config: Loaded TradingBotConfig
+        """
+        # Build message
+        message = f"<h3>📊 Market Analysis Results</h3>"
+        message += f"<p><b>Current Regime:</b> {current_regime}</p>"
+        message += f"<p><b>Selected Strategy:</b> {strategy_name}</p>"
+
+        if active_regimes:
+            regime_names = [r.id for r in active_regimes]
+            message += f"<p><b>Active Regimes:</b> {', '.join(regime_names)}</p>"
+        else:
+            message += f"<p><b>Active Regimes:</b> None</p>"
+
+        if matched_set:
+            message += f"<hr><p><b style='color: #4CAF50;'>✓ Strategy Matched!</b></p>"
+            message += f"<p><b>Matched Set:</b> {matched_set.strategy_set.name}</p>"
+
+            # Show strategies in set
+            if matched_set.strategy_set.strategies:
+                message += f"<p><b>Strategies in Set:</b></p><ul>"
+                for strat_id in matched_set.strategy_set.strategies:
+                    # Find strategy details
+                    for strat in loaded_config.strategies:
+                        if strat.id == strat_id:
+                            message += f"<li>{strat.name or strat_id}</li>"
+                            break
+                message += "</ul>"
+
+            # Show entry conditions (simplified)
+            if loaded_config.strategies:
+                strat = loaded_config.strategies[0]
+                if hasattr(strat, 'entry_conditions'):
+                    message += f"<p><b>Entry Conditions:</b> {type(strat.entry_conditions).__name__}</p>"
+                if hasattr(strat, 'exit_conditions'):
+                    message += f"<p><b>Exit Conditions:</b> {type(strat.exit_conditions).__name__}</p>"
+        else:
+            message += f"<hr><p><b style='color: #f44336;'>⚠ No Strategy Matched</b></p>"
+            message += f"<p>The current market regime does not match the routing rules for this strategy.</p>"
+
+        # Update matched strategy label in UI
+        if matched_set:
+            ui_text = f"✓ Matched: {matched_set.strategy_set.name}\n"
+            ui_text += f"Regimes: {', '.join([r.id for r in active_regimes])}"
+            self._matched_strategy_label.setText(ui_text)
+            self._matched_strategy_label.setStyleSheet("font-size: 14px; color: #4CAF50; font-weight: bold;")
+        else:
+            ui_text = f"⚠ No match for current regime: {current_regime}\n"
+            ui_text += f"Active Regimes: {', '.join([r.id for r in active_regimes]) if active_regimes else 'None'}"
+            self._matched_strategy_label.setText(ui_text)
+            self._matched_strategy_label.setStyleSheet("font-size: 14px; color: #ff9800;")
+
+        # Show message
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Market Analysis Results")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.exec()
 
     def set_current_regime(self, regime: str) -> None:
         """Set current regime (called from Bot)."""

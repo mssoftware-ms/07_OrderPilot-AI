@@ -191,6 +191,9 @@ def configure_module_loggers():
     logging.getLogger('tradingapp.ai').setLevel(logging.DEBUG)
     logging.getLogger('src.common.event_bus').setLevel(logging.WARNING)
 
+    # Reduce noise from indicator engine (only show warnings and errors during streaming)
+    logging.getLogger('src.core.indicators.engine').setLevel(logging.WARNING)
+
 
 def log_order_action(
     action: str,
