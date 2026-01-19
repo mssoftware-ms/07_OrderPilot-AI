@@ -1,0 +1,3334 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart-Muster Trading-Strategien - Erfolgsraten Dashboard</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --dark-bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text-light: #eaeaea;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg) 0%, var(--secondary-color) 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .header-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            color: white;
+            padding: 40px 0;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .header-section h1 {
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .header-section p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .stats-card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.4);
+        }
+
+        .stats-card h3 {
+            color: var(--accent-color);
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--success-color);
+        }
+
+        .tab-content {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .nav-tabs {
+            border-bottom: 2px solid var(--accent-color);
+            margin-bottom: 30px;
+        }
+
+        .nav-tabs .nav-link {
+            color: var(--text-light);
+            border: none;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tabs .nav-link:hover {
+            border-bottom-color: var(--warning-color);
+        }
+
+        .nav-tabs .nav-link.active {
+            background: transparent;
+            color: var(--accent-color);
+            border-bottom-color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .pattern-table {
+            width: 100%;
+            color: var(--text-light);
+        }
+
+        .pattern-table thead th {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            border: none;
+            padding: 15px;
+        }
+
+        .pattern-table tbody td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .pattern-table tbody tr:hover {
+            background: rgba(52, 152, 219, 0.1);
+        }
+
+        .success-rate-high {
+            color: var(--success-color);
+            font-weight: 700;
+        }
+
+        .success-rate-medium {
+            color: var(--warning-color);
+            font-weight: 700;
+        }
+
+        .success-rate-low {
+            color: var(--danger-color);
+            font-weight: 700;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 30px 0;
+        }
+
+        .badge-custom {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            border-radius: 20px;
+        }
+
+        .best-practices {
+            background: rgba(39, 174, 96, 0.1);
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .warning-box {
+            background: rgba(243, 156, 18, 0.1);
+            border-left: 4px solid var(--warning-color);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .info-box {
+            background: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .dataTables_wrapper {
+            color: var(--text-light);
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            color: var(--text-light) !important;
+        }
+
+        .dataTables_wrapper .dataTables_filter input,
+        .dataTables_wrapper .dataTables_length select {
+            background: var(--primary-color);
+            color: var(--text-light);
+            border: 1px solid var(--accent-color);
+            border-radius: 5px;
+            padding: 5px 10px;
+        }
+
+        .filter-section {
+            background: var(--primary-color);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .filter-btn {
+            margin: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .stats-number {
+                font-size: 1.8rem;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header-section">
+        <div class="container">
+            <h1><i class="fas fa-chart-line"></i> Chart-Muster Trading-Strategien</h1>
+            <p><i class="fas fa-calendar-alt"></i> Erfolgsraten Dashboard 2020-2025</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+
+        <!-- Top Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3><i class="fas fa-trophy"></i> Höchste Rate</h3>
+                    <div class="stats-number">97%</div>
+                    <p class="mb-0">Cup & Handle (Weekly)</p>
+                    <small class="text-muted">Position Trading</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3><i class="fas fa-dollar-sign"></i> Bester Gewinn</h3>
+                    <div class="stats-number">120%</div>
+                    <p class="mb-0">Harmonics (Monthly)</p>
+                    <small class="text-muted">Position Trading</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3><i class="fas fa-chart-bar"></i> Trading-Stile</h3>
+                    <div class="stats-number">4</div>
+                    <p class="mb-0">Scalping bis Position</p>
+                    <small class="text-muted">30+ Patterns</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card text-center">
+                    <h3><i class="fas fa-clock"></i> Best ROI/Zeit</h3>
+                    <div class="stats-number">Swing</div>
+                    <p class="mb-0">30 Min/Tag</p>
+                    <small class="text-muted">12-51% Gewinn</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3><i class="fas fa-chart-pie"></i> Top 5 nach Erfolgsrate</h3>
+                    <div class="chart-container">
+                        <canvas id="successRateChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3><i class="fas fa-chart-bar"></i> Top 5 nach Durchschnittsgewinn</h3>
+                    <div class="chart-container">
+                        <canvas id="profitChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3><i class="fas fa-clock"></i> Trading-Stile: Erfolgsrate vs. Gewinn</h3>
+                    <div class="chart-container">
+                        <canvas id="tradingStyleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <h4><i class="fas fa-filter"></i> Filter</h4>
+            <button class="btn btn-outline-primary filter-btn" onclick="filterBySuccessRate('all')">Alle</button>
+            <button class="btn btn-outline-success filter-btn" onclick="filterBySuccessRate('high')">Hohe Rate (>80%)</button>
+            <button class="btn btn-outline-warning filter-btn" onclick="filterBySuccessRate('medium')">Mittlere Rate (60-80%)</button>
+            <button class="btn btn-outline-danger filter-btn" onclick="filterBySuccessRate('low')">Niedrige Rate (<60%)</button>
+        </div>
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs" id="patternTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="visualizations-tab" data-bs-toggle="tab" data-bs-target="#visualizations" type="button">
+                    <i class="fas fa-image"></i> Pattern-Visualisierungen
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="reversal-tab" data-bs-toggle="tab" data-bs-target="#reversal" type="button">
+                    <i class="fas fa-exchange-alt"></i> Reversal Patterns
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="continuation-tab" data-bs-toggle="tab" data-bs-target="#continuation" type="button">
+                    <i class="fas fa-arrow-trend-up"></i> Continuation Patterns
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="smc-tab" data-bs-toggle="tab" data-bs-target="#smc" type="button">
+                    <i class="fas fa-brain"></i> Smart Money Concepts
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="breakout-tab" data-bs-toggle="tab" data-bs-target="#breakout" type="button">
+                    <i class="fas fa-rocket"></i> Breakout Patterns
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="harmonic-tab" data-bs-toggle="tab" data-bs-target="#harmonic" type="button">
+                    <i class="fas fa-wave-square"></i> Harmonic Patterns
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="statistics-tab" data-bs-toggle="tab" data-bs-target="#statistics" type="button">
+                    <i class="fas fa-chart-pie"></i> Statistische Zusammenfassung
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="best-practices-tab" data-bs-toggle="tab" data-bs-target="#best-practices" type="button">
+                    <i class="fas fa-lightbulb"></i> Best Practices
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trading-styles-tab" data-bs-toggle="tab" data-bs-target="#trading-styles" type="button">
+                    <i class="fas fa-clock"></i> Trading-Stile Vergleich
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="implementation-tab" data-bs-toggle="tab" data-bs-target="#implementation" type="button">
+                    <i class="fas fa-cogs"></i> OrderPilot-AI Integration
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="patternTabContent">
+
+            <!-- Pattern Visualizations Tab -->
+            <div class="tab-pane fade show active" id="visualizations" role="tabpanel">
+                <h2><i class="fas fa-image"></i> Pattern-Visualisierungen: BTC Chart-Beispiele</h2>
+
+                <div class="info-box mb-4">
+                    <h4><i class="fas fa-info-circle"></i> Interaktive Chart-Beispiele</h4>
+                    <p>Nachfolgend findest du visuelle Darstellungen der wichtigsten Chart-Patterns anhand von Bitcoin (BTC) Beispielen. Jedes Pattern zeigt Entry-Points, Stop-Loss-Levels und Profit-Targets.</p>
+                </div>
+
+                <!-- Cup and Handle -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-trophy"></i> Cup and Handle - BTC Beispiel (Daily Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="280" x2="800" y2="280" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="210" x2="800" y2="210" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="140" x2="800" y2="140" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="70" x2="800" y2="70" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="75" fill="#eaeaea" font-size="12">$48k</text>
+                                <text x="10" y="145" fill="#eaeaea" font-size="12">$44k</text>
+                                <text x="10" y="215" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="285" fill="#eaeaea" font-size="12">$36k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$32k</text>
+
+                                <!-- Cup Pattern (U-shaped) -->
+                                <path d="M 100,100 L 150,120 L 200,180 L 250,240 L 300,280 L 350,300 L 400,280 L 450,240 L 500,180 L 550,120 L 580,100"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Handle Pattern (slight pullback) -->
+                                <path d="M 580,100 L 600,110 L 620,120 L 640,110"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Breakout -->
+                                <path d="M 640,110 L 680,70 L 720,40"
+                                      stroke="#27ae60" stroke-width="4" fill="none" />
+
+                                <!-- Resistance Line -->
+                                <line x1="100" y1="100" x2="750" y2="100"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="10,5" />
+
+                                <!-- Entry Point -->
+                                <circle cx="645" cy="108" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="650" y="95" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="580" y1="130" x2="720" y2="130"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="650" y="145" fill="#e74c3c" font-size="12">Stop-Loss: $42.5k</text>
+
+                                <!-- Target -->
+                                <line x1="640" y1="30" x2="760" y2="30"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="670" y="25" fill="#27ae60" font-size="12">Target: $52k</text>
+
+                                <!-- Pattern Labels -->
+                                <text x="300" y="330" fill="#3498db" font-size="16" font-weight="bold">Cup (U-Form)</text>
+                                <text x="590" y="150" fill="#3498db" font-size="14">Handle</text>
+
+                                <!-- Volume Bars (simplified) -->
+                                <g opacity="0.4">
+                                    <rect x="100" y="360" width="15" height="30" fill="#27ae60" />
+                                    <rect x="150" y="365" width="15" height="25" fill="#27ae60" />
+                                    <rect x="200" y="370" width="15" height="20" fill="#e74c3c" />
+                                    <rect x="250" y="372" width="15" height="18" fill="#e74c3c" />
+                                    <rect x="300" y="375" width="15" height="15" fill="#e74c3c" />
+                                    <rect x="350" y="373" width="15" height="17" fill="#e74c3c" />
+                                    <rect x="400" y="370" width="15" height="20" fill="#27ae60" />
+                                    <rect x="450" y="365" width="15" height="25" fill="#27ae60" />
+                                    <rect x="500" y="362" width="15" height="28" fill="#27ae60" />
+                                    <rect x="550" y="360" width="15" height="30" fill="#27ae60" />
+                                    <rect x="600" y="368" width="15" height="22" fill="#e74c3c" />
+                                    <rect x="640" y="350" width="15" height="40" fill="#27ae60" />
+                                    <rect x="680" y="345" width="15" height="45" fill="#27ae60" />
+                                </g>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Cup and Handle</li>
+                                    <li><strong>Timeframe:</strong> Daily</li>
+                                    <li><strong>Entry:</strong> $44,500 (Handle-Breakout)</li>
+                                    <li><strong>Stop-Loss:</strong> $42,500 (unter Handle)</li>
+                                    <li><strong>Target:</strong> $52,000 (Cup-Höhe projiziert)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:3.75</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-high">95%</span></li>
+                                </ul>
+                            </div>
+                            <div class="info-box mt-3">
+                                <h6>Key-Features:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ U-förmiger Cup (keine V-Form)</li>
+                                    <li>✅ Handle = 1/3 der Cup-Tiefe</li>
+                                    <li>✅ Volumen nimmt im Cup ab</li>
+                                    <li>✅ Breakout mit hohem Volumen</li>
+                                    <li>✅ Mind. 7 Wochen Formation</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Head and Shoulders -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-chart-line"></i> Head & Shoulders Top - BTC Beispiel (4H Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="280" x2="800" y2="280" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="210" x2="800" y2="210" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="140" x2="800" y2="140" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="70" x2="800" y2="70" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="75" fill="#eaeaea" font-size="12">$46k</text>
+                                <text x="10" y="145" fill="#eaeaea" font-size="12">$43k</text>
+                                <text x="10" y="215" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="285" fill="#eaeaea" font-size="12">$37k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$34k</text>
+
+                                <!-- Uptrend leading to pattern -->
+                                <path d="M 100,300 L 150,250 L 200,200"
+                                      stroke="#27ae60" stroke-width="2" fill="none" opacity="0.5" />
+
+                                <!-- Left Shoulder -->
+                                <path d="M 200,200 L 250,140 L 300,210"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Head -->
+                                <path d="M 300,210 L 400,70 L 500,210"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Right Shoulder -->
+                                <path d="M 500,210 L 550,140 L 600,210"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Neckline -->
+                                <line x1="200" y1="210" x2="700" y2="210"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="10,5" />
+                                <text x="620" y="205" fill="#e74c3c" font-size="14" font-weight="bold">Neckline</text>
+
+                                <!-- Breakdown -->
+                                <path d="M 600,210 L 630,240 L 660,300 L 700,320"
+                                      stroke="#e74c3c" stroke-width="4" fill="none" />
+
+                                <!-- Entry Point -->
+                                <circle cx="632" cy="242" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="638" y="235" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="550" y1="120" x2="700" y2="120"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="620" y="115" fill="#e74c3c" font-size="12">Stop: $43.5k</text>
+
+                                <!-- Target (Head to Neckline distance projected down) -->
+                                <line x1="660" y1="340" x2="760" y2="340"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="670" y="335" fill="#27ae60" font-size="12">Target: $33k</text>
+
+                                <!-- Pattern Labels -->
+                                <text x="230" y="125" fill="#3498db" font-size="14">Left Shoulder</text>
+                                <text x="390" y="55" fill="#3498db" font-size="16" font-weight="bold">Head</text>
+                                <text x="520" y="125" fill="#3498db" font-size="14">Right Shoulder</text>
+
+                                <!-- Measurement arrows -->
+                                <line x1="400" y1="70" x2="400" y2="210"
+                                      stroke="#f39c12" stroke-width="2" marker-end="url(#arrowhead)" />
+                                <text x="405" y="140" fill="#f39c12" font-size="12">Pattern Height</text>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Head & Shoulders Top</li>
+                                    <li><strong>Timeframe:</strong> 4-Hour</li>
+                                    <li><strong>Entry:</strong> $39,800 (Neckline-Bruch)</li>
+                                    <li><strong>Stop-Loss:</strong> $43,500 (über rechter Schulter)</li>
+                                    <li><strong>Target:</strong> $33,000 (Pattern-Höhe)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:1.84</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-high">89-93%</span></li>
+                                </ul>
+                            </div>
+                            <div class="warning-box mt-3">
+                                <h6>Bestätigungen:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ Volumen-Spike beim Neckline-Bruch</li>
+                                    <li>✅ RSI bearish divergence am Head</li>
+                                    <li>✅ MACD bearish crossover</li>
+                                    <li>✅ Beide Schultern auf ähnlichem Level</li>
+                                    <li>⚠️ Warte auf komplette Formation</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ascending Triangle -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-chart-area"></i> Ascending Triangle - BTC Beispiel (1H Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="250" x2="800" y2="250" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="150" x2="800" y2="150" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="155" fill="#eaeaea" font-size="12">$42k</text>
+                                <text x="10" y="255" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$38k</text>
+
+                                <!-- Price action with rising lows -->
+                                <path d="M 100,280 L 150,200 L 200,250 L 250,165 L 300,220 L 350,155 L 400,200 L 450,150"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Horizontal Resistance (flat top) -->
+                                <line x1="100" y1="150" x2="650" y2="150"
+                                      stroke="#e74c3c" stroke-width="3" />
+                                <text x="500" y="140" fill="#e74c3c" font-size="14" font-weight="bold">Horizontal Resistance</text>
+
+                                <!-- Rising Support Trendline -->
+                                <line x1="100" y1="280" x2="450" y2="150"
+                                      stroke="#27ae60" stroke-width="3" />
+                                <text x="200" y="310" fill="#27ae60" font-size="14" font-weight="bold">Rising Support</text>
+
+                                <!-- Breakout -->
+                                <path d="M 450,150 L 500,120 L 550,90 L 600,70"
+                                      stroke="#f39c12" stroke-width="4" fill="none" />
+
+                                <!-- Entry Point -->
+                                <circle cx="455" cy="145" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="460" y="135" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="400" y1="210" x2="600" y2="210"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="500" y="225" fill="#e74c3c" font-size="12">Stop: $40.5k</text>
+
+                                <!-- Target -->
+                                <line x1="550" y1="40" x2="700" y2="40"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="600" y="35" fill="#27ae60" font-size="12">Target: $45k</text>
+
+                                <!-- Pattern Height Marker -->
+                                <line x1="120" y1="150" x2="120" y2="280"
+                                      stroke="#fff" stroke-width="2" opacity="0.5" marker-end="url(#arrowhead)" />
+                                <text x="125" y="220" fill="#fff" font-size="12">Height</text>
+
+                                <!-- Volume Bars -->
+                                <g opacity="0.4">
+                                    <rect x="100" y="365" width="12" height="25" fill="#27ae60" />
+                                    <rect x="150" y="368" width="12" height="22" fill="#e74c3c" />
+                                    <rect x="200" y="370" width="12" height="20" fill="#27ae60" />
+                                    <rect x="250" y="372" width="12" height="18" fill="#e74c3c" />
+                                    <rect x="300" y="373" width="12" height="17" fill="#27ae60" />
+                                    <rect x="350" y="374" width="12" height="16" fill="#e74c3c" />
+                                    <rect x="400" y="375" width="12" height="15" fill="#27ae60" />
+                                    <rect x="450" y="350" width="12" height="40" fill="#27ae60" />
+                                    <rect x="500" y="345" width="12" height="45" fill="#27ae60" />
+                                </g>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Ascending Triangle</li>
+                                    <li><strong>Timeframe:</strong> 1-Hour</li>
+                                    <li><strong>Entry:</strong> $42,200 (Resistance-Bruch)</li>
+                                    <li><strong>Stop-Loss:</strong> $40,500 (unter letztem Low)</li>
+                                    <li><strong>Target:</strong> $45,000 (Triangle-Höhe)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:1.65</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-high">72-83%</span></li>
+                                </ul>
+                            </div>
+                            <div class="info-box mt-3">
+                                <h6>Pattern-Features:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ Flache horizontale Resistance</li>
+                                    <li>✅ Steigende Higher Lows</li>
+                                    <li>✅ Konvergenz = Breakout nahe</li>
+                                    <li>✅ Volumen nimmt ab während Formation</li>
+                                    <li>✅ Breakout mit Volumen-Spike (2x)</li>
+                                    <li>⭐ Bull-Market: 83% Erfolgsrate!</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Double Bottom -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-signal"></i> Double Bottom - BTC Beispiel (Daily Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="280" x2="800" y2="280" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="210" x2="800" y2="210" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="140" x2="800" y2="140" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="145" fill="#eaeaea" font-size="12">$44k</text>
+                                <text x="10" y="215" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="285" fill="#eaeaea" font-size="12">$36k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$32k</text>
+
+                                <!-- Downtrend -->
+                                <path d="M 100,100 L 180,250"
+                                      stroke="#e74c3c" stroke-width="2" fill="none" opacity="0.5" />
+
+                                <!-- First Bottom -->
+                                <path d="M 180,250 L 250,320 L 320,250"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Rally between bottoms -->
+                                <path d="M 320,250 L 400,140"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Second Bottom -->
+                                <path d="M 400,140 L 480,320 L 550,250"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Neckline (resistance between peaks) -->
+                                <line x1="180" y1="140" x2="700" y2="140"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="10,5" />
+                                <text x="600" y="130" fill="#e74c3c" font-size="14" font-weight="bold">Neckline</text>
+
+                                <!-- Breakout -->
+                                <path d="M 550,250 L 580,180 L 610,140 L 650,90 L 700,60"
+                                      stroke="#27ae60" stroke-width="4" fill="none" />
+
+                                <!-- Entry Point -->
+                                <circle cx="612" cy="138" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="618" y="128" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="480" y1="330" x2="700" y2="330"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="620" y="345" fill="#e74c3c" font-size="12">Stop: $31k</text>
+
+                                <!-- Target -->
+                                <line x1="650" y1="30" x2="760" y2="30"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="670" y="25" fill="#27ae60" font-size="12">Target: $52k</text>
+
+                                <!-- Pattern Labels -->
+                                <text x="230" y="340" fill="#3498db" font-size="14">1st Bottom</text>
+                                <text x="460" y="340" fill="#3498db" font-size="14">2nd Bottom</text>
+
+                                <!-- Equal level indicator -->
+                                <line x1="250" y1="320" x2="480" y2="320"
+                                      stroke="#fff" stroke-width="1" stroke-dasharray="3,3" opacity="0.5" />
+                                <text x="340" y="310" fill="#fff" font-size="11">±2% gleich</text>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Double Bottom</li>
+                                    <li><strong>Timeframe:</strong> Daily</li>
+                                    <li><strong>Entry:</strong> $40,500 (Neckline-Bruch)</li>
+                                    <li><strong>Stop-Loss:</strong> $31,000 (unter Bottoms)</li>
+                                    <li><strong>Target:</strong> $52,000 (Neckline + Height)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:1.21</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-high">88%</span></li>
+                                </ul>
+                            </div>
+                            <div class="info-box mt-3">
+                                <h6>Bestätigungen:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ Beide Bottoms auf gleichem Level (±2%)</li>
+                                    <li>✅ Volumen am 2. Bottom höher</li>
+                                    <li>✅ Bullish Divergence (RSI)</li>
+                                    <li>✅ Neckline-Bruch mit Volumen</li>
+                                    <li>✅ Optional: Retest der Neckline</li>
+                                    <li>⭐ W-Formation = Bullish Reversal</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bull Flag -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-flag"></i> Bull Flag - BTC Beispiel (15-Min Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="250" x2="800" y2="250" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="150" x2="800" y2="150" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="155" fill="#eaeaea" font-size="12">$43k</text>
+                                <text x="10" y="255" fill="#eaeaea" font-size="12">$41k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$39k</text>
+
+                                <!-- Flagpole (strong uptrend) -->
+                                <path d="M 100,330 L 150,280 L 200,200 L 250,120 L 280,90"
+                                      stroke="#27ae60" stroke-width="4" fill="none" />
+                                <text x="120" y="360" fill="#27ae60" font-size="14" font-weight="bold">Flagpole</text>
+
+                                <!-- Flag (consolidation - parallel downward channel) -->
+                                <!-- Upper Flag Line -->
+                                <line x1="280" y1="90" x2="500" y2="170"
+                                      stroke="#3498db" stroke-width="2" />
+                                <!-- Lower Flag Line -->
+                                <line x1="280" y1="120" x2="500" y2="200"
+                                      stroke="#3498db" stroke-width="2" />
+                                <text x="360" y="180" fill="#3498db" font-size="14" font-weight="bold">Flag (Pause)</text>
+
+                                <!-- Price action inside flag -->
+                                <path d="M 280,105 L 330,140 L 380,120 L 430,160 L 480,140 L 500,170"
+                                      stroke="#3498db" stroke-width="2" fill="none" opacity="0.7" />
+
+                                <!-- Breakout (continuation) -->
+                                <path d="M 500,170 L 550,130 L 600,80 L 650,50 L 700,30"
+                                      stroke="#f39c12" stroke-width="4" fill="none" />
+
+                                <!-- Entry Point -->
+                                <circle cx="505" cy="165" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="510" y="155" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="480" y1="210" x2="700" y2="210"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="600" y="225" fill="#e74c3c" font-size="12">Stop: $40.5k</text>
+
+                                <!-- Target (Flagpole length projected) -->
+                                <line x1="650" y1="20" x2="760" y2="20"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="670" y="15" fill="#27ae60" font-size="12">Target: $45k</text>
+
+                                <!-- Flagpole Measurement -->
+                                <line x1="100" y1="330" x2="100" y2="90"
+                                      stroke="#fff" stroke-width="1" stroke-dasharray="3,3" opacity="0.5" />
+                                <text x="105" y="220" fill="#fff" font-size="11">Pole Length = Target Distance</text>
+
+                                <!-- Volume Bars -->
+                                <g opacity="0.4">
+                                    <rect x="100" y="350" width="10" height="40" fill="#27ae60" />
+                                    <rect x="150" y="345" width="10" height="45" fill="#27ae60" />
+                                    <rect x="200" y="340" width="10" height="50" fill="#27ae60" />
+                                    <rect x="250" y="335" width="10" height="55" fill="#27ae60" />
+                                    <rect x="300" y="370" width="10" height="20" fill="#e74c3c" />
+                                    <rect x="350" y="372" width="10" height="18" fill="#e74c3c" />
+                                    <rect x="400" y="373" width="10" height="17" fill="#e74c3c" />
+                                    <rect x="450" y="374" width="10" height="16" fill="#e74c3c" />
+                                    <rect x="500" y="340" width="10" height="50" fill="#27ae60" />
+                                    <rect x="550" y="335" width="10" height="55" fill="#27ae60" />
+                                </g>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Bullish Flag</li>
+                                    <li><strong>Timeframe:</strong> 15-Minute</li>
+                                    <li><strong>Entry:</strong> $42,200 (Flag-Breakout)</li>
+                                    <li><strong>Stop-Loss:</strong> $40,500 (unter Flag)</li>
+                                    <li><strong>Target:</strong> $45,000 (Pole-Länge)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:1.65</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-medium">65-70%</span></li>
+                                </ul>
+                            </div>
+                            <div class="info-box mt-3">
+                                <h6>Pattern-Charakteristik:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ Starker Aufwärtstrend (Flagpole)</li>
+                                    <li>✅ Kurze Konsolidierung (5-15 Bars)</li>
+                                    <li>✅ Parallele, leicht abwärts geneigte Linien</li>
+                                    <li>✅ Volumen nimmt in Flag ab</li>
+                                    <li>✅ Breakout mit Volumen-Spike</li>
+                                    <li>✅ Target = Pole-Länge ab Breakout</li>
+                                    <li>⭐ Klassisches Momentum-Pattern!</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rectangle/Range Pattern -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-square"></i> Rectangle Pattern - BTC Beispiel (Daily Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="250" x2="800" y2="250" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="150" x2="800" y2="150" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="155" fill="#eaeaea" font-size="12">$44k</text>
+                                <text x="10" y="255" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$36k</text>
+
+                                <!-- Horizontal Resistance -->
+                                <line x1="100" y1="150" x2="600" y2="150"
+                                      stroke="#e74c3c" stroke-width="3" />
+                                <text x="450" y="140" fill="#e74c3c" font-size="14" font-weight="bold">Resistance: $44k</text>
+
+                                <!-- Horizontal Support -->
+                                <line x1="100" y1="280" x2="600" y2="280"
+                                      stroke="#27ae60" stroke-width="3" />
+                                <text x="450" y="300" fill="#27ae60" font-size="14" font-weight="bold">Support: $38k</text>
+
+                                <!-- Price action bouncing between levels -->
+                                <path d="M 100,240 L 150,180 L 200,270 L 250,160 L 300,260 L 350,170 L 400,275 L 450,165 L 500,250 L 550,160"
+                                      stroke="#3498db" stroke-width="3" fill="none" />
+
+                                <!-- Rectangle outline -->
+                                <rect x="100" y="150" width="500" height="130"
+                                      stroke="#fff" stroke-width="2" fill="none" opacity="0.3" stroke-dasharray="10,5" />
+
+                                <!-- Breakout -->
+                                <path d="M 550,160 L 590,120 L 630,80 L 680,50 L 730,30"
+                                      stroke="#f39c12" stroke-width="4" fill="none" />
+
+                                <!-- Entry Point -->
+                                <circle cx="555" cy="155" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="560" y="145" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Stop Loss -->
+                                <line x1="550" y1="290" x2="750" y2="290"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="650" y="305" fill="#e74c3c" font-size="12">Stop: $37.5k</text>
+
+                                <!-- Target -->
+                                <line x1="680" y1="20" x2="770" y2="20"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="690" y="15" fill="#27ae60" font-size="12">Target: $50k</text>
+
+                                <!-- Range Height Marker -->
+                                <line x1="620" y1="150" x2="620" y2="280"
+                                      stroke="#fff" stroke-width="2" marker-end="url(#arrowhead)" />
+                                <text x="625" y="220" fill="#fff" font-size="12">Range = $6k</text>
+
+                                <!-- Test markers -->
+                                <circle cx="150" cy="180" r="5" fill="#e74c3c" opacity="0.7" />
+                                <circle cx="250" cy="160" r="5" fill="#e74c3c" opacity="0.7" />
+                                <circle cx="350" cy="170" r="5" fill="#e74c3c" opacity="0.7" />
+                                <circle cx="450" cy="165" r="5" fill="#e74c3c" opacity="0.7" />
+
+                                <circle cx="200" cy="270" r="5" fill="#27ae60" opacity="0.7" />
+                                <circle cx="300" cy="260" r="5" fill="#27ae60" opacity="0.7" />
+                                <circle cx="400" cy="275" r="5" fill="#27ae60" opacity="0.7" />
+                                <circle cx="500" cy="250" r="5" fill="#27ae60" opacity="0.7" />
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup:</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Rectangle (Range)</li>
+                                    <li><strong>Timeframe:</strong> Daily</li>
+                                    <li><strong>Entry:</strong> $44,200 (Resistance-Bruch)</li>
+                                    <li><strong>Stop-Loss:</strong> $37,500 (unter Support)</li>
+                                    <li><strong>Target:</strong> $50,000 (Range + Breakout)</li>
+                                    <li><strong>Risk/Reward:</strong> 1:0.87</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="success-rate-medium">70-75%</span></li>
+                                    <li><strong>Avg. Gewinn:</strong> <span class="text-warning"><strong>48-51%!</strong></span></li>
+                                </ul>
+                            </div>
+                            <div class="warning-box mt-3">
+                                <h6>Pattern-Validierung:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>✅ Mind. 2 Tests an beiden Levels</li>
+                                    <li>✅ Klare horizontale S/R Linien</li>
+                                    <li>✅ Volumen nimmt während Range ab</li>
+                                    <li>✅ Breakout mit Volumen-Expansion (2x+)</li>
+                                    <li>✅ Optional: Retest-Bestätigung</li>
+                                    <li>⭐ <strong>Höchster durchschn. Gewinn!</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Smart Money: Order Block -->
+                <div class="stats-card mb-5">
+                    <h3><i class="fas fa-brain"></i> Order Block (ICT/SMC) - BTC Beispiel (1H Chart)</h3>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <svg viewBox="0 0 800 400" style="width: 100%; background: #1a1a2e; border-radius: 10px;">
+                                <!-- Grid -->
+                                <g stroke="#2c3e50" stroke-width="1">
+                                    <line x1="80" y1="0" x2="80" y2="350" />
+                                    <line x1="0" y1="350" x2="800" y2="350" />
+                                    <line x1="0" y1="250" x2="800" y2="250" stroke-dasharray="5,5" opacity="0.3" />
+                                    <line x1="0" y1="150" x2="800" y2="150" stroke-dasharray="5,5" opacity="0.3" />
+                                </g>
+
+                                <!-- Y-Axis Labels -->
+                                <text x="10" y="155" fill="#eaeaea" font-size="12">$43k</text>
+                                <text x="10" y="255" fill="#eaeaea" font-size="12">$40k</text>
+                                <text x="10" y="355" fill="#eaeaea" font-size="12">$37k</text>
+
+                                <!-- Downtrend -->
+                                <path d="M 100,100 L 150,150 L 200,170 L 250,220 L 300,250"
+                                      stroke="#e74c3c" stroke-width="2" fill="none" />
+
+                                <!-- Last Bearish Candle before Reversal (Order Block) -->
+                                <rect x="280" y="220" width="40" height="60"
+                                      fill="rgba(231, 76, 60, 0.3)" stroke="#e74c3c" stroke-width="3" />
+                                <text x="240" y="210" fill="#e74c3c" font-size="14" font-weight="bold">Bearish OB</text>
+
+                                <!-- Reversal / Impulse Up -->
+                                <path d="M 320,280 L 360,200 L 400,120 L 450,80"
+                                      stroke="#27ae60" stroke-width="3" fill="none" />
+
+                                <!-- Pullback to Order Block -->
+                                <path d="M 450,80 L 500,140 L 550,240"
+                                      stroke="#3498db" stroke-width="2" fill="none" stroke-dasharray="5,5" />
+                                <text x="480" y="180" fill="#3498db" font-size="13">Retest</text>
+
+                                <!-- Order Block Zone -->
+                                <rect x="280" y="220" width="500" height="60"
+                                      fill="rgba(231, 76, 60, 0.1)" stroke="#e74c3c" stroke-width="2" stroke-dasharray="10,5" />
+                                <text x="600" y="245" fill="#e74c3c" font-size="13">Order Block Zone</text>
+
+                                <!-- Entry at Retest -->
+                                <circle cx="548" cy="238" r="8" fill="#f39c12" stroke="#fff" stroke-width="2" />
+                                <text x="555" y="230" fill="#f39c12" font-size="14" font-weight="bold">ENTRY</text>
+
+                                <!-- Second Impulse Up -->
+                                <path d="M 550,240 L 600,170 L 650,100 L 700,60"
+                                      stroke="#27ae60" stroke-width="4" fill="none" />
+
+                                <!-- Stop Loss -->
+                                <line x1="550" y1="290" x2="720" y2="290"
+                                      stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="620" y="305" fill="#e74c3c" font-size="12">Stop: $37.5k</text>
+
+                                <!-- Target -->
+                                <line x1="700" y1="40" x2="770" y2="40"
+                                      stroke="#27ae60" stroke-width="2" stroke-dasharray="5,5" />
+                                <text x="710" y="35" fill="#27ae60" font-size="12">Target: $45k</text>
+
+                                <!-- Fair Value Gap (FVG) indicator -->
+                                <rect x="350" y="130" width="30" height="50"
+                                      fill="rgba(52, 152, 219, 0.2)" stroke="#3498db" stroke-width="1" stroke-dasharray="3,3" />
+                                <text x="320" y="125" fill="#3498db" font-size="11">FVG</text>
+                            </svg>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="best-practices">
+                                <h5>Trading-Setup (ICT/SMC):</h5>
+                                <ul class="mb-0">
+                                    <li><strong>Pattern:</strong> Bullish Order Block</li>
+                                    <li><strong>Timeframe:</strong> 1-Hour</li>
+                                    <li><strong>Entry:</strong> $39,800 (OB Retest)</li>
+                                    <li><strong>Stop-Loss:</strong> $37,500 (unter OB)</li>
+                                    <li><strong>Target:</strong> $45,000</li>
+                                    <li><strong>Risk/Reward:</strong> 1:2.26</li>
+                                    <li><strong>Erfolgsrate:</strong> <span class="badge bg-secondary">Variabel</span></li>
+                                </ul>
+                            </div>
+                            <div class="warning-box mt-3">
+                                <h6>Smart Money Concepts:</h6>
+                                <ul class="mb-0" style="font-size: 0.9rem;">
+                                    <li>🔍 Letzte Bearish Candle vor Reversal</li>
+                                    <li>🔍 Institutionelle Orders im Block</li>
+                                    <li>🔍 Warte auf Retest des Order Blocks</li>
+                                    <li>🔍 Entry bei bullischer Bestätigung</li>
+                                    <li>🔍 Oft kombiniert mit FVG (Fair Value Gap)</li>
+                                    <li>⚠️ Erfordert Erfahrung & Multi-TF-Analyse</li>
+                                    <li>⚠️ Mehrjährige Lernkurve dokumentiert</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pattern Comparison Summary -->
+                <div class="info-box mt-5">
+                    <h4><i class="fas fa-graduation-cap"></i> Pattern-Visualisierung: Key Learnings</h4>
+                    <table class="table pattern-table mt-3">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Visuelles Merkmal</th>
+                                <th>Entry-Signal</th>
+                                <th>Stop-Loss Platzierung</th>
+                                <th>Schwierigkeit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cup and Handle</strong></td>
+                                <td>U-förmige Rundung + kleine Konsolidierung</td>
+                                <td>Handle-Breakout</td>
+                                <td>Unter Handle</td>
+                                <td><span class="badge bg-success">Leicht</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Head & Shoulders</strong></td>
+                                <td>3 Peaks: Mitte am höchsten</td>
+                                <td>Neckline-Bruch</td>
+                                <td>Über rechter Schulter</td>
+                                <td><span class="badge bg-success">Leicht</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ascending Triangle</strong></td>
+                                <td>Flaches Resistance + steigende Lows</td>
+                                <td>Resistance-Breakout</td>
+                                <td>Unter Trendlinie</td>
+                                <td><span class="badge bg-success">Leicht</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Bottom</strong></td>
+                                <td>2 gleiche Lows (W-Form)</td>
+                                <td>Neckline-Bruch</td>
+                                <td>Unter Bottoms</td>
+                                <td><span class="badge bg-success">Leicht</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bull Flag</strong></td>
+                                <td>Steiler Pole + parallele Konsolidierung</td>
+                                <td>Flag-Breakout</td>
+                                <td>Unter Flag</td>
+                                <td><span class="badge bg-warning">Mittel</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Rectangle</strong></td>
+                                <td>Horizontale S/R mit Tests</td>
+                                <td>S/R-Breakout</td>
+                                <td>Jenseits der Range</td>
+                                <td><span class="badge bg-success">Leicht</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Order Block (SMC)</strong></td>
+                                <td>Letzte Gegen-Candle vor Impulse</td>
+                                <td>OB-Retest mit Rejection</td>
+                                <td>Jenseits OB-Zone</td>
+                                <td><span class="badge bg-danger">Schwer</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reversal Patterns Tab -->
+            <div class="tab-pane fade" id="reversal" role="tabpanel">
+                <h2><i class="fas fa-exchange-alt"></i> Reversal Patterns (Umkehrmuster)</h2>
+                <table class="table pattern-table" id="reversalTable">
+                    <thead>
+                        <tr>
+                            <th>Chart-Muster</th>
+                            <th>Trading-Strategie</th>
+                            <th>Erfolgsrate</th>
+                            <th>Durchschn. Gewinn</th>
+                            <th>Best Practices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-success-rate="91">
+                            <td><strong>Head & Shoulders (Top)</strong></td>
+                            <td>Breakdown-Short nach Neckline-Bruch</td>
+                            <td><span class="success-rate-high">89-93%</span></td>
+                            <td>23%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Warte auf komplette Formation</li>
+                                    <li>Volumen-Bestätigung am Bruch</li>
+                                    <li>MACD Crossover erhöht Rate auf 81%</li>
+                                    <li>Target: Höhe der Schulter abgetragen</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="77">
+                            <td><strong>Inverse Head & Shoulders</strong></td>
+                            <td>Breakout-Long nach Neckline-Bruch</td>
+                            <td><span class="success-rate-medium">73-81%</span></td>
+                            <td>18-22%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Volumen-Spike beim Breakout kritisch</li>
+                                    <li>RSI >50 bei Bruch bestätigt Momentum</li>
+                                    <li>Mit MACD: 81% Erfolgsrate</li>
+                                    <li>Stop: Unterhalb rechter Schulter</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="88">
+                            <td><strong>Double Top</strong></td>
+                            <td>Short bei Neckline-Break + Retest</td>
+                            <td><span class="success-rate-high">88%</span></td>
+                            <td>15-20%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Beide Tops auf gleichem Level (±2%)</li>
+                                    <li>Volumen am 2. Top niedriger</li>
+                                    <li>Bearish Divergence (RSI) verstärkt Signal</li>
+                                    <li>Target: Höhe des Patterns</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="88">
+                            <td><strong>Double Bottom</strong></td>
+                            <td>Long bei Neckline-Break + Retest</td>
+                            <td><span class="success-rate-high">88%</span></td>
+                            <td>18-25%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Beide Bottoms auf gleichem Level (±2%)</li>
+                                    <li>Volumen am 2. Bottom höher</li>
+                                    <li>Bullish Divergence verstärkt</li>
+                                    <li>Mit Retest-Filter: Höhere Win-Rate</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="87">
+                            <td><strong>Triple Bottom</strong></td>
+                            <td>Long bei Widerstandsbruch</td>
+                            <td><span class="success-rate-high">87%</span></td>
+                            <td>20-28%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Drei Tests auf gleichem Support</li>
+                                    <li>Abnehmendes Volumen bei Tests</li>
+                                    <li>Explosion am Breakout</li>
+                                    <li>Sehr seltenes, aber zuverlässiges Pattern</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="95">
+                            <td><strong>Cup and Handle</strong> <span class="badge bg-success">TOP</span></td>
+                            <td>Breakout-Long nach Handle</td>
+                            <td><span class="success-rate-high">95%</span></td>
+                            <td>35-50%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li><strong>Höchste Erfolgsrate aller Patterns</strong></li>
+                                    <li>U-förmiger Cup (keine V-Form)</li>
+                                    <li>Handle: 1/3 der Cup-Tiefe</li>
+                                    <li>Mindest-Formation: 7 Wochen</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Continuation Patterns Tab -->
+            <div class="tab-pane fade" id="continuation" role="tabpanel">
+                <h2><i class="fas fa-arrow-trend-up"></i> Continuation Patterns (Fortsetzungsmuster)</h2>
+                <table class="table pattern-table" id="continuationTable">
+                    <thead>
+                        <tr>
+                            <th>Chart-Muster</th>
+                            <th>Trading-Strategie</th>
+                            <th>Erfolgsrate</th>
+                            <th>Durchschn. Gewinn</th>
+                            <th>Best Practices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-success-rate="77.5">
+                            <td><strong>Ascending Triangle</strong></td>
+                            <td>Long-Breakout über Resistance</td>
+                            <td><span class="success-rate-medium">72-83%</span></td>
+                            <td>25-35%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li><strong>Höchste Rate in Bull-Märkten (83%)</strong></li>
+                                    <li>Flacher Widerstand + steigende Lows</li>
+                                    <li>Volumen-Bestätigung zwingend</li>
+                                    <li>Mit Retest: Weniger Trades, höhere Win-Rate</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="66.5">
+                            <td><strong>Descending Triangle</strong></td>
+                            <td>Short-Breakdown unter Support</td>
+                            <td><span class="success-rate-medium">64-69%</span></td>
+                            <td>18-25%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Flacher Support + fallende Highs</li>
+                                    <li>Volumen-Validierung kritisch</li>
+                                    <li>2025 Daten: 69% mit Volumen-Confirm</li>
+                                    <li>Stop: Oberhalb letztem Swing-High</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="65">
+                            <td><strong>Symmetrical Triangle</strong></td>
+                            <td>Breakout in Trend-Richtung</td>
+                            <td><span class="success-rate-medium">54-76%</span></td>
+                            <td>20-30%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>In Trend-Richtung: 76% Erfolg</li>
+                                    <li>Gegen Trend: Nur 54%</li>
+                                    <li>Breakout im oberen 2/3 des Dreiecks</li>
+                                    <li>Volumen nimmt während Formation ab</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="67.8">
+                            <td><strong>Bullish Pennant</strong></td>
+                            <td>Long-Breakout nach Konsolidierung</td>
+                            <td><span class="success-rate-medium">67.8%</span></td>
+                            <td>15-25%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Folgt auf starken Aufwärtstrend (Flagpole)</li>
+                                    <li>Kleine, symmetrische Konsolidierung</li>
+                                    <li>Breakout mit Volumen-Spike</li>
+                                    <li>Target: Länge des Flagpoles</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="67.5">
+                            <td><strong>Bullish Flag</strong></td>
+                            <td>Long-Continuation nach Pause</td>
+                            <td><span class="success-rate-medium">65-70%</span></td>
+                            <td>18-28%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Parallele, leicht abwärts geneigte Linien</li>
+                                    <li>Kurze Dauer (5-15 Bars)</li>
+                                    <li>Breakout = Fortsetzung des Impulses</li>
+                                    <li>Klassisches Momentum-Pattern</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="72.5">
+                            <td><strong>Rectangle Top/Bottom</strong> <span class="badge bg-warning">PROFIT</span></td>
+                            <td>Range-Breakout in Trend-Richtung</td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td><strong>48-51%</strong></td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li><strong>Höchster durchschn. Gewinn (51%)</strong></li>
+                                    <li>Klare Horizontale Support/Resistance</li>
+                                    <li>Mind. 2 Tests auf beiden Seiten</li>
+                                    <li>Breakout mit Volumen-Expansion</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Smart Money Concepts Tab -->
+            <div class="tab-pane fade" id="smc" role="tabpanel">
+                <h2><i class="fas fa-brain"></i> Smart Money Concepts (SMC) / ICT Patterns</h2>
+
+                <div class="warning-box mb-4">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Wichtiger Hinweis</h5>
+                    <p>ICT/SMC Patterns haben keine standardisierten Erfolgsraten, da:</p>
+                    <ul>
+                        <li>Interpretation subjektiv ist</li>
+                        <li>Kombiniert mit anderen Faktoren (Kill Zones, PD Arrays)</li>
+                        <li>Erfordert Erfahrung für konsistente Profitabilität</li>
+                        <li><strong>Mehrjährige Lernkurve dokumentiert</strong></li>
+                    </ul>
+                </div>
+
+                <table class="table pattern-table" id="smcTable">
+                    <thead>
+                        <tr>
+                            <th>Pattern</th>
+                            <th>Trading-Strategie</th>
+                            <th>Erfolgsrate</th>
+                            <th>Durchschn. Gewinn</th>
+                            <th>Best Practices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Order Block (Bullish)</strong></td>
+                            <td>Long bei Retest des letzten Bearish OB vor Reversal</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>20-40%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Identifiziere letzte Bearish-Candle vor Reversal</li>
+                                    <li>Warte auf Retest des Order Blocks</li>
+                                    <li>Entry bei bullischer Bestätigung im Block</li>
+                                    <li>Stop: Unterhalb Order Block</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Order Block (Bearish)</strong></td>
+                            <td>Short bei Retest des letzten Bullish OB vor Reversal</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>20-40%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Identifiziere letzte Bullish-Candle vor Reversal</li>
+                                    <li>Retest oft nach Liquiditäts-Sweep</li>
+                                    <li>Entry bei bearischer Rejection</li>
+                                    <li>Stop: Oberhalb Order Block</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fair Value Gap (FVG)</strong></td>
+                            <td>Entry bei Retest der Gap</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>15-30%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>3-Candle-Pattern mit Gap in der Mitte</li>
+                                    <li>Gap = Imbalance, wird oft gefüllt</li>
+                                    <li>Entry beim 50% Retest der Gap</li>
+                                    <li>Häufig in Kombination mit OB</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Break of Structure (BOS)</strong></td>
+                            <td>Trend-Following nach BOS</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>25-50%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Bruch des letzten Swing High/Low</li>
+                                    <li>Bestätigt Trend-Continuation</li>
+                                    <li>Entry bei Retest des gebrochenen Levels</li>
+                                    <li>Kombiniere mit Order Blocks</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Change of Character (CHoCH)</strong></td>
+                            <td>Reversal-Trade nach CHoCH</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>30-60%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Bruch der Marktstruktur (Trend → Reversal)</li>
+                                    <li>Starkes Reversal-Signal</li>
+                                    <li>Warte auf Retest + Order Block</li>
+                                    <li>Höheres Risiko, höherer Reward</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Liquidity Sweep</strong></td>
+                            <td>Entry nach False Breakout</td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>25-45%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Sweep von Highs/Lows (Stop-Hunt)</li>
+                                    <li>Sofortige Rejection = Smart Money Entry</li>
+                                    <li>Entry nach Sweep-Candle schließt</li>
+                                    <li>Stop: Jenseits des Sweeps</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-box">
+                    <h5><i class="fas fa-info-circle"></i> Profitabilitäts-Faktoren</h5>
+                    <ul>
+                        <li>Strikte Risk-Management (1-2% Risiko pro Trade)</li>
+                        <li>Verständnis institutioneller Order-Flow</li>
+                        <li>Multi-Timeframe-Analyse (HTF Bias, LTF Entry)</li>
+                        <li>Psychologische Disziplin</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Breakout Patterns Tab -->
+            <div class="tab-pane fade" id="breakout" role="tabpanel">
+                <h2><i class="fas fa-rocket"></i> Breakout Patterns (Ausbruchsmuster)</h2>
+                <table class="table pattern-table" id="breakoutTable">
+                    <thead>
+                        <tr>
+                            <th>Chart-Muster</th>
+                            <th>Trading-Strategie</th>
+                            <th>Erfolgsrate</th>
+                            <th>Durchschn. Gewinn</th>
+                            <th>Best Practices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-success-rate="70">
+                            <td><strong>Range Breakout</strong></td>
+                            <td>Long/Short bei Ausbruch aus Seitwärtsrange</td>
+                            <td><span class="success-rate-medium">65-75%</span></td>
+                            <td>20-35%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Mind. 2 Tests auf Support/Resistance</li>
+                                    <li>Volumen-Spike beim Breakout (2x Durchschnitt)</li>
+                                    <li>Retest erhöht Win-Rate um 15-20%</li>
+                                    <li>False-Breakout-Filter: Close > Breakout-Level</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="75">
+                            <td><strong>Volatility Squeeze</strong></td>
+                            <td>Breakout nach Bollinger-Band-Kompression</td>
+                            <td><span class="success-rate-medium">70-80%</span></td>
+                            <td>25-40%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Bollinger Bands engste Breite (20+ Bars)</li>
+                                    <li>ATR auf Multi-Month-Tief</li>
+                                    <li>Richtung: Trend vor Squeeze</li>
+                                    <li>Mit Volumen-Confirm: Hohe Win-Rate</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="80">
+                            <td><strong>Breakout mit Retest</strong> <span class="badge bg-success">EMPFOHLEN</span></td>
+                            <td>Entry nach erfolgreicher Retest-Bestätigung</td>
+                            <td><span class="success-rate-high">Höher</span></td>
+                            <td>30-50%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Reduziert False-Breakouts um 56%</li>
+                                    <li>Weniger Trades, höhere Qualität</li>
+                                    <li>Retest = Support/Resistance-Flip</li>
+                                    <li>Entry bei bullisher/bearisher Kerze am Retest</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Harmonic Patterns Tab -->
+            <div class="tab-pane fade" id="harmonic" role="tabpanel">
+                <h2><i class="fas fa-wave-square"></i> Harmonic Patterns</h2>
+
+                <div class="info-box mb-4">
+                    <h5><i class="fas fa-info-circle"></i> Harmonics-Hinweis</h5>
+                    <ul>
+                        <li>Komplexität reduziert Nutzung</li>
+                        <li><strong>Präzision kritisch für Erfolg</strong></li>
+                        <li>Exakte Fibonacci-Ratios erforderlich</li>
+                        <li>Hohe Win-Rate bei korrekter Identifikation</li>
+                        <li>Oft kombiniert mit anderen Confirming-Tools</li>
+                    </ul>
+                </div>
+
+                <table class="table pattern-table" id="harmonicTable">
+                    <thead>
+                        <tr>
+                            <th>Chart-Muster</th>
+                            <th>Trading-Strategie</th>
+                            <th>Erfolgsrate</th>
+                            <th>Durchschn. Gewinn</th>
+                            <th>Best Practices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-success-rate="72.5">
+                            <td><strong>Gartley Pattern</strong></td>
+                            <td>Reversal bei D-Point</td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td>30-50%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Präzise Fibonacci-Ratios erforderlich</li>
+                                    <li>XA: Initiales Leg</li>
+                                    <li>AB: 0.618 Retracement von XA</li>
+                                    <li>BC: 0.382-0.886 von AB</li>
+                                    <li>CD: 1.272-1.618 Extension von BC</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="72.5">
+                            <td><strong>Butterfly Pattern</strong></td>
+                            <td>Reversal bei 1.27-1.618 Extension</td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td>35-60%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Aggressiveres Pattern als Gartley</li>
+                                    <li>D-Point jenseits X-Point</li>
+                                    <li>PRZ (Potential Reversal Zone) am D</li>
+                                    <li>Mit RSI-Divergence: Verstärkte Konfidenz</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="72.5">
+                            <td><strong>Bat Pattern</strong></td>
+                            <td>Reversal bei 0.886 Retracement</td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td>30-55%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Konservativeres Pattern</li>
+                                    <li>D-Point bei 0.886 Fib-Level von XA</li>
+                                    <li>Engere Stop-Loss-Platzierung</li>
+                                    <li>Höheres Risk-Reward-Ratio möglich</li>
+                                </ul>
+                            </td>
+                        </tr>
+                        <tr data-success-rate="72.5">
+                            <td><strong>Crab Pattern</strong></td>
+                            <td>Extreme Reversal-Setup</td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td>40-70%</td>
+                            <td>
+                                <ul class="mb-0">
+                                    <li>Extremste Extension (1.618)</li>
+                                    <li>Seltenes, aber mächtiges Pattern</li>
+                                    <li>Oft an Major Support/Resistance</li>
+                                    <li>Großes Profit-Potential</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Statistics Tab -->
+            <div class="tab-pane fade" id="statistics" role="tabpanel">
+                <h2><i class="fas fa-chart-pie"></i> Statistische Zusammenfassung (2020-2025 Research)</h2>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-trophy"></i> Top 5 nach Erfolgsrate</h3>
+                        <table class="table pattern-table">
+                            <thead>
+                                <tr>
+                                    <th>Rang</th>
+                                    <th>Pattern</th>
+                                    <th>Erfolgsrate</th>
+                                    <th>Kategorie</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-warning">1</span></td>
+                                    <td><strong>Cup and Handle</strong></td>
+                                    <td><span class="success-rate-high">95%</span></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">2</span></td>
+                                    <td><strong>Head & Shoulders</strong></td>
+                                    <td><span class="success-rate-high">89-93%</span></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">3</span></td>
+                                    <td><strong>Double Top/Bottom</strong></td>
+                                    <td><span class="success-rate-high">88%</span></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">4</span></td>
+                                    <td><strong>Triple Bottom</strong></td>
+                                    <td><span class="success-rate-high">87%</span></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">5</span></td>
+                                    <td><strong>Ascending Triangle</strong></td>
+                                    <td><span class="success-rate-high">72-83%</span></td>
+                                    <td>Continuation (höher in Bull-Markets)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h3><i class="fas fa-dollar-sign"></i> Top 5 nach Durchschnittsgewinn</h3>
+                        <table class="table pattern-table">
+                            <thead>
+                                <tr>
+                                    <th>Rang</th>
+                                    <th>Pattern</th>
+                                    <th>Durchschn. Gewinn</th>
+                                    <th>Kategorie</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-warning">1</span></td>
+                                    <td><strong>Rectangle Patterns</strong></td>
+                                    <td><strong>48-51%</strong></td>
+                                    <td>Continuation</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">2</span></td>
+                                    <td><strong>Cup and Handle</strong></td>
+                                    <td><strong>35-50%</strong></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">3</span></td>
+                                    <td><strong>Harmonic Patterns</strong></td>
+                                    <td><strong>30-70%</strong></td>
+                                    <td>Reversal</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">4</span></td>
+                                    <td><strong>Ascending Triangle</strong></td>
+                                    <td><strong>25-35%</strong></td>
+                                    <td>Continuation</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-secondary">5</span></td>
+                                    <td><strong>Head & Shoulders</strong></td>
+                                    <td><strong>23%</strong></td>
+                                    <td>Reversal</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-5">
+                    <h3><i class="fas fa-balance-scale"></i> Pattern-Vergleich: Erfolgsrate vs. Durchschnittsgewinn</h3>
+                    <table class="table pattern-table" id="comparisonTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Kategorie</th>
+                                <th>Erfolgsrate</th>
+                                <th>Durchschn. Gewinn</th>
+                                <th>Risk/Reward</th>
+                                <th>Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cup and Handle</strong></td>
+                                <td>Reversal</td>
+                                <td><span class="success-rate-high">95%</span></td>
+                                <td><strong>35-50%</strong></td>
+                                <td><span class="badge bg-success">Exzellent</span></td>
+                                <td>🌟 Must-Have - Beste Kombination</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Rectangle Patterns</strong></td>
+                                <td>Continuation</td>
+                                <td><span class="success-rate-medium">70-75%</span></td>
+                                <td><strong>48-51%</strong></td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>🌟 Must-Have - Höchster Gewinn</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Head & Shoulders</strong></td>
+                                <td>Reversal</td>
+                                <td><span class="success-rate-high">89-93%</span></td>
+                                <td>23%</td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>🌟 Must-Have - Sehr zuverlässig</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Top/Bottom</strong></td>
+                                <td>Reversal</td>
+                                <td><span class="success-rate-high">88%</span></td>
+                                <td>18-25%</td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>🌟 Must-Have - Häufig erkennbar</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Triple Bottom</strong></td>
+                                <td>Reversal</td>
+                                <td><span class="success-rate-high">87%</span></td>
+                                <td>20-28%</td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>Must-Have - Selten aber stark</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ascending Triangle</strong></td>
+                                <td>Continuation</td>
+                                <td><span class="success-rate-high">72-83%</span></td>
+                                <td>25-35%</td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>Must-Have - Bull-Market Champion</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Harmonic Patterns</strong></td>
+                                <td>Reversal</td>
+                                <td><span class="success-rate-medium">70-75%</span></td>
+                                <td><strong>30-70%</strong></td>
+                                <td><span class="badge bg-warning">Gut</span></td>
+                                <td>Should-Have - Hoher Gewinn, komplex</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Symmetrical Triangle</strong></td>
+                                <td>Continuation</td>
+                                <td><span class="success-rate-medium">54-76%</span></td>
+                                <td>20-30%</td>
+                                <td><span class="badge bg-warning">Gut</span></td>
+                                <td>Should-Have - Trendabhängig</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Volatility Squeeze</strong></td>
+                                <td>Breakout</td>
+                                <td><span class="success-rate-medium">70-80%</span></td>
+                                <td>25-40%</td>
+                                <td><span class="badge bg-success">Sehr gut</span></td>
+                                <td>Should-Have - Starke Moves</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bullish Pennant/Flag</strong></td>
+                                <td>Continuation</td>
+                                <td><span class="success-rate-medium">65-70%</span></td>
+                                <td>15-28%</td>
+                                <td><span class="badge bg-warning">Gut</span></td>
+                                <td>Should-Have - Momentum-Play</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Descending Triangle</strong></td>
+                                <td>Continuation</td>
+                                <td><span class="success-rate-medium">64-69%</span></td>
+                                <td>18-25%</td>
+                                <td><span class="badge bg-warning">Gut</span></td>
+                                <td>Should-Have - Bear-Market</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="info-box mt-4">
+                    <h4><i class="fas fa-graduation-cap"></i> Wichtigste Research-Erkenntnisse</h4>
+
+                    <table class="table pattern-table mt-3">
+                        <thead>
+                            <tr>
+                                <th style="width: 70%">Erkenntnis</th>
+                                <th>Verbesserung</th>
+                                <th>Quelle & Jahr</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Traders who incorporate stock chart patterns into their decision-making process</td>
+                                <td><span class="success-rate-high">+31%</span> Trade Accuracy</td>
+                                <td>Technical Analysis Society, 2025</td>
+                            </tr>
+                            <tr>
+                                <td>Traders who complete at least 100 hours of pattern backtesting</td>
+                                <td><span class="success-rate-high">+41%</span> Better Results</td>
+                                <td>Trading Research Institute, 2023</td>
+                            </tr>
+                            <tr>
+                                <td>Pattern-based trades incorporating volume and RSI confirmation</td>
+                                <td><span class="success-rate-high">62%</span> Avg. Success Rate</td>
+                                <td>Quantified Strategies, 2024</td>
+                            </tr>
+                            <tr>
+                                <td>Head & Shoulders: Semi-quantified backtest over 500 stocks across five years</td>
+                                <td><span class="success-rate-high">93%</span> Success, 23% Drop</td>
+                                <td>Bulkowski, Encyclopedia of Chart Patterns, 1990s</td>
+                            </tr>
+                            <tr>
+                                <td>Vollständige Formation abwarten (False-Signal Reduktion)</td>
+                                <td><span class="success-rate-high">-56%</span> False Signals</td>
+                                <td>VT Markets, 2025</td>
+                            </tr>
+                            <tr>
+                                <td>Continuation-Patterns in Trendrichtung</td>
+                                <td><span class="success-rate-high">+20-30%</span> Win-Rate</td>
+                                <td>Liberated Stock Trader, 2024</td>
+                            </tr>
+                            <tr>
+                                <td>RSI-Divergence bei Reversals</td>
+                                <td><span class="success-rate-high">+15-20%</span> Win-Rate</td>
+                                <td>Morpher, 2025</td>
+                            </tr>
+                            <tr>
+                                <td>MACD-Crossover bei Breakouts</td>
+                                <td><span class="success-rate-high">+10-15%</span> Win-Rate</td>
+                                <td>Colibritrader, 2025</td>
+                            </tr>
+                            <tr>
+                                <td>Retest-Filter bei Breakouts</td>
+                                <td><span class="success-rate-high">+15-20%</span> Win-Rate</td>
+                                <td>Quantified Strategies, 2024</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Best Practices Tab -->
+            <div class="tab-pane fade" id="best-practices" role="tabpanel">
+                <h2><i class="fas fa-lightbulb"></i> Allgemeine Best Practices</h2>
+
+                <h3><i class="fas fa-check-circle"></i> 1. Pattern-Validierung</h3>
+                <table class="table pattern-table mb-4">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%">Best Practice</th>
+                            <th style="width: 40%">Beschreibung</th>
+                            <th style="width: 20%">Verbesserung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Vollständige Formation abwarten</strong></td>
+                            <td>Warte bis das Pattern vollständig ausgebildet ist, bevor du tradest</td>
+                            <td><span class="success-rate-high">-56%</span> False-Signals</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Volumen-Bestätigung</strong></td>
+                            <td>Pattern + Volumen + RSI kombinieren für beste Ergebnisse</td>
+                            <td><span class="success-rate-high">62%</span> Erfolgsrate</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Multi-Timeframe-Analyse</strong></td>
+                            <td>Higher Timeframe (HTF) für Bias, Lower Timeframe (LTF) für Entry</td>
+                            <td><span class="success-rate-high">+20%</span> Genauigkeit</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Trendrichtung beachten</strong></td>
+                            <td>Continuation-Patterns in Trendrichtung haben höhere Erfolgsrate</td>
+                            <td><span class="success-rate-high">+20-30%</span> Win-Rate</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3><i class="fas fa-shield-alt"></i> 2. Risiko-Management</h3>
+                <table class="table pattern-table mb-4">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%">Regel</th>
+                            <th style="width: 40%">Beschreibung</th>
+                            <th style="width: 20%">Empfehlung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Stop-Loss Platzierung</strong></td>
+                            <td>Stop-Loss immer jenseits des Patterns, niemals innerhalb</td>
+                            <td><span class="badge bg-danger">Kritisch</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Risk-Reward Ratio</strong></td>
+                            <td>Mindestens 1:2, optimal 1:3 oder besser</td>
+                            <td><span class="badge bg-success">Min. 1:2</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Position Sizing</strong></td>
+                            <td>Maximales Risiko pro Trade begrenzen</td>
+                            <td><span class="badge bg-warning">Max. 1-2%</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Trailing Stops</strong></td>
+                            <td>Dynamische Stops zur Gewinnmaximierung nutzen</td>
+                            <td><span class="badge bg-success">Empfohlen</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3><i class="fas fa-chart-line"></i> 3. Bestätigungs-Indikatoren</h3>
+                <table class="table pattern-table mb-4">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%">Indikator</th>
+                            <th style="width: 35%">Anwendung</th>
+                            <th style="width: 20%">Verbesserung</th>
+                            <th style="width: 15%">Pattern-Typ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>RSI-Divergence</strong></td>
+                            <td>Bullish/Bearish Divergence bei Reversal-Patterns</td>
+                            <td><span class="success-rate-high">+15-20%</span> Win-Rate</td>
+                            <td>Reversals</td>
+                        </tr>
+                        <tr>
+                            <td><strong>MACD-Crossover</strong></td>
+                            <td>Momentum-Bestätigung bei Breakouts</td>
+                            <td><span class="success-rate-high">+10-15%</span> Win-Rate</td>
+                            <td>Breakouts</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Volumen-Spike</strong></td>
+                            <td>Mindestens 2x durchschnittliches Volumen bei allen Breakouts</td>
+                            <td><span class="success-rate-high">+15-20%</span> Win-Rate</td>
+                            <td>Alle</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ATR-Expansion</strong></td>
+                            <td>Average True Range Expansion bei Volatility-Breakouts</td>
+                            <td><span class="success-rate-high">+10%</span> Win-Rate</td>
+                            <td>Breakouts</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Retest-Bestätigung</strong></td>
+                            <td>Support/Resistance Flip nach Breakout abwarten</td>
+                            <td><span class="success-rate-high">-56%</span> False-Breakouts</td>
+                            <td>Breakouts</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3><i class="fas fa-exclamation-triangle"></i> 4. Vermeidung häufiger Fehler</h3>
+                <table class="table pattern-table mb-4">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%">Fehler</th>
+                            <th style="width: 45%">Warum problematisch</th>
+                            <th style="width: 20%">Auswirkung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>❌ <strong>Frühzeitige Entries</strong></td>
+                            <td>Trade vor vollständiger Breakout-Bestätigung</td>
+                            <td><span class="success-rate-low">+56%</span> False-Signals</td>
+                        </tr>
+                        <tr>
+                            <td>❌ <strong>Ignorieren von Volumen</strong></td>
+                            <td>Breakouts ohne Volumen-Bestätigung sind oft False-Breakouts</td>
+                            <td><span class="success-rate-low">-20%</span> Win-Rate</td>
+                        </tr>
+                        <tr>
+                            <td>❌ <strong>Trading gegen den Haupttrend</strong></td>
+                            <td>Reversal-Versuche gegen starke Trends haben niedrige Erfolgsrate</td>
+                            <td><span class="success-rate-low">-30%</span> Win-Rate</td>
+                        </tr>
+                        <tr>
+                            <td>❌ <strong>Zu enge Stops</strong></td>
+                            <td>Stops innerhalb Pattern-Range werden oft ausgestoppt</td>
+                            <td><span class="success-rate-low">Häufige Stopouts</span></td>
+                        </tr>
+                        <tr>
+                            <td>❌ <strong>Übermäßiges Vertrauen in einzelnes Pattern</strong></td>
+                            <td>Fehlende Bestätigung durch andere Indikatoren</td>
+                            <td><span class="success-rate-low">-15%</span> Win-Rate</td>
+                        </tr>
+                        <tr>
+                            <td>❌ <strong>Fehlende Backtest-Erfahrung</strong></td>
+                            <td>Live-Trading ohne ausreichende Vorbereitung</td>
+                            <td><span class="success-rate-low">-41%</span> Performance</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="info-box mt-4">
+                    <h4><i class="fas fa-graduation-cap"></i> Research-Erkenntnisse</h4>
+                    <blockquote class="mt-3">
+                        <p>"Traders who incorporate stock chart patterns into their decision-making process demonstrate a <strong>31% improvement in trade accuracy</strong> compared to those using only momentum indicators."</p>
+                        <footer>— Technical Analysis Society, 2025</footer>
+                    </blockquote>
+                    <blockquote class="mt-3">
+                        <p>"Traders who complete at least 100 hours of pattern backtesting achieve <strong>41% better results</strong> in live trading than those who skip this preparation."</p>
+                        <footer>— Trading Research Institute, 2023</footer>
+                    </blockquote>
+                    <blockquote class="mt-3">
+                        <p>"Pattern-based trades incorporating volume and RSI confirmation demonstrate <strong>62% average success rates</strong> according to studies covering over 8,000 chart setups between 2020-2023."</p>
+                        <footer>— Quantified Strategies, 2024</footer>
+                    </blockquote>
+                </div>
+
+            </div>
+
+            <!-- Trading Styles Tab -->
+            <div class="tab-pane fade" id="trading-styles" role="tabpanel">
+                <h2><i class="fas fa-clock"></i> Chart-Patterns nach Trading-Stil (2025 Research)</h2>
+
+                <div class="info-box mb-4">
+                    <h4><i class="fas fa-info-circle"></i> Timeframe & Pattern Correlation</h4>
+                    <p>Die Wahl des richtigen Chart-Patterns hängt stark vom Trading-Stil und Timeframe ab. Patterns zeigen auf höheren Timeframes (Weekly/Monthly) eine <strong>15-20% höhere Erfolgsrate</strong> als auf niedrigeren Timeframes (5min/15min).</p>
+                </div>
+
+                <!-- Scalping Section -->
+                <div class="mt-5">
+                    <h3><i class="fas fa-bolt"></i> 1. Scalping (Sekunden bis Minuten)</h3>
+                    <div class="warning-box mb-3">
+                        <p><strong>Timeframes:</strong> 1-Minute, 5-Minute Charts | <strong>Haltedauer:</strong> Sekunden bis 5 Minuten | <strong>Risiko:</strong> Sehr hoch</p>
+                    </div>
+
+                    <table class="table pattern-table" id="scalpingTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Timeframe</th>
+                                <th>Erfolgsrate</th>
+                                <th>Avg. Gewinn</th>
+                                <th>Holding Time</th>
+                                <th>Best Practices</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Flag/Pennant Patterns</strong> <span class="badge bg-success">TOP</span></td>
+                                <td>1-5 Min</td>
+                                <td><span class="success-rate-medium">65-70%</span></td>
+                                <td>0.5-1.5%</td>
+                                <td>30 Sek - 3 Min</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Nach starkem Momentum-Move suchen</li>
+                                        <li>Sehr enge Stops (0.2-0.3%)</li>
+                                        <li>Schnelle Ausführung kritisch</li>
+                                        <li>Level 2 Data nutzen</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Range Breakouts</strong></td>
+                                <td>1-5 Min</td>
+                                <td><span class="success-rate-medium">60-68%</span></td>
+                                <td>0.3-1.0%</td>
+                                <td>1-5 Min</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Nur bei hohem Volumen</li>
+                                        <li>Tick Charts für präzises Timing</li>
+                                        <li>Stop-Loss: 0.2-0.3% max</li>
+                                        <li>Order Flow beobachten</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Triangle Breakouts (klein)</strong></td>
+                                <td>5 Min</td>
+                                <td><span class="success-rate-medium">58-65%</span></td>
+                                <td>0.5-1.2%</td>
+                                <td>2-5 Min</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Nur in volatilen Märkten</li>
+                                        <li>Volumen-Spike Bestätigung</li>
+                                        <li>Renko Charts für Trend-Klarheit</li>
+                                        <li>Max 1-2% Risiko pro Trade</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Top/Bottom (Micro)</strong></td>
+                                <td>5 Min</td>
+                                <td><span class="success-rate-low">55-62%</span></td>
+                                <td>0.4-0.9%</td>
+                                <td>2-4 Min</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Nur an wichtigen S/R Levels</li>
+                                        <li>Heikin-Ashi für Trend-Glättung</li>
+                                        <li>Sehr schnelle Execution nötig</li>
+                                        <li>False-Breakout-Rate hoch</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="best-practices mt-3">
+                        <h5><i class="fas fa-exclamation-circle"></i> Scalping Essentials (2025 Research)</h5>
+                        <ul>
+                            <li><strong>System Requirements:</strong> Low-Latency Trading System, Direct-Access Broker, Level 2 Data, Real-Time News Feeds</li>
+                            <li><strong>Risk Management:</strong> Tight Stop-Losses (0.2-0.3%), niemals mehr als 1-2% Risiko pro Trade</li>
+                            <li><strong>Chart Types:</strong> Candlestick Charts, Tick Charts (volume-based), Renko Charts (trend clarity), Heikin-Ashi Charts (smoothing)</li>
+                            <li><strong>Erfolgsrate-Boost:</strong> Moving Averages + Volume Indicators für Entry/Exit-Points</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Day Trading Section -->
+                <div class="mt-5">
+                    <h3><i class="fas fa-chart-line"></i> 2. Day Trading (Minuten bis Stunden)</h3>
+                    <div class="info-box mb-3">
+                        <p><strong>Timeframes:</strong> 5-Minute, 15-Minute, 1-Hour Charts | <strong>Haltedauer:</strong> Minuten bis Stunden (keine Overnight-Positionen) | <strong>Risiko:</strong> Hoch</p>
+                    </div>
+
+                    <table class="table pattern-table" id="dayTradingTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Timeframe</th>
+                                <th>Erfolgsrate</th>
+                                <th>Avg. Gewinn</th>
+                                <th>Holding Time</th>
+                                <th>Best Practices</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Bull/Bear Flags</strong> <span class="badge bg-success">TOP</span></td>
+                                <td>5-30 Min</td>
+                                <td><span class="success-rate-medium">67-72%</span></td>
+                                <td>1.5-3.5%</td>
+                                <td>30 Min - 3 Std</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Bestes Pattern für Intraday</li>
+                                        <li>Nach scharfem Rally suchen</li>
+                                        <li>Breakout mit Volumen</li>
+                                        <li>5-15 Min ideal für Anfänger</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ascending/Descending Triangles</strong></td>
+                                <td>15-60 Min</td>
+                                <td><span class="success-rate-medium">68-75%</span></td>
+                                <td>2.0-4.5%</td>
+                                <td>1-4 Std</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Klare Konsolidierung vor Breakout</li>
+                                        <li>Volumen-Bestätigung zwingend</li>
+                                        <li>15-Min für Entry, 1-Hour für Trend</li>
+                                        <li>Stop: Unterhalb Pattern-Low</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Head & Shoulders (Intraday)</strong></td>
+                                <td>30-60 Min</td>
+                                <td><span class="success-rate-medium">70-78%</span></td>
+                                <td>2.5-5.0%</td>
+                                <td>2-6 Std</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Sehr zuverlässig auf 1-Hour Chart</li>
+                                        <li>Warte auf Neckline-Bruch</li>
+                                        <li>RSI-Divergence verstärkt Signal</li>
+                                        <li>Target: Pattern-Höhe</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Top/Bottom</strong></td>
+                                <td>15-60 Min</td>
+                                <td><span class="success-rate-medium">72-80%</span></td>
+                                <td>2.0-4.0%</td>
+                                <td>1-5 Std</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Häufig erkennbar intraday</li>
+                                        <li>Beide Tops/Bottoms auf gleichem Level</li>
+                                        <li>Volumen am 2. Test niedriger</li>
+                                        <li>Retest-Bestätigung erhöht Rate</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cup and Handle (klein)</strong></td>
+                                <td>30-60 Min</td>
+                                <td><span class="success-rate-high">75-82%</span></td>
+                                <td>3.0-6.0%</td>
+                                <td>3-8 Std</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Auch intraday sehr zuverlässig</li>
+                                        <li>Mindest-Formation: 2-3 Stunden</li>
+                                        <li>U-Form (keine V-Form)</li>
+                                        <li>Handle: 1/3 der Cup-Tiefe</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="best-practices mt-3">
+                        <h5><i class="fas fa-check-circle"></i> Day Trading Essentials (2025 Research)</h5>
+                        <ul>
+                            <li><strong>Timeframe-Combo:</strong> 5-Min für Entry + 15-Min für Trend = Ideal für Anfänger</li>
+                            <li><strong>Pattern-Limit:</strong> 3-5 Trading-Patterns reichen für profitable Strategie</li>
+                            <li><strong>Bestätigung:</strong> Patterns + Indikatoren + Volumen = beste Genauigkeit, filtert False-Signals</li>
+                            <li><strong>Entry-Strategie:</strong> Nach Breakout-Bestätigung eintreten, Target basierend auf Pattern-Höhe, Stop-Loss nach Risk-Management</li>
+                            <li><strong>Erfolgsrate-Boost:</strong> Patterns funktionieren am besten auf 5-Min & 1-Hour Charts</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Swing Trading Section -->
+                <div class="mt-5">
+                    <h3><i class="fas fa-chart-area"></i> 3. Swing Trading (Tage bis Wochen)</h3>
+                    <div class="info-box mb-3">
+                        <p><strong>Timeframes:</strong> 4-Hour, Daily Charts | <strong>Haltedauer:</strong> 2-14 Tage | <strong>Risiko:</strong> Mittel</p>
+                    </div>
+
+                    <table class="table pattern-table" id="swingTradingTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Timeframe</th>
+                                <th>Erfolgsrate</th>
+                                <th>Avg. Gewinn</th>
+                                <th>Holding Time</th>
+                                <th>Best Practices</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cup and Handle</strong> <span class="badge bg-success">TOP</span></td>
+                                <td>Daily</td>
+                                <td><span class="success-rate-high">88-95%</span></td>
+                                <td>15-35%</td>
+                                <td>3-10 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li><strong>Zuverlässigstes Swing-Pattern</strong></li>
+                                        <li>Mindest-Formation: 7 Wochen</li>
+                                        <li>Klare Entry/Exit-Points</li>
+                                        <li>Ideal für Anfänger</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Head & Shoulders</strong></td>
+                                <td>4H - Daily</td>
+                                <td><span class="success-rate-high">85-93%</span></td>
+                                <td>18-28%</td>
+                                <td>4-12 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Zuverlässigstes Reversal-Pattern</li>
+                                        <li>Volumen-Spike bei Neckline-Bruch</li>
+                                        <li>MACD-Crossover verstärkt Signal</li>
+                                        <li>Risk:Reward min. 3:1</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Top/Bottom</strong></td>
+                                <td>4H - Daily</td>
+                                <td><span class="success-rate-high">82-88%</span></td>
+                                <td>15-25%</td>
+                                <td>3-10 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Relativ leicht zu identifizieren</li>
+                                        <li>Klare Support/Resistance Levels</li>
+                                        <li>Retest-Filter erhöht Win-Rate</li>
+                                        <li>Ideal in bestätigtem Uptrend</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Ascending/Descending Triangles</strong></td>
+                                <td>Daily</td>
+                                <td><span class="success-rate-medium">75-83%</span></td>
+                                <td>20-35%</td>
+                                <td>5-15 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Höchste Rate in Bull-Märkten (83%)</li>
+                                        <li>Risk:Reward mind. 3:1 anstreben</li>
+                                        <li>Target: 18% bei 6% Risk</li>
+                                        <li>Volumen-Bestätigung kritisch</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Rectangle Patterns</strong></td>
+                                <td>Daily</td>
+                                <td><span class="success-rate-medium">70-75%</span></td>
+                                <td>25-51%</td>
+                                <td>5-20 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Höchster durchschn. Gewinn</li>
+                                        <li>Mind. 2 Tests auf beiden Seiten</li>
+                                        <li>Breakout mit Volumen-Expansion</li>
+                                        <li>Funktioniert in Uptrend am besten</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bullish Flag</strong></td>
+                                <td>4H - Daily</td>
+                                <td><span class="success-rate-medium">68-75%</span></td>
+                                <td>12-25%</td>
+                                <td>2-8 Tage</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Anfängerfreundlich</li>
+                                        <li>Kurze Konsolidierung nach Rally</li>
+                                        <li>Breakout = Trend-Continuation</li>
+                                        <li>Target: Länge des Flagpoles</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="best-practices mt-3">
+                        <h5><i class="fas fa-graduation-cap"></i> Swing Trading Essentials (2025 Research)</h5>
+                        <ul>
+                            <li><strong>Best Indicator:</strong> Exponential Moving Average (EMA) - statistisch bester Swing-Indikator</li>
+                            <li><strong>Market Conditions:</strong> Patterns mit definierten S/R Levels + Volumen-Spikes = höchste Erfolgsrate</li>
+                            <li><strong>Trend-Abhängigkeit:</strong> Patterns in bestätigtem Uptrend haben deutlich höhere Erfolgsrate</li>
+                            <li><strong>Markt-Phase:</strong> Selbst beste Patterns können in Downtrend/Correction-Phase versagen</li>
+                            <li><strong>Zeitaufwand:</strong> 30 Min/Tag ausreichend für Swing Trading (2025 Guide)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Position Trading Section -->
+                <div class="mt-5">
+                    <h3><i class="fas fa-calendar-alt"></i> 4. Position Trading (Wochen bis Monate)</h3>
+                    <div class="info-box mb-3">
+                        <p><strong>Timeframes:</strong> Weekly, Monthly Charts | <strong>Haltedauer:</strong> 6-12 Monate | <strong>Risiko:</strong> Niedrig-Mittel</p>
+                    </div>
+
+                    <table class="table pattern-table" id="positionTradingTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Timeframe</th>
+                                <th>Erfolgsrate</th>
+                                <th>Avg. Gewinn</th>
+                                <th>Holding Time</th>
+                                <th>Best Practices</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Cup and Handle</strong> <span class="badge bg-success">TOP</span></td>
+                                <td>Weekly - Monthly</td>
+                                <td><span class="success-rate-high">92-97%</span></td>
+                                <td>40-80%</td>
+                                <td>3-12 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li><strong>Höchste Rate auf Weekly Charts</strong></li>
+                                        <li>Mindest-Formation: 7 Wochen+</li>
+                                        <li>Sehr zuverlässiges Long-Term Signal</li>
+                                        <li>Reduzierte False-Signals durch Timeframe</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Head & Shoulders</strong></td>
+                                <td>Weekly - Monthly</td>
+                                <td><span class="success-rate-high">90-95%</span></td>
+                                <td>35-60%</td>
+                                <td>2-8 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Sehr zuverlässig auf höheren Timeframes</li>
+                                        <li>+15-20% höhere Rate als Daily Charts</li>
+                                        <li>Reduzierter Market Noise</li>
+                                        <li>Großes Profit-Potential</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Double Top/Bottom</strong></td>
+                                <td>Weekly</td>
+                                <td><span class="success-rate-high">88-93%</span></td>
+                                <td>30-50%</td>
+                                <td>2-6 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Sehr zuverlässig auf Weekly Charts</li>
+                                        <li>Pattern auf Monthly = noch höhere Rate</li>
+                                        <li>Reduziert Random Price Movements</li>
+                                        <li>Klare Major S/R Levels</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Triangle Patterns</strong></td>
+                                <td>Weekly - Monthly</td>
+                                <td><span class="success-rate-high">80-88%</span></td>
+                                <td>35-65%</td>
+                                <td>3-10 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Range Setups ideal für Position Trading</li>
+                                        <li>6-12 Monate Haltedauer üblich</li>
+                                        <li>Höhere Zuverlässigkeit durch Timeframe</li>
+                                        <li>Großes Trend-Following Potential</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Rectangle Patterns</strong></td>
+                                <td>Weekly - Monthly</td>
+                                <td><span class="success-rate-medium">75-82%</span></td>
+                                <td>50-100%</td>
+                                <td>4-12 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Höchstes Profit-Potential</li>
+                                        <li>Große Konsolidierungsphasen</li>
+                                        <li>Breakout mit massivem Volumen</li>
+                                        <li>Major Trend-Continuation</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Harmonic Patterns (Gartley, Bat, etc.)</strong></td>
+                                <td>Weekly - Monthly</td>
+                                <td><span class="success-rate-medium">75-85%</span></td>
+                                <td>50-120%</td>
+                                <td>3-18 Monate</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Sehr zuverlässig auf höheren Timeframes</li>
+                                        <li>Präzise Fibonacci-Ratios erforderlich</li>
+                                        <li>Großes Profit-Potential</li>
+                                        <li>Oft an Major Reversal Points</li>
+                                    </ul>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="best-practices mt-3">
+                        <h5><i class="fas fa-chart-line"></i> Position Trading Essentials (2025 Research)</h5>
+                        <ul>
+                            <li><strong>Timeframe-Vorteil:</strong> Daily & Weekly Charts produzieren 15-20% höhere Erfolgsraten als Hourly Charts</li>
+                            <li><strong>Noise Reduction:</strong> Höhere Timeframes eliminieren minor price fluctuations - klareres Big Picture</li>
+                            <li><strong>Pattern-Zuverlässigkeit:</strong> Monthly Charts = zuverlässigste Signale durch extended Timeframe</li>
+                            <li><strong>Weekly Charts:</strong> Exzellente Balance zwischen Short-Term Opportunities & Long-Term Trend Analysis</li>
+                            <li><strong>Trend-Following:</strong> Trades basierend auf Weekly Trends können mehrere Jahre dauern</li>
+                            <li><strong>Ideal für:</strong> Long-Term Investoren, Berufstätige (wenig Zeit), Trend-Follower</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Comparison Table -->
+                <div class="mt-5">
+                    <h3><i class="fas fa-balance-scale"></i> Trading-Stil Vergleich: Übersichtstabelle</h3>
+
+                    <table class="table pattern-table" id="tradingStyleComparisonTable">
+                        <thead>
+                            <tr>
+                                <th>Trading-Stil</th>
+                                <th>Timeframe</th>
+                                <th>Haltedauer</th>
+                                <th>Top Patterns</th>
+                                <th>Durchschn. Erfolgsrate</th>
+                                <th>Durchschn. Gewinn</th>
+                                <th>Risiko-Level</th>
+                                <th>Zeit-Aufwand</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Scalping</strong></td>
+                                <td>1-5 Min</td>
+                                <td>Sek - 5 Min</td>
+                                <td>Flags, Breakouts, Micro-Triangles</td>
+                                <td><span class="success-rate-medium">58-70%</span></td>
+                                <td>0.3-1.5%</td>
+                                <td><span class="badge bg-danger">Sehr Hoch</span></td>
+                                <td>Ganztägig</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Day Trading</strong></td>
+                                <td>5 Min - 1 Hour</td>
+                                <td>Min - Stunden</td>
+                                <td>Flags, Triangles, H&S, Double Top/Bottom</td>
+                                <td><span class="success-rate-medium">67-82%</span></td>
+                                <td>1.5-6.0%</td>
+                                <td><span class="badge bg-warning">Hoch</span></td>
+                                <td>4-8 Stunden</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Swing Trading</strong></td>
+                                <td>4 Hour - Daily</td>
+                                <td>2-14 Tage</td>
+                                <td>Cup & Handle, H&S, Triangles, Rectangles</td>
+                                <td><span class="success-rate-high">68-95%</span></td>
+                                <td>12-51%</td>
+                                <td><span class="badge bg-warning">Mittel</span></td>
+                                <td>30 Min/Tag</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Position Trading</strong></td>
+                                <td>Weekly - Monthly</td>
+                                <td>6-12 Monate</td>
+                                <td>Cup & Handle, H&S, Double Top/Bottom, Harmonics</td>
+                                <td><span class="success-rate-high">75-97%</span></td>
+                                <td>30-120%</td>
+                                <td><span class="badge bg-success">Niedrig-Mittel</span></td>
+                                <td>1-2 Std/Woche</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Key Takeaways -->
+                <div class="info-box mt-4">
+                    <h4><i class="fas fa-key"></i> Key Takeaways: Pattern-Auswahl nach Trading-Stil</h4>
+                    <table class="table pattern-table mt-3">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%">Kriterium</th>
+                                <th style="width: 80%">Erkenntnis</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Timeframe-Effekt</strong></td>
+                                <td>Höhere Timeframes (Weekly/Monthly) zeigen <strong>15-20% höhere Erfolgsraten</strong> als niedrigere (5min/15min) durch reduzierten Market Noise</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Beste Patterns für Anfänger</strong></td>
+                                <td>Cup & Handle, Double Top/Bottom, Bull Flags - klare Entry/Exit-Points, relativ einfach zu identifizieren</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Höchste Erfolgsrate</strong></td>
+                                <td>Cup & Handle auf Weekly Charts: <strong>92-97%</strong> - zuverlässigstes Pattern überhaupt</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Höchster Gewinn</strong></td>
+                                <td>Rectangle Patterns & Harmonics auf Weekly/Monthly: <strong>50-120%</strong> durchschnittlich</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Risiko vs. Reward</strong></td>
+                                <td>Scalping = höchstes Risiko (0.3-1.5% Gewinn), Position Trading = niedrigstes Risiko (30-120% Gewinn)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Zeit-Investment</strong></td>
+                                <td>Scalping erfordert Ganztag-Monitoring, Swing Trading nur 30 Min/Tag, Position Trading 1-2 Std/Woche</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Pattern-Limit</strong></td>
+                                <td><strong>3-5 Patterns</strong> reichen für profitable Strategie - Fokus auf Qualität statt Quantität</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Bestätigungs-Wichtigkeit</strong></td>
+                                <td>Pattern + Volumen + Indikatoren = <strong>62% durchschnittliche Erfolgsrate</strong> über alle Timeframes</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Sources -->
+                <div class="warning-box mt-4">
+                    <h5><i class="fas fa-link"></i> Quellen (2025 Research)</h5>
+                    <p><strong>Scalping:</strong></p>
+                    <ul>
+                        <li><a href="https://highstrike.com/scalping-trading-strategy/" target="_blank">Scalping Trading Strategy Guide (2025)</a></li>
+                        <li><a href="https://blog.opofinance.com/en/best-indicator-combinations-for-scalping/" target="_blank">Best Indicator Combinations for Scalping</a></li>
+                        <li><a href="https://www.stockgro.club/blogs/trading/5-minute-scalping-strategy/" target="_blank">5 Minute Scalping Strategy</a></li>
+                    </ul>
+                    <p><strong>Day Trading:</strong></p>
+                    <ul>
+                        <li><a href="https://www.colibritrader.com/best-chart-patterns-for-day-trading/" target="_blank">Best Chart Patterns for Day Trading 2025</a></li>
+                        <li><a href="https://www.xs.com/en/blog/day-trading-patterns/" target="_blank">17 Day Trading Patterns Every Trader Should Know</a></li>
+                        <li><a href="https://chartswatcher.com/pages/blog/7-proven-intraday-trading-strategies-for-2025" target="_blank">7 Proven Intraday Trading Strategies 2025</a></li>
+                    </ul>
+                    <p><strong>Swing Trading:</strong></p>
+                    <ul>
+                        <li><a href="https://www.vectorvest.com/blog/swing-trading/swing-trading-patterns/" target="_blank">Swing Trading Patterns - VectorVest</a></li>
+                        <li><a href="https://traderlion.com/technical-analysis/swing-trading-patterns/" target="_blank">9 Best Swing Trading Patterns - TraderLion</a></li>
+                        <li><a href="https://www.mindmathmoney.com/articles/swing-trading-for-beginners-2025-the-complete-guide-to-catching-market-swings" target="_blank">Swing Trading Guide 2025</a></li>
+                    </ul>
+                    <p><strong>Position Trading:</strong></p>
+                    <ul>
+                        <li><a href="https://trendspider.com/learning-center/long-term-charts/" target="_blank">Long-Term Charts - TrendSpider</a></li>
+                        <li><a href="https://myforexvps.com/understanding-trading-with-weekly-charts/" target="_blank">Trading with Weekly Charts</a></li>
+                        <li><a href="https://www.vtmarkets.com/discover/chart-patterns-guide-2025/" target="_blank">Chart Patterns Guide 2025 - VT Markets</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Implementation Tab -->
+            <div class="tab-pane fade" id="implementation" role="tabpanel">
+                <h2><i class="fas fa-cogs"></i> Integration in OrderPilot-AI</h2>
+
+                <div class="info-box mb-4">
+                    <h4><i class="fas fa-info-circle"></i> Implementierungs-Strategie</h4>
+                    <p>Die Pattern-Erkennung sollte in mehreren Phasen implementiert werden, priorisiert nach Erfolgsrate und Implementierungs-Komplexität.</p>
+                </div>
+
+                <h3><i class="fas fa-list-ol"></i> Empfohlene Pattern-Priorisierung für Implementation</h3>
+
+                <table class="table pattern-table mb-4" id="implementationTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%">Nr.</th>
+                            <th style="width: 25%">Pattern</th>
+                            <th style="width: 10%">Phase</th>
+                            <th style="width: 10%">Erfolgsrate</th>
+                            <th style="width: 10%">Gewinn</th>
+                            <th style="width: 15%">Komplexität</th>
+                            <th style="width: 25%">Begründung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Phase 1: Must-Have -->
+                        <tr style="background: rgba(39, 174, 96, 0.1);">
+                            <td colspan="7"><strong><i class="fas fa-star"></i> PHASE 1 - Höchste Erfolgsrate (Must-Have)</strong></td>
+                        </tr>
+                        <tr>
+                            <td>1</td>
+                            <td><strong>Cup and Handle</strong></td>
+                            <td><span class="badge bg-success">Phase 1</span></td>
+                            <td><span class="success-rate-high">95%</span></td>
+                            <td><strong>35-50%</strong></td>
+                            <td><span class="badge bg-warning">Mittel</span></td>
+                            <td>Höchste Erfolgsrate aller Patterns, exzellenter ROI</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td><strong>Head & Shoulders</strong></td>
+                            <td><span class="badge bg-success">Phase 1</span></td>
+                            <td><span class="success-rate-high">89-93%</span></td>
+                            <td>23%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Sehr zuverlässig, relativ einfach zu erkennen</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td><strong>Double Top/Bottom</strong></td>
+                            <td><span class="badge bg-success">Phase 1</span></td>
+                            <td><span class="success-rate-high">88%</span></td>
+                            <td>18-25%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Häufig erkennbar, gute Balance</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td><strong>Triple Bottom</strong></td>
+                            <td><span class="badge bg-success">Phase 1</span></td>
+                            <td><span class="success-rate-high">87%</span></td>
+                            <td>20-28%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Selten aber sehr zuverlässig</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td><strong>Ascending Triangle</strong></td>
+                            <td><span class="badge bg-success">Phase 1</span></td>
+                            <td><span class="success-rate-high">72-83%</span></td>
+                            <td>25-35%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Bull-Market Champion, häufig</td>
+                        </tr>
+
+                        <!-- Phase 2: Should-Have -->
+                        <tr style="background: rgba(52, 152, 219, 0.1);">
+                            <td colspan="7"><strong><i class="fas fa-dollar-sign"></i> PHASE 2 - Guter ROI (Should-Have)</strong></td>
+                        </tr>
+                        <tr>
+                            <td>6</td>
+                            <td><strong>Rectangle Top/Bottom</strong></td>
+                            <td><span class="badge bg-primary">Phase 2</span></td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td><strong>48-51%</strong></td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Höchster durchschnittlicher Gewinn</td>
+                        </tr>
+                        <tr>
+                            <td>7</td>
+                            <td><strong>Harmonic Patterns</strong></td>
+                            <td><span class="badge bg-primary">Phase 2</span></td>
+                            <td><span class="success-rate-medium">70-75%</span></td>
+                            <td><strong>30-70%</strong></td>
+                            <td><span class="badge bg-danger">Hoch</span></td>
+                            <td>Hoher Profit, aber komplex (Fibonacci-Ratios)</td>
+                        </tr>
+                        <tr>
+                            <td>8</td>
+                            <td><strong>Symmetrical Triangle</strong></td>
+                            <td><span class="badge bg-primary">Phase 2</span></td>
+                            <td><span class="success-rate-medium">54-76%</span></td>
+                            <td>20-30%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Trendabhängig, 76% in Trendrichtung</td>
+                        </tr>
+                        <tr>
+                            <td>9</td>
+                            <td><strong>Bullish Pennant/Flag</strong></td>
+                            <td><span class="badge bg-primary">Phase 2</span></td>
+                            <td><span class="success-rate-medium">65-70%</span></td>
+                            <td>15-28%</td>
+                            <td><span class="badge bg-warning">Mittel</span></td>
+                            <td>Momentum-Play, Flagpole-Messung nötig</td>
+                        </tr>
+                        <tr>
+                            <td>10</td>
+                            <td><strong>Descending Triangle</strong></td>
+                            <td><span class="badge bg-primary">Phase 2</span></td>
+                            <td><span class="success-rate-medium">64-69%</span></td>
+                            <td>18-25%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Bear-Market Pattern</td>
+                        </tr>
+
+                        <!-- Phase 3: Nice-to-Have -->
+                        <tr style="background: rgba(155, 89, 182, 0.1);">
+                            <td colspan="7"><strong><i class="fas fa-brain"></i> PHASE 3 - Smart Money (Nice-to-Have)</strong></td>
+                        </tr>
+                        <tr>
+                            <td>11</td>
+                            <td><strong>Order Blocks</strong></td>
+                            <td><span class="badge bg-secondary">Phase 3</span></td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>20-40%</td>
+                            <td><span class="badge bg-danger">Hoch</span></td>
+                            <td>Subjektive Interpretation, mehrjährige Lernkurve</td>
+                        </tr>
+                        <tr>
+                            <td>12</td>
+                            <td><strong>Fair Value Gaps</strong></td>
+                            <td><span class="badge bg-secondary">Phase 3</span></td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>15-30%</td>
+                            <td><span class="badge bg-danger">Hoch</span></td>
+                            <td>Oft kombiniert mit Order Blocks</td>
+                        </tr>
+                        <tr>
+                            <td>13</td>
+                            <td><strong>Break of Structure (BOS)</strong></td>
+                            <td><span class="badge bg-secondary">Phase 3</span></td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>25-50%</td>
+                            <td><span class="badge bg-warning">Mittel</span></td>
+                            <td>Trend-Continuation Bestätigung</td>
+                        </tr>
+                        <tr>
+                            <td>14</td>
+                            <td><strong>Change of Character (CHoCH)</strong></td>
+                            <td><span class="badge bg-secondary">Phase 3</span></td>
+                            <td><span class="badge bg-secondary">Variabel</span></td>
+                            <td>30-60%</td>
+                            <td><span class="badge bg-danger">Hoch</span></td>
+                            <td>Reversal-Signal, höheres Risiko</td>
+                        </tr>
+
+                        <!-- Phase 4: Advanced -->
+                        <tr style="background: rgba(230, 126, 34, 0.1);">
+                            <td colspan="7"><strong><i class="fas fa-rocket"></i> PHASE 4 - Breakout-Strategien (Advanced)</strong></td>
+                        </tr>
+                        <tr>
+                            <td>15</td>
+                            <td><strong>Volatility Squeeze Breakouts</strong></td>
+                            <td><span class="badge bg-warning">Phase 4</span></td>
+                            <td><span class="success-rate-medium">70-80%</span></td>
+                            <td>25-40%</td>
+                            <td><span class="badge bg-warning">Mittel</span></td>
+                            <td>Bollinger Bands + ATR Kombination</td>
+                        </tr>
+                        <tr>
+                            <td>16</td>
+                            <td><strong>Range Breakouts mit Retest</strong></td>
+                            <td><span class="badge bg-warning">Phase 4</span></td>
+                            <td><span class="success-rate-high">Höher</span></td>
+                            <td>30-50%</td>
+                            <td><span class="badge bg-success">Niedrig</span></td>
+                            <td>Reduziert False-Breakouts um 56%</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="mt-5">
+                    <h3><i class="fas fa-code"></i> Export-Format Erweiterung</h3>
+                    <p>Für jedes erkannte Pattern sollte folgende Datenstruktur exportiert werden:</p>
+
+                    <div class="best-practices">
+                        <pre style="background: #1a1a2e; padding: 20px; border-radius: 10px; color: #eaeaea; overflow-x: auto;"><code>{
+  "pattern_id": "hs_top_001",
+  "type": "HEAD_AND_SHOULDERS_TOP",
+  "detected_at": "2026-01-19T10:30:00Z",
+  "timeframe": "1h",
+  "confidence": 0.92,
+
+  "success_rate_research": 0.89,
+  "avg_profit_research": 0.23,
+
+  "recommended_strategy": {
+    "entry": "Neckline break with volume confirmation",
+    "stop_loss": "Above right shoulder",
+    "target": "Height of pattern projected downward",
+    "risk_reward": "1:3",
+    "confirmations": [
+      "Volume spike (2x average)",
+      "RSI bearish divergence",
+      "MACD crossover"
+    ]
+  },
+
+  "historical_performance": {
+    "win_rate": 0.89,
+    "avg_profit_pct": 23.0,
+    "source": "Bulkowski Encyclopedia 1990s + 2025 research"
+  },
+
+  "pattern_metrics": {
+    "left_shoulder": {"price": 150.0, "time": "2026-01-15T14:00:00Z"},
+    "head": {"price": 155.0, "time": "2026-01-17T10:00:00Z"},
+    "right_shoulder": {"price": 149.5, "time": "2026-01-19T08:00:00Z"},
+    "neckline": 145.0,
+    "target_price": 132.0,
+    "pattern_height": 10.0
+  },
+
+  "validation": {
+    "volume_confirmed": true,
+    "rsi_divergence": true,
+    "macd_bearish": true,
+    "formation_complete": true
+  },
+
+  "risk_management": {
+    "entry_price": 144.5,
+    "stop_loss": 151.0,
+    "target_1": 137.5,
+    "target_2": 132.0,
+    "risk_amount": 6.5,
+    "reward_potential": 12.5,
+    "risk_reward_ratio": 1.92
+  }
+}</code></pre>
+                    </div>
+                </div>
+
+                <div class="info-box mt-4">
+                    <h4><i class="fas fa-lightbulb"></i> Implementierungs-Empfehlungen</h4>
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 30%">Komponente</th>
+                                <th style="width: 70%">Empfehlung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Pattern-Erkennung</strong></td>
+                                <td>Verwende OpenCV + NumPy für Peak/Valley Detection. Template Matching für komplexe Patterns.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Volumen-Analyse</strong></td>
+                                <td>Implementiere gleitenden Durchschnitt (20-period) für Volumen-Baseline. Spike = >2x Average.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Indikator-Integration</strong></td>
+                                <td>RSI (14), MACD (12,26,9), Bollinger Bands (20,2) als Standard-Parameter.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Confidence Score</strong></td>
+                                <td>Gewichtetes Scoring: Pattern-Match (40%), Volumen (30%), Indikatoren (30%).</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Backtest-Integration</strong></td>
+                                <td>Historische Validation mit min. 100 Pattern-Beispielen pro Typ vor Live-Deployment.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>CEL-System Integration</strong></td>
+                                <td>Pattern-Scores mit historischen Erfolgsraten gewichten für optimale Strategie-Selektion.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center mt-5 pb-4">
+        <p class="text-light">
+            <i class="fas fa-info-circle"></i> Erstellt: 2026-01-19 |
+            <i class="fas fa-database"></i> Basis: Web-Research 2020-2025 |
+            <i class="fas fa-cog"></i> OrderPilot-AI Chart Pattern Recognition Module
+        </p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        // Initialize DataTables
+        $(document).ready(function() {
+            // Standard tables (sort by success rate)
+            $('#reversalTable, #continuationTable, #breakoutTable, #harmonicTable, #comparisonTable').DataTable({
+                pageLength: 10,
+                order: [[2, 'desc']], // Sort by success rate
+                language: {
+                    search: "Suche:",
+                    lengthMenu: "Zeige _MENU_ Einträge",
+                    info: "Zeige _START_ bis _END_ von _TOTAL_ Einträgen",
+                    infoEmpty: "Keine Einträge verfügbar",
+                    infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+                    paginate: {
+                        first: "Erste",
+                        last: "Letzte",
+                        next: "Nächste",
+                        previous: "Vorherige"
+                    }
+                }
+            });
+
+            // Trading style tables
+            $('#scalpingTable, #dayTradingTable, #swingTradingTable, #positionTradingTable').DataTable({
+                pageLength: 10,
+                order: [[2, 'desc']], // Sort by success rate
+                language: {
+                    search: "Suche:",
+                    lengthMenu: "Zeige _MENU_ Einträge",
+                    info: "Zeige _START_ bis _END_ von _TOTAL_ Einträgen",
+                    infoEmpty: "Keine Einträge verfügbar",
+                    infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+                    paginate: {
+                        first: "Erste",
+                        last: "Letzte",
+                        next: "Nächste",
+                        previous: "Vorherige"
+                    }
+                }
+            });
+
+            // SMC table (no sorting on variable success rates)
+            $('#smcTable').DataTable({
+                pageLength: 10,
+                order: [[0, 'asc']], // Sort by pattern name
+                language: {
+                    search: "Suche:",
+                    lengthMenu: "Zeige _MENU_ Einträge",
+                    info: "Zeige _START_ bis _END_ von _TOTAL_ Einträgen",
+                    infoEmpty: "Keine Einträge verfügbar",
+                    infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+                    paginate: {
+                        first: "Erste",
+                        last: "Letzte",
+                        next: "Nächste",
+                        previous: "Vorherige"
+                    }
+                }
+            });
+
+            // Implementation & comparison tables
+            $('#implementationTable, #tradingStyleComparisonTable').DataTable({
+                pageLength: 20,
+                order: [[0, 'asc']], // Sort by number/rank
+                language: {
+                    search: "Suche:",
+                    lengthMenu: "Zeige _MENU_ Einträge",
+                    info: "Zeige _START_ bis _END_ von _TOTAL_ Einträgen",
+                    infoEmpty: "Keine Einträge verfügbar",
+                    infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+                    paginate: {
+                        first: "Erste",
+                        last: "Letzte",
+                        next: "Nächste",
+                        previous: "Vorherige"
+                    }
+                }
+            });
+        });
+
+        // Success Rate Chart
+        const successRateCtx = document.getElementById('successRateChart').getContext('2d');
+        const successRateChart = new Chart(successRateCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Cup and Handle', 'Head & Shoulders', 'Double Top/Bottom', 'Triple Bottom', 'Ascending Triangle'],
+                datasets: [{
+                    label: 'Erfolgsrate (%)',
+                    data: [95, 91, 88, 87, 83],
+                    backgroundColor: [
+                        'rgba(39, 174, 96, 0.8)',
+                        'rgba(52, 152, 219, 0.8)',
+                        'rgba(155, 89, 182, 0.8)',
+                        'rgba(241, 196, 15, 0.8)',
+                        'rgba(230, 126, 34, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(39, 174, 96, 1)',
+                        'rgba(52, 152, 219, 1)',
+                        'rgba(155, 89, 182, 1)',
+                        'rgba(241, 196, 15, 1)',
+                        'rgba(230, 126, 34, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            },
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Profit Chart
+        const profitCtx = document.getElementById('profitChart').getContext('2d');
+        const profitChart = new Chart(profitCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Rectangle Patterns', 'Cup and Handle', 'Harmonic Patterns', 'Ascending Triangle', 'Head & Shoulders'],
+                datasets: [{
+                    label: 'Durchschn. Gewinn (%)',
+                    data: [51, 42.5, 50, 30, 23],
+                    backgroundColor: [
+                        'rgba(231, 76, 60, 0.8)',
+                        'rgba(39, 174, 96, 0.8)',
+                        'rgba(155, 89, 182, 0.8)',
+                        'rgba(230, 126, 34, 0.8)',
+                        'rgba(52, 152, 219, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(231, 76, 60, 1)',
+                        'rgba(39, 174, 96, 1)',
+                        'rgba(155, 89, 182, 1)',
+                        'rgba(230, 126, 34, 1)',
+                        'rgba(52, 152, 219, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            },
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Trading Style Comparison Chart
+        const tradingStyleCtx = document.getElementById('tradingStyleChart').getContext('2d');
+        const tradingStyleChart = new Chart(tradingStyleCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Scalping',
+                    data: [{x: 64, y: 0.9}], // avg success rate, avg profit
+                    backgroundColor: 'rgba(231, 76, 60, 0.7)',
+                    borderColor: 'rgba(231, 76, 60, 1)',
+                    pointRadius: 10,
+                    pointHoverRadius: 15
+                }, {
+                    label: 'Day Trading',
+                    data: [{x: 74.5, y: 3.75}],
+                    backgroundColor: 'rgba(230, 126, 34, 0.7)',
+                    borderColor: 'rgba(230, 126, 34, 1)',
+                    pointRadius: 10,
+                    pointHoverRadius: 15
+                }, {
+                    label: 'Swing Trading',
+                    data: [{x: 81.5, y: 31.5}],
+                    backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
+                    pointRadius: 12,
+                    pointHoverRadius: 17
+                }, {
+                    label: 'Position Trading',
+                    data: [{x: 86, y: 75}],
+                    backgroundColor: 'rgba(39, 174, 96, 0.7)',
+                    borderColor: 'rgba(39, 174, 96, 1)',
+                    pointRadius: 14,
+                    pointHoverRadius: 19
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: '#eaeaea',
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.x + '% Rate, ' + context.parsed.y + '% Gewinn';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Durchschn. Erfolgsrate (%)',
+                            color: '#eaeaea'
+                        },
+                        min: 50,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            },
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Durchschn. Gewinn (%)',
+                            color: '#eaeaea'
+                        },
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            },
+                            color: '#eaeaea'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Filter function
+        function filterBySuccessRate(level) {
+            const tables = ['reversalTable', 'continuationTable', 'breakoutTable', 'harmonicTable'];
+
+            tables.forEach(tableId => {
+                const table = $('#' + tableId).DataTable();
+
+                if (level === 'all') {
+                    table.search('').draw();
+                } else if (level === 'high') {
+                    table.rows().every(function() {
+                        const row = this.node();
+                        const rate = parseInt($(row).attr('data-success-rate') || 0);
+                        if (rate >= 80) {
+                            $(row).show();
+                        } else {
+                            $(row).hide();
+                        }
+                    });
+                } else if (level === 'medium') {
+                    table.rows().every(function() {
+                        const row = this.node();
+                        const rate = parseInt($(row).attr('data-success-rate') || 0);
+                        if (rate >= 60 && rate < 80) {
+                            $(row).show();
+                        } else {
+                            $(row).hide();
+                        }
+                    });
+                } else if (level === 'low') {
+                    table.rows().every(function() {
+                        const row = this.node();
+                        const rate = parseInt($(row).attr('data-success-rate') || 0);
+                        if (rate < 60 && rate > 0) {
+                            $(row).show();
+                        } else {
+                            $(row).hide();
+                        }
+                    });
+                }
+            });
+        }
+
+        // Add smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>
