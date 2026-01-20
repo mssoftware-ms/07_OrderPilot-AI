@@ -8,6 +8,7 @@ Contains tab creation methods for PatternDatabaseDialog:
 
 from __future__ import annotations
 
+import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -33,8 +34,8 @@ from src.core.pattern_db.fetcher import CRYPTO_SYMBOLS
 
 DEFAULT_STOCK_SYMBOLS = ["QQQ"]
 
-# Constants (must match pattern_db_dialog.py)
-QDRANT_PORT = 6333
+# Constants (OrderPilot uses Port 6335, RAG uses 6333)
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6335"))
 COLLECTION_NAME = "trading_patterns"
 
 

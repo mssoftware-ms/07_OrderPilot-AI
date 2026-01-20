@@ -18,9 +18,9 @@ from .embedder import PatternEmbedder
 
 logger = logging.getLogger(__name__)
 
-# Qdrant configuration for Docker (override via env)
+# Qdrant configuration for OrderPilot (separate from RAG system)
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6335"))  # Port 6335 for OrderPilot (6333 is RAG)
 COLLECTION_NAME = "trading_patterns"
 
 
@@ -135,7 +135,12 @@ class TradingPatternDB:
             last_exc: Exception | None = None
             for host in self._candidate_hosts():
                 try:
-                    probe_client = QdrantClient(host=host, port=self.port)
+                    # Skip version check to allow older Qdrant server versions
+                    probe_client = QdrantClient(
+                        host=host,
+                        port=self.port,
+                        check_compatibility=False  # Allow version mismatch
+                    )
                     _ = probe_client.get_collections()
                     client = probe_client
                     self.host = host
@@ -446,14 +451,22 @@ class TradingPatternDB:
         try:
             client = self._get_client()
             info = client.get_collection(self.collection_name)
+
+            # Get points count from collection info
+            points_count = 0
+            if hasattr(info, 'points_count'):
+                points_count = info.points_count
+            elif hasattr(info, 'vectors_count'):  # Older Qdrant versions
+                points_count = info.vectors_count
+
             return {
                 "name": self.collection_name,
-                "vectors_count": info.vectors_count,
-                "points_count": info.points_count,
-                "status": info.status.value,
+                "points_count": points_count,
+                "status": info.status.value if hasattr(info.status, 'value') else str(info.status),
             }
         except Exception as e:
             logger.error(f"Failed to get collection info: {e}")
+            print(f"❌ FEHLER beim Abrufen der Collection-Info: {e}")
             return {"error": str(e)}
 
     async def delete_collection(self) -> bool:

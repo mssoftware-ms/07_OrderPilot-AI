@@ -9,7 +9,7 @@ Contains:
 - setup_chart_widget(): Central chart widget setup
 - setup_dock(): Dock widget with custom title bar
 - setup_live_data_toggle(): Chart window live data toggle
-- setup_shortcuts(): Keyboard shortcuts (Ctrl+R, F1, Ctrl+Shift+C, Ctrl+Shift+A)
+- setup_shortcuts(): Keyboard shortcuts (Ctrl+R, F1, Ctrl+Shift+C, Ctrl+Shift+A, Ctrl+Shift+S)
 - setup_chat(): Chart chat integration
 - setup_bitunix_trading(): Bitunix trading widget
 - setup_ai_analysis(): AI analysis popup
@@ -179,6 +179,17 @@ class ChartWindowSetup:
 
         self.parent._analysis_shortcut = QShortcut(QKeySequence("Ctrl+Shift+A"), self.parent)
         self.parent._analysis_shortcut.activated.connect(self.parent.request_chart_analysis)
+
+        # Phase 6: Strategy Concept shortcut
+        self.parent._strategy_concept_shortcut = QShortcut(QKeySequence("Ctrl+Shift+S"), self.parent)
+        self.parent._strategy_concept_shortcut.activated.connect(self.open_strategy_concept)
+
+    def open_strategy_concept(self) -> None:
+        """Open Strategy Concept window (keyboard shortcut handler)."""
+        if hasattr(self.parent, "chart_widget") and hasattr(self.parent.chart_widget, "show_strategy_concept"):
+            self.parent.chart_widget.show_strategy_concept()
+        else:
+            logger.warning("Strategy Concept not available")
 
     def connect_dock_signals(self) -> None:
         """Connect dock/window signals.

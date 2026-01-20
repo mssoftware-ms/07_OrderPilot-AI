@@ -1,0 +1,271 @@
+{
+  "rules_version": "1.0.0",
+  "engine": "CEL",
+  "metadata": {
+    "name": "Default Trading Rules",
+    "description": "Conservative default rules for general trading with risk management",
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-20T10:00:00Z",
+    "tags": [
+      "conservative",
+      "risk-management",
+      "default"
+    ]
+  },
+  "packs": [
+    {
+      "pack_type": "no_trade",
+      "description": "Rules that prevent trading in unfavorable market conditions",
+      "rules": [
+        {
+          "id": "no_trade_low_volume",
+          "name": "Block Low Volume Periods",
+          "enabled": true,
+          "description": "Prevent trading when volume is significantly below average",
+          "expression": "volume < volume_sma_20.value * 0.5",
+          "severity": "block",
+          "message": "Volume too low - below 50% of 20-period average",
+          "tags": [
+            "volume",
+            "market-quality"
+          ],
+          "priority": 90
+        },
+        {
+          "id": "no_trade_high_spread",
+          "name": "Block High Spread Conditions",
+          "enabled": true,
+          "description": "Prevent trading when bid-ask spread is too wide",
+          "expression": "atrp > 2.0",
+          "severity": "block",
+          "message": "ATR% too high - market volatility excessive",
+          "tags": [
+            "volatility",
+            "market-quality"
+          ],
+          "priority": 95
+        },
+        {
+          "id": "no_trade_weekend_gap",
+          "name": "Block Weekend Gap Trading",
+          "enabled": false,
+          "description": "Prevent trading immediately after weekend gaps (optional)",
+          "expression": "bars_since_open < 3 && abs((open - prev_close) / prev_close) > 0.02",
+          "severity": "block",
+          "message": "Weekend gap detected - waiting for market stabilization",
+          "tags": [
+            "gap",
+            "time-filter"
+          ],
+          "priority": 80
+        }
+      ]
+    },
+    {
+      "pack_type": "entry",
+      "description": "Entry validation rules",
+      "rules": [
+        {
+          "id": "entry_rsi_oversold_long",
+          "name": "RSI Oversold Entry (Long)",
+          "enabled": true,
+          "description": "Allow long entry when RSI shows oversold condition with trend confirmation",
+          "expression": "rsi14.value < 30 && adx14.value > 25 && direction == 'UP'",
+          "severity": "block",
+          "message": "RSI oversold entry condition met for long",
+          "tags": [
+            "rsi",
+            "trend-following"
+          ],
+          "priority": 70
+        },
+        {
+          "id": "entry_macd_cross_long",
+          "name": "MACD Bullish Crossover (Long)",
+          "enabled": true,
+          "description": "Confirm long entry on MACD bullish crossover",
+          "expression": "macd_12_26_9.value > macd_12_26_9.signal && macd_12_26_9.histogram > 0",
+          "severity": "block",
+          "message": "MACD bullish crossover confirmed",
+          "tags": [
+            "macd",
+            "momentum"
+          ],
+          "priority": 60
+        },
+        {
+          "id": "entry_trend_alignment",
+          "name": "Trend Alignment Check",
+          "enabled": true,
+          "description": "Require trend alignment for entries",
+          "expression": "ema34.value > sma50.value",
+          "severity": "warn",
+          "message": "Trend alignment favorable (EMA34 > SMA50)",
+          "tags": [
+            "trend",
+            "moving-average"
+          ],
+          "priority": 50
+        }
+      ]
+    },
+    {
+      "pack_type": "exit",
+      "description": "Exit signal rules",
+      "rules": [
+        {
+          "id": "exit_rsi_overbought",
+          "name": "RSI Overbought Exit (Long)",
+          "enabled": true,
+          "description": "Exit long position when RSI shows overbought condition",
+          "expression": "rsi14.value > 70 && trade != null && trade.direction == 'LONG'",
+          "severity": "exit",
+          "message": "RSI overbought - exiting long position",
+          "tags": [
+            "rsi",
+            "profit-taking"
+          ],
+          "priority": 80
+        },
+        {
+          "id": "exit_macd_cross_bearish",
+          "name": "MACD Bearish Crossover Exit",
+          "enabled": true,
+          "description": "Exit on MACD bearish crossover",
+          "expression": "macd_12_26_9.value < macd_12_26_9.signal && trade != null && trade.direction == 'LONG'",
+          "severity": "exit",
+          "message": "MACD bearish crossover - exiting position",
+          "tags": [
+            "macd",
+            "momentum-reversal"
+          ],
+          "priority": 70
+        },
+        {
+          "id": "exit_time_stop",
+          "name": "Time-Based Stop",
+          "enabled": false,
+          "description": "Exit position after maximum hold time (optional)",
+          "expression": "trade != null && trade.bars_held > 20",
+          "severity": "exit",
+          "message": "Maximum hold time reached - exiting position",
+          "tags": [
+            "time-filter",
+            "risk-management"
+          ],
+          "priority": 60
+        }
+      ]
+    },
+    {
+      "pack_type": "update_stop",
+      "description": "Stop-loss update rules (monotonic enforcement)",
+      "rules": [
+        {
+          "id": "stop_trail_atr",
+          "name": "ATR-Based Trailing Stop",
+          "enabled": true,
+          "description": "Update stop-loss based on ATR trailing distance",
+          "expression": "trade != null && trade.direction == 'LONG' && (close - atr14.value * 2.0) > trade.stop_loss",
+          "severity": "update_stop",
+          "message": "Updating trailing stop to ATR-based level",
+          "tags": [
+            "atr",
+            "trailing-stop"
+          ],
+          "priority": 90
+        },
+        {
+          "id": "stop_breakeven",
+          "name": "Move Stop to Breakeven",
+          "enabled": true,
+          "description": "Move stop to breakeven after certain profit threshold",
+          "expression": "trade != null && trade.profit_pct > 1.5 && trade.stop_loss < trade.entry",
+          "severity": "update_stop",
+          "message": "Moving stop to breakeven (1.5% profit reached)",
+          "tags": [
+            "breakeven",
+            "risk-reduction"
+          ],
+          "priority": 85
+        },
+        {
+          "id": "stop_swing_low",
+          "name": "Update Stop to Swing Low",
+          "enabled": false,
+          "description": "Update stop to recent swing low (optional, requires swing calculation)",
+          "expression": "trade != null && swing_low_5 > trade.stop_loss",
+          "severity": "update_stop",
+          "message": "Updating stop to recent swing low",
+          "tags": [
+            "swing",
+            "support-resistance"
+          ],
+          "priority": 80
+        }
+      ]
+    },
+    {
+      "pack_type": "risk",
+      "description": "Position sizing and risk management rules",
+      "rules": [
+        {
+          "id": "risk_max_position_size",
+          "name": "Maximum Position Size",
+          "enabled": true,
+          "description": "Limit position size to maximum percentage of capital",
+          "expression": "trade != null && trade.position_value / cfg.capital > 0.2",
+          "severity": "block",
+          "message": "Position size exceeds 20% of capital",
+          "tags": [
+            "position-sizing",
+            "risk-limit"
+          ],
+          "priority": 100
+        },
+        {
+          "id": "risk_max_risk_per_trade",
+          "name": "Maximum Risk Per Trade",
+          "enabled": true,
+          "description": "Limit risk per trade to 1% of capital",
+          "expression": "trade != null && abs(trade.entry - trade.stop_loss) / trade.entry * trade.position_value / cfg.capital > 0.01",
+          "severity": "block",
+          "message": "Risk per trade exceeds 1% of capital",
+          "tags": [
+            "risk-limit",
+            "capital-preservation"
+          ],
+          "priority": 95
+        },
+        {
+          "id": "risk_min_reward_ratio",
+          "name": "Minimum Risk-Reward Ratio",
+          "enabled": true,
+          "description": "Require minimum 2:1 reward-to-risk ratio",
+          "expression": "trade != null && (trade.target - trade.entry) / (trade.entry - trade.stop_loss) < 2.0",
+          "severity": "warn",
+          "message": "Risk-reward ratio below 2:1 - consider adjusting target",
+          "tags": [
+            "risk-reward",
+            "trade-quality"
+          ],
+          "priority": 70
+        },
+        {
+          "id": "risk_daily_loss_limit",
+          "name": "Daily Loss Limit",
+          "enabled": true,
+          "description": "Stop trading after daily loss limit reached",
+          "expression": "daily_pnl_pct < -2.0",
+          "severity": "block",
+          "message": "Daily loss limit of -2% reached - no new trades",
+          "tags": [
+            "daily-limit",
+            "capital-preservation"
+          ],
+          "priority": 100
+        }
+      ]
+    }
+  ]
+}

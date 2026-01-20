@@ -54,6 +54,16 @@ class IndicatorInstanceManager:
         merged_params = dict(default_params or {})
         merged_params.update(params or {})
 
+        # Check for duplicates (Phase 5 Fix)
+        # Prevent adding the exact same indicator (same type and params) multiple times
+        for active_inst in self.parent.active_indicators.values():
+            if active_inst.ind_id == ind_id and active_inst.params == merged_params:
+                logger.warning(
+                    f"Duplicate indicator detected: {ind_id} with params {merged_params}. "
+                    "Skipping addition."
+                )
+                return
+
         self.parent._indicator_counter += 1
         instance_id = f"{ind_id}_{self.parent._indicator_counter}"
         display_name = f"{base_display} #{self.parent._indicator_counter}"

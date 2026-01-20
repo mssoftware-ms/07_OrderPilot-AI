@@ -1979,8 +1979,6 @@ class EntryAnalyzerPopup(QDialog):
             logger.info(f"Regime set config saved to: {config_path}")
 
             # Ask if user wants to backtest the regime set
-            from PyQt6.QtWidgets import QMessageBox
-
             reply = QMessageBox.question(
                 self,
                 "Backtest Regime Set?",

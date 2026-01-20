@@ -477,6 +477,15 @@
                 <a href="#analyzer-results" class="nav-link">📊 Ergebnisse</a>
             </div>
 
+            <!-- NEW: Strategy Concept Section -->
+            <div class="nav-section">
+                <div class="nav-title">Strategy Concept</div>
+                <a href="#strategy-concept-overview" class="nav-link">📊 Überblick</a>
+                <a href="#strategy-concept-pattern-recognition" class="nav-link">🔍 Pattern Recognition</a>
+                <a href="#strategy-concept-integration" class="nav-link">🎯 Pattern Integration</a>
+                <a href="#strategy-concept-workflow" class="nav-link">⚡ Workflow</a>
+            </div>
+
             <div class="nav-section">
                 <div class="nav-title">Weitere Themen</div>
                 <a href="#faq" class="nav-link">❓ FAQ</a>
@@ -1918,6 +1927,390 @@ Total: 1.0 (100%)</code>
                     <li>Regime-Grenzen als vertikale Linien anzuzeigen</li>
                     <li>P&L-Labels an jedem Trade</li>
                 </ul>
+            </section>
+
+            <!-- Strategy Concept Section -->
+            <section id="strategy-concept-overview" class="section">
+                <h2 class="section-title">📊 Strategy Concept Übersicht</h2>
+
+                <div class="card">
+                    <p><strong>Strategy Concept</strong> ist ein leistungsstarkes Fenster zur pattern-basierten Strategieentwicklung. Es kombiniert Mustererkennung mit bewährten Trading-Strategien.</p>
+
+                    <h3>🎯 Hauptfunktionen</h3>
+                    <ul>
+                        <li><strong>Pattern Recognition (Tab 1):</strong> Erkenne Chartmuster im aktuellen Chart</li>
+                        <li><strong>Pattern Integration (Tab 2):</strong> Ordne erkannte Muster zu bewährten Strategien zu</li>
+                        <li><strong>Strategy Mapping:</strong> 50+ Pattern-Strategy-Kombinationen verfügbar</li>
+                        <li><strong>Historical Analysis:</strong> Finde ähnliche Muster in der Vergangenheit</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🚀 Fenster öffnen</div>
+                    <p><strong>Aus Chart-Fenster:</strong></p>
+                    <ol>
+                        <li>Öffne Chart für gewünschtes Symbol</li>
+                        <li>Klicke auf Menü → <code>Analysis</code> → <code>Strategy Concept</code></li>
+                        <li>Fenster öffnet sich als eigenständiges Fenster</li>
+                    </ol>
+                    <div class="badge-container">
+                        <span class="badge badge-info">Tipp:</span>
+                        <span style="color: var(--text-secondary);">Fenster kann mit Maximize/Minimize-Buttons gesteuert werden</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">💡 Typischer Workflow</div>
+                    <ol>
+                        <li>Pattern Recognition: Analysiere aktuellen Chart</li>
+                        <li>Review Results: Prüfe gefundene Muster und Historical Matches</li>
+                        <li>Pattern Integration: Wähle passendes Pattern aus der Bibliothek</li>
+                        <li>Strategy Details: Studiere Entry/Exit-Regeln und Success Rate</li>
+                        <li>Apply to Bot: Wende Strategie auf Trading Bot an (optional)</li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- Pattern Recognition Tab -->
+            <section id="strategy-concept-pattern-recognition" class="section">
+                <h2 class="section-title">🔍 Pattern Recognition (Tab 1)</h2>
+
+                <div class="card">
+                    <div class="card-title">⚙️ Analysis Settings</div>
+                    <p><strong>Parameter:</strong></p>
+                    <ul>
+                        <li><strong>Window Size:</strong> Wird automatisch auf sichtbaren Chart-Bereich gesetzt</li>
+                        <li><strong>Similarity Threshold:</strong> 0.50-0.99 (empfohlen: 0.80)</li>
+                        <li><strong>Min Matches:</strong> Mindestanzahl ähnlicher Muster (Standard: 10)</li>
+                        <li><strong>Signal Direction:</strong> LONG oder SHORT</li>
+                        <li><strong>Cross-Symbol Search:</strong> Suche auch in anderen Symbolen</li>
+                    </ul>
+
+                    <div class="badge-container">
+                        <span class="badge badge-warning">Wichtig:</span>
+                        <span style="color: var(--text-secondary);">Window Size wird erst beim Klick auf "Analyze Patterns" aus dem aktuellen Chart-Fenster übernommen</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🎯 Pattern-Analyse durchführen</div>
+                    <ol>
+                        <li>Öffne Chart-Fenster für gewünschtes Symbol</li>
+                        <li>Navigiere im Chart zum interessanten Bereich (Zoom/Pan)</li>
+                        <li>Öffne Strategy Concept Fenster</li>
+                        <li>Wähle Tab "Pattern Recognition"</li>
+                        <li>Passe Settings an (Similarity, Direction, etc.)</li>
+                        <li>Klicke auf <strong>"🔍 Analyze Patterns"</strong></li>
+                        <li>System analysiert sichtbaren Chart-Bereich und sucht ähnliche Muster</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📊 Ergebnisse interpretieren</div>
+
+                    <h4>Analysis Results</h4>
+                    <ul>
+                        <li><strong>Matches Found:</strong> Anzahl ähnlicher Muster gefunden</li>
+                        <li><strong>Win Rate:</strong> Prozentsatz profitabler Matches (>60% ist gut)</li>
+                        <li><strong>Avg Return:</strong> Durchschnittlicher Return aller Matches</li>
+                        <li><strong>Confidence:</strong> Konfidenz der Analyse (0-100%)</li>
+                        <li><strong>Avg Similarity:</strong> Durchschnittliche Ähnlichkeit (0.00-1.00)</li>
+                        <li><strong>Recommendation:</strong>
+                            <ul>
+                                <li><span style="color: var(--success);">STRONG BUY</span> - >80% Win Rate, >3% Avg Return</li>
+                                <li><span style="color: var(--success);">BUY</span> - >60% Win Rate, >1% Avg Return</li>
+                                <li><span style="color: var(--warning);">NEUTRAL</span> - ~50% Win Rate</li>
+                                <li><span style="color: var(--error);">AVOID</span> - <40% Win Rate</li>
+                                <li><span style="color: var(--error);">STRONG AVOID</span> - <30% Win Rate, negative Return</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <h4>Similar Patterns Table</h4>
+                    <p>Zeigt historische Matches mit folgenden Daten:</p>
+                    <ul>
+                        <li><strong>Symbol:</strong> Wo das Muster auftrat</li>
+                        <li><strong>Timeframe:</strong> Zeitrahmen (1h, 4h, 1d, etc.)</li>
+                        <li><strong>Date:</strong> Wann das Muster auftrat</li>
+                        <li><strong>Similarity:</strong> Ähnlichkeit zum aktuellen Muster (0.000-1.000)</li>
+                        <li><strong>Trend:</strong> Trendrichtung damals (UP/DOWN/RANGE)</li>
+                        <li><strong>Profitable:</strong> ✓ oder ✗</li>
+                        <li><strong>Return %:</strong> Tatsächlicher Return</li>
+                        <li><strong>Outcome:</strong> <span style="color: var(--success);">PROFIT</span> oder <span style="color: var(--error);">LOSS</span></li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🎬 Action Buttons</div>
+                    <ul>
+                        <li><strong>📍 Draw on Chart:</strong> Zeichne erkannte Muster im Chart (Coming Soon)</li>
+                        <li><strong>🗑️ Clear:</strong> Lösche alle Ergebnisse</li>
+                        <li><strong>💾 Export Patterns:</strong> Exportiere Ergebnisse als JSON/CSV (Coming Soon)</li>
+                    </ul>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>⚡ Tipps für beste Ergebnisse</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <ul>
+                            <li><strong>Window Size:</strong> Verwende 20-50 Bars für kurzfristige Muster, 50-100 für längerfristige</li>
+                            <li><strong>Similarity Threshold:</strong> Start mit 0.80, dann schrittweise senken falls zu wenig Matches</li>
+                            <li><strong>Cross-Symbol:</strong> Aktiviere für mehr Daten, aber beachte Symbol-spezifische Eigenheiten</li>
+                            <li><strong>Min Matches:</strong> Mindestens 10 für statistische Signifikanz, 20-30 ist besser</li>
+                            <li><strong>Chart-Bereich:</strong> Wähle klare Setup-Bereiche (z.B. vor einem Breakout)</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pattern Integration Tab -->
+            <section id="strategy-concept-integration" class="section">
+                <h2 class="section-title">🎯 Pattern Integration (Tab 2)</h2>
+
+                <div class="card">
+                    <div class="card-title">📚 Pattern-Strategy Library</div>
+                    <p>Tab 2 enthält eine kuratierte Bibliothek von 50+ Pattern-Strategy-Mappings basierend auf bewährten Trading-Strategien.</p>
+
+                    <h3>Pattern-Kategorien</h3>
+                    <ul>
+                        <li><strong style="color: #5c9eff;">REVERSAL</strong> - Umkehrmuster (Doppel-Tops/Bottoms, Head & Shoulders)</li>
+                        <li><strong style="color: #26a69a;">CONTINUATION</strong> - Fortsetzungsmuster (Flags, Pennants)</li>
+                        <li><strong style="color: #4fc3f7;">SMART_MONEY</strong> - Smart-Money-Konzepte (FVG, Order Blocks)</li>
+                        <li><strong style="color: #ba68c8;">BREAKOUT</strong> - Breakout-Muster (Triangle, Rectangle)</li>
+                        <li><strong style="color: #ffd54f;">HARMONIC</strong> - Harmonic Patterns (Gartley, Butterfly)</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🔍 Pattern auswählen</div>
+                    <ol>
+                        <li>Wähle Tab "Pattern Integration"</li>
+                        <li>Nutze <strong>Filter by Category</strong> Dropdown (optional)</li>
+                        <li>Browse die Pattern-Tabelle:
+                            <ul>
+                                <li><strong>Pattern Name:</strong> z.B. "Double Bottom Reversal"</li>
+                                <li><strong>Category:</strong> Farb-codiert nach Kategorie</li>
+                                <li><strong>Success Rate:</strong> Historische Erfolgsrate (z.B. 92.5%)</li>
+                                <li><strong>Strategy Type:</strong> Empfohlene Strategy (Trend-Following, Mean-Reversion, etc.)</li>
+                                <li><strong>Avg Profit:</strong> Durchschnittlicher erwarteter Profit</li>
+                                <li><strong>Phase:</strong> Implementierungs-Phase (derzeit nur Phase 1 verfügbar)</li>
+                            </ul>
+                        </li>
+                        <li>Klicke auf eine Zeile um Pattern auszuwählen</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📖 Strategy Details</div>
+                    <p>Beim Auswählen eines Patterns werden detaillierte Informationen angezeigt:</p>
+
+                    <h4>Allgemeine Info</h4>
+                    <ul>
+                        <li>Pattern Name und Kategorie</li>
+                        <li>Success Rate (farbig hervorgehoben)</li>
+                        <li>Strategy Type</li>
+                        <li>Average Profit</li>
+                        <li>Risk-Reward Ratio (z.B. "1:2" oder "1:3")</li>
+                    </ul>
+
+                    <h4>Best Practices</h4>
+                    <p>Liste von bewährten Praktiken für dieses Pattern, z.B.:</p>
+                    <ul>
+                        <li>"Trade auf Retest des Neckline-Breakouts"</li>
+                        <li>"Warte auf Volume-Confirmation"</li>
+                        <li>"Nutze Higher-Timeframe Trend als Filter"</li>
+                    </ul>
+
+                    <h4>Entry/Exit Rules</h4>
+                    <ul>
+                        <li><strong>Stop Loss Placement:</strong> z.B. "Unterhalb des rechten Schultertiefs"</li>
+                        <li><strong>Target Calculation:</strong> z.B. "Höhe des Patterns von Breakout-Level gemessen"</li>
+                        <li><strong>Volume Confirmation:</strong> Falls erforderlich ✓</li>
+                        <li><strong>RSI Condition:</strong> Falls vorhanden (z.B. "RSI < 30 bei Reversal")</li>
+                        <li><strong>MACD Confirmation:</strong> Falls erforderlich ✓</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">📐 Trade Setup Preview</div>
+                    <p>Zeigt ein Beispiel-Setup basierend auf den Pattern-Regeln:</p>
+                    <ul>
+                        <li><strong>Entry Price:</strong> Wo einsteigen (z.B. "Breakout confirmation level")</li>
+                        <li><strong>Stop Loss:</strong> Basierend auf Pattern-Geometrie</li>
+                        <li><strong>Target Price:</strong> Berechnung des Profit-Targets</li>
+                        <li><strong>Risk-Reward:</strong> Erwartetes Chance-Risiko-Verhältnis</li>
+                        <li><strong>Expected Success:</strong> Historische Success Rate</li>
+                    </ul>
+
+                    <div class="badge-container">
+                        <span class="badge badge-info">Hinweis:</span>
+                        <span style="color: var(--text-secondary);">Dies ist ein Template - tatsächliche Levels erfordern Pattern-Geometrie-Analyse</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🎬 Action Buttons</div>
+                    <ul>
+                        <li><strong>✓ Apply Strategy:</strong> Wende ausgewählte Strategy an (Coming: Phase 6 Bot Integration)</li>
+                        <li><strong>💾 Export to CEL:</strong> Exportiere als CEL-Rules (Coming: Phase 4)</li>
+                    </ul>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>🎯 Pattern-Beispiele</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <h4>Reversal Patterns (Umkehr)</h4>
+                        <ul>
+                            <li><strong>Double Bottom:</strong> 92.5% Success, Mean-Reversion</li>
+                            <li><strong>Double Top:</strong> 91.8% Success, Mean-Reversion</li>
+                            <li><strong>Head and Shoulders:</strong> 89.7% Success, Trend-Reversal</li>
+                        </ul>
+
+                        <h4>Continuation Patterns (Fortsetzung)</h4>
+                        <ul>
+                            <li><strong>Bull Flag:</strong> 88.5% Success, Trend-Following</li>
+                            <li><strong>Bear Flag:</strong> 87.9% Success, Trend-Following</li>
+                            <li><strong>Ascending Triangle:</strong> 90.2% Success, Breakout</li>
+                        </ul>
+
+                        <h4>Smart Money Concepts</h4>
+                        <ul>
+                            <li><strong>Fair Value Gap (FVG):</strong> 85.3% Success, Smart-Money</li>
+                            <li><strong>Order Block:</strong> 87.1% Success, Smart-Money</li>
+                            <li><strong>Breaker Block:</strong> 84.8% Success, Smart-Money</li>
+                        </ul>
+
+                        <h4>Harmonic Patterns</h4>
+                        <ul>
+                            <li><strong>Gartley:</strong> 88.9% Success, Harmonic Trading</li>
+                            <li><strong>Butterfly:</strong> 87.5% Success, Harmonic Trading</li>
+                            <li><strong>Bat:</strong> 86.7% Success, Harmonic Trading</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workflow Section -->
+            <section id="strategy-concept-workflow" class="section">
+                <h2 class="section-title">⚡ Strategy Concept Workflow</h2>
+
+                <div class="card">
+                    <div class="card-title">🎯 Kompletter Workflow</div>
+
+                    <h3>Schritt 1: Chart vorbereiten</h3>
+                    <ol>
+                        <li>Öffne Chart für gewünschtes Symbol</li>
+                        <li>Wähle Timeframe (1h, 4h, 1d, etc.)</li>
+                        <li>Navigiere zu interessantem Setup-Bereich</li>
+                        <li>Stelle sicher, dass genug Bars sichtbar sind (20-100)</li>
+                    </ol>
+
+                    <h3>Schritt 2: Pattern Recognition</h3>
+                    <ol>
+                        <li>Öffne Strategy Concept Fenster</li>
+                        <li>Wähle Tab "Pattern Recognition"</li>
+                        <li>Passe Similarity Threshold an (0.75-0.85 für Start)</li>
+                        <li>Wähle Signal Direction (LONG/SHORT)</li>
+                        <li>Klicke "Analyze Patterns"</li>
+                        <li>Warte auf Ergebnisse (5-30 Sekunden)</li>
+                    </ol>
+
+                    <h3>Schritt 3: Ergebnisse prüfen</h3>
+                    <ol>
+                        <li>Prüfe Win Rate (>60% ist gut)</li>
+                        <li>Prüfe Avg Return (>1% ist gut)</li>
+                        <li>Prüfe Recommendation (STRONG BUY/BUY = positiv)</li>
+                        <li>Schaue in Similar Patterns Table:
+                            <ul>
+                                <li>Welche Symbole hatten ähnliche Setups?</li>
+                                <li>Wie oft war das Muster profitabel?</li>
+                                <li>Wie hoch waren die Returns?</li>
+                            </ul>
+                        </li>
+                    </ol>
+
+                    <h3>Schritt 4: Pattern Integration nutzen</h3>
+                    <ol>
+                        <li>Wechsle zu Tab "Pattern Integration"</li>
+                        <li>Filtere nach passender Kategorie (z.B. REVERSAL)</li>
+                        <li>Wähle Pattern mit hoher Success Rate</li>
+                        <li>Studiere Strategy Details:
+                            <ul>
+                                <li>Best Practices lesen</li>
+                                <li>Entry/Exit Rules verstehen</li>
+                                <li>Trade Setup Preview prüfen</li>
+                            </ul>
+                        </li>
+                    </ol>
+
+                    <h3>Schritt 5: Strategy anwenden (Optional)</h3>
+                    <ol>
+                        <li>Klicke "Apply to Bot" für Bot-Integration (Coming: Phase 6)</li>
+                        <li>ODER: Nutze Informationen für manuelles Trading</li>
+                        <li>ODER: Exportiere zu CEL für weitere Verarbeitung (Coming: Phase 4)</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">💡 Best Practices</div>
+                    <ul>
+                        <li><strong>Kombiniere beide Tabs:</strong> Nutze Tab 1 für aktuelle Situation, Tab 2 für strategische Planung</li>
+                        <li><strong>Mehrere Timeframes:</strong> Prüfe Pattern auf verschiedenen Timeframes für Bestätigung</li>
+                        <li><strong>Volume beachten:</strong> Hohe Success Rates erfordern oft Volume-Confirmation</li>
+                        <li><strong>Risk Management:</strong> Nutze Risk-Reward Ratios aus Strategy Details</li>
+                        <li><strong>Backtesting:</strong> Teste Strategy mit Entry Analyzer Backtest-Tab vor Live-Handel</li>
+                        <li><strong>Pattern-Qualität:</strong> Achte auf Similarity Score bei Historical Matches (>0.80 ist gut)</li>
+                        <li><strong>Markt-Kontext:</strong> Berücksichtige aktuelle Markt-Regime (Trend/Range)</li>
+                    </ul>
+                </div>
+
+                <div class="collapsible">
+                    <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                        <span>⚠️ Häufige Fehler vermeiden</span>
+                        <span class="collapsible-icon">▼</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <ul>
+                            <li><strong>❌ Zu hohe Similarity Threshold:</strong> Senke auf 0.75-0.80 für mehr Matches</li>
+                            <li><strong>❌ Zu wenig Historical Data:</strong> Fülle Pattern-DB durch Backtests</li>
+                            <li><strong>❌ Falscher Chart-Bereich:</strong> Wähle klare Setup-Bereiche, nicht mitten im Trend</li>
+                            <li><strong>❌ Success Rate ignorieren:</strong> Patterns mit <60% Win Rate sind riskant</li>
+                            <li><strong>❌ Risk-Reward ignorieren:</strong> Auch bei hoher Win Rate braucht es gutes R:R</li>
+                            <li><strong>❌ Blind vertrauen:</strong> Strategy Details sind Guidelines, keine Garantien</li>
+                            <li><strong>❌ Einzelnes Signal:</strong> Kombiniere mit anderen Analysen (Entry Analyzer, Indikatoren)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">🔗 Integration mit anderen Tools</div>
+                    <h4>Entry Analyzer</h4>
+                    <ul>
+                        <li>Nutze Entry Analyzer für detailliertes Backtesting der ausgewählten Pattern-Strategies</li>
+                        <li>Indicator Optimization: Finde beste Indikatoren für erkannte Patterns</li>
+                        <li>Regime Sets: Kombiniere Patterns mit Regime-basiertem Indikatorenset</li>
+                    </ul>
+
+                    <h4>Trading Bot</h4>
+                    <ul>
+                        <li>"Apply to Bot" Button (Coming: Phase 6) wendet Strategy direkt im Bot an</li>
+                        <li>Bot nutzt Pattern Entry/Exit Rules für automatisches Trading</li>
+                        <li>Strategy-spezifische Risk-Reward Settings werden übernommen</li>
+                    </ul>
+
+                    <h4>Chart Window</h4>
+                    <ul>
+                        <li>"Draw on Chart" Button (Coming: Phase 5) zeichnet erkannte Patterns im Chart</li>
+                        <li>Visualisierung von Entry/Exit/Stop-Levels</li>
+                        <li>Pattern-Annotationen für besseres Verständnis</li>
+                    </ul>
+                </div>
             </section>
 
             <!-- FAQ -->

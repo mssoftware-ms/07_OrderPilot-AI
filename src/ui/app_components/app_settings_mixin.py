@@ -53,17 +53,14 @@ class AppSettingsMixin:
     def apply_theme(self, theme_name: str):
         """Apply a theme to the application."""
         try:
-            # Normalize theme name to lowercase for comparison
-            theme_name_lower = theme_name.lower()
-
-            if theme_name_lower == "dark":
-                style_sheet = self.theme_manager.get_dark_theme()
-                set_icon_theme("dark")
-            else:
-                style_sheet = self.theme_manager.get_light_theme()
-                set_icon_theme("light")
-
+            # Get stylesheet from generic manager (handles normalization)
+            style_sheet = self.theme_manager.get_theme(theme_name)
             self.setStyleSheet(style_sheet)
+            
+            # Update icons - Both our current themes are "dark" based for icons
+            # If we add a true Light theme later, we should check for it here
+            set_icon_theme("dark")
+            
             self.settings.setValue("theme", theme_name)
 
         except Exception as e:

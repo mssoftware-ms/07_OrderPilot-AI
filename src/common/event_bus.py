@@ -84,6 +84,14 @@ class EventType(Enum):
     BACKTEST_PROGRESS = "backtest_progress"
     BACKTEST_COMPLETE = "backtest_complete"
 
+    # Pattern Recognition Events (Phase 1 - Event Bus Integration)
+    PATTERN_DB_UPDATE_REQUESTED = "pattern_db_update_requested"
+    PATTERN_DB_UPDATE_STARTED = "pattern_db_update_started"
+    PATTERN_DB_UPDATE_PROGRESS = "pattern_db_update_progress"
+    PATTERN_DB_UPDATE_COMPLETE = "pattern_db_update_complete"
+    PATTERN_DB_UPDATE_ERROR = "pattern_db_update_error"
+    PATTERN_ANALYSIS_COMPLETE = "pattern_analysis_complete"
+
 
 @dataclass
 class Event:

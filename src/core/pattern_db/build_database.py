@@ -6,8 +6,10 @@ Run this script to populate the database with historical patterns.
 Usage:
     python -m src.core.pattern_db.build_database --stocks --crypto --days 365
 
-Docker: Qdrant must be running on localhost:6333
-    docker run -p 6333:6333 qdrant/qdrant
+Docker: OrderPilot Qdrant must be running on localhost:6335
+    docker run -d -p 6335:6333 -v orderpilot_qdrant:/qdrant/storage --name orderpilot-qdrant qdrant/qdrant:latest
+
+Note: Port 6333 is used by RAG system. OrderPilot uses 6335.
 """
 
 import argparse
@@ -102,7 +104,7 @@ async def build_database(
     logger.info("Initializing Qdrant collection...")
     if not await db.initialize():
         logger.error("Failed to initialize Qdrant. Is Docker running?")
-        logger.error("Start Qdrant: docker run -p 6333:6333 qdrant/qdrant")
+        logger.error("Start OrderPilot Qdrant: docker run -d -p 6335:6333 -v orderpilot_qdrant:/qdrant/storage --name orderpilot-qdrant qdrant/qdrant:latest")
         return
 
     # Get collection info

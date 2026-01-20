@@ -176,6 +176,11 @@ class ChartStateManager(QObject):
                 indicators_list = json.loads(indicators_json)
                 state_dict['indicators'] = [IndicatorState(**ind) for ind in indicators_list]
 
+            # Drawings
+            drawings_json = self.settings.value(f"{settings_key}/drawings")
+            if drawings_json:
+                state_dict['drawings'] = json.loads(drawings_json)
+
             # Window state
             state_dict['window_geometry'] = self.settings.value(f"{settings_key}/window_geometry")
             state_dict['window_state'] = self.settings.value(f"{settings_key}/window_state")
@@ -328,6 +333,11 @@ class ChartStateManager(QObject):
         if chart_state.indicators:
             indicators_json = json.dumps([asdict(ind) for ind in chart_state.indicators])
             self.settings.setValue(f"{settings_key}/indicators", indicators_json)
+
+        # Drawings
+        if chart_state.drawings:
+            drawings_json = json.dumps(chart_state.drawings)
+            self.settings.setValue(f"{settings_key}/drawings", drawings_json)
 
         # Window state
         if chart_state.window_geometry:

@@ -33,6 +33,7 @@ from .chart_mixins import (
     LevelZonesMixin,
 )
 from .chart_mixins.entry_analyzer_mixin import EntryAnalyzerMixin
+from .chart_mixins.strategy_concept_mixin import StrategyConceptMixin
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
 from .embedded_tradingview_chart_events_mixin import EmbeddedTradingViewChartEventsMixin
@@ -42,12 +43,14 @@ from .embedded_tradingview_chart_marking_mixin import EmbeddedTradingViewChartMa
 from .embedded_tradingview_chart_ui_mixin import EmbeddedTradingViewChartUIMixin
 from .embedded_tradingview_chart_view_mixin import EmbeddedTradingViewChartViewMixin
 from .chart_ai_markings_mixin import ChartAIMarkingsMixin
+from .market_sessions_overlay import MarketSessionsOverlay
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddedTradingViewChart(
     EntryAnalyzerMixin,  # Entry Analyzer popup integration
+    StrategyConceptMixin,  # Strategy Concept window integration (Phase 6)
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
     LevelZonesMixin,  # Phase 5.5: Level zones support
@@ -144,6 +147,9 @@ class EmbeddedTradingViewChart(
         # Initialize Entry Analyzer (from EntryAnalyzerMixin)
         self._init_entry_analyzer()
 
+        # Initialize Strategy Concept (from StrategyConceptMixin) - Phase 6
+        self._init_strategy_concept()
+
         # Initialize data loading (from DataLoadingMixin) - CRITICAL: Must be called before _setup_ui
         self._setup_data_loading()
 
@@ -161,8 +167,52 @@ class EmbeddedTradingViewChart(
         event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar_event)
         event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick_event)
         event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick_event)
+        
+        # Initialize Market Sessions Overlay
+        self.market_overlay = MarketSessionsOverlay(self)
+        self.market_overlay.show()
+        # Connect signals
+        self.tick_price_updated.connect(self.market_overlay.update_price)
+        self.symbol_changed.connect(self._update_overlay_symbol)
 
         logger.info("EmbeddedTradingViewChart initialized")
+
+    def _update_overlay_symbol(self, symbol: str):
+        """Update overlay with symbol and daily reference price."""
+        ref_price = 0.0
+        # Try to calculate daily change reference (Previous Close or Today's Open)
+        if self.data is not None and not self.data.empty:
+            try:
+                # Best effort: Use the first bar's open from the loaded data
+                # Ideally we want yesterday's close, but we might only have intraday data
+                # For now, using the first available data point's open as the reference "anchor"
+                # for the session if we assume data loaded covers the day.
+                # A better approach would be to fetch a separate 'quote' or 'daily bar'.
+                
+                # If we have a 'time' column (unix timestamp), find start of today
+                if 'time' in self.data.columns:
+                    import time as time_mod
+                    from datetime import datetime, timezone
+                    
+                    # Get start of today (UTC) - approximate since market hours vary
+                    # Using local system time for "today" might be misaligned with exchange
+                    now = datetime.now(timezone.utc)
+                    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+                    
+                    # Find first bar >= start_of_day
+                    today_data = self.data[self.data['time'] >= start_of_day]
+                    if not today_data.empty:
+                        ref_price = today_data['open'].iloc[0]
+                    else:
+                        # Fallback to very first bar loaded
+                        ref_price = self.data['open'].iloc[0]
+                else:
+                     ref_price = self.data['open'].iloc[0]
+                     
+            except Exception as e:
+                logger.warning(f"Could not calc ref price: {e}")
+                
+        self.market_overlay.set_symbol_info(symbol, ref_price)
 
     # Public helper to add a full-width price range (used by chat evaluation popup)
     def add_rect_range(self, low: float, high: float, label: str = "", color: str | None = None) -> None:
@@ -369,5 +419,15 @@ class EmbeddedTradingViewChart(
         try:
             # request_chart_resize is provided by EmbeddedTradingViewChartViewMixin
             self.request_chart_resize()
+            
+            # Position market overlay
+            if hasattr(self, 'market_overlay'):
+                if hasattr(self, 'web_view') and self.web_view:
+                    # Align with web view top-left, plus some padding
+                    # Since market_overlay is child of self, use web_view.pos()
+                    view_pos = self.web_view.pos()
+                    self.market_overlay.move(view_pos.x() + 10, view_pos.y() + 10)
+                else:
+                    self.market_overlay.move(10, 100) # Fallback
         except Exception as exc:
             logger.debug("resizeEvent chart resize failed: %s", exc)

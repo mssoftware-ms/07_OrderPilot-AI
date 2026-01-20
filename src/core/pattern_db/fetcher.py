@@ -139,11 +139,9 @@ class PatternDataFetcher:
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days_back)
 
-        # Determine data source based on asset class
-        if asset_class == AssetClass.CRYPTO:
-            source = DataSource.ALPACA_CRYPTO
-        else:
-            source = DataSource.ALPACA
+        # Let HistoryManager use priority order (Bitunix, Yahoo, etc.)
+        # instead of forcing Alpaca (which requires valid API keys)
+        source = None
 
         request = DataRequest(
             symbol=symbol,

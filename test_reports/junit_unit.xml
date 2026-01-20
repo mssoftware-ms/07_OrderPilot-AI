@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="13" failures="10" skipped="0" tests="47" time="62.321" timestamp="2026-01-19T23:15:14.223499+01:00" hostname="maikworkstatio"><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_basic" time="0.227" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_weight_calculation" time="0.029"><failure message="KeyError: 'RSI_{&quot;period&quot;: 14}'">#x1B[1m#x1B[31mtests/ui/test_regime_set_builder.py#x1B[0m:141: in test_build_regime_set_weight_calculation
+    #x1B[0mrsi_weight = weights[#x1B[33m'#x1B[39;49;00m#x1B[33mRSI_#x1B[39;49;00m#x1B[33m{#x1B[39;49;00m#x1B[33m"#x1B[39;49;00m#x1B[33mperiod#x1B[39;49;00m#x1B[33m"#x1B[39;49;00m#x1B[33m: 14}#x1B[39;49;00m#x1B[33m'#x1B[39;49;00m]#x1B[90m#x1B[39;49;00m
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   KeyError: 'RSI_{"period": 14}'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_avg_score" time="0.016" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_top_n_selection" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_empty_results" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_single_regime" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetBuilder" name="test_build_regime_set_excludes_all_regime" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_basic_structure" time="0.016" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_indicators" time="0.016" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_regimes" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_strategies" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_routing" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestJSONConfigGeneration" name="test_generate_regime_set_json_valid_json" time="0.017" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeConditionGeneration" name="test_generate_regime_conditions_trend_up" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeConditionGeneration" name="test_generate_regime_conditions_trend_down" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeConditionGeneration" name="test_generate_regime_conditions_range" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeConditionGeneration" name="test_generate_regime_conditions_unknown" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestEntryConditionGeneration" name="test_generate_entry_conditions_rsi" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestEntryConditionGeneration" name="test_generate_entry_conditions_macd" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestEntryConditionGeneration" name="test_generate_entry_conditions_adx" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestEntryConditionGeneration" name="test_generate_entry_conditions_multiple_indicators" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestEntryConditionGeneration" name="test_generate_entry_conditions_empty" time="0.014" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetButtonHandler" name="test_on_create_regime_set_clicked_full_workflow" time="0.153" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetButtonHandler" name="test_on_create_regime_set_clicked_no_results" time="0.028"><failure message="UnboundLocalError: cannot access local variable 'QMessageBox' where it is not associated with a value">#x1B[1m#x1B[31mtests/ui/test_regime_set_builder.py#x1B[0m:459: in test_on_create_regime_set_clicked_no_results
+    #x1B[0manalyzer_popup._on_create_regime_set_clicked()#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31msrc/ui/dialogs/entry_analyzer_popup.py#x1B[0m:1926: in _on_create_regime_set_clicked
+    #x1B[0mQMessageBox.warning(#x1B[90m#x1B[39;49;00m
+    ^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   UnboundLocalError: cannot access local variable 'QMessageBox' where it is not associated with a value#x1B[0m</failure></testcase><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetButtonHandler" name="test_on_create_regime_set_clicked_cancel_name" time="0.015" /><testcase classname="tests.ui.test_regime_set_builder.TestRegimeSetButtonHandler" name="test_on_create_regime_set_clicked_with_backtest" time="0.052" /><testcase classname="tests.core.test_dynamic_strategy_switching.TestRegimeChangeDetection" name="test_check_regime_change_no_json_config" time="0.009"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestRegimeChangeDetection" name="test_check_regime_change_no_match" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestRegimeChangeDetection" name="test_check_regime_change_same_strategy" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestRegimeChangeDetection" name="test_check_regime_change_strategy_switched" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestStrategyHasChanged" name="test_has_strategy_changed_no_previous" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestStrategyHasChanged" name="test_has_strategy_changed_same_strategy" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestStrategyHasChanged" name="test_has_strategy_changed_different_strategy" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestSwitchStrategy" name="test_switch_strategy_event_emission" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestSwitchStrategy" name="test_switch_strategy_no_old_strategy" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestSwitchStrategy" name="test_switch_strategy_logging" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestSwitchStrategy" name="test_switch_strategy_state_update" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestSwitchStrategy" name="test_switch_strategy_error_handling" time="0.001"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.core.test_dynamic_strategy_switching.TestIntegrationWithBarProcessing" name="test_on_new_bar_triggers_regime_check" time="0.002"><error message="failed on setup with &quot;pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.&#10;&#10;For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined&quot;">#x1B[1m#x1B[31mtests/core/test_dynamic_strategy_switching.py#x1B[0m:50: in bot_controller
+    #x1B[0mbot_config = BotConfig(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   pydantic.errors.PydanticUserError: `BotConfig` is not fully defined; you should define `MarketType`, then call `BotConfig.model_rebuild()`.#x1B[0m
+#x1B[1m#x1B[31mE   #x1B[0m
+#x1B[1m#x1B[31mE   For further information visit https://errors.pydantic.dev/2.12/u/class-not-fully-defined#x1B[0m</error></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_initialization" time="0.027"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_run_success" time="0.009"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_run_config_load_error" time="0.008"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_run_backtest_error" time="0.008"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_progress_updates" time="0.008"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorker" name="test_worker_with_actual_thread_execution" time="0.007"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorkerSignals" name="test_finished_signal_structure" time="0.007"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase><testcase classname="tests.ui.test_backtest_worker.TestBacktestWorkerSignals" name="test_error_signal_message_format" time="0.007"><failure message="AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'">#x1B[1m#x1B[31m.wsl_venv/lib/python3.12/site-packages/pytestqt/plugin.py#x1B[0m:187: in pytest_runtest_call
+    #x1B[0mresult = #x1B[94myield#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+             ^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1387: in patched
+    #x1B[0m#x1B[94mwith#x1B[39;49;00m #x1B[96mself#x1B[39;49;00m.decoration_helper(patched,#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:137: in __enter__
+    #x1B[0m#x1B[94mreturn#x1B[39;49;00m #x1B[96mnext#x1B[39;49;00m(#x1B[96mself#x1B[39;49;00m.gen)#x1B[90m#x1B[39;49;00m
+           ^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1369: in decoration_helper
+    #x1B[0marg = exit_stack.enter_context(patching)#x1B[90m#x1B[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/contextlib.py#x1B[0m:526: in enter_context
+    #x1B[0mresult = _enter(cm)#x1B[90m#x1B[39;49;00m
+             ^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1458: in __enter__
+    #x1B[0moriginal, local = #x1B[96mself#x1B[39;49;00m.get_original()#x1B[90m#x1B[39;49;00m
+                      ^^^^^^^^^^^^^^^^^^^#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31m/usr/lib/python3.12/unittest/mock.py#x1B[0m:1431: in get_original
+    #x1B[0m#x1B[94mraise#x1B[39;49;00m #x1B[96mAttributeError#x1B[39;49;00m(#x1B[90m#x1B[39;49;00m
+#x1B[1m#x1B[31mE   AttributeError: &lt;module 'src.ui.dialogs.entry_analyzer_popup' from '/mnt/d/03_GIT/02_Python/07_OrderPilot-AI/src/ui/dialogs/entry_analyzer_popup.py'&gt; does not have the attribute 'BacktestEngine'#x1B[0m</failure></testcase></testsuite></testsuites>

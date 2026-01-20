@@ -44,6 +44,7 @@ class ToolbarMixinRow2:
         self.add_chart_marking_button(toolbar)
         # Levels + Export buttons are in ToolbarMixinFeatures
         self.add_entry_analyzer_button(toolbar)  # Phase 5: Entry Analyzer
+        self.add_strategy_concept_button(toolbar)  # Phase 6: Strategy Concept
         self.add_ai_chat_button(toolbar)
         self.add_ai_analysis_button(toolbar)
         self.add_bitunix_trading_button(toolbar)
@@ -269,6 +270,39 @@ class ToolbarMixinRow2:
             self.parent.show_entry_analyzer()
         else:
             logger.warning("show_entry_analyzer not available on chart widget")
+
+    def add_strategy_concept_button(self, toolbar: QToolBar) -> None:
+        """Add Strategy Concept button to toolbar (Phase 6)."""
+        self.parent.strategy_concept_button = QPushButton("📊 Strategy Concept")
+        self.parent.strategy_concept_button.setToolTip(
+            "Strategy Concept öffnen - Pattern-basierte Trading Strategien (Ctrl+Shift+S)"
+        )
+        self.parent.strategy_concept_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #9C27B0;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                color: #BA68C8;
+            }
+        """
+        )
+        self.parent.strategy_concept_button.clicked.connect(self._on_strategy_concept_clicked)
+        toolbar.addWidget(self.parent.strategy_concept_button)
+        logger.info("Toolbar: Strategy Concept button added")
+
+    def _on_strategy_concept_clicked(self) -> None:
+        """Handle Strategy Concept button click."""
+        if hasattr(self.parent, "show_strategy_concept"):
+            self.parent.show_strategy_concept()
+        else:
+            logger.warning("show_strategy_concept not available on chart widget")
 
     def add_ai_chat_button(self, toolbar: QToolBar) -> None:
         self.parent.ai_chat_button = QPushButton("🤖 AI Chat")

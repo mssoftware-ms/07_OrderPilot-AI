@@ -46,7 +46,7 @@ class SettingsTabsBasic:
         layout = QFormLayout(tab)
 
         self.parent.theme_combo = QComboBox()
-        self.parent.theme_combo.addItems(["Dark", "Light"])
+        self.parent.theme_combo.addItems(["Dark Orange", "Dark White"])
         layout.addRow("Theme:", self.parent.theme_combo)
 
         # Auto-connect broker

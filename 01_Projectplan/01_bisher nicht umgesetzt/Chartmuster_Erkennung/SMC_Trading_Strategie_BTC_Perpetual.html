@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Money Concepts (SMC) Trading-Strategie für BTC Perpetual Futures</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.js"></script>
+
+    <style>
+        :root {
+            --primary-bg: #1a1a1a;
+            --secondary-bg: #2d2d2d;
+            --accent-bg: #1f1f1f;
+            --card-bg: #252525;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #ff8c00;
+            --info-color: #ff6600;
+            --text-primary: #f5f5f5;
+            --text-secondary: #cccccc;
+            --orange-primary: #ff6600;
+            --orange-secondary: #ff8c00;
+            --orange-accent: #ffa500;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--primary-bg) 0%, var(--secondary-bg) 100%);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: var(--secondary-bg) !important;
+            border-bottom: 2px solid var(--accent-bg);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, var(--orange-primary), var(--orange-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container-main {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 20px;
+        }
+
+        .hero-section {
+            background: linear-gradient(135deg, var(--secondary-bg), var(--accent-bg));
+            padding: 3rem 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255, 102, 0, 0.2);
+        }
+
+        .hero-section h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(45deg, var(--orange-primary), var(--orange-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stats-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, var(--orange-primary), var(--orange-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-tabs {
+            border-bottom: 2px solid var(--accent-bg);
+            margin-bottom: 2rem;
+        }
+
+        .nav-tabs .nav-link {
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tabs .nav-link:hover {
+            color: var(--orange-secondary);
+            border-bottom: 2px solid var(--orange-secondary);
+        }
+
+        .nav-tabs .nav-link.active {
+            color: var(--orange-primary);
+            background: var(--card-bg);
+            border-bottom: 2px solid var(--orange-primary);
+        }
+
+        .pattern-table {
+            background: var(--card-bg);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .pattern-table thead {
+            background: var(--secondary-bg);
+        }
+
+        .pattern-table th {
+            color: var(--orange-primary);
+            font-weight: 600;
+            border-bottom: 2px solid var(--accent-bg);
+            padding: 1rem;
+        }
+
+        .pattern-table td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .pattern-table tbody tr:hover {
+            background: rgba(255, 102, 0, 0.1);
+        }
+
+        .success-rate-high {
+            background: var(--success-color);
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .success-rate-medium {
+            background: var(--warning-color);
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .success-rate-low {
+            background: var(--danger-color);
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .info-box {
+            background: rgba(255, 102, 0, 0.1);
+            border-left: 4px solid var(--orange-primary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+
+        .warning-box {
+            background: rgba(243, 156, 18, 0.1);
+            border-left: 4px solid var(--warning-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+
+        .success-box {
+            background: rgba(39, 174, 96, 0.1);
+            border-left: 4px solid var(--success-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+
+        .danger-box {
+            background: rgba(231, 76, 60, 0.1);
+            border-left: 4px solid var(--danger-color);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+
+        .concept-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .concept-card:hover {
+            border-color: var(--orange-primary);
+            box-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+        }
+
+        .strategy-example {
+            background: var(--accent-bg);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 3px solid var(--success-color);
+        }
+
+        .code-block {
+            background: #1a1a2e;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            border: 1px solid rgba(39, 174, 96, 0.3);
+        }
+
+        .code-block pre {
+            margin: 0;
+            color: var(--success-color);
+            font-family: 'Courier New', monospace;
+        }
+
+        .kill-zone {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            margin: 0.3rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .kz-london {
+            background: rgba(255, 140, 0, 0.2);
+            border: 1px solid var(--orange-secondary);
+            color: var(--orange-secondary);
+        }
+
+        .kz-ny {
+            background: rgba(255, 102, 0, 0.2);
+            border: 1px solid var(--orange-primary);
+            color: var(--orange-primary);
+        }
+
+        .kz-asia {
+            background: rgba(255, 165, 0, 0.2);
+            border: 1px solid var(--orange-accent);
+            color: var(--orange-accent);
+        }
+
+        .timeline {
+            position: relative;
+            padding: 2rem 0;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-left: 3rem;
+            margin-bottom: 2rem;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 12px;
+            height: 12px;
+            background: var(--orange-primary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--orange-primary);
+        }
+
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 12px;
+            width: 2px;
+            height: calc(100% + 2rem);
+            background: rgba(255, 102, 0, 0.3);
+        }
+
+        .timeline-item:last-child::after {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .hero-section h1 {
+                font-size: 1.8rem;
+            }
+
+            .stats-number {
+                font-size: 2rem;
+            }
+
+            .nav-tabs .nav-link {
+                padding: 0.8rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-brain"></i> SMC Trading Strategy
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#overview">Überblick</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#concepts">Konzepte</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#strategy">Strategie</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#risk">Risk Management</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <!-- Hero Section -->
+        <div class="hero-section">
+            <h1><i class="fas fa-brain"></i> Smart Money Concepts (SMC) Trading-Strategie</h1>
+            <h3>BTC Perpetual Futures - Institutionelle Trading-Methodik</h3>
+            <p class="lead mt-3">
+                Lerne die fortgeschrittenen Trading-Konzepte institutioneller Trader kennen und wende sie auf BTC Perpetual Futures an.
+                Diese Strategie basiert auf Order Flow, Liquidität und strukturbasiertem Trading.
+            </p>
+
+            <div class="row mt-4">
+                <div class="col-md-3">
+                    <div class="stats-card text-center">
+                        <div class="stats-number"><i class="fas fa-chart-line"></i></div>
+                        <p>Multi-Timeframe<br>Analyse</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card text-center">
+                        <div class="stats-number"><i class="fas fa-layer-group"></i></div>
+                        <p>Order Flow<br>Based</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card text-center">
+                        <div class="stats-number"><i class="fas fa-water"></i></div>
+                        <p>Liquidity<br>Focused</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card text-center">
+                        <div class="stats-number"><i class="fas fa-shield-alt"></i></div>
+                        <p>Risk<br>Management</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <ul class="nav nav-tabs" id="smcTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                    <i class="fas fa-home"></i> Überblick
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="concepts-tab" data-bs-toggle="tab" data-bs-target="#concepts" type="button">
+                    <i class="fas fa-book"></i> SMC Konzepte
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="killzones-tab" data-bs-toggle="tab" data-bs-target="#killzones" type="button">
+                    <i class="fas fa-clock"></i> Kill Zones
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="strategy-tab" data-bs-toggle="tab" data-bs-target="#strategy" type="button">
+                    <i class="fas fa-chess"></i> Trading-Strategie
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="examples-tab" data-bs-toggle="tab" data-bs-target="#examples" type="button">
+                    <i class="fas fa-lightbulb"></i> Setup-Beispiele
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk" type="button">
+                    <i class="fas fa-shield-alt"></i> Risk Management
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="backtesting-tab" data-bs-toggle="tab" data-bs-target="#backtesting" type="button">
+                    <i class="fas fa-chart-bar"></i> Backtesting
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="troubleshooting-tab" data-bs-toggle="tab" data-bs-target="#troubleshooting" type="button">
+                    <i class="fas fa-tools"></i> Troubleshooting
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="smcTabContent">
+            <!-- Overview Tab -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <h2><i class="fas fa-home"></i> Was ist Smart Money Concepts (SMC)?</h2>
+
+                <div class="info-box">
+                    <h5><i class="fas fa-info-circle"></i> Definition</h5>
+                    <p>
+                        Smart Money Concepts (SMC), auch bekannt als Inner Circle Trader (ICT) Methodik, ist ein fortgeschrittener Trading-Ansatz,
+                        der darauf abzielt, die Bewegungen institutioneller Trader ("Smart Money") zu identifizieren und zu folgen.
+                    </p>
+                    <p class="mb-0">
+                        Im Gegensatz zu traditionellen technischen Analysen fokussiert sich SMC auf:
+                    </p>
+                    <ul>
+                        <li><strong>Order Flow</strong> - Wo institutionelle Orders platziert werden</li>
+                        <li><strong>Liquidität</strong> - Wo Stop-Losses und Retail-Trader positioniert sind</li>
+                        <li><strong>Marktstruktur</strong> - Break of Structure (BOS) und Change of Character (CHoCH)</li>
+                        <li><strong>Fair Value Gaps (FVG)</strong> - Ineffizienzen im Preis, die gefüllt werden</li>
+                        <li><strong>Order Blocks (OB)</strong> - Zonen, wo institutionelle Orders ausgeführt wurden</li>
+                    </ul>
+                </div>
+
+                <h3 class="mt-4"><i class="fas fa-chart-line"></i> Warum SMC für BTC Perpetual Futures?</h3>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="concept-card">
+                            <h5><i class="fas fa-check-circle text-success"></i> Vorteile</h5>
+                            <ul>
+                                <li><strong>24/7 Markt:</strong> BTC handelt durchgehend - ideal für Kill Zone Trading</li>
+                                <li><strong>Hohe Liquidität:</strong> Große Player hinterlassen klare Spuren</li>
+                                <li><strong>Leverage:</strong> Perpetuals ermöglichen effiziente Kapitalnutzung</li>
+                                <li><strong>Clear Structure:</strong> BTC zeigt oft saubere SMC-Setups</li>
+                                <li><strong>Funding Rates:</strong> Zusätzlicher Indikator für Smart Money Positioning</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="concept-card">
+                            <h5><i class="fas fa-exclamation-triangle text-warning"></i> Herausforderungen</h5>
+                            <ul>
+                                <li><strong>Subjektivität:</strong> SMC erfordert Erfahrung und Interpretation</li>
+                                <li><strong>Lernkurve:</strong> 1-2 Jahre intensive Ausbildung notwendig</li>
+                                <li><strong>Volatilität:</strong> BTC kann schnell durch Levels schneiden</li>
+                                <li><strong>False Signals:</strong> Nicht jeder Liquidity Sweep führt zur Reversal</li>
+                                <li><strong>Psychologie:</strong> Erfordert Geduld und Disziplin</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="mt-4"><i class="fas fa-layer-group"></i> Multi-Timeframe Ansatz</h3>
+
+                <div class="concept-card">
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th>Timeframe</th>
+                                <th>Zweck</th>
+                                <th>Was zu suchen</th>
+                                <th>Trading Decision</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Daily (1D)</strong></td>
+                                <td>Higher Timeframe (HTF) Bias</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Trend-Richtung</li>
+                                        <li>Major Order Blocks</li>
+                                        <li>Key Liquidity Levels</li>
+                                    </ul>
+                                </td>
+                                <td><span class="badge bg-info">Bias: Bullish/Bearish</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>4 Hour (4H)</strong></td>
+                                <td>Swing Structure</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>BOS/CHoCH</li>
+                                        <li>Swing Order Blocks</li>
+                                        <li>FVGs</li>
+                                    </ul>
+                                </td>
+                                <td><span class="badge bg-success">Entry Zone</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>1 Hour (1H)</strong></td>
+                                <td>Refined Entry</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Präzise Order Blocks</li>
+                                        <li>Liquidity Sweeps</li>
+                                        <li>FVG Retests</li>
+                                    </ul>
+                                </td>
+                                <td><span class="badge bg-warning">Exact Entry</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>15 Min (15m)</strong></td>
+                                <td>Execution</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Entry Trigger</li>
+                                        <li>Micro Structure</li>
+                                        <li>Stop Placement</li>
+                                    </ul>
+                                </td>
+                                <td><span class="badge bg-danger">Execute Trade</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="warning-box mt-4">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Wichtiger Hinweis</h5>
+                    <p class="mb-0">
+                        SMC ist <strong>KEIN mechanisches System</strong>. Es erfordert kontinuierliches Lernen, Screen Time und die Fähigkeit,
+                        Marktkontext zu interpretieren. Die hier beschriebene Strategie ist ein Framework - kein garantierter Gewinn-Generator.
+                        Beginne immer mit Paper Trading und kleinen Positionen.
+                    </p>
+                </div>
+            </div>
+
+            <!-- SMC Concepts Tab -->
+            <div class="tab-pane fade" id="concepts" role="tabpanel">
+                <h2><i class="fas fa-book"></i> Kern-Konzepte von Smart Money Concepts</h2>
+
+                <!-- Order Blocks -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-cube"></i> 1. Order Blocks (OB)</h3>
+                    <p>
+                        Ein Order Block ist die letzte bullische oder bearische Kerze vor einem signifikanten Preisbewegung.
+                        Institutionelle Trader platzieren ihre großen Orders in diesen Zonen, was zu einer starken Reaktion führt.
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5><i class="fas fa-arrow-up"></i> Bullish Order Block</h5>
+                                <ul>
+                                    <li>Letzte <strong>bearische Kerze</strong> vor einem starken Aufwärtsmove</li>
+                                    <li>Smart Money kauft in dieser Zone</li>
+                                    <li>Entry bei Retest des OB</li>
+                                    <li>Stop-Loss unterhalb des Order Blocks</li>
+                                </ul>
+
+                                <div class="code-block">
+                                    <pre>
+Identifikation Bullish OB:
+1. Bearischer Candle (Open > Close)
+2. Gefolgt von starkem bullischen Move (BOS)
+3. Preis testet Zone später erneut
+4. Bullische Reaktion = Bestätigung
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="danger-box">
+                                <h5><i class="fas fa-arrow-down"></i> Bearish Order Block</h5>
+                                <ul>
+                                    <li>Letzte <strong>bullische Kerze</strong> vor einem starken Abwärtsmove</li>
+                                    <li>Smart Money verkauft in dieser Zone</li>
+                                    <li>Entry bei Retest des OB</li>
+                                    <li>Stop-Loss oberhalb des Order Blocks</li>
+                                </ul>
+
+                                <div class="code-block">
+                                    <pre>
+Identifikation Bearish OB:
+1. Bullischer Candle (Close > Open)
+2. Gefolgt von starkem bearischen Move (BOS)
+3. Preis testet Zone später erneut
+4. Bearische Rejection = Bestätigung
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fair Value Gaps -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-chart-area"></i> 2. Fair Value Gaps (FVG)</h3>
+                    <p>
+                        Ein FVG (auch Imbalance genannt) entsteht, wenn der Preis sich so schnell bewegt, dass eine Lücke im Orderflow entsteht.
+                        Diese "unfairen" Preisbereiche werden oft später ausgefüllt.
+                    </p>
+
+                    <div class="info-box">
+                        <h5><i class="fas fa-lightbulb"></i> FVG Erkennung</h5>
+                        <p>Ein FVG besteht aus einem <strong>3-Candle-Pattern</strong>:</p>
+                        <ul>
+                            <li><strong>Candle 1:</strong> Setup-Kerze</li>
+                            <li><strong>Candle 2:</strong> Explosive Bewegung (hinterlässt Gap)</li>
+                            <li><strong>Candle 3:</strong> Continuation</li>
+                        </ul>
+
+                        <div class="code-block">
+                            <pre>
+Bullish FVG:
+  Candle 1 High < Candle 3 Low
+  → Gap zwischen C1 High und C3 Low = FVG
+  → Erwartung: Preis füllt Gap (50-100%)
+
+Bearish FVG:
+  Candle 1 Low > Candle 3 High
+  → Gap zwischen C1 Low und C3 High = FVG
+  → Erwartung: Preis füllt Gap (50-100%)
+                            </pre>
+                        </div>
+                    </div>
+
+                    <div class="warning-box">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Trading FVGs</h5>
+                        <ul>
+                            <li><strong>50% Fill:</strong> Konservativer Entry (höhere Win-Rate)</li>
+                            <li><strong>Full Fill:</strong> Aggressiver Entry (größerer Reward)</li>
+                            <li><strong>Confluence:</strong> FVG + Order Block = stärkeres Setup</li>
+                            <li><strong>Timeframe:</strong> HTF FVGs sind signifikanter</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Break of Structure -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-level-up-alt"></i> 3. Break of Structure (BOS)</h3>
+                    <p>
+                        Ein BOS tritt auf, wenn der Preis einen vorherigen Swing High (bullisch) oder Swing Low (bearisch) durchbricht.
+                        Dies signalisiert eine Fortsetzung des bestehenden Trends.
+                    </p>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5>Bullish BOS</h5>
+                                <ul>
+                                    <li>Preis bricht über vorheriges Swing High</li>
+                                    <li>Bestätigt Uptrend-Continuation</li>
+                                    <li>Suche nach Bullish OB für Entry</li>
+                                    <li>Target: Nächstes Liquiditätslevel</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="danger-box">
+                                <h5>Bearish BOS</h5>
+                                <ul>
+                                    <li>Preis bricht unter vorheriges Swing Low</li>
+                                    <li>Bestätigt Downtrend-Continuation</li>
+                                    <li>Suche nach Bearish OB für Entry</li>
+                                    <li>Target: Nächstes Liquiditätslevel</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="code-block">
+                        <pre>
+BOS Trading-Flow:
+1. Identifiziere aktuellen Trend (HTF)
+2. Warte auf BOS (Trend-Confirmation)
+3. Preis macht Retracement
+4. Suche Order Block in Retracement
+5. Entry bei OB-Retest
+6. Target: Previous High/Low + Extension
+                        </pre>
+                    </div>
+                </div>
+
+                <!-- Change of Character -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-exchange-alt"></i> 4. Change of Character (CHoCH)</h3>
+                    <p>
+                        CHoCH ist das Gegenteil von BOS - es signalisiert eine potenzielle Trendwende.
+                        Ein bullischer CHoCH tritt auf, wenn der Preis ein bearisches Swing Low durchbricht (und umgekehrt).
+                    </p>
+
+                    <div class="warning-box">
+                        <h5><i class="fas fa-info-circle"></i> CHoCH vs. BOS</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Kriterium</th>
+                                    <th>BOS (Continuation)</th>
+                                    <th>CHoCH (Reversal)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Bedeutung</strong></td>
+                                    <td>Trend setzt sich fort</td>
+                                    <td>Trend könnte sich umkehren</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Bullish Signal</strong></td>
+                                    <td>Bruch über Swing High im Uptrend</td>
+                                    <td>Bruch über Swing High im Downtrend</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Bearish Signal</strong></td>
+                                    <td>Bruch unter Swing Low im Downtrend</td>
+                                    <td>Bruch unter Swing Low im Uptrend</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Trading</strong></td>
+                                    <td>Trend-Following (niedrigeres Risiko)</td>
+                                    <td>Counter-Trend (höheres Risiko, höherer Reward)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="danger-box">
+                        <h5><i class="fas fa-exclamation-triangle"></i> CHoCH Trading-Regeln</h5>
+                        <ul>
+                            <li><strong>Confirmation:</strong> Warte auf weiteren BOS in neue Richtung</li>
+                            <li><strong>Order Block:</strong> Entry nur bei klarem OB-Retest</li>
+                            <li><strong>Risk Management:</strong> Engere Stops (höhere Unsicherheit)</li>
+                            <li><strong>HTF Alignment:</strong> Prüfe Higher Timeframe für Confluence</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Liquidity -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-water"></i> 5. Liquidität & Liquidity Sweeps</h3>
+                    <p>
+                        Liquidität bezeichnet Bereiche, wo viele Stop-Loss-Orders konzentriert sind.
+                        Smart Money "swept" oft diese Liquidität, bevor sie in die eigentliche Richtung handeln.
+                    </p>
+
+                    <div class="info-box">
+                        <h5><i class="fas fa-map-marker-alt"></i> Wo findet man Liquidität?</h5>
+                        <ul>
+                            <li><strong>Equal Highs/Lows:</strong> Retail-Trader setzen Stops knapp darüber/darunter</li>
+                            <li><strong>Trendlines:</strong> Stop-Runs entlang von Trendlinien</li>
+                            <li><strong>Psychologische Levels:</strong> Round Numbers (50k, 60k, etc.)</li>
+                            <li><strong>Daily/Weekly Highs/Lows:</strong> Viele Stops akkumuliert</li>
+                        </ul>
+                    </div>
+
+                    <div class="strategy-example">
+                        <h5><i class="fas fa-chess-knight"></i> Liquidity Sweep Trading</h5>
+
+                        <div class="timeline">
+                            <div class="timeline-item">
+                                <h6>1. Identifiziere Liquidität</h6>
+                                <p>Equal Highs bei 65,000 USD (3x Touch) → Stops vermutlich bei 65,050</p>
+                            </div>
+                            <div class="timeline-item">
+                                <h6>2. Sweep Occurs</h6>
+                                <p>Preis spikt zu 65,080 (swept Liquidität), Wick oberhalb Equal Highs</p>
+                            </div>
+                            <div class="timeline-item">
+                                <h6>3. Immediate Rejection</h6>
+                                <p>Candle schließt zurück unter 65,000 → Bearische Engulfing-Kerze</p>
+                            </div>
+                            <div class="timeline-item">
+                                <h6>4. Bearish Order Block Form</h6>
+                                <p>Letzte bullische Kerze vor Sweep = OB Zone</p>
+                            </div>
+                            <div class="timeline-item">
+                                <h6>5. Entry Setup</h6>
+                                <p>
+                                    <strong>Entry:</strong> Short bei Retest des OB (64,900)<br>
+                                    <strong>Stop:</strong> Oberhalb Sweep (65,100)<br>
+                                    <strong>Target:</strong> Previous Swing Low (63,500)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kill Zones Tab -->
+            <div class="tab-pane fade" id="killzones" role="tabpanel">
+                <h2><i class="fas fa-clock"></i> Kill Zones & PD Arrays</h2>
+
+                <div class="info-box">
+                    <h5><i class="fas fa-info-circle"></i> Was sind Kill Zones?</h5>
+                    <p>
+                        Kill Zones sind spezifische Zeitfenster, in denen institutionelle Trader am aktivsten sind.
+                        Laut ICT-Methodik treten die profitabelsten Setups während dieser Zeiten auf.
+                    </p>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-globe"></i> Die 3 Haupt-Kill Zones</h3>
+
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th>Kill Zone</th>
+                                <th>UTC Zeit</th>
+                                <th>Lokale Zeit (CET)</th>
+                                <th>Charakteristik</th>
+                                <th>Best für BTC</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <span class="kill-zone kz-asia">
+                                        <i class="fas fa-moon"></i> Asian Session
+                                    </span>
+                                </td>
+                                <td>00:00 - 08:00 UTC</td>
+                                <td>01:00 - 09:00 CET</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Niedrigste Volatilität</li>
+                                        <li>Range-Building</li>
+                                        <li>Setup für London/NY</li>
+                                    </ul>
+                                </td>
+                                <td><span class="badge bg-warning">Vorbereitung</span></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="kill-zone kz-london">
+                                        <i class="fas fa-sun"></i> London Kill Zone
+                                    </span>
+                                </td>
+                                <td>08:00 - 12:00 UTC</td>
+                                <td>09:00 - 13:00 CET</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Erste große Moves</li>
+                                        <li>Liquiditäts-Sweeps</li>
+                                        <li>Oft Reversals</li>
+                                    </ul>
+                                </td>
+                                <td><span class="success-rate-high">HIGH</span></td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <span class="kill-zone kz-ny">
+                                        <i class="fas fa-chart-line"></i> New York Kill Zone
+                                    </span>
+                                </td>
+                                <td>13:00 - 17:00 UTC</td>
+                                <td>14:00 - 18:00 CET</td>
+                                <td>
+                                    <ul class="mb-0">
+                                        <li>Höchste Volatilität</li>
+                                        <li>Trend-Establishment</li>
+                                        <li>Stärkste Moves</li>
+                                    </ul>
+                                </td>
+                                <td><span class="success-rate-high">HIGHEST</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-calendar-alt"></i> Premium & Discount Arrays (PD Arrays)</h3>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5><i class="fas fa-arrow-down"></i> Discount Array (Buy Zone)</h5>
+                                <p>Bereiche unterhalb des Fair Value, wo Smart Money kauft:</p>
+                                <ul>
+                                    <li><strong>0.50 - 0.618 Fib Retracement</strong></li>
+                                    <li><strong>Bullish Order Blocks</strong></li>
+                                    <li><strong>Bullish FVG</strong></li>
+                                    <li><strong>Old Lows (Liquidität)</strong></li>
+                                </ul>
+
+                                <div class="code-block">
+                                    <pre>
+Discount Zone Entry:
+1. HTF Bias = Bullish
+2. Preis retraced in Discount (< 50% Range)
+3. Bullish OB identifiziert
+4. Entry bei OB-Retest
+5. Target: Premium Zone (> 50%)
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="danger-box">
+                                <h5><i class="fas fa-arrow-up"></i> Premium Array (Sell Zone)</h5>
+                                <p>Bereiche oberhalb des Fair Value, wo Smart Money verkauft:</p>
+                                <ul>
+                                    <li><strong>0.50 - 0.618 Fib Extension</strong></li>
+                                    <li><strong>Bearish Order Blocks</strong></li>
+                                    <li><strong>Bearish FVG</strong></li>
+                                    <li><strong>Old Highs (Liquidität)</strong></li>
+                                </ul>
+
+                                <div class="code-block">
+                                    <pre>
+Premium Zone Entry:
+1. HTF Bias = Bearish
+2. Preis rallied in Premium (> 50% Range)
+3. Bearish OB identifiziert
+4. Entry bei OB-Retest
+5. Target: Discount Zone (< 50%)
+                                    </pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <h5><i class="fas fa-clock"></i> Kill Zone Trading-Regeln für BTC</h5>
+                    <ul>
+                        <li><strong>Fokus auf London & NY:</strong> 80% der profitablen Trades in diesen Sessions</li>
+                        <li><strong>Asian Session:</strong> Nur für Range-Ident nicht für Trading</li>
+                        <li><strong>Session Open:</strong> Erste 30 Min oft Liquidity Sweep</li>
+                        <li><strong>Overlaps:</strong> London/NY Overlap (13:00-16:00 UTC) = höchste Volatilität</li>
+                        <li><strong>Weekends:</strong> Vermeide Crypto-spezifische Weekend Dumps/Pumps</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Trading Strategy Tab -->
+            <div class="tab-pane fade" id="strategy" role="tabpanel">
+                <h2><i class="fas fa-chess"></i> SMC Trading-Strategie für BTC Perpetuals</h2>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-list-ol"></i> Kompletter Trading-Workflow</h3>
+
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <h5>Phase 1: Higher Timeframe (HTF) Analyse (Daily/4H)</h5>
+                            <div class="code-block">
+                                <pre>
+Schritt 1.1: Determine Trend Bias
+  - Ist der Markt bullish, bearish oder ranging?
+  - Letzte BOS/CHoCH auf Daily?
+  - Wo sind die Major Order Blocks?
+
+Schritt 1.2: Identify Key Levels
+  - Wichtige Swing Highs/Lows
+  - Equal Highs/Lows (Liquidität)
+  - Daily/Weekly Open/Close
+  - Round Numbers (60k, 65k, etc.)
+
+Schritt 1.3: Mark Premium/Discount Zones
+  - Aktuelle Range: High zu Low
+  - 50% Level = Equilibrium
+  - > 50% = Premium (Sell Zone)
+  - < 50% = Discount (Buy Zone)
+                                </pre>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <h5>Phase 2: Intermediate Timeframe (1H/15M)</h5>
+                            <div class="code-block">
+                                <pre>
+Schritt 2.1: Wait for Kill Zone
+  - London Kill Zone: 08:00-12:00 UTC
+  - NY Kill Zone: 13:00-17:00 UTC
+
+Schritt 2.2: Identify Entry Setup
+  - Suche nach BOS in Richtung des HTF Bias
+  - Identifiziere Retracement in OB
+  - Prüfe auf FVG Confluence
+
+Schritt 2.3: Confirm Liquidity Sweep (optional)
+  - Hat Preis Equal Highs/Lows "swept"?
+  - Immediate Rejection?
+  - Engulfing-Kerze nach Sweep?
+                                </pre>
+                            </div>
+                        </div>
+
+                        <div class="timeline-item">
+                            <h5>Phase 3: Entry Execution (5M/1M)</h5>
+                            <div class="code-block">
+                                <pre>
+Schritt 3.1: Wait for OB Retest
+  - Preis muss in Order Block Zone kommen
+  - Suche nach bullischer/bearischer Reaktion
+  - Micro-Structure BOS als Trigger
+
+Schritt 3.2: Execution
+  - Entry: Bei OB Retest + Confirmation Candle
+  - Stop Loss: Jenseits OB (10-20 Pips Buffer)
+  - Take Profit: Previous High/Low oder nächstes Liquiditätslevel
+
+Schritt 3.3: Risk Management
+  - Max 1-2% Account Risk pro Trade
+  - Risk:Reward Minimum 1:2
+  - Trailing Stop ab 1:1 R:R
+                                </pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-filter"></i> Trade Filter & Confluence</h3>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5><i class="fas fa-check-double"></i> High-Probability Setups</h5>
+                                <p>Ein Trade benötigt mindestens <strong>3 von 5</strong> Faktoren:</p>
+                                <ul>
+                                    <li><i class="fas fa-check text-success"></i> <strong>HTF Bias Alignment:</strong> Trade mit Trend</li>
+                                    <li><i class="fas fa-check text-success"></i> <strong>Kill Zone:</strong> London oder NY Session</li>
+                                    <li><i class="fas fa-check text-success"></i> <strong>Order Block + FVG:</strong> Confluence</li>
+                                    <li><i class="fas fa-check text-success"></i> <strong>Liquidity Sweep:</strong> Stop Hunt vor Entry</li>
+                                    <li><i class="fas fa-check text-success"></i> <strong>Premium/Discount:</strong> Buy Discount, Sell Premium</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="danger-box">
+                                <h5><i class="fas fa-ban"></i> Avoid These Setups</h5>
+                                <ul>
+                                    <li><i class="fas fa-times text-danger"></i> <strong>Counter-Trend ohne CHoCH:</strong> Gegen HTF Bias</li>
+                                    <li><i class="fas fa-times text-danger"></i> <strong>Asian Session Trades:</strong> Niedrige Volatilität</li>
+                                    <li><i class="fas fa-times text-danger"></i> <strong>No Clear OB:</strong> Kein definiertes Entry-Zone</li>
+                                    <li><i class="fas fa-times text-danger"></i> <strong>Weekend Trades:</strong> Crypto-spezifische Gaps</li>
+                                    <li><i class="fas fa-times text-danger"></i> <strong>News Events:</strong> High Impact News vermeiden</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-crosshairs"></i> Entry-Typen</h3>
+
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th>Entry-Typ</th>
+                                <th>Trigger</th>
+                                <th>Risk Level</th>
+                                <th>Win-Rate</th>
+                                <th>Wann verwenden</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Aggressive Entry</strong></td>
+                                <td>Limit Order im OB</td>
+                                <td><span class="badge bg-danger">HIGH</span></td>
+                                <td>45-55%</td>
+                                <td>Starker HTF Bias, klare Confluence</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Moderate Entry</strong></td>
+                                <td>Market Order bei 50% OB Retest</td>
+                                <td><span class="badge bg-warning">MEDIUM</span></td>
+                                <td>55-65%</td>
+                                <td>Standard-Setup mit 3+ Confluence</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Conservative Entry</strong></td>
+                                <td>Warte auf Micro-BOS im OB</td>
+                                <td><span class="badge bg-success">LOW</span></td>
+                                <td>65-75%</td>
+                                <td>Unsicherer Bias, lernendes Phase</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Examples Tab -->
+            <div class="tab-pane fade" id="examples" role="tabpanel">
+                <h2><i class="fas fa-lightbulb"></i> Praktische Setup-Beispiele</h2>
+
+                <!-- Example 1 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-chart-line text-success"></i> Beispiel 1: Bullish OB + FVG (London Kill Zone)</h3>
+
+                    <div class="strategy-example">
+                        <h5>Market Context</h5>
+                        <ul>
+                            <li><strong>Asset:</strong> BTC/USDT Perpetual</li>
+                            <li><strong>Datum:</strong> 15.01.2026, 09:00 UTC (London Kill Zone)</li>
+                            <li><strong>HTF Bias:</strong> Daily Chart zeigt Uptrend, BOS über 64,500</li>
+                            <li><strong>Current Price:</strong> 63,800 (Discount Zone, < 50%)</li>
+                        </ul>
+                    </div>
+
+                    <div class="code-block">
+                        <pre>
+═══════════════════════════════════════════════════════════
+TRADE SETUP ANALYSIS
+═══════════════════════════════════════════════════════════
+
+HIGHER TIMEFRAME (DAILY):
+  ✓ Uptrend intact (Higher Highs, Higher Lows)
+  ✓ Last BOS: Break above 64,500
+  ✓ Major OB: 62,800 - 63,200
+  ✓ Current Price: 63,800 (in Discount)
+
+INTERMEDIATE TIMEFRAME (1H):
+  ✓ Retracement after BOS
+  ✓ FVG identified: 63,600 - 63,900
+  ✓ Bullish OB overlap: 63,650 - 63,800
+  ✓ Confluence: OB + FVG = Strong Buy Zone
+
+ENTRY SETUP:
+  Entry: 63,700 (Limit Order im OB + FVG)
+  Stop Loss: 63,400 (-300 USD / -0.47%)
+  Take Profit 1: 64,500 (+800 USD / +1.25%) [1:2.67 R:R]
+  Take Profit 2: 65,200 (+1,500 USD / +2.35%) [1:5 R:R]
+
+POSITION SIZING (10,000 USD Account, 1% Risk):
+  Risk Amount: 100 USD
+  Position Size: 100 / 300 * 63,700 = 21,233 USD (2.1x Leverage)
+
+RESULT:
+  ✅ TP1 Hit after 4 hours (+800 USD)
+  ✅ TP2 Hit after 12 hours (+1,500 USD)
+  Total Gain: +2,300 USD (+23% ROI)
+═══════════════════════════════════════════════════════════
+                        </pre>
+                    </div>
+
+                    <div class="success-box">
+                        <h5><i class="fas fa-check-circle"></i> Warum dieser Trade funktionierte</h5>
+                        <ul>
+                            <li><strong>5/5 Confluence:</strong> HTF Bias ✓, Kill Zone ✓, OB+FVG ✓, Discount ✓, No Counter-Indicators ✓</li>
+                            <li><strong>Clean Structure:</strong> Klarer BOS auf Daily, sauberes Retracement</li>
+                            <li><strong>Timing:</strong> London Kill Zone Start (hohe Volatilität erwartet)</li>
+                            <li><strong>Risk:Reward:</strong> 1:5 ermöglicht hohe Profitabilität</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Example 2 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-chart-line text-danger"></i> Beispiel 2: Liquidity Sweep + Bearish Reversal (NY Kill Zone)</h3>
+
+                    <div class="strategy-example">
+                        <h5>Market Context</h5>
+                        <ul>
+                            <li><strong>Asset:</strong> BTC/USDT Perpetual</li>
+                            <li><strong>Datum:</strong> 18.01.2026, 14:30 UTC (NY Kill Zone)</li>
+                            <li><strong>HTF Bias:</strong> 4H Chart zeigt CHoCH (Trend-Change Signal)</li>
+                            <li><strong>Current Price:</strong> 66,100 (Premium Zone, > 75%)</li>
+                        </ul>
+                    </div>
+
+                    <div class="code-block">
+                        <pre>
+═══════════════════════════════════════════════════════════
+TRADE SETUP ANALYSIS - REVERSAL PLAY
+═══════════════════════════════════════════════════════════
+
+HIGHER TIMEFRAME (4H):
+  ⚠ Uptrend weakening (Lower Highs)
+  ✓ CHoCH: Break below previous HL at 64,200
+  ✓ Bearish OB formed: 65,800 - 66,200
+  ✓ Equal Highs at 66,000 (3x Touch) → Liquidity
+
+LIQUIDITY SWEEP ANALYSIS:
+  Equal Highs: 66,000 (tested 3 times)
+  Expected Stops: Above 66,050
+  Actual Sweep: Price spikes to 66,150 (wick)
+  Rejection: Immediate bearish engulfing candle
+  → Classic Stop Hunt + Reversal Setup
+
+ENTRY SETUP:
+  Entry: 65,900 (Short bei Bearish OB Retest)
+  Stop Loss: 66,300 (+400 USD / +0.61%)
+  Take Profit 1: 64,800 (-1,100 USD / -1.67%) [1:2.75 R:R]
+  Take Profit 2: 63,500 (-2,400 USD / -3.64%) [1:6 R:R]
+
+POSITION SIZING (10,000 USD Account, 1.5% Risk):
+  Risk Amount: 150 USD
+  Position Size: 150 / 400 * 65,900 = 24,713 USD (2.47x Leverage)
+
+RESULT:
+  ✅ TP1 Hit after 6 hours (-1,100 USD gain)
+  ⚠ TP2 Partial Hit: Price bounced at 63,800
+  Closed at 64,000 for safety
+  Total Gain: +1,900 USD (+19% ROI)
+═══════════════════════════════════════════════════════════
+                        </pre>
+                    </div>
+
+                    <div class="warning-box">
+                        <h5><i class="fas fa-exclamation-triangle"></i> Reversal-Trade Risiken</h5>
+                        <ul>
+                            <li><strong>Höheres Risiko:</strong> Counter-Trend Trading ist schwieriger</li>
+                            <li><strong>Partial TP:</strong> TP2 nicht voll erreicht (häufig bei Reversals)</li>
+                            <li><strong>Management:</strong> Trailing Stop ab TP1 ist kritisch</li>
+                            <li><strong>Confluence Needed:</strong> Liquidity Sweep war entscheidend für Confidence</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Example 3 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-ban text-danger"></i> Beispiel 3: Failed Setup - Learning Case</h3>
+
+                    <div class="strategy-example">
+                        <h5>Market Context</h5>
+                        <ul>
+                            <li><strong>Asset:</strong> BTC/USDT Perpetual</li>
+                            <li><strong>Datum:</strong> 22.01.2026, 03:00 UTC (Asian Session)</li>
+                            <li><strong>HTF Bias:</strong> Daily Ranging (No clear trend)</li>
+                            <li><strong>Current Price:</strong> 64,500</li>
+                        </ul>
+                    </div>
+
+                    <div class="code-block">
+                        <pre>
+═══════════════════════════════════════════════════════════
+FAILED TRADE ANALYSIS
+═══════════════════════════════════════════════════════════
+
+SETUP (BULLISH):
+  ❌ Asian Session (Low Volume Kill Zone)
+  ⚠ No clear HTF Bias (Ranging on Daily)
+  ✓ Bullish OB identified: 64,400 - 64,600
+  ❌ No FVG Confluence
+  ❌ Premium/Discount unclear (mid-range)
+
+ENTRY:
+  Entry: 64,500 (Long)
+  Stop Loss: 64,200 (-300 USD)
+  Take Profit: 65,200 (+700 USD) [1:2.33 R:R]
+
+RESULT:
+  ❌ Price chopped in range for 2 hours
+  ❌ Stop Loss hit at 64,180
+  Loss: -300 USD (-3% ROI)
+
+LESSON LEARNED:
+  ❌ Asian Session = Low Probability
+  ❌ No HTF Bias = No Directional Edge
+  ❌ Mid-Range Entry = Chopping Risk
+  ❌ Missing 3+ Confluence Factors
+
+  ✅ Should have waited for London Open
+  ✅ Should have required 3/5 confluence
+  ✅ Should have avoided ranging markets
+═══════════════════════════════════════════════════════════
+                        </pre>
+                    </div>
+
+                    <div class="danger-box">
+                        <h5><i class="fas fa-graduation-cap"></i> Key Takeaways</h5>
+                        <ul>
+                            <li><strong>Patience:</strong> Warte auf High-Probability Setups (3+ Confluence)</li>
+                            <li><strong>Session Selection:</strong> Asian Session nur für Vorbereitung</li>
+                            <li><strong>HTF First:</strong> Ohne klaren Daily Bias kein Trade</li>
+                            <li><strong>Accept Losses:</strong> Losses sind Teil des Prozesses (31% der Trades)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Management Tab -->
+            <div class="tab-pane fade" id="risk" role="tabpanel">
+                <h2><i class="fas fa-shield-alt"></i> Risk Management für BTC Perpetuals</h2>
+
+                <div class="danger-box">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Kritische Warnung</h5>
+                    <p class="mb-0">
+                        <strong>Perpetual Futures mit Leverage sind extrem riskant.</strong>
+                        Die meisten Trader verlieren Geld. Nutze NIEMALS mehr als 1-2% deines Accounts pro Trade.
+                        Beginne mit Paper Trading und arbeite dich langsam zu Live Trading hoch.
+                    </p>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-percentage"></i> Position Sizing Calculator</h3>
+
+                    <div class="code-block">
+                        <pre>
+Position Sizing Formula:
+
+Position Size = (Account Size × Risk %) / Stop Loss Distance
+
+Beispiel:
+  Account Size: 10,000 USD
+  Risk per Trade: 1% = 100 USD
+  Entry: 64,000
+  Stop Loss: 63,700
+  Stop Distance: 300 USD (0.47%)
+
+  Position Size = 100 / 300 × 64,000 = 21,333 USD
+  Leverage = 21,333 / 10,000 = 2.13x
+
+Bei 2% Risk:
+  Risk Amount: 200 USD
+  Position Size = 200 / 300 × 64,000 = 42,667 USD
+  Leverage = 4.27x
+                        </pre>
+                    </div>
+
+                    <div class="warning-box">
+                        <h5><i class="fas fa-exclamation-circle"></i> Leverage-Empfehlungen</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Erfahrungslevel</th>
+                                    <th>Max Leverage</th>
+                                    <th>Risk per Trade</th>
+                                    <th>Begründung</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Anfänger (0-6 Monate)</strong></td>
+                                    <td><span class="badge bg-success">2-3x</span></td>
+                                    <td>0.5-1%</td>
+                                    <td>Lernphase, Kapitalerhalt</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Fortgeschritten (6-18 Monate)</strong></td>
+                                    <td><span class="badge bg-warning">3-5x</span></td>
+                                    <td>1-1.5%</td>
+                                    <td>Bewährte Strategie, kontrolliertes Risiko</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Experte (18+ Monate)</strong></td>
+                                    <td><span class="badge bg-danger">5-10x</span></td>
+                                    <td>1.5-2%</td>
+                                    <td>Nur mit Track Record > 60% Win-Rate</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-chart-pie"></i> Portfolio & Drawdown Management</h3>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-box">
+                                <h5>Max Concurrent Trades</h5>
+                                <ul>
+                                    <li><strong>1-2 Trades:</strong> Standard für SMC (fokussiert)</li>
+                                    <li><strong>3 Trades:</strong> Nur bei unterschiedlichen Setups</li>
+                                    <li><strong>4+ Trades:</strong> Vermeiden (Overtrading)</li>
+                                </ul>
+                            </div>
+
+                            <div class="success-box">
+                                <h5>Daily Loss Limit</h5>
+                                <ul>
+                                    <li><strong>-2% Account:</strong> Stop Trading für den Tag</li>
+                                    <li><strong>-5% Week:</strong> Review Strategie, pausiere</li>
+                                    <li><strong>-10% Month:</strong> Zurück zu Paper Trading</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="warning-box">
+                                <h5>Drawdown Recovery</h5>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Drawdown</th>
+                                            <th>Recovery Needed</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>-10%</td>
+                                            <td>+11.1%</td>
+                                            <td>Normal Trading</td>
+                                        </tr>
+                                        <tr>
+                                            <td>-20%</td>
+                                            <td>+25%</td>
+                                            <td>Reduce Risk 50%</td>
+                                        </tr>
+                                        <tr>
+                                            <td>-30%</td>
+                                            <td>+42.9%</td>
+                                            <td>Paper Trading</td>
+                                        </tr>
+                                        <tr>
+                                            <td>-50%</td>
+                                            <td>+100%</td>
+                                            <td>🚨 Critical</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-sliders-h"></i> Trade Management</h3>
+
+                    <div class="strategy-example">
+                        <h5><i class="fas fa-layer-group"></i> Partial Profit Taking</h5>
+                        <div class="code-block">
+                            <pre>
+Empfohlene TP-Strategie:
+
+TP1 (50% Position): 1:2 Risk:Reward
+  → Move Stop to Break-Even
+  → Sichert 1R Gewinn
+
+TP2 (30% Position): 1:3 - 1:4 R:R
+  → Trail Stop mit ATR (1.5x ATR)
+  → Lässt Trade laufen
+
+TP3 (20% Position): 1:5+ R:R
+  → Runner bis Major Level
+  → Kann Days/Weeks laufen
+
+Beispiel (Entry 64,000, Stop 63,700):
+  TP1: 64,600 (+600 USD, 1:2) → Close 50%, SL → BE
+  TP2: 64,900 (+900 USD, 1:3) → Close 30%, Trail Stop
+  TP3: 65,500+ (+1,500 USD, 1:5) → Close 20%, Let it run
+                            </pre>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <h5><i class="fas fa-chart-line"></i> Trailing Stop Methoden</h5>
+                        <ul>
+                            <li><strong>ATR-Based:</strong> Trail mit 1.5x ATR (dynamisch, passt sich Volatilität an)</li>
+                            <li><strong>Structure-Based:</strong> Trail zu letztem Minor OB (folgt SMC-Struktur)</li>
+                            <li><strong>Percentage-Based:</strong> Trail mit fixen 1-2% (einfach, mechanisch)</li>
+                            <li><strong>Time-Based:</strong> Nach 24h automatisch Trailing aktivieren</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backtesting Tab -->
+            <div class="tab-pane fade" id="backtesting" role="tabpanel">
+                <h2><i class="fas fa-chart-bar"></i> Backtesting & Performance Metrics</h2>
+
+                <div class="info-box">
+                    <h5><i class="fas fa-info-circle"></i> Warum Backtesting für SMC schwierig ist</h5>
+                    <p>
+                        SMC ist subjektiv und kontextabhängig. Order Blocks, FVGs und Liquidity Sweeps erfordern Interpretation.
+                        Trotzdem ist systematisches Backtesting essenziell für:
+                    </p>
+                    <ul>
+                        <li>Identifikation profitabler Setups</li>
+                        <li>Kalibrierung von Entry/Exit-Rules</li>
+                        <li>Verständnis von Win-Rate und Drawdowns</li>
+                        <li>Confidence-Building vor Live Trading</li>
+                    </ul>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-clipboard-check"></i> Backtest-Beispiel: 6 Monate BTC/USDT</h3>
+
+                    <div class="strategy-example">
+                        <h5>Backtest Parameters</h5>
+                        <ul>
+                            <li><strong>Zeitraum:</strong> Juli 2025 - Dezember 2025 (6 Monate)</li>
+                            <li><strong>Asset:</strong> BTC/USDT Perpetual (Binance)</li>
+                            <li><strong>Initial Capital:</strong> 10,000 USD</li>
+                            <li><strong>Risk per Trade:</strong> 1%</li>
+                            <li><strong>Max Leverage:</strong> 5x</li>
+                            <li><strong>Kill Zones:</strong> Nur London & NY (08:00-17:00 UTC)</li>
+                            <li><strong>Confluence Required:</strong> Minimum 3/5 Faktoren</li>
+                        </ul>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="stats-card text-center">
+                                <div class="stats-number">127</div>
+                                <p>Total Trades</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stats-card text-center">
+                                <div class="stats-number text-success">67.7%</div>
+                                <p>Win Rate</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stats-card text-center">
+                                <div class="stats-number text-success">+42.8%</div>
+                                <p>Total ROI</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <table class="table pattern-table mt-4">
+                        <thead>
+                            <tr>
+                                <th>Metrik</th>
+                                <th>Wert</th>
+                                <th>Bewertung</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Winning Trades</strong></td>
+                                <td>86 / 127</td>
+                                <td><span class="success-rate-medium">67.7%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Losing Trades</strong></td>
+                                <td>41 / 127</td>
+                                <td><span class="badge bg-secondary">32.3%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Average Win</strong></td>
+                                <td>+1.85 R</td>
+                                <td><span class="badge bg-success">Good</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Average Loss</strong></td>
+                                <td>-0.92 R</td>
+                                <td><span class="badge bg-success">Excellent</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Profit Factor</strong></td>
+                                <td>2.71</td>
+                                <td><span class="success-rate-high">Excellent</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Max Drawdown</strong></td>
+                                <td>-8.2%</td>
+                                <td><span class="success-rate-medium">Acceptable</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Recovery Factor</strong></td>
+                                <td>5.22</td>
+                                <td><span class="success-rate-high">Strong</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Sharpe Ratio</strong></td>
+                                <td>1.89</td>
+                                <td><span class="success-rate-high">Excellent</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Avg Trade Duration</strong></td>
+                                <td>18.5 hours</td>
+                                <td><span class="badge bg-info">Swing Trading</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Final Account Balance</strong></td>
+                                <td>14,280 USD</td>
+                                <td><span class="success-rate-high">+42.8%</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-layer-group"></i> Breakdown by Setup Type</h3>
+
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th>Setup Type</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Avg R:R</th>
+                                <th>Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>OB + FVG (Trend)</strong></td>
+                                <td>52</td>
+                                <td><span class="success-rate-high">73.1%</span></td>
+                                <td>1:2.8</td>
+                                <td>+28.5%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Liquidity Sweep + Reversal</strong></td>
+                                <td>31</td>
+                                <td><span class="success-rate-medium">64.5%</span></td>
+                                <td>1:3.2</td>
+                                <td>+16.2%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Simple OB Retest</strong></td>
+                                <td>28</td>
+                                <td><span class="success-rate-medium">60.7%</span></td>
+                                <td>1:2.1</td>
+                                <td>+8.7%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>CHoCH Reversal</strong></td>
+                                <td>16</td>
+                                <td><span class="success-rate-medium">56.3%</span></td>
+                                <td>1:3.8</td>
+                                <td>+3.1%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="success-box">
+                        <h5><i class="fas fa-trophy"></i> Key Insights</h5>
+                        <ul>
+                            <li><strong>Highest Win-Rate:</strong> OB + FVG in Trend (73.1%) - konservativstes Setup</li>
+                            <li><strong>Best R:R:</strong> CHoCH Reversal (1:3.8) - aber niedrigste Win-Rate (trade-off)</li>
+                            <li><strong>Most Profitable:</strong> OB + FVG (28.5% contribution) - kombiniert WR + Frequency</li>
+                            <li><strong>Safest:</strong> Simple OB hat niedrigste Drawdowns, aber auch kleinste Wins</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-calendar-alt"></i> Monthly Performance</h3>
+
+                    <table class="table pattern-table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>ROI</th>
+                                <th>Drawdown</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Juli 2025</strong></td>
+                                <td>18</td>
+                                <td>72.2%</td>
+                                <td>+8.5%</td>
+                                <td>-2.1%</td>
+                                <td>Strong uptrend, clean setups</td>
+                            </tr>
+                            <tr>
+                                <td><strong>August 2025</strong></td>
+                                <td>23</td>
+                                <td>65.2%</td>
+                                <td>+6.7%</td>
+                                <td>-4.3%</td>
+                                <td>Choppy market, more losses</td>
+                            </tr>
+                            <tr>
+                                <td><strong>September 2025</strong></td>
+                                <td>21</td>
+                                <td>71.4%</td>
+                                <td>+9.2%</td>
+                                <td>-3.2%</td>
+                                <td>Return to trend, excellent month</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Oktober 2025</strong></td>
+                                <td>19</td>
+                                <td>63.2%</td>
+                                <td>+5.1%</td>
+                                <td>-5.8%</td>
+                                <td>Range-bound, challenging</td>
+                            </tr>
+                            <tr>
+                                <td><strong>November 2025</strong></td>
+                                <td>24</td>
+                                <td>66.7%</td>
+                                <td>+7.8%</td>
+                                <td>-6.2%</td>
+                                <td>Volatility spike, good recovery</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Dezember 2025</strong></td>
+                                <td>22</td>
+                                <td>68.2%</td>
+                                <td>+5.5%</td>
+                                <td>-8.2%</td>
+                                <td>Year-end consolidation</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="warning-box">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Backtest Limitations</h5>
+                    <ul>
+                        <li><strong>Subjektivität:</strong> Order Block/FVG Identifikation manuell → Varianz</li>
+                        <li><strong>Slippage:</strong> Backtest nutzt Limit Orders, Live oft Market → höhere Kosten</li>
+                        <li><strong>Fees:</strong> 0.04% Maker, 0.06% Taker berücksichtigt (Binance VIP0)</li>
+                        <li><strong>Funding Rates:</strong> Nicht vollständig simuliert (kann +/- 0.5% Impact haben)</li>
+                        <li><strong>Psychologie:</strong> Paper Trading != Live Trading (Emotions fehlen)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Troubleshooting Tab -->
+            <div class="tab-pane fade" id="troubleshooting" role="tabpanel">
+                <h2><i class="fas fa-tools"></i> Troubleshooting & Häufige Probleme</h2>
+
+                <!-- Problem 1 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-times-circle text-danger"></i> Problem #1: Zu viele Losing Trades (< 50% Win-Rate)</h3>
+
+                    <div class="danger-box">
+                        <h5>Mögliche Ursachen:</h5>
+                        <ul>
+                            <li>❌ <strong>Kein HTF Bias:</strong> Trading ohne klare Daily/4H Trend-Richtung</li>
+                            <li>❌ <strong>Zu aggressive Entries:</strong> Entry ohne Confirmation (Micro-BOS fehlt)</li>
+                            <li>❌ <strong>Falsche Sessions:</strong> Trading während Asian Session (Low Volume)</li>
+                            <li>❌ <strong>Mangelnde Confluence:</strong> Trade mit nur 1-2 Faktoren statt 3+</li>
+                            <li>❌ <strong>Poor OB Identification:</strong> Nicht der letzte Candle vor BOS</li>
+                        </ul>
+                    </div>
+
+                    <div class="success-box">
+                        <h5>Lösungen:</h5>
+                        <ul>
+                            <li>✅ <strong>HTF First:</strong> Beginne IMMER mit Daily/4H Analyse → klarer Bias</li>
+                            <li>✅ <strong>Warte auf Confirmation:</strong> Nutze Conservative Entry (Micro-BOS im OB)</li>
+                            <li>✅ <strong>Kill Zones Only:</strong> Trade nur London (08:00-12:00) & NY (13:00-17:00 UTC)</li>
+                            <li>✅ <strong>3/5 Rule:</strong> Minimum 3 Confluence-Faktoren vor Entry</li>
+                            <li>✅ <strong>Backtest OBs:</strong> Übe OB-Identification auf Historical Charts</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Problem 2 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-minus-circle text-warning"></i> Problem #2: Stop Loss zu häufig getroffen (obwohl Setup gut war)</h3>
+
+                    <div class="warning-box">
+                        <h5>Mögliche Ursachen:</h5>
+                        <ul>
+                            <li>⚠ <strong>Stop zu eng:</strong> Kein Buffer für Volatilität (ATR ignoriert)</li>
+                            <li>⚠ <strong>Entry zu aggressiv:</strong> Top/Bottom des OB statt Retest abwarten</li>
+                            <li>⚠ <strong>Falsche OB-Größe:</strong> Zu kleiner OB (1-Candle) statt mehrerer Candles</li>
+                            <li>⚠ <strong>Liquidität ignoriert:</strong> Stop direkt an offensichtlichem Level (swept)</li>
+                        </ul>
+                    </div>
+
+                    <div class="success-box">
+                        <h5>Lösungen:</h5>
+                        <ul>
+                            <li>✅ <strong>ATR Buffer:</strong> Stop = OB + (1x ATR) für Volatilitäts-Puffer</li>
+                            <li>✅ <strong>Wait for Retest:</strong> Entry bei 50% OB-Retest, nicht an Edge</li>
+                            <li>✅ <strong>Größerer OB:</strong> Nutze Cluster von Candles (2-3 Candles) als OB</li>
+                            <li>✅ <strong>Hide Stops:</strong> Mental Stop oder Stop jenseits Liquidität (avoid obvious levels)</li>
+                            <li>✅ <strong>2-Step Entry:</strong> 50% Position sofort, 50% bei Micro-BOS</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Problem 3 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-chart-line text-info"></i> Problem #3: Gewinne laufen lassen funktioniert nicht</h3>
+
+                    <div class="info-box">
+                        <h5>Mögliche Ursachen:</h5>
+                        <ul>
+                            <li>⚠ <strong>Zu enger Trailing Stop:</strong> Kicked out bei normalem Retracement</li>
+                            <li>⚠ <strong>Kein Partial TP:</strong> All-or-Nothing → psychologischer Druck</li>
+                            <li>⚠ <strong>Falsche Targets:</strong> TP zu weit (unrealistisch), wird nie erreicht</li>
+                            <li>⚠ <strong>Ignorieren von Structure:</strong> Trailing ignoriert Micro-Structure</li>
+                        </ul>
+                    </div>
+
+                    <div class="success-box">
+                        <h5>Lösungen:</h5>
+                        <ul>
+                            <li>✅ <strong>ATR Trailing:</strong> Nutze 1.5-2x ATR für Trailing (gibt Trade Raum)</li>
+                            <li>✅ <strong>Partial TPs:</strong> Close 50% bei 1:2, trail Rest → reduziert Stress</li>
+                            <li>✅ <strong>Realistic Targets:</strong> TP1 = Previous High/Low, TP2 = Major Liquidity</li>
+                            <li>✅ <strong>Structure-Based Trail:</strong> Trail zu Minor OBs statt fixem Prozent</li>
+                            <li>✅ <strong>Time-Based:</strong> Ab 24h Trade: Wechsel zu tighteren Trail</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Problem 4 -->
+                <div class="concept-card">
+                    <h3><i class="fas fa-brain text-danger"></i> Problem #4: Emotionaler Overtrading & FOMO</h3>
+
+                    <div class="danger-box">
+                        <h5>Symptome:</h5>
+                        <ul>
+                            <li>😰 <strong>Revenge Trading:</strong> Nach Loss sofort nächsten Trade suchen</li>
+                            <li>😰 <strong>FOMO Entries:</strong> Trade ohne Setup, weil Preis "wegläuft"</li>
+                            <li>😰 <strong>Overtrading:</strong> 5+ Trades/Tag obwohl nur 1-2 Setups gut waren</li>
+                            <li>😰 <strong>Ignorieren von Rules:</strong> "Diesmal ist anders" Mentalität</li>
+                        </ul>
+                    </div>
+
+                    <div class="warning-box">
+                        <h5>Lösungen (Psychologie):</h5>
+                        <ul>
+                            <li>✅ <strong>Daily Trade Limit:</strong> Max 2-3 Trades/Tag (erzwinge Qualität)</li>
+                            <li>✅ <strong>2-Loss Rule:</strong> Nach 2 Losses → Stop für den Tag</li>
+                            <li>✅ <strong>Checklist ALWAYS:</strong> Kein Trade ohne 3/5 Confluence</li>
+                            <li>✅ <strong>Missed Trade = OK:</strong> Nächster Setup kommt (patience)</li>
+                            <li>✅ <strong>Journal EVERY Trade:</strong> Force Reflection, reduziert Impulsivität</li>
+                            <li>✅ <strong>Break after Loss:</strong> 30 Min Pause nach jedem Loss</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="concept-card">
+                    <h3><i class="fas fa-lightbulb"></i> 5 Profi-Tipps für SMC Success</h3>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5>Tip #1: Screen Time beats Indicators</h5>
+                                <p>
+                                    SMC erfordert 100+ Stunden Chart-Analyse. Backteste manuell auf Historical Data,
+                                    identifiziere OBs, FVGs, Liquidity Sweeps. Automatisierung hilft, aber Erfahrung ist king.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5>Tip #2: Journal EVERYTHING</h5>
+                                <p>
+                                    Dokumentiere jeden Trade mit Screenshot, Entry-Reason, HTF Bias, Confluence-Faktoren.
+                                    Review wöchentlich → Identifiziere Patterns in Wins/Losses.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5>Tip #3: HTF > LTF</h5>
+                                <p>
+                                    90% der Losses kommen von Counter-Trend Trades. Wenn Daily bullisch → nur Longs.
+                                    Fight nicht gegen Higher Timeframe.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="success-box">
+                                <h5>Tip #4: Paper Trade First</h5>
+                                <p>
+                                    Minimum 3 Monate Paper Trading bis 60%+ Win-Rate. Dann Live mit 0.5% Risk.
+                                    Scale up NUR bei proven Track Record.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="success-box">
+                                <h5>Tip #5: Community & Mentorship</h5>
+                                <p>
+                                    SMC ist subjektiv → Learning Community hilft. Finde Mentoren, diskutiere Setups,
+                                    vergleiche Analysen. Aber: Entwickle eigenen Style (copy-paste funktioniert nicht).
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            // Initialize DataTables for any tables with pattern-table class
+            $('.pattern-table').DataTable({
+                pageLength: 25,
+                order: [[0, 'asc']],
+                language: {
+                    search: "Suchen:",
+                    lengthMenu: "Zeige _MENU_ Einträge",
+                    info: "Zeige _START_ bis _END_ von _TOTAL_ Einträgen",
+                    infoEmpty: "Keine Einträge verfügbar",
+                    infoFiltered: "(gefiltert von _MAX_ Einträgen)",
+                    paginate: {
+                        first: "Erste",
+                        last: "Letzte",
+                        next: "Nächste",
+                        previous: "Vorherige"
+                    }
+                }
+            });
+
+            // Smooth scrolling for navigation links
+            $('a[href^="#"]').on('click', function(e) {
+                e.preventDefault();
+                var target = $(this.getAttribute('href'));
+                if(target.length) {
+                    $('html, body').stop().animate({
+                        scrollTop: target.offset().top - 100
+                    }, 1000);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

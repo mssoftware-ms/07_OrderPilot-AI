@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot-ai.local/schemas/rulepack.schema.json",
+  "title": "RulePack",
+  "description": "CEL-based rule pack for trading bot rule evaluation",
+  "type": "object",
+  "required": ["rules_version", "engine", "packs"],
+  "properties": {
+    "rules_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of the RulePack format (e.g., 1.0.0)"
+    },
+    "engine": {
+      "type": "string",
+      "const": "CEL",
+      "description": "Rule engine type (must be CEL)"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata about the RulePack",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the RulePack"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the RulePack purpose"
+        },
+        "author": {
+          "type": "string",
+          "description": "Author of the RulePack"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp (ISO 8601)"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp (ISO 8601)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization (e.g., scalping, swing, conservative)"
+        }
+      }
+    },
+    "packs": {
+      "type": "array",
+      "description": "Array of rule packs by type",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Pack"
+      }
+    }
+  },
+  "$defs": {
+    "Pack": {
+      "type": "object",
+      "required": ["pack_type", "rules"],
+      "properties": {
+        "pack_type": {
+          "type": "string",
+          "enum": ["no_trade", "entry", "exit", "update_stop", "risk"],
+          "description": "Type of rule pack (execution order: no_trade → entry → exit → update_stop → risk)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of this pack"
+        },
+        "rules": {
+          "type": "array",
+          "description": "Array of rules in this pack",
+          "items": {
+            "$ref": "#/$defs/Rule"
+          }
+        }
+      }
+    },
+    "Rule": {
+      "type": "object",
+      "required": ["id", "name", "enabled", "expression", "severity"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique identifier for the rule (alphanumeric, underscore, hyphen)"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name of the rule"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this rule is active"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of what the rule does"
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CEL expression to evaluate (e.g., 'rsi14.value < 30 && adx14.value > 25')"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["block", "exit", "update_stop", "warn"],
+          "description": "Action severity: block (prevent entry/exit), exit (close position), update_stop (adjust stop), warn (log only)"
+        },
+        "message": {
+          "type": "string",
+          "description": "Optional message to display when rule triggers"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 50,
+          "description": "Rule priority (0-100, higher = evaluated first within pack)"
+        }
+      }
+    }
+  }
+}

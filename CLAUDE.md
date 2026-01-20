@@ -284,6 +284,38 @@ Die Datei `01_Projectplan/orderpilot-ai.kipj` (sowie `docs/ai/07_orderpilot-ai.k
 4. Alle API Keys sind in den Systemvariabeln von Windows.
 5. Die code Entwicklung findet unter WSL statt (CLI Tools wie Claude-Code, Codex CLI), aber die App wird ausschließlich unter windows 11 gestartet
 
+### JSON als universelle Schnittstelle
+
+**WICHTIG**: JSON-Dateien sind die **universelle Schnittstelle** zwischen allen Modulen:
+
+```
+Entry Designer ↔ JSON ↔ CEL Engine ↔ JSON ↔ Trading Bot ↔ JSON ↔ KI (zukünftig)
+```
+
+**Verbindliche Regeln für JSON-Handling:**
+
+1. **Lies IMMER `docs/JSON_INTERFACE_RULES.md`** bevor du JSON-Formate änderst oder neue erstellst
+2. **Validiere JSON-Dateien** mit `SchemaValidator` BEVOR du sie lädst oder speicherst
+3. **Nutze Pydantic-Modelle** für Type-Safety bei allen JSON-Strukturen
+4. **Schema-First-Ansatz**: Erstelle JSON Schema BEVOR du Code schreibst
+5. **Versionierung**: Alle JSON-Formate haben `schema_version` Feld
+6. **Migration**: Bei Breaking Changes Migration-Script erstellen
+
+**JSON Schema Validation:**
+```python
+from src.core.tradingbot.config.validator import SchemaValidator
+
+validator = SchemaValidator()
+validator.validate_file("config.json", schema_name="trading_bot_config")
+```
+
+**Verfügbare Schemas:**
+- `trading_bot_config`: Trading Bot Konfiguration (Indicators, Regimes, Strategies)
+- `rulepack`: CEL RulePack für Rule-basierte Logik
+- `backtest_config`: Backtest-Konfiguration
+
+Siehe `docs/JSON_INTERFACE_RULES.md` für vollständige Dokumentation.
+
 #####################################################################################################################
 
 # Claude Code Configuration - SPARC Development Environment

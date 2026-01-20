@@ -11,6 +11,8 @@ from typing import Optional
 from src.core.market_data.types import HistoricalBar
 from .extractor import PatternExtractor, Pattern
 from .qdrant_client import TradingPatternDB, PatternMatch
+from .timeframe_converter import TimeframeConverter
+from .partial_matcher import PartialPatternMatcher, PartialPatternAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,15 @@ class PatternService:
 
         self.extractor = PatternExtractor(window_size=window_size)
         self.db = TradingPatternDB()
+
+        # Phase 3: Partial Pattern Matching
+        self.partial_matcher = PartialPatternMatcher(
+            full_window_size=window_size,
+            min_bars_required=window_size // 2,  # Minimum 50% completion
+            confidence_penalty_alpha=0.7,  # Confidence penalty for partial patterns
+            projection_method="trend_projection",  # Use trend projection for best results
+        )
+
         self._initialized = False
 
     async def initialize(self) -> bool:
@@ -76,9 +87,14 @@ class PatternService:
         """
         try:
             self._initialized = await self.db.initialize()
+
+            # Phase 3: Initialize partial matcher
+            await self.partial_matcher.initialize()
+
             if self._initialized:
                 info = await self.db.get_collection_info()
                 logger.info(f"PatternService initialized: {info.get('points_count', 0)} patterns")
+                logger.info("Partial pattern matching enabled (min 50% completion)")
             return self._initialized
         except Exception as e:
             logger.error(f"Failed to initialize PatternService: {e}")
@@ -91,15 +107,18 @@ class PatternService:
         timeframe: str,
         signal_direction: str = "long",  # "long" or "short"
         cross_symbol_search: bool = True,
+        target_timeframe: Optional[str] = None,  # NEW: Target timeframe for resampling
     ) -> Optional[PatternAnalysis]:
         """Analyze a trading signal using pattern matching.
 
         Args:
             bars: Recent bars (at least window_size)
             symbol: Trading symbol
-            timeframe: Timeframe string
+            timeframe: Timeframe string (source timeframe of bars)
             signal_direction: Expected trade direction
             cross_symbol_search: Search across all symbols (recommended)
+            target_timeframe: Optional target timeframe for resampling (e.g., "5m", "15m", "1h")
+                             If None, uses source timeframe without resampling
 
         Returns:
             PatternAnalysis or None if not enough data
@@ -107,16 +126,52 @@ class PatternService:
         if not self._initialized:
             await self.initialize()
 
-        if len(bars) < self.window_size:
-            logger.warning(f"Not enough bars for pattern analysis: {len(bars)}")
+        # NEW: Timeframe conversion if requested
+        analysis_bars = bars
+        analysis_timeframe = timeframe
+
+        if target_timeframe and target_timeframe != timeframe:
+            logger.info(f"Resampling bars from {timeframe} → {target_timeframe}")
+
+            # Check if conversion is possible
+            can_convert, reason = TimeframeConverter.can_convert(timeframe, target_timeframe)
+
+            if not can_convert:
+                logger.warning(f"Cannot convert {timeframe} → {target_timeframe}: {reason}")
+                return None
+
+            # Resample bars
+            try:
+                analysis_bars = TimeframeConverter.resample_bars(
+                    bars=bars,
+                    from_timeframe=timeframe,
+                    to_timeframe=target_timeframe,
+                )
+                analysis_timeframe = target_timeframe
+
+                logger.info(
+                    f"Resampled {len(bars)} bars ({timeframe}) → "
+                    f"{len(analysis_bars)} bars ({target_timeframe})"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to resample bars: {e}")
+                return None
+
+        # Check if enough bars after resampling
+        if len(analysis_bars) < self.window_size:
+            logger.warning(
+                f"Not enough bars for pattern analysis after resampling: "
+                f"{len(analysis_bars)} < {self.window_size}"
+            )
             return None
 
         try:
-            # Extract current pattern
+            # Extract current pattern (using resampled bars if applicable)
             current_pattern = self.extractor.extract_current_pattern(
-                bars=bars,
+                bars=analysis_bars,
                 symbol=symbol,
-                timeframe=timeframe,
+                timeframe=analysis_timeframe,
             )
 
             if not current_pattern:
@@ -268,6 +323,88 @@ class PatternService:
         if analysis:
             return analysis.signal_boost, analysis.recommendation
         return 0.0, "error"
+
+    async def analyze_partial_signal(
+        self,
+        bars: list[HistoricalBar],
+        symbol: str,
+        timeframe: str,
+        signal_direction: str = "long",
+        cross_symbol_search: bool = True,
+        target_timeframe: Optional[str] = None,
+    ) -> Optional[PartialPatternAnalysis]:
+        """Analyze a signal using partial pattern matching (Phase 3).
+
+        Enables early entry detection by matching incomplete patterns (e.g., 10/20 bars)
+        against completed historical patterns.
+
+        Args:
+            bars: Recent bars (can be < window_size, min 50% required)
+            symbol: Trading symbol
+            timeframe: Timeframe string (source timeframe of bars)
+            signal_direction: Expected trade direction ("long" or "short")
+            cross_symbol_search: Search across all symbols (recommended)
+            target_timeframe: Optional target timeframe for resampling
+
+        Returns:
+            PartialPatternAnalysis or None if insufficient data
+
+        Example:
+            >>> # Early entry with 15 bars (75% complete)
+            >>> analysis = await service.analyze_partial_signal(
+            ...     bars=recent_15_bars,
+            ...     symbol="BTCUSDT",
+            ...     timeframe="1m",
+            ...     signal_direction="long"
+            ... )
+            >>> if analysis and analysis.early_entry_opportunity:
+            ...     print(f"Early entry at {analysis.completion_ratio:.1%} completion")
+            ...     print(f"Confidence: {analysis.confidence:.2f}")
+            ...     print(f"Signal boost: {analysis.signal_boost:+.2f}")
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # NEW: Timeframe conversion if requested
+        analysis_bars = bars
+        analysis_timeframe = timeframe
+
+        if target_timeframe and target_timeframe != timeframe:
+            logger.info(f"Resampling bars from {timeframe} → {target_timeframe}")
+
+            # Check if conversion is possible
+            can_convert, reason = TimeframeConverter.can_convert(timeframe, target_timeframe)
+
+            if not can_convert:
+                logger.warning(f"Cannot convert {timeframe} → {target_timeframe}: {reason}")
+                return None
+
+            # Resample bars
+            try:
+                analysis_bars = TimeframeConverter.resample_bars(
+                    bars=bars,
+                    from_timeframe=timeframe,
+                    to_timeframe=target_timeframe,
+                )
+                analysis_timeframe = target_timeframe
+
+                logger.info(
+                    f"Resampled {len(bars)} bars ({timeframe}) → "
+                    f"{len(analysis_bars)} bars ({target_timeframe})"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to resample bars: {e}")
+                return None
+
+        # Delegate to partial matcher
+        return await self.partial_matcher.analyze_partial_signal(
+            bars=analysis_bars,
+            symbol=symbol,
+            timeframe=analysis_timeframe,
+            signal_direction=signal_direction,
+            cross_symbol_search=cross_symbol_search,
+        )
 
 
 # Global service instance

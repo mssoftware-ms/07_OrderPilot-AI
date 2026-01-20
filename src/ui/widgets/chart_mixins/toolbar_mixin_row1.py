@@ -383,6 +383,15 @@ class ToolbarMixinRow1:
         vwap_menu = volume_menu.addMenu("VWAP")
         add_action(vwap_menu, "VWAP", "VWAP", {}, "#9932CC")
 
+        # =====================================================================
+        # 5. RESET ACTIONS
+        # =====================================================================
+        root_menu.addSeparator()
+        reset_action = QAction("💣 Reset All Indicators", self.parent)
+        reset_action.setToolTip("ENTFERNT alle Indikatoren und setzt den Chart zurück")
+        reset_action.triggered.connect(self.on_reset_indicators)
+        root_menu.addAction(reset_action)
+
     def prompt_custom_period(self, ind_id: str, color: str) -> None:
         from PyQt6.QtWidgets import QInputDialog
         period, ok = QInputDialog.getInt(self.parent, "Periode wählen", f"{ind_id} Periode:", value=14, min=1, max=500)
@@ -438,6 +447,25 @@ class ToolbarMixinRow1:
         if hasattr(self.parent, "chart_widget") and hasattr(self.parent.chart_widget, "_remove_indicator_instance"):
             self.parent.chart_widget._remove_indicator_instance(instance_id)
             self.refresh_active_indicator_menu()
+
+    def on_reset_indicators(self) -> None:
+        """Completely clear all indicators from the chart."""
+        if hasattr(self.parent, "chart_widget"):
+            chart = self.parent.chart_widget
+            if hasattr(chart, "_cleanup_all_chart_indicators"):
+                chart._cleanup_all_chart_indicators()
+            
+            # Explicitly clear active_indicators and counter
+            if hasattr(chart, "active_indicators"):
+                chart.active_indicators.clear()
+            if hasattr(chart, "_indicator_counter"):
+                chart._indicator_counter = 0
+                
+            self.refresh_active_indicator_menu()
+            if hasattr(chart, "_update_indicators_button_badge"):
+                chart._update_indicators_button_badge()
+            
+            logger.info("Nuclear reset: All indicators cleared from chart")
 
     def add_primary_actions(self, toolbar: QToolBar) -> None:
         self.parent.load_button = QPushButton("📊 Load Chart")

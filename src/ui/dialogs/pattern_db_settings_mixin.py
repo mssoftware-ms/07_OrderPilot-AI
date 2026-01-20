@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import subprocess
 from datetime import datetime
 from typing import Optional
@@ -23,9 +24,9 @@ from .pattern_db_worker import DatabaseBuildWorker
 
 logger = logging.getLogger(__name__)
 
-QDRANT_CONTAINER_NAME = "09_rag-system-ai_cl-qdrant-1"
-QDRANT_IMAGE = "qdrant/qdrant"
-QDRANT_PORT = 6333
+QDRANT_CONTAINER_NAME = "orderpilot-qdrant"
+QDRANT_IMAGE = "qdrant/qdrant:latest"
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6335"))
 COLLECTION_NAME = "trading_patterns"
 
 
