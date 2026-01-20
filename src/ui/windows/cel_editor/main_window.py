@@ -23,6 +23,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from .theme import get_qss_stylesheet, ACCENT_TEAL, TEXT_PRIMARY
 from .icons import cel_icons
+from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
 
 
 class CelEditorWindow(QMainWindow):
@@ -278,12 +279,10 @@ class CelEditorWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
 
     def _create_central_widget(self):
-        """Create central widget with Pattern Builder / Code Editor.
+        """Create central widget with Pattern Builder Canvas.
 
-        Will contain:
-        - Pattern Builder Canvas (QGraphicsView) - Phase 2
-        - CEL Code Editor (QScintilla) - Phase 3
-        - Chart View with pattern overlay - Phase 2 (later)
+        Phase 2: Pattern Builder Canvas (QGraphicsView)
+        Phase 3: CEL Code Editor (QScintilla) - will be added in split view
         """
         central = QWidget()
         self.setCentralWidget(central)
@@ -291,19 +290,18 @@ class CelEditorWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Placeholder for pattern builder / code editor (Phase 2/3)
-        self.central_placeholder = QLabel(
-            "Pattern Builder Canvas\n"
-            "(Phase 2)\n\n"
-            "CEL Code Editor\n"
-            "(Phase 3)"
-        )
-        self.central_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.central_placeholder.setStyleSheet(
-            f"color: {ACCENT_TEAL}; font-size: 16px; font-weight: bold;"
-        )
+        # Pattern Builder Canvas (Phase 2)
+        self.pattern_canvas = PatternBuilderCanvas(self)
+        layout.addWidget(self.pattern_canvas)
 
-        layout.addWidget(self.central_placeholder)
+        # Connect canvas signals
+        self.pattern_canvas.pattern_changed.connect(self._on_pattern_changed)
+        self.pattern_canvas.candle_selected.connect(self._on_candle_selected)
+        self.pattern_canvas.selection_cleared.connect(self._on_selection_cleared)
+
+        # Update undo/redo button states
+        self.pattern_canvas.undo_stack.canUndoChanged.connect(self.action_undo.setEnabled)
+        self.pattern_canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
 
     def _create_status_bar(self):
         """Create status bar with validation feedback."""
@@ -405,19 +403,33 @@ class CelEditorWindow(QMainWindow):
         self.statusBar().showMessage("Export JSON (not yet implemented)", 3000)
 
     def _on_undo(self):
-        """Undo last action (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Undo (not yet implemented)", 3000)
+        """Undo last action."""
+        if hasattr(self, 'pattern_canvas'):
+            self.pattern_canvas.undo()
+            undo_text = self.pattern_canvas.undo_stack.undoText()
+            self.statusBar().showMessage(f"Undo: {undo_text}" if undo_text else "Undo", 2000)
 
     def _on_redo(self):
-        """Redo last undone action (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Redo (not yet implemented)", 3000)
+        """Redo last undone action."""
+        if hasattr(self, 'pattern_canvas'):
+            self.pattern_canvas.redo()
+            redo_text = self.pattern_canvas.undo_stack.redoText()
+            self.statusBar().showMessage(f"Redo: {redo_text}" if redo_text else "Redo", 2000)
 
     def _on_clear_pattern(self):
-        """Clear all candles from pattern (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Clear pattern (not yet implemented)", 3000)
+        """Clear all candles from pattern."""
+        if hasattr(self, 'pattern_canvas'):
+            # Show confirmation dialog
+            reply = QMessageBox.question(
+                self,
+                "Clear Pattern",
+                "Are you sure you want to clear all candles?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.pattern_canvas.clear_pattern()
+                self.statusBar().showMessage("Pattern cleared", 2000)
 
     def _switch_view_mode(self, mode: str):
         """Switch between view modes (Phase 1/2/3).
@@ -454,24 +466,67 @@ class CelEditorWindow(QMainWindow):
             self._switch_view_mode(modes[index])
 
     def _on_zoom_in(self):
-        """Zoom in (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Zoom in (not yet implemented)", 3000)
+        """Zoom in on canvas."""
+        if hasattr(self, 'pattern_canvas'):
+            self.pattern_canvas.zoom_in()
+            self.statusBar().showMessage("Zoomed in", 1000)
 
     def _on_zoom_out(self):
-        """Zoom out (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Zoom out (not yet implemented)", 3000)
+        """Zoom out on canvas."""
+        if hasattr(self, 'pattern_canvas'):
+            self.pattern_canvas.zoom_out()
+            self.statusBar().showMessage("Zoomed out", 1000)
 
     def _on_zoom_fit(self):
-        """Zoom to fit (Phase 2)."""
-        # TODO: Implement in Phase 2 (Pattern Builder)
-        self.statusBar().showMessage("Zoom to fit (not yet implemented)", 3000)
+        """Zoom to fit all candles."""
+        if hasattr(self, 'pattern_canvas'):
+            self.pattern_canvas.zoom_fit()
+            self.statusBar().showMessage("Zoomed to fit", 1000)
 
     def _on_ai_generate(self):
         """Generate pattern suggestions with AI (Phase 5)."""
         # TODO: Implement in Phase 5 (AI Assistant)
         self.statusBar().showMessage("AI Generate (not yet implemented - Phase 5)", 3000)
+
+    def _on_pattern_changed(self):
+        """Handle pattern changes from canvas."""
+        # Update validation status
+        if hasattr(self, 'pattern_canvas'):
+            stats = self.pattern_canvas.get_statistics()
+            candle_count = stats['total_candles']
+            relation_count = stats['total_relations']
+
+            if candle_count == 0:
+                self.validation_label.setText("✅ Ready")
+                self.validation_label.setStyleSheet(f"color: {ACCENT_TEAL}; padding: 2px 8px;")
+            elif candle_count < 2:
+                self.validation_label.setText("⚠️ Need at least 2 candles")
+                self.validation_label.setStyleSheet("color: #ffa726; padding: 2px 8px;")
+            else:
+                self.validation_label.setText(f"✅ {candle_count} candles, {relation_count} relations")
+                self.validation_label.setStyleSheet(f"color: {ACCENT_TEAL}; padding: 2px 8px;")
+
+        # Emit main window signal
+        self.pattern_changed.emit()
+
+    def _on_candle_selected(self, candle_data: dict):
+        """Handle candle selection from canvas.
+
+        Args:
+            candle_data: Dict with candle properties (type, index, ohlc, position)
+        """
+        # TODO: Update properties panel in Phase 2.6
+        candle_type = candle_data.get('type', 'unknown')
+        index = candle_data.get('index', 0)
+        self.statusBar().showMessage(
+            f"Selected: {candle_type.replace('_', ' ').title()} [index {index}]",
+            2000
+        )
+
+    def _on_selection_cleared(self):
+        """Handle selection cleared from canvas."""
+        # TODO: Clear properties panel in Phase 2.6
+        self.statusBar().showMessage("Selection cleared", 1000)
 
     def _on_show_help(self):
         """Show CEL Editor help."""
