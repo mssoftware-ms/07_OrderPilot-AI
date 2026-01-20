@@ -24,6 +24,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from .theme import get_qss_stylesheet, ACCENT_TEAL, TEXT_PRIMARY
 from .icons import cel_icons
 from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
+from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
 
 
 class CelEditorWindow(QMainWindow):
@@ -63,6 +64,7 @@ class CelEditorWindow(QMainWindow):
         # Create UI components
         self._create_menu_bar()
         self._create_toolbar()
+        self._create_candle_toolbar()  # Phase 2.5: Candle type selector
         self._create_dock_widgets()
         self._create_central_widget()
         self._create_status_bar()
@@ -243,6 +245,20 @@ class CelEditorWindow(QMainWindow):
         self.ai_generate_btn.setStatusTip("Generate pattern suggestions with AI")
         toolbar.addWidget(self.ai_generate_btn)
 
+    def _create_candle_toolbar(self):
+        """Create candle toolbar for adding candles to canvas.
+
+        Phase 2.5: Vertical toolbar on the left side with:
+        - 8 candle type buttons (Bullish, Bearish, Doji, etc.)
+        - Add/Remove/Clear action buttons
+        - Active candle type tracking
+        """
+        self.candle_toolbar = CandleToolbar(self)
+        self.candle_toolbar.setObjectName("CandleToolbar")
+
+        # Add to left side of window (vertical orientation)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.candle_toolbar)
+
     def _create_dock_widgets(self):
         """Create dock widgets for Library, Properties, and AI Assistant.
 
@@ -350,6 +366,11 @@ class CelEditorWindow(QMainWindow):
 
         # AI Generate button
         self.ai_generate_btn.clicked.connect(self._on_ai_generate)
+
+        # Candle Toolbar signals (Phase 2.5)
+        self.candle_toolbar.candle_add_requested.connect(self._on_toolbar_add_candle)
+        self.candle_toolbar.candle_remove_requested.connect(self._on_toolbar_remove_candle)
+        self.candle_toolbar.pattern_clear_requested.connect(self._on_clear_pattern)
 
         # Help actions
         self.action_help.triggered.connect(self._on_show_help)
@@ -482,6 +503,31 @@ class CelEditorWindow(QMainWindow):
         if hasattr(self, 'pattern_canvas'):
             self.pattern_canvas.zoom_fit()
             self.statusBar().showMessage("Zoomed to fit", 1000)
+
+    def _on_toolbar_add_candle(self, candle_type: str):
+        """Handle add candle request from toolbar.
+
+        Args:
+            candle_type: Type of candle to add (bullish, bearish, doji, etc.)
+        """
+        if hasattr(self, 'pattern_canvas'):
+            # Add candle at auto-positioned coordinates (canvas handles positioning)
+            candle = self.pattern_canvas.add_candle(candle_type)
+
+            # Update status bar
+            self.statusBar().showMessage(
+                f"Added {candle_type.replace('_', ' ').title()} candle",
+                2000
+            )
+
+    def _on_toolbar_remove_candle(self):
+        """Handle remove candle request from toolbar."""
+        if hasattr(self, 'pattern_canvas'):
+            # Remove selected candles
+            self.pattern_canvas.remove_selected_candles()
+
+            # Update status bar
+            self.statusBar().showMessage("Removed selected candle(s)", 2000)
 
     def _on_ai_generate(self):
         """Generate pattern suggestions with AI (Phase 5)."""
