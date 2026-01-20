@@ -25,6 +25,7 @@ from .theme import get_qss_stylesheet, ACCENT_TEAL, TEXT_PRIMARY
 from .icons import cel_icons
 from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
 from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
+from ...widgets.pattern_builder.properties_panel import PropertiesPanel
 
 
 class CelEditorWindow(QMainWindow):
@@ -286,12 +287,22 @@ class CelEditorWindow(QMainWindow):
         self.right_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         self.right_dock.setMinimumWidth(320)
 
-        # Placeholder for properties/AI widget (will be implemented in Phase 5)
-        right_placeholder = QLabel("Properties & AI Assistant\n(Phase 5)")
-        right_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_placeholder.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 14px;")
-        self.right_dock.setWidget(right_placeholder)
+        # Properties Panel (Phase 2.6) + AI Assistant (Phase 5)
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
 
+        # Properties Panel
+        self.properties_panel = PropertiesPanel(self)
+        right_layout.addWidget(self.properties_panel)
+
+        # AI Assistant Placeholder (Phase 5)
+        ai_placeholder = QLabel("AI Assistant\n(Phase 5)")
+        ai_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ai_placeholder.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px;")
+        right_layout.addWidget(ai_placeholder)
+
+        self.right_dock.setWidget(right_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
 
     def _create_central_widget(self):
@@ -371,6 +382,14 @@ class CelEditorWindow(QMainWindow):
         self.candle_toolbar.candle_add_requested.connect(self._on_toolbar_add_candle)
         self.candle_toolbar.candle_remove_requested.connect(self._on_toolbar_remove_candle)
         self.candle_toolbar.pattern_clear_requested.connect(self._on_clear_pattern)
+
+        # Properties Panel signals (Phase 2.6)
+        # Panel → Canvas: Update candle when user applies changes
+        self.properties_panel.values_changed.connect(self.pattern_canvas.update_candle_properties)
+
+        # Canvas → Panel: Update panel when selection changes
+        self.pattern_canvas.candle_selected.connect(self._on_candle_selected_for_properties)
+        self.pattern_canvas.selection_cleared.connect(self._on_selection_cleared_for_properties)
 
         # Help actions
         self.action_help.triggered.connect(self._on_show_help)
@@ -573,6 +592,23 @@ class CelEditorWindow(QMainWindow):
         """Handle selection cleared from canvas."""
         # TODO: Clear properties panel in Phase 2.6
         self.statusBar().showMessage("Selection cleared", 1000)
+
+    def _on_candle_selected_for_properties(self, candle_data: dict):
+        """Update properties panel when candle is selected.
+
+        Args:
+            candle_data: Dict with candle properties (from canvas signal)
+        """
+        # Get selected candles from canvas
+        selected_candles = self.pattern_canvas.get_selected_candles()
+
+        # Update properties panel
+        self.properties_panel.on_canvas_selection_changed(selected_candles)
+
+    def _on_selection_cleared_for_properties(self):
+        """Clear properties panel when selection is cleared."""
+        # Clear properties panel
+        self.properties_panel.on_canvas_selection_changed([])
 
     def _on_show_help(self):
         """Show CEL Editor help."""

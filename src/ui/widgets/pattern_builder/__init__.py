@@ -12,5 +12,6 @@ from .pattern_canvas import PatternBuilderCanvas
 from .candle_item import CandleItem
 from .relation_line import RelationLine
 from .candle_toolbar import CandleToolbar
+from .properties_panel import PropertiesPanel
 
-__all__ = ['PatternBuilderCanvas', 'CandleItem', 'RelationLine', 'CandleToolbar']
+__all__ = ['PatternBuilderCanvas', 'CandleItem', 'RelationLine', 'CandleToolbar', 'PropertiesPanel']

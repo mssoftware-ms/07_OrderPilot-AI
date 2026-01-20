@@ -224,9 +224,17 @@ class PatternBuilderCanvas(QGraphicsView):
                 self.candles.remove(candle)
             self.pattern_changed.emit()
 
+    def get_selected_candles(self) -> list:
+        """Get all currently selected candles.
+
+        Returns:
+            List of selected CandleItem objects
+        """
+        return [item for item in self.scene.selectedItems() if isinstance(item, CandleItem)]
+
     def remove_selected_candles(self):
         """Remove all selected candles."""
-        selected = [item for item in self.scene.selectedItems() if isinstance(item, CandleItem)]
+        selected = self.get_selected_candles()
 
         for candle in selected:
             self.remove_candle(candle, use_undo=True)
@@ -466,3 +474,31 @@ class PatternBuilderCanvas(QGraphicsView):
             "total_relations": len(self.relations),
             "relation_types": relation_counts
         }
+
+    def update_candle_properties(self, candle: CandleItem, properties: dict):
+        """Update candle properties from properties panel.
+
+        Args:
+            candle: Candle to update
+            properties: Dict with keys: ohlc (dict), candle_type (str), index (int)
+        """
+        # Update OHLC (this also redraws the candle)
+        if "ohlc" in properties:
+            candle.update_ohlc(properties["ohlc"])
+
+        # Update candle type (changes OHLC to defaults, so do this before OHLC if both are set)
+        if "candle_type" in properties and properties["candle_type"] != candle.candle_type:
+            # Only update OHLC if not explicitly provided
+            if "ohlc" not in properties:
+                candle.update_candle_type(properties["candle_type"])
+            else:
+                # Just change type without resetting OHLC
+                candle.candle_type = properties["candle_type"]
+                candle.update_ohlc(properties["ohlc"])
+
+        # Update index
+        if "index" in properties:
+            candle.update_index(properties["index"])
+
+        # Emit pattern changed
+        self.pattern_changed.emit()
