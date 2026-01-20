@@ -57,12 +57,77 @@ class BotStateHandlersManage:
         if self._check_stop_hit(close_price, low_price, high_price):
             return await self.parent._exit.handle_stop_hit(features)
 
+        # CEL RulePack Integration (Phase 4) - Exit Pack
+        # Check exit rules BEFORE other exit signals
+        allowed, reason, summary = self.parent._evaluate_rules(
+            features,
+            pack_types=["exit"]
+        )
+
+        if not allowed and "Exit" in reason:
+            # Exit rule triggered
+            self.parent._log_activity(
+                "EXIT",
+                f"Position geschlossen durch RulePack: {reason}"
+            )
+            logger.info(f"Exit triggered by RulePack: {reason}")
+            return await self.parent._exit.handle_exit_signal(
+                features,
+                exit_signal="CEL_RULE_EXIT"
+            )
+
         # Check exit signals
         exit_signal = self.parent._exit.check_exit_signals(features)
         if exit_signal:
             return await self.parent._exit.handle_exit_signal(features, exit_signal)
 
-        # Update trailing stop
+        # CEL RulePack Integration (Phase 4) - Update Stop Pack
+        # Check update_stop rules BEFORE trailing stop update
+        allowed, reason, summary = self.parent._evaluate_rules(
+            features,
+            pack_types=["update_stop"]
+        )
+
+        if allowed and reason == "STOP_UPDATE" and summary:
+            # Rule triggered stop update
+            logger.info("Stop update triggered by RulePack")
+
+            # Calculate new stop based on rule
+            # For now, use trailing stop calculation, but could be rule-specific
+            new_stop = self._calculate_rule_based_stop(features)
+
+            if new_stop is not None:
+                # Enforce monotonic stop
+                from .cel import enforce_monotonic_stop
+
+                current_stop = self.parent._position.stop_loss
+                trade_direction = (
+                    "LONG" if self.parent._position.side == TradeSide.LONG else "SHORT"
+                )
+
+                final_stop = enforce_monotonic_stop(
+                    trade_direction,
+                    current_stop,
+                    new_stop
+                )
+
+                # Update stop if changed
+                if final_stop != current_stop:
+                    self.parent._position.stop_loss = final_stop
+                    self.parent._log_activity(
+                        "STOP_UPDATE",
+                        f"Stop aktualisiert (RulePack): {current_stop:.2f} → {final_stop:.2f}"
+                    )
+
+                    # Return decision to notify UI
+                    return self.parent._create_decision(
+                        BotAction.ADJUST_STOP,
+                        self.parent._position.side,
+                        features,
+                        ["STOP_UPDATED_BY_RULES"]
+                    )
+
+        # Update trailing stop (fallback if no rule triggered)
         decision = self._maybe_update_trailing_stop(features)
         if decision:
             return decision
@@ -151,3 +216,20 @@ class BotStateHandlersManage:
                 stop_after=new_stop,
             )
         return None
+
+    def _calculate_rule_based_stop(self, features: FeatureVector) -> float | None:
+        """Calculate new stop price based on rule logic.
+
+        This is called when CEL update_stop pack triggers.
+        Currently uses trailing stop calculation, but can be extended
+        with rule-specific logic in the future.
+
+        Args:
+            features: Current feature vector
+
+        Returns:
+            New stop price or None if no update needed
+        """
+        # Use trailing stop calculation as default
+        # In future, could implement rule-specific stop calculations
+        return self.parent._calculate_trailing_stop(features, self.parent._position)

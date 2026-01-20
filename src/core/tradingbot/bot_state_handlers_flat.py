@@ -68,6 +68,28 @@ class BotStateHandlersFlat:
                 ["SCORE_BELOW_THRESHOLD"],
             )
 
+        # CEL RulePack Integration (Phase 4) - Risk + Entry Packs
+        # Check risk and entry rules BEFORE creating signal
+        allowed, reason, summary = self.parent._evaluate_rules(
+            features,
+            pack_types=["risk", "entry"]
+        )
+
+        if not allowed:
+            # Entry blocked by rules
+            self.parent._log_activity(
+                "BLOCKED",
+                f"Entry blockiert durch RulePack: {reason}"
+            )
+            logger.info(f"Entry blocked by RulePack: {reason}")
+            return self.parent._create_decision(
+                BotAction.NO_TRADE,
+                side,
+                features,
+                ["BLOCKED_BY_CEL_RULES"],
+                notes=f"RulePack block: {reason}"
+            )
+
         # Optional pattern validation BEFORE signal creation (warn-only)
         if self.parent.config.bot.use_pattern_check:
             pattern_ok, pattern_reason = await self.parent._pattern_gate(features, side)

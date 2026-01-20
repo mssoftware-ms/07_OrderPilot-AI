@@ -50,6 +50,7 @@ class ToolbarMixinRow2:
         self.add_bitunix_trading_button(toolbar)
         self.add_settings_button(toolbar)
         toolbar.addSeparator()
+        self.add_strategy_settings_button(toolbar)  # Strategy Settings Dialog (JSON/CEL Config)
         self.add_bot_toggle_button(toolbar)
         toolbar.addSeparator()
         self.add_market_status(toolbar)
@@ -423,6 +424,116 @@ class ToolbarMixinRow2:
                 return
             widget = widget.parent()
         logger.warning("Settings dialog not available from toolbar")
+
+    def add_strategy_settings_button(self, toolbar: QToolBar) -> None:
+        """Add Strategy Settings button to chart toolbar (opens Strategy Settings Dialog)."""
+        self.parent.chart_strategy_settings_btn = QPushButton("📋 Strategy Settings")
+        self.parent.chart_strategy_settings_btn.setToolTip(
+            "Strategy Settings öffnen\n"
+            "- JSON Strategy Config auswählen\n"
+            "- CEL RulePacks laden\n"
+            "- Aktuelles Regime & Matched Strategy anzeigen"
+        )
+        self.parent.chart_strategy_settings_btn.setFixedHeight(26)
+        self.parent.chart_strategy_settings_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """
+        )
+        self.parent.chart_strategy_settings_btn.clicked.connect(self._on_strategy_settings_clicked)
+        toolbar.addWidget(self.parent.chart_strategy_settings_btn)
+        logger.debug("Strategy Settings button added to chart toolbar")
+
+    def _on_strategy_settings_clicked(self) -> None:
+        """Handle Strategy Settings button click - opens Strategy Settings Dialog."""
+        try:
+            from src.ui.dialogs.strategy_settings_dialog import StrategySettingsDialog
+
+            # Find chart window - self.parent is EmbeddedTradingViewChart
+            # We need to go up to find ChartWindow
+            widget = self.parent
+            chart_window = None
+
+            # Try to find ChartWindow in parent hierarchy
+            for _ in range(5):  # Max 5 levels up
+                if widget is None:
+                    break
+                # Check if this widget has bot_controller (likely ChartWindow)
+                if hasattr(widget, 'bot_controller'):
+                    chart_window = widget
+                    break
+                # Check class name as fallback
+                if widget.__class__.__name__ == 'ChartWindow':
+                    chart_window = widget
+                    break
+                widget = widget.parent()
+
+            if chart_window is None:
+                logger.warning("Could not find ChartWindow - using parent widget as fallback")
+                chart_window = self.parent
+
+            # Open Strategy Settings Dialog
+            dialog = StrategySettingsDialog(chart_window)
+            result = dialog.exec()
+
+            if result:  # Dialog was accepted (OK/Apply clicked)
+                # Check if dialog has methods to get config
+                if hasattr(dialog, 'get_selected_config_path'):
+                    config_path = dialog.get_selected_config_path()
+                    if config_path:
+                        logger.info(f"Strategy config selected: {config_path}")
+
+                        # Try to load config in bot controller if available
+                        if hasattr(chart_window, 'bot_controller') and chart_window.bot_controller:
+                            try:
+                                if hasattr(chart_window.bot_controller, 'load_rulepack'):
+                                    chart_window.bot_controller.load_rulepack(config_path)
+                                    logger.info(f"RulePack loaded: {config_path}")
+                                elif hasattr(chart_window.bot_controller, 'set_json_config'):
+                                    chart_window.bot_controller.set_json_config(config_path)
+                                    logger.info(f"JSON config loaded: {config_path}")
+                            except Exception as e:
+                                logger.error(f"Failed to load config: {e}")
+                                from PyQt6.QtWidgets import QMessageBox
+                                QMessageBox.warning(
+                                    chart_window,
+                                    "Config Load Error",
+                                    f"Fehler beim Laden der Config:\n{e}"
+                                )
+                else:
+                    logger.info("Strategy Settings Dialog closed without selection")
+            else:
+                logger.debug("Strategy Settings Dialog cancelled")
+
+        except ImportError as e:
+            logger.warning(f"StrategySettingsDialog not available: {e}")
+            # Fallback: show simple message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self.parent,
+                "Strategy Settings",
+                "Strategy Settings Dialog ist noch nicht implementiert.\n"
+                "Bitte verwenden Sie den '⚙️ Settings Bot' Button im Trading Tab."
+            )
+        except Exception as e:
+            logger.error(f"Error opening Strategy Settings Dialog: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.parent,
+                "Error",
+                f"Fehler beim Öffnen des Strategy Settings Dialogs:\n{e}"
+            )
 
     def add_bot_toggle_button(self, toolbar: QToolBar) -> None:
         self.parent.toggle_panel_button = QPushButton("▼ Trading Bot")

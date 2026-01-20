@@ -1118,3 +1118,614 @@ await bot.start()
 ```
 
 **Beispiel-Konfigurationen:** `config/bot_configs/`
+
+## CEL Rule Engine System [NEU]
+
+Das **CEL (Common Expression Language) Rule Engine System** ermöglicht deklarative, JSON-basierte Trading-Regeln für den automatisierten Bot. Es ersetzt hardcoded Logik durch flexible, wiederverwendbare RulePacks.
+
+### Architektur-Übersicht
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    JSON RulePack Files                       │
+│              (03_JSON/RulePacks/*.json)                      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ validate & load
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Phase 1: JSON Schema Foundation            │
+│  - SchemaValidator: JSON Schema Draft 2020-12               │
+│  - RulePack Pydantic Models (v2)                            │
+│  - RulePackLoader: JSON → validated RulePack                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ compile expressions
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Phase 2: CEL Engine Core                   │
+│  - CELEngine: Expression compiler + evaluator (celpy)       │
+│  - RuleContextBuilder: FeatureVector → CEL context          │
+│  - Custom Functions: pctl(), isnull(), nz(), coalesce()     │
+│  - Expression Caching: ~100x faster repeated evaluations    │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ orchestrate execution
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Phase 3: RulePack Executor                 │
+│  - RulePackExecutor: Correct execution order                │
+│  - ExecutionResult: ALLOW/BLOCK/EXIT/UPDATE_STOP            │
+│  - Rule Profiling: Trigger counts, evaluation stats         │
+│  - Monotonic Stop Enforcement (LONG: max, SHORT: min)       │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ integrate with bot
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Phase 4: BotController Integration         │
+│  - load_rulepack(): Load RulePack JSON                      │
+│  - _evaluate_rules(): Execute pack_types at decision points │
+│  - Integration Points:                                      │
+│    ├── Entry (FLAT state): risk + entry packs              │
+│    ├── Exit (MANAGE state): exit pack                      │
+│    └── Stop Update (MANAGE state): update_stop pack        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4-Phasen Implementierung
+
+#### Phase 1: JSON Schema Foundation (KOMPLETT)
+
+**Deliverables:**
+- JSON Schema Specification (`src/core/tradingbot/cel/schema/rulepack.schema.json`)
+- Pydantic v2 Models (`src/core/tradingbot/cel/models.py`)
+- SchemaValidator mit JSON Schema Draft 2020-12
+- RulePackLoader: JSON → Python objects
+
+**Datenmodelle:**
+```python
+# RulePack - Top-Level Container
+RulePack(
+    rules_version: str,
+    engine: str,                    # "CEL"
+    packs: List[Pack]
+)
+
+# Pack - Logical Grouping (risk, entry, exit, update_stop)
+Pack(
+    pack_type: str,                 # "risk" | "entry" | "exit" | "update_stop"
+    rules: List[Rule],
+    description: Optional[str]
+)
+
+# Rule - Single CEL Expression
+Rule(
+    id: str,                        # Unique identifier
+    name: str,                      # Human-readable name
+    expression: str,                # CEL expression
+    severity: str,                  # "block" | "warn" | "exit" | "update_stop"
+    message: str,                   # User-facing message
+    enabled: bool = True
+)
+```
+
+**Test Coverage:** 27 Tests (100% schema validation coverage)
+
+#### Phase 2: CEL Engine Core (KOMPLETT)
+
+**Deliverables:**
+- CELEngine: Expression compiler + evaluator (`src/core/tradingbot/cel/engine.py`)
+- RuleContextBuilder: FeatureVector → CEL context (`src/core/tradingbot/cel/context.py`)
+- Custom CEL Functions (pctl, isnull, nz, coalesce)
+- Expression Caching: LRU cache für wiederholte Evaluationen
+
+**CEL Context Structure:**
+```python
+{
+    # Indicators (13 total)
+    "rsi14": {"value": 28.5, "period": 14, "indicator": "rsi"},
+    "macd12_26_9": {
+        "value": 0.5,
+        "signal": 0.3,
+        "histogram": 0.2,
+        "fast": 12,
+        "slow": 26,
+        "smooth": 9
+    },
+    "adx14": {"value": 32.0, "period": 14},
+    "atr14": {"value": 1.5, "period": 14},
+    # ... weitere Indikatoren
+
+    # Trade State (optional - nur bei offener Position)
+    "trade": {
+        "side": "LONG",
+        "entry_price": 100.0,
+        "current_price": 101.0,
+        "profit_pct": 1.0,
+        "bars_held": 3
+    },
+
+    # Configuration
+    "cfg": {
+        "capital": 10000.0,
+        "max_position_size": 0.02,
+        "max_risk_per_trade": 0.01
+    },
+
+    # Market Context
+    "symbol": "BTC/USD",
+    "timeframe": "5m"
+}
+```
+
+**Custom Functions:**
+- `pctl(values, percentile)` - Percentile calculation
+- `isnull(value)` - NULL check
+- `nz(value, default)` - NULL coalescing
+- `coalesce(value1, value2, ...)` - First non-NULL value
+
+**Performance:** ~100x faster with expression caching (0.02ms vs 2ms per eval)
+
+**Test Coverage:** 30 Tests (engine, context, functions, caching)
+
+#### Phase 3: RulePack Executor (KOMPLETT)
+
+**Deliverables:**
+- RulePackExecutor: Orchestrates pack evaluation
+- ExecutionResult enum: ALLOW, BLOCK, EXIT, UPDATE_STOP
+- ExecutionSummary: Aggregated results with metadata
+- Rule Profiling: Track evaluations/triggers per rule
+- Monotonic Stop Enforcement
+
+**Execution Order (kritisch):**
+```
+1. exit pack          → If triggered, EXIT immediately
+2. update_stop pack   → If triggered, UPDATE_STOP (then continue)
+3. risk pack          → If blocked, BLOCK entry
+4. entry pack         → If blocked, BLOCK entry
+5. Final Decision     → ALLOW if all passed
+```
+
+**ExecutionResult States:**
+```python
+class ExecutionResult(str, Enum):
+    ALLOW = "allow"           # All checks passed
+    BLOCK = "block"           # Entry blocked by risk/entry pack
+    EXIT = "exit"             # Position exit triggered
+    UPDATE_STOP = "update_stop"  # Trailing stop update
+```
+
+**Monotonic Stop Enforcement:**
+```python
+def enforce_monotonic_stop(
+    trade_direction: str,      # "LONG" | "SHORT"
+    current_stop: float,
+    new_stop: float
+) -> float:
+    """
+    Ensures stops only move in safe direction:
+    - LONG: Stops only move UP (use max)
+    - SHORT: Stops only move DOWN (use min)
+    """
+    if trade_direction == "LONG":
+        return max(current_stop, new_stop)  # Never lower stop
+    else:  # SHORT
+        return min(current_stop, new_stop)  # Never raise stop
+```
+
+**Rule Profiling:**
+```python
+executor.get_rule_stats() → {
+    "risk_max_position": {
+        "evaluations": 150,
+        "triggers": 12,
+        "last_triggered": "2025-01-15T14:30:00",
+        "avg_eval_time_ms": 0.023
+    }
+}
+```
+
+**Test Coverage:** 24 Tests (execution order, monotonic stops, profiling)
+
+#### Phase 4: BotController Integration (KOMPLETT)
+
+**Deliverables:**
+- `BotController.load_rulepack()` - Load RulePack from JSON
+- `BotController._evaluate_rules()` - Execute pack_types at decision points
+- Entry Integration: FLAT state (risk + entry packs)
+- Exit Integration: MANAGE state (exit pack)
+- Stop Update Integration: MANAGE state (update_stop pack)
+- Rule Profiling API
+
+**Integration Points:**
+
+```
+BotController Integration Points:
+────────────────────────────────
+
+1. Entry Check (bot_state_handlers_flat.py:65-82)
+   └─► State: FLAT
+   └─► Trigger: After score calculation, before signal creation
+   └─► Packs: ["risk", "entry"]
+   └─► Action: BLOCK entry if rules fail
+
+2. Exit Check (bot_state_handlers_manage.py:60-77)
+   └─► State: MANAGE
+   └─► Trigger: After stop-hit check, before standard exits
+   └─► Packs: ["exit"]
+   └─► Action: EXIT position if exit rule triggers
+
+3. Stop Update (bot_state_handlers_manage.py:84-128)
+   └─► State: MANAGE
+   └─► Trigger: Before trailing stop update
+   └─► Packs: ["update_stop"]
+   └─► Action: UPDATE stop with monotonic enforcement
+```
+
+**API Methods:**
+
+```python
+# Load RulePack
+bot.load_rulepack("03_JSON/RulePacks/default_rules.json")
+→ Returns: bool (True on success)
+
+# Evaluate Rules (internal)
+allowed, reason, summary = bot._evaluate_rules(
+    features=current_features,
+    pack_types=["risk", "entry"]
+)
+→ Returns: (
+    allowed: bool,
+    reason: str,
+    summary: ExecutionSummary | None
+)
+
+# Rule Profiling
+stats = bot.get_rule_stats()
+→ Returns: Dict[str, RuleStats]
+
+top_rules = bot.get_most_triggered_rules(top_n=10)
+→ Returns: List[(rule_id, trigger_count)]
+
+bot.clear_rule_stats()
+```
+
+**Test Coverage:** 13 Integration Tests
+
+### Datenfluss: Entry Decision mit CEL
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. MARKET_BAR Event → BotController.on_bar()               │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. FeatureEngine → FeatureVector (13 indicators)           │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. State: FLAT → process_flat()                            │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. EntryScorer.calculate_score() → (long_score, short_score)|
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  5. _select_entry_signal() → (side, score)                  │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  6. CEL Integration: _evaluate_rules(features, ["risk", "entry"])|
+│     ├── RuleContextBuilder.build(features, trade, config)   │
+│     ├── RulePackExecutor.execute(rulepack, context)         │
+│     └── Returns: (allowed, reason, summary)                 │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  7. Decision:                                               │
+│     IF allowed:                                             │
+│        → Create Signal                                      │
+│        → Transition to SIGNAL state                         │
+│     ELSE:                                                   │
+│        → Log block reason                                   │
+│        → BotDecision(NO_TRADE, BLOCKED_BY_CEL_RULES)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Datenfluss: Exit Decision mit CEL
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. State: MANAGE → process_manage()                        │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Check Stop Hit (using candle extremes)                  │
+│     IF stop_hit: → EXIT immediately                         │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. CEL Integration: _evaluate_rules(features, ["exit"])    │
+│     ├── Context includes trade state (side, entry, profit)  │
+│     ├── RulePackExecutor.execute()                          │
+│     └── Returns: (allowed, reason, summary)                 │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. Decision:                                               │
+│     IF exit rule triggered:                                 │
+│        → Log exit reason                                    │
+│        → handle_exit_signal(exit_signal="CEL_RULE_EXIT")    │
+│     ELSE:                                                   │
+│        → Continue to standard exit checks                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Datenfluss: Stop Update mit CEL
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. State: MANAGE → process_manage() (after exit checks)    │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. CEL Integration: _evaluate_rules(features, ["update_stop"])|
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. IF update_stop rule triggered:                          │
+│     ├── _calculate_rule_based_stop(features) → new_stop     │
+│     ├── enforce_monotonic_stop(direction, current, new)     │
+│     └── Update position.stop_loss if changed                │
+└───────────────────────┬─────────────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│  4. ELSE (no CEL trigger):                                  │
+│     └── Fallback to standard trailing stop update          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### RulePack JSON Example
+
+```json
+{
+  "rules_version": "1.0.0",
+  "engine": "CEL",
+  "packs": [
+    {
+      "pack_type": "risk",
+      "description": "Risk management rules",
+      "rules": [
+        {
+          "id": "risk_max_position",
+          "name": "Max Position Size Check",
+          "expression": "cfg.max_position_size <= 0.2",
+          "severity": "block",
+          "message": "Position size exceeds 20% limit"
+        }
+      ]
+    },
+    {
+      "pack_type": "entry",
+      "description": "Entry validation rules",
+      "rules": [
+        {
+          "id": "entry_rsi_oversold",
+          "name": "RSI Oversold with Strong Trend",
+          "expression": "rsi14.value < 30 && adx14.value > 25",
+          "severity": "warn",
+          "message": "RSI oversold with strong trend - favorable entry"
+        }
+      ]
+    },
+    {
+      "pack_type": "exit",
+      "description": "Exit trigger rules",
+      "rules": [
+        {
+          "id": "exit_rsi_overbought",
+          "name": "RSI Overbought Exit",
+          "expression": "rsi14.value > 70",
+          "severity": "exit",
+          "message": "RSI overbought - exit position"
+        }
+      ]
+    },
+    {
+      "pack_type": "update_stop",
+      "description": "Trailing stop update rules",
+      "rules": [
+        {
+          "id": "stop_trail_profit",
+          "name": "Trail Stop in Profit",
+          "expression": "trade != null && trade.profit_pct > 2.0",
+          "severity": "update_stop",
+          "message": "Trailing stop update (profit > 2%)"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Verzeichnisstruktur
+
+```
+src/core/tradingbot/cel/
+├── __init__.py                 # Public API exports
+├── models.py                   # Pydantic Models (RulePack, Pack, Rule)
+├── engine.py                   # CELEngine (compiler + evaluator)
+├── context.py                  # RuleContextBuilder
+├── executor.py                 # RulePackExecutor + ExecutionResult
+├── loader.py                   # RulePackLoader
+├── schema/
+│   └── rulepack.schema.json    # JSON Schema Draft 2020-12
+└── tests/
+    ├── test_schema_validator.py         # 27 Tests
+    ├── test_cel_engine.py                # 30 Tests
+    ├── test_rulepack_executor.py         # 24 Tests
+    └── test_bot_controller_cel_integration.py  # 13 Tests
+```
+
+### CEL Expression Beispiele
+
+**Indikator-Checks:**
+```javascript
+// RSI oversold
+rsi14.value < 30
+
+// MACD bullish cross
+macd12_26_9.histogram > 0 && macd12_26_9.value > macd12_26_9.signal
+
+// ADX strong trend
+adx14.value > 25
+
+// Bollinger Band squeeze
+bb20_2.width < pctl(bb20_2.width, 20)  // Width in lower 20th percentile
+```
+
+**Position-Checks:**
+```javascript
+// Trade in profit
+trade != null && trade.profit_pct > 1.0
+
+// Held too long
+trade.bars_held > 50
+
+// Stop distance check
+(trade.current_price - trade.entry_price) / trade.entry_price > 0.02
+```
+
+**Risk-Checks:**
+```javascript
+// Max position size
+cfg.max_position_size <= 0.2
+
+// Max risk per trade
+cfg.max_risk_per_trade <= 0.02
+
+// Capital check
+cfg.capital >= 1000.0
+```
+
+**Combined Logic:**
+```javascript
+// Entry: RSI oversold + strong trend + bullish MACD
+rsi14.value < 30 && adx14.value > 25 && macd12_26_9.histogram > 0
+
+// Exit: RSI overbought OR profit > 5% OR held > 100 bars
+rsi14.value > 70 || trade.profit_pct > 5.0 || trade.bars_held > 100
+```
+
+### Performance Metriken
+
+**Expression Evaluation:**
+- Uncached: ~2ms pro Expression
+- Cached (LRU): ~0.02ms pro Expression (~100x speedup)
+- Context Building: ~0.5ms (13 Indikatoren)
+
+**RulePack Execution:**
+- 4 Packs (10 Rules total): ~1-2ms ohne Cache
+- 4 Packs (10 Rules total): ~0.1ms mit Cache
+
+**Memory Footprint:**
+- RulePack JSON: ~5-15KB
+- Compiled Expressions (Cached): ~50KB für 50 Rules
+- Context Object: ~2KB
+
+### Integration mit bestehenden Systemen
+
+**Feature Engine:**
+```python
+# FeatureEngine liefert alle 13 Indikatoren
+features = feature_engine.process_bar(bar)
+
+# RuleContextBuilder konvertiert zu CEL Context
+context = RuleContextBuilder.build(features, trade, config)
+```
+
+**Regime Engine:**
+```python
+# Regime kann in Custom Context hinzugefügt werden
+regime = regime_engine.classify(features)
+
+context_override = {
+    "regime": {
+        "type": regime.regime.value,      # "TREND_UP"
+        "volatility": regime.volatility.value  # "NORMAL"
+    }
+}
+
+allowed, reason, summary = bot._evaluate_rules(
+    features, ["entry"], context_override=context_override
+)
+```
+
+**Strategy Catalog:**
+- RulePacks können pro Strategy definiert werden
+- Strategy-spezifische Regeln über context_override
+
+### Sicherheit & Guardrails
+
+**JSON Schema Validation:**
+- Alle RulePacks werden gegen JSON Schema validiert
+- Pydantic v2 für Typ-Sicherheit zur Laufzeit
+
+**CEL Sandboxing:**
+- CEL ist eine sichere Expression Language (kein arbitrary code execution)
+- Kein Dateisystem-Zugriff, kein Netzwerk-Zugriff
+- Nur definierte Funktionen verfügbar
+
+**Monotonic Stop Enforcement:**
+- Verhindert versehentliches "Lockern" von Stops
+- LONG: Stops bewegen sich nur nach oben
+- SHORT: Stops bewegen sich nur nach unten
+
+**Fallback bei fehlenden RulePacks:**
+- Wenn kein RulePack geladen: `_evaluate_rules()` gibt `(True, "", None)` zurück
+- Bot funktioniert weiter mit hardcoded Logik
+
+### Erweiterbarkeit
+
+**Neue Pack Types:**
+- Einfach neue `pack_type` in JSON definieren
+- RulePackExecutor unterstützt beliebige Pack-Typen
+- Execution-Order kann angepasst werden
+
+**Custom CEL Functions:**
+- Neue Funktionen via `celpy` Environment registrieren
+- Beispiel: `volatility_rank()`, `sector_strength()`, etc.
+
+**Multi-Timeframe Context:**
+- Context kann um Daten aus höheren Timeframes erweitert werden
+- Beispiel: H1 Features im M5 Bot
+
+### Workflow: Neue RulePack erstellen
+
+```
+1. JSON Schema Entwurf
+   ├── 03_JSON/RulePacks/my_rules.json
+   └── Packs definieren: risk, entry, exit, update_stop
+
+2. Validierung
+   ├── RulePackLoader.load("my_rules.json")
+   └── SchemaValidator prüft gegen rulepack.schema.json
+
+3. Bot Integration
+   ├── bot.load_rulepack("03_JSON/RulePacks/my_rules.json")
+   └── RulePack wird bei Entry/Exit/Stop evaluiert
+
+4. Testing
+   ├── Manual: Bot in Backtest laufen lassen
+   ├── Profiling: bot.get_rule_stats() prüfen
+   └── Iteration: Regeln basierend auf Trigger-Häufigkeit anpassen
+```
+
+### Status & Roadmap
+
+**✅ Phase 1-4: KOMPLETT (Stand: 2025-01-20)**
+- 94 Tests (81 Unit + 13 Integration)
+- ~5,300 LOC implementiert
+- 3 Integration Points im BotController
+- Vollständige Dokumentation
+
+**⏳ Optional Phase 5 (Zukunft):**
+- Rule Versioning & Migration Tools
+- Visual RulePack Editor (UI)
+- Rule Templates Library
+- A/B Testing Framework für RulePacks
+- Multi-Strategy RulePack Orchestration

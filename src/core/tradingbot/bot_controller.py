@@ -183,6 +183,11 @@ class BotController(
         self._trading_blocked: bool = False
         self._last_block_reasons: list[str] = []
 
+        # CEL RulePack System (Phase 4)
+        self._rule_executor = None  # RulePackExecutor instance
+        self._rulepack = None        # Loaded RulePack
+        self._rulepack_path = None   # Path to RulePack JSON
+
         # Initialize state handler helpers (dispatcher, flat/manage/signal/exit)
         self.__init_state_handlers__()
 
@@ -655,6 +660,162 @@ class BotController(
             logger.error(f"Failed to set initial strategy: {e}", exc_info=True)
             self._log_activity("ERROR", f"Strategie-Set Fehler: {e}")
             raise
+
+    # ==================== CEL RulePack Integration (Phase 4) ====================
+
+    def load_rulepack(self, rulepack_path: str) -> bool:
+        """Load CEL RulePack from JSON file.
+
+        Args:
+            rulepack_path: Path to RulePack JSON file
+
+        Returns:
+            True if loaded successfully, False otherwise
+
+        Example:
+            bot.load_rulepack("03_JSON/RulePacks/default_rules.json")
+        """
+        try:
+            from .cel import RulePackExecutor
+            from .cel.loader import RulePackLoader
+
+            # Load RulePack
+            loader = RulePackLoader()
+            self._rulepack = loader.load(rulepack_path)
+            self._rulepack_path = rulepack_path
+
+            # Initialize executor if not exists
+            if self._rule_executor is None:
+                self._rule_executor = RulePackExecutor()
+
+            logger.info(
+                f"✅ RulePack loaded: {rulepack_path} | "
+                f"Version: {self._rulepack.rules_version} | "
+                f"Packs: {len(self._rulepack.packs)}"
+            )
+
+            self._log_activity(
+                "RULES",
+                f"RulePack geladen: {len(self._rulepack.packs)} Packs, "
+                f"{sum(len(p.rules) for p in self._rulepack.packs)} Rules"
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load RulePack: {e}")
+            self._log_activity("ERROR", f"RulePack laden fehlgeschlagen: {e}")
+            return False
+
+    def _evaluate_rules(
+        self,
+        features: FeatureVector,
+        pack_types: list[str],
+        context_override: dict[str, Any] | None = None
+    ) -> tuple[bool, str, Any]:
+        """Evaluate CEL RulePack for given pack types.
+
+        Args:
+            features: Current feature vector
+            pack_types: Pack types to evaluate (e.g., ["risk", "entry"])
+            context_override: Optional context overrides
+
+        Returns:
+            Tuple of (allowed, reason, summary)
+            - allowed: True if decision is ALLOW
+            - reason: Block/Exit reason if not allowed
+            - summary: Full ExecutionSummary
+
+        Example:
+            allowed, reason, summary = bot._evaluate_rules(
+                features, ["risk", "entry"]
+            )
+            if not allowed:
+                logger.warning(f"Blocked: {reason}")
+        """
+        from .cel import RuleContextBuilder, ExecutionResult
+
+        # Check if RulePack is loaded
+        if self._rulepack is None or self._rule_executor is None:
+            # No rules loaded - allow by default
+            return True, "", None
+
+        # Build CEL context
+        context = RuleContextBuilder.build(
+            features=features,
+            trade=self._position,
+            config={
+                "capital": 10000.0,  # TODO: Get from account
+                "max_position_size": self.config.risk.position_size_pct,
+                "max_risk_per_trade": self.config.risk.stop_loss_pct,
+            },
+            timeframe=self.timeframe,
+            additional_context=context_override or {}
+        )
+
+        # Execute RulePack
+        summary = self._rule_executor.execute(
+            self._rulepack,
+            context,
+            pack_types=pack_types
+        )
+
+        # Interpret result
+        if summary.final_decision == ExecutionResult.ALLOW:
+            return True, "", summary
+
+        elif summary.final_decision == ExecutionResult.BLOCK:
+            reason = f"Blocked by {summary.blocked_by_pack}/{summary.blocked_by_rule}"
+            return False, reason, summary
+
+        elif summary.final_decision == ExecutionResult.EXIT:
+            reason = "Exit signal from RulePack"
+            return False, reason, summary
+
+        elif summary.final_decision == ExecutionResult.UPDATE_STOP:
+            # Not a block, but a signal
+            return True, "STOP_UPDATE", summary
+
+        elif summary.final_decision == ExecutionResult.WARN:
+            # Warning - allow but log
+            logger.warning(f"RulePack warning: {summary}")
+            return True, "WARNING", summary
+
+        return True, "", summary
+
+    def get_rule_stats(self) -> dict[str, Any]:
+        """Get rule profiling statistics.
+
+        Returns:
+            Rule statistics dict or empty dict if no executor
+
+        Example:
+            stats = bot.get_rule_stats()
+            for rule_id, data in stats.items():
+                print(f"{rule_id}: {data['triggers']}/{data['evaluations']}")
+        """
+        if self._rule_executor is None:
+            return {}
+        return self._rule_executor.get_rule_stats()
+
+    def get_most_triggered_rules(self, top_n: int = 10) -> list[tuple[str, int]]:
+        """Get most frequently triggered rules.
+
+        Args:
+            top_n: Number of top rules to return
+
+        Returns:
+            List of (rule_id, trigger_count) tuples
+        """
+        if self._rule_executor is None:
+            return []
+        return self._rule_executor.get_most_triggered_rules(top_n)
+
+    def clear_rule_stats(self) -> None:
+        """Clear rule profiling statistics."""
+        if self._rule_executor:
+            self._rule_executor.clear_stats()
+            logger.info("Rule statistics cleared")
 
     def _check_regime_change_and_switch(self, features: FeatureVector) -> bool:
         """Check if regime has changed and switch strategy if needed.

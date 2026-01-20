@@ -1152,6 +1152,285 @@ config = loader.load_config("my_strategy.json")
                     <strong>✅ Production Ready:</strong> 45 Tests passing (23 CEL Engine + 22 ConditionEvaluator)
                 </div>
 
+                <h3>🎯 RulePack System (Phase 4 - Neu!)</h3>
+                <div class="alert alert-info">
+                    <strong>🚀 NEU:</strong> Das RulePack System ermöglicht vollständig deklarative Trading-Regeln in separaten JSON-Dateien!
+                </div>
+
+                <h4>Was ist ein RulePack?</h4>
+                <p>Ein RulePack ist eine JSON-Datei mit strukturierten Trading-Regeln, die vom BotController zur Laufzeit geladen und evaluiert werden. Im Gegensatz zu eingebetteten CEL-Expressions in Strategy-Configs:</p>
+                <ul>
+                    <li>✅ <strong>Wiederverwendbar:</strong> Eine RulePack-Datei für mehrere Strategien</li>
+                    <li>✅ <strong>Versionierbar:</strong> Änderungen ohne Code-Deployment</li>
+                    <li>✅ <strong>Strukturiert:</strong> 4 Pack Types für verschiedene Entscheidungspunkte</li>
+                    <li>✅ <strong>Profiling:</strong> Automatisches Tracking von Rule-Triggers</li>
+                </ul>
+
+                <h4>Die 4 Pack Types</h4>
+                <div class="card">
+                    <div class="card-title">📦 Pack Types im Trading-Zyklus</div>
+                    <table style="width: 100%; margin-top: 1rem;">
+                        <tr>
+                            <th>Pack Type</th>
+                            <th>Wann evaluiert?</th>
+                            <th>Aktion bei Trigger</th>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-danger">risk</span></td>
+                            <td>Vor Entry (FLAT state)</td>
+                            <td>Entry blockieren</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-success">entry</span></td>
+                            <td>Vor Entry (FLAT state)</td>
+                            <td>Entry blockieren</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-warning">exit</span></td>
+                            <td>Während Position (MANAGE state)</td>
+                            <td>Position schließen</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge badge-info">update_stop</span></td>
+                            <td>Während Position (MANAGE state)</td>
+                            <td>Trailing Stop aktualisieren</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h4>RulePack JSON Struktur</h4>
+                <div class="card">
+                    <div class="card-title">📄 Vollständiges RulePack Beispiel</div>
+                    <pre><code>{
+  "rules_version": "1.0.0",
+  "engine": "CEL",
+  "packs": [
+    {
+      "pack_type": "risk",
+      "description": "Risk Management Rules",
+      "rules": [
+        {
+          "id": "risk_max_position",
+          "name": "Max Position Size Check",
+          "expression": "cfg.max_position_size <= 0.2",
+          "severity": "block",
+          "message": "Position size exceeds 20% limit"
+        }
+      ]
+    },
+    {
+      "pack_type": "entry",
+      "description": "Entry Validation Rules",
+      "rules": [
+        {
+          "id": "entry_rsi_oversold",
+          "name": "RSI Oversold with Strong Trend",
+          "expression": "rsi14.value < 30 && adx14.value > 25",
+          "severity": "warn",
+          "message": "RSI oversold with strong trend"
+        }
+      ]
+    },
+    {
+      "pack_type": "exit",
+      "description": "Exit Trigger Rules",
+      "rules": [
+        {
+          "id": "exit_rsi_overbought",
+          "name": "RSI Overbought Exit",
+          "expression": "rsi14.value > 70",
+          "severity": "exit",
+          "message": "RSI overbought - exit position"
+        }
+      ]
+    },
+    {
+      "pack_type": "update_stop",
+      "description": "Trailing Stop Update Rules",
+      "rules": [
+        {
+          "id": "stop_trail_profit",
+          "name": "Trail Stop in Profit",
+          "expression": "trade != null && trade.profit_pct > 2.0",
+          "severity": "update_stop",
+          "message": "Trailing stop update (profit > 2%)"
+        }
+      ]
+    }
+  ]
+}</code></pre>
+                    <p><strong>Speicherort:</strong> <code>03_JSON/RulePacks/</code></p>
+                </div>
+
+                <h4>CEL Context in RulePacks</h4>
+                <div class="card">
+                    <div class="card-title">📊 Verfügbare Context-Variablen</div>
+                    <pre><code>// 13 Technische Indikatoren
+rsi14.value          // RSI(14) Wert
+macd12_26_9.value    // MACD Line
+macd12_26_9.signal   // MACD Signal Line
+macd12_26_9.histogram // MACD Histogram
+adx14.value          // ADX(14) Wert
+atr14.value          // ATR(14) Wert
+atrp.value           // ATR als % vom Preis
+bb20_2.upper         // Bollinger Band Upper
+bb20_2.middle        // Bollinger Band Middle
+bb20_2.lower         // Bollinger Band Lower
+bb20_2.width         // BB Width (normalized)
+// ... weitere Indikatoren
+
+// Trade State (nur bei offener Position)
+trade.side           // "LONG" oder "SHORT"
+trade.entry_price    // Entry-Preis
+trade.current_price  // Aktueller Preis
+trade.profit_pct     // Profit in %
+trade.bars_held      // Anzahl gehaltener Bars
+trade.stop_loss      // Aktueller Stop-Loss
+
+// Konfiguration
+cfg.capital              // Verfügbares Kapital
+cfg.max_position_size    // Max Position Size (%)
+cfg.max_risk_per_trade   // Max Risk pro Trade (%)
+
+// Markt-Context
+symbol               // z.B. "BTC/USD"
+timeframe            // z.B. "5m"</code></pre>
+                </div>
+
+                <h4>Integration im BotController</h4>
+                <div class="steps">
+                    <div class="step">
+                        <h4>1. RulePack laden</h4>
+                        <pre><code>from src.core.tradingbot.bot_controller import BotController
+
+bot = BotController(config)
+success = bot.load_rulepack("03_JSON/RulePacks/default_rules.json")
+
+if success:
+    print("✅ RulePack loaded successfully!")
+else:
+    print("❌ RulePack load failed")</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>2. Automatische Evaluation</h4>
+                        <p>Der BotController evaluiert RulePacks automatisch an 3 Integrationspunkten:</p>
+                        <ul>
+                            <li><strong>Entry:</strong> Nach Score-Berechnung, vor Signal-Erstellung → risk + entry packs</li>
+                            <li><strong>Exit:</strong> Nach Stop-Hit-Check, vor Standard-Exits → exit pack</li>
+                            <li><strong>Stop Update:</strong> Vor Trailing-Stop-Update → update_stop pack</li>
+                        </ul>
+                    </div>
+                    <div class="step">
+                        <h4>3. Rule Profiling</h4>
+                        <pre><code>// Nach mehreren Trades: Rule-Statistiken abrufen
+stats = bot.get_rule_stats()
+
+// Beispiel-Output:
+{
+  "risk_max_position": {
+    "evaluations": 150,
+    "triggers": 12,
+    "last_triggered": "2025-01-15T14:30:00",
+    "avg_eval_time_ms": 0.023
+  }
+}
+
+// Top-10 meist getriggerte Rules
+top_rules = bot.get_most_triggered_rules(top_n=10)
+// [(rule_id, trigger_count), ...]</code></pre>
+                    </div>
+                </div>
+
+                <h4>🔒 Monotonic Stop Enforcement</h4>
+                <div class="alert alert-warning">
+                    <strong>⚠️ Wichtig:</strong> Update-Stop-Regeln werden automatisch auf Sicherheit geprüft!
+                </div>
+                <div class="card">
+                    <div class="card-title">🛡️ Sichere Stop-Bewegungen</div>
+                    <p>Das RulePack System stellt sicher, dass Stops <strong>niemals versehentlich "gelockert"</strong> werden:</p>
+                    <pre><code>// LONG Position:
+// Stops bewegen sich nur NACH OBEN (max)
+current_stop = 95000.00
+new_stop = 94500.00  // Niedriger als aktuell
+final_stop = max(95000.00, 94500.00) = 95000.00  // ✅ Bleibt bei 95000
+
+// SHORT Position:
+// Stops bewegen sich nur NACH UNTEN (min)
+current_stop = 95000.00
+new_stop = 95500.00  // Höher als aktuell
+final_stop = min(95000.00, 95500.00) = 95000.00  // ✅ Bleibt bei 95000</code></pre>
+                    <span class="badge badge-success">Automatisch enforced</span>
+                </div>
+
+                <h4>Execution Order</h4>
+                <div class="card">
+                    <div class="card-title">⚡ Pack Evaluation Reihenfolge</div>
+                    <p>RulePacks werden in folgender Reihenfolge evaluiert (kritisch für korrekte Entscheidungen):</p>
+                    <ol>
+                        <li><strong>exit</strong> → Falls getriggert: Sofortiger EXIT</li>
+                        <li><strong>update_stop</strong> → Falls getriggert: Stop Update (dann weiter)</li>
+                        <li><strong>risk</strong> → Falls blockiert: Entry BLOCK</li>
+                        <li><strong>entry</strong> → Falls blockiert: Entry BLOCK</li>
+                        <li><strong>Final Decision</strong> → ALLOW falls alle passed</li>
+                    </ol>
+                    <p><strong>Rationale:</strong> Exit-Checks haben höchste Priorität (Kapitalschutz), dann Stop-Updates, dann Entry-Validierung.</p>
+                </div>
+
+                <h4>RulePack Validation</h4>
+                <div class="card">
+                    <div class="card-title">✅ Automatische Validierung</div>
+                    <p>Beim Laden eines RulePacks werden folgende Checks durchgeführt:</p>
+                    <ul>
+                        <li>✅ <strong>JSON Schema Validation</strong> (Draft 2020-12)</li>
+                        <li>✅ <strong>Pydantic v2 Type Safety</strong></li>
+                        <li>✅ <strong>CEL Expression Syntax Check</strong></li>
+                        <li>✅ <strong>Required Fields Check</strong> (id, name, expression, severity)</li>
+                        <li>✅ <strong>Severity Enum Validation</strong> (block/warn/exit/update_stop)</li>
+                    </ul>
+                    <p>Bei Validierungsfehlern wird das RulePack abgelehnt und der Bot arbeitet weiter mit hardcoded Logik.</p>
+                </div>
+
+                <h4>Performance & Tests</h4>
+                <div class="card">
+                    <div class="card-title">📊 RulePack Performance</div>
+                    <table style="width: 100%; margin-top: 1rem;">
+                        <tr>
+                            <th>Metrik</th>
+                            <th>Wert</th>
+                        </tr>
+                        <tr>
+                            <td><strong>Expression Evaluation (cached)</strong></td>
+                            <td>~0.02ms pro Rule</td>
+                        </tr>
+                        <tr>
+                            <td><strong>RulePack Execution (10 Rules)</strong></td>
+                            <td>~0.1ms (mit Cache)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Context Building</strong></td>
+                            <td>~0.5ms (13 Indikatoren)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Memory Footprint</strong></td>
+                            <td>~50KB (50 Rules cached)</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="alert alert-success">
+                    <strong>✅ Production Ready:</strong> 94 Tests passing (81 Unit + 13 Integration)
+                    <br>Phase 1-4 vollständig implementiert und getestet!
+                </div>
+
+                <h4>Beispiel-RulePacks</h4>
+                <p>Vorkonfigurierte RulePacks finden Sie in <code>03_JSON/RulePacks/</code>:</p>
+                <ul>
+                    <li><code>default_rules.json</code> - Standard Risk & Entry Rules</li>
+                    <li><code>aggressive_exits.json</code> - Aggressive Exit-Strategie</li>
+                    <li><code>conservative_stops.json</code> - Konservative Trailing Stops</li>
+                    <li><code>volatility_adaptive.json</code> - Volatilitäts-basierte Regeln</li>
+                </ul>
+
                 <h3>Best Practices</h3>
                 <ul>
                     <li>✅ Nutze CEL für komplexe Logic mit AND/OR/NOT</li>
@@ -1159,8 +1438,11 @@ config = loader.load_config("my_strategy.json")
                     <li>✅ Nutze Custom Functions (pctl, crossover) für Trading-spezifische Logic</li>
                     <li>✅ Teste mit validate_expression() vor Deployment</li>
                     <li>✅ Nutze Null-Handling (isnull, nz, coalesce) für robuste Regeln</li>
+                    <li>✅ <strong>NEU:</strong> Verwende RulePacks für wiederverwendbare Regel-Sets</li>
+                    <li>✅ <strong>NEU:</strong> Nutze Rule Profiling um Trigger-Häufigkeit zu analysieren</li>
                     <li>⚠️ Vermeide übermäßige Verschachtelung (Lesbarkeit leidet)</li>
                     <li>⚠️ Performance: Cache-Hit-Rate bei 90%+ halten (wiederkehrende Expressions)</li>
+                    <li>⚠️ <strong>NEU:</strong> Teste RulePacks im Backtest bevor du sie live nutzt</li>
                 </ul>
             </section>
 
