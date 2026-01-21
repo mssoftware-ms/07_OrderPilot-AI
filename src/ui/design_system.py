@@ -52,7 +52,7 @@ class ColorPalette:
 @dataclass
 class Typography:
     """Defines font settings."""
-    font_family: str = "'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
+    font_family: str = "'Aptos', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
     size_xs: str = "11px"
     size_sm: str = "12px"
     size_md: str = "14px" # Base size

@@ -212,16 +212,49 @@ class EventBus:
         except Exception as e:
             logger.error(f"Error emitting event {event.type}: {e}")
 
-    def subscribe(self, event_type: EventType, handler: Callable[[Event], None]) -> None:
-        """Subscribe to an event type.
+    def subscribe(
+        self,
+        event_type: EventType,
+        handler: Callable[[Event], None],
+        filter: Callable[[Event], bool] | None = None
+    ) -> None:
+        """Subscribe to an event type with optional filtering.
 
         Args:
             event_type: The type of event to subscribe to
             handler: The callback function to handle the event
+            filter: Optional filter function. If provided, handler is only
+                   called when filter(event) returns True. This is more
+                   efficient than filtering in the handler itself as it
+                   prevents the handler call entirely.
+
+        Example:
+            # Subscribe only to events for a specific symbol
+            event_bus.subscribe(
+                EventType.MARKET_TICK,
+                self._handle_tick,
+                filter=lambda e: e.data.get("symbol") == "AAPL"
+            )
         """
         signal = self.get_signal(event_type)
-        signal.connect(handler)
+        
+        if filter is not None:
+            # Wrap handler with filter
+            def filtered_handler(event):
+                if filter(event):
+                    handler(event)
+            
+            # Store reference to original handler for unsubscribe
+            if not hasattr(self, '_filtered_handlers'):
+                self._filtered_handlers = {}
+            self._filtered_handlers[(event_type, handler)] = filtered_handler
+            
+            signal.connect(filtered_handler)
+        else:
+            signal.connect(handler)
+        
         logger.debug(f"Handler registered for {event_type.value}")
+
 
     def unsubscribe(self, event_type: EventType, handler: Callable[[Event], None]) -> None:
         """Unsubscribe from an event type.

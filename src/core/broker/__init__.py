@@ -17,6 +17,7 @@ from .base import (
     TokenBucketRateLimiter,
 )
 from .mock_broker import MockBroker
+from .broker_service import BrokerService, get_broker_service
 
 __all__ = [
     # Base classes and interfaces
@@ -39,5 +40,8 @@ __all__ = [
     # Rate limiting
     'TokenBucketRateLimiter',
     # Implementations
-    'MockBroker'
+    'MockBroker',
+    # Singleton Service
+    'BrokerService',
+    'get_broker_service',
 ]

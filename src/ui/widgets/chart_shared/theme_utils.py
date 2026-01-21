@@ -34,8 +34,12 @@ def load_custom_colors() -> Dict[str, str]:
     settings = QSettings("OrderPilot", "TradingApp")
     custom_colors = {}
 
-    # Load custom candle colors
-    bullish = settings.value("chart_bullish_color", None)
+    # Get current theme to load theme-specific colors
+    theme_name = settings.value("theme", "Dark Orange")
+    t_key = theme_name.lower().replace(" ", "_")
+
+    # Load custom candle colors with theme prefix
+    bullish = settings.value(f"{t_key}_chart_bullish_color", None)
     if bullish:
         custom_colors["up_candle"] = bullish
         custom_colors["up_wick"] = bullish
@@ -43,7 +47,7 @@ def load_custom_colors() -> Dict[str, str]:
         if bullish.startswith("#"):
             custom_colors["volume_up"] = f"rgba({int(bullish[1:3], 16)}, {int(bullish[3:5], 16)}, {int(bullish[5:7], 16)}, 0.5)"
 
-    bearish = settings.value("chart_bearish_color", None)
+    bearish = settings.value(f"{t_key}_chart_bearish_color", None)
     if bearish:
         custom_colors["down_candle"] = bearish
         custom_colors["down_wick"] = bearish
@@ -51,14 +55,14 @@ def load_custom_colors() -> Dict[str, str]:
         if bearish.startswith("#"):
             custom_colors["volume_down"] = f"rgba({int(bearish[1:3], 16)}, {int(bearish[3:5], 16)}, {int(bearish[5:7], 16)}, 0.5)"
 
-    # Load custom background color
-    background = settings.value("chart_background_color", None)
+    # Load custom background color with theme prefix
+    background = settings.value(f"{t_key}_chart_background_color", None)
     if background:
         custom_colors["background"] = background
         custom_colors["chart_background"] = background
 
     _custom_colors_cache = custom_colors
-    logger.debug(f"Loaded custom chart colors: {custom_colors}")
+    logger.debug(f"Loaded custom chart colors for theme '{theme_name}': {custom_colors}")
     return custom_colors
 
 
