@@ -79,10 +79,7 @@ logger = logging.getLogger(__name__)
 # Import worker from separate module
 from .backtest_tab_worker import BatchTestWorker
 
-# =============================================================================
 # ENGINE CONFIG IMPORTS
-# =============================================================================
-
 try:
     from src.core.trading_bot import (
         EntryScoreConfig,

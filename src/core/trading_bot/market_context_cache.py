@@ -27,11 +27,7 @@ from .market_context_builder import MarketContextBuilder, MarketContextBuilderCo
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # CACHE ENTRY
-# =============================================================================
-
-
 @dataclass
 class CacheEntry:
     """Einzelner Cache-Eintrag."""
@@ -59,11 +55,7 @@ class CacheEntry:
         self.hit_count += 1
 
 
-# =============================================================================
 # CACHE STATS
-# =============================================================================
-
-
 @dataclass
 class CacheStats:
     """Statistiken über Cache-Nutzung."""
@@ -93,11 +85,7 @@ class CacheStats:
         }
 
 
-# =============================================================================
 # CACHE CONFIG
-# =============================================================================
-
-
 @dataclass
 class CacheConfig:
     """Konfiguration für den Cache."""
@@ -126,11 +114,7 @@ class CacheConfig:
     cleanup_interval: int = 300  # 5 Minuten
 
 
-# =============================================================================
 # MARKET CONTEXT CACHE
-# =============================================================================
-
-
 class MarketContextCache:
     """
     Thread-sicherer Cache für MarketContext.
@@ -477,11 +461,7 @@ class MarketContextCache:
             self._cleanup_timer.cancel()
 
 
-# =============================================================================
 # SINGLETON INSTANCE
-# =============================================================================
-
-
 _global_cache: MarketContextCache | None = None
 _global_cache_lock = threading.Lock()
 
@@ -516,11 +496,7 @@ def reset_global_cache() -> None:
         _global_cache = None
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def get_cached_context(
     df: pd.DataFrame | None,
     symbol: str,

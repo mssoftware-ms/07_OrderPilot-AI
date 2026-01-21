@@ -44,11 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # LEVERAGE RULES ENGINE
-# =============================================================================
-
-
 class LeverageRulesEngine:
     """
     Dynamic leverage calculation with multiple safety checks.
@@ -134,10 +130,7 @@ class LeverageRulesEngine:
         logger.info("LeverageRulesEngine config updated")
 
 
-# =============================================================================
 # GLOBAL SINGLETON & FACTORY
-# =============================================================================
-
 _global_engine: Optional[LeverageRulesEngine] = None
 _engine_lock = threading.Lock()
 

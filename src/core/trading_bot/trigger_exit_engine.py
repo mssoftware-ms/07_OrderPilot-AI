@@ -42,11 +42,7 @@ from src.core.trading_bot.trigger_exit_types import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # TRIGGER & EXIT ENGINE
-# =============================================================================
-
-
 class TriggerExitEngine:
     """
     Unified engine for entry triggers and exit management.
@@ -393,10 +389,7 @@ class TriggerExitEngine:
         logger.info("TriggerExitEngine config updated")
 
 
-# =============================================================================
 # GLOBAL SINGLETON & FACTORY
-# =============================================================================
-
 _global_engine: Optional[TriggerExitEngine] = None
 _engine_lock = threading.Lock()
 
@@ -412,10 +405,7 @@ def get_trigger_exit_engine(config: Optional[TriggerExitConfig] = None) -> Trigg
         return _global_engine
 
 
-# =============================================================================
 # EXPORTS
-# =============================================================================
-
 __all__ = [
     # Main classes
     "TriggerExitEngine",

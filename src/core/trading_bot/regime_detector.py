@@ -200,11 +200,7 @@ class RegimeDetectorService:
         return self._gate_info.get_regime_gate_info(result)
 
 
-# =============================================================================
 # SINGLETON INSTANCE
-# =============================================================================
-
-
 _global_detector: RegimeDetectorService | None = None
 
 
@@ -224,11 +220,7 @@ def get_regime_detector(config: RegimeConfig | None = None) -> RegimeDetectorSer
     return _global_detector
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def detect_regime(df: pd.DataFrame) -> RegimeResult:
     """
     Convenience-Funktion für Regime-Erkennung.

@@ -30,11 +30,7 @@ from src.core.trading_bot.trigger_exit_types import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENTRY TRIGGER EVALUATORS
-# =============================================================================
-
-
 class EntryTriggerEvaluators:
     """
     Evaluates entry triggers: Breakout, Pullback, SFP.

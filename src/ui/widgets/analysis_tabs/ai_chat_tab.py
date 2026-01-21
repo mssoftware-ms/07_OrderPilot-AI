@@ -28,10 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # Quick Action Prompts
-# =============================================================================
-
 QUICK_ACTION_PROMPTS = {
     "trend": "Analysiere den aktuellen Trend. Beschreibe: 1) Trend-Richtung (bullish/bearish/neutral), 2) Trend-Stärke, 3) Wichtige Strukturpunkte (Higher Highs/Lows oder Lower Highs/Lows).",
     "levels": "Identifiziere die wichtigsten Support- und Resistance-Level. Liste die Top 5 Levels mit: 1) Preiszone, 2) Typ (Support/Resistance), 3) Stärke, 4) Anzahl Berührungen.",
@@ -41,10 +38,7 @@ QUICK_ACTION_PROMPTS = {
 }
 
 
-# =============================================================================
 # Chat Worker Thread
-# =============================================================================
-
 class ChatWorker(QThread):
     """Background worker for AI chat requests."""
 
@@ -131,10 +125,7 @@ ANWEISUNGEN:
         raise RuntimeError("Keine AI-API verfügbar. Bitte API-Key in Settings konfigurieren.")
 
 
-# =============================================================================
 # AI Chat Tab Widget
-# =============================================================================
-
 class AIChatTab(QWidget):
     """AI Chat Tab with MarketContext integration (Phase 5.8-5.10).
 

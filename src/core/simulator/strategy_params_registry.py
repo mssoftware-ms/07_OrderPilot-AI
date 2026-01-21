@@ -7,10 +7,7 @@ from .strategy_params_base import (
 )
 
 
-# ============================================================================
 # STRATEGY PARAMETER REGISTRY
-# ============================================================================
-
 STRATEGY_PARAMETER_REGISTRY: dict[StrategyName, StrategyParameterConfig] = {
     # -------------------------------------------------------------------------
     # BREAKOUT STRATEGY

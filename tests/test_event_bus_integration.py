@@ -16,10 +16,7 @@ from src.common.event_bus import event_bus, EventType, Event
 from src.core.pattern_db.pattern_update_worker import PatternUpdateWorker
 
 
-# ============================================================================
 # Test 1: EventType Additions
-# ============================================================================
-
 def test_new_event_types_exist():
     """Test that new Pattern DB event types are defined."""
     print("\n=== Test 1: New EventType Additions ===")
@@ -41,10 +38,7 @@ def test_new_event_types_exist():
     print("✅ TEST PASSED: All new EventTypes defined\n")
 
 
-# ============================================================================
 # Test 2: Event Bus Subscription/Unsubscription
-# ============================================================================
-
 def test_event_bus_subscribe_unsubscribe():
     """Test event bus subscribe/unsubscribe functionality."""
     print("\n=== Test 2: Event Bus Subscribe/Unsubscribe ===")
@@ -87,10 +81,7 @@ def test_event_bus_subscribe_unsubscribe():
     print("✅ TEST PASSED: Subscribe/Unsubscribe works\n")
 
 
-# ============================================================================
 # Test 3: PatternUpdateWorker Event Emission
-# ============================================================================
-
 @pytest.mark.asyncio
 async def test_worker_emits_events():
     """Test that PatternUpdateWorker emits event bus events."""
@@ -155,10 +146,7 @@ async def test_worker_emits_events():
     print("✅ TEST PASSED: Worker emits events correctly\n")
 
 
-# ============================================================================
 # Test 4: Auto-Update Trigger Logic (Simulated)
-# ============================================================================
-
 def test_auto_update_trigger_logic():
     """Test auto-update trigger conditions (bar count + time interval)."""
     print("\n=== Test 4: Auto-Update Trigger Logic ===")
@@ -223,10 +211,7 @@ def test_auto_update_trigger_logic():
     print("✅ TEST PASSED: Auto-update trigger logic works\n")
 
 
-# ============================================================================
 # Test 5: Event Flow Integration Test
-# ============================================================================
-
 def test_event_flow_integration():
     """Test complete event flow from MARKET_BAR to DB update."""
     print("\n=== Test 5: Event Flow Integration Test ===")
@@ -302,10 +287,7 @@ def test_event_flow_integration():
     print("✅ TEST PASSED: Event flow integration works\n")
 
 
-# ============================================================================
 # Main Test Runner
-# ============================================================================
-
 if __name__ == "__main__":
     print("\n" + "="*70)
     print("Event Bus Integration Tests")

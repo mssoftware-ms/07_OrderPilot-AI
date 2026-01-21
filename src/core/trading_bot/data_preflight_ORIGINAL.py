@@ -29,11 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENUMS & TYPES
-# =============================================================================
-
-
 class PreflightStatus(str, Enum):
     """Status der Preflight-Prüfung."""
 
@@ -69,11 +65,7 @@ class IssueSeverity(str, Enum):
     INFO = "INFO"  # Nur Info
 
 
-# =============================================================================
 # PREFLIGHT RESULT
-# =============================================================================
-
-
 @dataclass
 class PreflightIssue:
     """Einzelnes erkanntes Problem."""
@@ -169,11 +161,7 @@ class PreflightResult:
         return "\n".join(lines)
 
 
-# =============================================================================
 # PREFLIGHT CONFIG
-# =============================================================================
-
-
 @dataclass
 class PreflightConfig:
     """Konfiguration für Preflight-Checks."""
@@ -214,11 +202,7 @@ class PreflightConfig:
     insufficient_data_penalty: int = 40
 
 
-# =============================================================================
 # PREFLIGHT SERVICE
-# =============================================================================
-
-
 class DataPreflightService:
     """
     Zentraler Service für Datenqualitätsprüfung.
@@ -752,11 +736,7 @@ class DataPreflightService:
         return 5
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def run_preflight(
     df: pd.DataFrame | None,
     symbol: str,

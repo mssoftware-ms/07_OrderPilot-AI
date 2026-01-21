@@ -100,10 +100,7 @@ class IndicatorConfig:
         return {name: p.random_value() for name, p in self.parameters.items()}
 
 
-# ============================================================================
 # CANDIDATE SPACE: Indicator Families with Parameter Ranges
-# ============================================================================
-
 TREND_INDICATORS: list[IndicatorConfig] = [
     IndicatorConfig(
         name="SMA_Cross",
@@ -238,10 +235,7 @@ VOLUME_INDICATORS: list[IndicatorConfig] = [
 ]
 
 
-# ============================================================================
 # REGIME-BASED CANDIDATE SETS
-# ============================================================================
-
 def get_candidates_for_regime(regime: str) -> list[IndicatorConfig]:
     """Get suitable indicator candidates for a given regime.
 

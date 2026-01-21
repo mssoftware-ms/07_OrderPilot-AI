@@ -22,11 +22,7 @@ from enum import Enum
 import pandas as pd
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class PreflightStatus(str, Enum):
     """Status der Preflight-Prüfung."""
 
@@ -62,11 +58,7 @@ class IssueSeverity(str, Enum):
     INFO = "INFO"  # Nur Info
 
 
-# =============================================================================
 # DATACLASSES
-# =============================================================================
-
-
 @dataclass
 class PreflightIssue:
     """Einzelnes erkanntes Problem."""
@@ -162,11 +154,7 @@ class PreflightResult:
         return "\n".join(lines)
 
 
-# =============================================================================
 # CONFIG
-# =============================================================================
-
-
 @dataclass
 class PreflightConfig:
     """Konfiguration für Preflight-Checks."""

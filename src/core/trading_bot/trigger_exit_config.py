@@ -21,11 +21,7 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # CONFIG
-# =============================================================================
-
-
 @dataclass
 class TriggerExitConfig:
     """Configuration for Trigger and Exit Engine."""
@@ -189,11 +185,7 @@ class TriggerExitConfig:
         return config
 
 
-# =============================================================================
 # LOAD/SAVE FUNCTIONS
-# =============================================================================
-
-
 def load_trigger_exit_config(path: Optional[Path] = None) -> TriggerExitConfig:
     """Load config from JSON file."""
     if path is None:

@@ -41,11 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # MARKET CONTEXT BUILDER
-# =============================================================================
-
-
 class MarketContextBuilder:
     """
     Baut MarketContext aus Rohdaten.
@@ -419,11 +415,7 @@ class MarketContextBuilder:
         return abs((level_price - current_price) / current_price * 100)
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def build_market_context(
     df: pd.DataFrame | None,
     symbol: str,

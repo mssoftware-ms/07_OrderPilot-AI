@@ -28,11 +28,7 @@ from src.core.trading_bot.entry_score_types import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENTRY SCORE CALCULATORS
-# =============================================================================
-
-
 class EntryScoreCalculators:
     """Collection of component score calculation methods."""
 

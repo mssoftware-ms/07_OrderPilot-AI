@@ -8,10 +8,7 @@ Contains:
 - LEVEL_ZONE_COLORS: Mapping of level types to (fill_color, border_color, opacity)
 """
 
-# =============================================================================
 # LEVEL ZONE COLORS
-# =============================================================================
-
 LEVEL_ZONE_COLORS = {
     # Level Type -> (fill_color, border_color, opacity)
     "support": ("rgba(46, 125, 50, {opacity})", "#4CAF50", 0.25),

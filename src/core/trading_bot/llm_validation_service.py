@@ -195,10 +195,7 @@ class LLMValidationService:
         logger.info("LLMValidationService config updated")
 
 
-# =============================================================================
 # GLOBAL SINGLETON & FACTORY
-# =============================================================================
-
 _global_service: Optional[LLMValidationService] = None
 _service_lock = threading.Lock()
 

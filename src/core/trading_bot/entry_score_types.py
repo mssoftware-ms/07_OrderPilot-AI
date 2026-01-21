@@ -15,11 +15,7 @@ from enum import Enum
 from typing import Any, Dict
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class ScoreDirection(str, Enum):
     """Signal direction for entry."""
 
@@ -47,11 +43,7 @@ class GateStatus(str, Enum):
     BOOSTED = "BOOSTED"  # Score boosted due to regime
 
 
-# =============================================================================
 # COMPONENT SCORES
-# =============================================================================
-
-
 @dataclass
 class ComponentScore:
     """Score from a single component."""

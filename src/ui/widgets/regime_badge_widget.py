@@ -28,10 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # REGIME BADGE COLORS & ICONS
-# =============================================================================
-
 REGIME_STYLES = {
     "STRONG_TREND_BULL": {
         "icon": "🚀",
@@ -108,11 +105,7 @@ REGIME_STYLES = {
 }
 
 
-# =============================================================================
 # REGIME BADGE WIDGET
-# =============================================================================
-
-
 class RegimeBadgeWidget(QFrame):
     """
     Kompaktes Badge-Widget zur Anzeige des Markt-Regimes.
@@ -306,11 +299,7 @@ class RegimeBadgeWidget(QFrame):
         super().mousePressEvent(event)
 
 
-# =============================================================================
 # REGIME INFO PANEL (Extended View)
-# =============================================================================
-
-
 class RegimeInfoPanel(QFrame):
     """
     Erweitertes Panel für Regime-Informationen.
@@ -484,11 +473,7 @@ class RegimeInfoPanel(QFrame):
             self._gate_label.setText("")
 
 
-# =============================================================================
 # FACTORY FUNCTION
-# =============================================================================
-
-
 def create_regime_badge(
     compact: bool = True,
     show_icon: bool = True,

@@ -23,11 +23,7 @@ from typing import List, Optional
 import pandas as pd
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class LevelType(Enum):
     """Typ des Levels."""
 
@@ -64,11 +60,7 @@ class DetectionMethod(Enum):
     MANUAL = "manual"  # Manuell hinzugefügt
 
 
-# =============================================================================
 # DATACLASSES
-# =============================================================================
-
-
 @dataclass
 class Level:
     """
@@ -244,11 +236,7 @@ class LevelsResult:
         return " ".join(tags)
 
 
-# =============================================================================
 # CONFIG
-# =============================================================================
-
-
 @dataclass
 class LevelEngineConfig:
     """Konfiguration für LevelEngine."""

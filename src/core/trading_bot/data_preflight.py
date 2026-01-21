@@ -39,11 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # PREFLIGHT SERVICE
-# =============================================================================
-
-
 class DataPreflightService:
     """
     Zentraler Service für Datenqualitätsprüfung.
@@ -371,11 +367,7 @@ class DataPreflightService:
         return 5
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def run_preflight(
     df: pd.DataFrame | None,
     symbol: str,

@@ -16,10 +16,7 @@ from src.core.pattern_db.timeframe_converter import TimeframeConverter
 from src.core.pattern_db.pattern_service import PatternService
 
 
-# ============================================================================
 # Helper Functions
-# ============================================================================
-
 def create_test_bar(index: int, base_time: datetime = None) -> HistoricalBar:
     """Create a test bar with predictable OHLCV values."""
     if base_time is None:
@@ -42,10 +39,7 @@ def create_bars_sequence(count: int, base_time: datetime = None) -> List[Histori
     return [create_test_bar(i, base_time) for i in range(count)]
 
 
-# ============================================================================
 # Test 1: Basic Conversions
-# ============================================================================
-
 def test_1m_to_5m_conversion():
     """Test 1min → 5min conversion (5:1 ratio)."""
     print("\n=== Test 1: 1m → 5m Conversion ===")
@@ -123,10 +117,7 @@ def test_5m_to_15m_conversion():
     print("✅ TEST PASSED: 5m → 15m conversion\n")
 
 
-# ============================================================================
 # Test 2: OHLC Aggregation Validation
-# ============================================================================
-
 def test_ohlc_aggregation_correctness():
     """Test that OHLC aggregation follows correct rules."""
     print("\n=== Test 4: OHLC Aggregation Rules ===")
@@ -163,10 +154,7 @@ def test_ohlc_aggregation_correctness():
     print("✅ TEST PASSED: OHLC aggregation rules\n")
 
 
-# ============================================================================
 # Test 3: Edge Cases
-# ============================================================================
-
 def test_same_timeframe_no_conversion():
     """Test that same timeframe returns original bars."""
     print("\n=== Test 5: Same Timeframe (1m → 1m) ===")
@@ -232,10 +220,7 @@ def test_incomplete_bucket_handling():
     print("✅ TEST PASSED: Incomplete final bucket handled correctly\n")
 
 
-# ============================================================================
 # Test 4: Validation Functions
-# ============================================================================
-
 def test_can_convert_validation():
     """Test can_convert() validation function."""
     print("\n=== Test 9: can_convert() Validation ===")
@@ -279,10 +264,7 @@ def test_get_supported_conversions():
     print("✅ TEST PASSED: get_supported_conversions()\n")
 
 
-# ============================================================================
 # Test 5: Integration with PatternService
-# ============================================================================
-
 @pytest.mark.asyncio
 async def test_pattern_service_integration():
     """Test integration with PatternService (target_timeframe parameter)."""
@@ -336,10 +318,7 @@ async def test_pattern_service_integration():
     print("✅ TEST PASSED: PatternService integration\n")
 
 
-# ============================================================================
 # Main Test Runner
-# ============================================================================
-
 if __name__ == "__main__":
     print("\n" + "="*70)
     print("Phase 2: Timeframe Conversion Tests")

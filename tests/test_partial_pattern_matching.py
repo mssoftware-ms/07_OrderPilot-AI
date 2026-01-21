@@ -17,10 +17,7 @@ from src.core.pattern_db.partial_matcher import PartialPatternMatcher, PartialPa
 from src.core.pattern_db.pattern_service import PatternService
 
 
-# ============================================================================
 # Helper Functions
-# ============================================================================
-
 def create_test_bar(index: int, base_time: datetime = None, trend: str = "up") -> HistoricalBar:
     """Create a test bar with predictable OHLCV values.
 
@@ -73,10 +70,7 @@ def create_bars_sequence(
     return [create_test_bar(i, base_time, trend) for i in range(count)]
 
 
-# ============================================================================
 # Test 1: Projection Methods
-# ============================================================================
-
 def test_zero_pad_projection():
     """Test zero-padding projection method."""
     print("\n=== Test 1: Zero-Pad Projection ===")
@@ -167,10 +161,7 @@ def test_trend_projection():
     print("✅ TEST PASSED: Trend projection\n")
 
 
-# ============================================================================
 # Test 2: Confidence Adjustment
-# ============================================================================
-
 def test_confidence_penalty_calculation():
     """Test confidence penalty based on completion ratio."""
     print("\n=== Test 4: Confidence Penalty Calculation ===")
@@ -215,10 +206,7 @@ def test_confidence_penalty_calculation():
     print("✅ TEST PASSED: Confidence penalty calculation\n")
 
 
-# ============================================================================
 # Test 3: Early Entry Opportunity Detection
-# ============================================================================
-
 @pytest.mark.asyncio
 async def test_early_entry_opportunity_detection():
     """Test detection of early entry opportunities."""
@@ -263,10 +251,7 @@ async def test_early_entry_opportunity_detection():
     print("✅ TEST PASSED: Early entry opportunity detection\n")
 
 
-# ============================================================================
 # Test 4: Integration with PatternService
-# ============================================================================
-
 @pytest.mark.asyncio
 async def test_pattern_service_partial_integration():
     """Test integration of partial matching with PatternService."""
@@ -308,10 +293,7 @@ async def test_pattern_service_partial_integration():
     print("✅ TEST PASSED: PatternService integration\n")
 
 
-# ============================================================================
 # Test 5: Edge Cases
-# ============================================================================
-
 def test_minimum_bars_requirement():
     """Test minimum bars requirement (50% completion)."""
     print("\n=== Test 7: Minimum Bars Requirement ===")
@@ -401,10 +383,7 @@ def test_projection_method_fallback():
     print("✅ TEST PASSED: Projection method fallback\n")
 
 
-# ============================================================================
 # Main Test Runner
-# ============================================================================
-
 if __name__ == "__main__":
     print("\n" + "="*70)
     print("Phase 3: Partial Pattern Matching Tests")

@@ -31,11 +31,7 @@ from .config_validator import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # CONFIG LOADER
-# =============================================================================
-
-
 class ConfigLoader:
     """
     Laedt BacktestConfigV2 Konfigurationen mit Vererbungs-Support.
@@ -224,11 +220,7 @@ class ConfigLoader:
         return current
 
 
-# =============================================================================
 # PARAMETER GROUP EXPANDER
-# =============================================================================
-
-
 class ParameterGroupExpander:
     """
     Expandiert Parameter-Gruppen zu Grid-Search-Kombinationen.
@@ -309,11 +301,7 @@ class ParameterGroupExpander:
         return variants
 
 
-# =============================================================================
 # GRID SPACE GENERATOR
-# =============================================================================
-
-
 class GridSpaceGenerator:
     """
     Generiert den vollstaendigen Suchraum fuer Optimierung.
@@ -429,11 +417,7 @@ class GridSpaceGenerator:
             current[final_key] = value
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def load_config(
     path: Union[str, Path],
     base_path: Optional[Path] = None,

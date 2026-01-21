@@ -24,9 +24,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# -----------------------------
 # Types
-# -----------------------------
 class RegimeType(str, Enum):
     """Market regime classification (compatible with existing types)."""
 
@@ -129,9 +127,7 @@ class OptimParams:
     target_trades_soft: int = 30  # soft target for signal rate in visible window
 
 
-# -----------------------------
 # Helpers
-# -----------------------------
 def _safe_float(x: Any, default: float = 0.0) -> float:
     """Safely convert to float."""
     try:
@@ -369,9 +365,7 @@ def _pivots(highs: list[float], lows: list[float], lookback: int) -> tuple[list[
     return ph, pl
 
 
-# -----------------------------
 # Feature extraction (replaces your current simplistic SMA/volatility)
-# -----------------------------
 def calculate_features(candles: list[dict[str, Any]], params: OptimParams) -> dict[str, list[float]]:
     """Calculate technical features from candles.
 
@@ -439,9 +433,7 @@ def calculate_features(candles: list[dict[str, Any]], params: OptimParams) -> di
     }
 
 
-# -----------------------------
 # Regime detection (stable, anti-no-trade)
-# -----------------------------
 def detect_regime(features: dict[str, list[float]], params: OptimParams) -> RegimeType:
     """Detect market regime from features.
 
@@ -492,9 +484,7 @@ def detect_regime(features: dict[str, list[float]], params: OptimParams) -> Regi
     return RegimeType.RANGE
 
 
-# -----------------------------
 # Entry generation (entire visible window)
-# -----------------------------
 def generate_entries(
     candles: list[dict[str, Any]],
     features: dict[str, list[float]],
@@ -721,9 +711,7 @@ def _postprocess_entries(entries: list[EntryEvent], cooldown_bars: int, cluster_
     return filtered
 
 
-# -----------------------------
 # Debug helper (why no entries)
-# -----------------------------
 def debug_summary(features: dict[str, list[float]]) -> dict[str, float]:
     """Generate debug summary of features.
 

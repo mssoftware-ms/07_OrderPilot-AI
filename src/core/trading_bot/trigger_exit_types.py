@@ -15,11 +15,7 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class TriggerType(str, Enum):
     """Type of entry trigger."""
     BREAKOUT = "breakout"           # Level breakout
@@ -49,11 +45,7 @@ class TriggerStatus(str, Enum):
     EXPIRED = "expired"             # Trigger expired
 
 
-# =============================================================================
 # RESULT DATACLASSES
-# =============================================================================
-
-
 @dataclass
 class TriggerResult:
     """Result of trigger evaluation."""

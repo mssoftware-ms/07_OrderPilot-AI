@@ -483,11 +483,7 @@ class BatchRunnerV2:
         return self._results[0] if self._results else None
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 async def run_batch_from_template(
     template_name: str,
     overrides: Optional[dict[str, Any]] = None,

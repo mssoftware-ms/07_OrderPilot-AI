@@ -37,11 +37,7 @@ from src.core.trading_bot.level_engine_processing import LevelEngineProcessing
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # LEVEL ENGINE
-# =============================================================================
-
-
 class LevelEngine:
     """
     Level Detection Engine v2.
@@ -159,11 +155,7 @@ class LevelEngine:
         return hashlib.md5(data.encode()).hexdigest()[:12]
 
 
-# =============================================================================
 # SINGLETON & CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 _global_engine: LevelEngine | None = None
 _global_engine_lock = threading.Lock()
 

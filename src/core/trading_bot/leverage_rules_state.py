@@ -18,11 +18,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class AssetTier(str, Enum):
     """Asset risk tier based on liquidity and volatility."""
     TIER_1 = "tier_1"    # BTC, ETH - highest liquidity
@@ -38,11 +34,7 @@ class LeverageAction(str, Enum):
     BLOCKED = "blocked"
 
 
-# =============================================================================
 # CONFIG
-# =============================================================================
-
-
 @dataclass
 class LeverageRulesConfig:
     """Configuration for Leverage Rules Engine."""
@@ -172,11 +164,7 @@ class LeverageRulesConfig:
         return config
 
 
-# =============================================================================
 # RESULT DATACLASS
-# =============================================================================
-
-
 @dataclass
 class LeverageResult:
     """Result of leverage calculation."""

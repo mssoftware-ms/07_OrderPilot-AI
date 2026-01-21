@@ -44,11 +44,7 @@ from src.core.trading_bot.entry_score_types import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENTRY SCORE RESULT
-# =============================================================================
-
-
 @dataclass
 class EntryScoreResult:
     """Complete result of entry score calculation."""
@@ -149,11 +145,7 @@ class EntryScoreResult:
         return "\n".join(lines)
 
 
-# =============================================================================
 # ENTRY SCORE ENGINE
-# =============================================================================
-
-
 class EntryScoreEngine:
     """
     Calculates normalized entry scores (0.0 - 1.0) from market data.
@@ -370,10 +362,7 @@ class EntryScoreEngine:
         )
 
 
-# =============================================================================
 # GLOBAL SINGLETON & FACTORY
-# =============================================================================
-
 _global_engine: Optional[EntryScoreEngine] = None
 _engine_lock = threading.Lock()
 
@@ -412,10 +401,7 @@ def calculate_entry_score(
     return engine.calculate(df, regime_result, symbol, timeframe)
 
 
-# =============================================================================
 # CONFIG EXPORT (Re-export from entry_score_config)
-# =============================================================================
-
 __all__ = [
     # Main classes
     "EntryScoreEngine",

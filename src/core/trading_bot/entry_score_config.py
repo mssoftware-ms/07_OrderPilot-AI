@@ -24,11 +24,7 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # CONFIGURATION
-# =============================================================================
-
-
 @dataclass
 class EntryScoreConfig:
     """Configuration for Entry Score calculation."""
@@ -174,11 +170,7 @@ class EntryScoreConfig:
         return config
 
 
-# =============================================================================
 # LOAD/SAVE FUNCTIONS
-# =============================================================================
-
-
 def load_entry_score_config(path: Optional[Path] = None) -> EntryScoreConfig:
     """
     Load entry score config from JSON file.

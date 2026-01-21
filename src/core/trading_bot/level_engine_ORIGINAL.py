@@ -28,11 +28,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class LevelType(Enum):
     """Typ des Levels."""
     SUPPORT = "support"
@@ -66,11 +62,7 @@ class DetectionMethod(Enum):
     MANUAL = "manual"  # Manuell hinzugefügt
 
 
-# =============================================================================
 # DATA CLASSES
-# =============================================================================
-
-
 @dataclass
 class Level:
     """
@@ -232,11 +224,7 @@ class LevelsResult:
         return " ".join(tags)
 
 
-# =============================================================================
 # CONFIGURATION
-# =============================================================================
-
-
 @dataclass
 class LevelEngineConfig:
     """Konfiguration für LevelEngine."""
@@ -273,11 +261,7 @@ class LevelEngineConfig:
     weekly_lookback: int = 4  # Wochen für Weekly H/L
 
 
-# =============================================================================
 # LEVEL ENGINE
-# =============================================================================
-
-
 class LevelEngine:
     """
     Level Detection Engine v2.
@@ -746,11 +730,7 @@ class LevelEngine:
         return hashlib.md5(data.encode()).hexdigest()[:12]
 
 
-# =============================================================================
 # SINGLETON & CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 _global_engine: LevelEngine | None = None
 _global_engine_lock = threading.Lock()
 

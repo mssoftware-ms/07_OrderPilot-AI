@@ -25,11 +25,7 @@ from .config_v2 import (
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # VALIDATION RESULT
-# =============================================================================
-
-
 @dataclass
 class ValidationError:
     """Ein einzelner Validierungsfehler."""
@@ -77,11 +73,7 @@ class ValidationResult:
         return "\n".join(lines)
 
 
-# =============================================================================
 # VALIDATOR CLASS
-# =============================================================================
-
-
 class ConfigValidator:
     """Validator fuer BacktestConfigV2."""
 
@@ -378,11 +370,7 @@ class ConfigValidator:
             )
 
 
-# =============================================================================
 # CONDITIONAL EVALUATOR
-# =============================================================================
-
-
 class ConditionalEvaluator:
     """Evaluiert und wendet Conditionals auf Konfigurationen an."""
 
@@ -499,11 +487,7 @@ class ConditionalEvaluator:
         return BacktestConfigV2.from_dict(config_dict)
 
 
-# =============================================================================
 # CONVENIENCE FUNCTIONS
-# =============================================================================
-
-
 def validate_config(config: BacktestConfigV2) -> ValidationResult:
     """Schnelle Validierung einer Konfiguration."""
     validator = ConfigValidator()

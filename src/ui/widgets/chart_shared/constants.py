@@ -13,10 +13,7 @@ IMPORTANT: This is now the SINGLE SOURCE OF TRUTH for chart constants.
 
 from typing import Dict, List, Any
 
-# =============================================================================
 # SYMBOL CONSTANTS
-# =============================================================================
-
 # Default symbols for stock trading
 # Consolidated from:
 # - chart.py line 50: ["AAPL", "MSFT", "GOOGL", "TSLA", "AMZN", "SPY", "QQQ"]
@@ -41,10 +38,7 @@ DEFAULT_CRYPTO_SYMBOLS: List[str] = [
     "DOGE/USD",
 ]
 
-# =============================================================================
 # TIMEFRAME CONSTANTS
-# =============================================================================
-
 # Timeframe definitions - UNIFIED format
 # Consolidated from:
 # - chart.py line 58: ["1min", "5min", "15min", "1h", "1D"]
@@ -79,10 +73,7 @@ TIMEFRAME_DISPLAY_NAMES: Dict[str, str] = {
 # Default timeframe
 DEFAULT_TIMEFRAME: str = "1D"
 
-# =============================================================================
 # INDICATOR DEFAULTS
-# =============================================================================
-
 # Indicator configuration defaults
 # Consolidated from various chart implementations
 INDICATOR_DEFAULTS: Dict[str, Dict[str, Any]] = {
@@ -152,10 +143,7 @@ INDICATOR_DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# =============================================================================
 # THEME COLORS
-# =============================================================================
-
 # Chart theme colors
 # Consolidated from embedded_tradingview_chart.py and other implementations
 THEME_COLORS: Dict[str, Dict[str, str]] = {
@@ -235,10 +223,7 @@ THEME_COLORS: Dict[str, Dict[str, str]] = {
 # Default theme
 DEFAULT_THEME: str = "dark"
 
-# =============================================================================
 # CHART CONFIGURATION
-# =============================================================================
-
 # Default chart configuration
 DEFAULT_CHART_CONFIG: Dict[str, Any] = {
     "show_volume": True,
@@ -258,10 +243,7 @@ MAX_BARS_HISTORY: int = 5000
 UPDATE_INTERVAL_REALTIME: int = 1000
 UPDATE_INTERVAL_BATCH: int = 5000
 
-# =============================================================================
 # DRAWING TOOLS
-# =============================================================================
-
 # Drawing tool types
 DRAWING_TOOLS: Dict[str, Dict[str, Any]] = {
     "horizontal_line": {

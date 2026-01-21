@@ -29,11 +29,7 @@ from typing import Any, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # ENUMS
-# =============================================================================
-
-
 class StrategyType(str, Enum):
     """Strategie-Typen."""
     TRENDFOLLOWING = "trendfollowing"
@@ -118,11 +114,7 @@ class TargetMetric(str, Enum):
     MAX_DD = "max_dd"
 
 
-# =============================================================================
 # OPTIMIZABLE TYPES
-# =============================================================================
-
-
 @dataclass
 class OptimizableFloat:
     """Float-Parameter der optimiert werden kann."""
@@ -221,11 +213,7 @@ class OptimizableInt:
         return [self.value]
 
 
-# =============================================================================
 # WEIGHT PRESETS
-# =============================================================================
-
-
 @dataclass
 class WeightPreset:
     """Vordefinierte Weight-Kombination."""
@@ -271,11 +259,7 @@ DEFAULT_WEIGHT_PRESETS = {
 }
 
 
-# =============================================================================
 # CONFIG SECTIONS
-# =============================================================================
-
-
 @dataclass
 class MetaSection:
     """Meta-Informationen zur Konfiguration."""
@@ -1014,11 +998,7 @@ class ConstraintsSection:
         )
 
 
-# =============================================================================
 # MAIN CONFIG CLASS
-# =============================================================================
-
-
 @dataclass
 class BacktestConfigV2:
     """

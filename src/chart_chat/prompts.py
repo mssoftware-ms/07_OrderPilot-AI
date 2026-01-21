@@ -6,10 +6,7 @@ Supports runtime overrides stored in QSettings so the UI can edit prompts.
 
 from PyQt6.QtCore import QSettings
 
-# =============================================================================
 # System Prompts
-# =============================================================================
-
 CHART_ANALYSIS_SYSTEM_PROMPT = """Du bist ein erfahrener technischer Analyst für Trading.
 Analysiere die bereitgestellten Chart-Daten und gib konkrete, umsetzbare Empfehlungen.
 
@@ -60,10 +57,7 @@ ANTWORT-STRUKTUR:
 2. Kurze Begründung (2-3 Stichpunkte)
 3. Zusammenfassung (max. 2 Sätze)"""
 
-# =============================================================================
 # User Message Templates
-# =============================================================================
-
 CHART_ANALYSIS_USER_TEMPLATE = """Analysiere diesen Chart für {symbol} auf {timeframe} Timeframe.
 
 === AKTUELLER PREIS ===
@@ -135,10 +129,7 @@ Beispiel:
 
 Stop angepasst da Support bei 87.6k. TP bei 92k wegen Resistance."""
 
-# =============================================================================
 # Prompt Builder Functions
-# =============================================================================
-
 def build_compact_question_prompt(
     symbol: str,
     timeframe: str,
@@ -186,10 +177,7 @@ def build_compact_question_prompt(
     )
 
 
-# =============================================================================
 # Response Format Instructions
-# =============================================================================
-
 STRUCTURED_OUTPUT_INSTRUCTIONS = """
 Antworte im folgenden JSON-Format:
 
@@ -226,10 +214,7 @@ Antworte im folgenden JSON-Format:
 }
 """
 
-# =============================================================================
 # Overrides via QSettings
-# =============================================================================
-
 _SETTINGS = QSettings("OrderPilot", "TradingApp")
 
 
@@ -262,11 +247,7 @@ def get_conversational_user_template() -> str:
 def get_compact_user_template() -> str:
     return _get_override("chat_prompts/compact_user", COMPACT_ANALYSIS_USER_TEMPLATE)
 
-# =============================================================================
 # Helper Functions
-# =============================================================================
-
-
 def build_analysis_prompt(
     symbol: str,
     timeframe: str,

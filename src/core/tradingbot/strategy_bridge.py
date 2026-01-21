@@ -21,10 +21,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # STRATEGY NAME MAPPINGS
-# =============================================================================
-
 # Maps Simulator strategy names to their corresponding Catalog strategies
 # One simulator strategy may map to multiple catalog variants
 SIMULATOR_TO_CATALOG_MAP: dict[str, list[str]] = {
@@ -54,10 +51,7 @@ CATALOG_TO_SIMULATOR_MAP: dict[str, str] = {
 }
 
 
-# =============================================================================
 # PARAMETER MAPPING
-# =============================================================================
-
 # Maps simulator parameter names to catalog entry_rule indicator thresholds
 # Format: simulator_param -> (indicator_name, threshold_field)
 PARAM_TO_ENTRY_RULE_MAP: dict[str, dict[str, Any]] = {
@@ -435,10 +429,7 @@ class StrategyBridge:
             return False
 
 
-# =============================================================================
 # MODULE-LEVEL CONVENIENCE FUNCTIONS
-# =============================================================================
-
 _bridge_instance: StrategyBridge | None = None
 
 

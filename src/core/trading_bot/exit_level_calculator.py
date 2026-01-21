@@ -25,11 +25,7 @@ from src.core.trading_bot.trigger_exit_types import ExitLevels
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
 # EXIT LEVEL CALCULATOR
-# =============================================================================
-
-
 class ExitLevelCalculator:
     """
     Calculates SL/TP levels, trailing stops, and structure stops.

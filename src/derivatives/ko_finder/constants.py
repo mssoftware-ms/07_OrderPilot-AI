@@ -14,10 +14,7 @@ from enum import Enum
 from typing import Final
 
 
-# =============================================================================
 # Issuer Mappings (Onvista-spezifische IDs)
-# =============================================================================
-
 class Issuer(Enum):
     """Unterstützte Emittenten mit Onvista-IDs."""
 
@@ -42,19 +39,13 @@ class Issuer(Enum):
 DEFAULT_ISSUER_IDS: Final[str] = ",".join(str(i.value) for i in Issuer)
 
 
-# =============================================================================
 # URLs und Endpunkte
-# =============================================================================
-
 ONVISTA_BASE_URL: Final[str] = "https://www.onvista.de"
 ONVISTA_KO_LIST_PATH: Final[str] = "/derivate/Knock-Outs"
 ONVISTA_KO_LIST_URL: Final[str] = f"{ONVISTA_BASE_URL}{ONVISTA_KO_LIST_PATH}"
 
 
-# =============================================================================
 # URL-Parameter
-# =============================================================================
-
 class Direction(Enum):
     """Handelsrichtung für KO-Produkte."""
 
@@ -84,10 +75,7 @@ class SortOrder(Enum):
     DESC = "DESC"
 
 
-# =============================================================================
 # Default-Werte
-# =============================================================================
-
 # Filter-Defaults (keine Anlageberatung!)
 DEFAULT_MIN_LEVERAGE: Final[float] = 5.0
 DEFAULT_MAX_SPREAD_PCT: Final[float] = 2.0
@@ -98,10 +86,7 @@ DEFAULT_BROKER_ID: Final[int] = 8260  # Trade Republic
 DEFAULT_MIN_KO_DISTANCE_PCT: Final[float] = 0.5
 
 
-# =============================================================================
 # HTTP-Einstellungen
-# =============================================================================
-
 HTTP_TIMEOUT_CONNECT: Final[float] = 5.0
 HTTP_TIMEOUT_READ: Final[float] = 10.0
 HTTP_MAX_RETRIES: Final[int] = 3
@@ -140,10 +125,7 @@ HTTP_HEADERS: Final[dict[str, str]] = {
 }
 
 
-# =============================================================================
 # Parser-Einstellungen
-# =============================================================================
-
 PARSER_SCHEMA_VERSION: Final[str] = "1.0.0"
 PARSER_MIN_CONFIDENCE: Final[float] = 0.8  # Unter diesem Wert: exclude
 
@@ -159,27 +141,18 @@ EXPECTED_TABLE_HEADERS: Final[list[str]] = [
 ]
 
 
-# =============================================================================
 # Cache-Einstellungen
-# =============================================================================
-
 CACHE_TTL_KO_LIST: Final[int] = 30  # Sekunden
 CACHE_TTL_UNDERLYING_MAP: Final[int] = 3600  # 1 Stunde
 CACHE_MAX_SIZE: Final[int] = 100  # Max Einträge
 
 
-# =============================================================================
 # Datenquelle (für Assertions)
-# =============================================================================
-
 DATA_SOURCE: Final[str] = "onvista"
 
 
-# =============================================================================
 # Symbol-Mapping (Ticker → Onvista URL-Slug)
 # Onvista verwendet dedizierte URLs: /Knock-Outs-auf-{SLUG}
-# =============================================================================
-
 SYMBOL_TO_ONVISTA_SLUG: Final[dict[str, str]] = {
     # Crypto
     "BTC/USD": "Bitcoin",
