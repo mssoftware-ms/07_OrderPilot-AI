@@ -33,6 +33,18 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.setModal(True)
         self.settings = QSettings("OrderPilot", "TradingApp")
         self.profile = config_manager.load_profile()
+        
+        # Pre-declare theme attributes to prevent early access issues
+        self.ui_bg_color_btn = None
+        self.ui_btn_color_btn = None
+        self.ui_dropdown_color_btn = None
+        self.ui_edit_color_btn = None
+        self.ui_edit_text_color_btn = None
+        self.ui_active_btn_color_btn = None
+        self.ui_inactive_btn_color_btn = None
+        self.ui_btn_hover_border_color_btn = None
+        self.ui_btn_hover_text_color_btn = None
+        
         self.init_ui()
         self.load_current_settings()
 
@@ -54,6 +66,7 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
 
         # Create tabs using mixin methods
         tabs.addTab(self._create_general_tab(), "General")
+        tabs.addTab(self._create_theme_tab(), "Theme")
         tabs.addTab(self._create_trading_tab(), "Trading")
         tabs.addTab(self._create_broker_tab(), "Brokers")
         tabs.addTab(self._create_market_data_tab(), "Market Data")
@@ -62,6 +75,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         tabs.addTab(self._create_notifications_tab(), "Notifications")
 
         layout.addWidget(tabs)
+
+        # Connect theme change to live update UI
+        self._last_theme_name = self.settings.value("theme", "Dark Orange")
+        self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -81,8 +98,14 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         # Refresh profile reference to capture external changes
         self.profile = config_manager.load_profile()
 
-        # General
-        self._set_combo_value(self.theme_combo, self.settings.value("theme", "Dark"))
+        # Theme & UI - This will trigger _on_theme_changed but we need to load initial values
+        initial_theme = self.settings.value("theme", "Dark Orange")
+        self._set_combo_value(self.theme_combo, initial_theme)
+        
+        # Load values for the selected theme
+        self._apply_theme_to_ui(initial_theme)
+        
+        # General settings (Always independent)
         self.auto_connect_check.setChecked(
             self.settings.value("auto_connect", False, type=bool)
         )
@@ -90,50 +113,15 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.default_broker_combo,
             self.settings.value("default_broker", "Trade Republic"),
         )
-        # Console Debug Level
         self._set_combo_value(
             self.console_debug_level,
             self.settings.value("console_debug_level", "INFO"),
         )
 
-        # Issue #34: Chart Colors
         from PyQt6.QtGui import QColor
 
-        bullish_color_name = self.settings.value("chart_bullish_color", "#26a69a")
-        self.bullish_color = QColor(bullish_color_name)
-        if hasattr(self, '_basic_helper'):
-            self._basic_helper._update_color_button(self.bullish_color_btn, self.bullish_color)
-
-        bearish_color_name = self.settings.value("chart_bearish_color", "#ef5350")
-        self.bearish_color = QColor(bearish_color_name)
-        if hasattr(self, '_basic_helper'):
-            self._basic_helper._update_color_button(self.bearish_color_btn, self.bearish_color)
-
-        background_color_name = self.settings.value("chart_background_color", "#1e1e1e")
-        self.background_color = QColor(background_color_name)
-        if hasattr(self, '_basic_helper'):
-            self._basic_helper._update_color_button(self.background_color_btn, self.background_color)
-
-        # Issue #35: Background Image
-        bg_image_path = self.settings.value("chart_background_image", "")
-        self.background_image_path = bg_image_path
-        if bg_image_path:
-            import os
-            filename = os.path.basename(bg_image_path)
-            self.background_image_label.setText(filename)
-            self.background_image_label.setStyleSheet("color: #26a69a;")
-        else:
-            self.background_image_label.setText("Kein Bild ausgewählt")
-            self.background_image_label.setStyleSheet("color: #888; font-style: italic;")
-
-        bg_opacity = self.settings.value("chart_background_image_opacity", 30, type=int)
-        self.background_image_opacity_slider.setValue(bg_opacity)
-        self.background_image_opacity_label.setText(f"{bg_opacity}%")
-
-        # Issue #39: Load Candle Border Radius
-        border_radius = self.settings.value("chart_candle_border_radius", 0, type=int)
-        self.candle_border_radius_slider.setValue(border_radius)
-        self.candle_border_radius_label.setText(f"{border_radius} px")
+        # App UI Colors
+        # Note: Theme-specific colors/fonts are now loaded via _apply_theme_to_ui
 
         # Trading
         self.manual_approval.setChecked(
@@ -326,49 +314,56 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
     def save_settings(self):
         """Save settings to QSettings and configuration."""
         try:
-            # General
-            self.settings.setValue("theme", self.theme_combo.currentText())
+            # 1. Current active theme
+            theme_name = self.theme_combo.currentText()
+            self.settings.setValue("theme", theme_name)
+            
+            # 2. Cache CURRENT UI state to the active theme in the cache
+            self._cache_current_ui_to_theme(theme_name)
+            
+            # 3. Save ALL cached theme settings to QSettings with prefixes
+            if hasattr(self, '_theme_cache'):
+                for t_name, vals in self._theme_cache.items():
+                    t_key = t_name.lower().replace(" ", "_")
+                    for k, v in vals.items():
+                        self.settings.setValue(f"{t_key}_{k}", v)
+
+            # 4. Save General Settings
             self.settings.setValue("auto_connect", self.auto_connect_check.isChecked())
             self.settings.setValue("default_broker", self.default_broker_combo.currentText())
             self.settings.setValue("console_debug_level", self.console_debug_level.currentText())
 
-            # Issue #34: Save Chart Colors
-            self.settings.setValue("chart_bullish_color", self.bullish_color.name())
-            self.settings.setValue("chart_bearish_color", self.bearish_color.name())
-            self.settings.setValue("chart_background_color", self.background_color.name())
-
-            # Issue #35: Save Background Image Settings
-            self.settings.setValue("chart_background_image", self.background_image_path)
-            self.settings.setValue("chart_background_image_opacity", self.background_image_opacity_slider.value())
-
-            # Issue #39: Save Candle Border Radius
-            self.settings.setValue("chart_candle_border_radius", self.candle_border_radius_slider.value())
+            # Apply UI updates immediately
+            # Update Icon Provider
+            from src.ui.icons import configure_icon_provider
+            configure_icon_provider(
+                icons_dir=self.icon_dir_path if self.icon_dir_path else None,
+                invert_to_white=self.icon_force_white_check.isChecked()
+            )
 
             # Clear custom colors cache to force reload in charts
             from src.ui.widgets.chart_shared.theme_utils import clear_custom_colors_cache
             clear_custom_colors_cache()
-            logger.info("Custom chart colors and background image saved, cache cleared")
-
-            # Issues #34, #37: Refresh colors in all open charts
+            
+            # Refresh colors in all open charts
             try:
                 from src.ui.chart_window_manager import get_chart_window_manager
                 chart_mgr = get_chart_window_manager()
                 if chart_mgr:
                     chart_mgr.refresh_all_chart_colors()
-                    logger.info("All open charts refreshed with new colors")
             except Exception as exc:
                 logger.warning(f"Could not refresh chart colors: {exc}")
 
             # Apply console debug level immediately
             self._apply_console_debug_level()
 
-            # Trading
+            # 5. Trading
             self.settings.setValue("manual_approval", self.manual_approval.isChecked())
             self.settings.setValue("confirm_cancel", self.confirm_cancel.isChecked())
             self.settings.setValue("max_order_size", self.max_order_size.value())
             self.settings.setValue("risk_tolerance", self.risk_combo.currentText())
 
-            # AI
+            # 6. AI
             self.settings.setValue("ai_enabled", self.ai_enabled.isChecked())
             self.settings.setValue("ai_default_provider", self.ai_default_provider.currentText())
             self.settings.setValue("openai_model", self.openai_model.currentText())
@@ -383,12 +378,11 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             # Reset AI service to apply new settings
             from src.ai import reset_ai_service
             reset_ai_service()
-            logger.info("AI service reset to apply new provider/model settings")
 
             # Save API keys
             self._save_api_keys()
 
-            # Broker Settings
+            # 7. Broker Settings
             self.settings.setValue("ibkr_host", self.ibkr_host.text().strip())
             self.settings.setValue("ibkr_port", self.ibkr_port.currentText())
             self.settings.setValue("ibkr_client_id", self.ibkr_client_id.currentText())
@@ -400,39 +394,30 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
                 try:
                     config_manager.set_credential("tr_pin", tr_pin)
                 except Exception as e:
-                    QMessageBox.warning(
-                        self, "PIN Storage",
-                        f"Could not store Trade Republic PIN securely:\n{str(e)}\n\n"
-                        "You may need to re-enter it when connecting."
-                    )
+                    QMessageBox.warning(self, "PIN Storage", f"Could not store Trade Republic PIN securely:\n{str(e)}")
 
-            # Market Data provider toggles
+            # 8. Market Data provider toggles
             self._save_market_data_settings()
 
-            # Live data in paper mode
+            # 9. Live data in paper mode
             self.settings.setValue("live_data_enabled", self.enable_live_data_paper.isChecked())
 
-            # Notifications
+            # 10. Notifications
             self.settings.setValue("order_filled_notif", self.order_filled_notif.isChecked())
             self.settings.setValue("alert_notif", self.alert_notif.isChecked())
             self.settings.setValue("connection_notif", self.connection_notif.isChecked())
 
-            # Sync settings to disk
             self.settings.sync()
 
-            QMessageBox.information(
-                self, "Settings Saved",
-                "Settings have been saved successfully.\n\n"
-                "Some changes may require restarting the application."
-            )
+            # Apply theme immediately to main window
+            if self.parent() and hasattr(self.parent(), "apply_theme"):
+                self.parent().apply_theme(self.theme_combo.currentText())
 
+            QMessageBox.information(self, "Settings Saved", "Settings have been saved successfully.")
             self.accept()
 
         except Exception as e:
-            QMessageBox.critical(
-                self, "Save Error",
-                f"Failed to save settings:\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Save Error", f"Failed to save settings:\n{str(e)}")
 
     def _apply_console_debug_level(self):
         """Apply console debug level to all loggers immediately."""
@@ -605,3 +590,145 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
 
         # Persist profile changes
         config_manager.save_profile(profile)
+
+    # ========================================================================
+    # Theme Management Helpers
+    # ========================================================================
+
+    def _on_theme_changed(self, theme_name: str):
+        """Handle theme combo change - swap cached values."""
+        if hasattr(self, '_last_theme_name') and self._last_theme_name != theme_name:
+            # Save current state to cache
+            self._cache_current_ui_to_theme(self._last_theme_name)
+            
+            # Load new theme state from cache/settings
+            self._apply_theme_to_ui(theme_name)
+            
+            self._last_theme_name = theme_name
+
+    def _cache_current_ui_to_theme(self, theme_name: str):
+        """Store current UI state in theme cache."""
+        if not hasattr(self, '_theme_cache'):
+            self._theme_cache = {}
+            
+        self._theme_cache[theme_name] = {
+            "ui_bg_color": self.ui_bg_color.name(),
+            "ui_btn_color": self.ui_btn_color.name(),
+            "ui_dropdown_color": self.ui_dropdown_color.name(),
+            "ui_edit_color": self.ui_edit_color.name(),
+            "ui_edit_text_color": self.ui_edit_text_color.name(),
+            "ui_active_btn_color": self.ui_active_btn_color.name(),
+            "ui_inactive_btn_color": self.ui_inactive_btn_color.name(),
+            "ui_btn_hover_border_color": self.ui_btn_hover_border_color.name(),
+            "ui_btn_hover_text_color": self.ui_btn_hover_text_color.name(),
+            "ui_btn_font_family": self.ui_btn_font_combo.currentText(),
+            "ui_btn_font_size": self.ui_btn_font_size.value(),
+            "ui_btn_width": self.ui_btn_width.value(),
+            "ui_btn_height": self.ui_btn_height.value(),
+            "chart_bullish_color": self.bullish_color.name(),
+            "chart_bearish_color": self.bearish_color.name(),
+            "chart_background_color": self.background_color.name(),
+            "chart_background_image": self.background_image_path,
+            "chart_background_image_opacity": self.background_image_opacity_slider.value(),
+            "chart_candle_border_radius": self.candle_border_radius_slider.value(),
+            "icon_dir": self.icon_dir_path,
+            "icon_force_white": self.icon_force_white_check.isChecked()
+        }
+
+    def _apply_theme_to_ui(self, theme_name: str):
+        """Apply theme-specific values from cache/settings to UI."""
+        from PyQt6.QtGui import QColor
+        t_key = theme_name.lower().replace(" ", "_")
+        
+        # Helper to get value from cache or settings or default
+        def gt(key, default):
+            if hasattr(self, '_theme_cache') and theme_name in self._theme_cache:
+                return self._theme_cache[theme_name].get(key, default)
+            return self.settings.value(f"{t_key}_{key}", default)
+
+        # Colors
+        self.ui_bg_color = QColor(gt("ui_bg_color", "#0F1115" if "Orange" in theme_name else "#09090b"))
+        self._basic_helper._update_color_button(self.ui_bg_color_btn, self.ui_bg_color)
+        
+        self.ui_btn_color = QColor(gt("ui_btn_color", "#2A2D33" if "Orange" in theme_name else "#000000"))
+        self._basic_helper._update_color_button(self.ui_btn_color_btn, self.ui_btn_color)
+        
+        self.ui_dropdown_color = QColor(gt("ui_dropdown_color", "#23262E" if "Orange" in theme_name else "#27272a"))
+        self._basic_helper._update_color_button(self.ui_dropdown_color_btn, self.ui_dropdown_color)
+        
+        self.ui_edit_color = QColor(gt("ui_edit_color", "#23262E" if "Orange" in theme_name else "#27272a"))
+        self._basic_helper._update_color_button(self.ui_edit_color_btn, self.ui_edit_color)
+        
+        self.ui_edit_text_color = QColor(gt("ui_edit_text_color", "#EAECEF" if "Orange" in theme_name else "#f4f4f5"))
+        self._basic_helper._update_color_button(self.ui_edit_text_color_btn, self.ui_edit_text_color)
+        
+        self.ui_active_btn_color = QColor(gt("ui_active_btn_color", "#F29F05" if "Orange" in theme_name else "#ffffff"))
+        self._basic_helper._update_color_button(self.ui_active_btn_color_btn, self.ui_active_btn_color)
+        
+        self.ui_inactive_btn_color = QColor(gt("ui_inactive_btn_color", "#2A2D33" if "Orange" in theme_name else "#000000"))
+        self._basic_helper._update_color_button(self.ui_inactive_btn_color_btn, self.ui_inactive_btn_color)
+
+        self.ui_btn_hover_border_color = QColor(gt("ui_btn_hover_border_color", "#F29F05" if "Orange" in theme_name else "#ffffff"))
+        self._basic_helper._update_color_button(self.ui_btn_hover_border_color_btn, self.ui_btn_hover_border_color)
+
+        self.ui_btn_hover_text_color = QColor(gt("ui_btn_hover_text_color", "#F29F05" if "Orange" in theme_name else "#000000"))
+        self._basic_helper._update_color_button(self.ui_btn_hover_text_color_btn, self.ui_btn_hover_text_color)
+
+        # Fonts & Sizes
+        self.ui_btn_font_combo.setEnabled(True) # Force enabled
+        font_family = gt("ui_btn_font_family", "")
+        if font_family:
+            self.ui_btn_font_combo.setCurrentText(font_family)
+        else:
+            self.ui_btn_font_combo.setCurrentFont(self.parent().font() if self.parent() else self.font())
+            
+        self.ui_btn_font_size.setValue(int(gt("ui_btn_font_size", 12)))
+        self.ui_btn_width.setValue(int(gt("ui_btn_width", 80)))
+        self.ui_btn_height.setValue(int(gt("ui_btn_height", 32)))
+
+        # Chart Colors
+        self.bullish_color = QColor(gt("chart_bullish_color", "#26a69a" if "Orange" in theme_name else "#4ade80"))
+        self._basic_helper._update_color_button(self.bullish_color_btn, self.bullish_color)
+
+        self.bearish_color = QColor(gt("chart_bearish_color", "#ef5350" if "Orange" in theme_name else "#f87171"))
+        self._basic_helper._update_color_button(self.bearish_color_btn, self.bearish_color)
+
+        self.background_color = QColor(gt("chart_background_color", "#1e1e1e" if "Orange" in theme_name else "#09090b"))
+        self._basic_helper._update_color_button(self.background_color_btn, self.background_color)
+
+        # Background Image
+        self.background_image_path = gt("chart_background_image", "")
+        if self.background_image_path:
+            import os
+            filename = os.path.basename(self.background_image_path)
+            self.background_image_label.setText(filename)
+            self.background_image_label.setStyleSheet("color: #26a69a;")
+        else:
+            self.background_image_label.setText("Kein Bild ausgewählt")
+            self.background_image_label.setStyleSheet("color: #888; font-style: italic;")
+
+        bg_opacity = int(gt("chart_background_image_opacity", 30))
+        self.background_image_opacity_slider.setValue(bg_opacity)
+        self.background_image_opacity_label.setText(f"{bg_opacity}%")
+
+        # Candle Border Radius
+        border_radius = int(gt("chart_candle_border_radius", 0))
+        self.candle_border_radius_slider.setValue(border_radius)
+        self.candle_border_radius_label.setText(f"{border_radius} px")
+
+        # Icon Collection
+        self.icon_dir_path = gt("icon_dir", "")
+        if self.icon_dir_path:
+            import os
+            dirname = os.path.basename(self.icon_dir_path)
+            self.icon_dir_label.setText(dirname)
+            self.icon_dir_label.setStyleSheet("color: #F29F05;")
+        else:
+            self.icon_dir_label.setText("Standard (Assets)")
+            self.icon_dir_label.setStyleSheet("color: #888; font-style: italic;")
+
+        # Fix for type casting from QSettings
+        val = gt("icon_force_white", True)
+        if isinstance(val, str):
+            val = val.lower() == 'true'
+        self.icon_force_white_check.setChecked(bool(val))

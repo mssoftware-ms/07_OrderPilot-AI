@@ -820,7 +820,7 @@ class BitunixTradingAPIWidget(QGroupBox):
                 f"Failed to place order:\n\n{str(e)}"
             )
 
-    # === Public API ===
+    # Public API
 
     def set_adapter(self, adapter):
         """Set trading adapter.

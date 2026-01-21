@@ -246,6 +246,10 @@ class CelEditorIcons:
     def zoom_fit(self) -> QIcon:
         return self._get_icon('maps', 'zoom_out_map')
 
+    @property
+    def back(self) -> QIcon:
+        return self._get_icon('navigation', 'arrow_back')
+
     # AI Assistant icons
     @property
     def ai_generate(self) -> QIcon:

@@ -394,7 +394,7 @@ class IndicatorOptimizationThread(QThread):
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
-            # === NEW INDICATORS (13) ===
+            # NEW INDICATORS (13)
 
             elif indicator == 'ICHIMOKU':
                 tenkan_range = indicator_ranges.get('tenkan', {'min': 9, 'max': 27, 'step': 9})
@@ -557,7 +557,7 @@ class IndicatorOptimizationThread(QThread):
             atr = ta.atr(df['high'], df['low'], df['close'], length=period)
             result_df['indicator_value'] = atr if atr is not None else df['close'] * 0.02
 
-        # === NEW INDICATORS ===
+        # NEW INDICATORS
 
         elif indicator_type == 'ICHIMOKU':
             tenkan = params.get('tenkan', 9)
@@ -768,7 +768,7 @@ class IndicatorOptimizationThread(QThread):
                 # Exit: Weak trend (ADX < 20)
                 signals = df['indicator_value'] < 20
 
-        # === TREND & OVERLAY INDICATORS ===
+        # TREND & OVERLAY INDICATORS
 
         elif indicator_type == 'SMA':
             if test_type == 'entry' and trade_side == 'long':
@@ -874,7 +874,7 @@ class IndicatorOptimizationThread(QThread):
                 # Exit Short: Price above pivot
                 signals = df['close'] > df['indicator_value']
 
-        # === BREAKOUT & CHANNELS ===
+        # BREAKOUT & CHANNELS
 
         elif indicator_type == 'BB':
             if test_type == 'entry' and trade_side == 'long':
@@ -908,7 +908,7 @@ class IndicatorOptimizationThread(QThread):
                 signals = (df['close'] > df['kc_lower']) & \
                           (df['close'].shift(1) <= df['kc_lower'].shift(1))
 
-        # === REGIME & TREND STRENGTH ===
+        # REGIME & TREND STRENGTH
 
         elif indicator_type == 'CHOP':
             if test_type == 'entry' and trade_side == 'long':
@@ -921,7 +921,7 @@ class IndicatorOptimizationThread(QThread):
                 # Exit: High chop (ranging), exit trend trades
                 signals = df['indicator_value'] > 61.8
 
-        # === MOMENTUM ===
+        # MOMENTUM
 
         elif indicator_type == 'STOCH':
             if test_type == 'entry' and trade_side == 'long':
@@ -951,7 +951,7 @@ class IndicatorOptimizationThread(QThread):
                 # Exit Short: CCI crosses above -100
                 signals = (df['indicator_value'] > -100) & (df['indicator_value'].shift(1) <= -100)
 
-        # === VOLATILITY ===
+        # VOLATILITY
 
         elif indicator_type == 'ATR':
             if test_type == 'entry':
@@ -973,7 +973,7 @@ class IndicatorOptimizationThread(QThread):
                 bb_width_sma = df['indicator_value'].rolling(20).mean()
                 signals = df['indicator_value'] < bb_width_sma
 
-        # === VOLUME ===
+        # VOLUME
 
         elif indicator_type == 'OBV':
             if test_type == 'entry' and trade_side == 'long':

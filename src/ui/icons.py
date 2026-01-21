@@ -11,8 +11,8 @@ from PyQt6.QtCore import Qt
 
 logger = logging.getLogger(__name__)
 
-# Base path for icons relative to this file
-ICONS_DIR = Path(__file__).parent / "assets" / "icons"
+# Default base path for icons relative to this file
+DEFAULT_ICONS_DIR = Path(__file__).parent / "assets" / "icons"
 
 def invert_icon_to_white(icon_path: Path) -> QPixmap:
     """Invertiert schwarze Icons zu weiß mit transparentem Hintergrund.
@@ -51,16 +51,33 @@ def invert_icon_to_white(icon_path: Path) -> QPixmap:
 class IconProvider:
     """Provides PNG-based icons for the application."""
 
-    def __init__(self, theme: str = "dark", invert_to_white: bool = True):
+    def __init__(self, theme: str = "dark", invert_to_white: bool = True, icons_dir: Path = None):
         """Initialize icon provider.
 
         Args:
             theme: Theme name ("dark" or "light")
             invert_to_white: If True, inverts black icons to white automatically
+            icons_dir: Optional custom path to icons directory
         """
         self.theme = theme
         self.invert_to_white = invert_to_white
+        self.icons_dir = icons_dir or DEFAULT_ICONS_DIR
         self._cache = {}
+
+    def configure(self, icons_dir: str | Path | None = None, invert_to_white: bool | None = None):
+        """Update provider configuration.
+
+        Args:
+            icons_dir: New icons directory path
+            invert_to_white: New inversion setting
+        """
+        if icons_dir is not None:
+            self.icons_dir = Path(icons_dir)
+        if invert_to_white is not None:
+            self.invert_to_white = invert_to_white
+        
+        self._cache.clear()
+        logger.info(f"IconProvider reconfigured: dir={self.icons_dir}, invert={self.invert_to_white}")
 
     def set_theme(self, theme: str):
         """Change theme.
@@ -79,11 +96,11 @@ class IconProvider:
         Returns:
             QIcon instance (inverted to white if invert_to_white=True)
         """
-        cache_key = f"{name}_{'white' if self.invert_to_white else 'original'}"
+        cache_key = f"{name}_{'white' if self.invert_to_white else 'original'}_{hash(str(self.icons_dir))}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        icon_path = ICONS_DIR / f"{name}.png"
+        icon_path = self.icons_dir / f"{name}.png"
 
         if icon_path.exists():
             if self.invert_to_white:
@@ -106,9 +123,9 @@ class IconProvider:
         Returns:
             List of icon names
         """
-        if not ICONS_DIR.exists():
+        if not self.icons_dir.exists():
             return []
-        return [f.stem for f in ICONS_DIR.glob("*.png")]
+        return [f.stem for f in self.icons_dir.glob("*.png")]
 
 
 # Global icon provider instance
@@ -123,6 +140,11 @@ def get_icon(name: str) -> QIcon:
 def set_icon_theme(theme: str):
     """Set global icon theme."""
     _icon_provider.set_theme(theme)
+
+
+def configure_icon_provider(icons_dir: str | Path | None = None, invert_to_white: bool | None = None):
+    """Configure the global icon provider."""
+    _icon_provider.configure(icons_dir, invert_to_white)
 
 
 def get_available_icons() -> list[str]:

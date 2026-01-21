@@ -45,6 +45,8 @@ class ColorPalette:
     button_background: str
     button_border: str
     button_text: str
+    button_hover_border: str
+    button_hover_text: str
 
 
 @dataclass
@@ -100,7 +102,9 @@ DARK_ORANGE_PALETTE = ColorPalette(
     # Standard Dark Orange Buttons
     button_background="#2A2D33",
     button_border="#3A3D43",
-    button_text="#EAECEF"
+    button_text="#EAECEF",
+    button_hover_border="#F29F05",
+    button_hover_text="#F29F05"
 )
 
 DARK_WHITE_PALETTE = ColorPalette(
@@ -131,7 +135,9 @@ DARK_WHITE_PALETTE = ColorPalette(
     # User Requested: Black button, White border, White text
     button_background="#000000",
     button_border="#FFFFFF",
-    button_text="#FFFFFF"
+    button_text="#FFFFFF",
+    button_hover_border="#FFFFFF",
+    button_hover_text="#000000"
 )
 
 # Available themes map

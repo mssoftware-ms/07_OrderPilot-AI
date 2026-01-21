@@ -19,6 +19,20 @@ except ImportError:
     OPENAI_AVAILABLE = False
     AsyncOpenAI = None
 
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    anthropic = None
+
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    genai = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +44,7 @@ class CelAIHelper:
         self.settings = QSettings("OrderPilot-AI", "OrderPilot-AI")
         self._load_ai_settings()
         self._openai_client: Optional[AsyncOpenAI] = None
+        self._anthropic_client: Optional[anthropic.AsyncAnthropic] = None
 
     def _load_ai_settings(self) -> None:
         """Lade AI-Settings aus QSettings."""
@@ -351,10 +366,59 @@ GENERATE CEL EXPRESSION NOW:"""
         Returns:
             Generierter CEL Code
         """
-        # TODO: Implementierung in Phase 2
-        # Verwendet anthropic Python SDK
-        logger.warning("Anthropic CEL generation not yet implemented (Phase 2)")
-        return None
+        if not ANTHROPIC_AVAILABLE:
+            logger.error("Anthropic package not installed. Run: pip install anthropic")
+            return None
+
+        try:
+            # Initialisiere Anthropic Client (lazy)
+            if not self._anthropic_client:
+                self._anthropic_client = anthropic.AsyncAnthropic(
+                    api_key=config["api_key"]
+                )
+
+            model = config["model"]
+
+            logger.info(f"Generating CEL code with Anthropic {model}")
+
+            # API-Call mit Claude
+            response = await self._anthropic_client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=(
+                    "You are a CEL (Common Expression Language) code generator "
+                    "specialized in trading strategy expressions. "
+                    "Return ONLY valid CEL code, no explanations or markdown formatting."
+                ),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
+            # Extrahiere generierten Code
+            cel_code = response.content[0].text.strip()
+
+            # Entferne Markdown-Formatierung falls vorhanden
+            if cel_code.startswith("```"):
+                cel_code = cel_code.split("\n", 1)[1] if "\n" in cel_code else cel_code
+                if cel_code.endswith("```"):
+                    cel_code = cel_code.rsplit("```", 1)[0]
+                cel_code = cel_code.strip()
+
+            logger.info(
+                f"Generated {len(cel_code)} chars CEL code "
+                f"(input tokens: {response.usage.input_tokens}, "
+                f"output tokens: {response.usage.output_tokens})"
+            )
+
+            return cel_code
+
+        except Exception as e:
+            logger.error(f"Anthropic API error: {e}")
+            return None
 
     async def _generate_with_openai(
         self,
@@ -477,7 +541,50 @@ GENERATE CEL EXPRESSION NOW:"""
         Returns:
             Generierter CEL Code
         """
-        # TODO: Implementierung in Phase 2
-        # Verwendet google-generativeai Python SDK
-        logger.warning("Gemini CEL generation not yet implemented (Phase 2)")
-        return None
+        if not GEMINI_AVAILABLE:
+            logger.error("Google Generative AI package not installed. Run: pip install google-generativeai")
+            return None
+
+        try:
+            # Konfiguriere Gemini API
+            genai.configure(api_key=config["api_key"])
+
+            model = config["model"]
+
+            logger.info(f"Generating CEL code with Google Gemini {model}")
+
+            # Erstelle Model-Instanz
+            gemini_model = genai.GenerativeModel(
+                model_name=model,
+                system_instruction=(
+                    "You are a CEL (Common Expression Language) code generator "
+                    "specialized in trading strategy expressions. "
+                    "Return ONLY valid CEL code, no explanations or markdown formatting."
+                )
+            )
+
+            # API-Call mit Gemini (synchron, da Gemini SDK kein async unterstützt)
+            # Wir verwenden asyncio.to_thread für non-blocking Execution
+            import asyncio
+            response = await asyncio.to_thread(
+                gemini_model.generate_content,
+                prompt
+            )
+
+            # Extrahiere generierten Code
+            cel_code = response.text.strip()
+
+            # Entferne Markdown-Formatierung falls vorhanden
+            if cel_code.startswith("```"):
+                cel_code = cel_code.split("\n", 1)[1] if "\n" in cel_code else cel_code
+                if cel_code.endswith("```"):
+                    cel_code = cel_code.rsplit("```", 1)[0]
+                cel_code = cel_code.strip()
+
+            logger.info(f"Generated {len(cel_code)} chars CEL code with Gemini")
+
+            return cel_code
+
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            return None

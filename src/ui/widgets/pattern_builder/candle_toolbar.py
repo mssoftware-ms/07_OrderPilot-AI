@@ -41,6 +41,8 @@ class CandleToolbar(QToolBar):
     candle_add_requested = pyqtSignal(str)  # candle_type
     candle_remove_requested = pyqtSignal()
     pattern_clear_requested = pyqtSignal()
+    zoom_fit_requested = pyqtSignal()
+    zoom_back_requested = pyqtSignal()
 
     # Candle type configuration
     CANDLE_TYPES = [
@@ -227,6 +229,28 @@ class CandleToolbar(QToolBar):
         self.clear_btn.clicked.connect(self._on_clear_pattern_clicked)
         self.addWidget(self.clear_btn)
 
+        # Separator
+        self.addSeparator()
+
+        # Zoom Controls Label
+        zoom_label = QLabel("  View:  ")
+        zoom_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold; padding: 4px;")
+        self.addWidget(zoom_label)
+
+        # Zoom Fit button (analog zu Chart: "Alles zoomen")
+        self.zoom_fit_btn = QPushButton(cel_icons.zoom_fit, "Alles zoomen")
+        self.zoom_fit_btn.setToolTip("Zoom to fit all candles in view")
+        self.zoom_fit_btn.setIconSize(QSize(24, 24))
+        self.zoom_fit_btn.clicked.connect(self._on_zoom_fit_clicked)
+        self.addWidget(self.zoom_fit_btn)
+
+        # Zoom Back button (analog zu Chart: "Zurück")
+        self.zoom_back_btn = QPushButton(cel_icons.back, "Zurück")
+        self.zoom_back_btn.setToolTip("Zurück zur vorherigen Ansicht")
+        self.zoom_back_btn.setIconSize(QSize(24, 24))
+        self.zoom_back_btn.clicked.connect(self._on_zoom_back_clicked)
+        self.addWidget(self.zoom_back_btn)
+
     def _get_candle_icon(self, icon_name: str) -> Optional[QIcon]:
         """Get icon for candle type.
 
@@ -265,6 +289,14 @@ class CandleToolbar(QToolBar):
     def _on_clear_pattern_clicked(self):
         """Handle clear pattern button click."""
         self.pattern_clear_requested.emit()
+
+    def _on_zoom_fit_clicked(self):
+        """Handle zoom fit button click (analog zu Chart: 'Alles zoomen')."""
+        self.zoom_fit_requested.emit()
+
+    def _on_zoom_back_clicked(self):
+        """Handle zoom back button click (analog zu Chart: 'Zurück')."""
+        self.zoom_back_requested.emit()
 
     def set_active_candle_type(self, candle_type: str):
         """Set active candle type programmatically.

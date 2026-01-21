@@ -4,94 +4,96 @@ Based on OrderPilot-AI standard dark theme (#1e1e1e).
 Derived from UI Study but adapted for consistency.
 """
 
+from src.ui.design_system import DARK_ORANGE_PALETTE
+
 # Primary Colors (OrderPilot-AI standard)
-BACKGROUND_PRIMARY = '#1e1e1e'      # Main background
-BACKGROUND_SECONDARY = '#2d2d2d'    # Secondary surfaces
-BACKGROUND_TERTIARY = '#252525'     # Elevated surfaces
+BACKGROUND_PRIMARY = DARK_ORANGE_PALETTE.background_main
+BACKGROUND_SECONDARY = DARK_ORANGE_PALETTE.background_surface
+BACKGROUND_TERTIARY = DARK_ORANGE_PALETTE.background_input
 
 # Accent Colors (Trading Bot style)
-ACCENT_CYAN = '#00d9ff'             # Primary accent (info)
-ACCENT_TEAL = '#26a69a'             # Success / Bullish
-ACCENT_ORANGE = '#ffa726'           # Warning / Neutral
-ACCENT_RED = '#ef5350'              # Error / Bearish
+ACCENT_CYAN = DARK_ORANGE_PALETTE.primary  # Using Primary Orange as main accent
+ACCENT_TEAL = DARK_ORANGE_PALETTE.success
+ACCENT_ORANGE = DARK_ORANGE_PALETTE.warning # Warning is Red/Pink in palette, maybe use primary?
+ACCENT_RED = DARK_ORANGE_PALETTE.error
 
 # Text Colors
-TEXT_PRIMARY = '#e0e0e0'            # Main text
-TEXT_SECONDARY = '#b0b0b0'          # Secondary text
-TEXT_TERTIARY = '#808080'           # Disabled text
+TEXT_PRIMARY = DARK_ORANGE_PALETTE.text_primary
+TEXT_SECONDARY = DARK_ORANGE_PALETTE.text_secondary
+TEXT_TERTIARY = "#5E6673"  # Custom disabled color if not in palette
 
 # Border & Hover
-BORDER = '#404040'                  # Borders and separators
-BORDER_LIGHT = '#4a4a4a'            # Lighter borders
-HOVER = '#353535'                   # Hover background
-SELECTION = '#2a4f6a'               # Selection background
+BORDER = DARK_ORANGE_PALETTE.border_main
+BORDER_LIGHT = DARK_ORANGE_PALETTE.border_main
+HOVER = DARK_ORANGE_PALETTE.background_input
+SELECTION = DARK_ORANGE_PALETTE.selection_bg
 
 # Candle Colors (Pattern Builder)
-CANDLE_BULLISH_BODY = '#00c853'     # Bullish candle fill
-CANDLE_BULLISH_BORDER = '#00e676'   # Bullish candle border
-CANDLE_BEARISH_BODY = '#ff3d71'     # Bearish candle fill
-CANDLE_BEARISH_BORDER = '#ff6b8a'   # Bearish candle border
-CANDLE_DOJI_BODY = '#9aa0a6'        # Doji candle fill
-CANDLE_DOJI_BORDER = '#b8bcc4'      # Doji candle border
+CANDLE_BULLISH_BODY = DARK_ORANGE_PALETTE.success
+CANDLE_BULLISH_BORDER = DARK_ORANGE_PALETTE.success
+CANDLE_BEARISH_BODY = DARK_ORANGE_PALETTE.error
+CANDLE_BEARISH_BORDER = DARK_ORANGE_PALETTE.error
+CANDLE_DOJI_BODY = DARK_ORANGE_PALETTE.text_secondary
+CANDLE_DOJI_BORDER = DARK_ORANGE_PALETTE.text_secondary
 
 # Relation Line Colors (Pattern Builder)
-RELATION_GREATER = '#00c853'        # Green (>)
-RELATION_LESS = '#ff3d71'           # Red (<)
-RELATION_EQUAL = '#ffab00'          # Orange (≈)
-RELATION_NEAR = '#00d9ff'           # Cyan (near)
+RELATION_GREATER = DARK_ORANGE_PALETTE.success
+RELATION_LESS = DARK_ORANGE_PALETTE.error
+RELATION_EQUAL = DARK_ORANGE_PALETTE.primary # Orange
+RELATION_NEAR = DARK_ORANGE_PALETTE.info
 
 # Grid Colors (Pattern Builder Canvas)
-GRID_MAJOR = '#2a2a2a'              # Major grid lines (50px)
-GRID_MINOR = '#242424'              # Minor grid lines (10px)
+GRID_MAJOR = DARK_ORANGE_PALETTE.border_main
+GRID_MINOR = "#23262E"  # Slightly lighter than BG
 
 # AI Assistant Colors
-AI_SUGGESTION_BG = '#2a3f5f'        # Suggestion card background
-AI_SUGGESTION_BORDER = '#4a90e2'    # Suggestion card border
+AI_SUGGESTION_BG = DARK_ORANGE_PALETTE.background_surface
+AI_SUGGESTION_BORDER = DARK_ORANGE_PALETTE.primary
 
 # Status Colors
-STATUS_SUCCESS = '#26a69a'          # Validation success
-STATUS_WARNING = '#ffa726'          # Validation warning
-STATUS_ERROR = '#ef5350'            # Validation error
-STATUS_INFO = '#00d9ff'             # Info messages
+STATUS_SUCCESS = DARK_ORANGE_PALETTE.success
+STATUS_WARNING = DARK_ORANGE_PALETTE.warning
+STATUS_ERROR = DARK_ORANGE_PALETTE.error
+STATUS_INFO = DARK_ORANGE_PALETTE.info
 
 # Code Editor Colors (QScintilla)
-EDITOR_BACKGROUND = '#1e1e1e'       # Code editor background
-EDITOR_LINE_NUMBER_BG = '#2d2d2d'   # Line number area
-EDITOR_LINE_NUMBER_FG = '#808080'   # Line number text
-EDITOR_CURRENT_LINE = '#2a2a2a'     # Current line highlight
-EDITOR_SELECTION = '#2a4f6a'        # Text selection
+EDITOR_BACKGROUND = DARK_ORANGE_PALETTE.background_main
+EDITOR_LINE_NUMBER_BG = DARK_ORANGE_PALETTE.background_surface
+EDITOR_LINE_NUMBER_FG = DARK_ORANGE_PALETTE.text_secondary
+EDITOR_CURRENT_LINE = DARK_ORANGE_PALETTE.background_input
+EDITOR_SELECTION = DARK_ORANGE_PALETTE.selection_bg
 
 # Syntax Highlighting
-SYNTAX_KEYWORD = '#569cd6'          # Keywords (and, or, if)
-SYNTAX_FUNCTION = '#dcdcaa'         # Functions (rsi, ema)
-SYNTAX_NUMBER = '#b5cea8'           # Numbers
-SYNTAX_STRING = '#ce9178'           # Strings
-SYNTAX_COMMENT = '#6a9955'          # Comments
-SYNTAX_OPERATOR = '#d4d4d4'         # Operators (+, -, *, /)
-SYNTAX_VARIABLE = '#9cdcfe'         # Variables (trade.pnl_pct)
+SYNTAX_KEYWORD = "#C678DD"          # Purple
+SYNTAX_FUNCTION = "#61AFEF"         # Blue 
+SYNTAX_NUMBER = "#D19A66"           # Orange
+SYNTAX_STRING = "#98C379"           # Green
+SYNTAX_COMMENT = "#5C6370"          # Grey
+SYNTAX_OPERATOR = "#E06C75"         # Red
+SYNTAX_VARIABLE = "#E5C07B"         # Yellow
 
 # Dock Widget Colors
-DOCK_TITLE_BG = '#2d2d2d'           # Dock title background
-DOCK_TITLE_TEXT = '#ffa726'         # Dock title text (orange)
-DOCK_BORDER = '#404040'             # Dock borders
+DOCK_TITLE_BG = DARK_ORANGE_PALETTE.background_surface
+DOCK_TITLE_TEXT = DARK_ORANGE_PALETTE.primary
+DOCK_BORDER = DARK_ORANGE_PALETTE.border_main
 
 # Toolbar Colors
-TOOLBAR_BG = '#2d2d2d'              # Toolbar background
-TOOLBAR_SEPARATOR = '#404040'       # Toolbar separator
+TOOLBAR_BG = DARK_ORANGE_PALETTE.background_surface
+TOOLBAR_SEPARATOR = DARK_ORANGE_PALETTE.border_main
 
 # Button Colors
-BUTTON_PRIMARY_BG = '#4a90e2'       # Primary button (AI Generate)
-BUTTON_PRIMARY_HOVER = '#5fa3f5'    # Primary button hover
-BUTTON_PRIMARY_PRESSED = '#357abd'  # Primary button pressed
-BUTTON_SUCCESS_BG = '#26a69a'       # Success button (Apply)
-BUTTON_SUCCESS_HOVER = '#2bbbad'    # Success button hover
-BUTTON_WARNING_BG = '#ffa726'       # Warning button
-BUTTON_DANGER_BG = '#ef5350'        # Danger button (Delete)
+BUTTON_PRIMARY_BG = DARK_ORANGE_PALETTE.primary
+BUTTON_PRIMARY_HOVER = DARK_ORANGE_PALETTE.primary_hover
+BUTTON_PRIMARY_PRESSED = DARK_ORANGE_PALETTE.primary_pressed
+BUTTON_SUCCESS_BG = DARK_ORANGE_PALETTE.success
+BUTTON_SUCCESS_HOVER = "#2bbbad"    # Keep custom or derive
+BUTTON_WARNING_BG = DARK_ORANGE_PALETTE.warning
+BUTTON_DANGER_BG = DARK_ORANGE_PALETTE.error
 
 # Chart View Colors (for future integration)
-CHART_BACKGROUND = '#1e1e1e'        # Chart background
-CHART_GRID = '#2a2a2a'              # Chart grid lines
-CHART_CROSSHAIR = '#808080'         # Crosshair color
+CHART_BACKGROUND = DARK_ORANGE_PALETTE.background_main
+CHART_GRID = DARK_ORANGE_PALETTE.border_main
+CHART_CROSSHAIR = DARK_ORANGE_PALETTE.text_secondary
 
 # Comprehensive Theme Dictionary
 DARK_THEME = {
@@ -99,24 +101,24 @@ DARK_THEME = {
     'background_primary': BACKGROUND_PRIMARY,
     'background_secondary': BACKGROUND_SECONDARY,
     'background_tertiary': BACKGROUND_TERTIARY,
-
+    
     # Accents
     'accent': ACCENT_CYAN,
     'accent_teal': ACCENT_TEAL,
     'accent_orange': ACCENT_ORANGE,
     'accent_red': ACCENT_RED,
-
+    
     # Text
     'text_primary': TEXT_PRIMARY,
     'text_secondary': TEXT_SECONDARY,
     'text_tertiary': TEXT_TERTIARY,
-
+    
     # Borders
     'border': BORDER,
     'border_light': BORDER_LIGHT,
     'hover': HOVER,
     'selection': SELECTION,
-
+    
     # Candles
     'candle_bullish_body': CANDLE_BULLISH_BODY,
     'candle_bullish_border': CANDLE_BULLISH_BORDER,
@@ -124,30 +126,30 @@ DARK_THEME = {
     'candle_bearish_border': CANDLE_BEARISH_BORDER,
     'candle_doji_body': CANDLE_DOJI_BODY,
     'candle_doji_border': CANDLE_DOJI_BORDER,
-
+    
     # Relations
     'relation_greater': RELATION_GREATER,
     'relation_less': RELATION_LESS,
     'relation_equal': RELATION_EQUAL,
     'relation_near': RELATION_NEAR,
-
+    
     # Grid
     'grid_major': GRID_MAJOR,
     'grid_minor': GRID_MINOR,
-
+    
     # Status
     'status_success': STATUS_SUCCESS,
     'status_warning': STATUS_WARNING,
     'status_error': STATUS_ERROR,
     'status_info': STATUS_INFO,
-
+    
     # Editor
     'editor_background': EDITOR_BACKGROUND,
     'editor_line_number_bg': EDITOR_LINE_NUMBER_BG,
     'editor_line_number_fg': EDITOR_LINE_NUMBER_FG,
     'editor_current_line': EDITOR_CURRENT_LINE,
     'editor_selection': EDITOR_SELECTION,
-
+    
     # Syntax
     'syntax_keyword': SYNTAX_KEYWORD,
     'syntax_function': SYNTAX_FUNCTION,

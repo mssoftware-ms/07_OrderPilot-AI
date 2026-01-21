@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CEL Editor - Hilfe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #d4d4d4;
+            background: #1e1e1e;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ec9b0;
+            border-bottom: 3px solid #4ec9b0;
+            padding-bottom: 10px;
+            margin: 30px 0 20px 0;
+            font-size: 2.2em;
+        }
+
+        h2 {
+            color: #569cd6;
+            margin: 25px 0 15px 0;
+            font-size: 1.8em;
+            border-left: 4px solid #569cd6;
+            padding-left: 15px;
+        }
+
+        h3 {
+            color: #ce9178;
+            margin: 20px 0 10px 0;
+            font-size: 1.4em;
+        }
+
+        h4 {
+            color: #dcdcaa;
+            margin: 15px 0 10px 0;
+            font-size: 1.2em;
+        }
+
+        p {
+            margin: 10px 0;
+        }
+
+        code {
+            background: #2d2d2d;
+            color: #ce9178;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        pre {
+            background: #2d2d2d;
+            border-left: 4px solid #569cd6;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            border-radius: 5px;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        ul, ol {
+            margin: 10px 0 10px 30px;
+        }
+
+        li {
+            margin: 5px 0;
+        }
+
+        .feature-box {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .feature-box h3 {
+            margin-top: 0;
+            color: #4ec9b0;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .status.complete {
+            background: #0e639c;
+            color: #ffffff;
+        }
+
+        .status.partial {
+            background: #c5a332;
+            color: #1e1e1e;
+        }
+
+        .status.missing {
+            background: #d16969;
+            color: #ffffff;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: #252526;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #3e3e42;
+        }
+
+        th {
+            background: #2d2d2d;
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background: #2d2d2d;
+        }
+
+        .keyboard-shortcut {
+            background: #2d2d2d;
+            border: 1px solid #569cd6;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9em;
+            color: #569cd6;
+            display: inline-block;
+            margin: 0 3px;
+        }
+
+        .warning {
+            background: #332b00;
+            border-left: 4px solid #c5a332;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .info {
+            background: #001f3f;
+            border-left: 4px solid #569cd6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .toc {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .toc h2 {
+            margin-top: 0;
+            border-left: none;
+            padding-left: 0;
+        }
+
+        .toc ul {
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .toc li {
+            margin: 8px 0;
+        }
+
+        .toc a {
+            color: #569cd6;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .toc a:hover {
+            color: #4ec9b0;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>📚 CEL Editor - Benutzerhandbuch</h1>
+
+    <div class="info">
+        <strong>Version:</strong> 1.0.0 (Production Ready)<br>
+        <strong>Build Date:</strong> 2026-01-21<br>
+        <strong>Status:</strong> <span class="status complete">8 Features Komplett</span>
+    </div>
+
+    <div class="toc">
+        <h2>📑 Inhaltsverzeichnis</h2>
+        <ul>
+            <li><a href="#overview">1. Überblick</a></li>
+            <li><a href="#features">2. Implementierte Features</a></li>
+            <li><a href="#pattern-library">3. Pattern Library</a></li>
+            <li><a href="#pattern-builder">4. Pattern Builder</a></li>
+            <li><a href="#code-editor">5. Code Editor</a></li>
+            <li><a href="#cel-validation">6. CEL Validation</a></li>
+            <li><a href="#file-operations">7. Dateioperationen</a></li>
+            <li><a href="#ai-integration">8. KI-Integration</a></li>
+            <li><a href="#shortcuts">9. Tastenkürzel</a></li>
+            <li><a href="#troubleshooting">10. Fehlerbehebung</a></li>
+        </ul>
+    </div>
+
+    <h2 id="overview">1. Überblick</h2>
+    <p>Der <strong>CEL Editor</strong> ist ein visueller Pattern Builder für Trading-Strategien. Er ermöglicht die Erstellung von Candlestick-Patterns und deren Übersetzung in CEL (Common Expression Language) Code.</p>
+
+    <h3>Hauptfunktionen</h3>
+    <ul>
+        <li>✅ Visueller Pattern Builder mit Drag & Drop</li>
+        <li>✅ 11 vordefinierte Candlestick-Patterns</li>
+        <li>✅ CEL Code Editor mit Syntax-Highlighting</li>
+        <li>✅ Pattern → CEL Code Translation</li>
+        <li>✅ KI-gestützte Code-Generierung (OpenAI, Anthropic, Gemini)</li>
+        <li>✅ CEL Code Validierung</li>
+        <li>✅ JSON Import/Export</li>
+    </ul>
+
+    <h2 id="features">2. Implementierte Features <span class="status complete">8/20 = 40%</span></h2>
+
+    <div class="feature-box">
+        <h3>✅ Feature 1-2: Import-Fehler & Bug-Fixes</h3>
+        <p>Alle kritischen Import-Fehler und AttributeErrors wurden behoben.</p>
+    </div>
+
+    <div class="feature-box">
+        <h3>✅ Feature 3-5: KI-Integration</h3>
+        <p>Vollständige Integration von OpenAI GPT-4, Anthropic Claude und Google Gemini für automatische Code-Generierung.</p>
+        <ul>
+            <li><strong>OpenAI:</strong> GPT-4 / GPT-4-turbo</li>
+            <li><strong>Anthropic:</strong> Claude Sonnet 4</li>
+            <li><strong>Gemini:</strong> Gemini 2.0 Flash</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>✅ Feature 6: CEL Validation Backend</h3>
+        <p>Umfassende Validierung von CEL Code mit:</p>
+        <ul>
+            <li>Syntax-Prüfung (Klammern, Operatoren)</li>
+            <li>Token-Analyse</li>
+            <li>Fehler-Marker im Editor</li>
+            <li>Detaillierte Fehlermeldungen</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>✅ Feature 7: Dateioperationen</h3>
+        <p>Vollständige Datei-Verwaltung:</p>
+        <ul>
+            <li>Neue Strategie erstellen</li>
+            <li>Strategie laden (JSON)</li>
+            <li>Strategie speichern</li>
+            <li>Speichern unter</li>
+            <li>RulePack Export</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>✅ Feature 8: Pattern Library</h3>
+        <p><strong>11 vordefinierte Patterns:</strong></p>
+
+        <h4>Reversal Patterns (6)</h4>
+        <ul>
+            <li>Bullish Engulfing (2 Kerzen)</li>
+            <li>Bearish Engulfing (2 Kerzen)</li>
+            <li>Hammer (1 Kerze)</li>
+            <li>Shooting Star (1 Kerze)</li>
+            <li>Morning Star (3 Kerzen)</li>
+            <li>Evening Star (3 Kerzen)</li>
+        </ul>
+
+        <h4>Continuation Patterns (2)</h4>
+        <ul>
+            <li>Bull Flag (4 Kerzen)</li>
+            <li>Bear Flag (4 Kerzen)</li>
+        </ul>
+
+        <h4>Indecision Patterns (3)</h4>
+        <ul>
+            <li>Doji (1 Kerze)</li>
+            <li>Spinning Top (1 Kerze)</li>
+            <li>Harami (2 Kerzen)</li>
+        </ul>
+    </div>
+
+    <h2 id="pattern-library">3. Pattern Library</h2>
+    <p>Die Pattern Library befindet sich im linken Dock-Widget.</p>
+
+    <h3>Pattern laden</h3>
+    <ol>
+        <li>Kategorie in der Baumansicht öffnen (Reversal/Continuation/Indecision)</li>
+        <li>Pattern <strong>doppelklicken</strong></li>
+        <li>Pattern erscheint auf dem Canvas</li>
+        <li>Erfolgs-Dialog zeigt Details (Anzahl Kerzen & Relationen)</li>
+    </ol>
+
+    <h3>Eigenes Pattern speichern</h3>
+    <ol>
+        <li>Pattern auf dem Canvas erstellen/modifizieren</li>
+        <li>Button "💾 Save Current" klicken</li>
+        <li>Namen eingeben</li>
+        <li>Pattern wird zu "Custom Patterns" hinzugefügt</li>
+    </ol>
+
+    <h2 id="pattern-builder">4. Pattern Builder</h2>
+
+    <h3>Viewer-Funktionen</h3>
+    <table>
+        <tr>
+            <th>Funktion</th>
+            <th>Aktion</th>
+            <th>Status</th>
+        </tr>
+        <tr>
+            <td>Zoom In/Out</td>
+            <td>Mausrad</td>
+            <td><span class="status complete">✓ Implementiert</span></td>
+        </tr>
+        <tr>
+            <td>Pan (Verschieben)</td>
+            <td>Mittlere Maustaste + Ziehen</td>
+            <td><span class="status partial">⚠ In Arbeit</span></td>
+        </tr>
+        <tr>
+            <td>Zoom to Fit</td>
+            <td>Button in Toolbar</td>
+            <td><span class="status partial">⚠ Funktion vorhanden, Button fehlt</span></td>
+        </tr>
+    </table>
+
+    <h3>Kerzen hinzufügen</h3>
+    <ol>
+        <li>Kerzentyp in der Toolbar auswählen (8 Typen verfügbar)</li>
+        <li>Button "➕ Add" klicken</li>
+        <li>Kerze mit Maus auf Canvas positionieren</li>
+    </ol>
+
+    <h3>Kerzen-Eigenschaften bearbeiten</h3>
+    <p>Kerze auswählen → Properties Panel (rechts) zeigt OHLC-Werte:</p>
+    <ul>
+        <li>Open (0-100)</li>
+        <li>High (0-100)</li>
+        <li>Low (0-100)</li>
+        <li>Close (0-100)</li>
+    </ul>
+
+    <h2 id="code-editor">5. Code Editor</h2>
+
+    <h3>4 Workflow-Editoren</h3>
+    <ol>
+        <li><strong>Entry Workflow</strong> - Einstiegsbedingungen</li>
+        <li><strong>Exit Workflow</strong> - Ausstiegsbedingungen</li>
+        <li><strong>Before Exit Workflow</strong> - Pre-Exit Logik</li>
+        <li><strong>Update Stop Workflow</strong> - Stop-Loss Update</li>
+    </ol>
+
+    <h3>Syntax-Highlighting</h3>
+    <p>10 Token-Typen werden farblich hervorgehoben:</p>
+    <ul>
+        <li>Keywords (blau)</li>
+        <li>Funktionen (gelb)</li>
+        <li>Operatoren (weiß)</li>
+        <li>Zahlen (grün)</li>
+        <li>Strings (orange)</li>
+        <li>Kommentare (grau)</li>
+    </ul>
+
+    <h3>Autocomplete</h3>
+    <p>Über 100 Funktionen/Indikatoren mit Auto-Vervollständigung:</p>
+    <ul>
+        <li>Candle-Funktionen: <code>candle()</code>, <code>high</code>, <code>low</code></li>
+        <li>Indikatoren: <code>rsi14.value</code>, <code>ema34.value</code></li>
+        <li>Trading-Funktionen: <code>is_trade_open()</code></li>
+        <li>Pattern-Funktionen: <code>hammer()</code>, <code>doji()</code></li>
+    </ul>
+
+    <h2 id="cel-validation">6. CEL Validation</h2>
+
+    <h3>Code validieren</h3>
+    <ol>
+        <li>Code im Editor schreiben</li>
+        <li>Button "✓ Validate" klicken</li>
+        <li>Bei Erfolg: Grüner Success-Dialog</li>
+        <li>Bei Fehlern: Rote Error-Marker + Fehler-Dialog</li>
+    </ol>
+
+    <h3>Häufige Fehler</h3>
+    <table>
+        <tr>
+            <th>Fehler</th>
+            <th>Ursache</th>
+            <th>Lösung</th>
+        </tr>
+        <tr>
+            <td>Unmatched parenthesis</td>
+            <td>Fehlende/überzählige Klammer</td>
+            <td>Klammern prüfen</td>
+        </tr>
+        <tr>
+            <td>Unknown function</td>
+            <td>Funktion existiert nicht</td>
+            <td>Command Reference prüfen</td>
+        </tr>
+        <tr>
+            <td>Syntax error</td>
+            <td>Ungültiger Operator</td>
+            <td>Syntax-Highlighting beachten</td>
+        </tr>
+    </table>
+
+    <h2 id="file-operations">7. Dateioperationen</h2>
+
+    <h3>Strategie speichern</h3>
+    <pre><code>File → Save Strategy
+Speichert:
+  - Pattern (alle Kerzen + Relationen)
+  - Alle 4 Workflow-Codes
+  - Metadaten (Name, Version)</code></pre>
+
+    <h3>Strategie laden</h3>
+    <pre><code>File → Open Strategy
+Lädt:
+  - Pattern auf Canvas
+  - Workflow-Codes in Editoren
+  - Strategie-Name</code></pre>
+
+    <h3>RulePack exportieren</h3>
+    <pre><code>File → Export RulePack
+Exportiert Bot-kompatibles JSON:
+  - schema_version
+  - Alle CEL Workflows
+  - Validierte Syntax</code></pre>
+
+    <h2 id="ai-integration">8. KI-Integration</h2>
+
+    <h3>Code generieren</h3>
+    <ol>
+        <li>Workflow-Tab auswählen (z.B. Entry)</li>
+        <li>Prompt eingeben: "Calculate RSI > 70 AND price above EMA 34"</li>
+        <li>KI-Modell auswählen (OpenAI/Anthropic/Gemini)</li>
+        <li>Button "✨ Generate" klicken</li>
+        <li>Generierter Code wird eingefügt</li>
+    </ol>
+
+    <h3>API-Keys konfigurieren</h3>
+    <div class="warning">
+        <strong>⚠️ Wichtig:</strong> API-Keys müssen in Windows-Umgebungsvariablen gesetzt werden:
+        <ul>
+            <li><code>OPENAI_API_KEY</code></li>
+            <li><code>ANTHROPIC_API_KEY</code></li>
+            <li><code>GEMINI_API_KEY</code></li>
+        </ul>
+    </div>
+
+    <h2 id="shortcuts">9. Tastenkürzel</h2>
+
+    <table>
+        <tr>
+            <th>Tastenkürzel</th>
+            <th>Aktion</th>
+            <th>Bereich</th>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+N</span></td>
+            <td>Neue Strategie</td>
+            <td>Global</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+O</span></td>
+            <td>Strategie öffnen</td>
+            <td>Global</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+S</span></td>
+            <td>Strategie speichern</td>
+            <td>Global</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+Shift+S</span></td>
+            <td>Speichern unter</td>
+            <td>Global</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+Z</span></td>
+            <td>Rückgängig</td>
+            <td>Pattern Builder</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Ctrl+Y</span></td>
+            <td>Wiederholen</td>
+            <td>Pattern Builder</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">Mausrad</span></td>
+            <td>Zoom In/Out</td>
+            <td>Pattern Builder</td>
+        </tr>
+        <tr>
+            <td><span class="keyboard-shortcut">F1</span></td>
+            <td>Diese Hilfe</td>
+            <td>Global</td>
+        </tr>
+    </table>
+
+    <h2 id="troubleshooting">10. Fehlerbehebung</h2>
+
+    <h3>Problem: Pattern lädt nicht</h3>
+    <p><strong>Lösung:</strong></p>
+    <ul>
+        <li>Prüfen, ob Pattern-Daten korrekt sind (JSON-Format)</li>
+        <li>Console-Output prüfen (Fehler werden geloggt)</li>
+        <li>Pattern neu erstellen</li>
+    </ul>
+
+    <h3>Problem: CEL Validation schlägt fehl</h3>
+    <p><strong>Lösung:</strong></p>
+    <ul>
+        <li>Syntax-Highlighting beachten (rot = Fehler)</li>
+        <li>Command Reference konsultieren</li>
+        <li>Klammern und Operatoren prüfen</li>
+    </ul>
+
+    <h3>Problem: KI generiert keinen Code</h3>
+    <p><strong>Lösung:</strong></p>
+    <ul>
+        <li>API-Key prüfen (Umgebungsvariable gesetzt?)</li>
+        <li>Internetverbindung prüfen</li>
+        <li>Anderes KI-Modell versuchen</li>
+    </ul>
+
+    <hr style="margin: 40px 0; border: none; border-top: 2px solid #3e3e42;">
+
+    <div class="info">
+        <p><strong>📚 Weitere Dokumentation:</strong></p>
+        <ul>
+            <li><code>docs/CEL_EDITOR_HELP.md</code> - Vollständige Markdown-Version</li>
+            <li><code>01_Projectplan/</code> - Projektplanung & Roadmap</li>
+        </ul>
+        <p><strong>🐛 Bugs melden:</strong> Fehler bitte im Issue-Tracker dokumentieren.</p>
+        <p><strong>💡 Feature-Requests:</strong> Vorschläge willkommen!</p>
+    </div>
+
+</body>
+</html>

@@ -7,7 +7,7 @@ Supports undo/redo, zoom, and pattern serialization.
 from typing import Optional, List
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
 from PyQt6.QtCore import Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QPen, QColor, QPainter, QWheelEvent, QUndoStack, QUndoCommand
+from PyQt6.QtGui import QPen, QColor, QPainter, QWheelEvent, QUndoStack, QUndoCommand, QMouseEvent, QCursor
 
 from ui.windows.cel_editor.theme import (
     BACKGROUND_PRIMARY, GRID_MAJOR, GRID_MINOR
@@ -66,9 +66,18 @@ class PatternBuilderCanvas(QGraphicsView):
     - Grid background (major 50px, minor 10px)
     - Draggable candles with snap-to-grid
     - Visual relation lines between candles
-    - Zoom with mouse wheel
+    - Zoom with mouse wheel (saves view history)
+    - Pan with middle mouse button + drag
+    - "Alles zoomen" button (fit all candles)
+    - "Zurück" button (restore previous view)
     - Undo/Redo support
     - Pattern serialization to/from dict
+
+    Viewer Controls (analog zu Chart-Modul):
+    - Mouse Wheel: Zoom in/out (around mouse cursor)
+    - Middle Mouse + Drag: Pan view
+    - Toolbar "Alles zoomen": Fit all candles in view
+    - Toolbar "Zurück": Go back to previous view
 
     Signals:
     - pattern_changed: Emitted when pattern is modified
@@ -103,6 +112,14 @@ class PatternBuilderCanvas(QGraphicsView):
 
         # Undo/Redo stack
         self.undo_stack = QUndoStack(self)
+
+        # Pan state
+        self.is_panning = False
+        self.last_pan_position = None
+
+        # View history for zoom back (analog zu Chart: zoom_back_to_previous_view)
+        self._view_history: list[tuple[float, float, float]] = []  # (scale_x, scale_y, center_x, center_y)
+        self._max_history = 10  # Keep last 10 views
 
         # Setup canvas
         self._setup_canvas()
@@ -331,6 +348,9 @@ class PatternBuilderCanvas(QGraphicsView):
         Args:
             event: Wheel event
         """
+        # Save view state before zoom (so user can zoom back)
+        self._save_view_state()
+
         # Zoom factor
         zoom_in_factor = 1.15
         zoom_out_factor = 1 / zoom_in_factor
@@ -353,18 +373,31 @@ class PatternBuilderCanvas(QGraphicsView):
         delta = new_pos - old_pos
         self.translate(delta.x(), delta.y())
 
-    def zoom_in(self):
-        """Zoom in by fixed amount."""
-        self.scale(1.15, 1.15)
+    def _save_view_state(self):
+        """Save current view state to history (analog zu Chart: rememberViewState)."""
+        # Get current transform
+        transform = self.transform()
+        scale_x = transform.m11()
+        scale_y = transform.m22()
 
-    def zoom_out(self):
-        """Zoom out by fixed amount."""
-        self.scale(1 / 1.15, 1 / 1.15)
+        # Get current center point
+        center = self.mapToScene(self.viewport().rect().center())
 
-    def zoom_fit(self):
-        """Zoom to fit all candles in view."""
+        # Save to history
+        view_state = (scale_x, scale_y, center.x(), center.y())
+        self._view_history.append(view_state)
+
+        # Keep only last N views
+        if len(self._view_history) > self._max_history:
+            self._view_history.pop(0)
+
+    def zoom_to_fit_all(self):
+        """Zoom to fit all candles in view (analog zu Chart: zoom_to_fit_all)."""
         if not self.candles:
             return
+
+        # Save current view before changing
+        self._save_view_state()
 
         # Get bounding rect of all candles
         bounding_rect = QRectF()
@@ -377,6 +410,84 @@ class PatternBuilderCanvas(QGraphicsView):
 
         # Fit in view
         self.fitInView(bounding_rect, Qt.AspectRatioMode.KeepAspectRatio)
+
+    def zoom_back_to_previous_view(self) -> bool:
+        """Restore previous view state (analog zu Chart: zoom_back_to_previous_view).
+
+        Returns:
+            True if a previous state was restored, False otherwise.
+        """
+        if not self._view_history:
+            return False
+
+        # Pop last view state
+        scale_x, scale_y, center_x, center_y = self._view_history.pop()
+
+        # Reset transform
+        self.resetTransform()
+
+        # Apply saved scale
+        self.scale(scale_x, scale_y)
+
+        # Center on saved position
+        self.centerOn(center_x, center_y)
+
+        return True
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press for pan start.
+
+        Args:
+            event: Mouse event
+        """
+        # Start panning with middle mouse button
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.is_panning = True
+            self.last_pan_position = event.position().toPoint()
+            self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+            event.accept()
+        else:
+            # Pass to parent for normal drag/select behavior
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Handle mouse move for panning.
+
+        Args:
+            event: Mouse event
+        """
+        if self.is_panning and self.last_pan_position:
+            # Calculate delta
+            delta = event.position().toPoint() - self.last_pan_position
+            self.last_pan_position = event.position().toPoint()
+
+            # Pan the view by adjusting scrollbars
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+            event.accept()
+        else:
+            # Pass to parent for normal drag behavior
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release for pan end.
+
+        Args:
+            event: Mouse event
+        """
+        # End panning
+        if event.button() == Qt.MouseButton.MiddleButton and self.is_panning:
+            self.is_panning = False
+            self.last_pan_position = None
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+            event.accept()
+        else:
+            # Pass to parent for normal behavior
+            super().mouseReleaseEvent(event)
 
     def undo(self):
         """Undo last action."""

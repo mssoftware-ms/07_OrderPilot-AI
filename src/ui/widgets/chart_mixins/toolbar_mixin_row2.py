@@ -233,18 +233,8 @@ class ToolbarMixinRow2:
             "Entry Analyzer öffnen - Findet optimale Einstiegspunkte"
         )
         self.parent.entry_analyzer_button.setProperty("class", "toolbar-button")
-        self.parent.entry_analyzer_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.entry_analyzer_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.entry_analyzer_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Style is now handled globally in themes.py (Issue #28)
         self.parent.entry_analyzer_button.clicked.connect(self._on_entry_analyzer_clicked)
         toolbar.addWidget(self.parent.entry_analyzer_button)
         logger.info("Toolbar: Entry Analyzer button added")
@@ -280,18 +270,8 @@ class ToolbarMixinRow2:
             "Strategy Concept öffnen - Pattern-basierte Trading Strategien (Ctrl+Shift+S)"
         )
         self.parent.strategy_concept_button.setProperty("class", "toolbar-button")
-        self.parent.strategy_concept_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.strategy_concept_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.strategy_concept_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Style is now handled globally in themes.py (Issue #28)
         self.parent.strategy_concept_button.clicked.connect(self._on_strategy_concept_clicked)
         toolbar.addWidget(self.parent.strategy_concept_button)
         logger.info("Toolbar: Strategy Concept button added")
@@ -328,17 +308,7 @@ class ToolbarMixinRow2:
         )
         self.parent.cel_editor_button.setProperty("class", "toolbar-button")
         self.parent.cel_editor_button.setFixedHeight(self.BUTTON_HEIGHT)
-        # Active state styling (orange background/text when checked)
-        self.parent.cel_editor_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        # Style is now handled globally in themes.py (Issue #28)
         self.parent.cel_editor_button.clicked.connect(self._on_cel_editor_clicked)
         toolbar.addWidget(self.parent.cel_editor_button)
         logger.info("Toolbar: CEL Editor button added")
@@ -383,18 +353,8 @@ class ToolbarMixinRow2:
             "AI Chart-Analyse öffnen/schließen (Ctrl+Shift+C)"
         )
         self.parent.ai_chat_button.setProperty("class", "toolbar-button")
-        self.parent.ai_chat_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.ai_chat_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.ai_chat_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Style is now handled globally in themes.py (Issue #28)
         toolbar.addWidget(self.parent.ai_chat_button)
 
     def add_ai_analysis_button(self, toolbar: QToolBar) -> None:
@@ -406,18 +366,8 @@ class ToolbarMixinRow2:
             "Deep Market Analysis Popup öffnen"
         )
         self.parent.ai_analysis_button.setProperty("class", "toolbar-button")
-        self.parent.ai_analysis_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.ai_analysis_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.ai_analysis_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Style is now handled globally in themes.py (Issue #28)
         toolbar.addWidget(self.parent.ai_analysis_button)
 
     # Issue #24: Methode entfernt - Button ist jetzt in Row1 (toolbar_mixin_row1.py)
@@ -466,18 +416,8 @@ class ToolbarMixinRow2:
         self.parent.toggle_panel_button.setChecked(True)
         self.parent.toggle_panel_button.setToolTip("Trading Bot Panel ein-/ausblenden")
         self.parent.toggle_panel_button.setProperty("class", "toolbar-button")
-        self.parent.toggle_panel_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.toggle_panel_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.toggle_panel_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Style is now handled globally in themes.py (Issue #28)
         toolbar.addWidget(self.parent.toggle_panel_button)
 
     def add_market_status(self, toolbar: QToolBar) -> None:

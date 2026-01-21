@@ -515,17 +515,9 @@ class ToolbarMixinRow1:
         self.parent.bitunix_trading_button.setProperty("class", "toolbar-button")
         self.parent.bitunix_trading_button.setFixedHeight(self.BUTTON_HEIGHT)
         self.parent.bitunix_trading_button.setVisible(True)
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.bitunix_trading_button.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.bitunix_trading_button.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.bitunix_trading_button.setVisible(True)
+        # Style is now handled globally in themes.py (Issue #28)
         toolbar.addWidget(self.parent.bitunix_trading_button)
         logger.debug("Toolbar Row1: Bitunix button added (Issue #24)")
 
@@ -542,17 +534,9 @@ class ToolbarMixinRow1:
         )
         self.parent.chart_strategy_settings_btn.setFixedHeight(self.BUTTON_HEIGHT)
         self.parent.chart_strategy_settings_btn.setProperty("class", "toolbar-button")
-        # Issue #28: Active state styling (orange background/text when checked)
-        self.parent.chart_strategy_settings_btn.setStyleSheet("""
-            QPushButton:checked {
-                background-color: #FF6B35;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked:hover {
-                background-color: #FF8C61;
-            }
-        """)
+        self.parent.chart_strategy_settings_btn.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.chart_strategy_settings_btn.setProperty("class", "toolbar-button")
+        # Style is now handled globally in themes.py (Issue #28)
         self.parent.chart_strategy_settings_btn.clicked.connect(self._on_strategy_settings_clicked)
         toolbar.addWidget(self.parent.chart_strategy_settings_btn)
         logger.debug("Toolbar Row1: Strategy Settings button added (Issue #24)")

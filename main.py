@@ -21,10 +21,10 @@ if os.name == "nt":
     try:
         import ctypes
 
-        _SW_MINIMIZE = 6
+        _SW_HIDE = 0
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, _SW_MINIMIZE)
+            ctypes.windll.user32.ShowWindow(hwnd, _SW_HIDE)
     except Exception:
         # Non-critical: ignore if API not available
         pass

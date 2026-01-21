@@ -434,7 +434,7 @@ class BotUISignalsMixin:
         signals_group = QGroupBox("Trading Table")
         signals_inner = QVBoxLayout()
 
-        # === TOOLBAR mit Clear-Buttons ===
+        # TOOLBAR mit Clear-Buttons
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 4)
 
@@ -526,9 +526,7 @@ class BotUISignalsMixin:
         signals_layout.addWidget(signals_group)
         return signals_widget
 
-    # =========================================================================
     # Trading Bot Log (Issue #23)
-    # =========================================================================
 
     def _append_bot_log(self, log_type: str, message: str, timestamp: str | None = None) -> None:
         """Append a log line to the Trading Bot Log UI."""
@@ -1209,9 +1207,7 @@ class BotUISignalsMixin:
         # Issue #3: Hebel column is always visible now
         self.signals_table.setColumnHidden(20, False)
 
-    # =========================================================================
     # Issue #9: Start Bot Toggle Button in Trading Tab
-    # =========================================================================
 
     def _open_main_settings_dialog(self) -> None:
         """Open the main Settings dialog."""

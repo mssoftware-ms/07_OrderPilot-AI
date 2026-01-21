@@ -640,9 +640,7 @@ class PatternRecognitionWidget(QWidget):
         from PyQt6.QtWidgets import QApplication
         QApplication.processEvents()
 
-    # ========================================================================
     # EVENT BUS INTEGRATION (Phase 1 - Live Data Updates)
-    # ========================================================================
 
     def _setup_event_subscriptions(self):
         """Subscribe to event bus for auto-updates on new market data."""

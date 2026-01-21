@@ -11,9 +11,13 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+# Now we can import from src
+from ui.app_console_utils import _hide_console_window
 
 
 def load_windows_env_vars_in_wsl() -> None:
@@ -84,8 +88,9 @@ def load_windows_env_vars_in_wsl() -> None:
 load_windows_env_vars_in_wsl()
 
 
-def check_ai_api_keys() -> None:
+def check_ai_api_keys(splash=None) -> None:
     """Check and display status of AI API keys from environment."""
+    if splash: splash.set_progress(15, "Prüfe API-Schlüssel...")
     print("\n" + "=" * 50)
     print("[KEY] API Keys Status (from Windows Environment)")
     print("=" * 50)
@@ -143,8 +148,9 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.info(f"OrderPilot-AI Starting - Log file: {log_file}")
 
 
-def check_dependencies() -> bool:
+def check_dependencies(splash=None) -> bool:
     """Check if all required dependencies are installed"""
+    if splash: splash.set_progress(20, "Prüfe Abhängigkeiten...")
     required_modules = [
         ('PyQt6', 'PyQt6'),
         ('sqlalchemy', 'SQLAlchemy'),
@@ -175,8 +181,9 @@ def check_dependencies() -> bool:
     return True
 
 
-def check_database() -> None:
+def check_database(splash=None) -> None:
     """Check and initialize database if needed"""
+    if splash: splash.set_progress(25, "Datenbank-System...")
     from src.config.loader import DatabaseConfig
     from src.database import initialize_database
 
@@ -211,7 +218,7 @@ def print_startup_banner() -> None:
     print(banner)
 
 
-async def main_with_args(args: argparse.Namespace) -> None:
+async def main_with_args(args: argparse.Namespace, app=None, splash=None) -> None:
     """Main function with argument handling"""
     from ui.app import main as app_main
 
@@ -224,7 +231,7 @@ async def main_with_args(args: argparse.Namespace) -> None:
         print("[MOCK] Using Mock Broker for testing")
 
     # Run the application
-    await app_main()
+    await app_main(app=app, splash=splash)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -285,9 +292,15 @@ Examples:
 
 def main() -> int:
     """Main entry point"""
+    # 0. HIDE CONSOLE IMMEDIATELY on Windows
+    _hide_console_window()
     # Set up global exception handler for uncaught exceptions
     def global_exception_handler(exc_type, exc_value, exc_traceback):
         """Handle uncaught exceptions"""
+        # Make sure console is visible on crash
+        from ui.app_console_utils import _show_console_window
+        _show_console_window()
+
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
@@ -301,44 +314,85 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
 
+    # 1. OPTIONAL EARLY SPLASH SCREEN
+    app = None
+    splash = None
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+        from ui.splash_screen import SplashScreen
+        from ui.app_resources import _get_startup_icon_path
+
+        # This will blink the console but hide it again
+        _hide_console_window()
+
+        # Set OpenGL attribute before app creation
+        if not QApplication.instance():
+            QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+        
+        app = QApplication.instance()
+        if not app:
+            app = QApplication(sys.argv)
+            
+        app.setApplicationName("OrderPilot-AI")
+        
+        startup_icon_path = _get_startup_icon_path()
+        splash = SplashScreen(startup_icon_path)
+        splash.show()
+        splash.set_progress(5, "Lade OrderPilot-AI Launcher...")
+    except ImportError:
+        # PyQt6 not available yet, will be checked properly in check_dependencies()
+        pass
+    except Exception as e:
+        print(f"Warning: Could not start splash screen: {e}")
+
     try:
         # Display banner unless disabled
         if not args.no_banner:
             print_startup_banner()
 
         # Setup logging
+        if splash: splash.set_progress(10, "Konfiguriere Logging...")
         setup_logging(args.log_level)
 
         # Check AI API keys
-        check_ai_api_keys()
+        check_ai_api_keys(splash=splash)
 
         # Check dependencies
         print("\n[CHECK] Checking dependencies...")
-        if not check_dependencies():
+        if not check_dependencies(splash=splash):
+            if splash: splash.close()
+            from ui.app_console_utils import _show_console_window
+            _show_console_window()
             return 1
 
         # If only checking, exit here
         if args.check:
+            if splash: splash.close()
             print("\n[OK] Dependency check complete")
             return 0
 
         # Check database
         print("\n[DB] Checking database...")
-        check_database()
+        check_database(splash=splash)
 
         # Start application
         print(f"\n[START] Starting OrderPilot-AI in {args.env} mode with profile '{args.profile}'...")
         print("=" * 70)
 
         # Run the async main function
-        asyncio.run(main_with_args(args))
+        asyncio.run(main_with_args(args, app=app, splash=splash))
 
         return 0
 
     except KeyboardInterrupt:
+        if splash: splash.close()
         print("\n\n[WARNING] Application terminated by user")
         return 0
     except Exception as e:
+        if splash: splash.close()
+        from ui.app_console_utils import _show_console_window
+        _show_console_window()
         logging.error(f"Fatal error: {e}", exc_info=True)
         print(f"\n[ERROR] Fatal error: {e}")
         print("\nCheck the log file for details")

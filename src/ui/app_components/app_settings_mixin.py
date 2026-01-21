@@ -53,12 +53,34 @@ class AppSettingsMixin:
     def apply_theme(self, theme_name: str):
         """Apply a theme to the application."""
         try:
-            # Get stylesheet from generic manager (handles normalization)
-            style_sheet = self.theme_manager.get_theme(theme_name)
+            # Normalize theme name for keys
+            t_key = theme_name.lower().replace(" ", "_")
+            
+            # Get customization overrides from settings using PREFIXED keys
+            overrides = {}
+            keys = [
+                "ui_bg_color", "ui_btn_color", "ui_dropdown_color", "ui_edit_color",
+                "ui_edit_text_color",
+                "ui_active_btn_color", "ui_inactive_btn_color",
+                "ui_btn_hover_border_color", "ui_btn_hover_text_color",
+                "ui_btn_font_family", "ui_btn_font_size", "ui_btn_width", "ui_btn_height"
+            ]
+            for key in keys:
+                # Try prefixed key first (theme-specific)
+                val = self.settings.value(f"{t_key}_{key}")
+                if val is not None:
+                    overrides[key] = val
+                else:
+                    # Fallback to legacy global key
+                    val = self.settings.value(key)
+                    if val is not None:
+                        overrides[key] = val
+
+            # Get stylesheet from generic manager with overrides
+            style_sheet = self.theme_manager.get_theme(theme_name, overrides=overrides)
             self.setStyleSheet(style_sheet)
             
             # Update icons - Both our current themes are "dark" based for icons
-            # If we add a true Light theme later, we should check for it here
             set_icon_theme("dark")
             
             self.settings.setValue("theme", theme_name)
@@ -70,6 +92,18 @@ class AppSettingsMixin:
         # Load theme
         theme = self.settings.value("theme", "dark")
         self.apply_theme(theme)
+
+        # Load icon settings - Now theme aware
+        from src.ui.icons import configure_icon_provider
+        
+        t_key = theme.lower().replace(" ", "_")
+        icon_dir = self.settings.value(f"{t_key}_icon_dir", self.settings.value("icon_dir", ""))
+        icon_force_white = self.settings.value(f"{t_key}_icon_force_white", self.settings.value("icon_force_white", True), type=bool)
+        
+        configure_icon_provider(
+            icons_dir=icon_dir if icon_dir else None,
+            invert_to_white=icon_force_white
+        )
 
         # Load live data preference
         live_data_enabled = self.settings.value("live_data_enabled", False, type=bool)

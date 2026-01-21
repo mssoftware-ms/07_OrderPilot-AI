@@ -15,11 +15,12 @@ class ThemeManager:
         self.typography = Typography()
         self.spacing = Spacing()
         
-    def get_theme(self, theme_name: str) -> str:
+    def get_theme(self, theme_name: str, overrides: dict = None) -> str:
         """Get the stylesheet for the specified theme name.
         
         Args:
             theme_name: 'Dark Orange', 'Dark White', 'dark', etc.
+            overrides: Optional dictionary of property overrides.
             
         Returns:
             str: Compiled QSS stylesheet.
@@ -38,12 +39,46 @@ class ThemeManager:
                 logger.warning(f"Theme '{theme_name}' (key: {key}) not found, falling back to Dark Orange.")
                 palette = THEMES["dark_orange"]
             
-        return self._generate_stylesheet(palette)
+        return self._generate_stylesheet(palette, overrides)
 
-    def _generate_stylesheet(self, p: ColorPalette) -> str:
-        """Generates the QSS string from the given palette."""
-        t = self.typography
-        s = self.spacing
+    def _generate_stylesheet(self, p: ColorPalette, overrides: dict = None) -> str:
+        """Generates the QSS string from the given palette with optional overrides."""
+        t = Typography()
+        s = Spacing()
+        
+        # Apply overrides if provided
+        if overrides:
+            # Colors
+            if 'ui_bg_color' in overrides: p.background_main = overrides['ui_bg_color']
+            if 'ui_btn_color' in overrides: p.button_background = overrides['ui_btn_color']
+            
+            # Inputs
+            dropdown_color = overrides.get('ui_dropdown_color', p.background_input)
+            edit_color = overrides.get('ui_edit_color', p.background_input)
+            edit_text_color = overrides.get('ui_edit_text_color', p.text_primary)
+            
+            active_btn_color = overrides.get('ui_active_btn_color', p.primary)
+            inactive_btn_color = overrides.get('ui_inactive_btn_color', p.button_background)
+            
+            # Hover Colors
+            btn_hover_border_color = overrides.get('ui_btn_hover_border_color', p.button_hover_border)
+            btn_hover_text_color = overrides.get('ui_btn_hover_text_color', p.button_hover_text)
+            
+            # Typography
+            if 'ui_btn_font_family' in overrides: t.font_family = overrides['ui_btn_font_family']
+            if 'ui_btn_font_size' in overrides: t.size_md = f"{overrides['ui_btn_font_size']}px"
+            
+            # Spacing
+            if 'ui_btn_height' in overrides: s.button_height = f"{overrides['ui_btn_height']}px"
+            button_min_width = f"{overrides.get('ui_btn_width', 80)}px"
+        else:
+            dropdown_color = p.background_input
+            edit_color = p.background_input
+            active_btn_color = p.primary
+            inactive_btn_color = p.button_background
+            btn_hover_border_color = p.button_hover_border
+            btn_hover_text_color = p.button_hover_text
+            button_min_width = "80px"
         
         qss = f"""
         /* {p.name} Theme - Auto Generated */
@@ -132,22 +167,29 @@ class ThemeManager:
         }}
 
         /* --- INPUTS --- */
-        QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-            background-color: {p.background_input};
+        QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {{
+            background-color: {edit_color};
+            color: {edit_text_color};
+            border: 1px solid {p.border_main};
+            padding: {s.sm};
+            border-radius: {s.radius_sm};
+        }}
+        
+        QComboBox {{
+            background-color: {dropdown_color};
             color: {p.text_primary};
             border: 1px solid {p.border_main};
             padding: {s.sm};
             border-radius: {s.radius_sm};
         }}
         
-        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus {{
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QComboBox:focus {{
             border: 1px solid {p.border_focus};
-            background-color: {p.background_input};
         }}
         
         /* --- BUTTONS --- */
         QPushButton {{
-            background-color: {p.button_background};
+            background-color: {inactive_btn_color};
             color: {p.button_text};
             border: 1px solid {p.button_border};
             padding: 0 {s.lg};
@@ -155,16 +197,27 @@ class ThemeManager:
             font-weight: 500;
             min-height: {s.button_height};
             max-height: {s.button_height};
+            min-width: {button_min_width};
         }}
         QPushButton:hover {{
             background-color: {p.background_input};
-            border-color: {p.primary};
-            color: {p.primary};
+            border-color: {btn_hover_border_color};
+            color: {btn_hover_text_color};
         }}
         QPushButton:pressed {{
             background-color: {p.primary_pressed};
             color: {p.text_inverse};
             border-color: {p.primary_pressed};
+        }}
+        
+        QPushButton:checked {{
+            background-color: {active_btn_color};
+            color: {p.text_inverse if p.name == "Dark Orange" else p.text_primary};
+            font-weight: bold;
+            border-color: {p.primary};
+        }}
+        QPushButton:checked:hover {{
+            background-color: {p.primary_hover};
         }}
         
         /* Primary Button Style (use setProperty("class", "primary")) */

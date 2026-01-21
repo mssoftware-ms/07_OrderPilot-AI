@@ -161,7 +161,7 @@ class EntryAnalyzerMixin:
 
     def show_entry_analyzer(self) -> None:
         """Show the Entry Analyzer popup dialog."""
-        from src.ui.dialogs.entry_analyzer_popup import EntryAnalyzerPopup
+        from src.ui.dialogs.entry_analyzer import EntryAnalyzerPopup
 
         if self._entry_analyzer_popup is None:
             self._entry_analyzer_popup = EntryAnalyzerPopup(self)

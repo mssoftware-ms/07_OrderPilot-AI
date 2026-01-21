@@ -19,7 +19,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QPushButton,
     QTabWidget, QLabel, QLineEdit, QFileDialog, QMessageBox,
-    QTreeWidget, QTreeWidgetItem, QTextEdit, QStatusBar, QGroupBox,
+    QTreeWidget, QTreeWidgetItem, QTextEdit, QGroupBox,
     QFormLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -27,6 +27,7 @@ from PyQt6.QtGui import QFont
 
 from src.ui.widgets.cel_editor_widget import CelEditorWidget
 from src.ui.widgets.cel_function_palette import CelFunctionPalette
+from src.ui.widgets.cel_validator import CelValidator
 
 
 class CelCommandReference(QWidget):
@@ -47,23 +48,10 @@ class CelCommandReference(QWidget):
         # Search box
         search_layout = QHBoxLayout()
         search_label = QLabel("🔍 Search:")
-        search_label.setStyleSheet("color: #d4d4d4;")
-
+        
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search commands...")
         self.search_box.textChanged.connect(self._on_search_changed)
-        self.search_box.setStyleSheet("""
-            QLineEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 6px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #4a90e2;
-            }
-        """)
 
         search_layout.addWidget(search_label)
         search_layout.addWidget(self.search_box)
@@ -74,23 +62,6 @@ class CelCommandReference(QWidget):
         self.tree.setHeaderLabels(["Command / Function"])
         self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
-        self.tree.setStyleSheet("""
-            QTreeWidget {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                selection-background-color: #4a90e2;
-            }
-            QTreeWidget::item {
-                padding: 4px;
-            }
-            QTreeWidget::item:hover {
-                background-color: #2a2a2a;
-            }
-            QTreeWidget::branch {
-                background-color: #1e1e1e;
-            }
-        """)
 
         layout.addWidget(self.tree)
 
@@ -102,40 +73,13 @@ class CelCommandReference(QWidget):
         self.description_text = QTextEdit()
         self.description_text.setReadOnly(True)
         self.description_text.setMaximumHeight(100)
-        self.description_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #2a2a2a;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11pt;
-            }
-        """)
         layout.addWidget(self.description_text)
 
         # Insert button
         self.insert_btn = QPushButton("↑ Insert at Cursor")
         self.insert_btn.clicked.connect(self._on_insert_clicked)
         self.insert_btn.setEnabled(False)
-        self.insert_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #26a69a;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2bbbad;
-            }
-            QPushButton:disabled {
-                background-color: #3a3a3a;
-                color: #666;
-            }
-        """)
+        self.insert_btn.setProperty("class", "primary")
         layout.addWidget(self.insert_btn)
 
     def _load_cel_commands(self):
@@ -369,6 +313,7 @@ class CelStrategyEditorWidget(QWidget):
         self.current_file: Optional[Path] = None
         self.strategy_data: Dict[str, Any] = self._create_empty_strategy()
         self.modified = False
+        self.validator = CelValidator()  # CEL code validator
 
         self._setup_ui()
         self._connect_signals()
@@ -397,20 +342,9 @@ class CelStrategyEditorWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # Set dark background
-        self.setStyleSheet("background-color: #1e1e1e;")
-
         # === TOP TOOLBAR: File Operations ===
         toolbar_group = QGroupBox()
-        toolbar_group.setStyleSheet("""
-            QGroupBox {
-                background-color: #2a2a2a;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 10px;
-            }
-        """)
-
+        toolbar_group.setMaximumHeight(60)
         toolbar_layout = QHBoxLayout(toolbar_group)
 
         # File operation buttons
@@ -419,25 +353,8 @@ class CelStrategyEditorWidget(QWidget):
         self.save_btn = QPushButton("💾 Save")
         self.save_as_btn = QPushButton("💾 Save As")
 
-        button_style = """
-            QPushButton {
-                background-color: #4a90e2;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #5a9ff2;
-            }
-            QPushButton:pressed {
-                background-color: #3a80d2;
-            }
-        """
-
         for btn in [self.new_btn, self.load_btn, self.save_btn, self.save_as_btn]:
-            btn.setStyleSheet(button_style)
+            btn.setProperty("class", "primary" if btn == self.save_btn else "secondary")
             toolbar_layout.addWidget(btn)
 
         toolbar_layout.addStretch()
@@ -449,31 +366,13 @@ class CelStrategyEditorWidget(QWidget):
 
         self.strategy_name = QLineEdit()
         self.strategy_name.setText("Untitled Strategy")
-        self.strategy_name.setStyleSheet("""
-            QLineEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 6px;
-                min-width: 200px;
-            }
-        """)
+        self.strategy_name.setMinimumWidth(200)
         toolbar_layout.addWidget(self.strategy_name)
 
         layout.addWidget(toolbar_group)
 
         # === MAIN CONTENT: Horizontal Split ===
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.setStyleSheet("""
-            QSplitter::handle {
-                background-color: #3a3a3a;
-                width: 4px;
-            }
-            QSplitter::handle:hover {
-                background-color: #4a90e2;
-            }
-        """)
 
         # LEFT PANEL: CEL Editors (50%)
         left_panel = self._create_left_panel()
@@ -488,50 +387,15 @@ class CelStrategyEditorWidget(QWidget):
 
         layout.addWidget(main_splitter)
 
-        # === BOTTOM STATUS BAR ===
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("""
-            QStatusBar {
-                background-color: #2a2a2a;
-                color: #d4d4d4;
-                border-top: 1px solid #3a3a3a;
-            }
-        """)
-        self.status_bar.showMessage("Ready")
-        layout.addWidget(self.status_bar)
-
     def _create_left_panel(self) -> QWidget:
         """Create left panel with CEL editors."""
         panel = QWidget()
-        panel.setStyleSheet("background-color: #1e1e1e;")
-
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-
+        
         # Workflow tabs
         self.workflow_tabs = QTabWidget()
-        self.workflow_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                background-color: #1e1e1e;
-                border: 1px solid #3a3a3a;
-            }
-            QTabBar::tab {
-                background-color: #2a2a2a;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-bottom: none;
-                padding: 8px 16px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #4a90e2;
-                color: white;
-            }
-            QTabBar::tab:hover {
-                background-color: #3a3a3a;
-            }
-        """)
-
+        
         # Create 4 workflow editors
         self.cel_editors = {}
         workflow_types = [
@@ -547,71 +411,28 @@ class CelStrategyEditorWidget(QWidget):
             self.workflow_tabs.addTab(editor, label)
 
         layout.addWidget(self.workflow_tabs)
-
         return panel
 
     def _create_right_panel(self) -> QWidget:
         """Create right panel with reference and palette."""
         panel = QWidget()
-        panel.setStyleSheet("background-color: #1e1e1e;")
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Vertical splitter for reference (60%) and palette (40%)
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-        right_splitter.setStyleSheet("""
-            QSplitter::handle {
-                background-color: #3a3a3a;
-                height: 4px;
-            }
-            QSplitter::handle:hover {
-                background-color: #4a90e2;
-            }
-        """)
+        # Tab widget for reference and palette (saves space)
+        right_tabs = QTabWidget()
+        right_tabs.setDocumentMode(True)
 
-        # Top: CEL Command Reference (60%)
-        ref_group = QGroupBox("📚 CEL Command Reference")
-        ref_group.setStyleSheet("""
-            QGroupBox {
-                background-color: #2a2a2a;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 10px;
-                font-weight: bold;
-            }
-        """)
-        ref_layout = QVBoxLayout(ref_group)
-
+        # Tab 1: CEL Command Reference
         self.command_reference = CelCommandReference(self)
-        ref_layout.addWidget(self.command_reference)
+        right_tabs.addTab(self.command_reference, "📚 Command Reference")
 
-        right_splitter.addWidget(ref_group)
-
-        # Bottom: Function Palette (40%)
-        palette_group = QGroupBox("🔧 Function Palette")
-        palette_group.setStyleSheet("""
-            QGroupBox {
-                background-color: #2a2a2a;
-                color: #d4d4d4;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 10px;
-                font-weight: bold;
-            }
-        """)
-        palette_layout = QVBoxLayout(palette_group)
-
+        # Tab 2: Function Palette
         self.function_palette = CelFunctionPalette(self)
-        palette_layout.addWidget(self.function_palette)
+        right_tabs.addTab(self.function_palette, "🔧 Function Palette")
 
-        right_splitter.addWidget(palette_group)
-
-        # Set initial sizes (60/40 split)
-        right_splitter.setSizes([600, 400])
-
-        layout.addWidget(right_splitter)
+        layout.addWidget(right_tabs)
 
         return panel
 
@@ -635,6 +456,7 @@ class CelStrategyEditorWidget(QWidget):
         # Editor changes
         for editor in self.cel_editors.values():
             editor.code_changed.connect(self._on_code_changed)
+            editor.validation_requested.connect(self._on_validation_requested)
 
     def _on_new_clicked(self):
         """Create new strategy."""
@@ -659,8 +481,6 @@ class CelStrategyEditorWidget(QWidget):
         # Clear all editors
         for editor in self.cel_editors.values():
             editor.set_code("")
-
-        self.status_bar.showMessage("New strategy created")
 
     def _on_load_clicked(self):
         """Load strategy from JSON file."""
@@ -690,8 +510,6 @@ class CelStrategyEditorWidget(QWidget):
                 workflow_data = workflow.get(workflow_type, {})
                 expression = workflow_data.get("expression", "")
                 editor.set_code(expression)
-
-            self.status_bar.showMessage(f"Loaded: {self.current_file.name}")
 
         except Exception as e:
             QMessageBox.critical(
@@ -741,8 +559,6 @@ class CelStrategyEditorWidget(QWidget):
             self.current_file = file_path
             self.modified = False
 
-            self.status_bar.showMessage(f"Saved: {file_path.name}")
-
         except Exception as e:
             QMessageBox.critical(
                 self, "Save Error",
@@ -762,10 +578,58 @@ class CelStrategyEditorWidget(QWidget):
         """Insert command from reference."""
         current_editor = self.cel_editors[self.workflow_tabs.tabText(self.workflow_tabs.currentIndex()).lower().replace(' ', '_')]
         current_editor.insert_text(code)
-        self.status_bar.showMessage(f"Inserted: {name}")
 
     def _on_function_selected(self, name: str, code: str):
         """Insert function from palette."""
         current_editor = self.cel_editors[self.workflow_tabs.tabText(self.workflow_tabs.currentIndex()).lower().replace(' ', '_')]
         current_editor.insert_text(code)
-        self.status_bar.showMessage(f"Inserted: {name}")
+
+    def _on_validation_requested(self, code: str):
+        """Validate CEL code and show errors.
+
+        Args:
+            code: CEL code to validate
+        """
+        # Find which editor requested validation
+        sender_editor = None
+        for editor in self.cel_editors.values():
+            if editor.sender() == editor or editor.validation_requested == self.sender():
+                sender_editor = editor
+                break
+
+        if not sender_editor:
+            # Fallback: use current tab editor
+            current_index = self.workflow_tabs.currentIndex()
+            tab_name = self.workflow_tabs.tabText(current_index).lower().replace(' ', '_')
+            sender_editor = self.cel_editors.get(tab_name)
+
+        if not sender_editor:
+            return
+
+        # Clear previous error markers
+        sender_editor.clear_error_markers()
+
+        # Validate code
+        errors = self.validator.validate(code)
+
+        if not errors:
+            # No errors - show success message
+            QMessageBox.information(
+                self, "✅ Validation Successful",
+                "CEL code is valid!\n\nNo syntax or semantic errors found."
+            )
+            return
+
+        # Show errors
+        error_msg = self.validator.validate_and_format_errors(code)
+
+        # Add error markers to editor
+        for error in errors:
+            if error.severity == "error":
+                sender_editor.add_error_marker(error.line)
+
+        # Show error dialog
+        QMessageBox.warning(
+            self, "❌ Validation Errors",
+            f"Found {len(errors)} issue(s) in CEL code:\n\n{error_msg}"
+        )

@@ -83,6 +83,13 @@ class ChartWindow(
         self._ai_analysis_window = None
         self._ready_to_close = False
 
+        # Show splash screen for chart loading
+        from src.ui.app_resources import _get_startup_icon_path
+        from src.ui.splash_screen import SplashScreen
+        splash = SplashScreen(_get_startup_icon_path(), f"Lade Chart: {symbol}...")
+        splash.show()
+        splash.set_progress(10, "Initialisiere Chart-Fenster...")
+
         # Instantiate helper modules (composition pattern)
         self._setup = ChartWindowSetup(parent=self)
         self._dock_control = ChartWindowDockControl(parent=self)
@@ -91,8 +98,10 @@ class ChartWindow(
 
         # Setup sequence (delegates to helpers)
         self._setup.setup_window()
+        splash.set_progress(30, "Erstelle Chart-Komponenten...")
         self._setup.setup_chart_widget()
         # self._setup.setup_live_data_toggle()  # Issue #14: LiveData Button entfernt
+        splash.set_progress(50, "Baue Dock-System...")
         self._setup.setup_dock()
         self._load_window_state()
         self._setup.restore_after_state_load()
@@ -101,13 +110,18 @@ class ChartWindow(
         self._setup.connect_dock_signals()
         self._setup_event_subscriptions()
         self._setup.setup_chat()
+        splash.set_progress(70, "Lade Strategie-Module...")
         self._setup.setup_bitunix_trading()
         self._setup.setup_ai_analysis()
         self._setup_levels_and_context()  # Phase 5.5
         self._setup.connect_data_loaded_signals()
+        splash.set_progress(90, "Finalisiere Setup...")
         self._init_cel_editor()  # Phase 7: CEL Editor integration
 
         logger.info(f"ChartWindow created for {symbol}")
+        
+        # Finish splash and close with delay to ensure visibility
+        splash.finish_and_close(1200)
 
     def _get_main_window(self) -> Optional[QMainWindow]:
         """Return the main window if available."""

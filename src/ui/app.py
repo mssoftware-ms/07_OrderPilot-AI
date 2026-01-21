@@ -55,8 +55,9 @@ class TradingApplication(
 
     _market_data_error = pyqtSignal(object)
 
-    def __init__(self):
+    def __init__(self, splash=None):
         super().__init__()
+        if splash: splash.set_progress(60, "Initialisiere UI-System...")
 
         # Issue #29: Set application icon (candlestick chart, white)
         set_window_icon(self)
@@ -76,6 +77,7 @@ class TradingApplication(
             parent=self
         )
 
+        if splash: splash.set_progress(70, "Multi-Chart Manager...")
         # Multi-Chart Manager for multi-window/multi-monitor support
         self._multi_chart_manager = MultiMonitorChartManager(
             chart_factory=self._create_chart_window
@@ -86,6 +88,7 @@ class TradingApplication(
 
         # Setup UI
         self.init_ui()
+        if splash: splash.set_progress(80, "Konfiguriere Event-System...")
         self.setup_event_handlers()
         self.load_settings()
 
@@ -93,6 +96,7 @@ class TradingApplication(
         self.update_data_provider_list()
 
         # Start timers
+        if splash: splash.set_progress(90, "Starte Hintergrunddienste...")
         self.setup_timers()
 
         # Initialize services
@@ -145,38 +149,45 @@ def _apply_saved_debug_level(level_str: str) -> None:
     logging.getLogger(__name__).info(f"Console debug level applied: {level_str}")
 
 
-async def main():
+async def main(app: QApplication | None = None, splash: QWidget | None = None):
     """Main application entry point."""
     _hide_console_window()
 
     # CRITICAL: Set Qt.AA_ShareOpenGLContexts BEFORE creating QApplication
     # This is required for QtWebEngineWidgets to work properly
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    if not QApplication.instance():
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
-    app = QApplication(sys.argv)
+    if not app:
+        app = QApplication(sys.argv)
+    
     app.setApplicationName("OrderPilot-AI")
     app.setOrganizationName("OrderPilot")
     app.setStyle("Fusion")
     # Issue #29: Set application icon globally (candlestick chart, white)
     app.setWindowIcon(get_app_icon())
 
-    startup_icon_path = _get_startup_icon_path()
-    startup_window = StartupLogWindow(startup_icon_path)
-    startup_window.show()
+    if not splash:
+        from .splash_screen import SplashScreen
+        startup_icon_path = _get_startup_icon_path()
+        splash = SplashScreen(startup_icon_path)
+        splash.show()
+        splash.set_progress(10, "Initialisiere Log-System...")
 
     original_stdout = sys.stdout
     original_stderr = sys.stderr
     stdout_stream = LogStream(mirror=original_stdout)
     stderr_stream = LogStream(mirror=original_stderr)
-    stdout_stream.text_written.connect(startup_window.enqueue_line, Qt.ConnectionType.QueuedConnection)
-    stderr_stream.text_written.connect(startup_window.enqueue_line, Qt.ConnectionType.QueuedConnection)
+    # LogStream still redirects output, but we don't display it in SplashScreen
     sys.stdout = stdout_stream
     sys.stderr = stderr_stream
 
+    if splash: splash.set_progress(20, "Konfiguriere Logging-Module...")
     configure_logging()
     logger.info("Starting OrderPilot-AI Trading Application")
 
     # Load and apply saved console debug level from QSettings
+    if splash: splash.set_progress(30, "Lade Benutzereinstellungen...")
     settings = QSettings("OrderPilot", "TradingApp")
     saved_level = settings.value("console_debug_level", "INFO")
     _apply_saved_debug_level(saved_level)
@@ -194,9 +205,15 @@ async def main():
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    window = TradingApplication()
+    if splash: splash.set_progress(50, "Erstelle Hauptfenster...")
+    window = TradingApplication(splash=splash)
+    
+    if splash:
+        splash.set_progress(100, "Startbereit")
+        # Wait at least 1.5 seconds as requested by user
+        await asyncio.sleep(1.5)
+        splash.close()
     window.show()
-    QTimer.singleShot(0, startup_window.close)
 
     with loop:
         loop.run_forever()

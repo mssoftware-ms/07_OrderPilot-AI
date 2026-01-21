@@ -81,6 +81,13 @@ class SettingsTabsMixin:
         """
         return self._basic_helper.create_broker_tab()
 
+    def _create_theme_tab(self) -> QWidget:
+        """Create theme settings tab.
+
+        Delegates to SettingsTabsBasic.create_theme_tab().
+        """
+        return self._basic_helper.create_theme_tab()
+
     # ========================================================================
     # Market Data Tab
     # ========================================================================

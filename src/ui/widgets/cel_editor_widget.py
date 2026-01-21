@@ -367,3 +367,7 @@ class CelEditorWidget(QWidget):
     def set_readonly(self, readonly: bool):
         """Set editor readonly status."""
         self.editor.setReadOnly(readonly)
+
+    def insert_text(self, text: str):
+        """Insert text at current cursor position."""
+        self.editor.insert(text)
