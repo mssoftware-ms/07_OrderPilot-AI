@@ -218,21 +218,22 @@ class BrokerMixin:
         try:
             profile = config_manager.load_profile()
 
-            alpaca_api_key = config_manager.get_credential("alpaca_api_key")
-            alpaca_api_secret = config_manager.get_credential("alpaca_api_secret")
-
-            if not alpaca_api_key or not alpaca_api_secret:
-                logger.warning("Alpaca API keys not found - live streaming disabled")
-                self.crypto_status.setText("Live Data: No Keys")
-                self.crypto_status.setStyleSheet("color: orange;")
-                return
+            has_alpaca = bool(config_manager.get_credential("alpaca_api_key") and 
+                            config_manager.get_credential("alpaca_api_secret"))
+            
+            if not has_alpaca:
+                logger.info("Alpaca API keys not found - Alpaca stock/crypto streaming skipped")
 
             stock_symbols = []
             crypto_symbols = []
+            bitunix_symbols = []
 
             for symbol in self.watchlist_widget.get_symbols():
                 if self._is_crypto_symbol(symbol):
-                    crypto_symbols.append(symbol)
+                    if symbol.endswith("USDT"):
+                        bitunix_symbols.append(symbol)
+                    else:
+                        crypto_symbols.append(symbol)
                 else:
                     stock_symbols.append(symbol)
 
@@ -246,22 +247,31 @@ class BrokerMixin:
             else:
                 logger.warning("Failed to start stock streaming")
 
-            if profile.features.crypto_trading:
-                logger.info("Starting crypto streaming via HistoryManager...")
+            # Bitunix Streaming (Futures)
+            if bitunix_symbols:
+                logger.info(f"Starting Bitunix futures streaming for {len(bitunix_symbols)} symbols...")
+                bitunix_started = await self.history_manager.start_bitunix_stream(bitunix_symbols)
+                if bitunix_started:
+                    logger.info("Bitunix streaming active")
+                else:
+                    logger.warning("Failed to start Bitunix streaming")
+
+            if profile.features.get("crypto_trading", False):
+                logger.info("Starting Alpaca crypto streaming via HistoryManager...")
                 crypto_stream_started = await self.history_manager.start_crypto_realtime_stream(
-                    crypto_symbols if crypto_symbols else ["BTC/USD", "ETH/USD"]
+                    crypto_symbols if crypto_symbols else []
                 )
 
                 if crypto_stream_started:
                     self.crypto_status.setText("Live Data: Active")
                     self.crypto_status.setStyleSheet("color: #2ECC71; font-weight: bold;")
-                    logger.info(f"Crypto streaming started")
+                    logger.info(f"Alpaca crypto streaming started")
                 else:
                     self.crypto_status.setText("Live Data: Error")
                     self.crypto_status.setStyleSheet("color: orange;")
-                    logger.error("Failed to start crypto streaming")
+                    logger.error("Failed to start Alpaca crypto streaming")
             else:
-                logger.info("Crypto trading disabled in configuration")
+                logger.info("Crypto trading feature flag is disabled")
 
         except Exception as e:
             logger.error(f"Failed to initialize real-time streaming: {e}")
@@ -270,7 +280,7 @@ class BrokerMixin:
 
     def _is_crypto_symbol(self, symbol: str) -> bool:
         """Check if symbol is a cryptocurrency pair."""
-        return "/" in symbol
+        return "/" in symbol or symbol.endswith("USDT")
 
     def toggle_live_data(self):
         """Toggle live market data on/off."""

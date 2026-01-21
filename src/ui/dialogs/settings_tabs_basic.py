@@ -122,17 +122,17 @@ class SettingsTabsBasic:
         ui_colors_layout.addRow("Dropdown Fields:", self.parent.ui_dropdown_color_btn)
 
         # Edit/Input Color
+        self.parent.ui_edit_color = QColor("#23262E")
         self.parent.ui_edit_color_btn = QPushButton()
         self.parent.ui_edit_color_btn.setFixedSize(80, 25)
         self.parent.ui_edit_color_btn.clicked.connect(lambda: self._choose_color('ui_edit'))
-        self.parent.ui_edit_color = QColor("#23262E")
         ui_colors_layout.addRow("Edit/Input Bg:", self.parent.ui_edit_color_btn)
 
         # Edit/Input Text Color
+        self.parent.ui_edit_text_color = QColor("#EAECEF")
         self.parent.ui_edit_text_color_btn = QPushButton()
         self.parent.ui_edit_text_color_btn.setFixedSize(80, 25)
         self.parent.ui_edit_text_color_btn.clicked.connect(lambda: self._choose_color('ui_edit_text'))
-        self.parent.ui_edit_text_color = QColor("#EAECEF")
         ui_colors_layout.addRow("Edit/Input Text:", self.parent.ui_edit_text_color_btn)
         
         layout.addWidget(ui_colors_group)
@@ -325,11 +325,11 @@ class SettingsTabsBasic:
         )
 
         if dir_path:
-            self.parent.icon_dir_path = dir_path
-            import os
-            dirname = os.path.basename(dir_path)
-            self.parent.icon_dir_label.setText(dirname)
-            self.parent.icon_dir_label.setStyleSheet("color: #F29F05;")
+            # Nutze vollen absoluten Pfad
+            self.parent.icon_dir_path = os.path.abspath(dir_path)
+            self.parent.icon_dir_label.setText(self.parent.icon_dir_path)
+            self.parent.icon_dir_label.setStyleSheet("color: #F29F05; font-size: 10px;")
+            self.parent.icon_dir_label.setToolTip(self.parent.icon_dir_path)
 
     def _clear_icon_dir(self) -> None:
         """Clear icon directory selection."""
@@ -460,6 +460,8 @@ class SettingsTabsBasic:
             button: QPushButton to update
             color: QColor to display
         """
+        if button is None:
+            return
         button.setStyleSheet(
             f"QPushButton {{ background-color: {color.name()}; "
             f"border: 2px solid #555; }}"

@@ -12,7 +12,8 @@ from PyQt6.QtCore import Qt
 logger = logging.getLogger(__name__)
 
 # Default base path for icons relative to this file
-DEFAULT_ICONS_DIR = Path(__file__).parent / "assets" / "icons"
+DEFAULT_ICONS_DIR = (Path(__file__).parent / "assets" / "icons").resolve()
+logger.info(f"📢 DEFAULT_ICONS_DIR resolved to: {DEFAULT_ICONS_DIR}")
 
 def invert_icon_to_white(icon_path: Path) -> QPixmap:
     """Invertiert schwarze Icons zu weiß mit transparentem Hintergrund.
@@ -24,28 +25,45 @@ def invert_icon_to_white(icon_path: Path) -> QPixmap:
         QPixmap mit weißem Icon auf transparentem Hintergrund
     """
     # Lade das Original-Icon
-    original = QPixmap(str(icon_path))
-    if original.isNull():
-        logger.warning(f"Failed to load icon: {icon_path}")
+    original_img = QImage(str(icon_path))
+    if original_img.isNull():
+        logger.error(f"❌ Failed to load icon image: {icon_path} (exists: {icon_path.exists()})")
         return QPixmap()
+    
+    logger.debug(f"🔄 Inverting icon to white: {icon_path.name} ({original_img.width()}x{original_img.height()})")
 
-    # Erstelle neues Pixmap mit Alpha-Kanal
-    inverted = QPixmap(original.size())
-    inverted.fill(Qt.GlobalColor.transparent)
+    # Ensure we are in ARGB32 for transparency support
+    if original_img.format() != QImage.Format.Format_ARGB32:
+        original_img = original_img.convertToFormat(QImage.Format.Format_ARGB32)
 
-    # Erstelle QImage für Pixel-Manipulation
-    img = original.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    # Create a new image of the same size with transparency
+    inverted_img = QImage(original_img.size(), QImage.Format.Format_ARGB32)
+    inverted_img.fill(Qt.GlobalColor.transparent)
+    
+    # Use QPainter with CompositionMode to invert color while keeping alpha
+    painter = QPainter(inverted_img)
+    # 1. Draw original icon
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+    painter.drawImage(0, 0, original_img)
+    
+    # 2. SourceIn mode: keeps destination alpha but uses source color
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(inverted_img.rect(), QColor(255, 255, 255))
+    
+    painter.end()
 
-    # Invertiere schwarz zu weiß, behalte Alpha
-    for y in range(img.height()):
-        for x in range(img.width()):
-            pixel = img.pixelColor(x, y)
-            if pixel.alpha() > 0:  # Nur nicht-transparente Pixel
-                # Setze zu Weiß, behalte Alpha
-                pixel.setRgb(255, 255, 255, pixel.alpha())
-                img.setPixelColor(x, y, pixel)
-
-    return QPixmap.fromImage(img)
+    if inverted_img.isNull():
+        logger.error(f"❌ Inversion result image is null for {icon_path.name}")
+        return QPixmap()
+    
+    # Convert to QPixmap for display
+    res = QPixmap.fromImage(inverted_img)
+    if res.isNull():
+        logger.error(f"❌ QPixmap.fromImage failed for {icon_path.name}")
+    else:
+        logger.debug(f"✅ Inversion complete for {icon_path.name} using QImage+QPainter")
+        
+    return res
 
 
 class IconProvider:
@@ -61,8 +79,9 @@ class IconProvider:
         """
         self.theme = theme
         self.invert_to_white = invert_to_white
-        self.icons_dir = icons_dir or DEFAULT_ICONS_DIR
+        self.icons_dir = (icons_dir or DEFAULT_ICONS_DIR).resolve()
         self._cache = {}
+        logger.info(f"IconProvider initialized with icons_dir: {self.icons_dir}")
 
     def configure(self, icons_dir: str | Path | None = None, invert_to_white: bool | None = None):
         """Update provider configuration.
@@ -71,13 +90,22 @@ class IconProvider:
             icons_dir: New icons directory path
             invert_to_white: New inversion setting
         """
+        changed = False
         if icons_dir is not None:
-            self.icons_dir = Path(icons_dir)
+            new_dir = Path(icons_dir).resolve()
+            if self.icons_dir != new_dir:
+                self.icons_dir = new_dir
+                changed = True
         if invert_to_white is not None:
-            self.invert_to_white = invert_to_white
+            if self.invert_to_white != invert_to_white:
+                self.invert_to_white = invert_to_white
+                changed = True
         
-        self._cache.clear()
-        logger.info(f"IconProvider reconfigured: dir={self.icons_dir}, invert={self.invert_to_white}")
+        if changed:
+            self._cache.clear()
+            logger.info(f"IconProvider reconfigured and cache cleared: dir={self.icons_dir}, invert={self.invert_to_white}")
+        else:
+            logger.debug("IconProvider configuration unchanged, keeping cache.")
 
     def set_theme(self, theme: str):
         """Change theme.
@@ -103,17 +131,23 @@ class IconProvider:
         icon_path = self.icons_dir / f"{name}.png"
 
         if icon_path.exists():
+            file_size = icon_path.stat().st_size
+            logger.debug(f"🔍 Loading icon {name}: {icon_path} ({file_size} bytes)")
+            
             if self.invert_to_white:
                 # Issue #15: Invertiere schwarze Material Design Icons zu weiß
                 pixmap = invert_icon_to_white(icon_path)
+                if pixmap.isNull():
+                    logger.error(f"❌ Inversion failed for {name}, pixmap is null")
                 icon = QIcon(pixmap)
             else:
                 icon = QIcon(str(icon_path))
 
             self._cache[cache_key] = icon
+            logger.debug(f"✅ Loaded icon: {name} from {icon_path}")
             return icon
         else:
-            logger.warning(f"Icon not found: {icon_path}")
+            logger.error(f"❌ Icon NOT FOUND: {icon_path} (Base dir: {self.icons_dir})")
             # Return empty icon as fallback
             return QIcon()
 
@@ -142,8 +176,16 @@ def set_icon_theme(theme: str):
     _icon_provider.set_theme(theme)
 
 
+def refresh_icons():
+    """Clear icon cache and force reload."""
+    _icon_provider.configure()
+
+
 def configure_icon_provider(icons_dir: str | Path | None = None, invert_to_white: bool | None = None):
     """Configure the global icon provider."""
+    import traceback
+    stack = "".join(traceback.format_stack()[-3:])
+    logger.info(f"🔧 configure_icon_provider called with dir={icons_dir}, invert={invert_to_white}\nCalled from:\n{stack}")
     _icon_provider.configure(icons_dir, invert_to_white)
 
 

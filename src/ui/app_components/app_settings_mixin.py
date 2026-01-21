@@ -100,8 +100,10 @@ class AppSettingsMixin:
         icon_dir = self.settings.value(f"{t_key}_icon_dir", self.settings.value("icon_dir", ""))
         icon_force_white = self.settings.value(f"{t_key}_icon_force_white", self.settings.value("icon_force_white", True), type=bool)
         
+        # Configure Icon Provider - ALWAYS use workspace assets
+        # (The icon_dir in settings is only a source for the AI to copy from)
         configure_icon_provider(
-            icons_dir=icon_dir if icon_dir else None,
+            icons_dir=None,
             invert_to_white=icon_force_white
         )
 

@@ -24,9 +24,10 @@ from typing import TYPE_CHECKING
 
 from src.core.market_data.types import DataSource
 
+from src.core.market_data.providers import AlpacaProvider, AlphaVantageProvider
+
 if TYPE_CHECKING:
     from decimal import Decimal
-    from src.core.market_data.providers import AlpacaProvider, AlphaVantageProvider
 
 logger = logging.getLogger(__name__)
 

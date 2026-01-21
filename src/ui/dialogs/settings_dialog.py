@@ -45,6 +45,18 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.ui_btn_hover_border_color_btn = None
         self.ui_btn_hover_text_color_btn = None
         
+        # Pre-declare color objects
+        from PyQt6.QtGui import QColor
+        self.ui_bg_color = QColor()
+        self.ui_btn_color = QColor()
+        self.ui_dropdown_color = QColor()
+        self.ui_edit_color = QColor()
+        self.ui_edit_text_color = QColor()
+        self.ui_active_btn_color = QColor()
+        self.ui_inactive_btn_color = QColor()
+        self.ui_btn_hover_border_color = QColor()
+        self.ui_btn_hover_text_color = QColor()
+        
         self.init_ui()
         self.load_current_settings()
 
@@ -334,10 +346,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
             self.settings.setValue("console_debug_level", self.console_debug_level.currentText())
 
             # Apply UI updates immediately
-            # Update Icon Provider
+            # Update Icon Provider - ALWAYS use workspace assets
             from src.ui.icons import configure_icon_provider
             configure_icon_provider(
-                icons_dir=self.icon_dir_path if self.icon_dir_path else None,
+                icons_dir=None,
                 invert_to_white=self.icon_force_white_check.isChecked()
             )
 
@@ -716,16 +728,16 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
         self.candle_border_radius_slider.setValue(border_radius)
         self.candle_border_radius_label.setText(f"{border_radius} px")
 
-        # Icon Collection
+        # Icon Collection Source
         self.icon_dir_path = gt("icon_dir", "")
         if self.icon_dir_path:
-            import os
-            dirname = os.path.basename(self.icon_dir_path)
-            self.icon_dir_label.setText(dirname)
-            self.icon_dir_label.setStyleSheet("color: #F29F05;")
+            self.icon_dir_label.setText(self.icon_dir_path)
+            self.icon_dir_label.setStyleSheet("color: #F29F05; font-size: 10px;")
+            self.icon_dir_label.setToolTip(self.icon_dir_path)
         else:
-            self.icon_dir_label.setText("Standard (Assets)")
+            self.icon_dir_label.setText("Standard (Projekt-Assets)")
             self.icon_dir_label.setStyleSheet("color: #888; font-style: italic;")
+            self.icon_dir_label.setToolTip("")
 
         # Fix for type casting from QSettings
         val = gt("icon_force_white", True)
