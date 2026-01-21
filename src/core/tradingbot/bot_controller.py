@@ -125,6 +125,11 @@ class BotController(
         self._bar_buffer: list[dict] = []  # Rolling buffer of recent bars
         self._max_buffer_size: int = 120  # Keep 2 hours of 1-min bars
 
+        # Multi-timeframe support (optional)
+        self._multi_tf_enabled: bool = False
+        self._multi_tf_manager = None  # TimeframeDataManager instance
+        self._multi_tf_timeframes: list[str] = []  # Configured timeframes
+
         # Feature/bar tracking
         self._last_features: FeatureVector | None = None
         self._bar_count: int = 0
@@ -492,6 +497,136 @@ class BotController(
             logger.error(f"Failed to reload JSON config: {e}", exc_info=True)
             self._log_activity("ERROR", f"Config-Reload fehlgeschlagen: {e}")
             return False
+
+    # ==================== Multi-Timeframe Support ====================
+
+    def enable_multi_timeframe(
+        self,
+        timeframes: list[str],
+        auto_resample: bool = True
+    ) -> None:
+        """Enable multi-timeframe analysis.
+
+        Enables calculation of indicators across multiple timeframes
+        for improved regime detection and signal confirmation.
+
+        Args:
+            timeframes: List of timeframes (e.g., ["1T", "5T", "1H"])
+                       Base timeframe (bot's primary TF) is auto-included
+            auto_resample: Automatically resample higher TFs from base
+
+        Example:
+            >>> controller.enable_multi_timeframe(["5T", "15T", "1H"])
+            >>> # Now indicators calculated on 1T, 5T, 15T, 1H
+        """
+        try:
+            from .timeframe_data_manager import TimeframeDataManager
+
+            # Ensure base timeframe is included
+            all_tfs = list(set([self.timeframe] + timeframes))
+
+            self._multi_tf_manager = TimeframeDataManager(
+                base_timeframe=self.timeframe,
+                auto_resample=auto_resample
+            )
+
+            # Register all timeframes
+            for tf in all_tfs:
+                self._multi_tf_manager.add_timeframe(tf)
+
+            self._multi_tf_timeframes = all_tfs
+            self._multi_tf_enabled = True
+
+            logger.info(f"Multi-timeframe enabled: {all_tfs}")
+            self._log_activity("CONFIG", f"Multi-Timeframe aktiviert: {', '.join(all_tfs)}")
+
+        except Exception as e:
+            logger.error(f"Failed to enable multi-timeframe: {e}")
+            self._multi_tf_enabled = False
+
+    def disable_multi_timeframe(self) -> None:
+        """Disable multi-timeframe analysis."""
+        self._multi_tf_enabled = False
+        self._multi_tf_manager = None
+        self._multi_tf_timeframes = []
+        logger.info("Multi-timeframe disabled")
+
+    def get_multi_timeframe_data(
+        self,
+        timeframe: str | None = None,
+        n: int = 100
+    ) -> dict[str, Any] | None:
+        """Get multi-timeframe data.
+
+        Args:
+            timeframe: Specific timeframe (None = all aligned data)
+            n: Number of bars to retrieve
+
+        Returns:
+            DataFrame or dict of DataFrames (None if not enabled)
+        """
+        if not self._multi_tf_enabled or self._multi_tf_manager is None:
+            return None
+
+        if timeframe:
+            return self._multi_tf_manager.get_bars(
+                timeframe=timeframe,
+                n=n,
+                as_dataframe=True
+            )
+        else:
+            return self._multi_tf_manager.get_aligned_data(n=n)
+
+    def _calculate_multi_timeframe_features(
+        self,
+        bar_data: dict[str, Any]
+    ) -> dict[str, FeatureVector]:
+        """Calculate features across all configured timeframes.
+
+        Args:
+            bar_data: Base timeframe bar
+
+        Returns:
+            Dict mapping timeframe to FeatureVector
+        """
+        if not self._multi_tf_enabled or self._multi_tf_manager is None:
+            return {self.timeframe: self._calculate_features(bar_data)}
+
+        # Add bar to multi-TF manager (auto-resamples higher TFs)
+        self._multi_tf_manager.add_bar(self.timeframe, bar_data)
+
+        # Get aligned data across all timeframes
+        aligned_data = self._multi_tf_manager.get_aligned_data(n=200)
+
+        # Calculate features for each timeframe
+        features_multi = {}
+
+        for tf in self._multi_tf_timeframes:
+            if tf not in aligned_data or aligned_data[tf].empty:
+                continue
+
+            df = aligned_data[tf]
+
+            # Need at least MIN_BARS for reliable indicators
+            if len(df) < self._feature_engine.MIN_BARS:
+                continue
+
+            # Convert last row to bar format
+            last_bar = {
+                "timestamp": df.index[-1],
+                "open": df["open"].iloc[-1],
+                "high": df["high"].iloc[-1],
+                "low": df["low"].iloc[-1],
+                "close": df["close"].iloc[-1],
+                "volume": df["volume"].iloc[-1],
+            }
+
+            # Calculate features for this timeframe
+            # Note: FeatureEngine.process_bar() requires full bar buffer
+            # For now, use basic feature calculation
+            features_multi[tf] = self._calculate_features(last_bar)
+
+        return features_multi
 
     def enable_json_config_auto_reload(self) -> bool:
         """Enable automatic JSON config reloading with file watching.
