@@ -10,6 +10,7 @@ from .bot_panels_mixin import BotPanelsMixin
 from .ko_finder_mixin import KOFinderMixin
 from .strategy_simulator_mixin import StrategySimulatorMixin
 from .levels_context_mixin import LevelsContextMixin
+from .cel_editor_mixin import CelEditorMixin
 
 __all__ = [
     "PanelsMixin",
@@ -19,4 +20,5 @@ __all__ = [
     "KOFinderMixin",
     "StrategySimulatorMixin",
     "LevelsContextMixin",
+    "CelEditorMixin",
 ]

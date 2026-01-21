@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from PyQt6.QtCore import QSize
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QLabel, QMenu, QPushButton, QToolBar
 
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 class ToolbarMixinRow2:
     """Row 2 toolbar builders (live stream, regime, chart marking, AI, bot, market status)."""
 
+    # Issue #16: Einheitliche Button-Höhe für alle Toolbar-Buttons
+    BUTTON_HEIGHT = 32
+    ICON_SIZE = QSize(20, 20)  # Issue #15: Einheitliche Icon-Größe
+
     def __init__(self, parent):
         self.parent = parent
 
@@ -45,12 +50,14 @@ class ToolbarMixinRow2:
         # Levels + Export buttons are in ToolbarMixinFeatures
         self.add_entry_analyzer_button(toolbar)  # Phase 5: Entry Analyzer
         self.add_strategy_concept_button(toolbar)  # Phase 6: Strategy Concept
+        self.add_cel_editor_button(toolbar)  # Phase 7: CEL Editor
         self.add_ai_chat_button(toolbar)
         self.add_ai_analysis_button(toolbar)
-        self.add_bitunix_trading_button(toolbar)
+        # Issue #24: Bitunix und Strategy Settings zu Row1 verschoben
+        # self.add_bitunix_trading_button(toolbar)  # Jetzt in Row1
         self.add_settings_button(toolbar)
         toolbar.addSeparator()
-        self.add_strategy_settings_button(toolbar)  # Strategy Settings Dialog (JSON/CEL Config)
+        # self.add_strategy_settings_button(toolbar)  # Jetzt in Row1
         self.add_bot_toggle_button(toolbar)
         toolbar.addSeparator()
         self.add_market_status(toolbar)
@@ -105,48 +112,25 @@ class ToolbarMixinRow2:
             self.parent._regime_badge.set_regime_from_result(result)
 
     def add_live_stream_toggle(self, toolbar: QToolBar) -> None:
-        self.parent.live_stream_button = QPushButton("🔴 Live")
+        self.parent.live_stream_button = QPushButton("Live")  # Issue #15: Emoji entfernt
+        self.parent.live_stream_button.setIcon(get_icon("live"))  # Issue #15
+        self.parent.live_stream_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.live_stream_button.setCheckable(True)
         self.parent.live_stream_button.setToolTip("Toggle real-time streaming (WebSocket)")
         self.parent.live_stream_button.clicked.connect(self.parent._toggle_live_stream)
-        self.parent.live_stream_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #aaa;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                color: #fff;
-            }
-        """
-        )
+        self.parent.live_stream_button.setProperty("class", "toolbar-button")
+        self.parent.live_stream_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
         toolbar.addWidget(self.parent.live_stream_button)
 
     def add_chart_marking_button(self, toolbar: QToolBar) -> None:
-        self.parent.chart_marking_button = QPushButton("📏 Markierungen")
+        self.parent.chart_marking_button = QPushButton("Markierungen")  # Issue #15: Emoji entfernt
+        self.parent.chart_marking_button.setIcon(get_icon("draw"))  # Issue #15
+        self.parent.chart_marking_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.chart_marking_button.setToolTip(
             "Chart-Markierungen hinzufügen (Rechtsklick auf Chart für Menü)"
         )
-        self.parent.chart_marking_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #4CAF50;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-            }
-        """
-        )
+        self.parent.chart_marking_button.setProperty("class", "toolbar-button")
+        self.parent.chart_marking_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
         self.parent.chart_marking_menu = QMenu(self.parent)
         self._build_chart_marking_menu()
         self.parent.chart_marking_button.setMenu(self.parent.chart_marking_menu)
@@ -241,175 +225,204 @@ class ToolbarMixinRow2:
 
     def add_entry_analyzer_button(self, toolbar: QToolBar) -> None:
         """Add Entry Analyzer button to toolbar (Phase 5)."""
-        self.parent.entry_analyzer_button = QPushButton("🎯 Entry Analyzer")
+        self.parent.entry_analyzer_button = QPushButton("Entry Analyzer")  # Issue #15: Emoji entfernt
+        self.parent.entry_analyzer_button.setIcon(get_icon("entry_analyzer"))  # Issue #15
+        self.parent.entry_analyzer_button.setIconSize(self.ICON_SIZE)  # Issue #15
+        self.parent.entry_analyzer_button.setCheckable(True)  # Issue #28: Checkable für active state
         self.parent.entry_analyzer_button.setToolTip(
             "Entry Analyzer öffnen - Findet optimale Einstiegspunkte"
         )
-        self.parent.entry_analyzer_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #10B981;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
+        self.parent.entry_analyzer_button.setProperty("class", "toolbar-button")
+        self.parent.entry_analyzer_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.entry_analyzer_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                color: #34D399;
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
             }
-        """
-        )
+        """)
         self.parent.entry_analyzer_button.clicked.connect(self._on_entry_analyzer_clicked)
         toolbar.addWidget(self.parent.entry_analyzer_button)
         logger.info("Toolbar: Entry Analyzer button added")
 
     def _on_entry_analyzer_clicked(self) -> None:
-        """Handle Entry Analyzer button click."""
-        if hasattr(self.parent, "show_entry_analyzer"):
-            self.parent.show_entry_analyzer()
+        """Handle Entry Analyzer button click (Issue #32: Toggle-aware)."""
+        # Issue #32: Button ist checkable, sync mit Panel-Visibility
+        if not hasattr(self.parent, 'entry_analyzer_button'):
+            return
+
+        checked = self.parent.entry_analyzer_button.isChecked()
+
+        if checked:
+            if hasattr(self.parent, "show_entry_analyzer"):
+                self.parent.show_entry_analyzer()
+            else:
+                logger.warning("show_entry_analyzer not available on chart widget")
+                self.parent.entry_analyzer_button.setChecked(False)
         else:
-            logger.warning("show_entry_analyzer not available on chart widget")
+            # Toggle off - hide panel if it exists
+            if hasattr(self.parent, "hide_entry_analyzer"):
+                self.parent.hide_entry_analyzer()
+            else:
+                logger.warning("hide_entry_analyzer not available on chart widget")
 
     def add_strategy_concept_button(self, toolbar: QToolBar) -> None:
         """Add Strategy Concept button to toolbar (Phase 6)."""
-        self.parent.strategy_concept_button = QPushButton("📊 Strategy Concept")
+        self.parent.strategy_concept_button = QPushButton("Strategy Concept")  # Issue #15: Emoji entfernt
+        self.parent.strategy_concept_button.setIcon(get_icon("strategy_concept"))  # Issue #15
+        self.parent.strategy_concept_button.setIconSize(self.ICON_SIZE)  # Issue #15
+        self.parent.strategy_concept_button.setCheckable(True)  # Issue #28: Checkable für active state
         self.parent.strategy_concept_button.setToolTip(
             "Strategy Concept öffnen - Pattern-basierte Trading Strategien (Ctrl+Shift+S)"
         )
-        self.parent.strategy_concept_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #9C27B0;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
+        self.parent.strategy_concept_button.setProperty("class", "toolbar-button")
+        self.parent.strategy_concept_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.strategy_concept_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                color: #BA68C8;
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
             }
-        """
-        )
+        """)
         self.parent.strategy_concept_button.clicked.connect(self._on_strategy_concept_clicked)
         toolbar.addWidget(self.parent.strategy_concept_button)
         logger.info("Toolbar: Strategy Concept button added")
 
     def _on_strategy_concept_clicked(self) -> None:
-        """Handle Strategy Concept button click."""
-        if hasattr(self.parent, "show_strategy_concept"):
-            self.parent.show_strategy_concept()
+        """Handle Strategy Concept button click (Issue #32: Toggle-aware)."""
+        # Issue #32: Button ist checkable, sync mit Window-Visibility
+        if not hasattr(self.parent, 'strategy_concept_button'):
+            return
+
+        checked = self.parent.strategy_concept_button.isChecked()
+
+        if checked:
+            if hasattr(self.parent, "show_strategy_concept"):
+                self.parent.show_strategy_concept()
+            else:
+                logger.warning("show_strategy_concept not available on chart widget")
+                self.parent.strategy_concept_button.setChecked(False)
         else:
-            logger.warning("show_strategy_concept not available on chart widget")
+            # Toggle off - hide window if it exists
+            if hasattr(self.parent, "hide_strategy_concept"):
+                self.parent.hide_strategy_concept()
+            else:
+                logger.warning("hide_strategy_concept not available on chart widget")
+
+    def add_cel_editor_button(self, toolbar: QToolBar) -> None:
+        """Add CEL Editor button to toolbar (Phase 7)."""
+        self.parent.cel_editor_button = QPushButton("CEL Editor")
+        self.parent.cel_editor_button.setIcon(get_icon("candlestick_chart"))  # Trading/candlestick chart icon
+        self.parent.cel_editor_button.setIconSize(self.ICON_SIZE)
+        self.parent.cel_editor_button.setCheckable(True)  # Toggle-aware
+        self.parent.cel_editor_button.setToolTip(
+            "CEL Editor öffnen - Visual Pattern Builder mit AI-Assistent (Ctrl+Shift+E)"
+        )
+        self.parent.cel_editor_button.setProperty("class", "toolbar-button")
+        self.parent.cel_editor_button.setFixedHeight(self.BUTTON_HEIGHT)
+        # Active state styling (orange background/text when checked)
+        self.parent.cel_editor_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
+            }
+        """)
+        self.parent.cel_editor_button.clicked.connect(self._on_cel_editor_clicked)
+        toolbar.addWidget(self.parent.cel_editor_button)
+        logger.info("Toolbar: CEL Editor button added")
+
+    def _on_cel_editor_clicked(self) -> None:
+        """Handle CEL Editor button click (Toggle-aware)."""
+        if not hasattr(self.parent, 'cel_editor_button'):
+            return
+
+        checked = self.parent.cel_editor_button.isChecked()
+
+        if checked:
+            if hasattr(self.parent, "show_cel_editor"):
+                self.parent.show_cel_editor()
+            else:
+                logger.warning("show_cel_editor not available on chart widget")
+                self.parent.cel_editor_button.setChecked(False)
+        else:
+            # Toggle off - hide window if it exists
+            if hasattr(self.parent, "hide_cel_editor"):
+                self.parent.hide_cel_editor()
+            else:
+                logger.warning("hide_cel_editor not available on chart widget")
 
     def add_ai_chat_button(self, toolbar: QToolBar) -> None:
-        self.parent.ai_chat_button = QPushButton("🤖 AI Chat")
+        self.parent.ai_chat_button = QPushButton("AI Chat")  # Issue #15: Emoji entfernt
+        self.parent.ai_chat_button.setIcon(get_icon("chat"))  # Issue #15
+        self.parent.ai_chat_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.ai_chat_button.setCheckable(True)
         self.parent.ai_chat_button.setToolTip(
             "AI Chart-Analyse öffnen/schließen (Ctrl+Shift+C)"
         )
-        self.parent.ai_chat_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #2196F3;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
+        self.parent.ai_chat_button.setProperty("class", "toolbar-button")
+        self.parent.ai_chat_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.ai_chat_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
             }
-            QPushButton:checked {
-                background-color: #2196F3;
-                color: #fff;
-            }
-        """
-        )
+        """)
         toolbar.addWidget(self.parent.ai_chat_button)
 
     def add_ai_analysis_button(self, toolbar: QToolBar) -> None:
-        self.parent.ai_analysis_button = QPushButton("🧠 AI Analyse")
+        self.parent.ai_analysis_button = QPushButton("AI Analyse")  # Issue #15: Emoji entfernt
+        self.parent.ai_analysis_button.setIcon(get_icon("lightbulb"))  # Issue #15
+        self.parent.ai_analysis_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.ai_analysis_button.setCheckable(True)
         self.parent.ai_analysis_button.setToolTip(
             "Deep Market Analysis Popup öffnen"
         )
-        self.parent.ai_analysis_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #9C27B0;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
+        self.parent.ai_analysis_button.setProperty("class", "toolbar-button")
+        self.parent.ai_analysis_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.ai_analysis_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
             }
-            QPushButton:checked {
-                background-color: #9C27B0;
-                color: #fff;
-            }
-        """
-        )
+        """)
         toolbar.addWidget(self.parent.ai_analysis_button)
 
-    def add_bitunix_trading_button(self, toolbar: QToolBar) -> None:
-        """Add Bitunix trading button to toolbar (initially hidden)."""
-        self.parent.bitunix_trading_button = QPushButton("💱 Bitunix")
-        self.parent.bitunix_trading_button.setCheckable(True)
-        self.parent.bitunix_trading_button.setToolTip(
-            "Bitunix Futures Trading öffnen/schließen (nur Crypto)"
-        )
-        self.parent.bitunix_trading_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #FFC107;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-            }
-            QPushButton:checked {
-                background-color: #FFC107;
-                color: #000;
-            }
-        """
-        )
-        # Always visible (user can decide to open/close the dock)
-        self.parent.bitunix_trading_button.setVisible(True)
-        toolbar.addWidget(self.parent.bitunix_trading_button)
-        logger.info("Toolbar: Bitunix trading button created and added (visible)")
+    # Issue #24: Methode entfernt - Button ist jetzt in Row1 (toolbar_mixin_row1.py)
+    # def add_bitunix_trading_button(self, toolbar: QToolBar) -> None:
+    #     """Add Bitunix trading button to toolbar (initially hidden)."""
+    #     ...
 
     def add_settings_button(self, toolbar: QToolBar) -> None:
         """Add settings button (gear icon) to toolbar."""
         self.parent.settings_button = QPushButton()
         self.parent.settings_button.setIcon(get_icon("settings"))
+        self.parent.settings_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.settings_button.setToolTip("Settings öffnen")
-        self.parent.settings_button.setFixedHeight(26)
-        self.parent.settings_button.setFixedWidth(30)
-        self.parent.settings_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-            }
-        """
-        )
+        self.parent.settings_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        self.parent.settings_button.setFixedWidth(self.BUTTON_HEIGHT)  # Issue #25: Breite = Höhe für quadratischen Icon-Button
+        self.parent.settings_button.setProperty("class", "icon-button")
         self.parent.settings_button.clicked.connect(self._open_settings_dialog)
         toolbar.addWidget(self.parent.settings_button)
 
@@ -425,140 +438,35 @@ class ToolbarMixinRow2:
             widget = widget.parent()
         logger.warning("Settings dialog not available from toolbar")
 
-    def add_strategy_settings_button(self, toolbar: QToolBar) -> None:
-        """Add Strategy Settings button to chart toolbar (opens Strategy Settings Dialog)."""
-        self.parent.chart_strategy_settings_btn = QPushButton("📋 Strategy Settings")
-        self.parent.chart_strategy_settings_btn.setToolTip(
-            "Strategy Settings öffnen\n"
-            "- JSON Strategy Config auswählen\n"
-            "- CEL RulePacks laden\n"
-            "- Aktuelles Regime & Matched Strategy anzeigen"
-        )
-        self.parent.chart_strategy_settings_btn.setFixedHeight(26)
-        self.parent.chart_strategy_settings_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 12px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-        """
-        )
-        self.parent.chart_strategy_settings_btn.clicked.connect(self._on_strategy_settings_clicked)
-        toolbar.addWidget(self.parent.chart_strategy_settings_btn)
-        logger.debug("Strategy Settings button added to chart toolbar")
+    # Issue #24: Methode entfernt - Button und Event Handler sind jetzt in Row1 (toolbar_mixin_row1.py)
+    # def add_strategy_settings_button(self, toolbar: QToolBar) -> None:
+    #     """Add Strategy Settings button to chart toolbar (opens Strategy Settings Dialog)."""
+    #     ...
 
-    def _on_strategy_settings_clicked(self) -> None:
-        """Handle Strategy Settings button click - opens Strategy Settings Dialog."""
-        try:
-            from src.ui.dialogs.strategy_settings_dialog import StrategySettingsDialog
-
-            # Find chart window - self.parent is EmbeddedTradingViewChart
-            # We need to go up to find ChartWindow
-            widget = self.parent
-            chart_window = None
-
-            # Try to find ChartWindow in parent hierarchy
-            for _ in range(5):  # Max 5 levels up
-                if widget is None:
-                    break
-                # Check if this widget has bot_controller (likely ChartWindow)
-                if hasattr(widget, 'bot_controller'):
-                    chart_window = widget
-                    break
-                # Check class name as fallback
-                if widget.__class__.__name__ == 'ChartWindow':
-                    chart_window = widget
-                    break
-                widget = widget.parent()
-
-            if chart_window is None:
-                logger.warning("Could not find ChartWindow - using parent widget as fallback")
-                chart_window = self.parent
-
-            # Open Strategy Settings Dialog
-            dialog = StrategySettingsDialog(chart_window)
-            result = dialog.exec()
-
-            if result:  # Dialog was accepted (OK/Apply clicked)
-                # Check if dialog has methods to get config
-                if hasattr(dialog, 'get_selected_config_path'):
-                    config_path = dialog.get_selected_config_path()
-                    if config_path:
-                        logger.info(f"Strategy config selected: {config_path}")
-
-                        # Try to load config in bot controller if available
-                        if hasattr(chart_window, 'bot_controller') and chart_window.bot_controller:
-                            try:
-                                if hasattr(chart_window.bot_controller, 'load_rulepack'):
-                                    chart_window.bot_controller.load_rulepack(config_path)
-                                    logger.info(f"RulePack loaded: {config_path}")
-                                elif hasattr(chart_window.bot_controller, 'set_json_config'):
-                                    chart_window.bot_controller.set_json_config(config_path)
-                                    logger.info(f"JSON config loaded: {config_path}")
-                            except Exception as e:
-                                logger.error(f"Failed to load config: {e}")
-                                from PyQt6.QtWidgets import QMessageBox
-                                QMessageBox.warning(
-                                    chart_window,
-                                    "Config Load Error",
-                                    f"Fehler beim Laden der Config:\n{e}"
-                                )
-                else:
-                    logger.info("Strategy Settings Dialog closed without selection")
-            else:
-                logger.debug("Strategy Settings Dialog cancelled")
-
-        except ImportError as e:
-            logger.warning(f"StrategySettingsDialog not available: {e}")
-            # Fallback: show simple message
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self.parent,
-                "Strategy Settings",
-                "Strategy Settings Dialog ist noch nicht implementiert.\n"
-                "Bitte verwenden Sie den '⚙️ Settings Bot' Button im Trading Tab."
-            )
-        except Exception as e:
-            logger.error(f"Error opening Strategy Settings Dialog: {e}", exc_info=True)
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self.parent,
-                "Error",
-                f"Fehler beim Öffnen des Strategy Settings Dialogs:\n{e}"
-            )
+    # def _on_strategy_settings_clicked(self) -> None:
+    #     """Handle Strategy Settings button click - opens Strategy Settings Dialog."""
+    #     ...
 
     def add_bot_toggle_button(self, toolbar: QToolBar) -> None:
-        self.parent.toggle_panel_button = QPushButton("▼ Trading Bot")
+        self.parent.toggle_panel_button = QPushButton("Trading Bot")  # Issue #15: Emoji entfernt
+        self.parent.toggle_panel_button.setIcon(get_icon("bot"))  # Issue #15
+        self.parent.toggle_panel_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.toggle_panel_button.setCheckable(True)
         self.parent.toggle_panel_button.setChecked(True)
         self.parent.toggle_panel_button.setToolTip("Trading Bot Panel ein-/ausblenden")
-        self.parent.toggle_panel_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #FFA500;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
+        self.parent.toggle_panel_button.setProperty("class", "toolbar-button")
+        self.parent.toggle_panel_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.toggle_panel_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
             }
-            QPushButton:checked {
-                background-color: #FFA500;
-                color: #000;
-            }
-        """
-        )
+        """)
         toolbar.addWidget(self.parent.toggle_panel_button)
 
     def add_market_status(self, toolbar: QToolBar) -> None:

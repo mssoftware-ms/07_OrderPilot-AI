@@ -36,14 +36,17 @@ from .chart_window_mixins import (
     KOFinderMixin,
     StrategySimulatorMixin,
     LevelsContextMixin,
+    CelEditorMixin,
 )
 from src.chart_chat import ChartChatMixin
+from src.ui.app_icon import set_window_icon  # Issue #29: App icon
 from src.ui.widgets.bitunix_trading import BitunixTradingMixin
 
 logger = logging.getLogger(__name__)
 
 
 class ChartWindow(
+    CelEditorMixin,
     BotPanelsMixin,
     KOFinderMixin,
     StrategySimulatorMixin,
@@ -70,6 +73,9 @@ class ChartWindow(
         """
         super().__init__(parent)
 
+        # Issue #29: Set application icon (candlestick chart, white)
+        set_window_icon(self)
+
         self.symbol = symbol
         self.history_manager = history_manager
         self.settings = QSettings("OrderPilot", "TradingApp")
@@ -86,7 +92,7 @@ class ChartWindow(
         # Setup sequence (delegates to helpers)
         self._setup.setup_window()
         self._setup.setup_chart_widget()
-        self._setup.setup_live_data_toggle()
+        # self._setup.setup_live_data_toggle()  # Issue #14: LiveData Button entfernt
         self._setup.setup_dock()
         self._load_window_state()
         self._setup.restore_after_state_load()
@@ -99,6 +105,7 @@ class ChartWindow(
         self._setup.setup_ai_analysis()
         self._setup_levels_and_context()  # Phase 5.5
         self._setup.connect_data_loaded_signals()
+        self._init_cel_editor()  # Phase 7: CEL Editor integration
 
         logger.info(f"ChartWindow created for {symbol}")
 
