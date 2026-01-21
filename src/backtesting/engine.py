@@ -5,6 +5,9 @@ Executes generic JSON-based strategies against historical data.
 """
 
 import logging
+import time
+import tracemalloc
+from collections import defaultdict
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
@@ -13,6 +16,7 @@ from dataclasses import dataclass
 
 from .schema_types import TradingBotConfig, Condition, ConditionGroup, RegimeDef, StrategyDef, RiskSettings
 from .data_loader import DataLoader
+from .errors import DataLoadError, ConfigurationError, IndicatorError, format_error_for_ui
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +33,19 @@ class Trade:
     exit_reason: str = ""
 
 class BacktestEngine:
-    def __init__(self):
+    def __init__(self, enable_caching: bool = True, cache_max_size: int = 100):
+        """Initialize BacktestEngine.
+
+        Args:
+            enable_caching: Enable indicator caching for performance (7.3.2)
+            cache_max_size: Maximum number of cached indicator results
+        """
         self.data_loader = DataLoader()
-        self.indicators_cache = {} # Cache computed indicators
+        self.indicators_cache = {}  # Cache computed indicators
+        self.enable_caching = enable_caching
+        self.cache_max_size = cache_max_size
+        self.cache_hits = 0
+        self.cache_misses = 0
 
     def run(self, config: TradingBotConfig, symbol: str, start_date=None, end_date=None, initial_capital=10000.0, chart_data: pd.DataFrame = None, data_timeframe: str = None) -> Dict[str, Any]:
         """
@@ -46,7 +60,17 @@ class BacktestEngine:
             chart_data: Pre-loaded chart data (DataFrame with OHLCV) - if provided, skips database loading
             data_timeframe: Timeframe of chart_data (e.g., "15m", "1h") - for documentation purposes
         """
+        # Performance profiling setup (7.3.1)
+        perf_start = time.time()
+        perf_timings = {}
+        perf_counters = defaultdict(int)
+
+        # Start memory tracking
+        tracemalloc.start()
+        mem_start = tracemalloc.get_traced_memory()[0]
+
         # 1. Load Data (1m base or use chart data)
+        phase_start = time.time()
         if chart_data is not None and not chart_data.empty:
             # Use pre-loaded chart data
             df_1m = chart_data.copy()
@@ -61,19 +85,20 @@ class BacktestEngine:
             # Fallback to database/API loading
             df_1m = self.data_loader.load_data(symbol, start_date, end_date)
             if df_1m.empty:
-                error_msg = (
-                    f"No data found for symbol '{symbol}'\n\n"
-                    f"Database: {self.data_loader.db_path}\n"
-                    f"Date range: {start_date} to {end_date}\n\n"
-                    f"Suggestions:\n"
-                    f"1. Check if symbol format is correct (try 'bitunix:BTCUSDT' or 'BTCUSDT')\n"
-                    f"2. Verify data exists in the database for this date range\n"
-                    f"3. Check database health (main DB might be corrupted)"
+                error = DataLoadError.no_data_found(
+                    symbol=symbol,
+                    start_date=str(start_date),
+                    end_date=str(end_date),
+                    db_path=str(self.data_loader.db_path)
                 )
-                logger.error(error_msg)
-                return {"error": error_msg}
+                logger.error(str(error))
+                return {"error": str(error)}
+
+        perf_timings['data_loading'] = time.time() - phase_start
+        perf_counters['candles_loaded'] = len(df_1m)
 
         # 2. Determine required timeframes from indicators
+        phase_start = time.time()
         required_timeframes = set()
         for ind in config.indicators:
             tf = ind.timeframe or "1m" # Default to 1m if not specified
@@ -87,17 +112,12 @@ class BacktestEngine:
             for req_tf in required_timeframes:
                 req_tf_minutes = self._timeframe_to_minutes(req_tf)
                 if req_tf_minutes < chart_tf_minutes:
-                    error_msg = (
-                        f"⚠️ TIMEFRAME INCOMPATIBILITY\n\n"
-                        f"Chart data has {data_timeframe} timeframe, but strategy requires {req_tf} indicators.\n"
-                        f"Downsampling ({data_timeframe} → {req_tf}) is not possible.\n\n"
-                        f"Solutions:\n"
-                        f"1. Load chart with {req_tf} or 1m timeframe\n"
-                        f"2. Use a strategy that requires only {data_timeframe} or higher timeframes\n"
-                        f"3. Let system load data from Database/API (close chart, reopen Entry Analyzer)"
+                    error = DataLoadError.timeframe_incompatible(
+                        chart_tf=data_timeframe,
+                        required_tf=req_tf
                     )
-                    logger.error(error_msg)
-                    return {"error": error_msg}
+                    logger.error(str(error))
+                    return {"error": str(error)}
 
         # Always ensure we have the execution timeframe (e.g. 1m or higher)
         # For simplicity, we execute on the lowest granularity available (1m) but evaluate higher TFs
@@ -118,7 +138,12 @@ class BacktestEngine:
             self._calculate_indicators(df_tf, config.indicators, tf)
             datasets[tf] = df_tf
 
+        perf_timings['indicator_calculation'] = time.time() - phase_start
+        perf_counters['indicators_calculated'] = len(config.indicators)
+        perf_counters['timeframes_processed'] = len(required_timeframes)
+
         # 4. Simulation Loop
+        phase_start = time.time()
         # We iterate over the 1m dataframe (the base execution timeline)
         # For HTF indicators, we assume we know the value of the LAST closed candle of that timeframe
         # relative to the current 1m time.
@@ -160,8 +185,10 @@ class BacktestEngine:
             timestamp = combined_df.index[i]
 
             # 1. Determine Active Regimes
+            regime_eval_start = time.time()
             active_regimes = self._evaluate_regimes(config.regimes, row, config.indicators)
             regime_ids = [r.id for r in active_regimes]
+            perf_counters['regime_evaluations'] += 1
 
             # FALLBACK: If no JSON regimes defined or no regimes active, use RegimeEngine
             if not regime_ids and len(row) >= 5:
@@ -228,6 +255,7 @@ class BacktestEngine:
 
             # 2. Routing -> Strategy Set
             active_strategy_set_id = self._route_regimes(config.routing, regime_ids)
+            perf_counters['strategy_routings'] += 1
             if not active_strategy_set_id:
                 continue # No strategy active
                 
@@ -250,8 +278,10 @@ class BacktestEngine:
 
                 # Entry Logic
                 if active_trade is None:
+                    perf_counters['entry_evaluations'] += 1
                     if self._evaluate_conditions(strategy_def.entry, row, config.indicators):
                         # Enter Trade
+                        perf_counters['trades_entered'] += 1
                         price = row['close']
                         size = (equity * (current_risk.risk_per_trade_pct or 1.0) / 100.0) / price # Simplified sizing
                         # Apply Fee?
@@ -266,6 +296,7 @@ class BacktestEngine:
 
                 # Exit Logic (if in trade)
                 elif active_trade:
+                    perf_counters['exit_evaluations'] += 1
                     # Check SL/TP
                     price = row['close']
                     
@@ -303,7 +334,54 @@ class BacktestEngine:
                         equity += active_trade.pnl
                         active_trade = None
 
-        return self._calculate_stats(trades, initial_capital, equity, regime_history, data_timeframe, start_date, end_date, len(df_1m))
+        perf_timings['simulation_loop'] = time.time() - phase_start
+        perf_counters['total_candles_processed'] = len(combined_df)
+
+        # Memory optimization: Clear large intermediate DataFrames (7.3.2)
+        del combined_df
+        for tf in list(datasets.keys()):
+            del datasets[tf]
+        datasets.clear()
+
+        # Calculate stats
+        phase_start = time.time()
+        stats_result = self._calculate_stats(trades, initial_capital, equity, regime_history, data_timeframe, start_date, end_date, len(df_1m))
+        perf_timings['stats_calculation'] = time.time() - phase_start
+
+        # Finalize performance metrics
+        perf_timings['total_execution'] = time.time() - perf_start
+        mem_current, mem_peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        # Add performance data to results
+        cache_hit_rate = self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0
+
+        stats_result['performance'] = {
+            'timings': perf_timings,
+            'counters': dict(perf_counters),
+            'memory': {
+                'start_mb': mem_start / 1024 / 1024,
+                'current_mb': mem_current / 1024 / 1024,
+                'peak_mb': mem_peak / 1024 / 1024,
+                'delta_mb': (mem_current - mem_start) / 1024 / 1024
+            },
+            'rates': {
+                'candles_per_sec': perf_counters['total_candles_processed'] / perf_timings['simulation_loop'] if perf_timings['simulation_loop'] > 0 else 0,
+                'regime_evals_per_sec': perf_counters['regime_evaluations'] / perf_timings['simulation_loop'] if perf_timings['simulation_loop'] > 0 else 0
+            },
+            'cache': {
+                'enabled': self.enable_caching,
+                'hits': self.cache_hits,
+                'misses': self.cache_misses,
+                'hit_rate': cache_hit_rate,
+                'size': len(self.indicators_cache),
+                'max_size': self.cache_max_size
+            }
+        }
+
+        logger.info(f"Backtest completed in {perf_timings['total_execution']:.2f}s ({perf_counters['total_candles_processed']} candles, {perf_counters['trades_entered']} trades)")
+
+        return stats_result
 
     def _timeframe_to_minutes(self, timeframe: str) -> int:
         """Convert timeframe string to minutes for comparison.
@@ -332,23 +410,49 @@ class BacktestEngine:
         return tf_map.get(timeframe, 1)  # Default to 1m if unknown
 
     def _calculate_indicators(self, df: pd.DataFrame, indicators: List, tf_suffix: str):
-        """
-        Calculate indicators using pandas_ta and append to df.
+        """Calculate indicators using pandas_ta with caching (7.3.2).
+
         Columns will be named: "{indicator_id}_{field}" (e.g. "rsi14_value")
         If HTF, they get prefixed later.
+
+        Args:
+            df: DataFrame with OHLCV data
+            indicators: List of indicator definitions
+            tf_suffix: Timeframe suffix for cache key
         """
         for ind in indicators:
+            # Generate cache key based on indicator params + data hash
+            cache_key = self._get_indicator_cache_key(df, ind, tf_suffix)
+
+            # Check cache
+            if self.enable_caching and cache_key in self.indicators_cache:
+                self.cache_hits += 1
+                # Restore cached columns
+                cached_columns = self.indicators_cache[cache_key]
+                for col_name, col_data in cached_columns.items():
+                    df[col_name] = col_data
+                continue
+
+            self.cache_misses += 1
+
+            # Calculate indicator (store result for caching)
+            calculated_columns = {}
+
             if ind.type.upper() == "RSI":
                 length = ind.params.get("period", 14)
                 # pandas_ta returns a Series
                 rsi = ta.rsi(df['close'], length=length)
-                df[f"{ind.id}_value"] = rsi
-                
+                col_name = f"{ind.id}_value"
+                df[col_name] = rsi
+                calculated_columns[col_name] = rsi.copy()  # Copy for cache
+
             elif ind.type.upper() == "SMA":
                 length = ind.params.get("period", 14)
                 sma = ta.sma(df['close'], length=length)
-                df[f"{ind.id}_value"] = sma
-                
+                col_name = f"{ind.id}_value"
+                df[col_name] = sma
+                calculated_columns[col_name] = sma.copy()
+
             elif ind.type.upper() == "ADX":
                 length = ind.params.get("period", 14)
                 # ADX returns a DataFrame [ADX, DMP, DMN]
@@ -356,9 +460,53 @@ class BacktestEngine:
                 if adx_df is not None:
                     # Column names usually ADX_14, DMP_14, DMN_14
                     # Map to generic fields
-                    df[f"{ind.id}_value"] = adx_df.iloc[:, 0] # Main ADX
-            
+                    col_name = f"{ind.id}_value"
+                    df[col_name] = adx_df.iloc[:, 0]  # Main ADX
+                    calculated_columns[col_name] = adx_df.iloc[:, 0].copy()
+
             # Add more indicators here as needed...
+
+            # Cache the calculated columns
+            if self.enable_caching and calculated_columns:
+                # Evict oldest entry if cache is full
+                if len(self.indicators_cache) >= self.cache_max_size:
+                    oldest_key = next(iter(self.indicators_cache))
+                    del self.indicators_cache[oldest_key]
+
+                self.indicators_cache[cache_key] = calculated_columns
+
+    def _get_indicator_cache_key(self, df: pd.DataFrame, ind: Any, tf_suffix: str) -> str:
+        """Generate cache key for indicator calculation (7.3.2).
+
+        Args:
+            df: DataFrame with OHLCV data
+            ind: Indicator definition
+            tf_suffix: Timeframe suffix
+
+        Returns:
+            Unique cache key string
+        """
+        import hashlib
+        import json
+
+        # Create key from indicator params + data characteristics
+        key_data = {
+            'indicator_id': ind.id,
+            'indicator_type': ind.type,
+            'params': ind.params,
+            'timeframe': tf_suffix,
+            'data_len': len(df),
+            'data_start': str(df.index[0]) if len(df) > 0 else '',
+            'data_end': str(df.index[-1]) if len(df) > 0 else '',
+            # Hash of first/last few rows for uniqueness
+            'data_hash': hashlib.md5(
+                f"{df.head(5).to_json()}{df.tail(5).to_json()}".encode()
+            ).hexdigest()[:8]
+        }
+
+        # Generate deterministic key
+        key_str = json.dumps(key_data, sort_keys=True)
+        return hashlib.md5(key_str.encode()).hexdigest()
 
     def _evaluate_regimes(self, regimes: List[RegimeDef], row: pd.Series, indicators: List) -> List[RegimeDef]:
         active = []

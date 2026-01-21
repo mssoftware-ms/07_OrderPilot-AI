@@ -9,8 +9,10 @@ This dialog allows users to:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -164,10 +166,39 @@ class BotStartStrategyDialog(QDialog):
         """Create dialog buttons."""
         layout = QHBoxLayout()
 
+        # Left side: Analysis & Export/Reload
+        left_layout = QHBoxLayout()
+
         self.analyze_btn = QPushButton("🔍 Analyze Current Market")
         self.analyze_btn.clicked.connect(self._on_analyze_clicked)
         self.analyze_btn.setEnabled(False)  # Enable after config loaded
+        left_layout.addWidget(self.analyze_btn)
 
+        # Export Strategy Button (7.1.1)
+        self.export_btn = QPushButton("💾 Export Current")
+        self.export_btn.setToolTip("Export current strategy configuration to JSON file")
+        self.export_btn.clicked.connect(self._on_export_strategy_clicked)
+        self.export_btn.setEnabled(False)  # Enable after config loaded
+        left_layout.addWidget(self.export_btn)
+
+        # Reload Strategy Button (7.1.2)
+        self.reload_btn = QPushButton("🔄 Reload")
+        self.reload_btn.setToolTip("Hot-reload strategy configuration from file")
+        self.reload_btn.clicked.connect(self._on_reload_strategy_clicked)
+        self.reload_btn.setEnabled(False)  # Enable after config loaded
+        left_layout.addWidget(self.reload_btn)
+
+        # Open Editor Button (7.1.3)
+        self.editor_btn = QPushButton("📝 Edit")
+        self.editor_btn.setToolTip("Open strategy in visual editor")
+        self.editor_btn.clicked.connect(self._on_open_editor_clicked)
+        self.editor_btn.setEnabled(False)  # Enable after config loaded
+        left_layout.addWidget(self.editor_btn)
+
+        layout.addLayout(left_layout)
+        layout.addStretch()
+
+        # Right side: Apply & Cancel
         self.apply_btn = QPushButton("✓ Apply Strategy & Start Bot")
         self.apply_btn.clicked.connect(self.accept)
         self.apply_btn.setEnabled(False)  # Enable after strategy matched
@@ -175,8 +206,6 @@ class BotStartStrategyDialog(QDialog):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
 
-        layout.addWidget(self.analyze_btn)
-        layout.addStretch()
         layout.addWidget(self.apply_btn)
         layout.addWidget(self.cancel_btn)
 
@@ -541,6 +570,169 @@ class BotStartStrategyDialog(QDialog):
             right = f"{cond.right.indicator_id}.{cond.right.field}" if cond.right.indicator_id else str(cond.right.value)
             op_symbol = {"gt": ">", "lt": "<", "eq": "==", "gte": ">=", "lte": "<="}.get(cond.op, cond.op)
             return f"{left} {op_symbol} {right}"
+
+    def _on_export_strategy_clicked(self) -> None:
+        """Export current strategy configuration to JSON file (7.1.1)."""
+        if not self.config or not self.config_path:
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                "No strategy loaded to export. Please select a config file first."
+            )
+            return
+
+        try:
+            # Get save path with timestamped default name
+            default_name = f"strategy_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            default_dir = str(Path(self.config_path).parent)
+            default_path = str(Path(default_dir) / default_name)
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Strategy Configuration",
+                default_path,
+                "JSON Files (*.json);;All Files (*)"
+            )
+
+            if not file_path:
+                return  # User cancelled
+
+            # Convert config to dict for export
+            config_dict = self.config.model_dump(mode='json', exclude_none=True)
+
+            # Add export metadata
+            config_dict['_export_metadata'] = {
+                'exported_at': datetime.now().isoformat(),
+                'source_file': str(self.config_path),
+                'matched_strategy': self.matched_strategy_set.strategy_set.id if self.matched_strategy_set else None
+            }
+
+            # Write to file with formatting
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Strategy exported to: {file_path}")
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Strategy configuration exported to:\n{file_path}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to export strategy: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"Failed to export strategy:\n{str(e)}"
+            )
+
+    def _on_reload_strategy_clicked(self) -> None:
+        """Hot-reload strategy configuration from file (7.1.2)."""
+        if not self.config_path:
+            QMessageBox.warning(
+                self,
+                "Reload Failed",
+                "No config file selected to reload."
+            )
+            return
+
+        try:
+            # Confirm reload
+            reply = QMessageBox.question(
+                self,
+                "Reload Strategy",
+                f"Reload strategy from:\n{self.config_path}\n\nThis will discard any unsaved changes.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Reload by triggering config path change
+            logger.info(f"Hot-reloading strategy from: {self.config_path}")
+            self._on_config_path_changed(self.config_path)
+
+            # Re-analyze if parent available
+            if self.parent():
+                QMessageBox.information(
+                    self,
+                    "Reload Successful",
+                    f"Strategy reloaded from:\n{self.config_path}\n\nClick 'Analyze Current Market' to re-evaluate."
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Reload Successful",
+                    f"Strategy reloaded from:\n{self.config_path}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to reload strategy: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Reload Error",
+                f"Failed to reload strategy:\n{str(e)}"
+            )
+
+    def _on_open_editor_clicked(self) -> None:
+        """Open strategy in visual editor (7.1.3)."""
+        if not self.config_path:
+            QMessageBox.warning(
+                self,
+                "Editor Failed",
+                "No config file selected to edit."
+            )
+            return
+
+        try:
+            # Try to import strategy concept window
+            try:
+                from src.ui.dialogs.strategy_concept_window import StrategyConceptWindow
+
+                # Open strategy editor with current config
+                editor = StrategyConceptWindow(parent=self.parent())
+                editor.load_config(self.config_path)
+                editor.show()
+
+                logger.info(f"Opened strategy editor for: {self.config_path}")
+
+            except ImportError as e:
+                # Fallback: Try to open CEL editor widget
+                try:
+                    from src.ui.widgets.cel_strategy_editor_widget import CELStrategyEditorWidget
+
+                    editor = CELStrategyEditorWidget(parent=self.parent())
+                    editor.load_config(self.config_path)
+                    editor.show()
+
+                    logger.info(f"Opened CEL editor for: {self.config_path}")
+
+                except ImportError:
+                    # Fallback: Open in system text editor
+                    import subprocess
+                    import sys
+
+                    if sys.platform == 'win32':
+                        os.startfile(self.config_path)
+                    elif sys.platform == 'darwin':
+                        subprocess.run(['open', self.config_path])
+                    else:
+                        subprocess.run(['xdg-open', self.config_path])
+
+                    logger.info(f"Opened strategy in system editor: {self.config_path}")
+                    QMessageBox.information(
+                        self,
+                        "Editor Opened",
+                        f"Strategy opened in system text editor:\n{self.config_path}"
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to open editor: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Editor Error",
+                f"Failed to open strategy editor:\n{str(e)}"
+            )
 
     def accept(self) -> None:
         """Handle accept - emit strategy applied signal."""

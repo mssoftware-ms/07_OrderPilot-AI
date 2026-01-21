@@ -408,6 +408,56 @@ class EntryAnalyzerPopup(QDialog):
         self._bt_trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._bt_trades_table)
 
+        # Performance Profiling Section (7.3.1)
+        self._bt_performance_group = QGroupBox("Performance Profiling")
+        layout_perf = QGridLayout(self._bt_performance_group)
+
+        # Timing metrics
+        self._lbl_total_time = QLabel("--")
+        layout_perf.addWidget(QLabel("Total Execution:"), 0, 0)
+        layout_perf.addWidget(self._lbl_total_time, 0, 1)
+
+        self._lbl_data_load_time = QLabel("--")
+        layout_perf.addWidget(QLabel("Data Loading:"), 1, 0)
+        layout_perf.addWidget(self._lbl_data_load_time, 1, 1)
+
+        self._lbl_indicator_time = QLabel("--")
+        layout_perf.addWidget(QLabel("Indicator Calc:"), 2, 0)
+        layout_perf.addWidget(self._lbl_indicator_time, 2, 1)
+
+        self._lbl_simulation_time = QLabel("--")
+        layout_perf.addWidget(QLabel("Simulation Loop:"), 3, 0)
+        layout_perf.addWidget(self._lbl_simulation_time, 3, 1)
+
+        # Memory metrics
+        self._lbl_memory_peak = QLabel("--")
+        layout_perf.addWidget(QLabel("Peak Memory:"), 0, 2)
+        layout_perf.addWidget(self._lbl_memory_peak, 0, 3)
+
+        self._lbl_memory_delta = QLabel("--")
+        layout_perf.addWidget(QLabel("Memory Delta:"), 1, 2)
+        layout_perf.addWidget(self._lbl_memory_delta, 1, 3)
+
+        # Processing rates
+        self._lbl_candles_per_sec = QLabel("--")
+        layout_perf.addWidget(QLabel("Candles/sec:"), 2, 2)
+        layout_perf.addWidget(self._lbl_candles_per_sec, 2, 3)
+
+        self._lbl_regime_evals = QLabel("--")
+        layout_perf.addWidget(QLabel("Regime Evals:"), 3, 2)
+        layout_perf.addWidget(self._lbl_regime_evals, 3, 3)
+
+        # Cache metrics (7.3.2)
+        self._lbl_cache_hit_rate = QLabel("--")
+        layout_perf.addWidget(QLabel("Cache Hit Rate:"), 4, 0)
+        layout_perf.addWidget(self._lbl_cache_hit_rate, 4, 1)
+
+        self._lbl_cache_size = QLabel("--")
+        layout_perf.addWidget(QLabel("Cache Size:"), 4, 2)
+        layout_perf.addWidget(self._lbl_cache_size, 4, 3)
+
+        layout.addWidget(self._bt_performance_group)
+
     def _on_load_strategy_clicked(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Load Strategy JSON", str(Path.cwd()), "JSON Files (*.json)"
@@ -715,6 +765,46 @@ class EntryAnalyzerPopup(QDialog):
             self._bt_trades_table.setItem(row, 4, pnl_item)
 
             self._bt_trades_table.setItem(row, 5, QTableWidgetItem(t["reason"]))
+
+        # Populate Performance Profiling Metrics (7.3.1)
+        performance = results.get("performance", {})
+        if performance:
+            timings = performance.get("timings", {})
+            memory = performance.get("memory", {})
+            rates = performance.get("rates", {})
+            counters = performance.get("counters", {})
+
+            # Timing metrics
+            self._lbl_total_time.setText(f"{timings.get('total_execution', 0):.2f}s")
+            self._lbl_data_load_time.setText(f"{timings.get('data_loading', 0):.3f}s")
+            self._lbl_indicator_time.setText(f"{timings.get('indicator_calculation', 0):.3f}s")
+            self._lbl_simulation_time.setText(f"{timings.get('simulation_loop', 0):.3f}s")
+
+            # Memory metrics
+            self._lbl_memory_peak.setText(f"{memory.get('peak_mb', 0):.1f} MB")
+            delta_mb = memory.get('delta_mb', 0)
+            delta_color = "red" if delta_mb > 100 else "orange" if delta_mb > 50 else "green"
+            self._lbl_memory_delta.setText(f"{delta_mb:+.1f} MB")
+            self._lbl_memory_delta.setStyleSheet(f"color: {delta_color};")
+
+            # Processing rates
+            self._lbl_candles_per_sec.setText(f"{rates.get('candles_per_sec', 0):.0f}")
+            self._lbl_regime_evals.setText(f"{counters.get('regime_evaluations', 0):,}")
+
+            # Cache metrics (7.3.2)
+            cache = performance.get("cache", {})
+            if cache.get('enabled', False):
+                hit_rate = cache.get('hit_rate', 0)
+                hit_rate_color = "green" if hit_rate > 0.7 else "orange" if hit_rate > 0.3 else "red"
+                self._lbl_cache_hit_rate.setText(f"{hit_rate:.1%}")
+                self._lbl_cache_hit_rate.setStyleSheet(f"color: {hit_rate_color};")
+
+                cache_size = cache.get('size', 0)
+                max_size = cache.get('max_size', 0)
+                self._lbl_cache_size.setText(f"{cache_size}/{max_size}")
+            else:
+                self._lbl_cache_hit_rate.setText("Disabled")
+                self._lbl_cache_size.setText("--")
 
         # Draw regime boundaries on chart
         self._draw_regime_boundaries(results)

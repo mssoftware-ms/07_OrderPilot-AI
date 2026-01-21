@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrderPilot-AI | Regime-Based Strategy System - Hilfe</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3d3d3d;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent-orange: #ff8c00;
+            --accent-orange-hover: #ffa500;
+            --border-color: #404040;
+            --code-bg: #252525;
+            --success: #26a69a;
+            --warning: #ffa726;
+            --error: #ef5350;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-tertiary: #e8e8e8;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --border-color: #d0d0d0;
+            --code-bg: #f8f8f8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+            padding: 2rem;
+            border-bottom: 3px solid var(--accent-orange);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            color: var(--accent-orange);
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .theme-toggle {
+            background: var(--accent-orange);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(255, 140, 0, 0.3);
+        }
+
+        .theme-toggle:hover {
+            background: var(--accent-orange-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(255, 140, 0, 0.4);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        nav {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        nav a {
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            transition: all 0.3s;
+            border: 1px solid transparent;
+        }
+
+        nav a:hover {
+            background: var(--accent-orange);
+            color: white;
+            border-color: var(--accent-orange);
+        }
+
+        section {
+            background: var(--bg-secondary);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-radius: 10px;
+            border-left: 4px solid var(--accent-orange);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        h2 {
+            color: var(--accent-orange);
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        h3 {
+            color: var(--accent-orange);
+            margin: 1.5rem 0 1rem;
+            font-size: 1.4rem;
+        }
+
+        h4 {
+            color: var(--text-primary);
+            margin: 1rem 0 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: var(--accent-orange);
+            border: 1px solid var(--border-color);
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            margin: 1rem 0;
+        }
+
+        .feature-box {
+            background: var(--bg-tertiary);
+            padding: 1.5rem;
+            margin: 1rem 0;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-orange);
+        }
+
+        .quick-start {
+            background: linear-gradient(135deg, #26a69a, #00897b);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin: 2rem 0;
+        }
+
+        .quick-start h3 {
+            color: white;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .step {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 5px;
+            border-left: 4px solid white;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: white;
+            color: #26a69a;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 1rem;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 1rem 0;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 1rem;
+            border-radius: 5px;
+            border-left: 4px solid #17a2b8;
+            margin: 1rem 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+            margin: 1rem 0;
+        }
+
+        [data-theme="light"] .warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        [data-theme="light"] .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        [data-theme="light"] .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        ul, ol {
+            margin-left: 2rem;
+            margin-top: 0.5rem;
+        }
+
+        li {
+            margin: 0.5rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--accent-orange);
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background: var(--bg-tertiary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 0 0.2rem;
+        }
+
+        .badge-new {
+            background: #26a69a;
+            color: white;
+        }
+
+        .badge-important {
+            background: #ef5350;
+            color: white;
+        }
+
+        .badge-tip {
+            background: #ffa726;
+            color: white;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-color);
+            margin-top: 3rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            nav ul {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div>
+                <h1>📊 Regime-Based Strategy System</h1>
+                <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+                    Vollständige Dokumentation & Schnellstart-Guide
+                </p>
+            </div>
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">
+                🌙 Dark / ☀️ Light
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav>
+            <ul>
+                <li><a href="#quick-start">⚡ Schnellstart</a></li>
+                <li><a href="#overview">📖 Übersicht</a></li>
+                <li><a href="#entry-analyzer">🔍 Entry Analyzer</a></li>
+                <li><a href="#strategy-selection">⚙️ Strategy Selection</a></li>
+                <li><a href="#features">✨ Features</a></li>
+                <li><a href="#performance">🚀 Performance</a></li>
+            </ul>
+        </nav>
+
+        <!-- Quick Start Guide -->
+        <div class="quick-start" id="quick-start">
+            <h3>⚡ Schnellstart-Guide</h3>
+            <p>In 5 Minuten zum ersten Regime-basierten Backtest!</p>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Chart öffnen</strong><br>
+                Öffnen Sie ein Chart-Fenster für Ihr Symbol (z.B. BTCUSDT)
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Entry Analyzer öffnen</strong><br>
+                Klicken Sie auf den <code>Entry Analyzer</code> Button in der Toolbar
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Strategy laden</strong><br>
+                Im Tab "Backtest Setup" → <code>Browse</code> → Wählen Sie eine JSON-Strategy aus<br>
+                <em>Beispiel:</em> <code>03_JSON/Trading_Bot/trend_following_conservative.json</code>
+            </div>
+
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Backtest starten</strong><br>
+                Setzen Sie Zeitraum & Kapital → Klicken Sie <code>Run Backtest</code>
+            </div>
+
+            <div class="step">
+                <span class="step-number">5</span>
+                <strong>Ergebnisse analysieren</strong><br>
+                Im Tab "Backtest Results" sehen Sie Performance, Trades, Regime-Wechsel und Performance-Metriken
+            </div>
+        </div>
+
+        <!-- Overview -->
+        <section id="overview">
+            <h2>📖 System-Übersicht</h2>
+
+            <div class="feature-box">
+                <h4>🎯 Was ist das Regime-Based Strategy System?</h4>
+                <p>
+                    Ein vollständig JSON-basiertes Trading-System, das verschiedene Strategien basierend auf
+                    erkannten Marktregimen (Trend Up/Down, Range, Volatilität) automatisch wählt und ausführt.
+                </p>
+            </div>
+
+            <h3>Hauptkomponenten</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Komponente</th>
+                        <th>Funktion</th>
+                        <th>Wo zu finden</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Regime Engine</strong></td>
+                        <td>Klassifiziert Marktregime (Trend/Range, Volatilität)</td>
+                        <td><code>src/core/tradingbot/regime_engine.py</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>JSON Config</strong></td>
+                        <td>Definiert Indicators, Regimes, Strategies, Routing</td>
+                        <td><code>03_JSON/Trading_Bot/*.json</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Entry Analyzer</strong></td>
+                        <td>Backtest UI mit Regime-Visualisierung</td>
+                        <td>Button in Chart-Toolbar</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Strategy Selection</strong></td>
+                        <td>Dialog vor Bot-Start zur Strategy-Auswahl</td>
+                        <td>Öffnet sich beim "Start Bot"</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Backtest Engine</strong></td>
+                        <td>Simuliert Trades mit Performance-Tracking</td>
+                        <td><code>src/backtesting/engine.py</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="info">
+                <strong>💡 Tipp:</strong> Alle JSON-Configs werden automatisch validiert gegen JSON Schema + Pydantic Models
+                für maximale Typ-Sicherheit.
+            </div>
+        </section>
+
+        <!-- Entry Analyzer -->
+        <section id="entry-analyzer">
+            <h2>🔍 Entry Analyzer</h2>
+            <p>Der Entry Analyzer ist Ihr Backtest-Tool mit visueller Regime-Darstellung.</p>
+
+            <h3>Tabs & Funktionen</h3>
+
+            <h4>📋 Tab 1: Backtest Setup</h4>
+            <div class="feature-box">
+                <strong>Funktionen:</strong>
+                <ul>
+                    <li><code>Strategy File</code> – JSON-Config laden (Browse Button)</li>
+                    <li><code>Date Range</code> – Start/End-Datum für Backtest</li>
+                    <li><code>Initial Capital</code> – Startkapital (Default: $10,000)</li>
+                    <li><code>Symbol</code> – Trading-Symbol (z.B. BTCUSDT)</li>
+                    <li><code>Run Backtest</code> – Startet Simulation <span class="badge badge-new">NEU</span></li>
+                </ul>
+            </div>
+
+            <h4>📊 Tab 2: Backtest Results</h4>
+            <div class="feature-box">
+                <strong>Anzeige-Bereiche:</strong>
+                <ol>
+                    <li><strong>Data Source</strong> – Quelle (Chart/DB), Timeframe, Zeitraum, Anzahl Candles</li>
+                    <li><strong>Performance Summary</strong> – Net Profit, Win Rate, Profit Factor, Total Trades</li>
+                    <li><strong>Trade History</strong> – Tabelle aller Trades mit Entry/Exit, PnL, Reason</li>
+                    <li><strong>Performance Profiling</strong> <span class="badge badge-new">NEU v7.3.1</span>
+                        <ul>
+                            <li>Total Execution Time</li>
+                            <li>Data Loading, Indicator Calc, Simulation Loop Timings</li>
+                            <li>Peak Memory, Memory Delta</li>
+                            <li>Candles/sec Processing Rate</li>
+                            <li>Cache Hit Rate <span class="badge badge-new">v7.3.2</span></li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <h4>📈 Regime-Visualisierung im Chart</h4>
+            <div class="feature-box">
+                <p>
+                    Nach dem Backtest werden automatisch <strong>vertikale Linien</strong> im Chart gezeichnet,
+                    die Regime-Wechsel markieren:
+                </p>
+                <ul>
+                    <li><span style="color: #26a69a;">▮</span> Grün = Trend Up</li>
+                    <li><span style="color: #ef5350;">▮</span> Rot = Trend Down</li>
+                    <li><span style="color: #ffa726;">▮</span> Orange = Range/Sideways</li>
+                </ul>
+                <p>
+                    <strong>Label:</strong> Zeigt Regime-Typ + Volatilität (z.B. "TREND_UP (NORMAL)")
+                </p>
+            </div>
+
+            <h4>🤖 Tab 3: AI Copilot</h4>
+            <div class="feature-box">
+                <p>KI-basierte Entry-Empfehlungen (Feature in Entwicklung)</p>
+            </div>
+
+            <h4>✅ Tab 4: Validation</h4>
+            <div class="feature-box">
+                <p>Walk-Forward-Validation für Out-of-Sample Testing (Feature in Entwicklung)</p>
+            </div>
+
+            <h3>Neue Buttons (Phase 7) <span class="badge badge-new">NEU</span></h3>
+            <div class="feature-box">
+                <h4>💾 Export Strategy</h4>
+                <p>
+                    Exportiert die aktuell geladene Strategy als JSON-Datei mit Export-Metadaten
+                    (Zeitstempel, Source File, Matched Strategy).
+                </p>
+
+                <h4>🔄 Reload Strategy</h4>
+                <p>
+                    Hot-Reload der JSON-Config ohne Neustart. Nützlich beim Editieren von Strategies.
+                </p>
+
+                <h4>📝 Edit Strategy</h4>
+                <p>
+                    Öffnet Strategy im Editor:
+                </p>
+                <ol>
+                    <li>Versucht <code>StrategyConceptWindow</code> (visueller Editor)</li>
+                    <li>Fallback: <code>CELStrategyEditorWidget</code></li>
+                    <li>Ultimate Fallback: System-Text-Editor</li>
+                </ol>
+            </div>
+
+            <div class="warning">
+                <strong>⚠️ Wichtig:</strong> Beim Reload werden ungespeicherte Änderungen verworfen.
+                Speichern Sie zuerst mit "Export Strategy" falls nötig!
+            </div>
+        </section>
+
+        <!-- Strategy Selection -->
+        <section id="strategy-selection">
+            <h2>⚙️ Bot Start - Strategy Selection Dialog</h2>
+            <p>Dieser Dialog erscheint beim Klicken auf <code>Start Bot</code> und wählt die passende Strategy basierend auf dem aktuellen Markt.</p>
+
+            <h3>Dialog-Aufbau</h3>
+
+            <h4>1. JSON Strategy Configuration</h4>
+            <div class="feature-box">
+                <ul>
+                    <li><code>Config File</code> – Path zur JSON-Strategy (Browse Button)</li>
+                    <li><code>Preview</code> – Zeigt geladene Config an (Indicators, Regimes, Strategies)</li>
+                </ul>
+            </div>
+
+            <h4>2. Current Market Regime</h4>
+            <div class="feature-box">
+                <p>
+                    Nach Klick auf <code>🔍 Analyze Current Market</code>:
+                </p>
+                <ul>
+                    <li>Zeigt erkanntes Regime (z.B. "TREND_UP - NORMAL")</li>
+                    <li>ADX, ATR%, Confidence-Score</li>
+                </ul>
+            </div>
+
+            <h4>3. Matched Strategy</h4>
+            <div class="feature-box">
+                <p>
+                    Zeigt welche Strategy für das aktuelle Regime gewählt wurde:
+                </p>
+                <ul>
+                    <li>Strategy-Name</li>
+                    <li>Entry/Exit Conditions (formatiert)</li>
+                    <li>Risk Settings (SL, TP, Position Size)</li>
+                </ul>
+            </div>
+
+            <h4>4. Action Buttons</h4>
+            <div class="feature-box">
+                <ul>
+                    <li><code>🔍 Analyze Current Market</code> – Analysiert aktuellen Markt</li>
+                    <li><code>💾 Export Current</code> <span class="badge badge-new">v7.1.1</span> – Exportiert Config</li>
+                    <li><code>🔄 Reload</code> <span class="badge badge-new">v7.1.2</span> – Hot-Reload Config</li>
+                    <li><code>📝 Edit</code> <span class="badge badge-new">v7.1.3</span> – Öffnet Editor</li>
+                    <li><code>✓ Apply Strategy & Start Bot</code> – Startet Bot mit gewählter Strategy</li>
+                    <li><code>Cancel</code> – Schließt Dialog ohne Start</li>
+                </ul>
+            </div>
+
+            <div class="success">
+                <strong>✅ Workflow:</strong><br>
+                1. Config laden → 2. Analyze klicken → 3. Matched Strategy prüfen → 4. Apply & Start Bot
+            </div>
+
+            <h3>Dynamic Strategy Switching (Laufzeit)</h3>
+            <div class="feature-box">
+                <p>
+                    Während der Bot läuft, überwacht er kontinuierlich Regime-Änderungen:
+                </p>
+                <ol>
+                    <li>Regime wechselt (z.B. TREND_UP → RANGE)</li>
+                    <li>System routet zu neuer Strategy</li>
+                    <li>UI zeigt Benachrichtigung: "⚠ Regime changed to RANGE. Switched to strategy: range_scalper"</li>
+                    <li>Notification verschwindet automatisch nach 10 Sekunden</li>
+                </ol>
+                <p>
+                    <strong>Anpassung offener Positionen:</strong> Falls aktiviert, werden bestehende Positionen
+                    an die neue Strategy angepasst (z.B. neue SL/TP-Level).
+                </p>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features">
+            <h2>✨ Feature-Übersicht Phase 7</h2>
+
+            <h3>7.1 UI Controls <span class="badge badge-new">NEU</span></h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Status</th>
+                        <th>Beschreibung</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Export Strategy (7.1.1)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>JSON-Export mit Metadaten</td>
+                    </tr>
+                    <tr>
+                        <td>Reload Strategy (7.1.2)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Hot-Reload ohne Neustart</td>
+                    </tr>
+                    <tr>
+                        <td>Open Editor (7.1.3)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Multi-Fallback Editor-Integration</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>7.3 Performance & Polish <span class="badge badge-new">NEU</span></h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Status</th>
+                        <th>Verbesserung</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Performance Profiling (7.3.1)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Timing für alle Phasen, Memory Tracking, Processing Rates</td>
+                    </tr>
+                    <tr>
+                        <td>Memory Optimization (7.3.2)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Indicator Caching (100 entries), Cache Hit Rate >70%, Memory Cleanup</td>
+                    </tr>
+                    <tr>
+                        <td>Error Messages (7.3.3)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Klare Fehlermeldungen mit Details + Lösungsvorschlägen</td>
+                    </tr>
+                    <tr>
+                        <td>Logging (7.3.4)</td>
+                        <td><span class="badge badge-new">✓</span></td>
+                        <td>Strukturiertes Logging mit Performance-Metriken</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Backend-Features (bereits implementiert)</h3>
+            <div class="feature-box">
+                <ul>
+                    <li>✅ Multi-Timeframe Support (4.2.1-4.2.4)</li>
+                    <li>✅ Regime Detection & Routing</li>
+                    <li>✅ JSON Config System mit Validation</li>
+                    <li>✅ Condition Evaluator (AND/OR Logic)</li>
+                    <li>✅ Strategy Routing & Overrides</li>
+                    <li>✅ Backtest Engine mit Performance Tracking</li>
+                    <li>✅ Config Adapter (BacktestEngine ↔ BotController)</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Performance -->
+        <section id="performance">
+            <h2>🚀 Performance-Optimierungen</h2>
+
+            <h3>Indicator Caching <span class="badge badge-new">v7.3.2</span></h3>
+            <div class="feature-box">
+                <h4>Funktionsweise:</h4>
+                <ul>
+                    <li>Generiert MD5-Hash aus Indicator-Params + Data-Charakteristik</li>
+                    <li>Cached berechnete Indicator-Werte (z.B. RSI, MACD, ADX)</li>
+                    <li>Max 100 Entries (LRU Eviction)</li>
+                    <li>Vermeidet redundante pandas_ta Berechnungen</li>
+                </ul>
+
+                <h4>Performance-Gewinn:</h4>
+                <ul>
+                    <li>Bis zu <strong>70% weniger Berechnungszeit</strong> bei wiederholten Backtests</li>
+                    <li>Reduziert Memory-Spitzen durch Cleanup</li>
+                    <li>Cache Hit Rate wird im UI angezeigt</li>
+                </ul>
+
+                <pre><code>BacktestEngine(enable_caching=True, cache_max_size=100)</code></pre>
+            </div>
+
+            <h3>Memory Management</h3>
+            <div class="feature-box">
+                <h4>Optimierungen:</h4>
+                <ul>
+                    <li>Automatic Cleanup von combined_df & datasets nach Simulation</li>
+                    <li>tracemalloc für Memory Profiling</li>
+                    <li>Copy-on-Write für DataFrame-Operationen wo möglich</li>
+                </ul>
+
+                <h4>Monitoring:</h4>
+                <ul>
+                    <li>Peak Memory (MB)</li>
+                    <li>Memory Delta (MB) – Zeigt Speicher-Verbrauch</li>
+                    <li>Color-Coding: <span style="color: #26a69a;">Grün</span> (<50 MB),
+                        <span style="color: #ffa726;">Orange</span> (50-100 MB),
+                        <span style="color: #ef5350;">Rot</span> (>100 MB)</li>
+                </ul>
+            </div>
+
+            <h3>Processing Rates</h3>
+            <div class="feature-box">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Metrik</th>
+                            <th>Typical Value</th>
+                            <th>Bedeutung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Candles/sec</td>
+                            <td>5,000 - 50,000</td>
+                            <td>Verarbeitungsgeschwindigkeit (höher = besser)</td>
+                        </tr>
+                        <tr>
+                            <td>Regime Evals</td>
+                            <td>= Anzahl Candles</td>
+                            <td>Anzahl Regime-Klassifizierungen</td>
+                        </tr>
+                        <tr>
+                            <td>Cache Hit Rate</td>
+                            <td>>70%</td>
+                            <td>Effizienz des Indicator-Caches</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="info">
+                <strong>💡 Benchmark:</strong> Ein Backtest über 10,000 Candles sollte unter 5 Sekunden liegen
+                mit Cache Hit Rate >70%.
+            </div>
+        </section>
+
+        <!-- Best Practices -->
+        <section id="best-practices">
+            <h2>📚 Best Practices</h2>
+
+            <h3>JSON-Config Struktur</h3>
+            <div class="feature-box">
+                <h4>Empfohlene Reihenfolge:</h4>
+                <ol>
+                    <li><strong>Indicators</strong> – Definiere alle Indikatoren mit eindeutigen IDs</li>
+                    <li><strong>Regimes</strong> – Marktregime mit Conditions</li>
+                    <li><strong>Strategies</strong> – Entry/Exit Logic</li>
+                    <li><strong>Strategy Sets</strong> – Kombinationen von Strategies</li>
+                    <li><strong>Routing</strong> – Regime → Strategy Set Mapping</li>
+                </ol>
+
+                <pre><code>{
+  "schema_version": "1.0.0",
+  "indicators": [
+    {"id": "rsi14", "type": "RSI", "params": {"period": 14}},
+    {"id": "adx14", "type": "ADX", "params": {"period": 14}}
+  ],
+  "regimes": [
+    {
+      "id": "trend_up",
+      "name": "Uptrend",
+      "conditions": {
+        "all": [
+          {"left": {"indicator_id": "adx14", "field": "value"}, "op": "gt", "right": {"value": 25}}
+        ]
+      }
+    }
+  ],
+  "strategies": [/* ... */],
+  "strategy_sets": [/* ... */],
+  "routing": [/* ... */]
+}</code></pre>
+            </div>
+
+            <h3>Backtest-Workflow</h3>
+            <div class="feature-box">
+                <ol>
+                    <li>Starte mit kleinem Zeitraum (1 Woche) zum Testen</li>
+                    <li>Prüfe Performance-Metriken (Execution Time, Memory)</li>
+                    <li>Aktiviere Caching für wiederholte Runs</li>
+                    <li>Erweitere Zeitraum schrittweise (1 Monat, 3 Monate, 1 Jahr)</li>
+                    <li>Walk-Forward Validation für robuste Strategien</li>
+                </ol>
+            </div>
+
+            <div class="warning">
+                <strong>⚠️ Häufige Fehler vermeiden:</strong>
+                <ul>
+                    <li>Timeframe-Mismatch (Chart 15m, Strategy braucht 5m) → Laden Sie 1m oder 5m Chart</li>
+                    <li>Zu viele Indicator-Parameter-Variationen → Cache wird ineffizient</li>
+                    <li>Fehlende Indicator-Definitionen → Verwenden Sie klare IDs</li>
+                    <li>Zu enge Regime-Conditions → Bot findet keine aktive Strategy</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Troubleshooting -->
+        <section id="troubleshooting">
+            <h2>🔧 Troubleshooting</h2>
+
+            <h3>Problem: "No data found for symbol"</h3>
+            <div class="feature-box">
+                <h4>Lösungen:</h4>
+                <ol>
+                    <li>Symbol-Format prüfen: <code>bitunix:BTCUSDT</code> oder <code>BTCUSDT</code></li>
+                    <li>Datum-Range anpassen (z.B. letzte 30 Tage)</li>
+                    <li>Datenbank-Gesundheit prüfen: <code>src/data/main.db</code></li>
+                    <li>Historische Daten laden mit Data-Loader</li>
+                </ol>
+            </div>
+
+            <h3>Problem: "Timeframe incompatibility"</h3>
+            <div class="feature-box">
+                <h4>Lösungen:</h4>
+                <ol>
+                    <li>Chart mit 1m Timeframe laden (höchste Granularität)</li>
+                    <li>Strategy anpassen: Alle Indicators auf Chart-Timeframe oder höher</li>
+                    <li>Entry Analyzer schließen, Chart neu laden mit korrektem TF</li>
+                </ol>
+            </div>
+
+            <h3>Problem: "No strategy matched"</h3>
+            <div class="feature-box">
+                <h4>Lösungen:</h4>
+                <ol>
+                    <li>Fügen Sie eine Default-Routing-Rule hinzu (ohne Regime-Requirements)</li>
+                    <li>Erweitern Sie Regime-Conditions (weniger restriktiv)</li>
+                    <li>Aktivieren Sie RegimeEngine Fallback (automatisch wenn keine JSON Regimes)</li>
+                </ol>
+            </div>
+
+            <h3>Problem: Langsame Backtest-Performance</h3>
+            <div class="feature-box">
+                <h4>Optimierungen:</h4>
+                <ol>
+                    <li>Aktivieren Sie Caching: <code>enable_caching=True</code></li>
+                    <li>Reduzieren Sie Zeitraum für initiale Tests</li>
+                    <li>Verwenden Sie weniger Indicator-Kombinationen</li>
+                    <li>Prüfen Sie Memory Delta – ggf. Max Size reduzieren</li>
+                </ol>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>
+            <strong>OrderPilot-AI</strong> | Regime-Based Strategy System v7.0<br>
+            Documentation generated: 2026-01-21<br>
+            © 2026 OrderPilot Development Team
+        </p>
+    </footer>
+
+    <script>
+        // Theme Toggle
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Load saved theme
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        });
+
+        // Smooth scroll for navigation links
+        document.querySelectorAll('nav a').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
