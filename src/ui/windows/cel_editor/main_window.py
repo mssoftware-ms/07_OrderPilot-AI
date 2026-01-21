@@ -23,6 +23,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from .theme import get_qss_stylesheet, ACCENT_TEAL, TEXT_PRIMARY
 from .icons import cel_icons
+from ...app_icon import set_window_icon  # Issue #29: App icon
 from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
 from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
 from ...widgets.pattern_builder.properties_panel import PropertiesPanel
@@ -52,6 +53,9 @@ class CelEditorWindow(QMainWindow):
             strategy_name: Name of the strategy being edited
         """
         super().__init__(parent)
+
+        # Issue #29: Set application icon (candlestick chart, white)
+        set_window_icon(self)
 
         self.strategy_name = strategy_name
         self.current_view_mode = "pattern"  # pattern, code, chart, split

@@ -186,10 +186,16 @@ class BacktestCallbacksTemplateMixin:
         Returns:
             Filename or None if cancelled.
         """
+        # Default path für JSON Strategien (Issue #13)
+        default_path = Path("D:/03_Git/02_Python/07_OrderPilot-AI/03_JSON/Trading_Bot")
+        # Fallback auf config/backtest_templates wenn Pfad nicht existiert
+        if not default_path.exists():
+            default_path = Path("config/backtest_templates")
+
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Template laden",
-            str(Path("config/backtest_templates")),
+            str(default_path),
             "JSON Files (*.json);;All Files (*)"
         )
         return filename if filename else None

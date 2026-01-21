@@ -52,11 +52,9 @@ class BacktestTabUIToolbar:
 
         # Status Icon + Label
         self.parent.status_icon = QLabel("🧪")
-        self.parent.status_icon.setStyleSheet("font-size: 16px;")
         row1.addWidget(self.parent.status_icon)
 
         self.parent.status_label = QLabel("IDLE")
-        self.parent.status_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #888;")
         row1.addWidget(self.parent.status_label)
 
         # Progress Bar
@@ -66,20 +64,7 @@ class BacktestTabUIToolbar:
         self.parent.progress_bar.setFixedWidth(100)
         self.parent.progress_bar.setFixedHeight(20)
         self.parent.progress_bar.setTextVisible(True)
-        self.parent.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #444;
-                border-radius: 4px;
-                background-color: #222;
-                text-align: center;
-                color: white;
-                font-size: 10px;
-            }
-            QProgressBar::chunk {
-                background-color: #4CAF50;
-                border-radius: 3px;
-            }
-        """)
+        # Theme handles styling
         row1.addWidget(self.parent.progress_bar)
 
         row1.addSpacing(8)
@@ -87,36 +72,14 @@ class BacktestTabUIToolbar:
         # === START BUTTON (grün, prominent) ===
         self.parent.start_btn = QPushButton("▶ Start Backtest")
         self.parent.start_btn.setMinimumWidth(110)
-        self.parent.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-weight: bold;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover { background-color: #45a049; }
-            QPushButton:disabled { background-color: #333; color: #666; }
-        """)
+        self.parent.start_btn.setProperty("class", "success")
         self.parent.start_btn.clicked.connect(self.parent._on_start_clicked)
         row1.addWidget(self.parent.start_btn)
 
         # Stop Button
         self.parent.stop_btn = QPushButton("⏹ Stop")
         self.parent.stop_btn.setMinimumWidth(60)
-        self.parent.stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                font-weight: bold;
-                padding: 6px 10px;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover { background-color: #d32f2f; }
-            QPushButton:disabled { background-color: #333; color: #666; }
-        """)
+        self.parent.stop_btn.setProperty("class", "danger")
         self.parent.stop_btn.setEnabled(False)
         self.parent.stop_btn.clicked.connect(self.parent._on_stop_clicked)
         row1.addWidget(self.parent.stop_btn)
@@ -125,7 +88,6 @@ class BacktestTabUIToolbar:
 
         # Status Detail
         self.parent.status_detail = QLabel("Bereit")
-        self.parent.status_detail.setStyleSheet("color: #666; font-size: 10px;")
         row1.addWidget(self.parent.status_detail)
 
         main_layout.addLayout(row1)
@@ -137,86 +99,39 @@ class BacktestTabUIToolbar:
         # Load Engine Configs Button (GRÖSSER)
         self.parent.load_config_btn = QPushButton("📥 Engine Configs laden")
         self.parent.load_config_btn.setMinimumWidth(140)
-        self.parent.load_config_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                font-weight: bold;
-                padding: 5px 12px;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
+        self.parent.load_config_btn.setProperty("class", "primary")
         self.parent.load_config_btn.setToolTip("Lädt alle Engine-Konfigurationen in die Config-Tabelle")
         row2.addWidget(self.parent.load_config_btn)
 
         # Auto-Generate Button
         self.parent.auto_gen_btn = QPushButton("🤖 Auto-Generate")
         self.parent.auto_gen_btn.setMinimumWidth(110)
-        self.parent.auto_gen_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #9C27B0;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover { background-color: #7B1FA2; }
-        """)
+        self.parent.auto_gen_btn.setProperty("class", "info")
         self.parent.auto_gen_btn.setToolTip("Generiert automatisch Test-Varianten")
         row2.addWidget(self.parent.auto_gen_btn)
 
         # Separator
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #444;")
         row2.addWidget(sep)
 
         # Template Buttons
         self.parent.save_template_btn = QPushButton("💾 Save")
         self.parent.save_template_btn.setMinimumWidth(60)
         self.parent.save_template_btn.setToolTip("Template speichern")
-        self.parent.save_template_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                padding: 5px 8px;
-                border-radius: 4px;
-                font-size: 10px;
-            }
-            QPushButton:hover { background-color: #388E3C; }
-        """)
+        self.parent.save_template_btn.setProperty("class", "success small-button")
         row2.addWidget(self.parent.save_template_btn)
 
         self.parent.load_template_btn = QPushButton("📂 Load")
         self.parent.load_template_btn.setMinimumWidth(60)
         self.parent.load_template_btn.setToolTip("Template laden")
-        self.parent.load_template_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #FF9800;
-                color: white;
-                padding: 5px 8px;
-                border-radius: 4px;
-                font-size: 10px;
-            }
-            QPushButton:hover { background-color: #F57C00; }
-        """)
+        self.parent.load_template_btn.setProperty("class", "warning small-button")
         row2.addWidget(self.parent.load_template_btn)
 
         self.parent.derive_variant_btn = QPushButton("📝 Variant")
         self.parent.derive_variant_btn.setMinimumWidth(65)
         self.parent.derive_variant_btn.setToolTip("Variante ableiten")
-        self.parent.derive_variant_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #607D8B;
-                color: white;
-                padding: 5px 8px;
-                border-radius: 4px;
-                font-size: 10px;
-            }
-            QPushButton:hover { background-color: #455A64; }
-        """)
+        self.parent.derive_variant_btn.setProperty("class", "info small-button")
         row2.addWidget(self.parent.derive_variant_btn)
 
         row2.addStretch()

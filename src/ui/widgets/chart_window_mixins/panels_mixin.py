@@ -12,15 +12,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.ui.icons import get_icon
+
 logger = logging.getLogger(__name__)
 
-# WhatsApp Widget Import
+# Notification Widget Import (Issue #21: WhatsApp + Telegram)
 try:
-    from src.ui.widgets.whatsapp_widget import WhatsAppWidget
-    HAS_WHATSAPP = True
+    from src.ui.widgets.notification_widget import NotificationWidget
+    HAS_NOTIFICATIONS = True
 except ImportError:
-    HAS_WHATSAPP = False
-    logger.debug("WhatsAppWidget not available")
+    HAS_NOTIFICATIONS = False
+    logger.debug("NotificationWidget not available")
 
 # Backtesting Widget Import
 try:
@@ -55,24 +57,24 @@ class PanelsMixin:
         if hasattr(self, '_create_bot_control_tab'):
             # Tab 1: Bot Control
             self.bot_control_tab = self._create_bot_control_tab()
-            self.panel_tabs.addTab(self.bot_control_tab, "Bot")
+            self.panel_tabs.addTab(self.bot_control_tab, get_icon("ai"), "Bot")
 
             # Tab 2: Daily Strategy Selection
             self.bot_strategy_tab = self._create_strategy_selection_tab()
-            self.panel_tabs.addTab(self.bot_strategy_tab, "Daily Strategy")
+            self.panel_tabs.addTab(self.bot_strategy_tab, get_icon("optimize"), "Daily Strategy")
 
             # Tab 3: Signals & Trade Management
             self.bot_signals_tab = self._create_signals_tab()
-            self.panel_tabs.addTab(self.bot_signals_tab, "Trading")
+            self.panel_tabs.addTab(self.bot_signals_tab, get_icon("order"), "Trading")
 
             # Tab 4: KI Logs
             self.bot_ki_tab = self._create_ki_logs_tab()
-            self.panel_tabs.addTab(self.bot_ki_tab, "KI Logs")
+            self.panel_tabs.addTab(self.bot_ki_tab, get_icon("watchlist"), "KI Logs")
 
             # Tab 5: Engine Settings
             if hasattr(self, '_create_engine_settings_tab'):
                 self.bot_engine_settings_tab = self._create_engine_settings_tab()
-                self.panel_tabs.addTab(self.bot_engine_settings_tab, "Engine Settings")
+                self.panel_tabs.addTab(self.bot_engine_settings_tab, get_icon("settings"), "Engine Settings")
 
             # Tab 6: Backtesting
             if HAS_BACKTEST:
@@ -80,19 +82,19 @@ class PanelsMixin:
                     # BacktestTab braucht einen HistoryManager
                     history_manager = getattr(self, '_history_manager', None)
                     self.backtest_tab = BacktestTab(history_manager=history_manager)
-                    self.panel_tabs.addTab(self.backtest_tab, "📊 Backtesting")
+                    self.panel_tabs.addTab(self.backtest_tab, get_icon("backtest"), "Backtesting")
                     logger.info("Backtesting Tab added to Trading Bot panel")
                 except Exception as e:
                     logger.warning(f"Failed to create Backtesting tab: {e}")
 
-            # Tab 7: WhatsApp Notifications
-            if HAS_WHATSAPP:
+            # Tab 7: Notifications (Issue #21: WhatsApp + Telegram mit Radio-Button)
+            if HAS_NOTIFICATIONS:
                 try:
-                    self.whatsapp_tab = WhatsAppWidget()
-                    self.panel_tabs.addTab(self.whatsapp_tab, "📱 WhatsApp")
-                    logger.info("WhatsApp Tab added to Trading Bot panel")
+                    self.notification_tab = NotificationWidget()
+                    self.panel_tabs.addTab(self.notification_tab, get_icon("connect"), "Notifications")
+                    logger.info("Notifications Tab (WhatsApp + Telegram) added to Trading Bot panel")
                 except Exception as e:
-                    logger.warning(f"Failed to create WhatsApp tab: {e}")
+                    logger.warning(f"Failed to create Notifications tab: {e}")
 
             # Initialize bot panel state
             if hasattr(self, '_init_bot_panels'):
@@ -101,12 +103,12 @@ class PanelsMixin:
         # Tab 5: KO-Finder (from KOFinderMixin)
         if hasattr(self, '_create_ko_finder_tab'):
             self.ko_finder_tab = self._create_ko_finder_tab()
-            self.panel_tabs.addTab(self.ko_finder_tab, "KO-Finder")
+            self.panel_tabs.addTab(self.ko_finder_tab, get_icon("zoom_all"), "KO-Finder")
 
         # Tab 6: Strategy Simulator (from StrategySimulatorMixin)
         if hasattr(self, '_create_strategy_simulator_tab'):
             self.strategy_simulator_tab = self._create_strategy_simulator_tab()
-            self.panel_tabs.addTab(self.strategy_simulator_tab, "Strategy Simulator")
+            self.panel_tabs.addTab(self.strategy_simulator_tab, get_icon("backtest"), "Strategy Simulator")
 
         # Tab 7: AI Chat (Issue #36 - moved from AI-Analyse window)
         if HAS_AI_CHAT:
@@ -114,7 +116,7 @@ class PanelsMixin:
                 # Create a local AnalysisContext for the chat tab
                 self._ai_chat_context = AnalysisContext()
                 self.ai_chat_tab = AIChatTab(self._ai_chat_context)
-                self.panel_tabs.addTab(self.ai_chat_tab, "🤖 AI Chat")
+                self.panel_tabs.addTab(self.ai_chat_tab, get_icon("ai"), "AI Chat")
                 logger.info("AI Chat Tab added to Trading Bot panel (Issue #36)")
 
                 # Connect draw signals to chart widget if available

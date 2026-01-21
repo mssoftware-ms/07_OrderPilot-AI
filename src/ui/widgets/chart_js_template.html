@@ -176,11 +176,15 @@
                         locale: 'de-DE',
                         // Timestamps are already shifted to local time in Python,
                         // so we use UTC methods to display them directly without double conversion
+                        // Issue #30: Show date AND time in crosshair label
                         timeFormatter: (timestamp) => {
                             const date = new Date(timestamp * 1000);
+                            const day = String(date.getUTCDate()).padStart(2, '0');
+                            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                            const year = date.getUTCFullYear();
                             const hours = String(date.getUTCHours()).padStart(2, '0');
                             const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-                            return `${hours}:${minutes}`;
+                            return `${day}.${month}.${year} ${hours}:${minutes}`;
                         },
                         dateFormatter: (timestamp) => {
                             const date = new Date(timestamp * 1000);
@@ -1800,7 +1804,22 @@
                 // Click handler for drawing tools - using container event for full coverage
                 container.addEventListener('click', e => {
                     if (isDragging) return; // Ignore clicks during drag
-                    if (currentTool === 'pointer') return; // No drawing in pointer mode
+
+                    // Issue #17: Allow selecting drawings with pointer tool for keyboard delete
+                    if (currentTool === 'pointer') {
+                        const rect = container.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const target = findDragTarget(x, y);
+
+                        if (target && target.drawing) {
+                            selectedDrawing = target.drawing;
+                            console.log('Drawing selected:', selectedDrawing.id, 'type:', selectedDrawing.type);
+                        } else {
+                            selectedDrawing = null;
+                        }
+                        return;
+                    }
 
                     const rect = container.getBoundingClientRect();
                     const x = e.clientX - rect.left;

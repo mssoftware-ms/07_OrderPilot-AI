@@ -8,12 +8,13 @@ Contains:
 - setup_window(): Window configuration
 - setup_chart_widget(): Central chart widget setup
 - setup_dock(): Dock widget with custom title bar
-- setup_live_data_toggle(): Chart window live data toggle
 - setup_shortcuts(): Keyboard shortcuts (Ctrl+R, F1, Ctrl+Shift+C, Ctrl+Shift+A, Ctrl+Shift+S)
 - setup_chat(): Chart chat integration
 - setup_bitunix_trading(): Bitunix trading widget
 - setup_ai_analysis(): AI analysis popup
 - Helper methods for dock and chat
+
+Note: setup_live_data_toggle() removed as per Issue #14
 """
 
 from __future__ import annotations
@@ -110,47 +111,48 @@ class ChartWindowSetup:
 
         logger.info(f"TradingBotWindow created for {self.parent.symbol}")
 
-    def setup_live_data_toggle(self) -> None:
-        """Add a main-window-style live data toggle next to the zoom-back button."""
-        toolbar = getattr(self.parent.chart_widget, "toolbar_row1", None)
-        if toolbar is None:
-            logger.warning("Chart toolbar row1 missing - live data toggle not added")
-            return
-
-        self.parent.chart_live_data_toggle = QPushButton("Live Data: OFF")
-        self.parent.chart_live_data_toggle.setCheckable(True)
-        self.parent.chart_live_data_toggle.setToolTip(
-            "Toggle live market data in paper mode\n"
-            "• ON: Use real-time market data from providers\n"
-            "• OFF: Use cached/simulated data"
-        )
-        self.parent.chart_live_data_toggle.clicked.connect(
-            self.parent._handlers.on_chart_live_data_toggle_clicked
-        )
-
-        if hasattr(self.parent.chart_widget, "zoom_back_button"):
-            ref_button = self.parent.chart_widget.zoom_back_button
-            ref_height = ref_button.sizeHint().height()
-            ref_width = ref_button.sizeHint().width()
-            if ref_height > 0:
-                self.parent.chart_live_data_toggle.setFixedHeight(ref_height)
-            self.parent.chart_live_data_toggle.setMinimumWidth(max(ref_width + 70, 130))
-
-        toolbar.addWidget(self.parent.chart_live_data_toggle)
-
-        main_window = self.parent._get_main_window()
-        if main_window and hasattr(main_window, "live_data_toggle"):
-            self.parent._handlers.on_main_live_data_toggled(main_window.live_data_toggle.isChecked())
-            main_window.live_data_toggle.toggled.connect(
-                self.parent._handlers.on_main_live_data_toggled
-            )
-        else:
-            live_data_enabled = self.parent.settings.value("live_data_enabled", False, type=bool)
-            self.parent._handlers.update_chart_live_data_toggle(live_data_enabled)
-            if hasattr(self.parent.chart_widget, "live_stream_button"):
-                self.parent.chart_widget.live_stream_button.toggled.connect(
-                    self.parent._handlers.on_chart_stream_button_toggled
-                )
+    # Issue #14: LiveData Button entfernt
+    # def setup_live_data_toggle(self) -> None:
+    #     """Add a main-window-style live data toggle next to the zoom-back button."""
+    #     toolbar = getattr(self.parent.chart_widget, "toolbar_row1", None)
+    #     if toolbar is None:
+    #         logger.warning("Chart toolbar row1 missing - live data toggle not added")
+    #         return
+    #
+    #     self.parent.chart_live_data_toggle = QPushButton("Live Data: OFF")
+    #     self.parent.chart_live_data_toggle.setCheckable(True)
+    #     self.parent.chart_live_data_toggle.setToolTip(
+    #         "Toggle live market data in paper mode\n"
+    #         "• ON: Use real-time market data from providers\n"
+    #         "• OFF: Use cached/simulated data"
+    #     )
+    #     self.parent.chart_live_data_toggle.clicked.connect(
+    #         self.parent._handlers.on_chart_live_data_toggle_clicked
+    #     )
+    #
+    #     if hasattr(self.parent.chart_widget, "zoom_back_button"):
+    #         ref_button = self.parent.chart_widget.zoom_back_button
+    #         ref_height = ref_button.sizeHint().height()
+    #         ref_width = ref_button.sizeHint().width()
+    #         if ref_height > 0:
+    #             self.parent.chart_live_data_toggle.setFixedHeight(ref_height)
+    #         self.parent.chart_live_data_toggle.setMinimumWidth(max(ref_width + 70, 130))
+    #
+    #     toolbar.addWidget(self.parent.chart_live_data_toggle)
+    #
+    #     main_window = self.parent._get_main_window()
+    #     if main_window and hasattr(main_window, "live_data_toggle"):
+    #         self.parent._handlers.on_main_live_data_toggled(main_window.live_data_toggle.isChecked())
+    #         main_window.live_data_toggle.toggled.connect(
+    #             self.parent._handlers.on_main_live_data_toggled
+    #         )
+    #     else:
+    #         live_data_enabled = self.parent.settings.value("live_data_enabled", False, type=bool)
+    #         self.parent._handlers.update_chart_live_data_toggle(live_data_enabled)
+    #         if hasattr(self.parent.chart_widget, "live_stream_button"):
+    #             self.parent.chart_widget.live_stream_button.toggled.connect(
+    #                 self.parent._handlers.on_chart_stream_button_toggled
+    #             )
 
     def _on_trading_bot_window_closed(self) -> None:
         """Handle Trading Bot window close event."""

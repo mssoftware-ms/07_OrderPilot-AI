@@ -29,6 +29,19 @@ class EmbeddedTradingViewChartUIMixin:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Issue #26: OHLC Info Label (oben über Toolbar)
+        self.ohlc_info_label = QLabel("O -- | H -- | L -- | C -- | -- % | V --")
+        self.ohlc_info_label.setStyleSheet("""
+            color: #E0E0E0;
+            background-color: #2D2D2D;
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 5px 10px;
+            border-bottom: 1px solid #3D3D3D;
+        """)
+        layout.addWidget(self.ohlc_info_label)
+
         # Toolbar (from ToolbarMixin) - Two rows
         toolbar1, toolbar2 = self._create_toolbar()
         self.toolbar_row1 = toolbar1
@@ -61,11 +74,43 @@ class EmbeddedTradingViewChartUIMixin:
         self._web_channel.registerObject("pyBridge", self._chart_bridge)
         self.web_view.page().setWebChannel(self._web_channel)
 
-        # Info panel
+        # Issue #26: Info panel mit 4 Labels (Last Price, DB Status, Stretch, Price)
         info_layout = QHBoxLayout()
-        self.info_label = QLabel("Select a symbol to begin")
-        self.info_label.setStyleSheet("color: #aaa; font-family: monospace; padding: 5px;")
+
+        # Last Price Label (ganz links)
+        self.info_label = QLabel("Last Price: --")
+        self.info_label.setStyleSheet("""
+            color: #aaa;
+            font-family: monospace;
+            font-size: 10px;
+            padding: 5px;
+        """)
         info_layout.addWidget(self.info_label)
+
+        # DB Status Label (links, nach Last Price)
+        self.db_status_label = QLabel("DB: 0 Einträge")
+        self.db_status_label.setStyleSheet("""
+            color: #888;
+            font-family: monospace;
+            font-size: 10px;
+            padding: 5px;
+        """)
+        info_layout.addWidget(self.db_status_label)
+
+        # Stretch (Push price label nach rechts)
+        info_layout.addStretch()
+
+        # Price Label (unten rechts) - Zeigt Tagesveränderung seit 0 Uhr
+        self.price_info_label = QLabel("Preis: --")
+        self.price_info_label.setStyleSheet("""
+            color: #26a69a;
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 5px;
+        """)
+        info_layout.addWidget(self.price_info_label)
+
         layout.addLayout(info_layout)
 
         # Setup context menu for chart markings

@@ -1,0 +1,475 @@
+{
+  "$schema": "https://example.com/trading-bot-config.schema.json",
+  "schema_version": "1.0",
+  "metadata": {
+    "author": "AI Strategy Generator",
+    "created_at": "2026-01-20T12:00:00Z",
+    "tags": [
+      "ai_generated",
+      "btc/usd",
+      "trending_up",
+      "phase6_demo"
+    ],
+    "notes": "Generated from pattern analysis - DEMO CONFIGURATION FOR EDUCATIONAL PURPOSES ONLY. Always backtest thoroughly before live use.",
+    "dataset_id": "btc_1h_2026_01"
+  },
+  "indicators": [
+    {
+      "id": "rsi14_1h",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      },
+      "timeframe": "1h"
+    },
+    {
+      "id": "rsi14_4h",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      },
+      "timeframe": "4h"
+    },
+    {
+      "id": "adx14_1h",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      },
+      "timeframe": "1h"
+    },
+    {
+      "id": "adx14_4h",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      },
+      "timeframe": "4h"
+    },
+    {
+      "id": "ema20_1h",
+      "type": "EMA",
+      "params": {
+        "period": 20
+      },
+      "timeframe": "1h"
+    },
+    {
+      "id": "ema50_1h",
+      "type": "EMA",
+      "params": {
+        "period": 50
+      },
+      "timeframe": "1h"
+    },
+    {
+      "id": "atr14_1h",
+      "type": "ATR",
+      "params": {
+        "period": 14
+      },
+      "timeframe": "1h"
+    },
+    {
+      "id": "volume_ratio_1h",
+      "type": "volume_ratio",
+      "params": {
+        "period": 20
+      },
+      "timeframe": "1h"
+    }
+  ],
+  "regimes": [
+    {
+      "id": "entry_strong_trend",
+      "name": "Strong Trending Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14_1h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 30
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "adx14_4h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 25
+            }
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "entry"
+    },
+    {
+      "id": "entry_momentum_bullish",
+      "name": "Bullish Momentum",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 55,
+              "max": 75
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_4h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 50
+            }
+          }
+        ]
+      },
+      "priority": 8,
+      "scope": "entry"
+    },
+    {
+      "id": "exit_low_volatility",
+      "name": "Low Volatility Exit",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 20
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "atr14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 500
+            }
+          }
+        ]
+      },
+      "priority": 9,
+      "scope": "exit"
+    },
+    {
+      "id": "exit_trend_reversal",
+      "name": "Trend Reversal Exit",
+      "conditions": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 40
+            }
+          },
+          {
+            "cel_expression": "ema20_1h.value < ema50_1h.value"
+          }
+        ]
+      },
+      "priority": 10,
+      "scope": "exit"
+    }
+  ],
+  "strategies": [
+    {
+      "id": "trend_follow_strong",
+      "name": "Strong Trend Following",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14_1h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 30
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 60,
+              "max": 80
+            }
+          },
+          {
+            "cel_expression": "ema20_1h.value > ema50_1h.value"
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio_1h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.2
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "adx14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 20
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 40
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.02,
+        "stop_loss": 0.02,
+        "take_profit": 0.06,
+        "trailing_mode": "atr",
+        "trailing_multiplier": 2.0
+      }
+    },
+    {
+      "id": "momentum_breakout",
+      "name": "Momentum Breakout",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 65
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_4h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 55
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio_1h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 1.5
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 50
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "volume_ratio_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 0.8
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.015,
+        "stop_loss": 0.025,
+        "take_profit": 0.08
+      }
+    },
+    {
+      "id": "conservative_trend",
+      "name": "Conservative Trend Entry",
+      "entry": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14_4h",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 25
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_4h",
+              "field": "value"
+            },
+            "op": "between",
+            "right": {
+              "min": 50,
+              "max": 70
+            }
+          },
+          {
+            "cel_expression": "ema20_1h.value > ema50_1h.value && rsi14_1h.value > 55"
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "adx14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 18
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14_1h",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 45
+            }
+          }
+        ]
+      },
+      "risk": {
+        "position_size": 0.01,
+        "stop_loss": 0.015,
+        "take_profit": 0.045,
+        "trailing_mode": "percent",
+        "trailing_multiplier": 1.5
+      }
+    }
+  ],
+  "strategy_sets": [
+    {
+      "id": "set_strong_trend",
+      "name": "Strong Trending Market Strategies",
+      "strategies": [
+        {
+          "strategy_id": "trend_follow_strong"
+        },
+        {
+          "strategy_id": "momentum_breakout",
+          "strategy_overrides": {
+            "risk": {
+              "position_size": 0.012
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "set_moderate_trend",
+      "name": "Moderate Trending Market Strategies",
+      "strategies": [
+        {
+          "strategy_id": "conservative_trend"
+        },
+        {
+          "strategy_id": "trend_follow_strong",
+          "strategy_overrides": {
+            "risk": {
+              "position_size": 0.015,
+              "stop_loss": 0.018,
+              "take_profit": 0.05
+            }
+          }
+        }
+      ],
+      "indicator_overrides": [
+        {
+          "indicator_id": "adx14_1h",
+          "params": {
+            "period": 16
+          }
+        }
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "strategy_set_id": "set_strong_trend",
+      "match": {
+        "all_of": [
+          "entry_strong_trend",
+          "entry_momentum_bullish"
+        ],
+        "none_of": [
+          "exit_low_volatility"
+        ]
+      }
+    },
+    {
+      "strategy_set_id": "set_moderate_trend",
+      "match": {
+        "any_of": [
+          "entry_strong_trend",
+          "entry_momentum_bullish"
+        ],
+        "none_of": [
+          "exit_trend_reversal"
+        ]
+      }
+    }
+  ]
+}

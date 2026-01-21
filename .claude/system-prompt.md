@@ -1,1 +1,1 @@
-Nutze Subagenten für spezialisierte Aufgaben. Delegiere Tests an den tester-Agenten.
+Nutze debugger für Root Cause Analyse, tracer für Stack Trace Analyse.

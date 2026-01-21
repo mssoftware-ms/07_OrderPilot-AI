@@ -26,6 +26,7 @@ from .app_components.app_settings_mixin import AppSettingsMixin
 from .app_components.app_timers_mixin import AppTimersMixin
 from .app_components.app_ui_mixin import AppUIMixin
 from .app_console_utils import _hide_console_window, _show_console_window
+from .app_icon import get_app_icon, set_window_icon  # Issue #29: App icon (candlestick chart)
 from .app_logging import ConsoleOnErrorHandler, LogStream
 from .app_resources import _get_startup_icon_path, _load_app_icon
 from .app_startup_window import StartupLogWindow
@@ -56,6 +57,9 @@ class TradingApplication(
 
     def __init__(self):
         super().__init__()
+
+        # Issue #29: Set application icon (candlestick chart, white)
+        set_window_icon(self)
 
         # Initialize components
         self.broker: BrokerAdapter | None = None
@@ -153,7 +157,8 @@ async def main():
     app.setApplicationName("OrderPilot-AI")
     app.setOrganizationName("OrderPilot")
     app.setStyle("Fusion")
-    app.setWindowIcon(_load_app_icon())
+    # Issue #29: Set application icon globally (candlestick chart, white)
+    app.setWindowIcon(get_app_icon())
 
     startup_icon_path = _get_startup_icon_path()
     startup_window = StartupLogWindow(startup_icon_path)

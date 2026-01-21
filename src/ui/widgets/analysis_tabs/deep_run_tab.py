@@ -24,40 +24,19 @@ class DeepRunTab(QWidget):
         
         # Controls
         self.status_label = QLabel("Bereit zum Start.")
-        self.status_label.setStyleSheet("color: #aaa;")
+        self.status_label.setProperty("class", "status-label")
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False) # Clean look
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #444;
-                border-radius: 3px;
-                background-color: #222;
-                height: 6px;
-            }
-            QProgressBar::chunk {
-                background-color: #2196F3;
-                border-radius: 3px;
-            }
-        """)
+        # Theme handles styling
         layout.addWidget(self.progress_bar)
 
         self.start_btn = QPushButton("🚀 Deep Analysis starten")
         self.start_btn.setMinimumHeight(40)
-        self.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #6200EA;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #7C4DFF; }
-            QPushButton:disabled { background-color: #444; color: #888; }
-        """)
+        self.start_btn.setProperty("class", "primary")
         self.start_btn.clicked.connect(self._start_analysis)
         layout.addWidget(self.start_btn)
 
@@ -66,14 +45,7 @@ class DeepRunTab(QWidget):
         self.output_view = QTextEdit()
         self.output_view.setReadOnly(True)
         self.output_view.setPlaceholderText("Ergebnis erscheint hier...")
-        self.output_view.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ddd;
-                border: 1px solid #333;
-                font-family: Consolas, monospace;
-            }
-        """)
+        # Theme handles styling
         layout.addWidget(self.output_view)
 
     def _start_analysis(self):

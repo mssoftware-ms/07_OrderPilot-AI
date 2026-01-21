@@ -1,0 +1,8 @@
+# CEL Editor UI Studie - Abhängigkeiten
+# =======================================
+
+# GUI Framework
+PySide6>=6.5.0
+
+# Optional: Code-Editor-Komponenten (falls QScintilla benötigt wird)
+# QScintilla>=2.14.0

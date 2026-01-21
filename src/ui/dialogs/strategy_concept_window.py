@@ -14,6 +14,7 @@ import logging
 
 from src.ui.widgets.pattern_recognition_widget import PatternRecognitionWidget
 from src.ui.widgets.pattern_integration_widget import PatternIntegrationWidget
+from src.ui.widgets.cel_strategy_editor_widget import CelStrategyEditorWidget
 
 if TYPE_CHECKING:
     from src.ui.widgets.chart_window import ChartWindow
@@ -27,6 +28,7 @@ class StrategyConceptWindow(QDialog):
     Features:
     - Tab 1: Pattern Recognition (detect patterns in current chart)
     - Tab 2: Pattern Integration (map patterns to trading strategies)
+    - Tab 3: CEL Strategy Editor (develop custom CEL-based strategies with JSON load/save)
     - Cross-tab communication (detected patterns → strategy suggestions)
     """
 
@@ -114,6 +116,10 @@ class StrategyConceptWindow(QDialog):
         # Tab 2: Pattern Integration
         self.pattern_integration = PatternIntegrationWidget(parent=self)
         self.tabs.addTab(self.pattern_integration, "🎯 Pattern Integration")
+
+        # Tab 3: CEL Strategy Editor
+        self.cel_strategy_editor = CelStrategyEditorWidget(parent=self)
+        self.tabs.addTab(self.cel_strategy_editor, "📝 CEL Strategy Editor")
 
         layout.addWidget(self.tabs)
 
@@ -259,6 +265,10 @@ class StrategyConceptWindow(QDialog):
     def show_pattern_integration_tab(self):
         """Switch to Pattern Integration tab (Tab 2)."""
         self.tabs.setCurrentIndex(1)
+
+    def show_cel_strategy_editor_tab(self):
+        """Switch to CEL Strategy Editor tab (Tab 3)."""
+        self.tabs.setCurrentIndex(2)
 
     def _on_apply_to_bot_clicked(self):
         """Handle Apply to Bot button click (Enhancement 4: Bot Integration)."""

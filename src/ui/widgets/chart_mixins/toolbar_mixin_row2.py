@@ -354,7 +354,12 @@ class ToolbarMixinRow2:
             if hasattr(self.parent, "show_cel_editor"):
                 self.parent.show_cel_editor()
             else:
-                logger.warning("show_cel_editor not available on chart widget")
+                # Debug: What is self.parent and why doesn't it have show_cel_editor?
+                logger.error(
+                    f"show_cel_editor not available! "
+                    f"parent type={type(self.parent).__name__}, "
+                    f"parent methods={[m for m in dir(self.parent) if 'cel' in m.lower()]}"
+                )
                 self.parent.cel_editor_button.setChecked(False)
         else:
             # Toggle off - hide window if it exists

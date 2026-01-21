@@ -34,6 +34,7 @@ from .chart_mixins import (
 )
 from .chart_mixins.entry_analyzer_mixin import EntryAnalyzerMixin
 from .chart_mixins.strategy_concept_mixin import StrategyConceptMixin
+from .chart_mixins.chart_stats_labels_mixin import ChartStatsLabelsMixin
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
 from .embedded_tradingview_chart_events_mixin import EmbeddedTradingViewChartEventsMixin
@@ -54,6 +55,7 @@ class EmbeddedTradingViewChart(
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
     LevelZonesMixin,  # Phase 5.5: Level zones support
+    ChartStatsLabelsMixin,  # Issue #26: Statistics labels (OHLC, DB, Price)
     BotOverlayMixin,
     ToolbarMixin,
     IndicatorMixin,

@@ -127,3 +127,79 @@ class WalkForwardResult:
     robustness_score: float = 0.0
     is_robust: bool = False
     evaluation_date: datetime = field(default_factory=datetime.utcnow)
+
+    # Enhanced walk-forward metrics
+    period_results: list[tuple[PerformanceMetrics, PerformanceMetrics]] = field(default_factory=list)
+    rolling_sharpe: list[float] = field(default_factory=list)
+    rolling_drawdown: list[float] = field(default_factory=list)
+    period_dates: list[tuple[datetime, datetime]] = field(default_factory=list)
+
+    def get_degradation_pct(self) -> float:
+        """Calculate performance degradation from IS to OOS.
+
+        Returns:
+            Degradation percentage (negative = improvement)
+        """
+        if self.in_sample_metrics.profit_factor <= 0:
+            return 100.0
+
+        pf_diff = self.in_sample_metrics.profit_factor - self.out_of_sample_metrics.profit_factor
+        return (pf_diff / self.in_sample_metrics.profit_factor) * 100.0
+
+
+@dataclass
+class RobustnessReport:
+    """Robustness validation report for strategy walk-forward analysis."""
+    strategy_name: str
+    walk_forward_result: WalkForwardResult
+
+    # Validation criteria
+    min_trades_met: bool = False
+    max_drawdown_met: bool = False
+    min_sharpe_met: bool = False
+    degradation_acceptable: bool = False
+
+    # Detailed metrics
+    total_trades: int = 0
+    max_drawdown_pct: float = 0.0
+    avg_sharpe_ratio: float = 0.0
+    degradation_pct: float = 0.0
+
+    # Pass/fail status
+    is_robust: bool = False
+    failures: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    # Generation timestamp
+    report_date: datetime = field(default_factory=datetime.utcnow)
+
+    def get_status_summary(self) -> str:
+        """Get human-readable status summary.
+
+        Returns:
+            Status text (PASS/FAIL with reason)
+        """
+        if self.is_robust:
+            return f"✅ ROBUST - Strategy passed {len([m for m in [self.min_trades_met, self.max_drawdown_met, self.min_sharpe_met, self.degradation_acceptable] if m])}/4 criteria"
+
+        failed_count = len(self.failures)
+        return f"❌ NOT ROBUST - {failed_count} critical failure(s)"
+
+    def get_recommendation(self) -> str:
+        """Get trading recommendation based on validation.
+
+        Returns:
+            Recommendation text
+        """
+        if self.is_robust:
+            if len(self.warnings) == 0:
+                return "Strong candidate for live trading"
+            return f"Acceptable for live trading (monitor {len(self.warnings)} warnings)"
+
+        if self.degradation_pct > 50:
+            return "High overfitting risk - DO NOT USE in live trading"
+
+        if not self.min_trades_met:
+            return "Insufficient trade sample - gather more data before live trading"
+
+        return "Failed robustness criteria - review and optimize before live trading"

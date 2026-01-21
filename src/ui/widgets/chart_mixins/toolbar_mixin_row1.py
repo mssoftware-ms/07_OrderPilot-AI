@@ -14,9 +14,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QSize, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QComboBox, QLabel, QMenu, QPushButton, QToolBar
+
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     pass
@@ -26,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 class ToolbarMixinRow1:
     """Row 1 toolbar builders (timeframe, period, indicators, primary actions)."""
+
+    # Issue #16: Einheitliche Button-Höhe und Icon-Größe (konsistent mit Row2)
+    BUTTON_HEIGHT = 32
+    ICON_SIZE = QSize(20, 20)
 
     def __init__(self, parent):
         self.parent = parent
@@ -42,8 +48,9 @@ class ToolbarMixinRow1:
         self.add_primary_actions(toolbar)
 
     def add_timeframe_selector(self, toolbar: QToolBar) -> None:
-        toolbar.addWidget(QLabel("Kerzen:"))
+        # Issue #22: Label entfernt, Tooltip stattdessen
         self.parent.timeframe_combo = QComboBox()
+        self.parent.timeframe_combo.setToolTip("Kerzen-Zeitrahmen wählen")
         # Issue #38: Added 1 second timeframe
         # Issue #42: Added 2-hour and 8-hour timeframes
         timeframes = [
@@ -72,8 +79,9 @@ class ToolbarMixinRow1:
         toolbar.addWidget(self.parent.timeframe_combo)
 
     def add_period_selector(self, toolbar: QToolBar) -> None:
-        toolbar.addWidget(QLabel("Zeitraum:"))
+        # Issue #22: Label entfernt, Tooltip stattdessen
         self.parent.period_combo = QComboBox()
+        self.parent.period_combo.setToolTip("Darstellungs-Zeitraum wählen")
         # Issue #42: Added shorter periods (1h, 2h, 4h, 8h) for 1-second charts
         periods = [
             ("1 Stunde", "1H", 1/24),      # Issue #42: ~4% of a day
@@ -103,9 +111,12 @@ class ToolbarMixinRow1:
         toolbar.addWidget(self.parent.period_combo)
 
     def add_indicators_menu(self, toolbar: QToolBar) -> None:
-        toolbar.addWidget(QLabel("Indikatoren:"))
-        self.parent.indicators_button = QPushButton("📊 Indikatoren")
-        self.parent.indicators_button.setToolTip("Mehrfach-Indikatoren hinzufügen/entfernen")
+        # Issue #22: Label entfernt
+        self.parent.indicators_button = QPushButton("Indikatoren")  # Issue #15: Emoji entfernt
+        self.parent.indicators_button.setIcon(get_icon("indicators"))  # Issue #22: Spezifisches Icon
+        self.parent.indicators_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
+        self.parent.indicators_button.setToolTip("Indikatoren hinzufügen/entfernen")  # Issue #22: Kürzerer Tooltip
+        self.parent.indicators_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
 
         self.parent.indicators_menu = QMenu(self.parent)
         # Direkt Kategorien auf oberster Ebene
@@ -114,25 +125,9 @@ class ToolbarMixinRow1:
         self.parent._remove_section_separator = None
 
         self.parent.indicators_button.setMenu(self.parent.indicators_menu)
-        self.parent.indicators_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #aaa;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 5px 10px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                color: #fff;
-            }
-            QPushButton::menu-indicator {
-                subcontrol-origin: padding;
-                subcontrol-position: right center;
-            }
-        """
-        )
+        # Style is now handled by global theme (src/ui/themes.py)
+        # Class property can be used for specific styling if needed
+        self.parent.indicators_button.setProperty("class", "toolbar-button")
         toolbar.addWidget(self.parent.indicators_button)
 
     def _build_indicator_tree(self, root_menu: QMenu) -> None:
@@ -145,7 +140,7 @@ class ToolbarMixinRow1:
         # =====================================================================
         # 1. TREND & STRUKTUR (Overlay Indicators)
         # =====================================================================
-        overlap_menu = root_menu.addMenu("📈 Trend & Struktur")
+        overlap_menu = root_menu.addMenu("Trend & Struktur")  # Issue #22: Emoji entfernt
 
         # Moving Averages Submenu
         ma_menu = overlap_menu.addMenu("Moving Averages")
@@ -232,7 +227,7 @@ class ToolbarMixinRow1:
         # =====================================================================
         # 2. MOMENTUM & OSZILLATOREN
         # =====================================================================
-        mom_menu = root_menu.addMenu("📊 Momentum & Oszillatoren")
+        mom_menu = root_menu.addMenu("Momentum & Oszillatoren")  # Issue #22: Emoji entfernt
 
         # RSI
         rsi_menu = mom_menu.addMenu("RSI (Relative Strength)")
@@ -308,7 +303,7 @@ class ToolbarMixinRow1:
         # =====================================================================
         # 3. VOLATILITÄT & TRENDSTÄRKE
         # =====================================================================
-        vol_menu = root_menu.addMenu("📉 Volatilität & Trendstärke")
+        vol_menu = root_menu.addMenu("Volatilität & Trendstärke")  # Issue #22: Emoji entfernt
 
         # ATR
         atr_menu = vol_menu.addMenu("ATR (Average True Range)")
@@ -351,7 +346,7 @@ class ToolbarMixinRow1:
         # =====================================================================
         # 4. VOLUMEN INDIKATOREN
         # =====================================================================
-        volume_menu = root_menu.addMenu("📊 Volumen")
+        volume_menu = root_menu.addMenu("Volumen")  # Issue #22: Emoji entfernt
 
         # OBV
         obv_menu = volume_menu.addMenu("OBV (On-Balance Volume)")
@@ -387,7 +382,7 @@ class ToolbarMixinRow1:
         # 5. RESET ACTIONS
         # =====================================================================
         root_menu.addSeparator()
-        reset_action = QAction("💣 Reset All Indicators", self.parent)
+        reset_action = QAction("Reset All Indicators", self.parent)  # Issue #22: Emoji entfernt
         reset_action.setToolTip("ENTFERNT alle Indikatoren und setzt den Chart zurück")
         reset_action.triggered.connect(self.on_reset_indicators)
         root_menu.addAction(reset_action)
@@ -468,26 +463,99 @@ class ToolbarMixinRow1:
             logger.info("Nuclear reset: All indicators cleared from chart")
 
     def add_primary_actions(self, toolbar: QToolBar) -> None:
-        self.parent.load_button = QPushButton("📊 Load Chart")
+        # Issue #16: Verwende Klassen-Konstanten für einheitliche Button-Höhe
+        # Issue #23: Separatoren zwischen Buttons für mehr Abstand
+        # Issue #24: Bitunix und Strategy Settings aus Row2 hierher verschoben
+
+        self.parent.load_button = QPushButton("Load Chart")  # Issue #15: Emoji entfernt
+        self.parent.load_button.setIcon(get_icon("chart_load"))  # Issue #15
+        self.parent.load_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.load_button.clicked.connect(self.parent._on_load_chart)
-        self.parent.load_button.setStyleSheet("font-weight: bold; padding: 5px 15px;")
+        self.parent.load_button.setProperty("class", "primary")
+        self.parent.load_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
         toolbar.addWidget(self.parent.load_button)
+        toolbar.addSeparator()  # Issue #23: Mehr Abstand
 
-        self.parent.refresh_button = QPushButton("🔄 Refresh")
+        self.parent.refresh_button = QPushButton("Refresh")  # Issue #15: Emoji entfernt
+        self.parent.refresh_button.setIcon(get_icon("refresh"))  # Issue #15
+        self.parent.refresh_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.refresh_button.clicked.connect(self.parent._on_refresh)
+        self.parent.refresh_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
         toolbar.addWidget(self.parent.refresh_button)
+        toolbar.addSeparator()  # Issue #23: Mehr Abstand
 
-        self.parent.zoom_all_button = QPushButton("🔍 Alles zoomen")
+        self.parent.zoom_all_button = QPushButton("Alles zoomen")  # Issue #15: Emoji entfernt
+        self.parent.zoom_all_button.setIcon(get_icon("zoom_all"))  # Issue #15
+        self.parent.zoom_all_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.zoom_all_button.setToolTip(
             "Gesamten Chart einpassen und Pane-Höhen sinnvoll setzen"
         )
         self.parent.zoom_all_button.clicked.connect(self.on_zoom_all)
+        self.parent.zoom_all_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
         toolbar.addWidget(self.parent.zoom_all_button)
+        toolbar.addSeparator()  # Issue #23: Mehr Abstand
 
-        self.parent.zoom_back_button = QPushButton("⤺ Zurück")
+        self.parent.zoom_back_button = QPushButton("Zurück")  # Issue #15: Emoji entfernt
+        self.parent.zoom_back_button.setIcon(get_icon("back"))  # Issue #15
+        self.parent.zoom_back_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.zoom_back_button.setToolTip("Zur vorherigen Ansicht zurückkehren")
         self.parent.zoom_back_button.clicked.connect(self.on_zoom_back)
+        self.parent.zoom_back_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
         toolbar.addWidget(self.parent.zoom_back_button)
+        toolbar.addSeparator()  # Issue #23: Separator nach Zurück
+
+        # Issue #24: Bitunix Button von Row2 hierher verschoben
+        self.parent.bitunix_trading_button = QPushButton("Bitunix")
+        self.parent.bitunix_trading_button.setIcon(get_icon("currency_exchange"))
+        self.parent.bitunix_trading_button.setIconSize(self.ICON_SIZE)
+        self.parent.bitunix_trading_button.setCheckable(True)
+        self.parent.bitunix_trading_button.setToolTip(
+            "Bitunix Futures Trading öffnen/schließen (nur Crypto)"
+        )
+        self.parent.bitunix_trading_button.setProperty("class", "toolbar-button")
+        self.parent.bitunix_trading_button.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.bitunix_trading_button.setVisible(True)
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.bitunix_trading_button.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
+            }
+        """)
+        toolbar.addWidget(self.parent.bitunix_trading_button)
+        logger.debug("Toolbar Row1: Bitunix button added (Issue #24)")
+
+        # Issue #24: Strategy Settings Button von Row2 hierher verschoben
+        self.parent.chart_strategy_settings_btn = QPushButton("Strategy Settings")
+        self.parent.chart_strategy_settings_btn.setIcon(get_icon("strategy_settings"))
+        self.parent.chart_strategy_settings_btn.setIconSize(self.ICON_SIZE)
+        self.parent.chart_strategy_settings_btn.setCheckable(True)  # Issue #28: Checkable für active state
+        self.parent.chart_strategy_settings_btn.setToolTip(
+            "Strategy Settings öffnen\n"
+            "- JSON Strategy Config auswählen\n"
+            "- CEL RulePacks laden\n"
+            "- Aktuelles Regime & Matched Strategy anzeigen"
+        )
+        self.parent.chart_strategy_settings_btn.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.chart_strategy_settings_btn.setProperty("class", "toolbar-button")
+        # Issue #28: Active state styling (orange background/text when checked)
+        self.parent.chart_strategy_settings_btn.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #FF6B35;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked:hover {
+                background-color: #FF8C61;
+            }
+        """)
+        self.parent.chart_strategy_settings_btn.clicked.connect(self._on_strategy_settings_clicked)
+        toolbar.addWidget(self.parent.chart_strategy_settings_btn)
+        logger.debug("Toolbar Row1: Strategy Settings button added (Issue #24)")
 
     def on_zoom_all(self):
         """Zoom chart to show all data with sane pane heights."""
@@ -531,3 +599,87 @@ class ToolbarMixinRow1:
     def on_refresh(self) -> None:
         """Handle refresh button - same as load chart."""
         self.on_load_chart()
+
+    def _on_strategy_settings_clicked(self) -> None:
+        """Handle Strategy Settings button click - opens Strategy Settings Dialog."""
+        try:
+            from src.ui.dialogs.strategy_settings_dialog import StrategySettingsDialog
+
+            # Find chart window - self.parent is EmbeddedTradingViewChart
+            # We need to go up to find ChartWindow
+            widget = self.parent
+            chart_window = None
+
+            # Try to find ChartWindow in parent hierarchy
+            for _ in range(5):  # Max 5 levels up
+                if widget is None:
+                    break
+                # Check if this widget has bot_controller (likely ChartWindow)
+                if hasattr(widget, 'bot_controller'):
+                    chart_window = widget
+                    break
+                # Check class name as fallback
+                if widget.__class__.__name__ == 'ChartWindow':
+                    chart_window = widget
+                    break
+                widget = widget.parent()
+
+            if chart_window is None:
+                logger.warning("Could not find ChartWindow - using parent widget as fallback")
+                chart_window = self.parent
+
+            # Open Strategy Settings Dialog
+            dialog = StrategySettingsDialog(chart_window)
+            result = dialog.exec()
+
+            # Issue #32: Reset button after dialog closes
+            if hasattr(self.parent, 'chart_strategy_settings_btn'):
+                self.parent.chart_strategy_settings_btn.setChecked(False)
+
+            if result:  # Dialog was accepted (OK/Apply clicked)
+                # Check if dialog has methods to get config
+                if hasattr(dialog, 'get_selected_config_path'):
+                    config_path = dialog.get_selected_config_path()
+                    if config_path:
+                        logger.info(f"Strategy config selected: {config_path}")
+
+                        # Try to load config in bot controller if available
+                        if hasattr(chart_window, 'bot_controller') and chart_window.bot_controller:
+                            try:
+                                if hasattr(chart_window.bot_controller, 'load_rulepack'):
+                                    chart_window.bot_controller.load_rulepack(config_path)
+                                    logger.info(f"RulePack loaded: {config_path}")
+                                elif hasattr(chart_window.bot_controller, 'set_json_config'):
+                                    chart_window.bot_controller.set_json_config(config_path)
+                                    logger.info(f"JSON config loaded: {config_path}")
+                            except Exception as e:
+                                logger.error(f"Failed to load config: {e}")
+                                from PyQt6.QtWidgets import QMessageBox
+                                QMessageBox.warning(
+                                    chart_window,
+                                    "Config Load Error",
+                                    f"Fehler beim Laden der Config:\n{e}"
+                                )
+                else:
+                    logger.info("Strategy Settings Dialog closed without selection")
+            else:
+                logger.debug("Strategy Settings Dialog cancelled")
+
+        except ImportError as e:
+            logger.warning(f"StrategySettingsDialog not available: {e}")
+            # Fallback: show simple message
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self.parent,
+                "Strategy Settings",
+                "Strategy Settings Dialog ist noch nicht implementiert.\n"
+                "Bitte verwenden Sie den '⚙️ Settings Bot' Button im Trading Tab."
+            )
+        except Exception as e:
+            logger.error(f"Error opening Strategy Settings Dialog: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.parent,
+                "Error",
+                f"Fehler beim Öffnen des Strategy Settings Dialogs:\n{e}"
+            )

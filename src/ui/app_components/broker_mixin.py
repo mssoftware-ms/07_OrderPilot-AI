@@ -301,11 +301,13 @@ class BrokerMixin:
                 self.status_bar.showMessage("Live market data disabled - using cached data", 3000)
                 logger.info("Live market data disabled")
 
-                for i in range(self.data_provider_combo.count()):
-                    source = self.data_provider_combo.itemData(i)
-                    if source == "database" or source is None:
-                        self.data_provider_combo.setCurrentIndex(i)
-                        break
+                # Issue #27: Market Data Provider soll NICHT geändert werden beim Ausschalten
+                # Die vorherige Einstellung soll beibehalten werden
+                # for i in range(self.data_provider_combo.count()):
+                #     source = self.data_provider_combo.itemData(i)
+                #     if source == "database" or source is None:
+                #         self.data_provider_combo.setCurrentIndex(i)
+                #         break
 
                 # Stop all live streams when disabled
                 asyncio.create_task(self._stop_live_data_streams())

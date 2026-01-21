@@ -19,6 +19,7 @@ from PyQt6.QtCore import QSettings
 
 from src.core.ai_analysis.engine import AIAnalysisEngine
 from src.config.loader import config_manager
+from src.ui.app_icon import set_window_icon  # Issue #29: App icon
 
 # Import helper modules (composition pattern)
 from src.ui.ai_analysis_ui import AIAnalysisUI
@@ -36,6 +37,10 @@ class AIAnalysisWindow(QDialog):
     """
     def __init__(self, parent=None, symbol: str = ""):
         super().__init__(parent)
+
+        # Issue #29: Set application icon (candlestick chart, white)
+        set_window_icon(self)
+
         self.symbol = symbol
         self.setWindowTitle(f"AI Analysis - {symbol}")
         self.resize(800, 800)

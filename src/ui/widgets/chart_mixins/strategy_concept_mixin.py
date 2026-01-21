@@ -104,8 +104,13 @@ class StrategyConceptMixin:
         logger.info(f"Pattern visualization complete for {pattern_name}")
 
     def _on_strategy_concept_closed(self) -> None:
-        """Handle Strategy Concept window close event."""
+        """Handle Strategy Concept window close event (Issue #32)."""
         logger.info("Strategy Concept window closed")
+
+        # Issue #32: Reset button state when window closes
+        if hasattr(self, 'strategy_concept_button'):
+            self.strategy_concept_button.setChecked(False)
+
         # Don't destroy window - keep it for reuse
 
     def _on_strategy_concept_symbol_changed(self, symbol: str) -> None:

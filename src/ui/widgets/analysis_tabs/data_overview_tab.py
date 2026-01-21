@@ -50,22 +50,12 @@ class DataOverviewTab(QWidget):
         # Header
         header_layout = QHBoxLayout()
         header = QLabel("📊 KI-Datenübersicht")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; color: #2196F3;")
+        header.setProperty("class", "header")
         header_layout.addWidget(header)
 
         # Refresh button
         self.btn_refresh = QPushButton("🔄 Aktualisieren")
-        self.btn_refresh.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
+        self.btn_refresh.setProperty("class", "primary")
         self.btn_refresh.clicked.connect(self._refresh_data)
         header_layout.addStretch()
         header_layout.addWidget(self.btn_refresh)
@@ -74,48 +64,22 @@ class DataOverviewTab(QWidget):
 
         # Status bar
         self.status_label = QLabel("Keine Daten geladen")
-        self.status_label.setStyleSheet("color: #888; padding: 5px;")
+        self.status_label.setProperty("class", "status-label")
         layout.addWidget(self.status_label)
 
         # Main content splitter
         splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.setStyleSheet("QSplitter::handle { background-color: #333; }")
+        # Theme handles styling
 
         # Tree view for structured data
         tree_group = QGroupBox("Strukturierte Daten")
-        tree_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #444;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
+        # Theme handles styling
         tree_layout = QVBoxLayout(tree_group)
 
         self.data_tree = QTreeWidget()
         self.data_tree.setHeaderLabels(["Kategorie", "Wert", "Details"])
         self.data_tree.setAlternatingRowColors(True)
-        self.data_tree.setStyleSheet("""
-            QTreeWidget {
-                background-color: #1e1e1e;
-                color: #ddd;
-                border: 1px solid #333;
-                border-radius: 3px;
-            }
-            QTreeWidget::item:alternate {
-                background-color: #252525;
-            }
-            QTreeWidget::item:selected {
-                background-color: #2196F3;
-            }
-        """)
+        # Theme handles styling
         self.data_tree.setColumnWidth(0, 200)
         self.data_tree.setColumnWidth(1, 150)
         tree_layout.addWidget(self.data_tree)
@@ -124,34 +88,13 @@ class DataOverviewTab(QWidget):
 
         # Raw JSON view
         json_group = QGroupBox("Rohdaten (JSON)")
-        json_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #444;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
+        # Theme handles styling
         json_layout = QVBoxLayout(json_group)
 
         self.json_view = QTextEdit()
         self.json_view.setReadOnly(True)
         self.json_view.setFont(QFont("Consolas", 10))
-        self.json_view.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ddd;
-                border: 1px solid #333;
-                border-radius: 3px;
-                padding: 10px;
-            }
-        """)
+        # Theme handles styling
         self.json_view.setPlaceholderText(
             "Hier werden die Rohdaten angezeigt, die an die KI gesendet werden...\n\n"
             "Klicken Sie auf 'Aktualisieren', um die aktuellen Daten zu laden."
@@ -170,7 +113,7 @@ class DataOverviewTab(QWidget):
             "💡 Diese Übersicht zeigt alle Daten, die zur Analyse an die KI gesendet werden. "
             "Nutzen Sie diese zur Überprüfung der Datenqualität."
         )
-        footer.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
+        footer.setProperty("class", "info-label")
         footer.setWordWrap(True)
         layout.addWidget(footer)
 

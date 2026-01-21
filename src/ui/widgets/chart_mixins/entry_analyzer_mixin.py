@@ -174,6 +174,10 @@ class EntryAnalyzerMixin:
             self._entry_analyzer_popup.clear_entries_requested.connect(
                 self._clear_entry_markers
             )
+            # Issue #32: Connect finished signal to reset button
+            self._entry_analyzer_popup.finished.connect(
+                self._on_entry_analyzer_closed
+            )
 
         # Set context for AI/Validation
         symbol = getattr(self, "_symbol", None) or getattr(self, "current_symbol", "UNKNOWN")
@@ -421,6 +425,18 @@ class EntryAnalyzerMixin:
         elif hasattr(self, "_clear_all_markers"):
             self._clear_all_markers()
             logger.info("Cleared all markers")
+
+    def _on_entry_analyzer_closed(self, result: int) -> None:
+        """Handle Entry Analyzer dialog close event (Issue #32).
+
+        Args:
+            result: Dialog result code (Accepted/Rejected).
+        """
+        logger.info("Entry Analyzer dialog closed")
+
+        # Issue #32: Reset button state when dialog closes
+        if hasattr(self, 'entry_analyzer_button'):
+            self.entry_analyzer_button.setChecked(False)
 
     def _on_entry_analyzer_symbol_changed(self, symbol: str) -> None:
         """Handle symbol change to update live analysis.

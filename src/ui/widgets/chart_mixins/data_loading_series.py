@@ -245,3 +245,10 @@ class DataLoadingSeries:
 
         logger.info(f"Loaded {len(candle_data)} bars into embedded chart")
         self.parent.data_loaded.emit()
+
+        # Issue #26: Update statistics labels after data load
+        if hasattr(self.parent, 'update_all_stats_labels'):
+            try:
+                self.parent.update_all_stats_labels(data)
+            except Exception as e:
+                logger.warning(f"Failed to update stats labels: {e}")

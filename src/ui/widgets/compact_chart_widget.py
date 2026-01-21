@@ -187,8 +187,9 @@ class CompactChartWidget(QWidget):
         # Initialize lightweight chart
         if LIGHTWEIGHT_CHARTS_AVAILABLE:
             try:
-                # Create chart with volume disabled for compact view
-                self._chart = QtChart(chart_container, volume_enabled=False, toolbox=False)
+                # Issue #18: QtChart only accepts widget parameter (no volume_enabled or toolbox)
+                # Create chart - volume and toolbox must be configured via chart options after creation
+                self._chart = QtChart(chart_container)
                 self._apply_chart_styling(self._chart, font_size=10, show_volume=False)
                 chart_inner_layout.addWidget(self._chart.get_webview())
             except Exception as e:

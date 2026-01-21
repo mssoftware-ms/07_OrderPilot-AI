@@ -6,11 +6,13 @@ from typing import Optional, Dict, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QGroupBox, QLabel, QTextEdit, QPushButton, QHeaderView, QMessageBox,
-    QComboBox
+    QComboBox, QSplitter, QStackedWidget
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor
 import logging
+from pathlib import Path
+import json
 
 from src.strategies.strategy_models import (
     PATTERN_STRATEGIES,
@@ -205,30 +207,6 @@ class PatternIntegrationWidget(QWidget):
         self.apply_btn.clicked.connect(self._on_apply_strategy)
         action_layout.addWidget(self.apply_btn)
 
-        self.export_btn = QPushButton("💾 Export to CEL")
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 15px;
-                background-color: #2196f3;
-                color: white;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #42a5f5;
-            }
-            QPushButton:pressed {
-                background-color: #1976d2;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #606060;
-            }
-        """)
-        self.export_btn.setEnabled(False)
-        self.export_btn.clicked.connect(self._on_export_cel)
-        action_layout.addWidget(self.export_btn)
-
         action_layout.addStretch()
         layout.addLayout(action_layout)
 
@@ -418,20 +396,45 @@ class PatternIntegrationWidget(QWidget):
             f"Integration with Trading Bot coming in Phase 6."
         )
 
-    def _on_export_cel(self):
-        """Export strategy to CEL-compatible format."""
-        if not self.selected_pattern_type:
-            return
+    def _build_strategy_description(self, mapping: PatternStrategyMapping) -> str:
+        """Build detailed strategy description for AI prompt.
 
-        mapping = PATTERN_STRATEGIES[self.selected_pattern_type]
+        Args:
+            mapping: Pattern strategy mapping
 
-        # TODO: Generate CEL rules from strategy
-        QMessageBox.information(
-            self,
-            "Export to CEL",
-            f"Exporting {mapping.pattern_name} to CEL format...\n\n"
-            f"CEL export functionality coming in Phase 4."
-        )
+        Returns:
+            Formatted strategy description
+        """
+        strategy = mapping.strategy
+
+        desc = f"""
+Pattern: {mapping.pattern_name}
+Category: {mapping.category.name}
+Success Rate: {strategy.success_rate:.1f}%
+Strategy Type: {strategy.strategy_type.value}
+Risk-Reward: {strategy.risk_reward_ratio}
+Average Profit: {strategy.avg_profit}
+
+ENTRY/EXIT RULES:
+- Stop Loss: {strategy.stop_loss_placement}
+- Target: {strategy.target_calculation}
+
+BEST PRACTICES:
+{chr(10).join(f'- {practice}' for practice in strategy.best_practices)}
+
+CONFIRMATION REQUIREMENTS:
+"""
+
+        if strategy.volume_confirmation:
+            desc += "- ✓ Volume confirmation required\n"
+
+        if strategy.rsi_condition:
+            desc += f"- ✓ RSI condition: {strategy.rsi_condition}\n"
+
+        if strategy.macd_confirmation:
+            desc += "- ✓ MACD confirmation required\n"
+
+        return desc.strip()
 
     def update_patterns(self, patterns: List):
         """Update widget with detected patterns (called from Tab 1)."""

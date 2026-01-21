@@ -57,48 +57,7 @@ class BacktestTabUI:
 
     def setup_ui(self) -> None:
         """Erstellt das UI Layout (delegates to helper builders)."""
-        # === COMPACT STYLESHEET für kleinere UI-Elemente ===
-        self.parent.setStyleSheet("""
-            QGroupBox {
-                font-size: 10px;
-                font-weight: bold;
-                padding-top: 12px;
-                margin-top: 4px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 4px;
-            }
-            QLabel {
-                font-size: 10px;
-            }
-            QPushButton {
-                font-size: 10px;
-                padding: 3px 8px;
-                min-height: 20px;
-            }
-            QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QLineEdit {
-                font-size: 10px;
-                min-height: 20px;
-                max-height: 22px;
-            }
-            QTableWidget {
-                font-size: 9px;
-            }
-            QTableWidget::item {
-                padding: 2px;
-            }
-            QHeaderView::section {
-                font-size: 9px;
-                padding: 2px 4px;
-                min-height: 18px;
-            }
-            QCheckBox {
-                font-size: 10px;
-            }
-        """)
-
+        # Global theme handles styling now
         layout = QVBoxLayout(self.parent)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
@@ -109,28 +68,7 @@ class BacktestTabUI:
 
         # --- Sub-Tabs ---
         self.parent.sub_tabs = QTabWidget()
-        self.parent.sub_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #333;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                background-color: #2a2a2a;
-                color: #888;
-                padding: 6px 12px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-size: 11px;
-            }
-            QTabBar::tab:selected {
-                background-color: #1a1a2e;
-                color: white;
-            }
-            QTabBar::tab:hover {
-                background-color: #333;
-            }
-        """)
+        # Theme handles styling
 
         # Tab 1: Setup (delegated to setup builder)
         self.parent.sub_tabs.addTab(self._setup_builder.create_setup_tab(), "📁 Setup")
@@ -153,14 +91,7 @@ class BacktestTabUI:
         self.parent.log_text = QTextEdit()
         self.parent.log_text.setReadOnly(True)
         self.parent.log_text.setMaximumHeight(120)
-        self.parent.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #1a1a1a;
-                color: #aaa;
-                font-family: monospace;
-                font-size: 10px;
-            }
-        """)
+        # Theme handles styling
         log_layout.addWidget(self.parent.log_text)
 
         layout.addWidget(log_group)

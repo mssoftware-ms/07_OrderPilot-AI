@@ -11,13 +11,15 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Dict, List, Callable
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QLineEdit, QScrollArea, QFrame, QComboBox,
     QProgressBar, QMessageBox, QApplication,
 )
 from PyQt6.QtGui import QFont, QTextCursor
+
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     from src.core.analysis.context import AnalysisContext
@@ -161,73 +163,70 @@ class AIChatTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        # Header
-        header = QLabel("🤖 AI Trading Chat")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; color: #9C27B0;")
+        # Header (Issue #20: Emoji entfernt)
+        header = QLabel("AI Trading Chat")
+        header.setProperty("class", "header")
         layout.addWidget(header)
 
-        # Context Status
-        self.context_status = QLabel("📊 Kein MarketContext geladen")
-        self.context_status.setStyleSheet("color: #888; padding: 5px;")
+        # Context Status (Issue #20: Emoji entfernt)
+        self.context_status = QLabel("Kein MarketContext geladen")
+        self.context_status.setProperty("class", "status-label")
         layout.addWidget(self.context_status)
 
         # Quick Actions (Phase 5.10)
         quick_actions_frame = QFrame()
-        quick_actions_frame.setStyleSheet("""
-            QFrame { background-color: #2a2a2a; border-radius: 5px; padding: 5px; }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 8px 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #4a4a4a; }
-            QPushButton:pressed { background-color: #9C27B0; }
-        """)
+        # Remove hardcoded frame style
         quick_layout = QHBoxLayout(quick_actions_frame)
         quick_layout.setContentsMargins(5, 5, 5, 5)
 
         quick_label = QLabel("Quick Actions:")
-        quick_label.setStyleSheet("color: #aaa; font-weight: bold;")
+        quick_label.setProperty("class", "label-bold")
         quick_layout.addWidget(quick_label)
 
-        for action_key, action_label in [
-            ("trend", "📈 Trend"),
-            ("levels", "📊 Levels"),
-            ("entry", "🎯 Entry"),
-            ("risiken", "⚠️ Risiken"),
-            ("szenarien", "🔮 Szenarien"),
+        # Issue #20: Material Design Icons statt Emojis + Icon-Größe
+        ICON_SIZE = QSize(16, 16)
+        # Issue #20: Kleinere Schriftgröße für Buttons
+        button_font = QFont()
+        button_font.setPointSize(9)
+
+        for action_key, action_label, icon_name in [
+            ("trend", "Trend", "chart"),
+            ("levels", "Levels", "entry_analyzer"),
+            ("entry", "Entry", "entry_analyzer"),
+            ("risiken", "Risiken", "warning"),
+            ("szenarien", "Szenarien", "lightbulb"),
         ]:
-            btn = QPushButton(action_label)
+            btn = QPushButton(action_label)  # Issue #20: Emoji entfernt
+            btn.setIcon(get_icon(icon_name))  # Issue #20: Material Design Icon
+            btn.setIconSize(ICON_SIZE)  # Issue #20
+            btn.setFont(button_font)  # Issue #20: Kleinere Schrift
+            btn.setProperty("class", "action-button")
+            btn.setFixedHeight(28)  # Issue #20: Einheitliche Höhe
             btn.clicked.connect(lambda checked, k=action_key: self._on_quick_action(k))
             quick_layout.addWidget(btn)
 
         quick_layout.addStretch()
 
-        # Refresh context button
-        self.btn_refresh_context = QPushButton("🔄 Context")
+        # Refresh context button (Issue #20)
+        self.btn_refresh_context = QPushButton("Context")  # Issue #20: Emoji entfernt
+        self.btn_refresh_context.setIcon(get_icon("refresh"))  # Issue #20
+        self.btn_refresh_context.setIconSize(ICON_SIZE)  # Issue #20
+        self.btn_refresh_context.setFont(button_font)  # Issue #20
+        self.btn_refresh_context.setFixedHeight(28)  # Issue #20
         self.btn_refresh_context.setToolTip("MarketContext aktualisieren")
         self.btn_refresh_context.clicked.connect(self._refresh_context)
         quick_layout.addWidget(self.btn_refresh_context)
 
         layout.addWidget(quick_actions_frame)
 
-        # Chat Display
+        # Chat Display (Issue #19: Größere Mindesthöhe für bessere Lesbarkeit)
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ddd;
-                border: 1px solid #333;
-                border-radius: 5px;
-                padding: 10px;
-                font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
-            }
-        """)
+        self.chat_display.setMinimumHeight(400)  # Issue #19: Mindesthöhe für Chat
+        # Issue #19: Ensure it expands
+        from PyQt6.QtWidgets import QSizePolicy
+        self.chat_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Style handled by theme
         self.chat_display.setPlaceholderText(
             "Willkommen! Klicke auf eine Quick Action oder stelle eine Frage.\n\n"
             "Der Chat verwendet den aktuellen MarketContext als Datengrundlage."
@@ -239,46 +238,26 @@ class AIChatTab(QWidget):
         self.progress_bar.setRange(0, 0)  # Indeterminate
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
-
+        
         # Input Area
         input_layout = QHBoxLayout()
 
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Stelle eine Frage zum aktuellen Markt...")
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                background-color: #2a2a2a;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 5px;
-                padding: 10px;
-                font-size: 14px;
-            }
-        """)
+        # Style handled by theme
         self.input_field.returnPressed.connect(self._on_send_message)
         input_layout.addWidget(self.input_field, stretch=1)
 
         self.btn_send = QPushButton("Senden")
-        self.btn_send.setStyleSheet("""
-            QPushButton {
-                background-color: #9C27B0;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 10px 20px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #7B1FA2; }
-            QPushButton:disabled { background-color: #555; }
-        """)
+        self.btn_send.setProperty("class", "primary")
         self.btn_send.clicked.connect(self._on_send_message)
         input_layout.addWidget(self.btn_send)
 
         layout.addLayout(input_layout)
 
-        # Footer with Draw-to-Chart info
-        footer = QLabel("💡 AI kann Level im Format [#Support Zone; 91038-91120] vorschlagen - klicke darauf zum Zeichnen")
-        footer.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
+        # Footer with Draw-to-Chart info (Issue #20: Emoji entfernt)
+        footer = QLabel("AI kann Level im Format [#Support Zone; 91038-91120] vorschlagen - klicke darauf zum Zeichnen")
+        footer.setProperty("class", "info-label")
         layout.addWidget(footer)
 
     def _connect_signals(self):
@@ -294,13 +273,18 @@ class AIChatTab(QWidget):
         self._market_context = context
         if context:
             self.context_status.setText(
-                f"📊 MarketContext: {context.symbol} | {context.timeframe} | "
+                f"MarketContext: {context.symbol} | {context.timeframe} | "  # Issue #20: Emoji entfernt
                 f"Regime: {context.regime.value if context.regime else 'N/A'}"
             )
-            self.context_status.setStyleSheet("color: #4CAF50; padding: 5px;")
+            # Issue #20: Entferne hardcoded inline styles, nutze Theme-Properties
+            self.context_status.setProperty("status", "active")
+            self.context_status.style().unpolish(self.context_status)
+            self.context_status.style().polish(self.context_status)
         else:
-            self.context_status.setText("📊 Kein MarketContext geladen")
-            self.context_status.setStyleSheet("color: #888; padding: 5px;")
+            self.context_status.setText("Kein MarketContext geladen")  # Issue #20: Emoji entfernt
+            self.context_status.setProperty("status", "inactive")
+            self.context_status.style().unpolish(self.context_status)
+            self.context_status.style().polish(self.context_status)
 
     def _refresh_context(self) -> None:
         """Refresh MarketContext from chart."""
@@ -448,13 +432,15 @@ class AIChatTab(QWidget):
         self._add_system_message(f"❌ Fehler: {error}")
 
     def _add_user_message(self, message: str, suffix: str = "") -> None:
-        """Add user message to chat display."""
+        """Add user message to chat display (Issue #19/#20: Verbesserte Lesbarkeit)."""
         timestamp = datetime.now().strftime("%H:%M")
+        # Issue #19/#20: Größere max-width, größere Schrift, Theme-Farben
         html = f"""
-        <div style="margin: 10px 0; text-align: right;">
-            <span style="color: #888; font-size: 11px;">{timestamp}{suffix}</span><br>
-            <span style="background-color: #9C27B0; color: white; padding: 8px 12px;
-                         border-radius: 10px; display: inline-block; max-width: 80%;">
+        <div style="margin: 15px 0; text-align: right;">
+            <span style="color: #888; font-size: 10px;">{timestamp}{suffix}</span><br>
+            <span style="background-color: #9C27B0; color: white; padding: 12px 16px;
+                         border-radius: 10px; display: inline-block; max-width: 95%;
+                         font-size: 13px; line-height: 1.6; word-wrap: break-word;">
                 {message}
             </span>
         </div>
@@ -463,7 +449,7 @@ class AIChatTab(QWidget):
         self._scroll_to_bottom()
 
     def _add_ai_message(self, message: str) -> None:
-        """Add AI message to chat display."""
+        """Add AI message to chat display (Issue #19/#20: Verbesserte Lesbarkeit)."""
         timestamp = datetime.now().strftime("%H:%M")
 
         # Convert level tags to clickable links
@@ -478,12 +464,13 @@ class AIChatTab(QWidget):
 
         message_with_links = re.sub(pattern, make_clickable, message)
 
+        # Issue #19/#20: Größere max-width, größere Schrift, besseres Dark Theme
         html = f"""
-        <div style="margin: 10px 0; text-align: left;">
-            <span style="color: #888; font-size: 11px;">🤖 AI • {timestamp}</span><br>
-            <span style="background-color: #2a2a2a; color: #ddd; padding: 8px 12px;
-                         border-radius: 10px; display: inline-block; max-width: 90%;
-                         white-space: pre-wrap;">
+        <div style="margin: 15px 0; text-align: left;">
+            <span style="color: #888; font-size: 10px;">AI • {timestamp}</span><br>
+            <span style="background-color: #2D2D2D; color: #E0E0E0; padding: 12px 16px;
+                         border-radius: 10px; display: inline-block; max-width: 95%;
+                         white-space: pre-wrap; font-size: 13px; line-height: 1.6; word-wrap: break-word;">
                 {message_with_links}
             </span>
         </div>
@@ -492,10 +479,11 @@ class AIChatTab(QWidget):
         self._scroll_to_bottom()
 
     def _add_system_message(self, message: str) -> None:
-        """Add system message to chat display."""
+        """Add system message to chat display (Issue #20: Bessere Theme-Integration)."""
+        # Issue #20: Größere Schrift für bessere Lesbarkeit
         html = f"""
-        <div style="margin: 5px 0; text-align: center;">
-            <span style="color: #666; font-size: 12px; font-style: italic;">
+        <div style="margin: 8px 0; text-align: center;">
+            <span style="color: #888; font-size: 11px; font-style: italic;">
                 {message}
             </span>
         </div>

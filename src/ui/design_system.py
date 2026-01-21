@@ -40,6 +40,11 @@ class ColorPalette:
     # Components
     selection_bg: str
     selection_text: str
+    
+    # Specific Button Styling
+    button_background: str
+    button_border: str
+    button_text: str
 
 
 @dataclass
@@ -62,6 +67,8 @@ class Spacing:
     xl: str = "24px"
     radius_sm: str = "4px"
     radius_md: str = "6px"
+    # Button height
+    button_height: str = "32px"
 
 # --- THEMES ---
 
@@ -83,12 +90,17 @@ DARK_ORANGE_PALETTE = ColorPalette(
     primary_pressed="#D98A00",
     
     success="#0ECB81",
-    warning="#F6465D", # Using Red for warning/loss in trading usually
+    warning="#F6465D",
     error="#F6465D",
     info="#5D6878",
     
     selection_bg="rgba(242, 159, 5, 0.2)",
-    selection_text="#F29F05"
+    selection_text="#F29F05",
+    
+    # Standard Dark Orange Buttons
+    button_background="#2A2D33",
+    button_border="#3A3D43",
+    button_text="#EAECEF"
 )
 
 DARK_WHITE_PALETTE = ColorPalette(
@@ -114,7 +126,12 @@ DARK_WHITE_PALETTE = ColorPalette(
     info="#94a3b8",
     
     selection_bg="rgba(255, 255, 255, 0.15)",
-    selection_text="#ffffff"
+    selection_text="#ffffff",
+    
+    # User Requested: Black button, White border, White text
+    button_background="#000000",
+    button_border="#FFFFFF",
+    button_text="#FFFFFF"
 )
 
 # Available themes map

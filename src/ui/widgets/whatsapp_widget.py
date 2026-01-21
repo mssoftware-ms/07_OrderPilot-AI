@@ -53,69 +53,26 @@ class WhatsAppWidget(QWidget):
 
         # --- Header ---
         header = QLabel("📱 WhatsApp Benachrichtigungen")
-        header.setStyleSheet("""
-            font-size: 16px;
-            font-weight: bold;
-            color: #25D366;
-            padding: 5px;
-        """)
+        header.setProperty("class", "header")
         layout.addWidget(header)
 
         # --- Status Frame ---
         status_frame = QFrame()
         status_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        status_frame.setStyleSheet("""
-            QFrame {
-                background-color: #1a1a2e;
-                border-radius: 8px;
-                padding: 10px;
-            }
-        """)
         status_layout = QVBoxLayout(status_frame)
 
         # Enable Checkbox
         self.enable_checkbox = QCheckBox("🔔 Trade-Benachrichtigungen aktivieren")
-        self.enable_checkbox.setStyleSheet("""
-            QCheckBox {
-                font-size: 13px;
-                color: #fff;
-                padding: 5px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #25D366;
-                border-radius: 3px;
-            }
-        """)
         status_layout.addWidget(self.enable_checkbox)
 
         # Status Label
         self.status_label = QLabel("Status: Nicht verbunden")
-        self.status_label.setStyleSheet("color: #888; font-size: 11px; padding-left: 25px;")
         status_layout.addWidget(self.status_label)
 
         layout.addWidget(status_frame)
 
         # --- Konfiguration GroupBox ---
         config_group = QGroupBox("⚙ Konfiguration")
-        config_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                color: #ccc;
-                border: 1px solid #333;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
         config_layout = QFormLayout(config_group)
         config_layout.setContentsMargins(10, 20, 10, 10)
         config_layout.setSpacing(10)
@@ -124,40 +81,12 @@ class WhatsAppWidget(QWidget):
         self.phone_input = QLineEdit()
         self.phone_input.setText("+491607512120")
         self.phone_input.setPlaceholderText("+49...")
-        self.phone_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2d2d44;
-                color: #fff;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus {
-                border-color: #25D366;
-            }
-        """)
         config_layout.addRow("📞 Telefonnummer:", self.phone_input)
 
         layout.addWidget(config_group)
 
         # --- Manuelle Nachricht GroupBox ---
         manual_group = QGroupBox("✉ Manuelle Nachricht")
-        manual_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                color: #ccc;
-                border: 1px solid #333;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
         manual_layout = QVBoxLayout(manual_group)
         manual_layout.setContentsMargins(10, 20, 10, 10)
         manual_layout.setSpacing(10)
@@ -166,93 +95,28 @@ class WhatsAppWidget(QWidget):
         self.message_input = QTextEdit()
         self.message_input.setPlaceholderText("Nachricht eingeben...")
         self.message_input.setMaximumHeight(100)
-        self.message_input.setStyleSheet("""
-            QTextEdit {
-                background-color: #2d2d44;
-                color: #fff;
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 12px;
-            }
-            QTextEdit:focus {
-                border-color: #25D366;
-            }
-        """)
         manual_layout.addWidget(self.message_input)
 
         # Send Button
         self.send_btn = QPushButton("📤 Nachricht senden")
-        self.send_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #25D366;
-                color: white;
-                font-weight: bold;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #128C7E;
-            }
-            QPushButton:disabled {
-                background-color: #333;
-                color: #666;
-            }
-        """)
+        # Use primary style from theme
+        self.send_btn.setProperty("class", "primary")
         manual_layout.addWidget(self.send_btn)
 
         layout.addWidget(manual_group)
 
         # --- Log GroupBox ---
         log_group = QGroupBox("📋 Nachrichten-Log")
-        log_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                color: #ccc;
-                border: 1px solid #333;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
         log_layout = QVBoxLayout(log_group)
         log_layout.setContentsMargins(10, 20, 10, 10)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(150)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #1a1a2e;
-                color: #aaa;
-                border: 1px solid #333;
-                border-radius: 4px;
-                font-family: Consolas, monospace;
-                font-size: 11px;
-            }
-        """)
         log_layout.addWidget(self.log_text)
 
         # Clear Log Button
         clear_btn = QPushButton("🗑 Log löschen")
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #444;
-                color: #aaa;
-                padding: 5px 10px;
-                border-radius: 3px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #555;
-            }
-        """)
         clear_btn.clicked.connect(self.log_text.clear)
         log_layout.addWidget(clear_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -264,7 +128,7 @@ class WhatsAppWidget(QWidget):
             "   Bei aktivierten Benachrichtigungen wird bei jedem Trade\n"
             "   automatisch eine Nachricht gesendet."
         )
-        info_label.setStyleSheet("color: #666; font-size: 10px; padding: 5px;")
+        info_label.setProperty("class", "info-label")
         layout.addWidget(info_label)
 
         layout.addStretch()
@@ -287,10 +151,10 @@ class WhatsAppWidget(QWidget):
             # UI aktualisieren
             if self._whatsapp_service.is_available:
                 self.status_label.setText("Status: ✅ pywhatkit verfügbar")
-                self.status_label.setStyleSheet("color: #25D366; font-size: 11px; padding-left: 25px;")
+                self.status_label.setStyleSheet("color: #25D366;") # Keep specific status colors
             else:
                 self.status_label.setText("Status: ❌ pywhatkit nicht installiert")
-                self.status_label.setStyleSheet("color: #f44336; font-size: 11px; padding-left: 25px;")
+                self.status_label.setStyleSheet("color: #f44336;")
                 self.send_btn.setEnabled(False)
                 self.enable_checkbox.setEnabled(False)
 

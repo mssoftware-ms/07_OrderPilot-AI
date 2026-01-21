@@ -50,5 +50,8 @@
     "min_step": 0.05,
     "min_score": 55
   },
-  "whatsapp_notifications_enabled": true
+  "whatsapp_notifications_enabled": true,
+  "telegram_notifications_enabled": true,
+  "telegram_bot_token": "8548406608:AAH7bf4Q008hAX8PIETIDPqXKj9d80-sGj4",
+  "telegram_chat_id": "7997058781"
 }

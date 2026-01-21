@@ -118,6 +118,18 @@ class StreamingMixin:
             self._update_indicators_realtime(candle)
             self._emit_tick_price_updated(price)
 
+            # Issue #26: Update price labels on tick
+            if hasattr(self, 'update_last_price_label'):
+                try:
+                    self.update_last_price_label(price)
+                except Exception as e:
+                    logger.warning(f"Failed to update last price label: {e}")
+            if hasattr(self, 'update_price_label'):
+                try:
+                    self.update_price_label(price)
+                except Exception as e:
+                    logger.warning(f"Failed to update price label: {e}")
+
         except Exception as e:
             logger.error(f"Error handling market tick: {e}", exc_info=True)
 

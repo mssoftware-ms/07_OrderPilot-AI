@@ -101,7 +101,7 @@ class KOResultPanel(QWidget):
         meta_layout.addWidget(self.time_label)
 
         self.source_label = QLabel("Quelle: Onvista")
-        self.source_label.setStyleSheet("color: gray; font-size: 10px;")
+        self.source_label.setProperty("class", "info-label")
         meta_layout.addWidget(self.source_label)
 
         layout.addWidget(meta_frame)
@@ -111,10 +111,7 @@ class KOResultPanel(QWidget):
             "Hinweis: Keine Anlageberatung. Daten können verzögert sein. "
             "Bitte vor Handelsentscheidungen verifizieren."
         )
-        disclaimer.setStyleSheet(
-            "color: #666; font-size: 9px; padding: 2px; "
-            "background-color: #f5f5f5; border-radius: 3px;"
-        )
+        disclaimer.setProperty("class", "disclaimer")
         disclaimer.setWordWrap(True)
         layout.addWidget(disclaimer)
 

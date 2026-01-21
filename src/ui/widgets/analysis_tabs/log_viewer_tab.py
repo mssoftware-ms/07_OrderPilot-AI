@@ -38,7 +38,7 @@ class LogViewerTab(QWidget):
         # Status bar with file info
         status_layout = QHBoxLayout()
         self.status_label = QLabel("Log-Datei: logs/Analyse.log")
-        self.status_label.setStyleSheet("color: #888; font-size: 11px;")
+        self.status_label.setProperty("class", "status-label")
         status_layout.addWidget(self.status_label)
         status_layout.addStretch()
         layout.addLayout(status_layout)
@@ -49,46 +49,19 @@ class LogViewerTab(QWidget):
         self.refresh_btn = QPushButton("🔄 Aktualisieren")
         self.refresh_btn.setToolTip("Log-Datei neu laden")
         self.refresh_btn.clicked.connect(self._refresh_log)
-        self.refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                font-weight: bold;
-                padding: 8px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #1976D2; }
-        """)
+        self.refresh_btn.setProperty("class", "primary")
         btn_layout.addWidget(self.refresh_btn)
 
         self.clear_btn = QPushButton("🗑️ Log löschen")
         self.clear_btn.setToolTip("Log-Datei leeren")
         self.clear_btn.clicked.connect(self._clear_log)
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #F44336;
-                color: white;
-                font-weight: bold;
-                padding: 8px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #D32F2F; }
-        """)
+        self.clear_btn.setProperty("class", "danger")
         btn_layout.addWidget(self.clear_btn)
 
         self.open_btn = QPushButton("📂 In Editor öffnen")
         self.open_btn.setToolTip("Log-Datei im Standardeditor öffnen")
         self.open_btn.clicked.connect(self._open_in_editor)
-        self.open_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-weight: bold;
-                padding: 8px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #388E3C; }
-        """)
+        self.open_btn.setProperty("class", "success")
         btn_layout.addWidget(self.open_btn)
 
         btn_layout.addStretch()
@@ -98,16 +71,8 @@ class LogViewerTab(QWidget):
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setPlaceholderText("Log-Einträge erscheinen hier...")
-        self.log_view.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #00ff00;
-                border: 1px solid #333;
-                font-family: Consolas, 'Courier New', monospace;
-                font-size: 11pt;
-                padding: 5px;
-            }
-        """)
+        self.log_view.setFont(QFont("Consolas", 10))
+        # Theme handles styling
         layout.addWidget(self.log_view)
 
     def _start_auto_refresh(self):

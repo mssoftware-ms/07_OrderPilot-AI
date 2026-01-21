@@ -74,6 +74,12 @@ class EvaluatorWalkForward:
 
         periods = self.get_walk_forward_periods(start_date, end_date, config)
 
+        # Track rolling metrics for visualization
+        period_results = []
+        rolling_sharpe = []
+        rolling_drawdown = []
+        period_dates = []
+
         for train_start, train_end, test_start, test_end in periods:
             train_trades, test_trades = self.slice_trades_for_period(
                 trades, train_start, train_end, test_start, test_end
@@ -88,6 +94,21 @@ class EvaluatorWalkForward:
 
             is_results.append(is_metrics)
             oos_results.append(oos_metrics)
+
+            # Collect for visualization
+            period_results.append((is_metrics, oos_metrics))
+            period_dates.append((test_start, test_end))
+
+            # Rolling Sharpe (use OOS)
+            if oos_metrics.sharpe_ratio is not None:
+                rolling_sharpe.append(oos_metrics.sharpe_ratio)
+            else:
+                rolling_sharpe.append(0.0)
+
+            # Rolling drawdown (use worse of IS/OOS)
+            rolling_drawdown.append(
+                max(abs(is_metrics.max_drawdown_pct), abs(oos_metrics.max_drawdown_pct))
+            )
 
             # Check if this period passed
             if self.period_passed(is_metrics, oos_metrics):
@@ -112,6 +133,10 @@ class EvaluatorWalkForward:
             periods_passed=periods_passed,
             robustness_score=robustness_score,
             is_robust=is_robust,
+            period_results=period_results,
+            rolling_sharpe=rolling_sharpe,
+            rolling_drawdown=rolling_drawdown,
+            period_dates=period_dates,
         )
 
     def empty_walk_forward_result(

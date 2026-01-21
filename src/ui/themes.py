@@ -147,12 +147,14 @@ class ThemeManager:
         
         /* --- BUTTONS --- */
         QPushButton {{
-            background-color: {p.background_surface};
-            color: {p.text_primary};
-            border: 1px solid {p.border_main};
-            padding: {s.md} {s.lg};
+            background-color: {p.button_background};
+            color: {p.button_text};
+            border: 1px solid {p.button_border};
+            padding: 0 {s.lg};
             border-radius: {s.radius_sm};
             font-weight: 500;
+            min-height: {s.button_height};
+            max-height: {s.button_height};
         }}
         QPushButton:hover {{
             background-color: {p.background_input};
@@ -175,14 +177,131 @@ class ThemeManager:
             background-color: {p.primary_hover};
         }}
         
-        /* --- TABLES --- */
-        QTableWidget, QTableView {{
+        /* Toolbar Button Style */
+        QPushButton[class="toolbar-button"] {{
+            margin-right: 4px;
+            font-weight: 600;
+        }}
+        
+        /* Icon Button Style */
+        QPushButton[class="icon-button"] {{
+            padding: 2px;
+            min-width: 26px;
+        }}
+        
+        /* Semantic Button Styles */
+        QPushButton[class="success"] {{
+            background-color: {p.success};
+            color: {p.text_inverse};
+            border: none;
+        }}
+        QPushButton[class="success"]:hover {{
+            background-color: {p.success}; /* TODO: lighten/darken */
+            border: 1px solid {p.text_primary};
+        }}
+        
+        QPushButton[class="danger"] {{
+            background-color: {p.error};
+            color: {p.text_inverse};
+            border: none;
+        }}
+        QPushButton[class="danger"]:hover {{
+            border: 1px solid {p.text_primary};
+        }}
+        
+        QPushButton[class="warning"] {{
+            background-color: {p.warning};
+            color: {p.background_main}; /* Warning is usually bright */
+            border: none;
+        }}
+        QPushButton[class="warning"]:hover {{
+            border: 1px solid {p.text_primary};
+        }}
+        
+        QPushButton[class="info"] {{
+            background-color: {p.info};
+            color: {p.text_inverse};
+            border: none;
+        }}
+        QPushButton[class="info"]:hover {{
+            border: 1px solid {p.text_primary};
+        }}
+
+        /* Small Button Style */
+        QPushButton[class="small-button"] {{
+            padding: 3px 8px;
+            min-height: 24px;
+            max-height: 24px;
+            font-size: {t.size_sm};
+        }}
+        
+        /* --- LABELS --- */
+        QLabel[class="header"] {{
+            font-size: {t.size_lg};
+            font-weight: bold;
+            color: {p.primary};
+            padding: 5px 0;
+        }}
+        
+        QLabel[class="label-bold"] {{
+            font-weight: bold;
+            color: {p.text_primary};
+        }}
+        
+        QLabel[class="status-label"] {{
+            color: {p.text_secondary};
+            padding: 2px;
+        }}
+        
+        QLabel[class="info-label"] {{
+            color: {p.text_secondary};
+            font-size: {t.size_xs};
+            padding: 4px;
+        }}
+        
+        QLabel[class="disclaimer"] {{
+            color: {p.text_secondary};
+            font-size: {t.size_xs};
+            padding: 4px;
+            background-color: {p.background_surface};
+            border-radius: {s.radius_sm};
+            border: 1px solid {p.border_main};
+        }}
+        
+        /* Status Badges */
+        QLabel[class="status-badge"] {{
+            padding: 6px;
+            border-radius: {s.radius_sm};
+            font-weight: bold;
+            qproperty-alignment: AlignCenter;
+        }}
+        QLabel[class="status-badge"][state="success"] {{
+            background-color: {p.success};
+            color: {p.text_inverse};
+        }}
+        QLabel[class="status-badge"][state="danger"] {{
+            background-color: {p.error};
+            color: {p.text_inverse};
+        }}
+        QLabel[class="status-badge"][state="warning"] {{
+            background-color: {p.warning};
+            color: {p.background_main};
+        }}
+        QLabel[class="status-badge"][state="neutral"] {{
+            background-color: {p.background_input};
+            color: {p.text_secondary};
+            border: 1px solid {p.border_main};
+        }}
+
+        /* --- PROGRESS BAR --- */
+        QTableWidget, QTableView, QTreeWidget, QTreeView {{
             background-color: {p.background_main};
             color: {p.text_primary};
             gridline-color: {p.border_main};
             selection-background-color: {p.selection_bg};
             selection-color: {p.selection_text};
             border: 1px solid {p.border_main};
+            alternate-background-color: {p.background_input};
         }}
         
         QHeaderView::section {{
@@ -195,8 +314,18 @@ class ThemeManager:
             font-weight: 600;
         }}
         
-        QTableWidget::item {{
+        QTableWidget::item, QTreeWidget::item {{
             padding: {s.xs};
+        }}
+        
+        /* --- SPLITTERS --- */
+        QSplitter::handle {{
+            background-color: {p.border_main};
+            width: 2px; /* Vertical splitter handle width */
+            height: 2px; /* Horizontal splitter handle height */
+        }}
+        QSplitter::handle:hover {{
+            background-color: {p.primary};
         }}
         
         /* --- SCROLLBARS --- */

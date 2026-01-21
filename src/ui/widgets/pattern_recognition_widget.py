@@ -153,7 +153,7 @@ class PatternRecognitionWidget(QWidget):
         event.accept()
 
     def _setup_ui(self):
-        """Setup UI with two-column layout (30% left, 70% right) - Dark/Orange theme."""
+        """Setup UI with two-column layout (30% left, 70% right)."""
         main_layout = QHBoxLayout(self)
 
         # Left column (30%) - Settings and Results
@@ -163,7 +163,7 @@ class PatternRecognitionWidget(QWidget):
 
         # Header
         header = QLabel("🔍 Pattern Recognition")
-        header.setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px; color: #ffa726;")
+        header.setProperty("class", "header")
         left_layout.addWidget(header)
 
         # Pattern analysis settings
@@ -173,23 +173,9 @@ class PatternRecognitionWidget(QWidget):
         settings_layout.addWidget(self.settings)
         left_layout.addWidget(settings_group)
 
-        # Analyze button + progress - Dark/Teal Theme
+        # Analyze button + progress
         self.analyze_btn = QPushButton("🔍 Analyze Patterns")
-        self.analyze_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #26a69a;
-                color: white;
-                padding: 10px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2bbbad;
-            }
-            QPushButton:pressed {
-                background-color: #00897b;
-            }
-        """)
+        self.analyze_btn.setProperty("class", "primary")
         self.analyze_btn.clicked.connect(self._on_analyze_clicked)
         left_layout.addWidget(self.analyze_btn)
 
@@ -199,26 +185,12 @@ class PatternRecognitionWidget(QWidget):
 
         # Status label
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet(
-            "font-size: 12px; color: #b0b0b0; padding: 5px;"
-        )
+        self.status_label.setProperty("class", "status-label")
         progress_layout.addWidget(self.status_label)
 
         # Progress bar
         self.progress = QProgressBar()
-        self.progress.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #404040;
-                border-radius: 3px;
-                text-align: center;
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-            }
-            QProgressBar::chunk {
-                background-color: #26a69a;
-                border-radius: 2px;
-            }
-        """)
+        # Theme handles styling
         self.progress.setVisible(False)
         progress_layout.addWidget(self.progress)
 
@@ -233,62 +205,22 @@ class PatternRecognitionWidget(QWidget):
         results_layout.addWidget(self.results)
         left_layout.addWidget(results_group)
 
-        # Action buttons - Dark/Teal Theme (Trading Bot style)
+        # Action buttons
         action_layout = QHBoxLayout()
 
         self.draw_btn = QPushButton("📍 Draw")
-        self.draw_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 15px;
-                background-color: #2196f3;
-                color: white;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #42a5f5;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #606060;
-            }
-        """)
+        self.draw_btn.setProperty("class", "info")
         self.draw_btn.clicked.connect(self._on_draw_patterns_clicked)
         self.draw_btn.setEnabled(False)
         action_layout.addWidget(self.draw_btn)
 
         self.clear_btn = QPushButton("🗑️ Clear")
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 15px;
-                background-color: #546e7a;
-                color: white;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #607d8b;
-            }
-        """)
+        self.clear_btn.setProperty("class", "danger")
         self.clear_btn.clicked.connect(self._on_clear_clicked)
         action_layout.addWidget(self.clear_btn)
 
         self.export_btn = QPushButton("💾 Export")
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 15px;
-                background-color: #4CAF50;
-                color: white;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #66bb6a;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #606060;
-            }
-        """)
+        self.export_btn.setProperty("class", "success")
         self.export_btn.clicked.connect(self._on_export_clicked)
         self.export_btn.setEnabled(False)
         action_layout.addWidget(self.export_btn)
@@ -299,52 +231,19 @@ class PatternRecognitionWidget(QWidget):
         db_group = QGroupBox("Database Management")
         db_layout = QVBoxLayout(db_group)
 
-        # Refresh button - Orange theme
+        # Refresh button
         self.refresh_db_btn = QPushButton("🔄 Refresh Database")
-        self.refresh_db_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ffa726;
-                color: white;
-                padding: 10px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #ffb74d;
-            }
-            QPushButton:pressed {
-                background-color: #f57c00;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #606060;
-            }
-        """)
+        self.refresh_db_btn.setProperty("class", "warning")
         self.refresh_db_btn.clicked.connect(self._on_refresh_database_clicked)
         db_layout.addWidget(self.refresh_db_btn)
 
         # Database update progress
         self.db_status_label = QLabel("Database Status: Ready")
-        self.db_status_label.setStyleSheet(
-            "font-size: 11px; color: #b0b0b0; padding: 5px;"
-        )
+        self.db_status_label.setProperty("class", "status-label")
         db_layout.addWidget(self.db_status_label)
 
         self.db_progress = QProgressBar()
-        self.db_progress.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #404040;
-                border-radius: 3px;
-                text-align: center;
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-                height: 20px;
-            }
-            QProgressBar::chunk {
-                background-color: #ffa726;
-                border-radius: 2px;
-            }
-        """)
+        # Theme handles styling
         self.db_progress.setVisible(False)
         db_layout.addWidget(self.db_progress)
 
@@ -358,7 +257,7 @@ class PatternRecognitionWidget(QWidget):
         right_layout = QVBoxLayout(right_column)
 
         matches_label = QLabel("Similar Patterns (Historical)")
-        matches_label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 5px; color: #ffa726;")
+        matches_label.setProperty("class", "header")
         right_layout.addWidget(matches_label)
 
         self.matches_table = PatternMatchesTable(parent=self)
