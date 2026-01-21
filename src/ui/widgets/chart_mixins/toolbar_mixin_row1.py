@@ -37,7 +37,17 @@ class ToolbarMixinRow1:
         self.parent = parent
 
     def build_toolbar_row1(self, toolbar: QToolBar) -> None:
-        """Build toolbar row 1."""
+        """Build toolbar row 1.
+        
+        Phase 2 (UI Refactoring): Added Broker Mirror Controls at start.
+        These are "mirror controls" that emit events to BrokerService
+        rather than managing connections directly.
+        """
+        # Phase 2: Broker Mirror Controls (emit events, don't manage directly)
+        self.add_broker_mirror_controls(toolbar)
+        toolbar.addSeparator()
+        
+        # Original Row 1 content
         # Symbol-Selector entfernt (Issue #20, #30) - Symbol wird über ChartWindow gesteuert
         self.add_timeframe_selector(toolbar)
         toolbar.addSeparator()
@@ -46,6 +56,113 @@ class ToolbarMixinRow1:
         self.add_indicators_menu(toolbar)
         toolbar.addSeparator()
         self.add_primary_actions(toolbar)
+    
+    def add_broker_mirror_controls(self, toolbar: QToolBar) -> None:
+        """Add broker mirror controls (Phase 2: Workspace Manager).
+        
+        These controls MIRROR the state from BrokerService and emit events
+        rather than directly calling connect/disconnect. This ensures
+        centralized broker management.
+        """
+        from PyQt6.QtCore import QSize
+        from PyQt6.QtWidgets import QLabel
+        from src.common.event_bus import Event, EventType, event_bus
+        from src.core.broker import get_broker_service
+        from src.ui.icons import get_icon
+        
+        # Connect/Disconnect Button (Mirror - emits events)
+        self.parent.chart_connect_button = QPushButton()
+        self.parent.chart_connect_button.setIcon(get_icon("connect"))
+        self.parent.chart_connect_button.setIconSize(self.ICON_SIZE)
+        self.parent.chart_connect_button.setCheckable(True)
+        self.parent.chart_connect_button.setToolTip(
+            "Broker-Verbindung (Mirror Control)\n"
+            "Synchronisiert mit Workspace Manager"
+        )
+        self.parent.chart_connect_button.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.chart_connect_button.setFixedWidth(40)
+        self.parent.chart_connect_button.clicked.connect(self._on_broker_connect_clicked)
+        toolbar.addWidget(self.parent.chart_connect_button)
+        
+        # Trading Mode Badge (Read-Only)
+        self.parent.chart_mode_badge = QLabel("PAPER")
+        self.parent.chart_mode_badge.setToolTip("Aktueller Trading-Modus (Read-Only)")
+        self.parent.chart_mode_badge.setStyleSheet("""
+            QLabel {
+                background-color: #FFA500;
+                color: white;
+                font-weight: bold;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 10px;
+            }
+        """)
+        toolbar.addWidget(self.parent.chart_mode_badge)
+        
+        # Subscribe to broker events for sync
+        event_bus.subscribe(EventType.MARKET_CONNECTED, self._on_broker_connected_event)
+        event_bus.subscribe(EventType.MARKET_DISCONNECTED, self._on_broker_disconnected_event)
+        
+        # Initial sync with BrokerService
+        broker_service = get_broker_service()
+        self._update_broker_ui_state(broker_service.is_connected, broker_service.broker_type)
+    
+    def _on_broker_connect_clicked(self) -> None:
+        """Handle connect button click - emit event to BrokerService."""
+        from datetime import datetime
+        from src.common.event_bus import Event, EventType, event_bus
+        from src.core.broker import get_broker_service
+        
+        broker_service = get_broker_service()
+        
+        if broker_service.is_connected:
+            # Request disconnect
+            event_bus.emit(Event(
+                type=EventType.UI_ACTION,
+                timestamp=datetime.now(),
+                data={"action": "broker_disconnect_requested"},
+                source="ChartWindow"
+            ))
+            logger.info("ChartWindow: Broker disconnect requested via event")
+        else:
+            # Request connect (use default broker from settings)
+            from PyQt6.QtCore import QSettings
+            settings = QSettings("OrderPilot", "TradingApp")
+            broker_type = settings.value("selected_broker", "Mock Broker")
+            
+            event_bus.emit(Event(
+                type=EventType.UI_ACTION,
+                timestamp=datetime.now(),
+                data={"action": "broker_connect_requested", "broker_type": broker_type},
+                source="ChartWindow"
+            ))
+            logger.info(f"ChartWindow: Broker connect requested via event ({broker_type})")
+    
+    def _on_broker_connected_event(self, event) -> None:
+        """Handle broker connected event - update UI."""
+        broker_type = event.data.get("broker", "Unknown")
+        self._update_broker_ui_state(True, broker_type)
+    
+    def _on_broker_disconnected_event(self, event) -> None:
+        """Handle broker disconnected event - update UI."""
+        self._update_broker_ui_state(False, "")
+    
+    def _update_broker_ui_state(self, connected: bool, broker_type: str) -> None:
+        """Update broker-related UI elements."""
+        from src.ui.icons import get_icon
+        
+        if not hasattr(self.parent, 'chart_connect_button'):
+            return
+        
+        if connected:
+            self.parent.chart_connect_button.setIcon(get_icon("disconnect"))
+            self.parent.chart_connect_button.setChecked(True)
+            self.parent.chart_connect_button.setToolTip(f"Verbunden: {broker_type}\nKlicken zum Trennen")
+        else:
+            self.parent.chart_connect_button.setIcon(get_icon("connect"))
+            self.parent.chart_connect_button.setChecked(False)
+            self.parent.chart_connect_button.setToolTip("Nicht verbunden\nKlicken zum Verbinden")
+
 
     def add_timeframe_selector(self, toolbar: QToolBar) -> None:
         # Issue #22: Label entfernt, Tooltip stattdessen

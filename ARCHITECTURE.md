@@ -91,6 +91,100 @@ TradingApplication
 └── BrokerMixin       - Broker-Verbindung
 ```
 
+## Workspace Manager Pattern (UI Refactoring 2026-01)
+
+Das UI wurde refaktorisiert zum **Workspace Manager Pattern**:
+
+### Architektur-Übersicht
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              TradingApplication (Workspace Manager)          │
+│  Compact Control Panel (400x600) - Minimiert in Taskbar     │
+│  ├── Broker-Auswahl + Connect/Disconnect                    │
+│  ├── WatchlistWidget (zentral)                              │
+│  └── Menübar für globale Aktionen                           │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ öffnet/verwaltet
+┌─────────────────────────▼───────────────────────────────────┐
+│              ChartWindow (Primary Interface)                 │
+│  Standalone QMainWindow - Multi-Monitor fähig               │
+│  ├── Toolbar mit Broker Mirror Controls                     │
+│  ├── Chart Widget (TradingView)                             │
+│  ├── Watchlist Dock (shared Model)                          │
+│  ├── Activity Log Dock (symbol-gefiltert)                   │
+│  └── Context Menu (Settings, Docks, Workspace)              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Singleton Services
+
+Zentralisierte, thread-sichere Services für geteilte Zustände:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     BrokerService                            │
+│  src/core/broker/broker_service.py                          │
+├─────────────────────────────────────────────────────────────┤
+│  - Singleton: get_broker_service()                          │
+│  - Thread-safe: asyncio.Lock für connect/disconnect         │
+│  - Events: MARKET_CONNECTED / MARKET_DISCONNECTED           │
+│  - Unterstützt: Mock, IBKR, TR, Alpaca, Bitunix            │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                     WatchlistModel                           │
+│  src/ui/models/watchlist_model.py                           │
+├─────────────────────────────────────────────────────────────┤
+│  - Singleton: WatchlistModel.instance()                     │
+│  - QAbstractTableModel für Qt Model-View Pattern            │
+│  - Automatische UI-Synchronisation via dataChanged          │
+│  - Signals: symbol_added, symbol_removed, symbols_changed   │
+│  - Persistenz: save_to_settings() / load_from_settings()    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Event-Bus mit Filter-Support
+
+```python
+# Subscription mit optionalem Filter (Phase 0 Enhancement)
+event_bus.subscribe(
+    EventType.ORDER_FILLED,
+    handler=self._on_order_filled,
+    filter=lambda e: e.data.get("symbol") == self.symbol
+)
+```
+
+### ChartWindow Enhanced Features
+
+```
+ChartWindow
+├── Broker Mirror Controls  - Connect/Disconnect Buttons in Toolbar
+├── Watchlist Dock          - Rechts angedockt, shared WatchlistModel
+├── Activity Log Dock       - Unten angedockt, symbol-gefiltert
+├── Context Menu            - Rechtsklick: Settings, Docks, Workspace
+├── Keyboard Shortcuts      - Ctrl+, (Settings), Ctrl+Shift+W (Workspace)
+└── Enhanced Session State  - Speichert/lädt:
+    ├── Window Geometry
+    ├── Dock Visibility (Watchlist, Activity Log)
+    ├── Active Timeframe + Period
+    └── Crosshair Sync Status
+```
+
+### Session Persistence Flow
+
+```
+┌─────────────────┐    save_enhanced_session_state()   ┌─────────────────┐
+│  ChartWindow    │ ─────────────────────────────────▶ │   QSettings     │
+│  closes         │                                     │   (Registry)    │
+└─────────────────┘                                     └─────────────────┘
+                                                               │
+┌─────────────────┐    _restore_enhanced_session_state() ◀─────┘
+│  ChartWindow    │ ◀──────────────────────────────────────────
+│  opens          │    restore_after_state_load()
+└─────────────────┘
+```
+
 ## Provider-Pattern
 
 Datenquellen sind als Provider abstrahiert:

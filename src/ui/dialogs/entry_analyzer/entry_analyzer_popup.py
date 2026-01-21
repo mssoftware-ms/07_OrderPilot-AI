@@ -41,6 +41,7 @@ from PyQt6.QtWidgets import (
 # Import mixins
 from .entry_analyzer_backtest import BacktestMixin
 from .entry_analyzer_indicators import IndicatorsMixin
+from .entry_analyzer_indicators_presets import IndicatorsPresetsMixin
 from .entry_analyzer_analysis import AnalysisMixin
 from .entry_analyzer_ai import AIMixin
 
@@ -56,7 +57,7 @@ logger = logging.getLogger(__name__)
 # ==================== Main Dialog Class ====================
 
 
-class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, AnalysisMixin, AIMixin):
+class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPresetsMixin, AnalysisMixin, AIMixin):
     """Entry Analyzer main dialog with mixin composition.
 
     Original: entry_analyzer_popup.py:197-3167 (2,970 LOC)
@@ -170,6 +171,25 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, AnalysisMixin,
         self._ind_opt_draw_btn: QPushButton = None
         self._ind_opt_show_entries_btn: QPushButton = None
 
+        # Parameter Configuration (IndicatorsSetupMixin - new tab)
+        self._param_layout: QFormLayout = None
+        self._opt_indicator_checkboxes: dict[str, QCheckBox] = {}
+        self._param_widgets: dict = {}
+        self._test_type_entry: QCheckBox = None
+        self._test_type_exit: QCheckBox = None
+        self._trade_side_long: QCheckBox = None
+        self._trade_side_short: QCheckBox = None
+        self._optimization_progress: QLabel = None
+        self._optimize_btn: QPushButton = None
+        self._optimization_results_table: QTableWidget = None
+        self._draw_indicators_btn: QPushButton = None
+        self._show_entries_btn: QPushButton = None
+        self._create_regime_set_btn: QPushButton = None
+
+        # Parameter Presets (IndicatorsPresetsMixin)
+        self._preset_combo: QComboBox = None
+        self._preset_details_text: QTextEdit = None
+
         # Pattern Recognition (AIMixin)
         self.pattern_window_spin: QSpinBox = None
         self.pattern_similarity_threshold_spin: QDoubleSpinBox = None
@@ -201,32 +221,42 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, AnalysisMixin,
         self._setup_backtest_config_tab(setup_tab)
         self._tabs.addTab(setup_tab, "⚙️ Backtest Setup")
 
-        # Tab 1: Backtest Results (BacktestMixin)
+        # Tab 1: Parameter Configuration (IndicatorsSetupMixin - NEW)
+        param_config_tab = QWidget()
+        self._setup_parameter_configuration_tab(param_config_tab)
+        self._tabs.addTab(param_config_tab, "⚙️ Parameter Configuration")
+
+        # Tab 2: Backtest Results (BacktestMixin)
         bt_results_tab = QWidget()
         self._setup_backtest_results_tab(bt_results_tab)
         self._tabs.addTab(bt_results_tab, "📈 Backtest Results")
 
-        # Tab 2: Indicator Optimization (IndicatorsMixin)
+        # Tab 3: Indicator Optimization (IndicatorsMixin)
         optimization_tab = QWidget()
         self._setup_indicator_optimization_tab(optimization_tab)
         self._tabs.addTab(optimization_tab, "🔧 Indicator Optimization")
 
-        # Tab 3: Pattern Recognition (AIMixin)
+        # Tab 4: Parameter Presets (IndicatorsPresetsMixin)
+        presets_tab = QWidget()
+        self._setup_parameter_presets_tab(presets_tab)
+        self._tabs.addTab(presets_tab, "📋 Parameter Presets")
+
+        # Tab 5: Pattern Recognition (AIMixin)
         pattern_tab = QWidget()
         self._setup_pattern_recognition_tab(pattern_tab)
         self._tabs.addTab(pattern_tab, "🔍 Pattern Recognition")
 
-        # Tab 4: Analysis (AnalysisMixin)
+        # Tab 6: Analysis (AnalysisMixin)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
         self._tabs.addTab(analysis_tab, "📊 Visible Range")
 
-        # Tab 5: AI Copilot (AIMixin)
+        # Tab 7: AI Copilot (AIMixin)
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
         self._tabs.addTab(ai_tab, "🤖 AI Copilot")
 
-        # Tab 6: Validation (AnalysisMixin)
+        # Tab 8: Validation (AnalysisMixin)
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, "✅ Validation")

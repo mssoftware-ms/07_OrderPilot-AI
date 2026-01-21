@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from PyQt6.QtCore import QDate, Qt
@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -74,7 +75,7 @@ class BacktestConfigMixin:
     _bt_initial_capital: QDoubleSpinBox
     _bt_regime_set_combo: QComboBox
     _bt_run_btn: QPushButton
-    _bt_progress: Any
+    _bt_progress: QProgressBar | None
     _bt_status_label: QLabel
     _backtest_worker: QThread | None
     _candles: list[dict]
@@ -163,7 +164,7 @@ class BacktestConfigMixin:
         self._bt_run_btn.clicked.connect(self._on_run_backtest_clicked)
         action_layout.addWidget(self._bt_run_btn)
 
-        self._bt_progress = Any()  # QProgressBar from parent
+        self._bt_progress = None  # QProgressBar from parent (will be set later)
         self._bt_status_label = QLabel("Ready")
         self._bt_status_label.setStyleSheet("color: #888;")
         action_layout.addWidget(self._bt_status_label)
@@ -323,7 +324,7 @@ class BacktestConfigMixin:
             self._display_backtest_results(results, f"Regime Set: {config_path.stem}")
 
             # Switch to Results tab
-            self._tabs.setCurrentIndex(1)  # Results tab
+            self._tabs.setCurrentIndex(2)  # Backtest Results tab (updated after Parameter Configuration tab insertion)
 
             self._bt_run_btn.setEnabled(True)
 

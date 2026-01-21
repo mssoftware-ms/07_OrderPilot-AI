@@ -167,6 +167,54 @@ class ChartWindowSetup:
         self.parent._dock_maximized = False
         self.parent._dock_minimized = False
         # Note: _dock_title_bar is None now since we use TradingBotWindow
+        
+        # Phase 6: Restore enhanced session state
+        self._restore_enhanced_session_state()
+    
+    def _restore_enhanced_session_state(self) -> None:
+        """Restore enhanced session state (Phase 6: UI Refactoring).
+        
+        Restores:
+        - Active timeframe
+        - Active period
+        - Crosshair sync status
+        (Dock visibility is restored in their respective setup methods)
+        """
+        try:
+            settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+            
+            # Restore timeframe
+            saved_timeframe = self.parent.settings.value(f"{settings_key}/timeframe", None)
+            if saved_timeframe and hasattr(self.parent, 'chart_widget'):
+                if hasattr(self.parent.chart_widget, 'current_timeframe'):
+                    self.parent.chart_widget.current_timeframe = saved_timeframe
+                if hasattr(self.parent.chart_widget, 'timeframe_combo'):
+                    index = self.parent.chart_widget.timeframe_combo.findData(saved_timeframe)
+                    if index >= 0:
+                        self.parent.chart_widget.timeframe_combo.setCurrentIndex(index)
+                        logger.debug(f"Restored timeframe: {saved_timeframe}")
+            
+            # Restore period
+            saved_period = self.parent.settings.value(f"{settings_key}/period", None)
+            if saved_period and hasattr(self.parent, 'chart_widget'):
+                if hasattr(self.parent.chart_widget, 'current_period'):
+                    self.parent.chart_widget.current_period = saved_period
+                if hasattr(self.parent.chart_widget, 'period_combo'):
+                    index = self.parent.chart_widget.period_combo.findData(saved_period)
+                    if index >= 0:
+                        self.parent.chart_widget.period_combo.setCurrentIndex(index)
+                        logger.debug(f"Restored period: {saved_period}")
+            
+            # Restore crosshair sync
+            saved_sync = self.parent.settings.value(f"{settings_key}/crosshair_sync", None)
+            if saved_sync is not None and hasattr(self.parent, 'chart_widget'):
+                if hasattr(self.parent.chart_widget, 'crosshair_sync_enabled'):
+                    self.parent.chart_widget.crosshair_sync_enabled = bool(saved_sync)
+                    logger.debug(f"Restored crosshair sync: {saved_sync}")
+                    
+        except Exception as e:
+            logger.error(f"Error restoring enhanced session state: {e}")
+
 
     def setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
@@ -358,3 +406,210 @@ class ChartWindowSetup:
                 logger.warning(f"Help file not found: {help_file}")
         except Exception as e:
             logger.error(f"Error opening help file: {e}")
+
+    # =========================================================================
+    # Phase 3: Watchlist as Left Dock (UI Refactoring)
+    # =========================================================================
+
+    def setup_watchlist_dock(self) -> None:
+        """Setup Watchlist as Left Dock (Phase 3: UI Refactoring).
+        
+        Creates a WatchlistWidget that uses the shared WatchlistModel singleton.
+        Double-click on a symbol opens a new ChartWindow for that symbol.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QDockWidget
+        
+        try:
+            from ..watchlist import WatchlistWidget
+            from ..models import get_watchlist_model
+        except ImportError:
+            # Fallback imports
+            from src.ui.widgets.watchlist import WatchlistWidget
+            from src.ui.models import get_watchlist_model
+        
+        # Create Watchlist dock widget
+        self.parent._watchlist_dock = QDockWidget("Watchlist", self.parent)
+        self.parent._watchlist_dock.setObjectName("chartWatchlistDock")
+        self.parent._watchlist_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | 
+            Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        
+        # Create WatchlistWidget with shared model
+        self.parent._watchlist_widget = WatchlistWidget()
+        
+        # Connect symbol selection to open new chart
+        self.parent._watchlist_widget.symbol_selected.connect(
+            self._on_watchlist_symbol_selected
+        )
+        
+        self.parent._watchlist_dock.setWidget(self.parent._watchlist_widget)
+        
+        # Add to left dock area, hidden by default
+        self.parent.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea, 
+            self.parent._watchlist_dock
+        )
+        self.parent._watchlist_dock.hide()  # Default: hidden
+        
+        # Restore visibility from settings
+        settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+        watchlist_visible = self.parent.settings.value(f"{settings_key}/watchlist_visible", False, type=bool)
+        if watchlist_visible:
+            self.parent._watchlist_dock.show()
+        
+        logger.info(f"Watchlist dock created for {self.parent.symbol}")
+    
+    def _on_watchlist_symbol_selected(self, symbol: str) -> None:
+        """Handle watchlist symbol double-click - opens NEW ChartWindow."""
+        try:
+            # Import ChartWindowManager to open new window
+            main_window = self.parent._get_main_window()
+            if main_window and hasattr(main_window, 'chart_window_manager'):
+                main_window.chart_window_manager.open_chart(symbol)
+                logger.info(f"Opened new ChartWindow for {symbol}")
+            else:
+                logger.warning("chart_window_manager not found")
+        except Exception as e:
+            logger.error(f"Failed to open chart for {symbol}: {e}")
+    
+    def toggle_watchlist_dock(self) -> None:
+        """Toggle watchlist dock visibility."""
+        if hasattr(self.parent, '_watchlist_dock'):
+            visible = not self.parent._watchlist_dock.isVisible()
+            self.parent._watchlist_dock.setVisible(visible)
+            
+            # Save state
+            settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+            self.parent.settings.setValue(f"{settings_key}/watchlist_visible", visible)
+
+    # =========================================================================
+    # Phase 4: Activity Log as Bottom Dock (UI Refactoring)
+    # =========================================================================
+
+    def setup_activity_log_dock(self) -> None:
+        """Setup Activity Log as Bottom Dock (Phase 4: UI Refactoring).
+        
+        Creates an Activity Log widget that only shows events relevant to
+        the current chart symbol. Uses Event Bus filtering for performance.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QDockWidget, QPlainTextEdit, QWidget, QVBoxLayout, QLabel
+        from datetime import datetime
+        
+        from src.common.event_bus import EventType, event_bus
+        
+        # Create Activity Log dock widget
+        self.parent._activity_log_dock = QDockWidget("Activity Log", self.parent)
+        self.parent._activity_log_dock.setObjectName("chartActivityLogDock")
+        self.parent._activity_log_dock.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea | 
+            Qt.DockWidgetArea.TopDockWidgetArea
+        )
+        
+        # Create log widget
+        log_widget = QWidget()
+        log_layout = QVBoxLayout(log_widget)
+        log_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Symbol label
+        self.parent._activity_log_symbol_label = QLabel(f"Events für {self.parent.symbol}")
+        self.parent._activity_log_symbol_label.setStyleSheet("font-weight: bold; color: #26a69a;")
+        log_layout.addWidget(self.parent._activity_log_symbol_label)
+        
+        # Log text area
+        self.parent._activity_log_text = QPlainTextEdit()
+        self.parent._activity_log_text.setReadOnly(True)
+        self.parent._activity_log_text.setMaximumBlockCount(1000)  # Limit lines
+        self.parent._activity_log_text.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #1e1e1e;
+                color: #cccccc;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+            }
+        """)
+        log_layout.addWidget(self.parent._activity_log_text)
+        
+        self.parent._activity_log_dock.setWidget(log_widget)
+        
+        # Add to bottom dock area, hidden by default
+        self.parent.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, 
+            self.parent._activity_log_dock
+        )
+        self.parent._activity_log_dock.hide()  # Default: hidden
+        
+        # Subscribe to relevant events WITH SYMBOL FILTER (Phase 0 enhancement)
+        symbol = self.parent.symbol
+        
+        # Filter function: only events for this symbol
+        def symbol_filter(event):
+            event_symbol = event.data.get("symbol", "")
+            return event_symbol == symbol or event_symbol == ""
+        
+        event_bus.subscribe(
+            EventType.ORDER_FILLED,
+            self._on_activity_event,
+            filter=symbol_filter
+        )
+        event_bus.subscribe(
+            EventType.TRADE_ENTRY,
+            self._on_activity_event,
+            filter=symbol_filter
+        )
+        event_bus.subscribe(
+            EventType.TRADE_EXIT,
+            self._on_activity_event,
+            filter=symbol_filter
+        )
+        event_bus.subscribe(
+            EventType.ALERT_TRIGGERED,
+            self._on_activity_event,
+            filter=symbol_filter
+        )
+        
+        # Restore visibility from settings
+        settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+        activity_log_visible = self.parent.settings.value(f"{settings_key}/activity_log_visible", False, type=bool)
+        if activity_log_visible:
+            self.parent._activity_log_dock.show()
+        
+        logger.info(f"Activity Log dock created for {self.parent.symbol}")
+    
+    def _on_activity_event(self, event) -> None:
+        """Log an event to the activity log."""
+        if not hasattr(self.parent, '_activity_log_text'):
+            return
+        
+        timestamp = event.timestamp.strftime("%H:%M:%S") if event.timestamp else ""
+        event_type = event.type.value if hasattr(event.type, 'value') else str(event.type)
+        
+        # Format message
+        data_str = ""
+        if event.data:
+            # Extract key fields
+            symbol = event.data.get("symbol", "")
+            price = event.data.get("price", "")
+            side = event.data.get("side", "")
+            if symbol:
+                data_str += f" {symbol}"
+            if side:
+                data_str += f" {side.upper()}"
+            if price:
+                data_str += f" @ {price}"
+        
+        log_line = f"[{timestamp}] {event_type}{data_str}"
+        self.parent._activity_log_text.appendPlainText(log_line)
+    
+    def toggle_activity_log_dock(self) -> None:
+        """Toggle activity log dock visibility."""
+        if hasattr(self.parent, '_activity_log_dock'):
+            visible = not self.parent._activity_log_dock.isVisible()
+            self.parent._activity_log_dock.setVisible(visible)
+            
+            # Save state
+            settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+            self.parent.settings.setValue(f"{settings_key}/activity_log_visible", visible)
+

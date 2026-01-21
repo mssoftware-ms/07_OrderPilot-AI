@@ -22,16 +22,23 @@ logger = logging.getLogger(__name__)
 
 
 class ToolbarMixin:
-    """Mixin providing toolbar functionality for TradingApplication."""
+    """Mixin providing toolbar functionality for TradingApplication.
+    
+    REFACTORED for Workspace Manager:
+    - Single toolbar row (removed Row 2)
+    - Live Data toggle moved to Row 1
+    - Quick Actions moved to Menu
+    """
 
     def create_toolbar(self):
-        """Create the application toolbar (two rows)."""
+        """Create the application toolbar (single row for Workspace Manager)."""
         self._build_toolbar_row1()
-        self._build_toolbar_row2()
+        # Row 2 removed - Pre-Trade and Quick Actions are now in Menu
+        # self._build_toolbar_row2()  # REMOVED
 
     def _build_toolbar_row1(self) -> None:
-        toolbar1 = QToolBar("Main Toolbar - Row 1")
-        toolbar1.setObjectName("mainToolbarRow1")
+        toolbar1 = QToolBar("Main Toolbar")
+        toolbar1.setObjectName("mainToolbar")
         toolbar1.setIconSize(QSize(24, 24))
         self.addToolBar(toolbar1)
 
@@ -44,19 +51,20 @@ class ToolbarMixin:
         self._add_data_provider_selector(toolbar1)
         toolbar1.addAction(self._build_refresh_action())
         toolbar1.addSeparator()
+        # Live Data toggle moved from Row 2
+        self._add_live_data_toggle(toolbar1)
+        toolbar1.addSeparator()
         self._add_status_indicators(toolbar1)
 
     def _build_toolbar_row2(self) -> None:
-        toolbar2 = QToolBar("Main Toolbar - Row 2")
-        toolbar2.setObjectName("mainToolbarRow2")
-        toolbar2.setIconSize(QSize(24, 24))
-        self.addToolBar(toolbar2)
+        """REMOVED - Row 2 items moved to Menu.
+        
+        Kept as stub for backward compatibility.
+        Pre-Trade button -> Trading Menu
+        Quick Actions -> Tools Menu
+        """
+        pass
 
-        self._add_live_data_toggle(toolbar2)
-        toolbar2.addSeparator()
-        self._add_pre_trade_button(toolbar2)
-        toolbar2.addSeparator()
-        self._add_quick_actions(toolbar2)
 
     def _add_connection_actions(self, toolbar: QToolBar) -> None:
         connect_action = QAction(get_icon("connect"), "Connect", self)

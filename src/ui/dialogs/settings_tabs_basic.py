@@ -10,6 +10,7 @@ Contains:
 - _create_broker_tab(): IBKR, Trade Republic, Bitunix broker settings
 """
 
+import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
@@ -77,7 +78,7 @@ class SettingsTabsBasic:
         """Create theme and UI customization settings tab."""
         tab = QWidget()
         main_layout = QVBoxLayout(tab)
-        
+
         # Scroll Area might be needed if many settings, but for now we use columns or groupboxes
         from PyQt6.QtWidgets import QScrollArea, QFrame
         scroll = QScrollArea()
@@ -88,12 +89,58 @@ class SettingsTabsBasic:
         scroll.setWidget(content_widget)
         main_layout.addWidget(scroll)
 
-        # 1. Base Theme Selection
+        # 1. Base Theme Selection with Management
         theme_group = QGroupBox("Base Theme")
         theme_layout = QFormLayout(theme_group)
+
+        # Theme ComboBox with Add/Delete buttons
+        theme_control_layout = QHBoxLayout()
         self.parent.theme_combo = QComboBox()
-        self.parent.theme_combo.addItems(["Dark Orange", "Dark White"])
-        theme_layout.addRow("Global Theme:", self.parent.theme_combo)
+        self._populate_theme_combo()
+        theme_control_layout.addWidget(self.parent.theme_combo, stretch=1)
+
+        # Add Theme Button (Icon only)
+        from PyQt6.QtGui import QIcon, QPixmap, QPainter
+        from PyQt6.QtCore import Qt as QtCore_Qt
+        from pathlib import Path
+        icon_path = Path(__file__).parent.parent / "assets" / "icons"
+
+        # Helper to create white icon
+        def create_white_icon(icon_file: Path) -> QIcon:
+            """Create a white version of the icon."""
+            pixmap = QPixmap(str(icon_file))
+            # Create white mask
+            mask = pixmap.createMaskFromColor(QColor(0, 0, 0), QtCore_Qt.MaskMode.MaskOutColor)
+            # Create white pixmap
+            white_pixmap = QPixmap(pixmap.size())
+            white_pixmap.fill(QColor(255, 255, 255))
+            white_pixmap.setMask(mask)
+            return QIcon(white_pixmap)
+
+        self.parent.add_theme_btn = QPushButton()
+        self.parent.add_theme_btn.setIcon(create_white_icon(icon_path / "add.png"))
+        self.parent.add_theme_btn.setFixedSize(32, 32)
+        self.parent.add_theme_btn.setToolTip("Neues Theme erstellen")
+        self.parent.add_theme_btn.setStyleSheet(
+            "QPushButton { background-color: transparent; border: none; }"
+            "QPushButton:hover { background-color: rgba(242, 159, 5, 0.2); border-radius: 4px; }"
+        )
+        self.parent.add_theme_btn.clicked.connect(self._add_new_theme)
+        theme_control_layout.addWidget(self.parent.add_theme_btn)
+
+        # Delete Theme Button (Icon only)
+        self.parent.delete_theme_btn = QPushButton()
+        self.parent.delete_theme_btn.setIcon(create_white_icon(icon_path / "delete.png"))
+        self.parent.delete_theme_btn.setFixedSize(32, 32)
+        self.parent.delete_theme_btn.setToolTip("Aktuelles Theme löschen")
+        self.parent.delete_theme_btn.setStyleSheet(
+            "QPushButton { background-color: transparent; border: none; }"
+            "QPushButton:hover { background-color: rgba(246, 70, 93, 0.2); border-radius: 4px; }"
+        )
+        self.parent.delete_theme_btn.clicked.connect(self._delete_current_theme)
+        theme_control_layout.addWidget(self.parent.delete_theme_btn)
+
+        theme_layout.addRow("Global Theme:", theme_control_layout)
         layout.addWidget(theme_group)
 
         # 2. UI Colors
@@ -315,6 +362,141 @@ class SettingsTabsBasic:
         layout.addStretch()
 
         return tab
+
+    def _populate_theme_combo(self) -> None:
+        """Populate theme combo box with available themes."""
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("OrderPilot", "TradingApp")
+
+        # Get all saved themes from QSettings
+        all_keys = settings.allKeys()
+        theme_names = set()
+
+        # Extract theme names from keys like "dark_orange_ui_bg_color"
+        for key in all_keys:
+            parts = key.split("_")
+            # Check if key contains theme-specific data
+            if len(parts) >= 3 and any(marker in key for marker in ["ui_bg_color", "chart_bullish_color"]):
+                # Reconstruct theme name (e.g., "dark_orange" -> "Dark Orange")
+                theme_key = "_".join(parts[:-3])  # Remove last 3 parts (e.g., "ui_bg_color")
+                theme_display_name = " ".join(word.capitalize() for word in theme_key.split("_"))
+                theme_names.add(theme_display_name)
+
+        # Add default themes if not present
+        default_themes = ["Dark Orange", "Dark White"]
+        for theme in default_themes:
+            theme_names.add(theme)
+
+        # Sort and populate combo
+        sorted_themes = sorted(theme_names)
+        self.parent.theme_combo.clear()
+        self.parent.theme_combo.addItems(sorted_themes)
+
+    def _add_new_theme(self) -> None:
+        """Add a new theme based on current theme settings."""
+        from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+        # Ask for new theme name
+        theme_name, ok = QInputDialog.getText(
+            self.parent,
+            "Neues Theme erstellen",
+            "Theme Name:"
+        )
+
+        if not ok or not theme_name.strip():
+            return
+
+        theme_name = theme_name.strip()
+
+        # Check if theme already exists
+        existing_index = self.parent.theme_combo.findText(theme_name)
+        if existing_index >= 0:
+            QMessageBox.warning(
+                self.parent,
+                "Theme existiert bereits",
+                f"Ein Theme mit dem Namen '{theme_name}' existiert bereits."
+            )
+            return
+
+        # Get current theme settings
+        current_theme = self.parent.theme_combo.currentText()
+
+        # Copy settings from current theme to new theme
+        self.parent._cache_current_ui_to_theme(current_theme)
+
+        if hasattr(self.parent, '_theme_cache') and current_theme in self.parent._theme_cache:
+            # Copy cache to new theme
+            self.parent._theme_cache[theme_name] = self.parent._theme_cache[current_theme].copy()
+
+        # Add to combo and select
+        self.parent.theme_combo.addItem(theme_name)
+        self.parent.theme_combo.setCurrentText(theme_name)
+
+        QMessageBox.information(
+            self.parent,
+            "Theme erstellt",
+            f"Theme '{theme_name}' wurde erfolgreich erstellt.\n\n"
+            f"Alle Einstellungen wurden von '{current_theme}' kopiert."
+        )
+
+    def _delete_current_theme(self) -> None:
+        """Delete the currently selected theme."""
+        from PyQt6.QtWidgets import QMessageBox
+        from PyQt6.QtCore import QSettings
+
+        current_theme = self.parent.theme_combo.currentText()
+
+        # Prevent deletion of default themes
+        if current_theme in ["Dark Orange", "Dark White"]:
+            QMessageBox.warning(
+                self.parent,
+                "Standard-Theme",
+                "Standard-Themes können nicht gelöscht werden."
+            )
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self.parent,
+            "Theme löschen",
+            f"Möchten Sie das Theme '{current_theme}' wirklich löschen?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Remove from combo
+        current_index = self.parent.theme_combo.currentIndex()
+        self.parent.theme_combo.removeItem(current_index)
+
+        # Remove from cache
+        if hasattr(self.parent, '_theme_cache') and current_theme in self.parent._theme_cache:
+            del self.parent._theme_cache[current_theme]
+
+        # Remove from QSettings
+        settings = QSettings("OrderPilot", "TradingApp")
+        t_key = current_theme.lower().replace(" ", "_")
+
+        # Remove all keys for this theme
+        keys_to_remove = []
+        for key in settings.allKeys():
+            if key.startswith(f"{t_key}_"):
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            settings.remove(key)
+
+        # Switch to default theme
+        self.parent.theme_combo.setCurrentText("Dark Orange")
+
+        QMessageBox.information(
+            self.parent,
+            "Theme gelöscht",
+            f"Theme '{current_theme}' wurde erfolgreich gelöscht."
+        )
+
+    def _choose_icon_dir(self) -> None:
 
     def _choose_icon_dir(self) -> None:
         """Open directory dialog to choose icon collection path."""

@@ -30,8 +30,13 @@ def get_background_image_style() -> str:
         CSS style string for background image, or empty string if no image set.
     """
     settings = QSettings("OrderPilot", "TradingApp")
-    bg_image_path = settings.value("chart_background_image", "")
-    bg_opacity = settings.value("chart_background_image_opacity", 30, type=int)
+
+    # Get current theme to load theme-specific settings
+    theme_name = settings.value("theme", "Dark Orange")
+    t_key = theme_name.lower().replace(" ", "_")
+
+    bg_image_path = settings.value(f"{t_key}_chart_background_image", "")
+    bg_opacity = settings.value(f"{t_key}_chart_background_image_opacity", 30, type=int)
 
     if not bg_image_path:
         return ""
@@ -78,6 +83,10 @@ def get_chart_colors_config() -> dict:
     """
     settings = QSettings("OrderPilot", "TradingApp")
 
+    # Get current theme to load theme-specific colors
+    theme_name = settings.value("theme", "Dark Orange")
+    t_key = theme_name.lower().replace(" ", "_")
+
     # Default colors (fallback to standard theme)
     colors = {
         "background": "#0a0a0a",
@@ -87,22 +96,22 @@ def get_chart_colors_config() -> dict:
         "wickDownColor": "#ef5350",
     }
 
-    # Load custom colors
-    bullish = settings.value("chart_bullish_color", None)
+    # Load custom colors with theme prefix
+    bullish = settings.value(f"{t_key}_chart_bullish_color", None)
     if bullish:
         colors["upColor"] = bullish
         colors["wickUpColor"] = bullish
 
-    bearish = settings.value("chart_bearish_color", None)
+    bearish = settings.value(f"{t_key}_chart_bearish_color", None)
     if bearish:
         colors["downColor"] = bearish
         colors["wickDownColor"] = bearish
 
-    background = settings.value("chart_background_color", None)
+    background = settings.value(f"{t_key}_chart_background_color", None)
     if background:
         colors["background"] = background
 
-    logger.debug(f"Chart colors config: {colors}")
+    logger.debug(f"Chart colors config for theme '{theme_name}': {colors}")
     return colors
 
 

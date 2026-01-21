@@ -103,9 +103,18 @@ class ChartWindow(
         # self._setup.setup_live_data_toggle()  # Issue #14: LiveData Button entfernt
         splash.set_progress(50, "Baue Dock-System...")
         self._setup.setup_dock()
+        
+        # Phase 3 + 4: New docks for Workspace Manager pattern
+        self._setup.setup_watchlist_dock()
+        self._setup.setup_activity_log_dock()
+        
         self._load_window_state()
         self._setup.restore_after_state_load()
         self._setup.setup_shortcuts()
+        
+        # Phase 5: Context Menu
+        self._setup_context_menu()
+        
         self._update_toggle_button_text()
         self._setup.connect_dock_signals()
         self._setup_event_subscriptions()
@@ -122,6 +131,102 @@ class ChartWindow(
         
         # Finish splash and close with delay to ensure visibility
         splash.finish_and_close(1200)
+    
+    def _setup_context_menu(self) -> None:
+        """Setup context menu for ChartWindow (Phase 5: UI Refactoring).
+        
+        Provides quick access to Settings, docks, and Workspace Manager
+        without needing the main menu bar.
+        """
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction, QKeySequence, QShortcut
+        
+        # Enable context menu on the chart widget
+        if hasattr(self, 'chart_widget') and self.chart_widget:
+            self.chart_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.chart_widget.customContextMenuRequested.connect(self._show_context_menu)
+        
+        # Keyboard shortcuts for quick access
+        # Ctrl+, for Settings (common pattern)
+        self._settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
+        self._settings_shortcut.activated.connect(self._open_settings)
+        
+        # Ctrl+Shift+W for Workspace Manager
+        self._workspace_shortcut = QShortcut(QKeySequence("Ctrl+Shift+W"), self)
+        self._workspace_shortcut.activated.connect(self._show_workspace_manager)
+    
+    def _show_context_menu(self, pos) -> None:
+        """Show context menu at position."""
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction
+        
+        menu = QMenu(self)
+        
+        # Settings action
+        settings_action = QAction("⚙️ Einstellungen (Ctrl+,)", self)
+        settings_action.triggered.connect(self._open_settings)
+        menu.addAction(settings_action)
+        
+        menu.addSeparator()
+        
+        # Toggle Watchlist
+        watchlist_action = QAction("📋 Watchlist anzeigen", self)
+        watchlist_action.setCheckable(True)
+        if hasattr(self, '_watchlist_dock'):
+            watchlist_action.setChecked(self._watchlist_dock.isVisible())
+        watchlist_action.triggered.connect(lambda: self._setup.toggle_watchlist_dock())
+        menu.addAction(watchlist_action)
+        
+        # Toggle Activity Log
+        activity_log_action = QAction("📜 Activity Log anzeigen", self)
+        activity_log_action.setCheckable(True)
+        if hasattr(self, '_activity_log_dock'):
+            activity_log_action.setChecked(self._activity_log_dock.isVisible())
+        activity_log_action.triggered.connect(lambda: self._setup.toggle_activity_log_dock())
+        menu.addAction(activity_log_action)
+        
+        menu.addSeparator()
+        
+        # Show Workspace Manager
+        workspace_action = QAction("🏠 Workspace Manager anzeigen (Ctrl+Shift+W)", self)
+        workspace_action.triggered.connect(self._show_workspace_manager)
+        menu.addAction(workspace_action)
+        
+        # Close All Charts
+        close_all_action = QAction("❌ Alle Charts schließen", self)
+        close_all_action.triggered.connect(self._close_all_charts)
+        menu.addAction(close_all_action)
+        
+        # Show at cursor position
+        if hasattr(self, 'chart_widget') and self.chart_widget:
+            menu.exec(self.chart_widget.mapToGlobal(pos))
+    
+    def _open_settings(self) -> None:
+        """Open settings dialog."""
+        main_window = self._get_main_window()
+        if main_window and hasattr(main_window, 'show_settings_dialog'):
+            main_window.show_settings_dialog()
+        else:
+            logger.warning("Settings dialog not available")
+    
+    def _show_workspace_manager(self) -> None:
+        """Show and focus the Workspace Manager (main window)."""
+        main_window = self._get_main_window()
+        if main_window:
+            main_window.show()
+            main_window.raise_()
+            main_window.activateWindow()
+        else:
+            logger.warning("Workspace Manager not found")
+    
+    def _close_all_charts(self) -> None:
+        """Close all chart windows."""
+        main_window = self._get_main_window()
+        if main_window and hasattr(main_window, 'chart_window_manager'):
+            main_window.chart_window_manager.close_all()
+        else:
+            logger.warning("chart_window_manager not found")
+
 
     def _get_main_window(self) -> Optional[QMainWindow]:
         """Return the main window if available."""

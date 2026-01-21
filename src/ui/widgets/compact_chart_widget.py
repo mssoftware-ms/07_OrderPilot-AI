@@ -298,8 +298,13 @@ class CompactChartWidget(QWidget):
     def _get_candle_colors() -> tuple[str, str]:
         """Fetch candle colors from settings (fallback to defaults)."""
         settings = QSettings("OrderPilot", "TradingApp")
-        bullish = settings.value("chart_bullish_color", "#26a69a")
-        bearish = settings.value("chart_bearish_color", "#ef5350")
+
+        # Get current theme to load theme-specific colors
+        theme_name = settings.value("theme", "Dark Orange")
+        t_key = theme_name.lower().replace(" ", "_")
+
+        bullish = settings.value(f"{t_key}_chart_bullish_color", "#26a69a")
+        bearish = settings.value(f"{t_key}_chart_bearish_color", "#ef5350")
         return bullish, bearish
 
     @staticmethod

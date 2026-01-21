@@ -31,9 +31,13 @@ def _get_volume_colors() -> dict[str, str]:
         from PyQt6.QtCore import QSettings
         settings = QSettings("OrderPilot", "TradingApp")
 
-        # Use same colors as candles
-        bullish = settings.value("chart_bullish_color", "#26a69a")
-        bearish = settings.value("chart_bearish_color", "#ef5350")
+        # Get current theme to load theme-specific colors
+        theme_name = settings.value("theme", "Dark Orange")
+        t_key = theme_name.lower().replace(" ", "_")
+
+        # Use same colors as candles with theme prefix
+        bullish = settings.value(f"{t_key}_chart_bullish_color", "#26a69a")
+        bearish = settings.value(f"{t_key}_chart_bearish_color", "#ef5350")
 
         return {"bullish": bullish, "bearish": bearish}
     except Exception as exc:

@@ -70,12 +70,66 @@ class ChartWindowLifecycle:
         self.stop_live_stream_on_close()
         self.parent._unsubscribe_events()
         self.save_optional_state()
+        self.save_enhanced_session_state()  # Phase 6: Enhanced persistence
         self.parent._save_window_state()
         self.cleanup_chat()
         self.cleanup_trading_bot_window()
         self.cleanup_bitunix_trading()
         self.parent.window_closed.emit(self.parent.symbol)
         event.accept()
+    
+    def save_enhanced_session_state(self) -> None:
+        """Save enhanced session state (Phase 6: UI Refactoring).
+        
+        Saves:
+        - Dock visibility states (Watchlist, Activity Log)
+        - Active timeframe
+        - Active period
+        - Crosshair sync status
+        """
+        try:
+            settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"
+            
+            # Save Watchlist dock visibility
+            if hasattr(self.parent, '_watchlist_dock'):
+                self.parent.settings.setValue(
+                    f"{settings_key}/watchlist_visible",
+                    self.parent._watchlist_dock.isVisible()
+                )
+            
+            # Save Activity Log dock visibility
+            if hasattr(self.parent, '_activity_log_dock'):
+                self.parent.settings.setValue(
+                    f"{settings_key}/activity_log_visible",
+                    self.parent._activity_log_dock.isVisible()
+                )
+            
+            # Save current timeframe
+            if hasattr(self.parent, 'chart_widget') and hasattr(self.parent.chart_widget, 'current_timeframe'):
+                self.parent.settings.setValue(
+                    f"{settings_key}/timeframe",
+                    self.parent.chart_widget.current_timeframe
+                )
+            
+            # Save current period
+            if hasattr(self.parent, 'chart_widget') and hasattr(self.parent.chart_widget, 'current_period'):
+                self.parent.settings.setValue(
+                    f"{settings_key}/period",
+                    self.parent.chart_widget.current_period
+                )
+            
+            # Save crosshair sync status
+            if hasattr(self.parent, 'chart_widget') and hasattr(self.parent.chart_widget, 'crosshair_sync_enabled'):
+                self.parent.settings.setValue(
+                    f"{settings_key}/crosshair_sync",
+                    self.parent.chart_widget.crosshair_sync_enabled
+                )
+            
+            logger.debug(f"Saved enhanced session state for {self.parent.symbol}")
+            
+        except Exception as e:
+            logger.error(f"Error saving enhanced session state: {e}")
+
 
     def stop_live_stream_on_close(self) -> None:
         """Disconnect live stream if active."""

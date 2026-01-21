@@ -187,23 +187,8 @@ class IndicatorsSetupMixin:
 
         layout.addWidget(test_mode_group)
 
-        # Parameter Ranges Group (dynamic, scrollable)
-        param_ranges_group = QGroupBox("⚙️ Parameter Ranges")
-        param_ranges_layout = QVBoxLayout(param_ranges_group)
-
-        # Scroll area for dynamic parameter widgets
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(162)
-
-        param_widget = QWidget()
-        self._param_layout = QFormLayout(param_widget)
-        scroll.setWidget(param_widget)
-
-        param_ranges_layout.addWidget(scroll)
-        layout.addWidget(param_ranges_group)
-
-        # Initialize empty parameter widgets dict
+        # Note: Parameter Ranges moved to separate "Parameter Configuration" tab
+        # Initialize empty parameter widgets dict (used by Parameter Configuration tab)
         self._param_widgets = {}
 
         # Progress and Optimize Button
@@ -434,3 +419,47 @@ class IndicatorsSetupMixin:
 
                 # Add to form
                 self._param_layout.addRow(f"{param_name}:", param_layout)
+
+    def _setup_parameter_configuration_tab(self, tab: QWidget) -> None:
+        """Setup Parameter Configuration tab.
+
+        New tab created to avoid UI overlapping in Indicator Optimization.
+        Contains the Parameter Ranges GroupBox with dynamic parameter widgets.
+
+        Date: 2026-01-22
+        """
+        layout = QVBoxLayout(tab)
+
+        # Header
+        header = QLabel(
+            "<h3>⚙️ Parameter Configuration</h3>"
+            "<p>Configure parameter ranges for selected indicators. "
+            "Min/Max values define the search space, Step controls optimization granularity.</p>"
+        )
+        header.setWordWrap(True)
+        layout.addWidget(header)
+
+        # Parameter Ranges Group (dynamic, scrollable)
+        param_ranges_group = QGroupBox("📊 Parameter Ranges (Dynamic)")
+        param_ranges_layout = QVBoxLayout(param_ranges_group)
+
+        # Info label
+        info_label = QLabel(
+            "💡 Tip: Select indicators in the <b>Indicator Optimization > Setup</b> tab first."
+        )
+        info_label.setStyleSheet("color: #888; font-style: italic;")
+        param_ranges_layout.addWidget(info_label)
+
+        # Scroll area for dynamic parameter widgets
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(400)
+
+        param_widget = QWidget()
+        self._param_layout = QFormLayout(param_widget)
+        scroll.setWidget(param_widget)
+
+        param_ranges_layout.addWidget(scroll)
+        layout.addWidget(param_ranges_group)
+
+        layout.addStretch()

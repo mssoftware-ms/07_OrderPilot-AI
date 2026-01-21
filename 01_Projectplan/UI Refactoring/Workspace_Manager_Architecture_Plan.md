@@ -1,8 +1,8 @@
 # OrderPilot-AI Architektur-Umbau: ChartWindow als Hauptfenster
 
 **Datum:** 2026-01-21
-**Aktualisiert:** 2026-01-21 (Best-Practice Review)
-**Status:** ✅ PLAN FERTIG - Bereit für Implementation
+**Aktualisiert:** 2026-01-21 (Implementation Complete)
+**Status:** ✅ IMPLEMENTIERT - Phase 0-7 abgeschlossen
 **Ziel:** Hauptfenster eliminieren, ChartWindow wird primäres Fenster
 
 ---
@@ -692,9 +692,49 @@ class ActivityLogWidget:
 ## NÄCHSTE SCHRITTE
 
 1. ✅ Plan fertig (inkl. Best-Practice-Review)
-2. ⏳ Phase 0 starten: Singleton Services erstellen
-3. Nach jeder Phase: Testen und committen
-4. Nach allen Phasen: Vollständiger Integrationstest
+2. ✅ Phase 0: Singleton Services erstellt
+3. ✅ Phase 1: Workspace Manager umgebaut
+4. ✅ Phase 2: ChartWindow Toolbar erweitert
+5. ✅ Phase 3: Watchlist Integration abgeschlossen
+6. ✅ Phase 4: Activity Log Integration abgeschlossen
+7. ✅ Phase 5: Context Menu implementiert
+8. ✅ Phase 6: Enhanced Session Persistence implementiert
+9. ✅ Phase 7: Multi-Chart (bestehendes System funktioniert)
+10. 🔲 Vollständiger Integrationstest durchführen
+
+---
+
+## IMPLEMENTATION SUMMARY
+
+### Erstellte Dateien
+
+| Datei | Beschreibung |
+|-------|-------------|
+| `src/core/broker/broker_service.py` | Singleton BrokerService für zentrale Broker-Verwaltung |
+| `src/ui/models/watchlist_model.py` | Singleton WatchlistModel (QAbstractTableModel) |
+| `src/ui/models/__init__.py` | Package-Exports für Models |
+
+### Geänderte Dateien
+
+| Datei | Änderungen |
+|-------|------------|
+| `src/common/event_bus.py` | Filter-Support in `subscribe()` |
+| `src/core/broker/__init__.py` | Export von BrokerService |
+| `src/ui/app_components/app_ui_mixin.py` | 6-Tab → WatchlistWidget zentral, Activity Log entfernt |
+| `src/ui/app_components/toolbar_mixin.py` | Row 2 entfernt, Live Data Button in Row 1 |
+| `src/ui/widgets/chart_mixins/toolbar_mixin_row1.py` | Broker Mirror Controls |
+| `src/ui/widgets/chart_window_setup.py` | Watchlist Dock, Activity Log Dock, Session Restore |
+| `src/ui/widgets/chart_window.py` | Context Menu, Keyboard Shortcuts |
+| `src/ui/widgets/chart_window_lifecycle.py` | Enhanced Session Persistence (save) |
+| `ARCHITECTURE.md` | Neue Dokumentation für Workspace Manager Pattern |
+
+### Schlüsselkonzepte
+
+1. **BrokerService Singleton**: Thread-safe Broker-Verwaltung mit asyncio.Lock
+2. **WatchlistModel Singleton**: Shared Model für alle WatchlistWidget-Instanzen
+3. **Event-Bus Filter**: Performante Symbol-Filterung auf Bus-Ebene
+4. **Broker Mirror Controls**: ChartWindow-Buttons emittieren nur Events
+5. **Enhanced Session Persistence**: Geometry, Dock Visibility, Timeframe, Crosshair Sync
 
 ---
 
@@ -710,7 +750,12 @@ class ActivityLogWidget:
 |            | + Erweiterte Session Persistence |
 |            | + Architektur-Diagramm mit Service-Layer |
 |            | + Zeitschätzung aktualisiert (23-34h) |
+| 2026-01-21 | **Implementation abgeschlossen:** |
+|            | ✅ Phase 0-7 vollständig implementiert |
+|            | ✅ ARCHITECTURE.md aktualisiert |
+|            | ✅ Alle Singleton Services funktional |
+|            | ✅ Enhanced Session Persistence |
 
 ---
 
-**Status:** ✅ BEREIT FÜR IMPLEMENTATION (Best-Practice-Enhanced)
+**Status:** ✅ IMPLEMENTIERT UND DOKUMENTIERT (2026-01-21)
