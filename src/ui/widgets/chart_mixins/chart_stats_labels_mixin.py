@@ -205,12 +205,22 @@ class ChartStatsLabelsMixin:
                 # Fallback: use first candle
                 return float(self.data.iloc[0].get('open'))
 
-            # Get current timezone offset (assume German time: UTC+1 or UTC+2)
-            # For simplicity, we'll look for 0:00 UTC or close to it
-            now = datetime.now(timezone.utc)
+            # Get current timezone offset for Germany (CET/CEST)
+            # Simple approach: UTC+1 (CET) or UTC+2 (CEST)
+            # Better: use proper timezone handling if available, else approximate
+            try:
+                import zoneinfo
+                berlin_tz = zoneinfo.ZoneInfo("Europe/Berlin")
+                now = datetime.now(berlin_tz)
+            except ImportError:
+                # Fallback for older Python versions or missing zoneinfo
+                # Approximate with fixed offset (UTC+1 for winter, +2 for summer is hard without lib)
+                # Using local system time which is likely correct for the user
+                now = datetime.now().astimezone()
+
             today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            # Convert to timestamp
+            # Convert to timestamp (and ensure it's comparable with data timestamps)
             midnight_ts = int(today_midnight.timestamp())
 
             # Find candle closest to midnight

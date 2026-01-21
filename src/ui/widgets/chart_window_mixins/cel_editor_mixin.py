@@ -55,7 +55,8 @@ class CelEditorMixin:
             )
 
             # Connect window close event to reset button state
-            self._cel_editor_window.finished.connect(
+            # Issue #27: CelEditorWindow is a QMainWindow, uses 'closed' signal (not 'finished')
+            self._cel_editor_window.closed.connect(
                 self._on_cel_editor_closed
             )
 
@@ -73,8 +74,12 @@ class CelEditorMixin:
         self._cel_editor_window.activateWindow()
 
         # Set button checked state if button exists
-        if hasattr(self, 'cel_editor_button'):
-            self.cel_editor_button.setChecked(True)
+        btn = getattr(self, 'cel_editor_button', None)
+        if btn is None and hasattr(self, 'chart_widget'):
+            btn = getattr(self.chart_widget, 'cel_editor_button', None)
+            
+        if btn:
+            btn.setChecked(True)
 
         logger.info("CEL Editor window opened")
 
@@ -84,8 +89,12 @@ class CelEditorMixin:
             self._cel_editor_window.hide()
 
             # Uncheck button
-            if hasattr(self, 'cel_editor_button'):
-                self.cel_editor_button.setChecked(False)
+            btn = getattr(self, 'cel_editor_button', None)
+            if btn is None and hasattr(self, 'chart_widget'):
+                btn = getattr(self.chart_widget, 'cel_editor_button', None)
+                
+            if btn:
+                btn.setChecked(False)
 
             logger.info("CEL Editor window hidden")
 
@@ -109,8 +118,12 @@ class CelEditorMixin:
 
         Resets the toolbar button checked state when window is closed.
         """
-        if hasattr(self, 'cel_editor_button'):
-            self.cel_editor_button.setChecked(False)
+        btn = getattr(self, 'cel_editor_button', None)
+        if btn is None and hasattr(self, 'chart_widget'):
+            btn = getattr(self.chart_widget, 'cel_editor_button', None)
+            
+        if btn:
+            btn.setChecked(False)
 
         logger.info("CEL Editor window closed by user")
 

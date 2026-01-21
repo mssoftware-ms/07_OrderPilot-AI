@@ -16,17 +16,22 @@ Based on UI Study but adapted to PyQt6 and OrderPilot-AI theme.
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QDockWidget,
     QToolBar, QStatusBar, QLabel, QComboBox, QPushButton, QMenuBar,
-    QMenu, QMessageBox
+    QMenu, QMessageBox, QTabWidget, QSplitter, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
-from .theme import get_qss_stylesheet, ACCENT_TEAL, TEXT_PRIMARY
+from .theme import (
+    get_qss_stylesheet, STATUS_SUCCESS, ACCENT_CYAN, TEXT_PRIMARY,
+    TEXT_SECONDARY, TEXT_TERTIARY, BORDER, BACKGROUND_PRIMARY
+)
+from ...themes import ThemeManager
 from .icons import cel_icons
 from ...app_icon import set_window_icon  # Issue #29: App icon
 from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
 from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
 from ...widgets.pattern_builder.properties_panel import PropertiesPanel
+from ...widgets.cel_strategy_editor_widget import CelStrategyEditorWidget
 
 
 class CelEditorWindow(QMainWindow):
@@ -44,6 +49,7 @@ class CelEditorWindow(QMainWindow):
     # Signals
     pattern_changed = pyqtSignal()  # Emitted when pattern is modified
     view_mode_changed = pyqtSignal(str)  # Emitted when view mode changes
+    closed = pyqtSignal()  # Emitted when window is closed (Issue #27)
 
     def __init__(self, parent=None, strategy_name: str = "Untitled Strategy"):
         """Initialize CEL Editor window.
@@ -63,9 +69,6 @@ class CelEditorWindow(QMainWindow):
         # Window setup
         self._setup_window()
 
-        # Apply theme
-        self._apply_theme()
-
         # Create UI components
         self._create_menu_bar()
         self._create_toolbar()
@@ -74,6 +77,9 @@ class CelEditorWindow(QMainWindow):
         self._create_central_widget()
         self._create_status_bar()
 
+        # Apply theme
+        self._apply_theme()
+
         # Restore window state from settings
         self._restore_state()
 
@@ -81,10 +87,19 @@ class CelEditorWindow(QMainWindow):
         self._connect_signals()
 
     def _setup_window(self):
-        """Setup basic window properties."""
+        """Setup window properties to match ChartWindow."""
         self.setWindowTitle(f"CEL Editor - {self.strategy_name}")
-        self.setMinimumSize(1400, 900)
-        self.resize(1600, 1000)
+        
+        # Match ChartWindow flags
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint |
+            Qt.WindowType.WindowCloseButtonHint
+        )
+        
+        self.setMinimumSize(1200, 800)
+        self.resize(1600, 950)
 
         # Allow dock widgets to be nested
         self.setDockNestingEnabled(True)
@@ -96,8 +111,16 @@ class CelEditorWindow(QMainWindow):
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
 
     def _apply_theme(self):
-        """Apply OrderPilot-AI dark theme."""
-        self.setStyleSheet(get_qss_stylesheet())
+        """Apply OrderPilot-AI global dark theme (Dark Orange)."""
+        # Use global ThemeManager to match ChartWindow and Main App
+        theme_manager = ThemeManager()
+        self.setStyleSheet(theme_manager.get_theme("Dark Orange"))
+        
+        # Additional specialized styles for the CEL Editor
+        self.central_tabs.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #32363E; top: -1px; }
+            QTabBar::tab { height: 32px; min-width: 120px; font-weight: bold; }
+        """)
 
     def _create_menu_bar(self):
         """Create menu bar with File, Edit, View, Help menus."""
@@ -206,49 +229,75 @@ class CelEditorWindow(QMainWindow):
         help_menu.addAction(self.action_about)
 
     def _create_toolbar(self):
-        """Create main toolbar with common actions."""
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setObjectName("MainToolbar")
-        toolbar.setMovable(False)
-        toolbar.setIconSize(QSize(24, 24))
+        """Create main toolbar with common actions matching ChartWindow style."""
+        # 1. Action Row
+        self.action_toolbar = QToolBar("Actions")
+        self.action_toolbar.setObjectName("ActionToolbar")
+        self.action_toolbar.setMovable(False)
+        self.action_toolbar.setIconSize(QSize(20, 20))
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.action_toolbar)
 
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+        # Brand Label (matching ChartWindow style)
+        brand_label = QLabel("  CEL EDITOR  ")
+        brand_label.setStyleSheet("""
+            color: #F29F05; 
+            font-weight: bold; 
+            font-family: 'Consolas', monospace; 
+            font-size: 15px; 
+            padding: 0 15px;
+            border-right: 1px solid #32363E;
+        """)
+        self.action_toolbar.addWidget(brand_label)
 
-        # File actions
-        toolbar.addAction(self.action_new)
-        toolbar.addAction(self.action_open)
-        toolbar.addAction(self.action_save)
+        # Strategy Selector
+        self.strategy_selector = QComboBox()
+        self.strategy_selector.addItems([
+            f"📁 {self.strategy_name}",
+            "📊 New Strategy...",
+            "📊 Recent: RSI Scalper",
+            "📊 Recent: EMA Cross"
+        ])
+        self.strategy_selector.setMinimumWidth(200)
+        self.action_toolbar.addWidget(self.strategy_selector)
 
-        toolbar.addSeparator()
+        self.action_toolbar.addSeparator()
 
-        # Edit actions
-        toolbar.addAction(self.action_undo)
-        toolbar.addAction(self.action_redo)
+        # Tools
+        btn_new = self._make_premium_button(self.action_new)
+        self.action_toolbar.addWidget(btn_new)
 
-        toolbar.addSeparator()
+        btn_open = self._make_premium_button(self.action_open)
+        self.action_toolbar.addWidget(btn_open)
 
-        # View mode selector
-        toolbar.addWidget(QLabel("  View: "))
-        self.view_mode_combo = QComboBox()
-        self.view_mode_combo.addItems(["Pattern Builder", "Code Editor", "Chart View", "Split View"])
-        self.view_mode_combo.setMinimumWidth(150)
-        self.view_mode_combo.setStatusTip("Switch between view modes")
-        toolbar.addWidget(self.view_mode_combo)
+        btn_save = self._make_premium_button(self.action_save, is_primary=True)
+        self.action_toolbar.addWidget(btn_save)
 
-        toolbar.addSeparator()
+        self.action_toolbar.addSeparator()
 
-        # Zoom actions
-        toolbar.addAction(self.action_zoom_in)
-        toolbar.addAction(self.action_zoom_out)
-        toolbar.addAction(self.action_zoom_fit)
+        # Undo/Redo (without text for compactness)
+        self.action_toolbar.addAction(self.action_undo)
+        self.action_toolbar.addAction(self.action_redo)
 
-        toolbar.addSeparator()
+        # Spacer to push AI button to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.action_toolbar.addWidget(spacer)
 
-        # AI Generate button
-        self.ai_generate_btn = QPushButton(cel_icons.ai_generate, "AI Generate")
-        self.ai_generate_btn.setObjectName("primary")  # Apply primary button style
-        self.ai_generate_btn.setStatusTip("Generate pattern suggestions with AI")
-        toolbar.addWidget(self.ai_generate_btn)
+        # AI Generate (Right Side)
+        self.ai_btn = QPushButton(cel_icons.ai_generate, "  AI Generate  ")
+        self.ai_btn.setProperty("class", "primary")
+        self.ai_btn.setFixedHeight(32)
+        self.ai_btn.clicked.connect(self._on_ai_generate)
+        self.action_toolbar.addWidget(self.ai_btn)
+
+    def _make_premium_button(self, action, is_primary=False):
+        """Create a QPushButton for toolbar that matches ChartWindow style."""
+        btn = QPushButton(action.icon(), f" {action.text().replace('&', '')}")
+        btn.setProperty("class", "primary" if is_primary else "toolbar-button")
+        btn.setFixedHeight(32)
+        btn.setToolTip(action.statusTip())
+        btn.clicked.connect(action.trigger)
+        return btn
 
     def _create_candle_toolbar(self):
         """Create candle toolbar for adding candles to canvas.
@@ -310,20 +359,59 @@ class CelEditorWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
 
     def _create_central_widget(self):
-        """Create central widget with Pattern Builder Canvas.
+        """Create central widget with Tabs for different view modes.
 
-        Phase 2: Pattern Builder Canvas (QGraphicsView)
-        Phase 3: CEL Code Editor (QScintilla) - will be added in split view
+        Tabs:
+        0: Pattern Builder (Visual)
+        1: Code Editor (Script)
+        2: Chart View (Reference)
+        3: Split View (Visual + Script side-by-side)
         """
-        central = QWidget()
-        self.setCentralWidget(central)
+        self.central_tabs = QTabWidget()
+        self.central_tabs.setDocumentMode(True)  # Clean tab style
+        self.setCentralWidget(self.central_tabs)
 
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # Pattern Builder Canvas (Phase 2)
+        # 1. Pattern Builder View
+        self.pattern_container = QWidget()
+        pattern_layout = QVBoxLayout(self.pattern_container)
+        pattern_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.pattern_canvas = PatternBuilderCanvas(self)
-        layout.addWidget(self.pattern_canvas)
+        pattern_layout.addWidget(self.pattern_canvas)
+        
+        self.central_tabs.addTab(self.pattern_container, cel_icons.view_pattern, "Pattern Builder")
+
+        # 2. Code Editor View
+        self.code_editor = CelStrategyEditorWidget(self)
+        self.central_tabs.addTab(self.code_editor, cel_icons.view_code, "Code Editor")
+
+        # 3. Chart View (Placeholder for now)
+        self.chart_view_placeholder = QLabel("Chart View Integration\n(Coming soon - Phase 6 integration)")
+        self.chart_view_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chart_view_placeholder.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 18px; background: {BACKGROUND_PRIMARY};")
+        self.central_tabs.addTab(self.chart_view_placeholder, cel_icons.view_chart, "Chart View")
+
+        # 4. Split View
+        self.split_view = QSplitter(Qt.Orientation.Horizontal)
+        self.split_view.setStyleSheet("QSplitter::handle { background: #32363E; width: 4px; }")
+        
+        self.split_pattern = PatternBuilderCanvas(self)
+        self.split_code = CelStrategyEditorWidget(self)
+        
+        self.split_view.addWidget(self.split_pattern)
+        self.split_view.addWidget(self.split_code)
+        self.split_view.setSizes([600, 600])
+        
+        self.central_tabs.addTab(self.split_view, cel_icons.view_split, "Split View")
+
+        # Connect canvas signals
+        self.pattern_canvas.pattern_changed.connect(self._on_pattern_changed)
+        self.pattern_canvas.candle_selected.connect(self._on_candle_selected)
+        self.pattern_canvas.selection_cleared.connect(self._on_selection_cleared)
+
+        # Update undo/redo button states
+        self.pattern_canvas.undo_stack.canUndoChanged.connect(self.action_undo.setEnabled)
+        self.pattern_canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
 
         # Connect canvas signals
         self.pattern_canvas.pattern_changed.connect(self._on_pattern_changed)
@@ -335,20 +423,38 @@ class CelEditorWindow(QMainWindow):
         self.pattern_canvas.undo_stack.canRedoChanged.connect(self.action_redo.setEnabled)
 
     def _create_status_bar(self):
-        """Create status bar with validation feedback."""
+        """Create status bar with validation feedback matching ChartWindow."""
         statusbar = QStatusBar()
         self.setStatusBar(statusbar)
 
         # Validation status label
-        self.validation_label = QLabel("✅ Ready")
-        self.validation_label.setStyleSheet(f"color: {ACCENT_TEAL}; padding: 2px 8px;")
-        statusbar.addPermanentWidget(self.validation_label)
+        self.validation_label = QLabel("✓ CEL Ready")
+        self.validation_label.setStyleSheet(f"""
+            color: #0ECB81; 
+            background: rgba(14, 203, 129, 0.1); 
+            border-radius: 3px; 
+            padding: 2px 10px; 
+            font-family: 'Consolas', monospace;
+            font-weight: bold;
+        """)
+        statusbar.addWidget(self.validation_label)
 
-        # Strategy info
-        self.strategy_info_label = QLabel(f"Strategy: {self.strategy_name}")
-        statusbar.addPermanentWidget(self.strategy_info_label)
+        # Rule counts
+        self.rule_counts_label = QLabel("  0 Entry  |  0 Exit  |  0 Risk  |  0 Stop  ")
+        self.rule_counts_label.setStyleSheet("color: #848E9C; padding: 0 10px;")
+        statusbar.addWidget(self.rule_counts_label)
 
-        statusbar.showMessage("CEL Editor ready")
+        # AI Status
+        self.ai_status_label = QLabel("🤖 AI: Ready")
+        self.ai_status_label.setStyleSheet("color: #F29F05; padding: 0 10px; font-weight: bold;")
+        statusbar.addPermanentWidget(self.ai_status_label)
+
+        # Version
+        version_label = QLabel("v1.2.0-beta")
+        version_label.setStyleSheet(f"color: {TEXT_TERTIARY}; font-size: 10px; padding: 0 5px;")
+        statusbar.addPermanentWidget(version_label)
+
+        statusbar.showMessage("Ready")
 
     def _connect_signals(self):
         """Connect signals to slots."""
@@ -371,16 +477,19 @@ class CelEditorWindow(QMainWindow):
         self.action_view_chart.triggered.connect(lambda: self._switch_view_mode("chart"))
         self.action_view_split.triggered.connect(lambda: self._switch_view_mode("split"))
 
-        # View mode combo
-        self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_combo_changed)
+        # View mode Tabs
+        self.central_tabs.currentChanged.connect(self._on_tab_changed)
 
         # Zoom actions
         self.action_zoom_in.triggered.connect(self._on_zoom_in)
         self.action_zoom_out.triggered.connect(self._on_zoom_out)
         self.action_zoom_fit.triggered.connect(self._on_zoom_fit)
 
-        # AI Generate button
-        self.ai_generate_btn.clicked.connect(self._on_ai_generate)
+        # Strategy Selector
+        self.strategy_selector.currentIndexChanged.connect(self._on_strategy_selected)
+
+        # Connect Code Editor changes to update status bar
+        self.code_editor.strategy_changed.connect(self._on_code_strategy_changed)
 
         # Candle Toolbar signals (Phase 2.5)
         self.candle_toolbar.candle_add_requested.connect(self._on_toolbar_add_candle)
@@ -420,6 +529,32 @@ class CelEditorWindow(QMainWindow):
         settings.setValue("windowState", self.saveState())
 
     # Placeholder methods (will be implemented in later phases)
+
+    def _on_strategy_selected(self, index: int):
+        """Handle strategy selection change."""
+        selection = self.strategy_selector.itemText(index)
+        if "New Strategy" in selection:
+            self._on_new_strategy()
+        elif "Recent" not in selection:
+            self.statusBar().showMessage(f"Loading {selection}...", 3000)
+            # In a real app, this would load the JSON file
+            self.strategy_name = selection.replace("📁 ", "").replace("📊 ", "")
+            self.setWindowTitle(f"CEL Editor - {self.strategy_name}")
+
+    def _on_code_strategy_changed(self, strategy_data: dict):
+        """Update status bar when code strategy changes."""
+        workflow = strategy_data.get("workflow", {})
+        
+        counts = {
+            "entry": workflow.get("entry", {}).get("expression", "").count("&&") + 1 if workflow.get("entry", {}).get("expression", "") else 0,
+            "exit": workflow.get("exit", {}).get("expression", "").count("&&") + 1 if workflow.get("exit", {}).get("expression", "") else 0,
+            "risk": 0, # Placeholder
+            "stop": workflow.get("update_stop", {}).get("expression", "").count("&&") + 1 if workflow.get("update_stop", {}).get("expression", "") else 0
+        }
+        
+        self.rule_counts_label.setText(
+            f"  {counts['entry']} Entry  |  {counts['exit']} Exit  |  {counts['risk']} Risk  |  {counts['stop']} Stop  "
+        )
 
     def _on_new_strategy(self):
         """Create new strategy (Phase 1)."""
@@ -476,11 +611,7 @@ class CelEditorWindow(QMainWindow):
                 self.statusBar().showMessage("Pattern cleared", 2000)
 
     def _switch_view_mode(self, mode: str):
-        """Switch between view modes (Phase 1/2/3).
-
-        Args:
-            mode: 'pattern', 'code', 'chart', or 'split'
-        """
+        """Switch between view modes via TabWidget."""
         self.current_view_mode = mode
 
         # Update menu checkboxes
@@ -489,11 +620,11 @@ class CelEditorWindow(QMainWindow):
         self.action_view_chart.setChecked(mode == "chart")
         self.action_view_split.setChecked(mode == "split")
 
-        # Update combo box (without triggering signal)
+        # Sync tab widget
         mode_index = {"pattern": 0, "code": 1, "chart": 2, "split": 3}
-        self.view_mode_combo.blockSignals(True)
-        self.view_mode_combo.setCurrentIndex(mode_index.get(mode, 0))
-        self.view_mode_combo.blockSignals(False)
+        self.central_tabs.blockSignals(True)
+        self.central_tabs.setCurrentIndex(mode_index.get(mode, 0))
+        self.central_tabs.blockSignals(False)
 
         # Emit signal
         self.view_mode_changed.emit(mode)
@@ -501,13 +632,21 @@ class CelEditorWindow(QMainWindow):
         # Update status
         self.statusBar().showMessage(f"Switched to {mode} view", 2000)
 
-        # TODO: Actually switch widgets in Phase 2/3
+        # Show/hide sidebars based on mode
+        is_pattern = mode in ["pattern", "split"]
+        self.left_dock.setVisible(is_pattern)
+        self.right_dock.setVisible(is_pattern)
+        self.candle_toolbar.setVisible(is_pattern)
 
-    def _on_view_mode_combo_changed(self, index: int):
-        """Handle view mode combo box change."""
+    def _on_tab_changed(self, index: int):
+        """Handle view mode tab change."""
         modes = ["pattern", "code", "chart", "split"]
         if 0 <= index < len(modes):
             self._switch_view_mode(modes[index])
+
+    def _on_view_mode_combo_changed(self, index: int):
+        """Legacy handler for combo box (kept for compatibility during refactoring)."""
+        pass
 
     def _on_zoom_in(self):
         """Zoom in on canvas."""
@@ -566,14 +705,14 @@ class CelEditorWindow(QMainWindow):
             relation_count = stats['total_relations']
 
             if candle_count == 0:
-                self.validation_label.setText("✅ Ready")
-                self.validation_label.setStyleSheet(f"color: {ACCENT_TEAL}; padding: 2px 8px;")
+                self.validation_label.setText("✓ Ready")
+                self.validation_label.setStyleSheet(f"color: {STATUS_SUCCESS}; font-family: 'Consolas', monospace;")
             elif candle_count < 2:
                 self.validation_label.setText("⚠️ Need at least 2 candles")
-                self.validation_label.setStyleSheet("color: #ffa726; padding: 2px 8px;")
+                self.validation_label.setStyleSheet("color: #ffa726; font-family: 'Consolas', monospace;")
             else:
-                self.validation_label.setText(f"✅ {candle_count} candles, {relation_count} relations")
-                self.validation_label.setStyleSheet(f"color: {ACCENT_TEAL}; padding: 2px 8px;")
+                self.validation_label.setText(f"✓ {candle_count} candles, {relation_count} relations")
+                self.validation_label.setStyleSheet(f"color: {STATUS_SUCCESS}; font-family: 'Consolas', monospace;")
 
         # Emit main window signal
         self.pattern_changed.emit()
@@ -654,5 +793,8 @@ class CelEditorWindow(QMainWindow):
         self._save_state()
 
         # TODO: Check for unsaved changes in later phases
+
+        # Issue #27: Emit closed signal for button state sync
+        self.closed.emit()
 
         event.accept()

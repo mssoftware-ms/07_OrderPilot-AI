@@ -2682,7 +2682,7 @@
                     }
                 });
 
-        document.getElementById('status').textContent = 'Ready v4 - waiting for data...';
+        document.getElementById('status').textContent = '';
             } catch (error) {
                 console.error('CRITICAL INIT ERROR:', error);
                 document.getElementById('status').textContent = 'ERROR: ' + error.message;

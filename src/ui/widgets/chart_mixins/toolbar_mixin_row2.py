@@ -350,23 +350,29 @@ class ToolbarMixinRow2:
 
         checked = self.parent.cel_editor_button.isChecked()
 
+        # Issue #27: show_cel_editor is on ChartWindow (via CelEditorMixin), not EmbeddedTradingViewChart
+        # Try to find handler on parent or parent's window
+        handler = self.parent
+        if not hasattr(handler, "show_cel_editor") and hasattr(handler, "window"):
+            handler = handler.window()
+
         if checked:
-            if hasattr(self.parent, "show_cel_editor"):
-                self.parent.show_cel_editor()
+            if hasattr(handler, "show_cel_editor"):
+                handler.show_cel_editor()
             else:
                 # Debug: What is self.parent and why doesn't it have show_cel_editor?
                 logger.error(
                     f"show_cel_editor not available! "
                     f"parent type={type(self.parent).__name__}, "
-                    f"parent methods={[m for m in dir(self.parent) if 'cel' in m.lower()]}"
+                    f"handler type={type(handler).__name__}"
                 )
                 self.parent.cel_editor_button.setChecked(False)
         else:
             # Toggle off - hide window if it exists
-            if hasattr(self.parent, "hide_cel_editor"):
-                self.parent.hide_cel_editor()
+            if hasattr(handler, "hide_cel_editor"):
+                handler.hide_cel_editor()
             else:
-                logger.warning("hide_cel_editor not available on chart widget")
+                logger.warning("hide_cel_editor not available on chart widget or window")
 
     def add_ai_chat_button(self, toolbar: QToolBar) -> None:
         self.parent.ai_chat_button = QPushButton("AI Chat")  # Issue #15: Emoji entfernt

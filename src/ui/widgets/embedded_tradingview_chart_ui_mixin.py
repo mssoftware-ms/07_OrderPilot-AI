@@ -29,7 +29,14 @@ class EmbeddedTradingViewChartUIMixin:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Issue #26: OHLC Info Label (oben über Toolbar)
+        # Toolbar (from ToolbarMixin) - Two rows
+        toolbar1, toolbar2 = self._create_toolbar()
+        self.toolbar_row1 = toolbar1
+        self.toolbar_row2 = toolbar2
+        layout.addWidget(toolbar1)
+        layout.addWidget(toolbar2)
+
+        # Issue #26: OHLC Info Label (unter Toolbar)
         self.ohlc_info_label = QLabel("O -- | H -- | L -- | C -- | -- % | V --")
         self.ohlc_info_label.setStyleSheet("""
             color: #E0E0E0;
@@ -41,13 +48,6 @@ class EmbeddedTradingViewChartUIMixin:
             border-bottom: 1px solid #3D3D3D;
         """)
         layout.addWidget(self.ohlc_info_label)
-
-        # Toolbar (from ToolbarMixin) - Two rows
-        toolbar1, toolbar2 = self._create_toolbar()
-        self.toolbar_row1 = toolbar1
-        self.toolbar_row2 = toolbar2
-        layout.addWidget(toolbar1)
-        layout.addWidget(toolbar2)
 
         # Web view for chart
         self.web_view = QWebEngineView()
