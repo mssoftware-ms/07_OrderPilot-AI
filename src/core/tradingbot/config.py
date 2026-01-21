@@ -158,6 +158,10 @@ class BotConfig(BaseModel):
         return v.upper().strip()
 
 
+# Rebuild BotConfig after enums are defined
+BotConfig.model_rebuild()
+
+
 class RiskConfig(BaseModel):
     """Risk management configuration.
 
@@ -315,6 +319,10 @@ class RiskConfig(BaseModel):
         )
 
 
+# Rebuild RiskConfig after all fields are defined
+RiskConfig.model_rebuild()
+
+
 class LLMPolicyConfig(BaseModel):
     """LLM/KI call policy configuration.
 
@@ -372,6 +380,10 @@ class LLMPolicyConfig(BaseModel):
     )
 
 
+# Rebuild LLMPolicyConfig after all fields are defined
+LLMPolicyConfig.model_rebuild()
+
+
 class FullBotConfig(BaseModel):
     """Complete bot configuration combining all config types."""
     bot: BotConfig
@@ -411,3 +423,7 @@ class FullBotConfig(BaseModel):
             risk=risk_config,
             llm_policy=llm_config
         )
+
+
+# Rebuild Pydantic models after all forward references are defined
+FullBotConfig.model_rebuild()

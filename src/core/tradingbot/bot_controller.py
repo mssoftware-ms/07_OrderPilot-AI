@@ -142,6 +142,13 @@ class BotController(
         # Try to load JSON config if path provided
         self._json_catalog = None
         self._json_config_path = json_config_path  # Store for reloading
+        self._config_indicators = None
+        self._config_regimes = None
+        self._config_strategies = None
+        self._config_routing = None
+        self._config_strategy_sets = None
+        self._json_config = None
+
         if json_config_path:
             try:
                 from .config_integration_bridge import (
@@ -150,7 +157,8 @@ class BotController(
                 )
                 json_config = load_json_config_if_available(json_config_path)
                 if json_config:
-                    self._json_catalog = ConfigBasedStrategyCatalog(json_config)
+                    # Use set_json_config to properly set all attributes
+                    self.set_json_config(json_config)
                     logger.info(
                         f"JSON-based strategy catalog loaded from: {json_config_path}"
                     )
@@ -603,6 +611,7 @@ class BotController(
             self._json_catalog = ConfigBasedStrategyCatalog(json_config)
 
             # Extract config components for regime detection and routing
+            self._config_indicators = json_config.indicators
             self._config_regimes = json_config.regimes
             self._config_strategies = json_config.strategies
             self._config_routing = json_config.routing
@@ -907,7 +916,7 @@ class BotController(
 
             # Extract strategy information
             strategy_set = matched_strategy_set.strategy_set
-            strategy_names = ", ".join([s.id for s in strategy_set.strategies])
+            strategy_names = ", ".join([s.strategy_id for s in strategy_set.strategies])
             regime_names = ", ".join([r.name for r in active_regimes])
 
             # Log strategy switch
@@ -930,13 +939,176 @@ class BotController(
                 except Exception as e:
                     logger.warning(f"Failed to emit regime change event: {e}")
 
-            # TODO: Apply parameter overrides from strategy set
-            # This would use StrategySetExecutor.prepare_execution()
-            # For now, just log the switch
+            # Apply parameter overrides from strategy set
+            try:
+                from src.core.tradingbot.config.executor import StrategySetExecutor
+
+                executor = StrategySetExecutor(
+                    self._config_indicators,
+                    self._config_strategies
+                )
+
+                # Apply overrides (creates modified copies)
+                override_context = executor.prepare_execution(matched_strategy_set)
+
+                # Copy modified indicators/strategies back to controller
+                # (executor creates deep copies and modifies those, we need to update our references)
+                self._config_indicators = list(executor.current_indicators.values())
+                self._config_strategies = list(executor.current_strategies.values())
+
+                # Log applied overrides
+                if override_context:
+                    num_indicator_overrides = len(override_context.applied_overrides.get('indicator_overrides', {}))
+                    num_strategy_overrides = len(override_context.applied_overrides.get('strategy_overrides', {}))
+
+                    if num_indicator_overrides > 0 or num_strategy_overrides > 0:
+                        override_msg = (
+                            f"Parameter-Overrides angewendet: "
+                            f"{num_indicator_overrides} Indikatoren, "
+                            f"{num_strategy_overrides} Strategien"
+                        )
+                        logger.info(override_msg)
+                        self._log_activity("OVERRIDE", override_msg)
+
+                # Note: We do NOT call restore_state() because we want the overrides
+                # to remain active until the next regime change
+
+            except Exception as e:
+                logger.warning(f"Failed to apply parameter overrides: {e}")
+                self._log_activity("WARNING", f"Parameter-Override Fehler: {e}")
+
+            # Adjust open positions for new regime (if position exists)
+            self._adjust_positions_for_new_regime()
 
         except Exception as e:
             logger.error(f"Failed to switch strategy: {e}", exc_info=True)
             self._log_activity("ERROR", f"Strategie-Wechsel Fehler: {e}")
+
+    def _adjust_positions_for_new_regime(self) -> None:
+        """Adjust open positions when regime changes.
+
+        Implements risk management based on regime transitions:
+        - High volatility → Tighter stops, reduce exposure
+        - Low volatility → Loosen stops, normal exposure
+        - Trend reversal → Partial or full exit
+
+        Note:
+            Called automatically by _switch_strategy() after regime change.
+            Only takes action if position is open.
+        """
+        # Guard: Only adjust if position exists
+        if not self._position:
+            return
+
+        # Guard: Only adjust if regime is available
+        if not self._regime:
+            logger.debug("No regime available for position adjustment")
+            return
+
+        try:
+            from .models import VolatilityLevel, RegimeType, TradeSide
+
+            current_volatility = self._regime.volatility
+            current_regime_type = self._regime.regime
+            position_side = self._position.side  # TradeSide enum
+
+            adjustments = []
+
+            # ========== Volatility-Based Adjustments ==========
+
+            # HIGH/EXTREME Volatility → Tighten stops, reduce risk
+            if current_volatility in [VolatilityLevel.HIGH, VolatilityLevel.EXTREME]:
+                # Calculate tighter stop (reduce from current stop distance)
+                current_price = self._position.current_price
+                current_stop = self._position.trailing.current_stop_price
+
+                if current_stop and current_price:
+                    # Tighten stop by 30% (move closer to current price)
+                    stop_distance = abs(current_price - current_stop)
+                    new_stop_distance = stop_distance * 0.7  # 30% tighter
+
+                    if position_side == TradeSide.LONG:
+                        new_stop = current_price - new_stop_distance
+                        if new_stop > current_stop:  # Only tighten, never loosen
+                            self._position.trailing.current_stop_price = new_stop
+                            adjustments.append(
+                                f"Stop-Loss verschärft: {current_stop:.2f} → {new_stop:.2f} "
+                                f"(Hohe Volatilität)"
+                            )
+                    else:  # SHORT
+                        new_stop = current_price + new_stop_distance
+                        if new_stop < current_stop:  # Only tighten, never loosen
+                            self._position.trailing.current_stop_price = new_stop
+                            adjustments.append(
+                                f"Stop-Loss verschärft: {current_stop:.2f} → {new_stop:.2f} "
+                                f"(Hohe Volatilität)"
+                            )
+
+            # LOW Volatility → Loosen stops, allow normal movement
+            elif current_volatility == VolatilityLevel.LOW:
+                # In low volatility, we can afford slightly wider stops
+                # to avoid being stopped out by normal noise
+                current_price = self._position.current_price
+                current_stop = self._position.trailing.current_stop_price
+
+                if current_stop and current_price:
+                    # Loosen stop by 20% (move away from current price)
+                    stop_distance = abs(current_price - current_stop)
+                    new_stop_distance = stop_distance * 1.2  # 20% wider
+
+                    if position_side == TradeSide.LONG:
+                        new_stop = current_price - new_stop_distance
+                        self._position.trailing.current_stop_price = new_stop
+                        adjustments.append(
+                            f"Stop-Loss gelockert: {current_stop:.2f} → {new_stop:.2f} "
+                            f"(Niedrige Volatilität)"
+                        )
+                    else:  # SHORT
+                        new_stop = current_price + new_stop_distance
+                        self._position.trailing.current_stop_price = new_stop
+                        adjustments.append(
+                            f"Stop-Loss gelockert: {current_stop:.2f} → {new_stop:.2f} "
+                            f"(Niedrige Volatilität)"
+                        )
+
+            # ========== Trend-Based Adjustments ==========
+
+            # Trend reversal against position → Consider partial exit
+            if position_side == TradeSide.LONG and current_regime_type == RegimeType.TREND_DOWN:
+                # LONG position in downtrend → High risk
+                adjustments.append(
+                    "⚠ WARNUNG: LONG-Position in Abwärtstrend - "
+                    "Erwäge teilweisen Ausstieg (nicht auto-implementiert)"
+                )
+                # TODO: Implement partial exit logic
+                # partial_exit_size = self._position.quantity * 0.5
+                # self._create_exit_order(partial_exit_size, reason="regime_reversal")
+
+            elif position_side == TradeSide.SHORT and current_regime_type == RegimeType.TREND_UP:
+                # SHORT position in uptrend → High risk
+                adjustments.append(
+                    "⚠ WARNUNG: SHORT-Position in Aufwärtstrend - "
+                    "Erwäge teilweisen Ausstieg (nicht auto-implementiert)"
+                )
+                # TODO: Implement partial exit logic
+                # partial_exit_size = self._position.quantity * 0.5
+                # self._create_exit_order(partial_exit_size, reason="regime_reversal")
+
+            # ========== Logging ==========
+
+            if adjustments:
+                adjustment_msg = " | ".join(adjustments)
+                logger.info(f"Position adjustments: {adjustment_msg}")
+                self._log_activity("POSITION_ADJUST", adjustment_msg)
+            else:
+                logger.debug(
+                    f"No position adjustments needed for {current_regime_type.name} "
+                    f"regime with {current_volatility.name} volatility"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to adjust positions for regime: {e}", exc_info=True)
+            self._log_activity("ERROR", f"Position-Adjustment Fehler: {e}")
 
     # ==================== Main Processing ====================
 

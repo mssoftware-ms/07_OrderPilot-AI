@@ -275,6 +275,10 @@ class ConditionGroup(BaseModel):
         return self
 
 
+# Rebuild ConditionGroup after forward reference is defined (recursive structure)
+ConditionGroup.model_rebuild()
+
+
 # ==================== Regime Models ====================
 
 class RegimeDefinition(BaseModel):
