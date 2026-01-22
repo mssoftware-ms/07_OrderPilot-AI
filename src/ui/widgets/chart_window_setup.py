@@ -451,7 +451,7 @@ class ChartWindowSetup:
             Qt.DockWidgetArea.LeftDockWidgetArea, 
             self.parent._watchlist_dock
         )
-        self.parent._watchlist_dock.hide()  # Default: hidden
+        self.parent._watchlist_dock.show()  # Default: visible (per user request)
         
         # Restore visibility from settings
         settings_key = self.parent._get_settings_key() if hasattr(self.parent, '_get_settings_key') else f"ChartWindow/{self.parent.symbol}"

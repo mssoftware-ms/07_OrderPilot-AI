@@ -114,6 +114,14 @@ class WatchlistUIBuilder:
         table.setColumnWidth(5, 80)
         table.setColumnWidth(6, 100)
 
+        # HIDE columns by default (User Request: "Price, Change, Volume can go")
+        # Keep Symbol (0), Name (1), WKN (2)
+        table.setColumnHidden(3, True)  # Price
+        table.setColumnHidden(4, True)  # Change
+        table.setColumnHidden(5, True)  # Change %
+        table.setColumnHidden(6, True)  # Volume
+
+
         table.itemDoubleClicked.connect(self.parent.on_symbol_double_clicked)
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(self.parent.show_context_menu)

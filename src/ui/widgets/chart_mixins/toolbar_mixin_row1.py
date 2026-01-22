@@ -47,6 +47,10 @@ class ToolbarMixinRow1:
         self.add_broker_mirror_controls(toolbar)
         toolbar.addSeparator()
         
+        # Watchlist Toggle Button
+        self.add_watchlist_toggle(toolbar)
+        toolbar.addSeparator()
+        
         # Original Row 1 content
         # Symbol-Selector entfernt (Issue #20, #30) - Symbol wird über ChartWindow gesteuert
         self.add_timeframe_selector(toolbar)
@@ -162,6 +166,44 @@ class ToolbarMixinRow1:
             self.parent.chart_connect_button.setIcon(get_icon("connect"))
             self.parent.chart_connect_button.setChecked(False)
             self.parent.chart_connect_button.setToolTip("Nicht verbunden\nKlicken zum Verbinden")
+
+    def add_watchlist_toggle(self, toolbar: QToolBar) -> None:
+        """Add watchlist toggle button to toolbar."""
+        from src.ui.icons import get_icon
+        
+        self.parent.watchlist_toggle_btn = QPushButton("📋")
+        self.parent.watchlist_toggle_btn.setToolTip("Watchlist ein/ausblenden")
+        self.parent.watchlist_toggle_btn.setIconSize(self.ICON_SIZE)
+        self.parent.watchlist_toggle_btn.setCheckable(True)
+        self.parent.watchlist_toggle_btn.setChecked(True)  # Default: visible
+        self.parent.watchlist_toggle_btn.setToolTip("Watchlist ein/ausblenden")
+        self.parent.watchlist_toggle_btn.setFixedHeight(self.BUTTON_HEIGHT)
+        self.parent.watchlist_toggle_btn.setFixedWidth(40)
+        self.parent.watchlist_toggle_btn.clicked.connect(self._toggle_watchlist)
+        toolbar.addWidget(self.parent.watchlist_toggle_btn)
+    
+    def _toggle_watchlist(self) -> None:
+        """Toggle watchlist dock visibility."""
+        # Find ChartWindow - self.parent is EmbeddedTradingViewChart, need to go up to ChartWindow
+        chart_window = None
+        widget = self.parent
+        while widget is not None:
+            if hasattr(widget, '_watchlist_dock'):
+                chart_window = widget
+                break
+            widget = widget.parent() if hasattr(widget, 'parent') and callable(widget.parent) else None
+        
+        if chart_window and chart_window._watchlist_dock:
+            is_visible = chart_window._watchlist_dock.isVisible()
+            if is_visible:
+                chart_window._watchlist_dock.hide()
+                self.parent.watchlist_toggle_btn.setChecked(False)
+            else:
+                chart_window._watchlist_dock.show()
+                self.parent.watchlist_toggle_btn.setChecked(True)
+            logger.info(f"Watchlist visibility toggled: {not is_visible}")
+        else:
+            logger.warning("Could not find watchlist dock")
 
 
     def add_timeframe_selector(self, toolbar: QToolBar) -> None:

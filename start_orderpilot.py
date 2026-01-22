@@ -292,6 +292,7 @@ Examples:
 
 def main() -> int:
     """Main entry point"""
+    splash = None  # Initialize to avoid UnboundLocalError in finally block
     # 0. HIDE CONSOLE IMMEDIATELY on Windows
     _hide_console_window()
     # Set up global exception handler for uncaught exceptions
@@ -349,7 +350,9 @@ def main() -> int:
     try:
         # Display banner unless disabled
         if not args.no_banner:
-            print_startup_banner()
+            # print_startup_banner() # Disabled to prevent UnicodeEncodeError on Windows
+            pass
+
 
         # Setup logging
         if splash: splash.set_progress(10, "Konfiguriere Logging...")

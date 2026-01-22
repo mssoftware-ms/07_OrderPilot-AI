@@ -388,15 +388,26 @@ class ToolbarMixinRow2:
         toolbar.addWidget(self.parent.settings_button)
 
     def _open_settings_dialog(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+        
         if hasattr(self.parent, "open_main_settings_dialog"):
             self.parent.open_main_settings_dialog()
             return
+        
+        # Try parent chain first
         widget = self.parent
         while widget is not None:
             if hasattr(widget, "show_settings_dialog"):
                 widget.show_settings_dialog()
                 return
             widget = widget.parent()
+        
+        # Fallback: Search top-level widgets (for Chart-Only mode)
+        for top_widget in QApplication.topLevelWidgets():
+            if hasattr(top_widget, "show_settings_dialog") and hasattr(top_widget, "chart_window_manager"):
+                top_widget.show_settings_dialog()
+                return
+        
         logger.warning("Settings dialog not available from toolbar")
 
     # Issue #24: Methode entfernt - Button und Event Handler sind jetzt in Row1 (toolbar_mixin_row1.py)

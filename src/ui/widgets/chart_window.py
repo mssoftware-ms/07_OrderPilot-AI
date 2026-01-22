@@ -229,10 +229,23 @@ class ChartWindow(
 
 
     def _get_main_window(self) -> Optional[QMainWindow]:
-        """Return the main window if available."""
+        """Return the main window (TradingApplication) if available.
+        
+        Since ChartWindow may be created without a direct parent in
+        'Chart-Only Mode', we search through all top-level widgets.
+        """
+        from PyQt6.QtWidgets import QApplication
+        
+        # Try direct parent first
         main_window = self.parent()
-        if main_window and hasattr(main_window, "toggle_live_data"):
+        if main_window and hasattr(main_window, "show_settings_dialog"):
             return main_window
+        
+        # Search top-level widgets for TradingApplication
+        for widget in QApplication.topLevelWidgets():
+            if hasattr(widget, "show_settings_dialog") and hasattr(widget, "chart_window_manager"):
+                return widget
+        
         return None
 
     def closeEvent(self, event: QCloseEvent):

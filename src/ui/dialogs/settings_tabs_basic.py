@@ -496,7 +496,6 @@ class SettingsTabsBasic:
             f"Theme '{current_theme}' wurde erfolgreich gelöscht."
         )
 
-    def _choose_icon_dir(self) -> None:
 
     def _choose_icon_dir(self) -> None:
         """Open directory dialog to choose icon collection path."""

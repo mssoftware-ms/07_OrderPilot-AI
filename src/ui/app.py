@@ -102,6 +102,36 @@ class TradingApplication(
         # Initialize services
         asyncio.create_task(self.initialize_services())
 
+    def closeEvent(self, event):
+        """Handle application close event."""
+        # Save settings before closing
+        self.save_settings()
+        
+        # Close all child windows
+        if hasattr(self, 'chart_window_manager'):
+            # Iterate over a copy of keys since close_window modifies the dict
+            for symbol in list(self.chart_window_manager.windows.keys()):
+                self.chart_window_manager.close_window(symbol)
+                
+        event.accept()
+
+    def start_in_chart_mode(self):
+        """Start application with Workspace Manager hidden and one ChartWindow open."""
+        logger.info("Starting in Chart-Only mode (Workspace Manager hidden)")
+        
+        # 1. Hide self (Workspace Manager)
+        self.hide()
+        
+        # 2. Determine startup symbol (load from settings or default to BTCUSDT for Bitunix)
+        last_symbol = self.settings.value("last_symbol", "BTCUSDT")
+        if not last_symbol:
+            last_symbol = "BTCUSDT"
+            
+        # 3. Open chart via manager
+        logger.info(f"Opening initial chart for {last_symbol}")
+        # Use QTimer to ensure event loop is running and window is ready
+        QTimer.singleShot(100, lambda: self.chart_window_manager.open_or_focus_chart(last_symbol))
+
 
 def _apply_saved_debug_level(level_str: str) -> None:
     """Apply saved console debug level to all loggers.
@@ -213,7 +243,10 @@ async def main(app: QApplication | None = None, splash: QWidget | None = None):
         # Wait at least 1.5 seconds as requested by user
         await asyncio.sleep(1.5)
         splash.close()
-    window.show()
+    # window.show() # HIDDEN BY DEFAULT (Workspace Manager Pattern)
+    
+    # Start in Chart-Only mode
+    window.start_in_chart_mode()
 
     with loop:
         loop.run_forever()

@@ -105,7 +105,16 @@ class ChartWindowManager:
         """
         if symbol in self.windows:
             del self.windows[symbol]
-            logger.info(f"Removed closed chart window for {symbol} from manager")
+            logger.info(f"Chart window closed for {symbol}, removed from manager")
+        
+        # Check if this was the last window
+        if not self.windows:
+            logger.info("Last chart window closed.")
+            # If the main parent window is hidden (Workspace Manager mode), exit the app
+            from PyQt6.QtWidgets import QApplication
+            if self.parent and hasattr(self.parent, "isHidden") and self.parent.isHidden():
+                logger.info("Main window is hidden. Exiting application.")
+                QApplication.instance().quit()
 
     def close_window(self, symbol: str):
         """Close a chart window.
