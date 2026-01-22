@@ -140,17 +140,9 @@ def _apply_saved_debug_level(level_str: str) -> None:
         level_str: Log level string (DEBUG, INFO, WARNING, ERROR)
     """
     import logging
+    from src.common.logging_setup import apply_console_log_level
 
-    level = getattr(logging, level_str.upper(), logging.INFO)
-
-    # Set root logger level
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-
-    # Set console handler level
-    for handler in root_logger.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.setLevel(level)
+    level = apply_console_log_level(level_str)
 
     # Stream/chart provider loggers - suppress at WARNING level to reduce noise
     stream_loggers = [

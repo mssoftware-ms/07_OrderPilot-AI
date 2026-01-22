@@ -161,9 +161,14 @@ class IndicatorsOptimizationMixin:
         # Create and start optimization thread
         from src.ui.threads.indicator_optimization_thread import IndicatorOptimizationThread
 
+        regime_config_path = None
+        if getattr(self, "_regime_config_path", None):
+            regime_config_path = str(self._regime_config_path)
+
         self._optimization_thread = IndicatorOptimizationThread(
             selected_indicators=selected_indicators,
             param_ranges=param_ranges,
+            json_config_path=regime_config_path,
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,

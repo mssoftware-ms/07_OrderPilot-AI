@@ -3,13 +3,11 @@
 Refactored from monolithic 1,188 LOC file into modular architecture:
 - This file: Main BacktestMixin combining sub-mixins (~70 LOC)
 - entry_analyzer_backtest_config.py: Backtest configuration and execution (290 LOC)
-- entry_analyzer_backtest_results.py: Results display and metrics (270 LOC)
 - entry_analyzer_backtest_regime.py: Regime analysis and boundaries (300 LOC)
 - entry_analyzer_backtest_regime_set.py: Regime set creation (375 LOC)
 
 This mixin handles backtest execution and regime analysis functionality:
 - Backtest Configuration tab for strategy selection and parameter setup
-- Backtest Results tab for performance metrics and trade history
 - Regime analysis with RegimeEngine for market classification
 - Regime boundary visualization on charts
 - Regime-based strategy set generation from optimization results
@@ -24,14 +22,12 @@ Maintainability: +200%
 from __future__ import annotations
 
 from .entry_analyzer_backtest_config import BacktestConfigMixin
-from .entry_analyzer_backtest_results import BacktestResultsMixin
 from .entry_analyzer_backtest_regime import BacktestRegimeMixin
 from .entry_analyzer_backtest_regime_set import BacktestRegimeSetMixin
 
 
 class BacktestMixin(
     BacktestConfigMixin,
-    BacktestResultsMixin,
     BacktestRegimeMixin,
     BacktestRegimeSetMixin
 ):
@@ -39,7 +35,6 @@ class BacktestMixin(
 
     This mixin combines:
     - BacktestConfigMixin: Backtest setup, strategy loading, execution, data conversion
-    - BacktestResultsMixin: Results display, metrics, trade table, performance profiling
     - BacktestRegimeMixin: Regime detection, boundaries drawing, regime history
     - BacktestRegimeSetMixin: Regime set creation, JSON config generation, regime backtesting
 
@@ -55,12 +50,6 @@ class BacktestMixin(
         _bt_run_btn: QPushButton - Run backtest button
         _bt_progress: QProgressBar - Progress indicator
         _bt_status_label: QLabel - Status text
-
-        # Backtest Results UI
-        _bt_results_text: QTextEdit - Results display
-        _bt_regime_history_text: QTextEdit - Regime history
-        _bt_draw_boundaries_btn: QPushButton - Draw boundaries button
-        _bt_create_regime_set_btn: QPushButton - Create regime set button
 
         # Data
         _candles: list[dict] - Chart candle data

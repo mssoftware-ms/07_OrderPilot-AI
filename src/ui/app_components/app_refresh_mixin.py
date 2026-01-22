@@ -58,8 +58,9 @@ class AppRefreshMixin:
             if hasattr(self.watchlist_widget, 'refresh'):
                 await self.watchlist_widget.refresh()
 
-            if hasattr(self.dashboard_widget, 'refresh'):
-                await self.dashboard_widget.refresh()
+            dashboard_widget = self.__dict__.get("dashboard_widget")
+            if dashboard_widget and hasattr(dashboard_widget, 'refresh'):
+                await dashboard_widget.refresh()
 
             self.status_bar.showMessage("Market data refreshed", 3000)
             logger.info("Market data refreshed successfully")
@@ -71,7 +72,8 @@ class AppRefreshMixin:
     def update_dashboard(self):
         """Periodic dashboard refresh (timer callback)."""
         try:
-            if hasattr(self, "dashboard_widget") and hasattr(self.dashboard_widget, "refresh_stats"):
-                self.dashboard_widget.refresh_stats()
+            dashboard_widget = self.__dict__.get("dashboard_widget")
+            if dashboard_widget and hasattr(dashboard_widget, "refresh_stats"):
+                dashboard_widget.refresh_stats()
         except Exception as e:
             logger.error(f"Failed to update dashboard: {e}", exc_info=True)

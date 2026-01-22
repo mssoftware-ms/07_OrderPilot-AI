@@ -17,6 +17,7 @@ Maintainability: +200%
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -44,9 +45,13 @@ from .entry_analyzer_indicators import IndicatorsMixin
 from .entry_analyzer_indicators_presets import IndicatorsPresetsMixin
 from .entry_analyzer_analysis import AnalysisMixin
 from .entry_analyzer_ai import AIMixin
+from .entry_analyzer_regime_table import RegimeTableMixin
 
 # Import workers
 from .entry_analyzer_workers import CopilotWorker, ValidationWorker, BacktestWorker
+
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     from src.analysis.visible_chart.types import AnalysisResult, EntryEvent
@@ -57,7 +62,7 @@ logger = logging.getLogger(__name__)
 # ==================== Main Dialog Class ====================
 
 
-class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPresetsMixin, AnalysisMixin, AIMixin):
+class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPresetsMixin, AnalysisMixin, AIMixin, RegimeTableMixin):
     """Entry Analyzer main dialog with mixin composition.
 
     Original: entry_analyzer_popup.py:197-3167 (2,970 LOC)
@@ -73,20 +78,24 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
     - IndicatorsMixin: Indicator optimization and entry signals
     - AnalysisMixin: Visible chart analysis and validation
     - AIMixin: AI Copilot and pattern recognition
+    - RegimeTableMixin: Regime parameter optimization and results table
     """
 
     # Signals
     analyze_requested = pyqtSignal()
     draw_entries_requested = pyqtSignal(list)
     clear_entries_requested = pyqtSignal()
+    draw_regime_lines_requested = pyqtSignal(list)  # Issue #21: Signal for regime lines
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize dialog with all UI components.
 
         Original: entry_analyzer_popup.py:214-231
+        Issue #12: Updated to use Material Design icons
         """
         super().__init__(parent)
-        self.setWindowTitle("🎯 Entry Analyzer & Backtester")
+        self.setWindowTitle("Entry Analyzer & Backtester")
+        self.setWindowIcon(get_icon("gps_fixed"))  # Issue #12: Target/Entry icon
         self.setMinimumSize(900, 820)
         self.resize(1000, 870)
 
@@ -154,11 +163,12 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         self._bt_progress: QProgressBar = None
         self._bt_status_label: QLabel = None
 
-        # Backtest Results Tab (BacktestMixin)
-        self._bt_results_text: QTextEdit = None
-        self._bt_regime_history_text: QTextEdit = None
-        self._bt_draw_boundaries_btn: QPushButton = None
-        self._bt_create_regime_set_btn: QPushButton = None
+        # Regime Config (BacktestMixin)
+        self._regime_config_path: Path | None = None
+        self._regime_config = None
+        self._regime_config_path_label: QLabel = None
+        self._regime_config_table: QTableWidget = None
+        self._regime_config_load_btn: QPushButton = None
 
         # Indicator Optimization (IndicatorsMixin)
         self._ind_opt_tabs: QTabWidget = None
@@ -171,7 +181,7 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         self._ind_opt_draw_btn: QPushButton = None
         self._ind_opt_show_entries_btn: QPushButton = None
 
-        # Parameter Configuration (IndicatorsSetupMixin - new tab)
+        # Parameter Ranges (IndicatorsSetupMixin - in Setup sub-tab)
         self._param_layout: QFormLayout = None
         self._opt_indicator_checkboxes: dict[str, QCheckBox] = {}
         self._param_widgets: dict = {}
@@ -214,52 +224,44 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         layout.addWidget(header)
 
         # Tab widget for different views
+        # Issue #12: Updated all tabs to use Material Design icons
         self._tabs = QTabWidget()
 
-        # Tab 0: Backtest Setup (BacktestMixin)
+        # Tab 0: Regime (BacktestMixin) - Issue #21: Renamed from "Backtest Setup"
         setup_tab = QWidget()
         self._setup_backtest_config_tab(setup_tab)
-        self._tabs.addTab(setup_tab, "⚙️ Backtest Setup")
+        self._tabs.addTab(setup_tab, get_icon("analytics"), "Regime")
 
-        # Tab 1: Parameter Configuration (IndicatorsSetupMixin - NEW)
-        param_config_tab = QWidget()
-        self._setup_parameter_configuration_tab(param_config_tab)
-        self._tabs.addTab(param_config_tab, "⚙️ Parameter Configuration")
+        # Tab 1: Reg. Table (RegimeTableMixin) - Regime Parameter Optimization
+        regime_table_tab = QWidget()
+        self._setup_regime_table_tab(regime_table_tab)
+        self._tabs.addTab(regime_table_tab, get_icon("tune"), "Reg. Table")
 
-        # Tab 2: Backtest Results (BacktestMixin)
-        bt_results_tab = QWidget()
-        self._setup_backtest_results_tab(bt_results_tab)
-        self._tabs.addTab(bt_results_tab, "📈 Backtest Results")
-
-        # Tab 3: Indicator Optimization (IndicatorsMixin)
+        # Tab 2: Indicator Optimization (IndicatorsMixin)
+        # Issue #10: Parameter Presets now integrated as sub-tab within Indicator Optimization
         optimization_tab = QWidget()
         self._setup_indicator_optimization_tab(optimization_tab)
-        self._tabs.addTab(optimization_tab, "🔧 Indicator Optimization")
+        self._tabs.addTab(optimization_tab, get_icon("build"), "Indicator Optimization")
 
-        # Tab 4: Parameter Presets (IndicatorsPresetsMixin)
-        presets_tab = QWidget()
-        self._setup_parameter_presets_tab(presets_tab)
-        self._tabs.addTab(presets_tab, "📋 Parameter Presets")
-
-        # Tab 5: Pattern Recognition (AIMixin)
+        # Tab 3: Pattern Recognition (AIMixin)
         pattern_tab = QWidget()
         self._setup_pattern_recognition_tab(pattern_tab)
-        self._tabs.addTab(pattern_tab, "🔍 Pattern Recognition")
+        self._tabs.addTab(pattern_tab, get_icon("search"), "Pattern Recognition")
 
-        # Tab 6: Analysis (AnalysisMixin)
+        # Tab 4: Analysis (AnalysisMixin)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
-        self._tabs.addTab(analysis_tab, "📊 Visible Range")
+        self._tabs.addTab(analysis_tab, get_icon("analytics"), "Visible Range")
 
-        # Tab 7: AI Copilot (AIMixin)
+        # Tab 5: AI Copilot (AIMixin)
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
-        self._tabs.addTab(ai_tab, "🤖 AI Copilot")
+        self._tabs.addTab(ai_tab, get_icon("smart_toy"), "AI Copilot")
 
-        # Tab 8: Validation (AnalysisMixin)
+        # Tab 6: Validation (AnalysisMixin)
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
-        self._tabs.addTab(validation_tab, "✅ Validation")
+        self._tabs.addTab(validation_tab, get_icon("check_circle"), "Validation")
 
         layout.addWidget(self._tabs, stretch=1)
 
@@ -298,16 +300,16 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         """Create footer widget with action buttons.
 
         Original: entry_analyzer_popup.py:1072-1114
+        Issue #12: Updated to use Material Design icons and theme colors
         """
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 10, 0, 0)
 
-        # Analyze button
-        self._analyze_btn = QPushButton("🔄 Analyze Visible Range")
-        self._analyze_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #3b82f6; color: white;"
-        )
+        # Analyze button (Issue #12: Using refresh icon and info color)
+        self._analyze_btn = QPushButton(" Analyze Visible Range")
+        self._analyze_btn.setIcon(get_icon("refresh"))
+        self._analyze_btn.setProperty("class", "info")  # Use theme info color
         self._analyze_btn.clicked.connect(self._on_analyze_clicked)
         layout.addWidget(self._analyze_btn)
 
@@ -318,20 +320,25 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
 
         layout.addStretch()
 
-        # Report button
-        self._report_btn = QPushButton("📄 Generate Report")
+        # Report button (Issue #12: Using description icon)
+        self._report_btn = QPushButton(" Generate Report")
+        self._report_btn.setIcon(get_icon("description"))
         self._report_btn.setEnabled(False)
         self._report_btn.clicked.connect(self._on_report_clicked)
         layout.addWidget(self._report_btn)
 
-        # Draw entries button
-        self._draw_btn = QPushButton("📍 Draw on Chart")
+        # Draw entries button (Issue #12: Using place icon and success color)
+        self._draw_btn = QPushButton(" Draw on Chart")
+        self._draw_btn.setIcon(get_icon("place"))
+        self._draw_btn.setProperty("class", "success")  # Use theme success color
         self._draw_btn.setEnabled(False)
         self._draw_btn.clicked.connect(self._on_draw_clicked)
         layout.addWidget(self._draw_btn)
 
-        # Clear button
-        self._clear_btn = QPushButton("🗑️ Clear Entries")
+        # Clear button (Issue #12: Using delete icon and danger color)
+        self._clear_btn = QPushButton(" Clear Entries")
+        self._clear_btn.setIcon(get_icon("delete"))
+        self._clear_btn.setProperty("class", "danger")  # Use theme danger color
         self._clear_btn.clicked.connect(self._on_clear_clicked)
         layout.addWidget(self._clear_btn)
 

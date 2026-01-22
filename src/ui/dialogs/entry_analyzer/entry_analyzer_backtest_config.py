@@ -14,6 +14,7 @@ LOC: ~290
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     from PyQt6.QtCore import QThread
@@ -68,129 +72,557 @@ class BacktestConfigMixin:
         _symbol: str - Trading symbol
     """
 
-    # Type hints for parent class attributes
-    _bt_strategy_path_label: QLabel
-    _bt_start_date: QDateEdit
-    _bt_end_date: QDateEdit
-    _bt_initial_capital: QDoubleSpinBox
-    _bt_regime_set_combo: QComboBox
-    _bt_run_btn: QPushButton
-    _bt_progress: QProgressBar | None
-    _bt_status_label: QLabel
-    _backtest_worker: QThread | None
-    _candles: list[dict]
-    _symbol: str
-    _timeframe: str
+    # Type hints for parent class attributes (Issue #21: Updated for Regime tab)
+    _regime_start_day: QLabel  # Start day from chart
+    _regime_end_day: QLabel  # End day from chart
+    _regime_period_days: QLabel  # Period in days
+    _regime_num_bars: QLabel  # Number of bars
+    _regime_results_table: QWidget  # Results table (QTableWidget)
+    _regime_config_path_label: QLabel  # Regime config path display
+    _regime_config_table: QWidget  # Regime config table (QTableWidget)
+    _regime_config_load_btn: QPushButton  # Regime config load button
+    _regime_config_path: Path | None  # Current config path
+    _regime_config: object | None  # Loaded TradingBotConfig
+    _candles: list[dict]  # Chart candle data
+    _symbol: str  # Trading symbol
+    _timeframe: str  # Chart timeframe
 
     def _setup_backtest_config_tab(self, tab: QWidget) -> None:
-        """Setup Backtest Configuration tab.
+        """Setup Regime Analysis tab.
 
-        Original: entry_analyzer_backtest.py:112-193
-
-        Creates:
-        - Strategy selection section
-        - Date range inputs
-        - Capital input
-        - Regime set selection
-        - Run backtest button with progress bar
+        Issue #21: Completely refactored from "Backtest Setup" to "Regime"
+        - Removed: Load Strategy, Run Backtest, Regime Set Dropdown
+        - Added: Chart data fields (Start/End Day, Period, Bars)
+        - Added: Analyze Visible Range button
+        - Added: Regime detection table with timestamps
         """
         layout = QVBoxLayout(tab)
 
-        # Strategy Selection
-        strategy_group = QGroupBox("Strategy Configuration")
-        strategy_layout = QFormLayout()
+        # Chart Data Information (Issue #21: New section)
+        chart_info_group = QGroupBox("Chart Data Information")
+        chart_info_layout = QFormLayout()
 
-        # Strategy file path
-        strategy_file_layout = QHBoxLayout()
-        self._bt_strategy_path_label = QLabel("No strategy loaded")
-        self._bt_strategy_path_label.setStyleSheet("color: #888;")
-        strategy_file_layout.addWidget(self._bt_strategy_path_label, stretch=1)
+        # Start Day (read-only, filled from chart)
+        self._regime_start_day = QLabel("Not loaded")
+        self._regime_start_day.setStyleSheet("color: #888;")
+        chart_info_layout.addRow("Start Day:", self._regime_start_day)
 
-        load_strategy_btn = QPushButton("📁 Load Strategy")
-        load_strategy_btn.clicked.connect(self._on_load_strategy_clicked)
-        strategy_file_layout.addWidget(load_strategy_btn)
+        # End Day (read-only, filled from chart)
+        self._regime_end_day = QLabel("Not loaded")
+        self._regime_end_day.setStyleSheet("color: #888;")
+        chart_info_layout.addRow("End Day:", self._regime_end_day)
 
-        strategy_layout.addRow("Strategy File:", strategy_file_layout)
+        # Period in Days (read-only, calculated)
+        self._regime_period_days = QLabel("0 days")
+        self._regime_period_days.setStyleSheet("color: #888;")
+        chart_info_layout.addRow("Period (Days):", self._regime_period_days)
 
-        strategy_group.setLayout(strategy_layout)
-        layout.addWidget(strategy_group)
+        # Number of Bars (read-only, from chart)
+        self._regime_num_bars = QLabel("0 bars")
+        self._regime_num_bars.setStyleSheet("color: #888;")
+        chart_info_layout.addRow("Number of Bars:", self._regime_num_bars)
 
-        # Backtest Parameters
-        params_group = QGroupBox("Backtest Parameters")
-        params_layout = QFormLayout()
+        chart_info_group.setLayout(chart_info_layout)
+        layout.addWidget(chart_info_group)
 
-        # Date range
-        self._bt_start_date = QDateEdit()
-        self._bt_start_date.setCalendarPopup(True)
-        self._bt_start_date.setDate(QDate.currentDate().addDays(-30))
-        params_layout.addRow("Start Date:", self._bt_start_date)
+        # Analyze Visible Range button (Issue #21: Replaces "Analyze Current Regime")
+        analyze_range_btn = QPushButton(" Analyze Visible Range")
+        analyze_range_btn.setIcon(get_icon("timeline"))  # Timeline icon for range analysis
+        analyze_range_btn.setProperty("class", "success")  # Use theme success color
+        analyze_range_btn.clicked.connect(self._on_analyze_visible_range_clicked)
+        layout.addWidget(analyze_range_btn)
 
-        self._bt_end_date = QDateEdit()
-        self._bt_end_date.setCalendarPopup(True)
-        self._bt_end_date.setDate(QDate.currentDate())
-        params_layout.addRow("End Date:", self._bt_end_date)
+        # Regime Detection Results Table (Issue #21: COMPLETE - Shows START and END of each regime)
+        results_group = QGroupBox("Detected Regimes (Periods)")
+        results_layout = QVBoxLayout()
 
-        # Initial capital
-        self._bt_initial_capital = QDoubleSpinBox()
-        self._bt_initial_capital.setRange(100, 1000000)
-        self._bt_initial_capital.setValue(10000)
-        self._bt_initial_capital.setPrefix("$")
-        self._bt_initial_capital.setSingleStep(1000)
-        params_layout.addRow("Initial Capital:", self._bt_initial_capital)
+        from PyQt6.QtWidgets import QTableWidget, QHeaderView
+        self._regime_results_table = QTableWidget()
+        self._regime_results_table.setColumnCount(8)
+        self._regime_results_table.setHorizontalHeaderLabels([
+            "Start Date", "Start Time", "End Date", "End Time", "Regime", "Score", "Duration (Bars)", "Duration (Time)"
+        ])
+        self._regime_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._regime_results_table.setAlternatingRowColors(True)
+        self._regime_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
+        self._regime_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
-        # Regime set selection
-        self._bt_regime_set_combo = QComboBox()
-        self._bt_regime_set_combo.addItem("None - Use Default Strategy")
-        # TODO: Populate with available regime sets
-        params_layout.addRow("Regime Set:", self._bt_regime_set_combo)
+        results_layout.addWidget(self._regime_results_table)
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
 
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group)
+        # Regime Config (JSON)
+        config_group = QGroupBox("Regime Config (JSON)")
+        config_layout = QVBoxLayout()
 
-        # Analyze Current Regime button
-        analyze_regime_btn = QPushButton("🔍 Analyze Current Regime")
-        analyze_regime_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #10b981; color: white;"
-        )
-        analyze_regime_btn.clicked.connect(self._on_analyze_current_regime_clicked)
-        layout.addWidget(analyze_regime_btn)
+        path_layout = QHBoxLayout()
+        path_layout.addWidget(QLabel("Config Path:"))
 
-        # Run button
-        action_layout = QHBoxLayout()
-        self._bt_run_btn = QPushButton("🚀 Run Backtest")
-        self._bt_run_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #3b82f6; color: white;"
-        )
-        self._bt_run_btn.clicked.connect(self._on_run_backtest_clicked)
-        action_layout.addWidget(self._bt_run_btn)
+        self._regime_config_path_label = QLabel("Not loaded")
+        self._regime_config_path_label.setStyleSheet("color: #888;")
+        path_layout.addWidget(self._regime_config_path_label, 1)
 
-        self._bt_progress = None  # QProgressBar from parent (will be set later)
-        self._bt_status_label = QLabel("Ready")
-        self._bt_status_label.setStyleSheet("color: #888;")
-        action_layout.addWidget(self._bt_status_label)
-        action_layout.addStretch()
+        self._regime_config_load_btn = QPushButton("Load Regime Config")
+        self._regime_config_load_btn.clicked.connect(self._on_load_regime_config_clicked)
+        path_layout.addWidget(self._regime_config_load_btn)
 
-        layout.addLayout(action_layout)
+        config_layout.addLayout(path_layout)
+
+        from PyQt6.QtWidgets import QTableWidget, QHeaderView
+        self._regime_config_table = QTableWidget()
+        self._regime_config_table.setColumnCount(4)
+        self._regime_config_table.setHorizontalHeaderLabels([
+            "Type", "ID", "Name/Type", "Details"
+        ])
+        header = self._regime_config_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._regime_config_table.setAlternatingRowColors(True)
+        self._regime_config_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._regime_config_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+
+        config_layout.addWidget(self._regime_config_table)
+        config_group.setLayout(config_layout)
+        layout.addWidget(config_group)
+
+        # Load default config (Entry Analyzer Regime)
+        self._load_default_regime_config()
+
         layout.addStretch()
 
-    def _on_load_strategy_clicked(self) -> None:
-        """Handle load strategy button click.
+    def _default_regime_config_path(self) -> Path:
+        """Default JSON config path for Entry Analyzer regime detection."""
+        return Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
 
-        Original: entry_analyzer_backtest.py:315-325
+    def _load_default_regime_config(self) -> None:
+        """Load the default regime config from the Entry Analyzer directory."""
+        default_path = self._default_regime_config_path()
+        default_path.parent.mkdir(parents=True, exist_ok=True)
+        if default_path.exists():
+            self._load_regime_config(default_path, show_error=False)
+        else:
+            self._regime_config_path_label.setText(str(default_path))
+            self._regime_config_path_label.setStyleSheet("color: #f59e0b;")
 
-        Opens file dialog to select strategy JSON config file.
-        """
+    def _on_load_regime_config_clicked(self) -> None:
+        """Load regime config from JSON file and populate table."""
+        base_dir = Path("03_JSON/Entry_Analyzer/Regime")
+        base_dir.mkdir(parents=True, exist_ok=True)
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Load Strategy Configuration",
-            "03_JSON/Trading_Bot",
+            "Load Regime Config",
+            str(base_dir),
             "JSON Files (*.json)"
         )
+        if not file_path:
+            return
 
-        if file_path:
-            self._bt_strategy_path_label.setText(file_path)
-            self._bt_strategy_path_label.setStyleSheet("color: #10b981;")
-            logger.info(f"Strategy loaded: {file_path}")
+        self._load_regime_config(Path(file_path))
+
+    def _load_regime_config(self, config_path: Path, show_error: bool = True) -> None:
+        """Load regime config and update UI state."""
+        from src.core.tradingbot.config.loader import ConfigLoader, ConfigLoadError
+
+        loader = ConfigLoader()
+        try:
+            config = loader.load_config(config_path)
+        except ConfigLoadError as e:
+            logger.error(f"Failed to load regime config: {e}")
+            if show_error:
+                QMessageBox.critical(
+                    self,
+                    "Regime Config Error",
+                    f"Failed to load regime config:\n\n{e}"
+                )
+            return
+
+        self._regime_config = config
+        self._regime_config_path = config_path
+        self._regime_config_path_label.setText(str(config_path))
+        self._regime_config_path_label.setStyleSheet("color: #10b981;")
+        self._populate_regime_config_table(config)
+
+    def _populate_regime_config_table(self, config) -> None:
+        """Populate the regime config table with indicators and regimes."""
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+
+        def format_details(payload: dict, max_len: int = 160) -> tuple[str, str]:
+            text = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+            display = text if len(text) <= max_len else f"{text[:max_len - 3]}..."
+            return display, text
+
+        self._regime_config_table.setRowCount(0)
+
+        # Indicators
+        for indicator in config.indicators:
+            row = self._regime_config_table.rowCount()
+            self._regime_config_table.insertRow(row)
+
+            details, full_details = format_details(indicator.params)
+
+            type_item = QTableWidgetItem("Indicator")
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_config_table.setItem(row, 0, type_item)
+            self._regime_config_table.setItem(row, 1, QTableWidgetItem(indicator.id))
+            indicator_type = indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
+            self._regime_config_table.setItem(row, 2, QTableWidgetItem(indicator_type))
+
+            details_item = QTableWidgetItem(details)
+            details_item.setToolTip(full_details)
+            self._regime_config_table.setItem(row, 3, details_item)
+
+        # Regimes
+        for regime in config.regimes:
+            row = self._regime_config_table.rowCount()
+            self._regime_config_table.insertRow(row)
+
+            conditions = regime.conditions.model_dump()
+            details, full_details = format_details(conditions)
+
+            type_item = QTableWidgetItem("Regime")
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_config_table.setItem(row, 0, type_item)
+            self._regime_config_table.setItem(row, 1, QTableWidgetItem(regime.id))
+            self._regime_config_table.setItem(row, 2, QTableWidgetItem(regime.name))
+
+            details_item = QTableWidgetItem(details)
+            details_item.setToolTip(full_details)
+            self._regime_config_table.setItem(row, 3, details_item)
+
+    def _on_analyze_visible_range_clicked(self) -> None:
+        """Analyze visible chart range for regime detection (Issue #21).
+
+        Workflow:
+        1. Read chart data (Start Day, End Day, Period, Bars)
+        2. Perform incremental regime detection (candle-by-candle)
+        3. Display vertical lines with regime labels in chart
+        4. Populate results table with timestamps
+        """
+        if not self._candles or len(self._candles) < 50:
+            QMessageBox.warning(
+                self,
+                "Insufficient Data",
+                "Need at least 50 candles for regime analysis.\n"
+                "Load more chart data first."
+            )
+            return
+
+        try:
+            logger.info("Starting visible range regime analysis...")
+
+            # Step 1: Extract chart data information
+            import pandas as pd
+            from datetime import datetime
+
+            start_timestamp = self._candles[0].get('timestamp') or self._candles[0].get('time')
+            end_timestamp = self._candles[-1].get('timestamp') or self._candles[-1].get('time')
+            num_bars = len(self._candles)
+
+            # Convert timestamps to datetime
+            start_dt = datetime.fromtimestamp(start_timestamp / 1000) if start_timestamp > 1e10 else datetime.fromtimestamp(start_timestamp)
+            end_dt = datetime.fromtimestamp(end_timestamp / 1000) if end_timestamp > 1e10 else datetime.fromtimestamp(end_timestamp)
+            period_days = (end_dt - start_dt).days
+
+            # Update UI fields
+            self._regime_start_day.setText(start_dt.strftime("%Y-%m-%d %H:%M"))
+            self._regime_start_day.setStyleSheet("color: #10b981;")  # Green
+            self._regime_end_day.setText(end_dt.strftime("%Y-%m-%d %H:%M"))
+            self._regime_end_day.setStyleSheet("color: #10b981;")
+            self._regime_period_days.setText(f"{period_days} days")
+            self._regime_period_days.setStyleSheet("color: #10b981;")
+            self._regime_num_bars.setText(f"{num_bars} bars")
+            self._regime_num_bars.setStyleSheet("color: #10b981;")
+
+            # Step 2: Incremental regime detection (candle-by-candle)
+            logger.info("Performing incremental regime detection...")
+            detected_regimes = self._perform_incremental_regime_detection()
+
+            # Step 3: Update results table with COMPLETE regime periods (Start + End)
+            self._regime_results_table.setRowCount(0)  # Clear existing rows
+            for regime_data in detected_regimes:
+                row = self._regime_results_table.rowCount()
+                self._regime_results_table.insertRow(row)
+
+                from PyQt6.QtWidgets import QTableWidgetItem
+                from PyQt6.QtCore import Qt
+
+                # Start Date
+                start_date_item = QTableWidgetItem(regime_data['start_date'])
+                start_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 0, start_date_item)
+
+                # Start Time
+                start_time_item = QTableWidgetItem(regime_data['start_time'])
+                start_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 1, start_time_item)
+
+                # End Date
+                end_date_item = QTableWidgetItem(regime_data['end_date'])
+                end_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 2, end_date_item)
+
+                # End Time
+                end_time_item = QTableWidgetItem(regime_data['end_time'])
+                end_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 3, end_time_item)
+
+                # Regime
+                regime_item = QTableWidgetItem(regime_data['regime'])
+                regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 4, regime_item)
+
+                # Score
+                score_item = QTableWidgetItem(f"{regime_data['score']:.2f}")
+                score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 5, score_item)
+
+                # Duration (Bars)
+                duration_bars_item = QTableWidgetItem(str(regime_data['duration_bars']))
+                duration_bars_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 6, duration_bars_item)
+
+                # Duration (Time)
+                duration_time_item = QTableWidgetItem(regime_data['duration_time'])
+                duration_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, 7, duration_time_item)
+
+            # Step 4: Draw vertical lines in chart (Issue #21: Emit signal to chart)
+            if hasattr(self, 'draw_regime_lines_requested'):
+                # Emit signal with regime data for chart visualization
+                self.draw_regime_lines_requested.emit(detected_regimes)
+                logger.info(f"Emitted signal to draw {len(detected_regimes)} regime lines in chart")
+
+            logger.info(f"Detected {len(detected_regimes)} regime changes")
+            QMessageBox.information(
+                self,
+                "Regime Analysis Complete",
+                f"Successfully analyzed {num_bars} candles.\n"
+                f"Detected {len(detected_regimes)} regime changes.\n"
+                f"Period: {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({period_days} days)"
+            )
+
+        except Exception as e:
+            logger.error(f"Regime analysis failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Analysis Error",
+                f"Failed to analyze visible range:\n\n{str(e)}"
+            )
+
+    def _perform_incremental_regime_detection(self) -> list[dict]:
+        """Perform incremental regime detection candle-by-candle (Issue #21 COMPLETE).
+
+        Returns:
+            List of regime PERIODS with start, end, duration for each regime.
+            Structure: {
+                'start_date', 'start_time', 'end_date', 'end_time',
+                'regime', 'score', 'duration_bars', 'duration_time',
+                'start_timestamp', 'end_timestamp', 'start_bar_index', 'end_bar_index'
+            }
+        """
+        import pandas as pd
+        from datetime import datetime
+        from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+        from src.core.tradingbot.config.detector import RegimeDetector
+        from src.core.tradingbot.config.evaluator import ConditionEvaluationError
+        from src.core.indicators.types import IndicatorConfig, IndicatorType
+
+        regime_periods = []  # List of complete regime periods
+        current_regime = None  # Currently active regime
+        min_candles = 50  # Minimum candles needed for regime detection
+
+        # Load config (JSON-based)
+        if self._regime_config is None:
+            self._load_default_regime_config()
+        config = self._regime_config
+        if config is None:
+            raise ValueError("Regime config is not loaded.")
+
+        # Build DataFrame once
+        df = pd.DataFrame(self._candles)
+
+        # Ensure required columns
+        if 'timestamp' not in df.columns and 'time' in df.columns:
+            df['timestamp'] = df['time']
+
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        missing = [col for col in required_cols if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        # Pre-calculate indicator results for full range
+        engine = RegimeEngineJSON()
+        indicator_results = {}
+        for ind_def in config.indicators:
+            ind_config = IndicatorConfig(
+                indicator_type=IndicatorType(ind_def.type.lower()),
+                params=ind_def.params,
+                use_talib=False,
+                cache_results=True
+            )
+            result = engine.indicator_engine.calculate(df, ind_config)
+            indicator_results[ind_def.id] = result.values
+
+        detector = RegimeDetector(config.regimes)
+
+        def _safe_value(value) -> float:
+            if pd.isna(value):
+                return float("nan")
+            return float(value)
+
+        def _indicator_values_at(index: int) -> dict[str, dict[str, float]]:
+            values: dict[str, dict[str, float]] = {}
+            for ind_id, result in indicator_results.items():
+                if isinstance(result, pd.Series):
+                    val = result.iloc[index] if index < len(result) else float("nan")
+                    values[ind_id] = {"value": _safe_value(val)}
+                elif isinstance(result, pd.DataFrame):
+                    values[ind_id] = {}
+                    for col in result.columns:
+                        val = result[col].iloc[index] if index < len(result) else float("nan")
+                        values[ind_id][col] = _safe_value(val)
+                    if 'bandwidth' in values[ind_id]:
+                        values[ind_id]['width'] = values[ind_id]['bandwidth']
+                elif isinstance(result, dict):
+                    values[ind_id] = result
+                else:
+                    values[ind_id] = {"value": float("nan")}
+            return values
+
+        detector_logger = logging.getLogger("src.core.tradingbot.config.detector")
+        prev_level = detector_logger.level
+        detector_logger.setLevel(logging.WARNING)
+        try:
+            # Iterate through candles incrementally
+            for i in range(min_candles - 1, len(df)):
+                try:
+                    indicator_values = _indicator_values_at(i)
+                    active_regimes = detector.detect_active_regimes(indicator_values, scope="entry")
+                    regime_state = engine._convert_to_regime_state(
+                        active_regimes=active_regimes,
+                        indicator_values=indicator_values,
+                        timestamp=datetime.utcnow()
+                    )
+                except ConditionEvaluationError as e:
+                    logger.debug(f"Skipping bar {i} due to condition evaluation error: {e}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error calculating regimes at bar {i}: {e}")
+                    continue
+
+                # Determine regime label
+                if active_regimes:
+                    regime_label = active_regimes[0].id.upper()
+                else:
+                    regime_label = "UNKNOWN"
+
+                # Score based on regime confidence
+                score = max(0.0, min(100.0, regime_state.regime_confidence * 100))
+
+                # Get timestamp
+                timestamp = df.iloc[i]['timestamp']
+                dt = datetime.fromtimestamp(timestamp / 1000) if timestamp > 1e10 else datetime.fromtimestamp(timestamp)
+
+                # Check if regime changed
+                if current_regime is None:
+                    # First regime detected - start new period
+                    current_regime = {
+                        'regime': regime_label,
+                        'score': score,
+                        'start_timestamp': timestamp,
+                        'start_date': dt.strftime("%Y-%m-%d"),
+                        'start_time': dt.strftime("%H:%M:%S"),
+                        'start_bar_index': i
+                    }
+                    logger.debug(f"First regime started at bar {i}: {regime_label} (score: {score:.2f})")
+
+                elif current_regime['regime'] != regime_label:
+                    # Regime changed - close previous period and start new one
+                    current_regime['end_timestamp'] = timestamp
+                    current_regime['end_date'] = dt.strftime("%Y-%m-%d")
+                    current_regime['end_time'] = dt.strftime("%H:%M:%S")
+                    current_regime['end_bar_index'] = i
+
+                    # Calculate duration
+                    duration_bars = current_regime['end_bar_index'] - current_regime['start_bar_index']
+                    duration_seconds = (current_regime['end_timestamp'] - current_regime['start_timestamp']) / 1000 if current_regime['end_timestamp'] > 1e10 else (current_regime['end_timestamp'] - current_regime['start_timestamp'])
+                    duration_time = self._format_duration(duration_seconds)
+
+                    current_regime['duration_bars'] = duration_bars
+                    current_regime['duration_time'] = duration_time
+
+                    # Add to periods list
+                    regime_periods.append(current_regime)
+                    logger.debug(
+                        f"Regime ended at bar {i}: {current_regime['regime']} -> {regime_label} "
+                        f"(duration: {duration_bars} bars, {duration_time})"
+                    )
+
+                    # Start new regime
+                    current_regime = {
+                        'regime': regime_label,
+                        'score': score,
+                        'start_timestamp': timestamp,
+                        'start_date': dt.strftime("%Y-%m-%d"),
+                        'start_time': dt.strftime("%H:%M:%S"),
+                        'start_bar_index': i
+                    }
+        finally:
+            detector_logger.setLevel(prev_level)
+
+        # Close the last regime with the final candle
+        if current_regime is not None:
+            last_candle = self._candles[-1]
+            last_timestamp = last_candle.get('timestamp') or last_candle.get('time')
+            last_dt = datetime.fromtimestamp(last_timestamp / 1000) if last_timestamp > 1e10 else datetime.fromtimestamp(last_timestamp)
+
+            current_regime['end_timestamp'] = last_timestamp
+            current_regime['end_date'] = last_dt.strftime("%Y-%m-%d")
+            current_regime['end_time'] = last_dt.strftime("%H:%M:%S")
+            current_regime['end_bar_index'] = len(self._candles)
+
+            # Calculate duration
+            duration_bars = current_regime['end_bar_index'] - current_regime['start_bar_index']
+            duration_seconds = (current_regime['end_timestamp'] - current_regime['start_timestamp']) / 1000 if current_regime['end_timestamp'] > 1e10 else (current_regime['end_timestamp'] - current_regime['start_timestamp'])
+            duration_time = self._format_duration(duration_seconds)
+
+            current_regime['duration_bars'] = duration_bars
+            current_regime['duration_time'] = duration_time
+
+            # Add final regime
+            regime_periods.append(current_regime)
+            logger.debug(f"Last regime closed at final candle: {current_regime['regime']} (duration: {duration_bars} bars, {duration_time})")
+
+        return regime_periods
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in seconds to human-readable string.
+
+        Args:
+            seconds: Duration in seconds
+
+        Returns:
+            Formatted string like "2h 15m" or "45m" or "30s"
+        """
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes}m"
+        else:
+            hours = int(seconds / 3600)
+            minutes = int((seconds % 3600) / 60)
+            if minutes > 0:
+                return f"{hours}h {minutes}m"
+            else:
+                return f"{hours}h"
+
+    # Issue #21: Removed old methods (_on_load_strategy_clicked, _on_run_backtest_clicked)
+    # These are no longer needed in the Regime tab
 
     def _on_run_backtest_clicked(self) -> None:
         """Handle run backtest button click.
@@ -320,11 +752,8 @@ class BacktestConfigMixin:
                 initial_capital=capital
             )
 
-            # Display results in Results tab
-            self._display_backtest_results(results, f"Regime Set: {config_path.stem}")
-
-            # Switch to Results tab
-            self._tabs.setCurrentIndex(2)  # Backtest Results tab (updated after Parameter Configuration tab insertion)
+            # Display results summary
+            self._show_backtest_summary(results, f"Regime Set: {config_path.stem}")
 
             self._bt_run_btn.setEnabled(True)
 
@@ -339,3 +768,40 @@ class BacktestConfigMixin:
                 "Backtest Error",
                 f"Failed to backtest regime set:\n\n{str(e)}"
             )
+
+    def _on_backtest_finished(self, results: dict) -> None:
+        """Handle backtest completion (summary only)."""
+        self._backtest_result = results
+        self._bt_run_btn.setEnabled(True)
+        self._bt_status_label.setText("Backtest complete")
+        self._show_backtest_summary(results, "Backtest Results")
+        logger.info("Backtest completed (summary displayed)")
+
+    def _on_backtest_error(self, error_msg: str) -> None:
+        """Handle backtest error (summary only)."""
+        self._bt_run_btn.setEnabled(True)
+        self._bt_status_label.setText("Error")
+        QMessageBox.critical(
+            self,
+            "Backtest Error",
+            f"Failed to run backtest:\n\n{error_msg}"
+        )
+        logger.error(f"Backtest error: {error_msg}")
+
+    def _show_backtest_summary(self, results: dict, title: str) -> None:
+        """Show a compact backtest summary dialog."""
+        stats = results.get('statistics', {}) if isinstance(results, dict) else {}
+        summary_lines = [
+            title,
+            "",
+            f"Net Profit: ${stats.get('net_profit', 0):.2f}",
+            f"Return: {stats.get('return_pct', 0):.2f}%",
+            f"Win Rate: {stats.get('win_rate', 0):.2f}%",
+            f"Profit Factor: {stats.get('profit_factor', 0):.2f}",
+            f"Total Trades: {stats.get('total_trades', 0)}",
+        ]
+        QMessageBox.information(
+            self,
+            "Backtest Results",
+            "\n".join(summary_lines)
+        )

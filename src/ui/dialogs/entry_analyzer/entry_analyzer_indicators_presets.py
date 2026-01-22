@@ -23,13 +23,18 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QScrollArea,
-    QTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     pass
@@ -355,8 +360,10 @@ class IndicatorsPresetsMixin:
         self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         preset_select_layout.addWidget(self._preset_combo)
 
-        # Auto button (detects current regime)
-        auto_btn = QPushButton("🎯 Auto (Use Current Regime)")
+        # Auto button (detects current regime) - Issue #12: Material Design icon + theme
+        auto_btn = QPushButton(" Auto (Use Current Regime)")
+        auto_btn.setIcon(get_icon("auto_awesome"))
+        auto_btn.setProperty("class", "info")  # Use theme
         auto_btn.setToolTip("Automatically select preset based on currently detected market regime")
         auto_btn.clicked.connect(self._on_auto_preset_clicked)
         preset_select_layout.addWidget(auto_btn)
@@ -364,29 +371,38 @@ class IndicatorsPresetsMixin:
         preset_layout.addLayout(preset_select_layout)
         layout.addWidget(preset_group)
 
-        # Preset Details (scrollable)
+        # Issue #11: Preset Details as Table (for calculations)
         details_group = QGroupBox("Preset Details")
         details_layout = QVBoxLayout(details_group)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
+        # Create table with 4 columns: Indicator, Parameter, Range, Notes
+        self._preset_details_table = QTableWidget()
+        self._preset_details_table.setColumnCount(4)
+        self._preset_details_table.setHorizontalHeaderLabels(['Indicator', 'Parameter', 'Range', 'Notes'])
 
-        self._preset_details_text = QTextEdit()
-        self._preset_details_text.setReadOnly(True)
-        self._preset_details_text.setMaximumHeight(250)
-        scroll.setWidget(self._preset_details_text)
+        # Set column widths
+        header = self._preset_details_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Indicator
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Parameter
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Range
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Notes (stretch)
 
-        details_layout.addWidget(scroll)
+        # Set alternating row colors for better readability
+        self._preset_details_table.setAlternatingRowColors(True)
+        self._preset_details_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
+        self._preset_details_table.setMaximumHeight(300)
+
+        details_layout.addWidget(self._preset_details_table)
         layout.addWidget(details_group)
 
         # Apply Button
         apply_layout = QHBoxLayout()
         apply_layout.addStretch()
 
-        apply_btn = QPushButton("✅ Apply Preset to Optimization")
-        apply_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #22c55e; color: white;"
-        )
+        # Issue #12: Material Design icon + theme color
+        apply_btn = QPushButton(" Apply Preset to Optimization")
+        apply_btn.setIcon(get_icon("check_circle"))
+        apply_btn.setProperty("class", "success")  # Use theme success color
         apply_btn.clicked.connect(self._on_apply_preset_clicked)
         apply_layout.addWidget(apply_btn)
 
@@ -416,49 +432,66 @@ class IndicatorsPresetsMixin:
     def _on_preset_selected(self, index: int) -> None:
         """Handle preset selection change.
 
-        Updates preset details display.
+        Issue #11: Populates table widget instead of HTML text display.
         """
         regime_key = self._preset_combo.currentData()
         if not regime_key or regime_key not in REGIME_PRESETS:
+            # BUG-004 FIX: Provide user feedback when preset is invalid
+            from PyQt6.QtWidgets import QMessageBox
+            logger.warning(f"Invalid preset selected: {regime_key}")
+            if regime_key:  # Only show message if something was selected
+                QMessageBox.warning(
+                    self._preset_details_table,
+                    "Ungültiges Preset",
+                    f"Das ausgewählte Preset '{regime_key}' konnte nicht geladen werden."
+                )
             return
 
         preset = REGIME_PRESETS[regime_key]
 
-        # Build details HTML
-        html = f"<h4>{preset['name']}</h4>"
-        html += f"<p><i>{preset['description']}</i></p>"
-        html += "<hr>"
-        html += "<h5>Recommended Parameter Ranges:</h5>"
-        html += "<table border='1' cellpadding='5' style='border-collapse: collapse;'>"
-        html += "<tr><th>Indicator</th><th>Parameter</th><th>Range</th><th>Notes</th></tr>"
+        # Count total rows needed
+        total_rows = sum(
+            len([k for k in ind_config.keys() if k != 'notes'])
+            for ind_config in preset['indicators'].values()
+        )
 
+        # Clear and resize table
+        self._preset_details_table.setRowCount(total_rows)
+
+        # Populate table
+        row_idx = 0
         for ind_name, ind_config in preset['indicators'].items():
-            first_param = True
-            for param_name, param_value in ind_config.items():
-                if param_name == 'notes':
-                    continue
+            params = [k for k in ind_config.keys() if k != 'notes']
+            param_count = len(params)
+            notes = ind_config.get('notes', '')
 
-                min_val, max_val, step = param_value
+            for param_idx, param_name in enumerate(params):
+                # Indicator column (only on first param)
+                if param_idx == 0:
+                    indicator_item = QTableWidgetItem(ind_name)
+                    self._preset_details_table.setItem(row_idx, 0, indicator_item)
+                    if param_count > 1:
+                        self._preset_details_table.setSpan(row_idx, 0, param_count, 1)
 
-                if first_param:
-                    html += f"<tr><td rowspan='{len(ind_config)-1}'><b>{ind_name}</b></td>"
-                    first_param = False
-                else:
-                    html += "<tr>"
+                # Parameter column
+                param_item = QTableWidgetItem(param_name)
+                self._preset_details_table.setItem(row_idx, 1, param_item)
 
-                html += f"<td>{param_name}</td>"
-                html += f"<td>{min_val} - {max_val} (step {step})</td>"
+                # Range column
+                min_val, max_val, step = ind_config[param_name]
+                range_item = QTableWidgetItem(f"{min_val} - {max_val} (step {step})")
+                self._preset_details_table.setItem(row_idx, 2, range_item)
 
-                # Add notes only on first row
-                if param_name == list(ind_config.keys())[0]:
-                    notes = ind_config.get('notes', '')
-                    html += f"<td rowspan='{len(ind_config)-1}'>{notes}</td>"
+                # Notes column (only on first param)
+                if param_idx == 0:
+                    notes_item = QTableWidgetItem(notes)
+                    self._preset_details_table.setItem(row_idx, 3, notes_item)
+                    if param_count > 1:
+                        self._preset_details_table.setSpan(row_idx, 3, param_count, 1)
 
-                html += "</tr>"
+                row_idx += 1
 
-        html += "</table>"
-
-        self._preset_details_text.setHtml(html)
+        logger.debug(f"Loaded preset '{preset['name']}' with {total_rows} parameter rows")
 
     def _on_auto_preset_clicked(self) -> None:
         """Auto-select preset based on currently detected regime.

@@ -758,6 +758,8 @@
                                     try {
                                         if (d.type === 'hline') {
                                             window.chartAPI.addHorizontalLine(d.price, d.color || '#26a69a', d.label || '', d.lineStyle || 'solid', d.id || null);
+                                        } else if (d.type === 'vline') {
+                                            window.chartAPI.addVerticalLine(d.timestamp, d.color || '#9e9e9e', d.label || '', d.lineStyle || 'solid', d.id || null);
                                         } else if (d.type === 'rect-range') {
                                             window.chartAPI.addRectRange(d.priceLow, d.priceHigh, d.color || 'rgba(13,110,253,0.18)', d.label || '');
                                         } else if (d.type === 'percent-rect') {
@@ -900,6 +902,87 @@
                                 // Text
                                 ctx.fillStyle = '#ffffff';
                                 ctx.fillText(this._label, labelX, labelY - padding/2);
+                            }
+                        });
+                    }
+                }
+
+                // Vertical Line Primitive (for regime boundaries, events, etc.)
+                class VerticalLinePrimitive {
+                    constructor(timestamp, color, id, label = '', lineStyle = 'solid') {
+                        this.timestamp = timestamp;  // Unix timestamp in seconds
+                        this.color = color;
+                        this.id = id;
+                        this.label = label;
+                        this.lineStyle = lineStyle;
+                        this.type = 'vline';
+                        this._paneViews = [new VerticalLinePaneView(this)];
+                    }
+                    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+                    paneViews() { return this._paneViews; }
+                }
+
+                class VerticalLinePaneView {
+                    constructor(source) { this._source = source; this._x = null; }
+                    update() {
+                        // Convert timestamp to X coordinate
+                        this._x = chart.timeScale().timeToCoordinate(this._source.timestamp);
+                    }
+                    renderer() { return new VerticalLineRenderer(this._x, this._source.color, this._source.label, this._source.lineStyle); }
+                }
+
+                class VerticalLineRenderer {
+                    constructor(x, color, label = '', lineStyle = 'solid') {
+                        this._x = x;
+                        this._color = color;
+                        this._label = label;
+                        this._lineStyle = lineStyle;
+                    }
+                    draw(target) {
+                        target.useBitmapCoordinateSpace(scope => {
+                            if (this._x === null) return;
+                            const ctx = scope.context;
+                            const xScaled = Math.round(this._x * scope.horizontalPixelRatio);
+
+                            // Draw line
+                            ctx.strokeStyle = this._color;
+                            ctx.lineWidth = 2;
+                            if (this._lineStyle === 'dashed') {
+                                ctx.setLineDash([8, 4]);
+                            } else if (this._lineStyle === 'dotted') {
+                                ctx.setLineDash([2, 2]);
+                            } else {
+                                ctx.setLineDash([]);
+                            }
+                            ctx.beginPath();
+                            ctx.moveTo(xScaled, 0);
+                            ctx.lineTo(xScaled, scope.bitmapSize.height);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+
+                            // Draw label if provided (at top of chart, rotated)
+                            if (this._label) {
+                                const fontSize = 11 * scope.verticalPixelRatio;
+                                ctx.font = `bold ${fontSize}px Arial`;
+                                const padding = 4 * scope.verticalPixelRatio;
+                                const labelY = padding * 4;  // Near top of chart
+
+                                // Save context, rotate for vertical text
+                                ctx.save();
+                                ctx.translate(xScaled, labelY);
+                                ctx.rotate(-Math.PI / 2);  // Rotate -90 degrees
+
+                                const textWidth = ctx.measureText(this._label).width;
+
+                                // Background
+                                ctx.fillStyle = this._color;
+                                ctx.fillRect(-textWidth - padding, -fontSize, textWidth + padding * 2, fontSize + padding);
+
+                                // Text
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillText(this._label, -textWidth, -padding/2);
+
+                                ctx.restore();
                             }
                         });
                     }
@@ -2144,13 +2227,15 @@
                     id: d.id, type: d.type,
                     ...(d.type === 'hline'
                         ? { price: d.price, color: d.color, label: d.label, lineStyle: d.lineStyle }
-                        : d.type === 'rect-range'
-                            ? { priceLow: d.pLow, priceHigh: d.pHigh, color: d.color, label: d.label }
-                            : d.type === 'percent-rect'
-                                ? { p1: d.p1, p2: d.p2, color: d.color }
-                                : d.type === 'fibonacci'
-                                    ? { p1: d.p1, p2: d.p2 }
-                                    : { p1: d.p1, p2: d.p2, color: d.color })
+                        : d.type === 'vline'
+                            ? { timestamp: d.timestamp, color: d.color, label: d.label, lineStyle: d.lineStyle }
+                            : d.type === 'rect-range'
+                                ? { priceLow: d.pLow, priceHigh: d.pHigh, color: d.color, label: d.label }
+                                : d.type === 'percent-rect'
+                                    ? { p1: d.p1, p2: d.p2, color: d.color }
+                                    : d.type === 'fibonacci'
+                                        ? { p1: d.p1, p2: d.p2 }
+                                        : { p1: d.p1, p2: d.p2, color: d.color })
                 }));
                 window.chartAPI.clearDrawings = clearAllDrawings;
 
@@ -2214,6 +2299,23 @@
                     console.log('Added horizontal line at', price, 'with label:', label, 'ID:', lineId);
                     return line.id;
                 };
+                window.chartAPI.addVerticalLine = (timestamp, color, label = '', lineStyle = 'solid', customId = null) => {
+                    // Use custom ID if provided, otherwise generate one
+                    const lineId = customId || genId();
+                    // Remove existing line with same ID if updating
+                    const existingIdx = drawings.findIndex(x => x.id === lineId);
+                    if (existingIdx !== -1) {
+                        const existing = drawings[existingIdx];
+                        priceSeries.detachPrimitive(existing);
+                        drawings.splice(existingIdx, 1);
+                        console.log('Removed existing vertical line with ID:', lineId);
+                    }
+                    const line = new VerticalLinePrimitive(timestamp, color || '#9e9e9e', lineId, label, lineStyle);
+                    priceSeries.attachPrimitive(line);
+                    drawings.push(line);
+                    console.log('Added vertical line at timestamp', timestamp, 'with label:', label, 'ID:', lineId);
+                    return line.id;
+                };
                 window.chartAPI.addTrendLine = (p1, p2, color) => {
                     const line = new TrendLinePrimitive(p1, p2, color || '#ffeb3b', genId());
                     priceSeries.attachPrimitive(line);
@@ -2244,12 +2346,12 @@
                     if (d) removeDrawing(d);
                 };
 
-                // Clear all lines (hline type drawings)
+                // Clear all lines (hline and vline type drawings)
                 window.chartAPI.clearLines = () => {
                     try {
-                        const linesToRemove = drawings.filter(d => d.type === 'hline');
+                        const linesToRemove = drawings.filter(d => d.type === 'hline' || d.type === 'vline');
                         linesToRemove.forEach(d => removeDrawing(d));
-                        console.log('Cleared ' + linesToRemove.length + ' horizontal lines');
+                        console.log('Cleared ' + linesToRemove.length + ' lines (horizontal + vertical)');
                         return true;
                     } catch(e) {
                         console.error('clearLines error:', e);

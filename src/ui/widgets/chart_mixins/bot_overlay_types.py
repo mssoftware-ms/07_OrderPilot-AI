@@ -19,6 +19,8 @@ class MarkerType(str, Enum):
     TRAILING_UPDATE = "trailing_update"
     MACD_BEARISH = "macd_bearish"
     MACD_BULLISH = "macd_bullish"
+    REGIME_BULL = "regime_bull"  # Bullish regime start
+    REGIME_BEAR = "regime_bear"  # Bearish regime start
 
 
 @dataclass
@@ -59,6 +61,14 @@ class BotMarker:
             shape = "arrowUp"
             color = "#00bcd4"  # Cyan for bullish MACD
             position = "belowBar"
+        elif self.marker_type == MarkerType.REGIME_BULL:
+            shape = "arrowUp"
+            color = "#4caf50"  # Green for bullish regime
+            position = "belowBar"
+        elif self.marker_type == MarkerType.REGIME_BEAR:
+            shape = "arrowDown"
+            color = "#f44336"  # Red for bearish regime
+            position = "aboveBar"
         else:
             shape = "circle"
             color = "#607d8b"  # Grey

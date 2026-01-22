@@ -211,6 +211,25 @@ class RegimeEngineJSON:
                     if 'bandwidth' in indicator_values[ind_def.id]:
                         # Alias: bandwidth → width (for BB indicators)
                         indicator_values[ind_def.id]['width'] = indicator_values[ind_def.id]['bandwidth']
+                    if ind_config.indicator_type == IndicatorType.MACD:
+                        # Normalize MACD column names across TA-Lib / pandas_ta
+                        cols = list(indicator_values[ind_def.id].keys())
+                        macd_col = next(
+                            (c for c in cols if "macd" in c.lower() and "signal" not in c.lower() and "hist" not in c.lower()),
+                            None
+                        )
+                        signal_col = next((c for c in cols if "signal" in c.lower()), None)
+                        hist_col = next((c for c in cols if "hist" in c.lower()), None)
+
+                        if macd_col and "macd" not in indicator_values[ind_def.id]:
+                            indicator_values[ind_def.id]["macd"] = indicator_values[ind_def.id][macd_col]
+                        if signal_col and "signal" not in indicator_values[ind_def.id]:
+                            indicator_values[ind_def.id]["signal"] = indicator_values[ind_def.id][signal_col]
+                        if hist_col and "histogram" not in indicator_values[ind_def.id]:
+                            indicator_values[ind_def.id]["histogram"] = indicator_values[ind_def.id][hist_col]
+                        # Backward-compatible alias: value -> macd line
+                        if "macd" in indicator_values[ind_def.id] and "value" not in indicator_values[ind_def.id]:
+                            indicator_values[ind_def.id]["value"] = indicator_values[ind_def.id]["macd"]
                 elif isinstance(result.values, dict):
                     # Dict result (e.g., from custom indicators)
                     indicator_values[ind_def.id] = result.values

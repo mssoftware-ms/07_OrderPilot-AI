@@ -40,6 +40,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
+
 if TYPE_CHECKING:
     pass
 
@@ -165,12 +168,10 @@ class AIPatternsMixin:
 
         layout.addWidget(settings_group)
 
-        # Analyze Button
-        self.pattern_analyze_btn = QPushButton("🔍 Analyze Current Pattern")
-        self.pattern_analyze_btn.setStyleSheet(
-            "background-color: #26a69a; color: white; font-weight: bold; "
-            "padding: 10px; font-size: 14px;"
-        )
+        # Analyze Button (Issue #12: Material Design icon + theme color)
+        self.pattern_analyze_btn = QPushButton(" Analyze Current Pattern")
+        self.pattern_analyze_btn.setIcon(get_icon("psychology"))
+        self.pattern_analyze_btn.setProperty("class", "info")  # Use theme info color
         self.pattern_analyze_btn.clicked.connect(self._on_pattern_analyze_clicked)
         layout.addWidget(self.pattern_analyze_btn)
 

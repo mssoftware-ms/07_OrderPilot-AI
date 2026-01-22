@@ -2,7 +2,7 @@
 
 Extracted from entry_analyzer_backtest.py to keep files under 550 LOC.
 Handles market regime detection and analysis:
-- Current regime analysis with RegimeEngine
+- Current regime analysis with RegimeEngineJSON
 - Regime boundary drawing on chart
 - Regime history handling from optimization
 - Real-time regime classification
@@ -14,6 +14,8 @@ LOC: ~300
 from __future__ import annotations
 
 import logging
+import math
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtWidgets import QMessageBox
@@ -28,10 +30,9 @@ class BacktestRegimeMixin:
     """Regime analysis functionality.
 
     Provides regime detection and visualization with:
-    - Current regime analysis using RegimeEngine
-    - Indicator calculation (RSI, MACD, ADX, ATR, BB)
-    - FeatureVector building from candle data
-    - Regime classification (TREND_UP/DOWN, RANGE, HIGH_VOL, SQUEEZE)
+    - Current regime analysis using RegimeEngineJSON
+    - Indicator calculation via IndicatorEngine (JSON config)
+    - Regime classification based on JSON-defined regimes
     - Regime interpretation and recommendations
     - Regime boundaries drawing on chart as vertical lines
     - Regime history handling from optimization results
@@ -44,6 +45,7 @@ class BacktestRegimeMixin:
     # Type hints for parent class attributes
     _candles: list[dict]
     _regime_label: Any
+    _regime_config: object | None
 
     def _on_analyze_current_regime_clicked(self) -> None:
         """Analyze current market regime.
@@ -52,12 +54,11 @@ class BacktestRegimeMixin:
 
         Performs real-time regime analysis:
         1. Gets chart data (last 200 candles)
-        2. Calculates indicators: RSI(14), MACD(12,26,9), ADX(14), ATR(14), BB(20,2)
-        3. Builds FeatureVector from latest candle
-        4. Uses RegimeEngine.classify() for regime detection
-        5. Displays regime (TREND_UP, TREND_DOWN, RANGE) with volatility level
-        6. Shows interpretation and trading recommendations
-        7. Updates header label with regime color
+        2. Loads JSON-based regime config (Entry Analyzer)
+        3. Calculates indicators via RegimeEngineJSON
+        4. Detects active regimes via RegimeDetector
+        5. Displays regime with volatility level + interpretation
+        6. Updates header label with regime color
         """
         if not self._candles or len(self._candles) < 50:
             QMessageBox.warning(
@@ -87,116 +88,86 @@ class BacktestRegimeMixin:
             if missing:
                 raise ValueError(f"Missing required columns: {missing}")
 
-            # Calculate indicators
-            logger.debug("Calculating indicators...")
+            # Load JSON-based regime config
+            if self._regime_config is None:
+                self._load_default_regime_config()
+            config = self._regime_config
+            if config is None:
+                raise ValueError("Regime config is not loaded.")
 
-            # RSI (14)
-            delta = df['close'].diff()
-            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-            loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-            rs = gain / loss
-            df['rsi'] = 100 - (100 / (1 + rs))
+            from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+            from src.core.tradingbot.config.detector import RegimeDetector
+            from src.core.tradingbot.models import RegimeType
 
-            # MACD (12, 26, 9)
-            ema_fast = df['close'].ewm(span=12).mean()
-            ema_slow = df['close'].ewm(span=26).mean()
-            df['macd'] = ema_fast - ema_slow
-            df['macd_signal'] = df['macd'].ewm(span=9).mean()
-            df['macd_histogram'] = df['macd'] - df['macd_signal']
-
-            # ADX (14)
-            high_diff = df['high'].diff()
-            low_diff = -df['low'].diff()
-            plus_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
-            minus_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0)
-            tr = pd.concat([
-                df['high'] - df['low'],
-                abs(df['high'] - df['close'].shift()),
-                abs(df['low'] - df['close'].shift())
-            ], axis=1).max(axis=1)
-            atr = tr.rolling(window=14).mean()
-            plus_di = 100 * (plus_dm.rolling(window=14).mean() / atr)
-            minus_di = 100 * (minus_dm.rolling(window=14).mean() / atr)
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
-            df['adx'] = dx.rolling(window=14).mean()
-
-            # ATR (14)
-            df['atr'] = atr
-
-            # Bollinger Bands (20, 2)
-            df['bb_middle'] = df['close'].rolling(window=20).mean()
-            bb_std = df['close'].rolling(window=20).std()
-            df['bb_upper'] = df['bb_middle'] + (2 * bb_std)
-            df['bb_lower'] = df['bb_middle'] - (2 * bb_std)
-            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
-
-            # Get latest candle with indicators
-            latest = df.iloc[-1]
-
-            # Build FeatureVector
-            from src.analysis.regime_engine import FeatureVector
-
-            features = FeatureVector(
-                rsi=float(latest['rsi']) if pd.notna(latest['rsi']) else 50.0,
-                macd=float(latest['macd']) if pd.notna(latest['macd']) else 0.0,
-                macd_signal=float(latest['macd_signal']) if pd.notna(latest['macd_signal']) else 0.0,
-                adx=float(latest['adx']) if pd.notna(latest['adx']) else 20.0,
-                atr=float(latest['atr']) if pd.notna(latest['atr']) else 0.0,
-                bb_width=float(latest['bb_width']) if pd.notna(latest['bb_width']) else 0.05,
-                volatility=float(latest['atr'] / latest['close']) if pd.notna(latest['atr']) and latest['close'] > 0 else 0.01,
-                trend_strength=float(latest['adx']) if pd.notna(latest['adx']) else 20.0,
+            engine = RegimeEngineJSON()
+            indicator_values = engine._calculate_indicators(df, config)
+            detector = RegimeDetector(config.regimes)
+            active_regimes = detector.detect_active_regimes(indicator_values, scope="entry")
+            regime_state = engine._convert_to_regime_state(
+                active_regimes=active_regimes,
+                indicator_values=indicator_values,
+                timestamp=datetime.utcnow()
             )
 
-            # Classify regime
-            from src.analysis.regime_engine import RegimeEngine
+            active_label = active_regimes[0].name if active_regimes else "Unknown"
+            active_id = active_regimes[0].id if active_regimes else "unknown"
 
-            regime_engine = RegimeEngine()
-            regime = regime_engine.classify(features)
-
-            logger.info(f"Current regime: {regime.value}")
+            logger.info(
+                f"Current regime: {active_label} ({active_id}) "
+                f"-> {regime_state.regime_label}"
+            )
 
             # Build interpretation text
             regime_colors = {
-                "trend_up": "#22c55e",
-                "trend_down": "#ef4444",
-                "range": "#f59e0b",
-                "high_vol": "#a855f7",
-                "squeeze": "#3b82f6",
-                "no_trade": "#6b7280",
+                RegimeType.TREND_UP: "#22c55e",
+                RegimeType.TREND_DOWN: "#ef4444",
+                RegimeType.RANGE: "#f59e0b",
+                RegimeType.UNKNOWN: "#6b7280",
             }
 
             regime_interpretations = {
-                "trend_up": "📈 Strong uptrend - Look for LONG entries on pullbacks",
-                "trend_down": "📉 Strong downtrend - Look for SHORT entries on rallies",
-                "range": "↔️ Range-bound market - Trade support/resistance bounces",
-                "high_vol": "⚡ High volatility - Use wider stops, reduce position size",
-                "squeeze": "🎯 Volatility squeeze - Prepare for breakout",
-                "no_trade": "⚠️ No clear pattern - Stay flat or reduce exposure",
+                RegimeType.TREND_UP: "Strong uptrend - focus on LONG pullbacks",
+                RegimeType.TREND_DOWN: "Strong downtrend - focus on SHORT rallies",
+                RegimeType.RANGE: "Range-bound market - trade support/resistance",
+                RegimeType.UNKNOWN: "No clear regime - reduce exposure",
             }
 
-            regime_text = regime.value.replace("_", " ").title()
-            color = regime_colors.get(regime.value, "#888")
-            interpretation = regime_interpretations.get(regime.value, "Unknown regime")
+            color = regime_colors.get(regime_state.regime, "#888")
+            interpretation = regime_interpretations.get(regime_state.regime, "Unknown regime")
 
             # Update header label
-            self._regime_label.setText(f"Regime: {regime_text}")
+            self._regime_label.setText(f"Regime: {active_label}")
             self._regime_label.setStyleSheet(
                 f"font-weight: bold; font-size: 14pt; padding: 5px; color: {color};"
             )
 
+            def format_value(value: float | None, fmt: str) -> str:
+                if value is None:
+                    return "n/a"
+                if isinstance(value, float) and math.isnan(value):
+                    return "n/a"
+                return format(value, fmt)
+
+            rsi_val = indicator_values.get("rsi14", {}).get("value")
+            macd_val = indicator_values.get("macd_12_26_9", {}).get("macd")
+            adx_val = indicator_values.get("adx14", {}).get("value")
+            atr_val = indicator_values.get("atr14", {}).get("value")
+            bb_width = indicator_values.get("bb20", {}).get("width")
+
             # Show detailed analysis
             details = (
-                f"Current Market Regime: {regime_text}\n\n"
+                f"Detected Regime: {active_label} ({active_id})\n"
+                f"Legacy Regime: {regime_state.regime_label}\n"
+                f"Confidence: {regime_state.regime_confidence:.2f}\n\n"
                 f"{interpretation}\n\n"
-                f"Technical Indicators:\n"
-                f"  RSI(14): {latest['rsi']:.1f}\n"
-                f"  MACD: {latest['macd']:.4f}\n"
-                f"  ADX(14): {latest['adx']:.1f}\n"
-                f"  ATR(14): {latest['atr']:.4f}\n"
-                f"  BB Width: {latest['bb_width']:.4f}\n"
-                f"  Volatility: {features.volatility:.4f}\n\n"
+                f"Indicators (from JSON config):\n"
+                f"  RSI(14): {format_value(rsi_val, '.1f')}\n"
+                f"  MACD: {format_value(macd_val, '.4f')}\n"
+                f"  ADX(14): {format_value(adx_val, '.1f')}\n"
+                f"  ATR(14): {format_value(atr_val, '.4f')}\n"
+                f"  BB Width: {format_value(bb_width, '.4f')}\n\n"
                 f"Recommendation:\n"
-                f"  - Use strategies optimized for {regime_text}\n"
+                f"  - Use strategies optimized for {active_label}\n"
                 f"  - Adjust position sizing based on volatility\n"
                 f"  - Monitor for regime changes"
             )
@@ -280,8 +251,12 @@ class BacktestRegimeMixin:
         # Store regime history
         self._regime_history = regime_history
 
-        # Enable draw boundaries button
-        self._bt_draw_boundaries_btn.setEnabled(True)
-        self._bt_create_regime_set_btn.setEnabled(True)
+        # Enable draw boundaries button (if present)
+        draw_btn = getattr(self, "_bt_draw_boundaries_btn", None)
+        if draw_btn is not None:
+            draw_btn.setEnabled(True)
+        create_btn = getattr(self, "_bt_create_regime_set_btn", None)
+        if create_btn is not None:
+            create_btn.setEnabled(True)
 
         logger.info("Regime history ready for visualization")

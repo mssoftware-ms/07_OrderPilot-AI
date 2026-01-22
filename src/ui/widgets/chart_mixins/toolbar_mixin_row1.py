@@ -88,20 +88,10 @@ class ToolbarMixinRow1:
         self.parent.chart_connect_button.clicked.connect(self._on_broker_connect_clicked)
         toolbar.addWidget(self.parent.chart_connect_button)
         
-        # Trading Mode Badge (Read-Only)
-        self.parent.chart_mode_badge = QLabel("PAPER")
-        self.parent.chart_mode_badge.setToolTip("Aktueller Trading-Modus (Read-Only)")
-        self.parent.chart_mode_badge.setStyleSheet("""
-            QLabel {
-                background-color: #FFA500;
-                color: white;
-                font-weight: bold;
-                padding: 2px 8px;
-                border-radius: 3px;
-                font-size: 10px;
-            }
-        """)
-        toolbar.addWidget(self.parent.chart_mode_badge)
+        # Issue #7: Trading Mode Badge (PAPER) entfernt
+        # Paper Badge wurde vom Benutzer als störend empfunden und soll gelöscht werden
+        # Die Trading-Modus-Information wird stattdessen im Workspace Manager angezeigt
+        pass
         
         # Subscribe to broker events for sync
         event_bus.subscribe(EventType.MARKET_CONNECTED, self._on_broker_connected_event)
@@ -170,7 +160,7 @@ class ToolbarMixinRow1:
     def add_watchlist_toggle(self, toolbar: QToolBar) -> None:
         """Add watchlist toggle button to toolbar."""
         from src.ui.icons import get_icon
-        
+
         self.parent.watchlist_toggle_btn = QPushButton("📋")
         self.parent.watchlist_toggle_btn.setToolTip("Watchlist ein/ausblenden")
         self.parent.watchlist_toggle_btn.setIconSize(self.ICON_SIZE)
@@ -179,6 +169,7 @@ class ToolbarMixinRow1:
         self.parent.watchlist_toggle_btn.setToolTip("Watchlist ein/ausblenden")
         self.parent.watchlist_toggle_btn.setFixedHeight(self.BUTTON_HEIGHT)
         self.parent.watchlist_toggle_btn.setFixedWidth(40)
+        self.parent.watchlist_toggle_btn.setProperty("class", "toolbar-button")  # Issue #7: Theme-Klasse
         self.parent.watchlist_toggle_btn.clicked.connect(self._toggle_watchlist)
         toolbar.addWidget(self.parent.watchlist_toggle_btn)
     
@@ -210,6 +201,7 @@ class ToolbarMixinRow1:
         # Issue #22: Label entfernt, Tooltip stattdessen
         self.parent.timeframe_combo = QComboBox()
         self.parent.timeframe_combo.setToolTip("Kerzen-Zeitrahmen wählen")
+        self.parent.timeframe_combo.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #17: Gleiche Höhe wie Buttons (32px)
         # Issue #38: Added 1 second timeframe
         # Issue #42: Added 2-hour and 8-hour timeframes
         timeframes = [
@@ -241,6 +233,7 @@ class ToolbarMixinRow1:
         # Issue #22: Label entfernt, Tooltip stattdessen
         self.parent.period_combo = QComboBox()
         self.parent.period_combo.setToolTip("Darstellungs-Zeitraum wählen")
+        self.parent.period_combo.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #17: Gleiche Höhe wie Buttons (32px)
         # Issue #42: Added shorter periods (1h, 2h, 4h, 8h) for 1-second charts
         periods = [
             ("1 Stunde", "1H", 1/24),      # Issue #42: ~4% of a day
@@ -271,11 +264,14 @@ class ToolbarMixinRow1:
 
     def add_indicators_menu(self, toolbar: QToolBar) -> None:
         # Issue #22: Label entfernt
+        # Issue #7: Icon prüfen - sicherstellen, dass nur ein Icon verwendet wird (kein altes buntes Icon)
         self.parent.indicators_button = QPushButton("Indikatoren")  # Issue #15: Emoji entfernt
-        self.parent.indicators_button.setIcon(get_icon("indicators"))  # Issue #22: Spezifisches Icon
+        self.parent.indicators_button.setIcon(get_icon("indicators"))  # Issue #22: Spezifisches Icon (nur weißes Icon verwenden)
         self.parent.indicators_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.indicators_button.setToolTip("Indikatoren hinzufügen/entfernen")  # Issue #22: Kürzerer Tooltip
-        self.parent.indicators_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
+        self.parent.indicators_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante (32px)
+        # Issue #7: Explizite Höhenbegrenzung für konsistente Darstellung
+        self.parent.indicators_button.setMaximumHeight(self.BUTTON_HEIGHT)
 
         self.parent.indicators_menu = QMenu(self.parent)
         # Direkt Kategorien auf oberster Ebene
@@ -626,12 +622,14 @@ class ToolbarMixinRow1:
         # Issue #23: Separatoren zwischen Buttons für mehr Abstand
         # Issue #24: Bitunix und Strategy Settings aus Row2 hierher verschoben
 
+        # Issue #16 & #17: Load Chart Button mit Theme-Styling
         self.parent.load_button = QPushButton("Load Chart")  # Issue #15: Emoji entfernt
-        self.parent.load_button.setIcon(get_icon("chart_load"))  # Issue #15
+        self.parent.load_button.setIcon(get_icon("chart_load"))  # Issue #17: Nur weißes Icon (altes Icon entfernt)
         self.parent.load_button.setIconSize(self.ICON_SIZE)  # Issue #15: Klassen-Konstante
         self.parent.load_button.clicked.connect(self.parent._on_load_chart)
-        self.parent.load_button.setProperty("class", "primary")
-        self.parent.load_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante
+        self.parent.load_button.setToolTip("Chart für aktuelles Symbol laden")
+        self.parent.load_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16: Klassen-Konstante (32px)
+        self.parent.load_button.setProperty("class", "toolbar-button")  # Issue #16 & #17: Theme-Klasse verwenden
         toolbar.addWidget(self.parent.load_button)
         toolbar.addSeparator()  # Issue #23: Mehr Abstand
 

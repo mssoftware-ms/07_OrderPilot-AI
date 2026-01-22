@@ -138,13 +138,16 @@ class BitunixStreamingMixin:
         Maps timeframe string (e.g., "5T") to seconds (e.g., 300).
         """
         timeframe_to_seconds = {
+            "1S": 1,       # 1 second
             "1T": 60,      # 1 minute
             "5T": 300,     # 5 minutes
             "10T": 600,    # 10 minutes
             "15T": 900,    # 15 minutes
             "30T": 1800,   # 30 minutes
             "1H": 3600,    # 1 hour
+            "2H": 7200,    # 2 hours
             "4H": 14400,   # 4 hours
+            "8H": 28800,   # 8 hours
             "1D": 86400,   # 1 day
         }
         current_tf = getattr(self, 'current_timeframe', '1T')
@@ -378,20 +381,9 @@ class BitunixStreamingMixin:
             # Issue #4: Enable auto-scaling during streaming to prevent flat candles
             self._execute_js("window.chartAPI.setStreamingAutoScale(true);")
 
-            self.live_stream_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #00FF00;
-                    color: black;
-                    border: 2px solid #00AA00;
-                    border-radius: 3px;
-                    padding: 5px 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #00CC00;
-                }
-            """)
-            self.live_stream_button.setText("🟢 Live")
+            # Issue #17: Use theme system via checked state instead of hardcoded colors
+            self.live_stream_button.setChecked(True)
+            self.live_stream_button.setText("Live")
             self.market_status_label.setText("🔴 Streaming (Bitunix)...")
             self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold; padding: 5px;")
 
@@ -406,21 +398,9 @@ class BitunixStreamingMixin:
             # Issue #4: Disable auto-scaling when streaming stops
             self._execute_js("window.chartAPI.setStreamingAutoScale(false);")
 
-            self.live_stream_button.setStyleSheet("""
-                QPushButton {
-                    background-color: #2a2a2a;
-                    color: #aaa;
-                    border: 1px solid #555;
-                    border-radius: 3px;
-                    padding: 5px 10px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #3a3a3a;
-                    color: #fff;
-                }
-            """)
-            self.live_stream_button.setText("🔴 Live")
+            # Issue #17: Use theme system via checked state instead of hardcoded colors
+            self.live_stream_button.setChecked(False)
+            self.live_stream_button.setText("Live")
             self.market_status_label.setText("Ready")
             self.market_status_label.setStyleSheet("color: #888; font-weight: bold; padding: 5px;")
         except Exception as e:

@@ -36,8 +36,8 @@ from .models import (
 
 # Import CEL engine (lazy import to avoid circular dependencies)
 try:
-    from ..cel_engine import get_cel_engine
-    CEL_AVAILABLE = True
+    from ..cel_engine import CEL_AVAILABLE as CEL_ENGINE_AVAILABLE, get_cel_engine
+    CEL_AVAILABLE = CEL_ENGINE_AVAILABLE
 except ImportError:
     CEL_AVAILABLE = False
     get_cel_engine = None
@@ -94,8 +94,17 @@ class ConditionEvaluator:
 
         # Initialize CEL engine if available
         if self.enable_cel:
-            self.cel_engine = get_cel_engine()
-            logger.debug("CEL engine enabled for condition evaluation")
+            try:
+                self.cel_engine = get_cel_engine()
+                logger.debug("CEL engine enabled for condition evaluation")
+            except ImportError as exc:
+                # cel_engine imported but runtime dependency missing (celpy)
+                self.enable_cel = False
+                self.cel_engine = None
+                logger.warning(
+                    "CEL requested but cel-python not available. Install with: pip install cel-python. (%s)",
+                    exc,
+                )
         else:
             self.cel_engine = None
             if enable_cel and not CEL_AVAILABLE:

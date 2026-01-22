@@ -434,18 +434,10 @@ class SettingsDialog(SettingsTabsMixin, QDialog):
     def _apply_console_debug_level(self):
         """Apply console debug level to all loggers immediately."""
         import logging
+        from src.common.logging_setup import apply_console_log_level
 
         level_str = self.console_debug_level.currentText()
-        level = getattr(logging, level_str, logging.INFO)
-
-        # Set root logger level
-        root_logger = logging.getLogger()
-        root_logger.setLevel(level)
-
-        # Also set console handler level
-        for handler in root_logger.handlers:
-            if isinstance(handler, logging.StreamHandler):
-                handler.setLevel(level)
+        level = apply_console_log_level(level_str)
 
         # Special handling for stream/chart provider loggers at WARNING level
         # These are suppressed unless DEBUG is selected

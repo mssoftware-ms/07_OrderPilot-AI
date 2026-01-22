@@ -390,16 +390,21 @@ class BotOverlayMixin:
         else:
             ts = timestamp
 
-        # Auto-select color based on regime name if not provided
+        # Auto-select color based on regime name ONLY if not provided
         if color is None:
-            if "TREND_UP" in regime_name.upper() or "UP" in regime_name.upper():
+            if "BULL" in regime_name.upper() or "TREND_UP" in regime_name.upper():
                 color = "#26a69a"  # Green for trend up
-            elif "TREND_DOWN" in regime_name.upper() or "DOWN" in regime_name.upper():
+            elif "BEAR" in regime_name.upper() or "TREND_DOWN" in regime_name.upper():
                 color = "#ef5350"  # Red for trend down
+            elif "OVERBOUGHT" in regime_name.upper():
+                color = "#ffa726"  # Orange for overbought
+            elif "OVERSOLD" in regime_name.upper():
+                color = "#42a5f5"  # Blue for oversold
             elif "RANGE" in regime_name.upper() or "SIDEWAYS" in regime_name.upper():
-                color = "#ffa726"  # Orange for range
+                color = "#9e9e9e"  # Grey for range
             else:
-                color = "#9e9e9e"  # Grey for unknown
+                color = "#bdbdbd"  # Light grey for unknown
+            logger.debug(f"Auto-selected color {color} for regime {regime_name}")
 
         # Remove existing line if updating
         if line_id in self._bot_overlay_state.regime_lines:
@@ -422,7 +427,7 @@ class BotOverlayMixin:
         self._execute_js(
             f"window.chartAPI?.addVerticalLine({ts}, '{color}', '{display_label}', 'solid', '{line_id}');"
         )
-        logger.info(f"Added regime line: {line_id} at {ts} ({display_label})")
+        logger.info(f"Added regime line: {line_id} at {ts} with color {color} ({display_label})")
 
     def clear_regime_lines(self) -> None:
         """Clear all regime lines from chart."""

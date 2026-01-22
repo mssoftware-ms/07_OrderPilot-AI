@@ -1,6 +1,9 @@
 pytest>=8.3
 pytest-qt>=4.4
 pytest-asyncio>=0.25
+pytest-cov>=6.0
+pytest-mock>=3.14
+pytest-timeout>=2.3
 ruff>=0.6
 mypy>=1.11
 types-PyYAML

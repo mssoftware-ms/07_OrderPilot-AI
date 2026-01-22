@@ -11,7 +11,7 @@ Contains:
 """
 
 import os
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QObject, QEvent
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -33,6 +33,16 @@ from PyQt6.QtWidgets import (
 )
 
 
+class WheelEventFilter(QObject):
+    """Event filter that blocks mouse wheel events (Issue #13)."""
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """Filter out wheel events to prevent unwanted value changes."""
+        if event.type() == QEvent.Type.Wheel:
+            return True  # Block wheel event
+        return super().eventFilter(obj, event)
+
+
 class SettingsTabsBasic:
     """Helper für Basic Settings Tabs (General, Trading, Broker)."""
 
@@ -42,6 +52,8 @@ class SettingsTabsBasic:
             parent: SettingsDialog Instanz
         """
         self.parent = parent
+        # BUG-003 FIX: Store WheelEventFilter as instance variable to prevent GC
+        self._wheel_filter = None
 
     def create_general_tab(self) -> QWidget:
         """Create general settings tab."""
@@ -91,6 +103,7 @@ class SettingsTabsBasic:
 
         # 1. Base Theme Selection with Management
         theme_group = QGroupBox("Base Theme")
+        theme_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren (von 820px auf 600px)
         theme_layout = QFormLayout(theme_group)
 
         # Theme ComboBox with Add/Delete buttons
@@ -117,25 +130,39 @@ class SettingsTabsBasic:
             white_pixmap.setMask(mask)
             return QIcon(white_pixmap)
 
-        self.parent.add_theme_btn = QPushButton()
-        self.parent.add_theme_btn.setIcon(create_white_icon(icon_path / "add.png"))
-        self.parent.add_theme_btn.setFixedSize(32, 32)
+        # Issue #3: Buttons sichtbar machen mit Fallback-Text und größerer Größe
+        self.parent.add_theme_btn = QPushButton("+")  # Fallback-Text falls Icon nicht lädt
+        try:
+            add_icon = create_white_icon(icon_path / "add.png")
+            if not add_icon.isNull():
+                self.parent.add_theme_btn.setIcon(add_icon)
+                self.parent.add_theme_btn.setText("")  # Text entfernen wenn Icon geladen
+        except:
+            pass  # Nutze Fallback-Text "+"
+        self.parent.add_theme_btn.setMinimumSize(40, 32)  # Größer für bessere Sichtbarkeit
         self.parent.add_theme_btn.setToolTip("Neues Theme erstellen")
         self.parent.add_theme_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; }"
-            "QPushButton:hover { background-color: rgba(242, 159, 5, 0.2); border-radius: 4px; }"
+            "QPushButton { background-color: #2A2D33; border: 1px solid #3d3d3d; color: white; font-weight: bold; }"
+            "QPushButton:hover { background-color: rgba(242, 159, 5, 0.3); border: 1px solid #F29F05; }"
         )
         self.parent.add_theme_btn.clicked.connect(self._add_new_theme)
         theme_control_layout.addWidget(self.parent.add_theme_btn)
 
         # Delete Theme Button (Icon only)
-        self.parent.delete_theme_btn = QPushButton()
-        self.parent.delete_theme_btn.setIcon(create_white_icon(icon_path / "delete.png"))
-        self.parent.delete_theme_btn.setFixedSize(32, 32)
+        # Issue #3: Buttons sichtbar machen mit Fallback-Text und größerer Größe
+        self.parent.delete_theme_btn = QPushButton("−")  # Fallback-Text falls Icon nicht lädt
+        try:
+            delete_icon = create_white_icon(icon_path / "delete.png")
+            if not delete_icon.isNull():
+                self.parent.delete_theme_btn.setIcon(delete_icon)
+                self.parent.delete_theme_btn.setText("")  # Text entfernen wenn Icon geladen
+        except:
+            pass  # Nutze Fallback-Text "−"
+        self.parent.delete_theme_btn.setMinimumSize(40, 32)  # Größer für bessere Sichtbarkeit
         self.parent.delete_theme_btn.setToolTip("Aktuelles Theme löschen")
         self.parent.delete_theme_btn.setStyleSheet(
-            "QPushButton { background-color: transparent; border: none; }"
-            "QPushButton:hover { background-color: rgba(246, 70, 93, 0.2); border-radius: 4px; }"
+            "QPushButton { background-color: #2A2D33; border: 1px solid #3d3d3d; color: white; font-weight: bold; }"
+            "QPushButton:hover { background-color: rgba(246, 70, 93, 0.3); border: 1px solid #f6465d; }"
         )
         self.parent.delete_theme_btn.clicked.connect(self._delete_current_theme)
         theme_control_layout.addWidget(self.parent.delete_theme_btn)
@@ -145,6 +172,7 @@ class SettingsTabsBasic:
 
         # 2. UI Colors
         ui_colors_group = QGroupBox("UI Colors")
+        ui_colors_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren
         ui_colors_layout = QFormLayout(ui_colors_group)
         
         # App Background
@@ -186,14 +214,21 @@ class SettingsTabsBasic:
 
         # 3. Button Styling
         btn_styling_group = QGroupBox("Button Styling")
+        btn_styling_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren
         btn_styling_layout = QFormLayout(btn_styling_group)
         
         self.parent.ui_btn_font_combo = QFontComboBox()
+        # Issue #13: Disable mouse wheel scrolling to prevent unwanted changes
+        # BUG-003 FIX: Store wheel_filter as instance variable to prevent GC
+        self._wheel_filter = WheelEventFilter(self.parent)
+        self.parent.ui_btn_font_combo.installEventFilter(self._wheel_filter)
         btn_styling_layout.addRow("Font Family:", self.parent.ui_btn_font_combo)
-        
+
         self.parent.ui_btn_font_size = QSpinBox()
         self.parent.ui_btn_font_size.setRange(8, 24)
         self.parent.ui_btn_font_size.setValue(12)
+        # Issue #13: Disable mouse wheel scrolling to prevent unwanted changes
+        self.parent.ui_btn_font_size.installEventFilter(self._wheel_filter)
         btn_styling_layout.addRow("Font Size:", self.parent.ui_btn_font_size)
         
         size_layout = QHBoxLayout()
@@ -217,6 +252,7 @@ class SettingsTabsBasic:
 
         # 4. Interaction colors (Toggle Buttons)
         toggle_group = QGroupBox("Toggle/Checkbox Button Colors")
+        toggle_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren
         toggle_layout = QFormLayout(toggle_group)
         
         self.parent.ui_active_btn_color_btn = QPushButton()
@@ -248,6 +284,7 @@ class SettingsTabsBasic:
 
         # 5. Chart Appearance (Moved from General)
         chart_group = QGroupBox("Chart Appearance")
+        chart_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren
         chart_layout = QFormLayout(chart_group)
         
         # Candle colors row
@@ -332,6 +369,7 @@ class SettingsTabsBasic:
 
         # 6. Icon Collection
         icon_group = QGroupBox("Icon Collection")
+        icon_group.setMaximumWidth(600)  # Issue #4: Breite um 220px reduzieren
         icon_layout = QFormLayout(icon_group)
 
         # Icon Directory Selection

@@ -81,22 +81,35 @@ class WatchlistUIBuilder:
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setAlternatingRowColors(True)
 
+        # Issue #5: Theme-Farben aus aktuellen Settings laden statt hardcodiert
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("OrderPilot", "TradingApp")
+        theme_name = settings.value("theme", "dark")
+        theme_key = theme_name.lower().replace(" ", "_")
+
+        # Lade Theme-Farben oder nutze Dark Orange Defaults
+        bg_main = settings.value(f"{theme_key}_ui_bg_color", "#0F1115")
+        bg_input = settings.value(f"{theme_key}_ui_edit_color", "#23262E")
+        text_primary = settings.value(f"{theme_key}_ui_edit_text_color", "#EAECEF")
+        primary_color = settings.value(f"{theme_key}_ui_active_btn_color", "#F29F05")
+        border_color = "#3d3d3d"  # Standard Grau für Gridlines
+
         table.setStyleSheet(
-            """
-            QTableWidget {
-                alternate-background-color: #2d2d2d;
-                background-color: #1e1e1e;
-                color: #ffffff;
-                gridline-color: #3d3d3d;
-            }
-            QTableWidget::item {
-                color: #ffffff;
+            f"""
+            QTableWidget {{
+                alternate-background-color: {bg_input};
+                background-color: {bg_main};
+                color: {text_primary};
+                gridline-color: {border_color};
+            }}
+            QTableWidget::item {{
+                color: {text_primary};
                 padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #FF8C00;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {primary_color};
                 color: #ffffff;
-            }
+            }}
         """
         )
 

@@ -1,0 +1,273 @@
+================================================================================
+CODE REVIEW SUMMARY: Issue #16 & #17 Implementation
+================================================================================
+
+REVIEWED FILES:
+1. src/ui/widgets/chart_mixins/toolbar_mixin_row1.py (827 lines)
+2. src/ui/widgets/chart_mixins/alpaca_streaming_mixin.py (447 lines)
+3. src/ui/widgets/chart_mixins/bitunix_streaming_mixin.py (459 lines)
+4. src/ui/widgets/chart_mixins/streaming_mixin.py (523 lines)
+
+REVIEW DATE: 2026-01-22
+REVIEWER: Claude Code (Senior Code Reviewer)
+
+================================================================================
+OVERALL STATUS: PARTIAL PASS (Issue #16: PASS, Issue #17: FAIL)
+================================================================================
+
+QUICK VERDICT:
+  Issue #16 (Button Heights): ✅ COMPLETE & CORRECT
+  Issue #17 (Theme System):   ❌ INCOMPLETE - HARDCODED COLORS FOUND
+
+RECOMMENDATION: Fix before merge. Issue #17 has 12+ hardcoded color violations.
+
+================================================================================
+ISSUE #16: BUTTON HEIGHT STANDARDIZATION
+================================================================================
+
+Status: ✅ PASS - Well Implemented
+
+Correct Implementation Points:
+  ✅ Class constant: BUTTON_HEIGHT = 32 (line 33, toolbar_mixin_row1.py)
+  ✅ Timeframe selector: setFixedHeight(BUTTON_HEIGHT) - line 204
+  ✅ Period selector: setFixedHeight(BUTTON_HEIGHT) - line 236
+  ✅ Indicators button: setFixedHeight(BUTTON_HEIGHT) - line 272
+  ✅ Load Chart button: setFixedHeight(BUTTON_HEIGHT) - line 631
+  ✅ Refresh button: setFixedHeight(BUTTON_HEIGHT) - line 640
+  ✅ Zoom All button: setFixedHeight(BUTTON_HEIGHT) - line 651
+  ✅ Zoom Back button: setFixedHeight(BUTTON_HEIGHT) - line 660
+  ✅ Bitunix button: setFixedHeight(BUTTON_HEIGHT) - lines 673, 675
+  ✅ Strategy Settings button: setFixedHeight(BUTTON_HEIGHT) - lines 692, 694
+
+Result: All buttons consistently 32px height. Follows DRY principle.
+
+================================================================================
+ISSUE #17: THEME SYSTEM ADHERENCE
+================================================================================
+
+Status: ❌ FAIL - Critical Theme System Violations
+
+Expected Implementation:
+  ✓ Live button uses setChecked(True/False) for state visualization
+  ✓ No hardcoded #00FF00 or #FF0000 colors
+  ✓ Status labels use theme system via setProperty()
+  ✓ Colors defined in themes.py, applied via CSS classes
+
+Actual Implementation:
+  ✓ Live button uses setChecked(True/False) - CORRECT
+  ✗ Hardcoded colors found in 12+ locations - WRONG
+  ✗ Direct setStyleSheet() calls with inline colors - WRONG
+  ✗ Colors not defined in theme system - WRONG
+
+================================================================================
+HARDCODED COLOR VIOLATIONS (CRITICAL)
+================================================================================
+
+File: alpaca_streaming_mixin.py
+  Line 357: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 371: self.market_status_label.setStyleSheet("color: #888;...")
+  Line 408: self.market_status_label.setStyleSheet("color: #00FF00;...")
+  Line 412: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 419: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 443: self.market_status_label.setStyleSheet("color: #888;...")
+
+File: bitunix_streaming_mixin.py
+  Line 385: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 402: self.market_status_label.setStyleSheet("color: #888;...")
+  Line 428: self.market_status_label.setStyleSheet("color: #00FF00;...")
+  Line 432: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 439: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 455: self.market_status_label.setStyleSheet("color: #888;...")
+
+File: streaming_mixin.py
+  Line 413: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 427: self.market_status_label.setStyleSheet("color: #888;...")
+  Line 476: self.market_status_label.setStyleSheet("color: #00FF00;...")
+  Line 480: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 488: self.market_status_label.setStyleSheet("color: #FF0000;...")
+  Line 519: self.market_status_label.setStyleSheet("color: #888;...")
+
+Total Violations: 18 instances across 3 files
+
+Colors Used:
+  #FF0000 (Red)     - 10 instances (streaming active, errors)
+  #00FF00 (Green)   - 3 instances (success state)
+  #888 (Gray)       - 5 instances (ready state)
+
+================================================================================
+WHAT SHOULD BE DONE (CORRECT PATTERN)
+================================================================================
+
+From toolbar_mixin_row1.py (lines 625-632) - CORRECT EXAMPLE:
+  self.parent.load_button = QPushButton("Load Chart")
+  self.parent.load_button.setIcon(get_icon("chart_load"))
+  self.parent.load_button.setIconSize(self.ICON_SIZE)
+  self.parent.load_button.setFixedHeight(self.BUTTON_HEIGHT)
+  self.parent.load_button.setProperty("class", "toolbar-button")  ← THEME CLASS
+  toolbar.addWidget(self.parent.load_button)
+
+From themes.py (lines 233-237) - THEME DEFINITION:
+  QPushButton[class="toolbar-button"] {
+      margin-right: 4px;
+      font-weight: 600;
+  }
+
+Should Be (in streaming mixins):
+  # ❌ WRONG:
+  self.market_status_label.setStyleSheet("color: #FF0000; font-weight: bold;")
+
+  # ✅ CORRECT:
+  self.market_status_label.setProperty("class", "live-status-streaming")
+  self.market_status_label.setText("🔴 Streaming (Alpaca)...")
+
+Theme Definition to Add (in themes.py):
+  QLabel[class="live-status-streaming"] {
+      color: {p.error};
+      font-weight: bold;
+      padding: 5px;
+  }
+  QLabel[class="live-status-success"] {
+      color: {p.success};
+      font-weight: bold;
+      padding: 5px;
+  }
+  QLabel[class="live-status-ready"] {
+      color: {p.text_secondary};
+      font-weight: bold;
+      padding: 5px;
+  }
+
+================================================================================
+CODE QUALITY ASSESSMENT
+================================================================================
+
+Strengths:
+  ✅ Button height standardization well done
+  ✅ Icon integration using get_icon() correct
+  ✅ Button state management with setChecked() correct
+  ✅ Alpaca/Bitunix/Generic streaming properly separated
+  ✅ Comprehensive error handling
+  ✅ Good logging coverage
+  ✅ Async operations properly handled with asyncio.ensure_future()
+  ✅ No security vulnerabilities detected
+
+Weaknesses:
+  ❌ 18 hardcoded color instances violating theme system
+  ❌ Comments reference theme system but code doesn't implement it
+  ❌ Direct setStyleSheet() calls instead of CSS class properties
+  ❌ No way to change status colors without code modification
+  ❌ Same styling repeated across multiple methods and files
+  ❌ Emoji usage instead of icon assets (minor)
+  ⚠️  Duplicate property settings in lines 675-676, 693-695
+
+Maintainability Impact:
+  If status colors need to change from red to orange:
+    - Must modify: 10 locations across 3 files
+    - Currently: impossible without code change
+    - Should be: 1 line in themes.py
+
+================================================================================
+BUTTON STATE VERIFICATION
+================================================================================
+
+Live Button Implementation (Correct):
+  ✅ streaming_mixin.py line 388: is_checked = self.live_stream_button.isChecked()
+  ✅ streaming_mixin.py line 410: self.live_stream_button.setChecked(True)
+  ✅ streaming_mixin.py line 424: self.live_stream_button.setChecked(False)
+
+  ✅ alpaca_streaming_mixin.py lines 354, 368, 413, 420
+  ✅ bitunix_streaming_mixin.py lines 382, 399, 433, 440
+
+All use setChecked(True/False) correctly for visual feedback via theme system.
+
+================================================================================
+COMPLIANCE MATRIX
+================================================================================
+
+Requirement                          Status    Notes
+─────────────────────────────────────────────────────────────────────────────
+No hardcoded colors                   ❌ FAIL  12+ hardcoded hex colors
+Proper use of theme system            ❌ FAIL  Uses setStyleSheet() instead
+Consistent button heights (32px)      ✅ PASS  All buttons 32px
+Live button checked state             ✅ PASS  setChecked() used correctly
+Icon integration                      ✅ PASS  get_icon() proper usage
+Code documentation                    ✅ PASS  Comments present
+PyQt6 best practices                  ✅ PASS  Signals, slots, async correct
+No resource leaks                     ✅ PASS  Proper cleanup on disconnect
+Security review                       ✅ PASS  No vulnerabilities
+Performance                           ✅ PASS  No blocking operations
+
+Overall Score: 7/10
+
+================================================================================
+RECOMMENDATIONS (PRIORITY ORDER)
+================================================================================
+
+PRIORITY 1 - CRITICAL (Fix before merge):
+  1. Remove all hardcoded colors from streaming mixins (18 instances)
+  2. Add theme-based status label classes to themes.py
+  3. Replace setStyleSheet() with setProperty() calls
+  4. Test theme switching with new status labels
+
+PRIORITY 2 - MEDIUM (Improve consistency):
+  1. Replace emojis with icon assets (🔴 → icon, 🟢 → icon, ⚠️ → icon)
+  2. Remove duplicate setFixedHeight() calls (lines 675-676, 693-695)
+  3. Extract status update logic to dedicated method
+
+PRIORITY 3 - LOW (Nice-to-have):
+  1. Create unit tests for theme application
+  2. Add integration tests for status label styling
+  3. Document theme system usage patterns in CLAUDE.md
+
+================================================================================
+ESTIMATED FIX TIME
+================================================================================
+
+Implementing Fixes:
+  - Remove hardcoded colors: 30 minutes
+  - Add theme classes: 20 minutes
+  - Update streaming mixins: 30 minutes
+  - Testing & verification: 20 minutes
+  ────────────────────────────────
+  Total: ~2 hours
+
+This is straightforward pattern replacement, no complex refactoring needed.
+
+================================================================================
+TEST RECOMMENDATIONS
+================================================================================
+
+Manual Testing:
+  [ ] Verify button heights are 32px (Load, Refresh, Zoom All, Zoom Back)
+  [ ] Verify timeframe/period selectors are 32px
+  [ ] Start live stream and verify status label updates
+  [ ] Stop live stream and verify status label updates
+  [ ] Check theme switching changes status label colors
+  [ ] Verify streaming works for Alpaca, Bitunix, and generic stocks
+
+Automated Testing (Unit Tests):
+  [ ] Test BUTTON_HEIGHT constant = 32
+  [ ] Test theme property application
+  [ ] Test live stream button state changes
+  [ ] Test market status label property changes
+
+================================================================================
+CONCLUSION
+================================================================================
+
+Issue #16 Implementation: ✅ PASS
+  Button height standardization is correctly implemented using class constants.
+  All buttons consistently use BUTTON_HEIGHT = 32px.
+
+Issue #17 Implementation: ❌ FAIL
+  While the live button checked state is correctly implemented, the market
+  status label styling violates the theme system. 18 instances of hardcoded
+  colors found across 3 files. This must be fixed before merge.
+
+Action Required: Fix hardcoded colors and resubmit for review.
+
+Expected Resolution: 2 hours development time.
+
+================================================================================
+Report Generated: 2026-01-22 by Senior Code Reviewer
+================================================================================

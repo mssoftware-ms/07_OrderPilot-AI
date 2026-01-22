@@ -8,6 +8,8 @@ import asyncio
 import logging
 from typing import Dict, Optional
 
+from PyQt6.QtCore import QTimer
+
 from .widgets.chart_window import ChartWindow
 
 logger = logging.getLogger(__name__)
@@ -29,12 +31,13 @@ class ChartWindowManager:
 
         logger.info("ChartWindowManager initialized")
 
-    def open_or_focus_chart(self, symbol: str, data_provider: Optional[str] = None):
+    def open_or_focus_chart(self, symbol: str, data_provider: Optional[str] = None, splash=None):
         """Open a chart window for the symbol, or focus if already open.
 
         Args:
             symbol: Trading symbol
             data_provider: Optional data provider to use
+            splash: Optional SplashScreen to close after chart is loaded (Issue #9)
 
         Returns:
             ChartWindow instance
@@ -53,12 +56,20 @@ class ChartWindowManager:
                     window.raise_()  # Bring to front
                     window.activateWindow()  # Activate and focus
                     logger.info(f"Restored minimized chart window for {symbol}")
+                    # Issue #9: Close splash for existing window
+                    # BUG-002 FIX: Check if splash is still visible before closing
+                    if splash and not splash.isHidden():
+                        QTimer.singleShot(200, splash.close)
                     return window
                 elif window.isVisible():
                     # Window exists and is visible, just focus it
                     window.raise_()  # Bring to front
                     window.activateWindow()  # Activate and focus
                     logger.info(f"Focused existing chart window for {symbol}")
+                    # Issue #9: Close splash for existing window
+                    # BUG-002 FIX: Check if splash is still visible before closing
+                    if splash and not splash.isHidden():
+                        QTimer.singleShot(200, splash.close)
                     return window
                 else:
                     # Window exists but is hidden, show it
@@ -66,6 +77,10 @@ class ChartWindowManager:
                     window.raise_()
                     window.activateWindow()
                     logger.info(f"Showed hidden chart window for {symbol}")
+                    # Issue #9: Close splash for existing window
+                    # BUG-002 FIX: Check if splash is still visible before closing
+                    if splash and not splash.isHidden():
+                        QTimer.singleShot(200, splash.close)
                     return window
             except RuntimeError:
                 # Window was deleted, remove from dict
@@ -73,10 +88,16 @@ class ChartWindowManager:
                 del self.windows[symbol]
 
         # Create new window
+        # Issue #1: Create ChartWindow WITHOUT parent to ensure it appears in taskbar
+        # When a window has a hidden parent on Windows, it may not appear in the taskbar.
+        # By setting parent=None, the ChartWindow becomes a true top-level window that
+        # always shows in the taskbar, even when TradingApplication (Workspace Manager) is hidden.
+        # BUG-001 FIX: Pass splash to ChartWindow to show progress and avoid double splash
         window = ChartWindow(
             symbol=symbol,
             history_manager=self.history_manager,
-            parent=self.parent
+            parent=None,  # Issue #1: Ensures taskbar visibility when main window is hidden
+            splash=splash  # BUG-001 FIX: Pass splash for progress updates
         )
 
         # Connect close signal
@@ -89,6 +110,13 @@ class ChartWindowManager:
         window.show()
         window.raise_()
         window.activateWindow()
+
+        # Issue #9: Close splash after window is shown and rendered
+        # Use delay to ensure window is fully visible before closing splash
+        # BUG-002 FIX: Check if splash is still visible before closing
+        if splash and not splash.isHidden():
+            QTimer.singleShot(300, splash.close)
+            logger.debug("Scheduled splash close after 300ms")
 
         # Load chart data asynchronously
         asyncio.create_task(window.load_chart(data_provider))

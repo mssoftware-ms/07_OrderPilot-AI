@@ -14,6 +14,47 @@ from typing import Any
 
 from pythonjsonlogger.json import JsonFormatter
 
+
+class ConsoleLevelFilter(logging.Filter):
+    """Filter console output by level regardless of logger configuration."""
+
+    def __init__(self, level: int) -> None:
+        super().__init__()
+        self._level = level
+
+    def set_level(self, level: int) -> None:
+        self._level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= self._level
+
+
+def _ensure_console_filter(handler: logging.Handler, level: int) -> None:
+    """Attach/update console level filter on a handler."""
+    existing = getattr(handler, "_console_level_filter", None)
+    if existing is None:
+        filt = ConsoleLevelFilter(level)
+        handler.addFilter(filt)
+        handler._console_level_filter = filt  # type: ignore[attr-defined]
+    else:
+        existing.set_level(level)
+
+
+def apply_console_log_level(level_str: str) -> int:
+    """Apply console log level to root and console handlers."""
+    level_name = str(level_str or "INFO").strip().upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    for handler in root_logger.handlers:
+        if getattr(handler, "_is_console_handler", False):
+            handler.setLevel(level)
+            _ensure_console_filter(handler, level)
+
+    return level
+
 # Import security types for audit logging
 try:
     from .security_core import SecurityAction, SecurityContext
@@ -110,8 +151,10 @@ def configure_logging(
     # Console Handler
     if enable_console:
         console_handler = logging.StreamHandler(sys.stdout)
+        console_handler._is_console_handler = True  # type: ignore[attr-defined]
         console_handler.setFormatter(formatter)
         console_handler.addFilter(AITelemetryFilter())
+        _ensure_console_filter(console_handler, getattr(logging, level.upper(), logging.INFO))
         root_logger.addHandler(console_handler)
 
     # File Handlers
@@ -193,6 +236,9 @@ def configure_module_loggers():
 
     # Reduce noise from indicator engine (only show warnings and errors during streaming)
     logging.getLogger('src.core.indicators.engine').setLevel(logging.WARNING)
+
+    # Silence verbose UI icon loading logs
+    logging.getLogger('src.ui.icons').setLevel(logging.ERROR)
 
 
 def log_order_action(

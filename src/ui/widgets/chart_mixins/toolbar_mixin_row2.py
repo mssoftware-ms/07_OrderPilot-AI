@@ -63,32 +63,31 @@ class ToolbarMixinRow2:
         self.add_market_status(toolbar)
 
     def add_regime_badge_to_toolbar(self, toolbar: QToolBar) -> None:
-        """Add regime badge to toolbar (Phase 2.2)."""
-        try:
-            from src.ui.widgets.regime_badge_widget import RegimeBadgeWidget
+        """Add regime button to toolbar (Issue #18 - als Button implementiert)."""
+        # Issue #18: Regime als klickbaren Button implementieren
+        self.parent.regime_button = QPushButton("Regime: N/A")
+        self.parent.regime_button.setIcon(get_icon("analytics"))  # Issue #18
+        self.parent.regime_button.setIconSize(self.ICON_SIZE)
+        self.parent.regime_button.setToolTip("Klicken um aktuelles Markt-Regime zu ermitteln")
+        self.parent.regime_button.setProperty("class", "toolbar-button")  # Issue #18: Theme-Farben
+        self.parent.regime_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #18: 32px
+        self.parent.regime_button.clicked.connect(self.on_regime_button_clicked)
+        toolbar.addWidget(self.parent.regime_button)
+        logger.debug("Regime button added to toolbar (Issue #18)")
 
-            toolbar.addWidget(QLabel("Regime:"))
-            self.parent._regime_badge = RegimeBadgeWidget(compact=True, show_icon=True)
-            self.parent._regime_badge.clicked.connect(self.on_regime_badge_clicked)
-            toolbar.addWidget(self.parent._regime_badge)
-            logger.debug("Regime badge added to toolbar")
-        except ImportError as e:
-            logger.warning(f"Could not add regime badge: {e}")
-            # Fallback: simple label
-            self.parent._regime_label = QLabel("N/A")
-            self.parent._regime_label.setStyleSheet("color: #888; padding: 5px;")
-            toolbar.addWidget(QLabel("Regime:"))
-            toolbar.addWidget(self.parent._regime_label)
-
-    def on_regime_badge_clicked(self) -> None:
-        """Handle regime badge click - show regime details dialog."""
-        logger.debug("Regime badge clicked")
-        # TODO: Open regime details dialog in Phase 5
+    def on_regime_button_clicked(self) -> None:
+        """Handle regime button click - ermittle aktuelles Regime (Issue #18)."""
+        logger.debug("Regime button clicked - ermittle aktuelles Regime")
+        # Issue #18: Aktuelles Regime ermitteln
+        if hasattr(self.parent, '_update_regime_from_data'):
+            self.parent._update_regime_from_data()
+        else:
+            logger.warning("_update_regime_from_data method not found")
 
     def update_regime_badge(self, regime: str, adx: float | None = None,
                             gate_reason: str = "", allows_entry: bool = True) -> None:
         """
-        Update the regime badge display.
+        Update the regime button display (Issue #18 - angepasst für Button).
 
         Args:
             regime: Regime type string
@@ -96,30 +95,52 @@ class ToolbarMixinRow2:
             gate_reason: Reason for gate
             allows_entry: Whether entry is allowed
         """
-        if hasattr(self.parent, "_regime_badge") and self.parent._regime_badge:
-            self.parent._regime_badge.set_regime(regime, adx, gate_reason, allows_entry)
-        elif hasattr(self.parent, "_regime_label"):
-            self.parent._regime_label.setText(regime[:10])
+        # Issue #18: Regime-Text in Button schreiben
+        if hasattr(self.parent, "regime_button") and self.parent.regime_button:
+            # Zeige nur kurze Regime-Namen für bessere Lesbarkeit
+            short_regime = regime.replace("_", " ").title() if regime else "N/A"
+            self.parent.regime_button.setText(f"Regime: {short_regime}")
+            # Tooltip mit Details aktualisieren
+            tooltip_parts = [f"<b>{short_regime}</b>"]
+            if adx is not None:
+                tooltip_parts.append(f"<br>ADX: {adx:.1f}")
+            if gate_reason:
+                tooltip_parts.append(f"<br>⚠️ {gate_reason}")
+            entry_status = "✅ Entry erlaubt" if allows_entry else "❌ Entry blockiert"
+            tooltip_parts.append(f"<br>{entry_status}")
+            self.parent.regime_button.setToolTip("".join(tooltip_parts))
+            logger.debug(f"Regime button updated: {short_regime}")
 
     def update_regime_from_result(self, result) -> None:
         """
-        Update regime badge from RegimeResult.
+        Update regime button from RegimeResult (Issue #18 - angepasst für Button).
 
         Args:
             result: RegimeResult from RegimeDetectorService
         """
-        if hasattr(self.parent, "_regime_badge") and self.parent._regime_badge:
-            self.parent._regime_badge.set_regime_from_result(result)
+        # Issue #18: RegimeResult in Button anzeigen
+        if result is None:
+            self.update_regime_badge("UNKNOWN")
+            return
+
+        self.update_regime_badge(
+            regime=result.regime.value if hasattr(result.regime, 'value') else str(result.regime),
+            adx=result.adx,
+            gate_reason=result.gate_reason,
+            allows_entry=result.allows_market_entry,
+        )
 
     def add_live_stream_toggle(self, toolbar: QToolBar) -> None:
+        # Issue #7: Icon prüfen - nur Play-Symbol verwenden, keinen grünen Ball
         self.parent.live_stream_button = QPushButton("Live")  # Issue #15: Emoji entfernt
-        self.parent.live_stream_button.setIcon(get_icon("live"))  # Issue #15
+        self.parent.live_stream_button.setIcon(get_icon("live"))  # Issue #15 - sollte nur weißes Play-Symbol enthalten
         self.parent.live_stream_button.setIconSize(self.ICON_SIZE)  # Issue #15
         self.parent.live_stream_button.setCheckable(True)
         self.parent.live_stream_button.setToolTip("Toggle real-time streaming (WebSocket)")
         self.parent.live_stream_button.clicked.connect(self.parent._toggle_live_stream)
         self.parent.live_stream_button.setProperty("class", "toolbar-button")
-        self.parent.live_stream_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        self.parent.live_stream_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16 (32px)
+        self.parent.live_stream_button.setMaximumHeight(self.BUTTON_HEIGHT)  # Issue #7: Explizite Höhenbegrenzung
         toolbar.addWidget(self.parent.live_stream_button)
 
     def add_chart_marking_button(self, toolbar: QToolBar) -> None:
@@ -204,6 +225,10 @@ class ToolbarMixinRow2:
         trailing = QAction("🟡 Trailing Stop", self.parent)
         trailing.triggered.connect(lambda: self.parent._add_test_line("trailing", True))
         lines_menu.addAction(trailing)
+        lines_menu.addSeparator()
+        vertical_line = QAction("📏 Vertikale Linie", self.parent)
+        vertical_line.triggered.connect(lambda: self.parent._add_vertical_line_interactive())
+        lines_menu.addAction(vertical_line)
 
         self.parent.chart_marking_menu.addSeparator()
         clear_markers = QAction("🗑️ Alle Marker löschen", self.parent)
@@ -377,11 +402,13 @@ class ToolbarMixinRow2:
 
     def add_settings_button(self, toolbar: QToolBar) -> None:
         """Add settings button (gear icon) to toolbar."""
+        # Issue #7: Falls Icon zu groß ist, prüfen ob kleineres Icon verfügbar ist
         self.parent.settings_button = QPushButton()
         self.parent.settings_button.setIcon(get_icon("settings"))
-        self.parent.settings_button.setIconSize(self.ICON_SIZE)  # Issue #15
+        self.parent.settings_button.setIconSize(self.ICON_SIZE)  # Issue #15 (20x20)
         self.parent.settings_button.setToolTip("Settings öffnen")
-        self.parent.settings_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16
+        self.parent.settings_button.setFixedHeight(self.BUTTON_HEIGHT)  # Issue #16 (32px)
+        self.parent.settings_button.setMaximumHeight(self.BUTTON_HEIGHT)  # Issue #7: Explizite Höhenbegrenzung
         self.parent.settings_button.setFixedWidth(self.BUTTON_HEIGHT)  # Issue #25: Breite = Höhe für quadratischen Icon-Button
         self.parent.settings_button.setProperty("class", "icon-button")
         self.parent.settings_button.clicked.connect(self._open_settings_dialog)

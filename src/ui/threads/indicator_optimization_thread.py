@@ -12,7 +12,6 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from PyQt6.QtCore import QThread, pyqtSignal
-from src.core.tradingbot.regime_engine import RegimeEngine
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class IndicatorOptimizationThread(QThread):
         self,
         selected_indicators: List[str],
         param_ranges: Dict[str, Dict[str, int]],
-        json_config_path: Optional[str] = None,  # Optional - not used for indicator optimization
+        json_config_path: Optional[str] = None,  # Regime config for JSON-based regime detection
         symbol: str = "",
         start_date: datetime = None,
         end_date: datetime = None,
@@ -55,7 +54,7 @@ class IndicatorOptimizationThread(QThread):
         Args:
             selected_indicators: List of indicator types to optimize (e.g. ['RSI', 'MACD', 'ADX'])
             param_ranges: Parameter ranges for each indicator
-            json_config_path: UNUSED - kept for backward compatibility only
+            json_config_path: Path to JSON regime config (required for regime labels)
             symbol: Trading symbol
             start_date: Backtest start date
             end_date: Backtest end date
@@ -97,11 +96,7 @@ class IndicatorOptimizationThread(QThread):
 
             # Import required modules
             from src.backtesting.engine import BacktestEngine
-            from src.core.tradingbot.regime_engine import RegimeEngine
-            import pandas_ta as ta
-
             engine = BacktestEngine()
-            regime_engine = RegimeEngine()
 
             # Load or use chart data
             if self.chart_data is not None:
@@ -115,9 +110,13 @@ class IndicatorOptimizationThread(QThread):
                 self.error.emit("No data available for optimization")
                 return
 
-            # Detect regimes across the data
+            # Detect regimes across the data (JSON-based)
             self.progress.emit(5, "Detecting market regimes...")
-            regime_labels = self._detect_regimes(df, regime_engine)
+            if not self.json_config_path:
+                raise RuntimeError(
+                    "No regime config provided. Load a JSON regime config before optimization."
+                )
+            regime_labels = self._detect_regimes(df)
 
             # Build regime history (track regime changes for visualization)
             regime_history = self._build_regime_history(df, regime_labels)
@@ -201,92 +200,88 @@ class IndicatorOptimizationThread(QThread):
             logger.error(error_msg, exc_info=True)
             self.error.emit(error_msg)
 
-    def _detect_regimes(self, df: pd.DataFrame, regime_engine: RegimeEngine) -> pd.Series:
-        """Detect regime for each bar using RegimeEngine.
+    def _detect_regimes(self, df: pd.DataFrame) -> pd.Series:
+        """Detect regime for each bar using JSON config if available.
 
         Returns:
-            Series with regime labels (e.g., "TREND_UP", "RANGE", etc.)
+            Series with regime labels (e.g., "STRONG_UPTREND", "RANGE", etc.)
         """
-        import pandas_ta as ta
+        try:
+            return self._detect_regimes_json(df, self.json_config_path)
+        except Exception as e:
+            logger.error(f"Regime detection via JSON failed: {e}", exc_info=True)
+            raise
 
-        # Calculate regime indicators (ADX, ATR, BB Width) - robust access
-        adx_df = ta.adx(df['high'], df['low'], df['close'], length=14)
-        if adx_df is not None and not adx_df.empty:
-            # Find ADX column (name may vary: ADX_14, ADX, etc.)
-            adx_col = [c for c in adx_df.columns if 'ADX' in c and 'D' not in c]  # Exclude DMP/DMN
-            df['adx'] = adx_df[adx_col[0]] if adx_col else 25.0
-        else:
-            df['adx'] = 25.0
+    def _detect_regimes_json(self, df: pd.DataFrame, config_path: str) -> pd.Series:
+        """Detect regimes using RegimeEngineJSON and a JSON config."""
+        import pandas as pd
+        from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+        from src.core.tradingbot.config.detector import RegimeDetector
+        from src.core.tradingbot.config.loader import ConfigLoadError
+        from src.core.indicators.types import IndicatorConfig, IndicatorType
 
-        atr_series = ta.atr(df['high'], df['low'], df['close'], length=14)
-        df['atr'] = atr_series if atr_series is not None else df['close'] * 0.02  # 2% fallback
+        engine = RegimeEngineJSON()
+        try:
+            config = engine._load_config(config_path)
+        except ConfigLoadError as e:
+            raise RuntimeError(f"Failed to load regime config: {e}") from e
 
-        # Bollinger Bands - use robust column access (pandas_ta versions vary)
-        bb = ta.bbands(df['close'], length=20, std=2.0)
-        if bb is not None and not bb.empty and len(bb.columns) >= 3:
-            # pandas_ta returns BBL, BBM, BBU in order (column names may vary)
-            # Use positional access: 0=Lower, 1=Middle, 2=Upper
-            df['bb_width'] = (bb.iloc[:, 2] - bb.iloc[:, 0]) / bb.iloc[:, 1] * 100
-        else:
-            # Fallback: default BB width (2% = normal volatility)
-            df['bb_width'] = 2.0
+        detector = RegimeDetector(config.regimes)
 
-        # Calculate +DI and -DI for trend direction (robust access)
-        dm = ta.dm(df['high'], df['low'], length=14)
+        # Pre-calculate indicator results for full dataset
+        indicator_results = {}
+        for ind_def in config.indicators:
+            ind_config = IndicatorConfig(
+                indicator_type=IndicatorType(ind_def.type.lower()),
+                params=ind_def.params,
+                use_talib=False,
+                cache_results=True
+            )
+            result = engine.indicator_engine.calculate(df, ind_config)
+            indicator_results[ind_def.id] = result.values
 
-        if dm is not None and not dm.empty:
-            # Get DMP and DMN columns (names may vary)
-            dmp_col = [c for c in dm.columns if 'DMP' in c or 'PLUS' in c.upper()]
-            dmn_col = [c for c in dm.columns if 'DMN' in c or 'MINUS' in c.upper()]
+        def _safe_value(value) -> float:
+            if pd.isna(value):
+                return float("nan")
+            return float(value)
 
-            if dmp_col and dmn_col:
-                # Reuse already calculated ATR from df['atr']
-                df['plus_di'] = dm[dmp_col[0]] / df['atr'] * 100
-                df['minus_di'] = dm[dmn_col[0]] / df['atr'] * 100
-            else:
-                df['plus_di'] = 25.0
-                df['minus_di'] = 25.0
-        else:
-            df['plus_di'] = 25.0
-            df['minus_di'] = 25.0
-
-        # RSI
-        rsi_series = ta.rsi(df['close'], length=14)
-        df['rsi'] = rsi_series if rsi_series is not None else 50.0
-
-        # Classify each bar
-        regimes = []
-        for i in range(len(df)):
-            row = df.iloc[i]
-
-            # Create a simple features dict
-            features = {
-                'adx': row.get('adx', 0),
-                'atr': row.get('atr', 0),
-                'bb_width': row.get('bb_width', 0),
-                'plus_di': row.get('plus_di', 0),
-                'minus_di': row.get('minus_di', 0),
-                'rsi': row.get('rsi', 50),
-                'close': row['close']
-            }
-
-            # Simple regime classification
-            adx = features['adx']
-            atr_pct = (features['atr'] / features['close']) * 100 if features['close'] > 0 else 0
-
-            if adx > 25:  # Strong trend
-                if features['plus_di'] > features['minus_di']:
-                    regime = "TREND_UP"
+        def _indicator_values_at(index: int) -> dict[str, dict[str, float]]:
+            values: dict[str, dict[str, float]] = {}
+            for ind_id, result in indicator_results.items():
+                if isinstance(result, pd.Series):
+                    val = result.iloc[index] if index < len(result) else float("nan")
+                    values[ind_id] = {"value": _safe_value(val)}
+                elif isinstance(result, pd.DataFrame):
+                    values[ind_id] = {}
+                    for col in result.columns:
+                        val = result[col].iloc[index] if index < len(result) else float("nan")
+                        values[ind_id][col] = _safe_value(val)
+                    if 'bandwidth' in values[ind_id]:
+                        values[ind_id]['width'] = values[ind_id]['bandwidth']
+                elif isinstance(result, dict):
+                    values[ind_id] = result
                 else:
-                    regime = "TREND_DOWN"
-            elif atr_pct > 3:  # High volatility
-                regime = "VOLATILE"
-            else:  # Range-bound
-                regime = "RANGE"
+                    values[ind_id] = {"value": float("nan")}
+            return values
 
-            regimes.append(regime)
+        detector_logger = logging.getLogger("src.core.tradingbot.config.detector")
+        prev_level = detector_logger.level
+        detector_logger.setLevel(logging.WARNING)
+        try:
+            regimes: list[str] = []
+            for i in range(len(df)):
+                indicator_values = _indicator_values_at(i)
+                active = detector.detect_active_regimes(indicator_values, scope="entry")
+                if active:
+                    regime_label = active[0].id.upper()
+                else:
+                    regime_label = "UNKNOWN"
+                regimes.append(regime_label)
+        finally:
+            detector_logger.setLevel(prev_level)
 
         return pd.Series(regimes, index=df.index)
+
 
     def _build_regime_history(self, df: pd.DataFrame, regime_labels: pd.Series) -> List[Dict[str, Any]]:
         """Build regime history from regime labels for visualization.
@@ -693,6 +688,7 @@ class IndicatorOptimizationThread(QThread):
         - Entry Short: High RSI values (>70), bearish signals
         - Exit Long: High RSI values (>70), overbought
         - Exit Short: Low RSI values (<30), oversold
+        - Proximity to extremes: Closer to lows (long) or highs (short) = higher score
 
         Returns:
             Dict with score (0-100), win_rate, profit_factor, total_trades
@@ -711,6 +707,12 @@ class IndicatorOptimizationThread(QThread):
         if metrics['total_trades'] == 0:
             return None
 
+        # Calculate proximity to extremes (for entry signals)
+        proximity_score = 0.0
+        if self.test_type == 'entry':
+            proximity_score = self._calculate_proximity_score(df, signals, self.trade_side)
+            metrics['proximity_score'] = proximity_score
+
         # Calculate composite score (0-100)
         score = self._calculate_composite_score(metrics)
 
@@ -718,10 +720,11 @@ class IndicatorOptimizationThread(QThread):
             'indicator': indicator_type,
             'params': params,
             'regime': regime,
-            'score': score,
+            'score': int(score),  # No decimal places
             'win_rate': metrics['win_rate'],
             'profit_factor': metrics['profit_factor'],
             'total_trades': metrics['total_trades'],
+            'proximity_score': proximity_score,
             'test_type': self.test_type,
             'trade_side': self.trade_side
         }
@@ -1089,14 +1092,87 @@ class IndicatorOptimizationThread(QThread):
             'sharpe_ratio': sharpe_ratio
         }
 
+    def _calculate_proximity_score(
+        self, df: pd.DataFrame, signals: pd.Series, trade_side: str
+    ) -> float:
+        """Calculate proximity score based on distance to price extremes.
+
+        For LONG signals: Higher score if signal is closer to local lows
+        For SHORT signals: Higher score if signal is closer to local highs
+
+        Returns:
+            Score 0-1 (higher = better proximity)
+        """
+        if signals.sum() == 0:
+            return 0.0
+
+        # Get signal indices
+        signal_indices = df[signals].index
+
+        proximity_scores = []
+
+        for idx in signal_indices:
+            try:
+                # Get position in dataframe
+                pos = df.index.get_loc(idx)
+
+                # Define lookback/forward window (e.g., 20 bars each side)
+                window = 20
+                start = max(0, pos - window)
+                end = min(len(df), pos + window + 1)
+
+                window_df = df.iloc[start:end]
+
+                if trade_side == 'long':
+                    # For LONG: Find nearest low
+                    low_price = window_df['low'].min()
+                    signal_price = df.loc[idx, 'close']
+
+                    # Calculate distance in bars to the low
+                    low_idx = window_df['low'].idxmin()
+                    low_pos = df.index.get_loc(low_idx)
+                    distance_bars = abs(pos - low_pos)
+
+                    # Score: Closer = better (inverse relationship)
+                    # 0 bars distance = 1.0 score, 20 bars = 0.0 score
+                    proximity = 1.0 - (distance_bars / window)
+                    proximity = max(0.0, proximity)
+
+                else:  # short
+                    # For SHORT: Find nearest high
+                    high_price = window_df['high'].max()
+                    signal_price = df.loc[idx, 'close']
+
+                    # Calculate distance in bars to the high
+                    high_idx = window_df['high'].idxmax()
+                    high_pos = df.index.get_loc(high_idx)
+                    distance_bars = abs(pos - high_pos)
+
+                    # Score: Closer = better (inverse relationship)
+                    proximity = 1.0 - (distance_bars / window)
+                    proximity = max(0.0, proximity)
+
+                proximity_scores.append(proximity)
+
+            except Exception as e:
+                logger.warning(f"Failed to calculate proximity for signal at {idx}: {e}")
+                continue
+
+        if not proximity_scores:
+            return 0.0
+
+        # Return average proximity score
+        return sum(proximity_scores) / len(proximity_scores)
+
     def _calculate_composite_score(self, metrics: Dict[str, float]) -> float:
         """Calculate composite score (0-100) from metrics.
 
         Weighting:
-        - Win Rate: 30%
-        - Profit Factor: 30%
-        - Sharpe Ratio: 25%
-        - Total Trades: 15% (more trades = better)
+        - Win Rate: 25%
+        - Profit Factor: 25%
+        - Sharpe Ratio: 20%
+        - Total Trades: 10% (more trades = better)
+        - Proximity to Extremes: 20% (closer to lows/highs = better)
         """
         # Normalize metrics to 0-1
         win_rate_score = min(metrics['win_rate'], 1.0)  # Already 0-1
@@ -1110,12 +1186,16 @@ class IndicatorOptimizationThread(QThread):
         # Trades: 50 trades = 100%, capped at 100
         trades_score = min(metrics['total_trades'] / 50.0, 1.0)
 
+        # Proximity score (0-1, already normalized)
+        proximity_score = metrics.get('proximity_score', 0.0)
+
         # Weighted composite
         composite = (
-            win_rate_score * 0.30 +
-            profit_factor_score * 0.30 +
-            sharpe_score * 0.25 +
-            trades_score * 0.15
+            win_rate_score * 0.25 +
+            profit_factor_score * 0.25 +
+            sharpe_score * 0.20 +
+            trades_score * 0.10 +
+            proximity_score * 0.20
         )
 
         return composite * 100  # Convert to 0-100 scale

@@ -79,7 +79,7 @@ class ChartStatsLabelsMixin:
             self.ohlc_info_label.setText(text)
             self.ohlc_info_label.setStyleSheet(f"""
                 color: {color};
-                background-color: #2D2D2D;
+                background-color: transparent;
                 font-family: monospace;
                 font-size: 11px;
                 font-weight: bold;

@@ -342,8 +342,8 @@ class CompactChartWidget(QWidget):
         if "volume" not in data.columns:
             data["volume"] = 0.0
 
-        tf_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1H", "4h": "4H", "1d": "1D"}
-        freq = tf_map.get(timeframe, "1H")
+        tf_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1d"}
+        freq = tf_map.get(timeframe, "1h")
 
         resampled = data.resample(freq).agg({
             "open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"
@@ -353,7 +353,9 @@ class CompactChartWidget(QWidget):
             return resampled
 
         resampled = resampled.reset_index()
-        resampled["time"] = (resampled["index"].astype("int64") // 10**9).astype(int)
+        # Get datetime column name dynamically (could be 'index' or original index name like 'timestamp')
+        datetime_col = resampled.columns[0]
+        resampled["time"] = (resampled[datetime_col].astype("int64") // 10**9).astype(int)
         return resampled[["time", "open", "high", "low", "close", "volume"]]
 
     def update_symbol(self, symbol: str) -> None:

@@ -112,6 +112,7 @@ def get_chart_html_template() -> str:
     Issue #35: Injects background image CSS if configured.
     Issues #34, #37: Injects custom chart colors from settings.
     Issue #39: Injects candle border radius setting.
+    Issue #8: Injects drawing toolbar background from theme.
 
     Returns:
         Complete HTML template string with all JavaScript included.
@@ -124,6 +125,28 @@ def get_chart_html_template() -> str:
         "// ZONE_PRIMITIVE_JS_PLACEHOLDER",
         zone_js
     )
+
+    # Issue #8: Inject drawing toolbar background color from theme
+    settings = QSettings("OrderPilot", "TradingApp")
+    theme_name = settings.value("theme", "dark")
+    theme_key = theme_name.lower().replace(" ", "_")
+
+    # Load theme background color for drawing toolbar
+    toolbar_bg = settings.value(f"{theme_key}_ui_bg_color", "#1a1a1a")
+    toolbar_border = settings.value(f"{theme_key}_ui_edit_color", "#333")
+
+    # Replace hardcoded drawing toolbar background
+    template = template.replace(
+        "#drawing-toolbar {\n            width: 36px;\n            background: #1a1a1a;",
+        f"#drawing-toolbar {{\n            width: 36px;\n            background: {toolbar_bg};"
+    )
+    template = template.replace(
+        "border-right: 1px solid #333;",
+        f"border-right: 1px solid {toolbar_border};",
+        1  # Only replace first occurrence (in #drawing-toolbar)
+    )
+
+    logger.debug(f"Drawing toolbar theme applied: bg={toolbar_bg}, border={toolbar_border}")
 
     # Issue #35: Inject background image CSS
     bg_image_style = get_background_image_style()

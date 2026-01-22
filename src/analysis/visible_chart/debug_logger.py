@@ -27,9 +27,14 @@ def setup_entry_analyzer_logger() -> logging.Logger:
     file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
 
-    # Console handler
+    # Console handler (respect root logger level)
+    class RootLevelFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return record.levelno >= logging.getLogger().level
+
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
+    console_handler.addFilter(RootLevelFilter())
 
     # Formatter
     formatter = logging.Formatter(

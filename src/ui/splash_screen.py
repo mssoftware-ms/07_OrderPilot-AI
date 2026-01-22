@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication, QGraphicsDropShadowEffect
+from PyQt6.QtGui import QPixmap, QColor
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication, QGraphicsDropShadowEffect, QPushButton, QMessageBox
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,43 @@ class SplashScreen(QWidget):
         shadow.setColor(Qt.GlobalColor.black)
         shadow.setOffset(0, 0)
         self._container.setGraphicsEffect(shadow)
-        
+
         outer_layout.addWidget(self._container)
+
+        # Close Button (smaller, tangential to corner radius)
+        self._close_button = QPushButton("✕", self)
+        self._close_button.setObjectName("closeButton")
+        self._close_button.setFixedSize(30, 30)
+        self._close_button.setToolTip("Anwendung beenden (Esc)")
+        self._close_button.clicked.connect(self._terminate_application)
+        self._close_button.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                border: 2px solid #F29F05;
+                border-radius: 15px;
+                color: black;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FFF5E6;
+                border: 2px solid #D88504;
+            }
+            QPushButton:pressed {
+                background-color: #FFE6C2;
+            }
+        """)
+        # Position tangentially to top-right corner radius (20px radius + 15px margin + 30px button = 65px from right)
+        button_offset_x = 15 + 20  # margin + radius alignment
+        button_offset_y = 15 + 20  # margin + radius alignment
+        self._close_button.move(self.width() - button_offset_x - self._close_button.width(), button_offset_y)
+
+        # Add orange shadow to close button
+        close_shadow = QGraphicsDropShadowEffect(self._close_button)
+        close_shadow.setBlurRadius(8)
+        close_shadow.setColor(QColor("#F29F05"))
+        close_shadow.setOffset(0, 0)
+        self._close_button.setGraphicsEffect(close_shadow)
 
         layout = QVBoxLayout(self._container)
         layout.setContentsMargins(40, 40, 40, 40)
@@ -138,3 +174,41 @@ class SplashScreen(QWidget):
         """Finish progress, show terminal message, wait for delay and then close."""
         self.set_progress(100, "Bereit")
         QTimer.singleShot(delay_ms, self.close)
+
+    def _terminate_application(self) -> None:
+        """Terminate the complete OrderPilot application with confirmation dialog."""
+        logger.info("User requested termination via splash screen close button")
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            'Beenden bestätigen',
+            'Möchten Sie OrderPilot-AI wirklich beenden?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            logger.info("User cancelled termination")
+            return
+
+        logger.info("User confirmed termination - shutting down")
+
+        # Close splash screen
+        self.close()
+
+        # Get QApplication instance and quit gracefully
+        app = QApplication.instance()
+        if app:
+            # Use QTimer to allow event loop to process pending events before quitting
+            QTimer.singleShot(0, app.quit)
+        else:
+            # Fallback: force exit only if no QApplication instance
+            sys.exit(0)
+
+    def keyPressEvent(self, event) -> None:
+        """Handle keyboard events - Escape key triggers termination."""
+        if event.key() == Qt.Key.Key_Escape:
+            self._terminate_application()
+        else:
+            super().keyPressEvent(event)

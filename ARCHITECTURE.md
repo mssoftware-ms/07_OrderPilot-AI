@@ -83,6 +83,15 @@ ChartWindow
 └── StateMixin        - State Save/Restore
 ```
 
+### EntryAnalyzerPopup (src/ui/dialogs/entry_analyzer/entry_analyzer_popup.py)
+```
+EntryAnalyzerPopup
+├── BacktestMixin     - Backtest-Setup, Regime-Analyse, Regime-Set Erstellung
+├── IndicatorsMixin   - Indikator-Optimierung + Presets
+├── AnalysisMixin     - Visible Range + Validation
+└── AIMixin           - AI Copilot + Pattern Recognition
+```
+
 ### TradingApplication (src/ui/app.py)
 ```
 TradingApplication

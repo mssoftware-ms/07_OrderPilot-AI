@@ -170,6 +170,125 @@ class EmbeddedTradingViewChartMarkingMixin:
 
         direction = "bullish" if is_bullish else "bearish"
         logger.info(f"Added {break_type.upper()} ({direction}) at {price:.2f}, timestamp={timestamp}")
+
+    def _add_vertical_line_interactive(self):
+        """Add a vertical line with interactive dialog for timestamp and label."""
+        from PyQt6.QtWidgets import QInputDialog, QColorDialog, QMessageBox
+        from PyQt6.QtGui import QColor
+        from datetime import datetime, timezone
+        import time
+
+        # Ask for label
+        label, ok = QInputDialog.getText(
+            self,
+            "Vertikale Linie hinzufügen",
+            "Beschriftung für die Linie:"
+        )
+        if not ok:
+            return
+
+        # Ask for time option
+        time_options = [
+            "Aktuelle Zeit (jetzt)",
+            "Spezifische Zeit eingeben (Unix Timestamp)",
+            "Letzte Kerze"
+        ]
+        time_choice, ok = QInputDialog.getItem(
+            self,
+            "Zeitpunkt wählen",
+            "Wähle den Zeitpunkt für die vertikale Linie:",
+            time_options,
+            0,
+            False
+        )
+        if not ok:
+            return
+
+        # Determine timestamp
+        if "Aktuelle Zeit" in time_choice:
+            timestamp = int(time.time())
+        elif "Letzte Kerze" in time_choice:
+            # Get last candle timestamp
+            if hasattr(self, "_candles") and self._candles:
+                timestamp = self._candles[-1].get("time", int(time.time()))
+            else:
+                timestamp = int(time.time())
+        else:
+            # Ask for specific timestamp
+            ts_input, ok = QInputDialog.getInt(
+                self,
+                "Unix Timestamp",
+                "Unix Timestamp (Sekunden seit 1970):",
+                int(time.time()),
+                0,
+                2147483647
+            )
+            if not ok:
+                return
+            timestamp = ts_input
+
+        # Ask for color
+        color_choice, ok = QInputDialog.getItem(
+            self,
+            "Farbe wählen",
+            "Wähle eine Farbe für die Linie:",
+            [
+                "Blau (Standard)",
+                "Grün",
+                "Rot",
+                "Orange",
+                "Grau",
+                "Benutzerdefiniert..."
+            ],
+            0,
+            False
+        )
+        if not ok:
+            return
+
+        # Map color choice to hex
+        color_map = {
+            "Blau (Standard)": "#2196F3",
+            "Grün": "#4CAF50",
+            "Rot": "#F44336",
+            "Orange": "#FF9800",
+            "Grau": "#9E9E9E",
+        }
+
+        if "Benutzerdefiniert" in color_choice:
+            qcolor = QColorDialog.getColor(QColor("#2196F3"), self, "Farbe wählen")
+            if qcolor.isValid():
+                color = qcolor.name()
+            else:
+                return
+        else:
+            color = color_map.get(color_choice, "#2196F3")
+
+        # Generate unique ID
+        line_id = f"vline_{int(time.time() * 1000)}"
+
+        # Add vertical line using bot_overlay_mixin method if available
+        if hasattr(self, "add_regime_line"):
+            self.add_regime_line(
+                line_id=line_id,
+                timestamp=timestamp,
+                regime_name="CUSTOM",
+                color=color,
+                label=label or "Marker"
+            )
+            logger.info(f"Added vertical line: {label} at {timestamp}")
+            QMessageBox.information(
+                self,
+                "Vertikale Linie hinzugefügt",
+                f"Linie '{label}' wurde am Zeitpunkt {datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} hinzugefügt."
+            )
+        else:
+            # Fallback: direct JavaScript call
+            self._execute_js(
+                f"window.chartAPI?.addVerticalLine({timestamp}, '{color}', '{label or 'Marker'}', 'solid', '{line_id}');"
+            )
+            logger.info(f"Added vertical line via JS: {label} at {timestamp}")
+
     def _add_test_line(self, line_type: str, is_long: bool):
         """Add a test line (SL, TP, Entry, or Trailing).
 

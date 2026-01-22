@@ -34,6 +34,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
+
 if TYPE_CHECKING:
     from PyQt6.QtCore import QThread
 
@@ -144,12 +147,11 @@ class AnalysisMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # Validation action row
+        # Validation action row (Issue #12: Material Design icon + theme color)
         action_row = QHBoxLayout()
-        self._validate_btn = QPushButton("✅ Run Validation")
-        self._validate_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #10B981; color: white;"
-        )
+        self._validate_btn = QPushButton(" Run Validation")
+        self._validate_btn.setIcon(get_icon("check_circle"))
+        self._validate_btn.setProperty("class", "success")  # Use theme success color
         self._validate_btn.clicked.connect(self._on_validate_clicked)
         action_row.addWidget(self._validate_btn)
 
@@ -159,7 +161,7 @@ class AnalysisMixin:
         action_row.addWidget(self._val_progress)
 
         self._val_status_label = QLabel("Ready")
-        self._val_status_label.setStyleSheet("color: #888;")
+        self._val_status_label.setProperty("class", "status-label")  # Issue #12: Use theme
         action_row.addWidget(self._val_status_label)
         action_row.addStretch()
         layout.addLayout(action_row)
@@ -191,7 +193,7 @@ class AnalysisMixin:
         - Score label
         - Alternatives label (hidden by default)
         """
-        group = QGroupBox("📊 Optimized Indicator Set")
+        group = QGroupBox("Optimized Indicator Set")  # Issue #12: Removed emoji
         layout = QVBoxLayout(group)
 
         self._set_name_label = QLabel("Active Set: --")
@@ -227,7 +229,7 @@ class AnalysisMixin:
         - Filter stats label
         - Entries table (5 columns: Time, Side, Price, Confidence, Reasons)
         """
-        group = QGroupBox("🎯 Detected Entries")
+        group = QGroupBox("Detected Entries")  # Issue #12: Removed emoji
         layout = QVBoxLayout(group)
 
         # Filter toggle

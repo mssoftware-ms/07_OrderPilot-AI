@@ -26,6 +26,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
+
 if TYPE_CHECKING:
     from PyQt6.QtCore import QThread
 
@@ -80,12 +83,11 @@ class AICopilotMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # AI Status / Action row
+        # AI Status / Action row (Issue #12: Material Design icon + theme color)
         action_row = QHBoxLayout()
-        self._ai_analyze_btn = QPushButton("🤖 Run AI Analysis")
-        self._ai_analyze_btn.setStyleSheet(
-            "padding: 8px 16px; font-weight: bold; background-color: #8B5CF6; color: white;"
-        )
+        self._ai_analyze_btn = QPushButton(" Run AI Analysis")
+        self._ai_analyze_btn.setIcon(get_icon("smart_toy"))
+        self._ai_analyze_btn.setProperty("class", "primary")  # Use theme primary color
         self._ai_analyze_btn.clicked.connect(self._on_ai_analyze_clicked)
         action_row.addWidget(self._ai_analyze_btn)
 
@@ -95,17 +97,15 @@ class AICopilotMixin:
         action_row.addWidget(self._ai_progress)
 
         self._ai_status_label = QLabel("Ready")
-        self._ai_status_label.setStyleSheet("color: #888;")
+        self._ai_status_label.setProperty("class", "status-label")  # Issue #12: Use theme
         action_row.addWidget(self._ai_status_label)
         action_row.addStretch()
         layout.addLayout(action_row)
 
-        # AI Results
+        # AI Results (Issue #12: Remove hardcoded colors, use theme)
         self._ai_results_text = QTextEdit()
         self._ai_results_text.setReadOnly(True)
-        self._ai_results_text.setStyleSheet(
-            "font-family: monospace; background-color: #1a1a1a; color: #e0e0e0;"
-        )
+        self._ai_results_text.setStyleSheet("font-family: monospace;")  # Theme handles colors
         self._ai_results_text.setPlaceholderText(
             "AI analysis results will appear here...\n\n"
             "Click 'Run AI Analysis' to get:\n"

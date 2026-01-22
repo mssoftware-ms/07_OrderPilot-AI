@@ -37,6 +37,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+# Import icon provider (Issue #12)
+from src.ui.icons import get_icon
+
 if TYPE_CHECKING:
     pass
 
@@ -92,22 +95,29 @@ class IndicatorsSetupMixin:
 
         Creates:
         - Setup sub-tab: Indicator selection + parameter ranges
+        - Parameter Presets sub-tab: Regime-based parameter presets (Issue #10)
         - Results sub-tab: Optimization results table + action buttons
         """
         layout = QVBoxLayout(tab)
 
         # Create sub-tabs
         sub_tabs = QTabWidget()
+        self._ind_opt_tabs = sub_tabs  # Store reference for parent class
         layout.addWidget(sub_tabs)
 
-        # Setup tab
+        # Setup tab (Issue #12: Material Design icons)
         setup_tab = QWidget()
-        sub_tabs.addTab(setup_tab, "⚙️ Setup")
+        sub_tabs.addTab(setup_tab, get_icon("tune"), "Setup")
         self._setup_optimization_setup_tab(setup_tab)
 
-        # Results tab
+        # Issue #10: Parameter Presets tab (moved from main tabs)
+        presets_tab = QWidget()
+        sub_tabs.addTab(presets_tab, get_icon("extension"), "Parameter Presets")
+        self._setup_parameter_presets_tab(presets_tab)
+
+        # Results tab (Issue #12: Material Design icons)
         results_tab = QWidget()
-        sub_tabs.addTab(results_tab, "📊 Results")
+        sub_tabs.addTab(results_tab, get_icon("assessment"), "Results")
         self._setup_optimization_results_tab(results_tab)
 
     def _setup_optimization_setup_tab(self, tab: QWidget) -> None:
@@ -124,8 +134,8 @@ class IndicatorsSetupMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # Indicator Selection Group
-        indicator_group = QGroupBox("📊 Select Indicators to Optimize")
+        # Indicator Selection Group (Issue #12: Removed emoji)
+        indicator_group = QGroupBox("Select Indicators to Optimize")
         indicator_layout = QVBoxLayout(indicator_group)
 
         # Indicator categories with indicators
@@ -159,8 +169,8 @@ class IndicatorsSetupMixin:
 
         layout.addWidget(indicator_group)
 
-        # Test Mode Group
-        test_mode_group = QGroupBox("🎯 Test Mode")
+        # Test Mode Group (Issue #12: Removed emoji)
+        test_mode_group = QGroupBox("Test Mode")
         test_mode_layout = QVBoxLayout(test_mode_group)
 
         # Test Type: Entry or Exit
@@ -187,9 +197,30 @@ class IndicatorsSetupMixin:
 
         layout.addWidget(test_mode_group)
 
-        # Note: Parameter Ranges moved to separate "Parameter Configuration" tab
-        # Initialize empty parameter widgets dict (used by Parameter Configuration tab)
+        # Parameter Ranges Group (dynamic, scrollable)
+        param_ranges_group = QGroupBox("Parameter Ranges (Dynamic)")
+        param_ranges_layout = QVBoxLayout(param_ranges_group)
+
+        info_label = QLabel(
+            "Select indicators above to configure their parameter ranges."
+        )
+        info_label.setStyleSheet("color: #888; font-style: italic;")
+        param_ranges_layout.addWidget(info_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(260)
+
+        param_widget = QWidget()
+        self._param_layout = QFormLayout(param_widget)
+        scroll.setWidget(param_widget)
+
+        param_ranges_layout.addWidget(scroll)
+        layout.addWidget(param_ranges_group)
+
+        # Initialize empty parameter widgets dict
         self._param_widgets = {}
+        self._update_parameter_ranges()
 
         # Progress and Optimize Button
         progress_layout = QHBoxLayout()
@@ -247,15 +278,19 @@ class IndicatorsSetupMixin:
 
         layout.addWidget(self._optimization_results_table)
 
-        # Action Buttons
+        # Action Buttons (Issue #12: Material Design icons + theme colors)
         action_layout = QHBoxLayout()
 
-        self._draw_indicators_btn = QPushButton("📊 Draw Indicators")
+        self._draw_indicators_btn = QPushButton(" Draw Indicators")
+        self._draw_indicators_btn.setIcon(get_icon("show_chart"))
+        self._draw_indicators_btn.setProperty("class", "info")  # Use theme
         self._draw_indicators_btn.setEnabled(False)
         self._draw_indicators_btn.clicked.connect(self._on_draw_indicators_clicked)
         action_layout.addWidget(self._draw_indicators_btn)
 
-        self._show_entries_btn = QPushButton("📍 Show Entry Signals")
+        self._show_entries_btn = QPushButton(" Show Entry Signals")
+        self._show_entries_btn.setIcon(get_icon("place"))
+        self._show_entries_btn.setProperty("class", "success")  # Use theme
         self._show_entries_btn.setEnabled(False)
         self._show_entries_btn.clicked.connect(self._on_show_entries_clicked)
         action_layout.addWidget(self._show_entries_btn)
@@ -419,47 +454,3 @@ class IndicatorsSetupMixin:
 
                 # Add to form
                 self._param_layout.addRow(f"{param_name}:", param_layout)
-
-    def _setup_parameter_configuration_tab(self, tab: QWidget) -> None:
-        """Setup Parameter Configuration tab.
-
-        New tab created to avoid UI overlapping in Indicator Optimization.
-        Contains the Parameter Ranges GroupBox with dynamic parameter widgets.
-
-        Date: 2026-01-22
-        """
-        layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel(
-            "<h3>⚙️ Parameter Configuration</h3>"
-            "<p>Configure parameter ranges for selected indicators. "
-            "Min/Max values define the search space, Step controls optimization granularity.</p>"
-        )
-        header.setWordWrap(True)
-        layout.addWidget(header)
-
-        # Parameter Ranges Group (dynamic, scrollable)
-        param_ranges_group = QGroupBox("📊 Parameter Ranges (Dynamic)")
-        param_ranges_layout = QVBoxLayout(param_ranges_group)
-
-        # Info label
-        info_label = QLabel(
-            "💡 Tip: Select indicators in the <b>Indicator Optimization > Setup</b> tab first."
-        )
-        info_label.setStyleSheet("color: #888; font-style: italic;")
-        param_ranges_layout.addWidget(info_label)
-
-        # Scroll area for dynamic parameter widgets
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(400)
-
-        param_widget = QWidget()
-        self._param_layout = QFormLayout(param_widget)
-        scroll.setWidget(param_widget)
-
-        param_ranges_layout.addWidget(scroll)
-        layout.addWidget(param_ranges_group)
-
-        layout.addStretch()

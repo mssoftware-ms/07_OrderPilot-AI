@@ -174,6 +174,10 @@ class EntryAnalyzerMixin:
             self._entry_analyzer_popup.clear_entries_requested.connect(
                 self._clear_entry_markers
             )
+            # Issue #21: Connect regime lines signal
+            self._entry_analyzer_popup.draw_regime_lines_requested.connect(
+                self._draw_regime_lines
+            )
             # Issue #32: Connect finished signal to reset button
             self._entry_analyzer_popup.finished.connect(
                 self._on_entry_analyzer_closed
@@ -188,6 +192,11 @@ class EntryAnalyzerMixin:
         self._entry_analyzer_popup.show()
         self._entry_analyzer_popup.raise_()
         self._entry_analyzer_popup.activateWindow()
+
+    def hide_entry_analyzer(self) -> None:
+        """Hide the Entry Analyzer popup dialog if it exists."""
+        if self._entry_analyzer_popup:
+            self._entry_analyzer_popup.close()
 
     def _get_candles_for_validation(self) -> list[dict]:
         """Get candle data for validation from chart data.
@@ -425,6 +434,146 @@ class EntryAnalyzerMixin:
         elif hasattr(self, "_clear_all_markers"):
             self._clear_all_markers()
             logger.info("Cleared all markers")
+
+    def _get_price_at_timestamp(self, timestamp: int) -> float | None:
+        """Get the close price at a specific timestamp.
+
+        Args:
+            timestamp: Unix timestamp in seconds
+
+        Returns:
+            Close price or None if not found
+        """
+        if not hasattr(self, '_candles') or not self._candles:
+            return None
+
+        # Find candle closest to timestamp
+        closest_candle = None
+        min_diff = float('inf')
+
+        for candle in self._candles:
+            candle_time = candle.get('time', 0)
+            diff = abs(candle_time - timestamp)
+            if diff < min_diff:
+                min_diff = diff
+                closest_candle = candle
+
+        if closest_candle:
+            return closest_candle.get('close', None)
+        return None
+
+    def _draw_regime_lines(self, regimes: list[dict]) -> None:
+        """Draw regime period lines on the chart (Issue #21 COMPLETE).
+
+        Displays vertical lines showing START and END of each regime period with:
+        - Start line: Light color for regime start
+        - End line: Darker shade for regime end
+        - Each regime type has unique color pair
+
+        Color Table:
+        ┌─────────────────────┬─────────────┬─────────────┬─────────────────────┐
+        │ Regime Type         │ START Color │ END Color   │ Description         │
+        ├─────────────────────┼─────────────┼─────────────┼─────────────────────┤
+        │ STRONG_TREND_BULL   │ #A8E6A3     │ #7BC67A     │ Light/Dark Green    │
+        │ STRONG_TREND_BEAR   │ #FFB3BA     │ #FF8A94     │ Light/Dark Red      │
+        │ OVERBOUGHT          │ #FFD4A3     │ #FFB870     │ Light/Dark Orange   │
+        │ OVERSOLD            │ #A3D8FF     │ #70B8FF     │ Light/Dark Blue     │
+        │ RANGE               │ #D3D3D3     │ #AAAAAA     │ Light/Dark Gray     │
+        │ UNKNOWN             │ #E0E0E0     │ #C0C0C0     │ Very Light Gray     │
+        └─────────────────────┴─────────────┴─────────────┴─────────────────────┘
+
+        Args:
+            regimes: List of regime PERIODS with start_timestamp, end_timestamp, regime, score, duration
+        """
+        if not hasattr(self, "add_regime_line"):
+            logger.warning("Chart widget has no add_regime_line method")
+            return
+
+        # Color mapping: regime_type -> (start_color, end_color)
+        regime_colors = {
+            "STRONG_TREND_BULL": ("#A8E6A3", "#7BC67A"),  # Light/Dark Green
+            "STRONG_TREND_BEAR": ("#FFB3BA", "#FF8A94"),  # Light/Dark Red
+            "OVERBOUGHT": ("#FFD4A3", "#FFB870"),         # Light/Dark Orange
+            "OVERSOLD": ("#A3D8FF", "#70B8FF"),           # Light/Dark Blue
+            "RANGE": ("#D3D3D3", "#AAAAAA"),              # Light/Dark Gray
+            "UNKNOWN": ("#E0E0E0", "#C0C0C0"),            # Very Light Gray (fallback)
+        }
+
+        # Clear existing regime lines first
+        if hasattr(self, "clear_regime_lines"):
+            self.clear_regime_lines()
+
+        # Draw new regime lines (START and END for each period)
+        for i, regime_data in enumerate(regimes):
+            start_timestamp = regime_data.get('start_timestamp', 0)
+            end_timestamp = regime_data.get('end_timestamp', 0)
+            regime = regime_data.get('regime', 'UNKNOWN')
+            score = regime_data.get('score', 0)
+            duration_bars = regime_data.get('duration_bars', 0)
+            duration_time = regime_data.get('duration_time', '0s')
+
+            # Get colors for this regime type (with fallback to UNKNOWN)
+            start_color, end_color = regime_colors.get(regime, regime_colors["UNKNOWN"])
+
+            logger.debug(
+                f"Regime {i}: {regime} -> START: {start_color}, END: {end_color}"
+            )
+
+            # Create labels
+            start_label = f"START {regime.replace('_', ' ')} ({score:.1f}) - {duration_time} ({duration_bars} bars)"
+            end_label = f"END {regime.replace('_', ' ')}"
+
+            # Add START line to chart (light color)
+            self.add_regime_line(
+                line_id=f"regime_{i}_start",
+                timestamp=start_timestamp,
+                regime_name=regime,  # Use original regime name, not with suffix
+                label=start_label,
+                color=start_color
+            )
+
+            # Add END line to chart (darker color)
+            self.add_regime_line(
+                line_id=f"regime_{i}_end",
+                timestamp=end_timestamp,
+                regime_name=regime,  # Use original regime name, not with suffix
+                label=end_label,
+                color=end_color
+            )
+
+            # Add arrow markers at regime start (Issue: Regime arrows)
+            # Get price at regime start timestamp
+            start_price = self._get_price_at_timestamp(start_timestamp)
+            if start_price is not None and hasattr(self, 'add_bot_marker'):
+                from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+
+                # Determine marker type based on regime
+                if "BULL" in regime.upper() or "UP" in regime.upper():
+                    marker_type = MarkerType.REGIME_BULL
+                    side = "long"
+                elif "BEAR" in regime.upper() or "DOWN" in regime.upper():
+                    marker_type = MarkerType.REGIME_BEAR
+                    side = "short"
+                else:
+                    # For other regimes (RANGE, OVERBOUGHT, OVERSOLD), skip marker
+                    continue
+
+                # Add marker arrow
+                self.add_bot_marker(
+                    timestamp=start_timestamp,
+                    price=start_price,
+                    marker_type=marker_type,
+                    side=side,
+                    text=f"{regime.replace('_', ' ')}",
+                    score=score
+                )
+                logger.debug(f"Added regime marker: {marker_type.value} at {start_price:.2f}")
+
+        logger.info(
+            "Drew %d regime periods (%d lines) on chart",
+            len(regimes),
+            len(regimes) * 2  # 2 lines per period (start + end)
+        )
 
     def _on_entry_analyzer_closed(self, result: int) -> None:
         """Handle Entry Analyzer dialog close event (Issue #32).
