@@ -415,27 +415,50 @@ class ToolbarMixinRow2:
         toolbar.addWidget(self.parent.settings_button)
 
     def _open_settings_dialog(self) -> None:
-        from PyQt6.QtWidgets import QApplication
-        
+        """Open settings dialog from toolbar (Issue #11)."""
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        logger.info("Settings button clicked in toolbar")
+
+        # Method 1: Use chart window's method (preferred)
         if hasattr(self.parent, "open_main_settings_dialog"):
+            logger.info("Calling parent.open_main_settings_dialog()")
             self.parent.open_main_settings_dialog()
             return
-        
-        # Try parent chain first
+
+        # Method 2: Try parent chain for show_settings_dialog
         widget = self.parent
-        while widget is not None:
+        depth = 0
+        while widget is not None and depth < 10:
+            widget_type = type(widget).__name__
+            logger.debug(f"Checking parent chain[{depth}]: {widget_type}")
+
             if hasattr(widget, "show_settings_dialog"):
+                logger.info(f"Found show_settings_dialog in {widget_type}")
                 widget.show_settings_dialog()
                 return
+
             widget = widget.parent()
-        
-        # Fallback: Search top-level widgets (for Chart-Only mode)
+            depth += 1
+
+        # Method 3: Search top-level widgets (for Chart-Only mode)
+        logger.debug("Searching top-level widgets...")
         for top_widget in QApplication.topLevelWidgets():
-            if hasattr(top_widget, "show_settings_dialog") and hasattr(top_widget, "chart_window_manager"):
+            widget_type = type(top_widget).__name__
+            has_settings = hasattr(top_widget, "show_settings_dialog")
+
+            if has_settings:
+                logger.info(f"Found settings dialog in top-level widget: {widget_type}")
                 top_widget.show_settings_dialog()
                 return
-        
-        logger.warning("Settings dialog not available from toolbar")
+
+        # No method worked - show error
+        logger.error("Settings dialog not available - no method succeeded")
+        QMessageBox.warning(
+            self.parent,
+            "Settings nicht verfügbar",
+            "Die Settings-Funktion konnte nicht gefunden werden."
+        )
 
     # Issue #24: Methode entfernt - Button und Event Handler sind jetzt in Row1 (toolbar_mixin_row1.py)
     # def add_strategy_settings_button(self, toolbar: QToolBar) -> None:

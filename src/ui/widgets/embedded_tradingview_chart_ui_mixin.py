@@ -68,6 +68,8 @@ class EmbeddedTradingViewChartUIMixin:
         # Issue #24: Connect line draw request handler for label input
         if hasattr(self._chart_bridge, "line_draw_requested"):
             self._chart_bridge.line_draw_requested.connect(self._on_line_draw_requested)
+        if hasattr(self._chart_bridge, "vline_draw_requested"):
+            self._chart_bridge.vline_draw_requested.connect(self._on_vline_draw_requested)
         # Also expose as self.bridge for compatibility
         self.bridge = self._chart_bridge
         self._web_channel = QWebChannel(self.web_view.page())
@@ -279,6 +281,12 @@ class EmbeddedTradingViewChartUIMixin:
         from PyQt6.QtGui import QAction
 
         lines_menu = menu.addMenu("📏 Add Line")
+        
+        vertical_line = QAction("📏 Vertikale Linie", self)
+        vertical_line.triggered.connect(self._add_vertical_line_interactive)
+        lines_menu.addAction(vertical_line)
+        
+        lines_menu.addSeparator()
         sl_long_action = QAction("🔴 Stop Loss (Long Position)", self)
         sl_long_action.triggered.connect(lambda: self._add_test_line("sl", True))
         lines_menu.addAction(sl_long_action)

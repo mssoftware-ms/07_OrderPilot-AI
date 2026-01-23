@@ -409,6 +409,19 @@ class IndicatorsPresetsMixin:
         apply_layout.addStretch()
         layout.addLayout(apply_layout)
 
+        # Optimize Button with Progress (Issue #6: Moved from Setup tab)
+        optimize_layout = QHBoxLayout()
+
+        self._optimization_progress = QLabel("Ready")
+        optimize_layout.addWidget(self._optimization_progress)
+
+        self._optimize_btn = QPushButton("🚀 Optimize Indicators")
+        self._optimize_btn.setProperty("class", "primary")  # Use theme primary color
+        self._optimize_btn.clicked.connect(self._on_optimize_indicators_clicked)
+        optimize_layout.addWidget(self._optimize_btn)
+
+        layout.addLayout(optimize_layout)
+
         # Research Sources
         sources_label = QLabel(
             "<p><b>Research Sources (2025):</b></p>"

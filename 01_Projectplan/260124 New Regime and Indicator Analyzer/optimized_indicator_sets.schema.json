@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "optimized_indicator_sets.schema.json",
+  "title": "Optimized Indicator Sets (Stufe 2 Export)",
+  "description": "Die ausgewählten besten Entry/Exit Signale für EIN spezifisches Regime",
+  "type": "object",
+  "required": ["version", "meta", "signal_sets"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "regime", "created_at", "regime_config_ref"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "const": "indicator_sets"
+        },
+        "regime": {
+          "type": "string",
+          "enum": ["BULL", "BEAR", "SIDEWAYS"],
+          "description": "Für welches Regime diese Sets sind"
+        },
+        "regime_color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "description": "Farbe für UI/Chart"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "name": {
+          "type": "string",
+          "description": "z.B. 'BULL_BTCUSDT_5m_Indicators'"
+        },
+        "regime_config_ref": {
+          "type": "string",
+          "description": "Referenz zur Regime-Config aus Stufe 1"
+        },
+        "optimization_results_ref": {
+          "type": "string",
+          "description": "Referenz zur Ergebnistabelle dieser Optimierung"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" }
+          }
+        },
+        "aggregate_metrics": {
+          "type": "object",
+          "description": "Zusammengefasste Metriken über alle Signal-Sets",
+          "properties": {
+            "total_signals_enabled": { "type": "integer" },
+            "combined_win_rate": { "type": "number" },
+            "combined_profit_factor": { "type": "number" }
+          }
+        }
+      }
+    },
+    "signal_sets": {
+      "type": "object",
+      "description": "Die 4 Signal-Types mit ihren optimierten Indikatoren",
+      "required": ["entry_long", "entry_short", "exit_long", "exit_short"],
+      "properties": {
+        "entry_long": { "$ref": "#/$defs/signal_set" },
+        "entry_short": { "$ref": "#/$defs/signal_set" },
+        "exit_long": { "$ref": "#/$defs/signal_set" },
+        "exit_short": { "$ref": "#/$defs/signal_set" }
+      }
+    }
+  },
+  "$defs": {
+    "signal_set": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Ob dieses Signal aktiv ist"
+        },
+        "selected_rank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Welcher Rang aus der Ergebnisliste gewählt wurde"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "indicator": {
+          "type": "string",
+          "description": "Gewählter Indikator (RSI, MACD, STOCH, BB, etc.)"
+        },
+        "indicator_id": {
+          "type": "string",
+          "description": "Eindeutige ID z.B. 'rsi_9'"
+        },
+        "params": {
+          "type": "object",
+          "description": "Optimierte Parameter des Indikators"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "Signal-Bedingungen (kompatibel mit ConditionEvaluator)",
+          "oneOf": [
+            {
+              "required": ["all"],
+              "properties": {
+                "all": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/condition" }
+                }
+              }
+            },
+            {
+              "required": ["any"],
+              "properties": {
+                "any": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/condition" }
+                }
+              }
+            }
+          ]
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "signals": { "type": "integer" },
+            "trades": { "type": "integer" },
+            "win_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "profit_factor": { "type": "number" },
+            "avg_win": { "type": "number" },
+            "avg_loss": { "type": "number" },
+            "max_drawdown": { "type": "number" },
+            "sharpe_ratio": { "type": "number" },
+            "expectancy": { "type": "number" }
+          }
+        },
+        "research_notes": {
+          "type": "string",
+          "description": "Optionale Notizen zur Indikator-Wahl"
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "required": ["left", "op", "right"],
+      "properties": {
+        "left": {
+          "type": "object",
+          "properties": {
+            "indicator_id": { "type": "string" },
+            "field": { "type": "string" }
+          }
+        },
+        "op": {
+          "type": "string",
+          "enum": ["gt", "lt", "gte", "lte", "eq", "neq", "between", "crosses_above", "crosses_below"]
+        },
+        "right": {
+          "oneOf": [
+            { "type": "object", "properties": { "value": { "type": "number" } } },
+            { "type": "object", "properties": { "indicator_id": { "type": "string" }, "field": { "type": "string" } } }
+          ]
+        }
+      }
+    }
+  }
+}

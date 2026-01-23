@@ -24,6 +24,8 @@ class ChartBridge(QObject):
     zone_clicked = pyqtSignal(str, float, float, float, str)  # (zone_id, price, top, bottom, label)
     # Issue #24: Signal emitted when a line draw is requested (for label input)
     line_draw_requested = pyqtSignal(str, float, str, str)  # (line_id, price, color, line_type)
+    # New: Signal for vertical line
+    vline_draw_requested = pyqtSignal(str, float, str)  # (line_id, timestamp, color)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -100,6 +102,18 @@ class ChartBridge(QObject):
         """
         logger.info(f"[ChartBridge] Line draw request: {line_id} @ {price:.2f} ({line_type})")
         self.line_draw_requested.emit(line_id, price, color, line_type)
+
+    @pyqtSlot(str, float, str)
+    def onVLineDrawRequest(self, line_id: str, timestamp: float, color: str):
+        """Called from JavaScript when user draws a vertical line.
+
+        Args:
+            line_id: Unique ID for the line
+            timestamp: Unix timestamp for the line
+            color: Line color (hex)
+        """
+        logger.info(f"[ChartBridge] Vertical line draw request: {line_id} @ {timestamp}")
+        self.vline_draw_requested.emit(line_id, timestamp, color)
 
     @pyqtSlot(str, result=str)
     def pickColor(self, current_color: str = "rgba(13,110,253,0.18)") -> str:

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, QMessageBox
 )
 from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QFont
 from src.core.analysis.context import AnalysisContext
 
 # Use dedicated analysis logger

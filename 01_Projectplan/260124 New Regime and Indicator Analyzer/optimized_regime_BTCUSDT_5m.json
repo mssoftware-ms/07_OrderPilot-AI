@@ -1,0 +1,141 @@
+{
+  "version": "2.0",
+  "meta": {
+    "stage": "regime_config",
+    "created_at": "2026-01-24T14:35:00Z",
+    "name": "BTCUSDT_5m_Regime_Config",
+    "optimization_score": 78.5,
+    "selected_rank": 1,
+    "source_file": "regime_optimization_results_BTCUSDT_5m.json",
+    "source": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "bars": 401,
+      "data_range": {
+        "start": "2026-01-22T12:10:00Z",
+        "end": "2026-01-23T21:30:00Z"
+      }
+    },
+    "metrics": {
+      "f1_bull": 0.82,
+      "f1_bear": 0.79,
+      "f1_sideways": 0.71,
+      "stability_score": 0.73,
+      "bull_bars": 180,
+      "bear_bars": 101,
+      "sideways_bars": 120,
+      "bull_percentage": 44.9,
+      "bear_percentage": 25.2,
+      "sideways_percentage": 29.9
+    },
+    "optimized_params": {
+      "adx_period": 10,
+      "adx_threshold": 17,
+      "rsi_period": 9
+    }
+  },
+  "indicators": [
+    {
+      "type": "Indicator",
+      "id": "adx10",
+      "name": "ADX",
+      "params": { "period": 10 }
+    },
+    {
+      "type": "Indicator",
+      "id": "rsi9",
+      "name": "RSI",
+      "params": { "period": 9 }
+    },
+    {
+      "type": "Indicator",
+      "id": "macd_12_26_9",
+      "name": "MACD",
+      "params": { "fast": 12, "slow": 26, "signal": 9 }
+    }
+  ],
+  "regimes": [
+    {
+      "type": "Regime",
+      "id": "bull",
+      "name": "BULL",
+      "priority": 90,
+      "color": "#26a69a",
+      "bar_count": 180,
+      "conditions": {
+        "all": [
+          {
+            "left": { "indicator_id": "adx10", "field": "value" },
+            "op": "gt",
+            "right": { "value": 17 }
+          },
+          {
+            "left": { "indicator_id": "rsi9", "field": "value" },
+            "op": "gt",
+            "right": { "value": 50 }
+          },
+          {
+            "left": { "indicator_id": "macd_12_26_9", "field": "histogram" },
+            "op": "gt",
+            "right": { "value": 0 }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Regime",
+      "id": "bear",
+      "name": "BEAR",
+      "priority": 90,
+      "color": "#ef5350",
+      "bar_count": 101,
+      "conditions": {
+        "all": [
+          {
+            "left": { "indicator_id": "adx10", "field": "value" },
+            "op": "gt",
+            "right": { "value": 17 }
+          },
+          {
+            "left": { "indicator_id": "rsi9", "field": "value" },
+            "op": "lt",
+            "right": { "value": 50 }
+          },
+          {
+            "left": { "indicator_id": "macd_12_26_9", "field": "histogram" },
+            "op": "lt",
+            "right": { "value": 0 }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Regime",
+      "id": "sideways",
+      "name": "SIDEWAYS",
+      "priority": 10,
+      "color": "#9e9e9e",
+      "bar_count": 120,
+      "conditions": {
+        "all": [
+          {
+            "left": { "indicator_id": "adx10", "field": "value" },
+            "op": "lt",
+            "right": { "value": 17 }
+          }
+        ]
+      }
+    }
+  ],
+  "regime_periods": [
+    { "regime": "SIDEWAYS", "start_idx": 0, "end_idx": 24, "bars": 25 },
+    { "regime": "BULL", "start_idx": 25, "end_idx": 89, "bars": 65 },
+    { "regime": "SIDEWAYS", "start_idx": 90, "end_idx": 112, "bars": 23 },
+    { "regime": "BEAR", "start_idx": 113, "end_idx": 168, "bars": 56 },
+    { "regime": "SIDEWAYS", "start_idx": 169, "end_idx": 195, "bars": 27 },
+    { "regime": "BULL", "start_idx": 196, "end_idx": 278, "bars": 83 },
+    { "regime": "BEAR", "start_idx": 279, "end_idx": 323, "bars": 45 },
+    { "regime": "SIDEWAYS", "start_idx": 324, "end_idx": 368, "bars": 45 },
+    { "regime": "BULL", "start_idx": 369, "end_idx": 400, "bars": 32 }
+  ]
+}

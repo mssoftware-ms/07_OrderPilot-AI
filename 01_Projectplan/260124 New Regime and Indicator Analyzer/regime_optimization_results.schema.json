@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "regime_optimization_results.schema.json",
+  "title": "Regime Optimization Results (Stufe 1)",
+  "description": "Ergebnistabelle aller getesteten Regime-Parameter-Kombinationen",
+  "type": "object",
+  "required": ["version", "meta", "param_ranges", "results"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "created_at", "total_combinations", "completed", "method"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "const": "regime_optimization"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "optimization_id": {
+          "type": "string"
+        },
+        "total_combinations": {
+          "type": "integer",
+          "description": "Gesamtanzahl getesteter Parameter-Kombinationen"
+        },
+        "completed": {
+          "type": "integer"
+        },
+        "duration_seconds": {
+          "type": "number"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["grid_search", "optuna_tpe", "optuna_nsga2"],
+          "description": "Optimierungsmethode"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "manual"],
+          "description": "Auto = System wählt Ranges, Manual = Benutzer definiert"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" },
+            "bars": { "type": "integer" },
+            "data_range": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        },
+        "statistics": {
+          "type": "object",
+          "properties": {
+            "score_min": { "type": "number" },
+            "score_max": { "type": "number" },
+            "score_avg": { "type": "number" },
+            "score_median": { "type": "number" }
+          }
+        }
+      }
+    },
+    "param_ranges": {
+      "type": "object",
+      "description": "Die getesteten Parameter-Ranges",
+      "properties": {
+        "adx_period": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "integer" },
+            "max": { "type": "integer" },
+            "step": { "type": "integer" }
+          }
+        },
+        "adx_threshold": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "step": { "type": "number" }
+          }
+        },
+        "rsi_period": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "integer" },
+            "max": { "type": "integer" },
+            "step": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "description": "Sortierte Liste aller Ergebnisse (nach Score absteigend)",
+      "items": {
+        "type": "object",
+        "required": ["rank", "score", "params", "metrics"],
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "selected": {
+            "type": "boolean",
+            "default": false,
+            "description": "Vom Benutzer ausgewählt für Stufe 2"
+          },
+          "exported": {
+            "type": "boolean",
+            "default": false
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "adx_period": { "type": "integer" },
+              "adx_threshold": { "type": "number" },
+              "rsi_period": { "type": "integer" }
+            }
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "regime_count": { "type": "integer" },
+              "avg_duration_bars": { "type": "number" },
+              "switch_count": { "type": "integer" },
+              "stability_score": { "type": "number" },
+              "coverage": { "type": "number" },
+              "f1_bull": { "type": "number", "minimum": 0, "maximum": 1 },
+              "f1_bear": { "type": "number", "minimum": 0, "maximum": 1 },
+              "f1_sideways": { "type": "number", "minimum": 0, "maximum": 1 },
+              "bull_bars": { "type": "integer" },
+              "bear_bars": { "type": "integer" },
+              "sideways_bars": { "type": "integer" }
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

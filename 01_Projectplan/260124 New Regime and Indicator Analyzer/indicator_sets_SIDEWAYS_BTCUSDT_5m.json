@@ -1,0 +1,149 @@
+{
+  "version": "2.0",
+  "meta": {
+    "stage": "indicator_sets",
+    "regime": "SIDEWAYS",
+    "regime_color": "#9e9e9e",
+    "created_at": "2026-01-24T15:15:00Z",
+    "name": "SIDEWAYS_BTCUSDT_5m_Indicators",
+    "regime_config_ref": "optimized_regime_BTCUSDT_5m.json",
+    "optimization_results_ref": "indicator_optimization_results_SIDEWAYS_BTCUSDT_5m.json",
+    "source": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m"
+    },
+    "aggregate_metrics": {
+      "total_signals_enabled": 4,
+      "combined_win_rate": 0.55,
+      "combined_profit_factor": 1.35
+    }
+  },
+  "signal_sets": {
+    "entry_long": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 68.5,
+      "indicator": "STOCH",
+      "indicator_id": "stoch_14_3",
+      "params": { "k_period": 14, "d_period": 3 },
+      "conditions": {
+        "all": [
+          {
+            "left": { "indicator_id": "stoch_14_3", "field": "k" },
+            "op": "crosses_above",
+            "right": { "indicator_id": "stoch_14_3", "field": "d" }
+          },
+          {
+            "left": { "indicator_id": "stoch_14_3", "field": "k" },
+            "op": "lt",
+            "right": { "value": 25 }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 32,
+        "trades": 15,
+        "win_rate": 0.53,
+        "profit_factor": 1.35,
+        "avg_win": 0.8,
+        "avg_loss": 0.5,
+        "max_drawdown": 4.5,
+        "sharpe_ratio": 0.92,
+        "expectancy": 0.4
+      },
+      "research_notes": "Mean-Reversion: Stochastic K crosses D im überverkauften Bereich (<25). Funktioniert gut in Ranging Markets."
+    },
+    "entry_short": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 65.2,
+      "indicator": "STOCH",
+      "indicator_id": "stoch_14_3",
+      "params": { "k_period": 14, "d_period": 3 },
+      "conditions": {
+        "all": [
+          {
+            "left": { "indicator_id": "stoch_14_3", "field": "k" },
+            "op": "crosses_below",
+            "right": { "indicator_id": "stoch_14_3", "field": "d" }
+          },
+          {
+            "left": { "indicator_id": "stoch_14_3", "field": "k" },
+            "op": "gt",
+            "right": { "value": 75 }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 28,
+        "trades": 11,
+        "win_rate": 0.55,
+        "profit_factor": 1.28,
+        "avg_win": 0.7,
+        "avg_loss": 0.5,
+        "max_drawdown": 3.8,
+        "sharpe_ratio": 0.85,
+        "expectancy": 0.35
+      },
+      "research_notes": "Mean-Reversion: Stochastic K crosses below D im überkauften Bereich (>75)."
+    },
+    "exit_long": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 70.1,
+      "indicator": "RSI",
+      "indicator_id": "rsi_9",
+      "params": { "period": 9 },
+      "conditions": {
+        "any": [
+          {
+            "left": { "indicator_id": "rsi_9", "field": "value" },
+            "op": "gt",
+            "right": { "value": 65 }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 38,
+        "trades": 15,
+        "win_rate": 0.53,
+        "profit_factor": 1.35,
+        "avg_win": 0.8,
+        "avg_loss": 0.5,
+        "max_drawdown": 4.5,
+        "sharpe_ratio": 0.92,
+        "expectancy": 0.4
+      },
+      "research_notes": "In SIDEWAYS früher rausgehen - RSI 65 statt 70/80. Keine großen Bewegungen erwarten."
+    },
+    "exit_short": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 67.8,
+      "indicator": "RSI",
+      "indicator_id": "rsi_9",
+      "params": { "period": 9 },
+      "conditions": {
+        "any": [
+          {
+            "left": { "indicator_id": "rsi_9", "field": "value" },
+            "op": "lt",
+            "right": { "value": 35 }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 35,
+        "trades": 11,
+        "win_rate": 0.55,
+        "profit_factor": 1.28,
+        "avg_win": 0.7,
+        "avg_loss": 0.5,
+        "max_drawdown": 3.8,
+        "sharpe_ratio": 0.85,
+        "expectancy": 0.35
+      },
+      "research_notes": "In SIDEWAYS früher rausgehen - RSI 35 statt 20/30. Kleinere Targets in Range-Markets."
+    }
+  }
+}

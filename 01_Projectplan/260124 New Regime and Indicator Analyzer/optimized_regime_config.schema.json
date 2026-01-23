@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "optimized_regime_config.schema.json",
+  "title": "Optimized Regime Configuration (Stufe 1 Export)",
+  "description": "Die ausgewählte Regime-Erkennung für Verwendung in Stufe 2",
+  "type": "object",
+  "required": ["version", "meta", "indicators", "regimes"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "created_at", "optimization_score"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "const": "regime_config"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "name": {
+          "type": "string",
+          "description": "z.B. 'BTCUSDT_5m_Regime_Config'"
+        },
+        "optimization_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "selected_rank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rang aus der Ergebnistabelle"
+        },
+        "source_file": {
+          "type": "string",
+          "description": "Referenz zur Ergebnistabelle"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" },
+            "bars": { "type": "integer" },
+            "data_range": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "f1_bull": { "type": "number" },
+            "f1_bear": { "type": "number" },
+            "f1_sideways": { "type": "number" },
+            "stability_score": { "type": "number" },
+            "bull_bars": { "type": "integer", "description": "Anzahl Bars im BULL-Regime" },
+            "bear_bars": { "type": "integer", "description": "Anzahl Bars im BEAR-Regime" },
+            "sideways_bars": { "type": "integer", "description": "Anzahl Bars im SIDEWAYS-Regime" },
+            "bull_percentage": { "type": "number", "description": "Prozent der Testdaten" },
+            "bear_percentage": { "type": "number" },
+            "sideways_percentage": { "type": "number" }
+          }
+        },
+        "optimized_params": {
+          "type": "object",
+          "description": "Die optimierten Parameter-Werte",
+          "properties": {
+            "adx_period": { "type": "integer" },
+            "adx_threshold": { "type": "number" },
+            "rsi_period": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "indicators": {
+      "type": "array",
+      "description": "Indikatoren für Regime-Erkennung",
+      "items": {
+        "type": "object",
+        "required": ["type", "id", "name", "params"],
+        "properties": {
+          "type": { "type": "string", "const": "Indicator" },
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "regimes": {
+      "type": "array",
+      "description": "Die 3 Regime-Definitionen: BULL, BEAR, SIDEWAYS",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["type", "id", "name", "priority", "color", "conditions"],
+        "properties": {
+          "type": { "type": "string", "const": "Regime" },
+          "id": {
+            "type": "string",
+            "enum": ["bull", "bear", "sideways"]
+          },
+          "name": {
+            "type": "string",
+            "enum": ["BULL", "BEAR", "SIDEWAYS"]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "bar_count": {
+            "type": "integer",
+            "description": "Anzahl Bars in diesem Regime"
+          },
+          "bar_indices": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Indizes der Bars (für Stufe 2)"
+          },
+          "conditions": {
+            "$ref": "#/$defs/condition_group"
+          }
+        }
+      }
+    },
+    "regime_periods": {
+      "type": "array",
+      "description": "Zeitliche Perioden für Chart-Darstellung",
+      "items": {
+        "type": "object",
+        "properties": {
+          "regime": { "type": "string", "enum": ["BULL", "BEAR", "SIDEWAYS"] },
+          "start_idx": { "type": "integer" },
+          "end_idx": { "type": "integer" },
+          "start_timestamp": { "type": "string", "format": "date-time" },
+          "end_timestamp": { "type": "string", "format": "date-time" },
+          "bars": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "condition_group": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["all"],
+          "properties": {
+            "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } }
+          }
+        },
+        {
+          "required": ["any"],
+          "properties": {
+            "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } }
+          }
+        }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "required": ["left", "op", "right"],
+      "properties": {
+        "left": {
+          "type": "object",
+          "properties": {
+            "indicator_id": { "type": "string" },
+            "field": { "type": "string" }
+          }
+        },
+        "op": {
+          "type": "string",
+          "enum": ["gt", "lt", "gte", "lte", "eq", "neq", "between"]
+        },
+        "right": {
+          "oneOf": [
+            { "type": "object", "properties": { "value": { "type": "number" } } },
+            { "type": "object", "properties": { "min": { "type": "number" }, "max": { "type": "number" } } },
+            { "type": "object", "properties": { "indicator_id": { "type": "string" }, "field": { "type": "string" } } }
+          ]
+        }
+      }
+    }
+  }
+}

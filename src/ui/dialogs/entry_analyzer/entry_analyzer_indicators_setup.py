@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -32,6 +33,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -134,7 +136,7 @@ class IndicatorsSetupMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # Indicator Selection Group (Issue #12: Removed emoji)
+        # Indicator Selection Group (Issue #7: Excel-like table with all data in one row)
         indicator_group = QGroupBox("Select Indicators to Optimize")
         indicator_layout = QVBoxLayout(indicator_group)
 
@@ -148,24 +150,76 @@ class IndicatorsSetupMixin:
             ("VOLUME", ['OBV', 'MFI', 'AD', 'CMF']),
         ]
 
+        # Create Excel-like table
+        self._opt_indicator_table = QTableWidget()
+        self._opt_indicator_table.setColumnCount(3)
+        self._opt_indicator_table.setHorizontalHeaderLabels(["Select", "Indicator", "Category"])
+
+        # Table styling for Excel-like appearance
+        self._opt_indicator_table.setAlternatingRowColors(True)
+        self._opt_indicator_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._opt_indicator_table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self._opt_indicator_table.verticalHeader().setVisible(False)  # Hide row numbers
+        self._opt_indicator_table.setSortingEnabled(True)
+
+        # Column widths
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._opt_indicator_table.setColumnWidth(0, 60)  # Checkbox column
+
+        # Set fixed height for better vertical scrolling
+        self._opt_indicator_table.setMinimumHeight(300)
+        self._opt_indicator_table.setMaximumHeight(400)
+
+        # Track checkboxes
         self._opt_indicator_checkboxes = {}
 
+        # Populate table with all indicators
+        row = 0
         for category_name, indicators in indicator_categories:
-            # Category label
-            category_label = QLabel(f"<b>{category_name}</b>")
-            indicator_layout.addWidget(category_label)
+            for ind in indicators:
+                self._opt_indicator_table.insertRow(row)
 
-            # Grid for indicators (3 columns)
-            grid = QGridLayout()
-            for idx, ind in enumerate(indicators):
-                row = idx // 3
-                col = idx % 3
-                checkbox = QCheckBox(ind)
+                # Checkbox in first column
+                checkbox = QCheckBox()
                 checkbox.stateChanged.connect(self._on_indicator_selection_changed)
                 self._opt_indicator_checkboxes[ind] = checkbox
-                grid.addWidget(checkbox, row, col)
 
-            indicator_layout.addLayout(grid)
+                # Center the checkbox
+                checkbox_widget = QWidget()
+                checkbox_layout = QHBoxLayout(checkbox_widget)
+                checkbox_layout.addWidget(checkbox)
+                checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                checkbox_layout.setContentsMargins(0, 0, 0, 0)
+                self._opt_indicator_table.setCellWidget(row, 0, checkbox_widget)
+
+                # Indicator name in second column
+                indicator_item = QTableWidgetItem(ind)
+                indicator_item.setFlags(indicator_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+                self._opt_indicator_table.setItem(row, 1, indicator_item)
+
+                # Category in third column
+                category_item = QTableWidgetItem(category_name)
+                category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+                self._opt_indicator_table.setItem(row, 2, category_item)
+
+                row += 1
+
+        indicator_layout.addWidget(self._opt_indicator_table)
+
+        # Add buttons for Select All / Deselect All
+        button_layout = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self._on_select_all_indicators)
+        button_layout.addWidget(select_all_btn)
+
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self._on_deselect_all_indicators)
+        button_layout.addWidget(deselect_all_btn)
+
+        button_layout.addStretch()
+        indicator_layout.addLayout(button_layout)
 
         layout.addWidget(indicator_group)
 
@@ -222,16 +276,7 @@ class IndicatorsSetupMixin:
         self._param_widgets = {}
         self._update_parameter_ranges()
 
-        # Progress and Optimize Button
-        progress_layout = QHBoxLayout()
-        self._optimization_progress = QLabel("Ready")
-        progress_layout.addWidget(self._optimization_progress)
-
-        self._optimize_btn = QPushButton("🚀 Optimize Indicators")
-        self._optimize_btn.clicked.connect(self._on_optimize_indicators_clicked)
-        progress_layout.addWidget(self._optimize_btn)
-
-        layout.addLayout(progress_layout)
+        # Note: Optimize button moved to Parameter Presets tab (Issue #6)
 
     def _setup_optimization_results_tab(self, tab: QWidget) -> None:
         """Setup Optimization Results sub-tab.
@@ -312,6 +357,16 @@ class IndicatorsSetupMixin:
         Updates parameter ranges based on selected indicators.
         """
         self._update_parameter_ranges()
+
+    def _on_select_all_indicators(self) -> None:
+        """Select all indicators in the table (Issue #7)."""
+        for checkbox in self._opt_indicator_checkboxes.values():
+            checkbox.setChecked(True)
+
+    def _on_deselect_all_indicators(self) -> None:
+        """Deselect all indicators in the table (Issue #7)."""
+        for checkbox in self._opt_indicator_checkboxes.values():
+            checkbox.setChecked(False)
 
     def _update_parameter_ranges(self) -> None:
         """Dynamically update parameter range widgets based on selected indicators.

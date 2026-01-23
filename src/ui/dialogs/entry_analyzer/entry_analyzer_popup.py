@@ -412,6 +412,20 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
             f"font-weight: bold; font-size: 14pt; padding: 5px; color: {color};"
         )
 
+        # Issue #3: Auto-apply regime preset parameters (Indicator Presets tab)
+        try:
+            self._on_auto_preset_clicked()  # Auto-select matching preset
+            self._on_apply_preset_clicked()  # Auto-apply to parameter spinboxes
+        except Exception as e:
+            logger.warning(f"Failed to auto-apply regime preset: {e}")
+
+        # Issue #8: Auto-select parameter ranges in Regime Table tab
+        try:
+            logger.info(f"Calling auto_select_parameter_ranges_for_regime with regime: {result.regime.value}")
+            self.auto_select_parameter_ranges_for_regime(result.regime.value)
+        except Exception as e:
+            logger.error(f"Failed to auto-select parameter ranges for regime: {e}", exc_info=True)
+
         # Update signal counts
         self._signal_count_label.setText(
             f"Signals: {result.long_count} LONG / {result.short_count} SHORT"

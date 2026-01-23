@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "indicator_optimization_results.schema.json",
+  "title": "Indicator Optimization Results (Stufe 2)",
+  "description": "Ergebnistabelle aller getesteten Indikator-Kombinationen für EIN spezifisches Regime",
+  "type": "object",
+  "required": ["version", "meta", "param_ranges", "results"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "regime", "created_at", "regime_config_ref"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "const": "indicator_optimization"
+        },
+        "regime": {
+          "type": "string",
+          "enum": ["BULL", "BEAR", "SIDEWAYS"],
+          "description": "Für welches Regime diese Optimierung ist"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "optimization_id": {
+          "type": "string"
+        },
+        "regime_config_ref": {
+          "type": "string",
+          "description": "Referenz zur Regime-Config aus Stufe 1"
+        },
+        "regime_data": {
+          "type": "object",
+          "description": "Statistiken über die Regime-Perioden",
+          "properties": {
+            "total_bars": { "type": "integer", "description": "Anzahl Bars im Regime" },
+            "percentage_of_data": { "type": "number", "description": "Prozent der Gesamtdaten" },
+            "periods_count": { "type": "integer", "description": "Anzahl zusammenhängender Perioden" }
+          }
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" }
+          }
+        },
+        "method": {
+          "type": "string",
+          "enum": ["grid_search", "optuna_tpe"],
+          "description": "Optimierungsmethode"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["auto", "manual"],
+          "description": "Auto = maximale Parameter-Varianten, Manual = eingestellte Ranges"
+        },
+        "tested_indicators": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Liste der getesteten Indikatoren"
+        },
+        "combinations_per_signal": {
+          "type": "object",
+          "properties": {
+            "entry_long": { "type": "integer" },
+            "entry_short": { "type": "integer" },
+            "exit_long": { "type": "integer" },
+            "exit_short": { "type": "integer" }
+          }
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "param_ranges": {
+      "type": "object",
+      "description": "Getestete Parameter-Ranges pro Indikator",
+      "additionalProperties": {
+        "type": "object",
+        "description": "Indikator-spezifische Ranges",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "step": { "type": "number" }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "description": "Ergebnisse für alle 4 Signal-Typen",
+      "required": ["entry_long", "entry_short", "exit_long", "exit_short"],
+      "properties": {
+        "entry_long": {
+          "$ref": "#/$defs/signal_results"
+        },
+        "entry_short": {
+          "$ref": "#/$defs/signal_results"
+        },
+        "exit_long": {
+          "$ref": "#/$defs/signal_results"
+        },
+        "exit_short": {
+          "$ref": "#/$defs/signal_results"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "signal_results": {
+      "type": "object",
+      "properties": {
+        "total_tested": {
+          "type": "integer",
+          "description": "Anzahl getesteter Kombinationen"
+        },
+        "statistics": {
+          "type": "object",
+          "properties": {
+            "score_min": { "type": "number" },
+            "score_max": { "type": "number" },
+            "score_avg": { "type": "number" }
+          }
+        },
+        "ranked_results": {
+          "type": "array",
+          "description": "Sortiert nach Score (absteigend)",
+          "items": {
+            "$ref": "#/$defs/indicator_result"
+          }
+        }
+      }
+    },
+    "indicator_result": {
+      "type": "object",
+      "required": ["rank", "score", "indicator", "params", "metrics"],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "selected": {
+          "type": "boolean",
+          "default": false
+        },
+        "indicator": {
+          "type": "string",
+          "description": "Indikator-Name (RSI, MACD, STOCH, etc.)"
+        },
+        "indicator_id": {
+          "type": "string",
+          "description": "Eindeutige ID z.B. 'rsi_9' oder 'macd_8_17_9'"
+        },
+        "params": {
+          "type": "object",
+          "description": "Indikator-Parameter"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "Die Condition für dieses Signal",
+          "properties": {
+            "all": { "type": "array" },
+            "any": { "type": "array" }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "signals": { "type": "integer", "description": "Anzahl ausgelöster Signale" },
+            "trades": { "type": "integer", "description": "Anzahl Trades" },
+            "win_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "profit_factor": { "type": "number" },
+            "avg_win": { "type": "number" },
+            "avg_loss": { "type": "number" },
+            "max_drawdown": { "type": "number" },
+            "sharpe_ratio": { "type": "number" },
+            "expectancy": { "type": "number" },
+            "avg_bars_in_trade": { "type": "number" }
+          }
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

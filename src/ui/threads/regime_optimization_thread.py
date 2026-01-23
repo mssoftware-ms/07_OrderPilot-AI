@@ -14,6 +14,7 @@ Features:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from itertools import product
 from typing import Dict, List, Any
@@ -70,11 +71,80 @@ class RegimeOptimizationThread(QThread):
         self.param_grid = param_grid
         self.scope = scope
         self._stop_requested = False
+        self._last_backtest_timing: dict | None = None
+        self._timing_totals = self._init_timing_totals()
+        self.timing_summary: dict | None = None
+        self.timing_summary_text = ""
 
         # Calculate total combinations
         self.total_combinations = 1
         for values in param_grid.values():
             self.total_combinations *= len(values)
+
+    @staticmethod
+    def _init_timing_totals() -> dict:
+        """Initialize timing counters for performance analysis."""
+        return {
+            "config_s": 0.0,
+            "backtest_s": 0.0,
+            "metrics_s": 0.0,
+            "score_s": 0.0,
+            "total_eval_s": 0.0,
+            "config_write_s": 0.0,
+            "classify_s": 0.0,
+            "classify_calls": 0,
+            "backtest_loop_s": 0.0,
+        }
+
+    def _accumulate_timings(self, timings: dict) -> None:
+        """Accumulate timing totals for optimization analysis."""
+        self._timing_totals["config_s"] += timings.get("config_s", 0.0)
+        self._timing_totals["backtest_s"] += timings.get("backtest_s", 0.0)
+        self._timing_totals["metrics_s"] += timings.get("metrics_s", 0.0)
+        self._timing_totals["score_s"] += timings.get("score_s", 0.0)
+        self._timing_totals["total_eval_s"] += timings.get("total_eval_s", 0.0)
+        self._timing_totals["config_write_s"] += timings.get("config_write_s", 0.0)
+        self._timing_totals["classify_s"] += timings.get("classify_s", 0.0)
+        self._timing_totals["classify_calls"] += timings.get("classify_calls", 0)
+        self._timing_totals["backtest_loop_s"] += timings.get("backtest_loop_s", 0.0)
+
+    def _finalize_timing_summary(self, total_s: float, combos_tested: int) -> None:
+        """Build and store a timing summary for UI and logs."""
+        totals = self._timing_totals
+        avg_per_combo = total_s / combos_tested if combos_tested else 0.0
+        classify_calls = totals["classify_calls"] or 1
+        classify_avg_ms = (totals["classify_s"] / classify_calls) * 1000.0
+        backtest_pct = (totals["backtest_s"] / total_s) if total_s > 0 else 0.0
+
+        self.timing_summary = {
+            "total_s": total_s,
+            "combos_tested": combos_tested,
+            "avg_per_combo_s": avg_per_combo,
+            "backtest_s": totals["backtest_s"],
+            "backtest_pct": backtest_pct,
+            "classify_calls": totals["classify_calls"],
+            "classify_avg_ms": classify_avg_ms,
+            "config_s": totals["config_s"],
+            "metrics_s": totals["metrics_s"],
+            "score_s": totals["score_s"],
+        }
+
+        self.timing_summary_text = (
+            f"Timing: total {total_s:.1f}s | avg/combo {avg_per_combo:.2f}s | "
+            f"backtest {totals['backtest_s']:.1f}s ({backtest_pct:.0%}) | "
+            f"classify avg {classify_avg_ms:.1f}ms"
+        )
+
+        logger.info(
+            "Optimization timing summary: total=%.2fs combos=%d avg=%.3fs "
+            "backtest=%.2fs (%.0f%%) classify_avg=%.2fms",
+            total_s,
+            combos_tested,
+            avg_per_combo,
+            totals["backtest_s"],
+            backtest_pct * 100.0,
+            classify_avg_ms,
+        )
 
     def request_stop(self):
         """Request graceful stop of optimization."""
@@ -84,6 +154,7 @@ class RegimeOptimizationThread(QThread):
     def run(self):
         """Execute regime parameter optimization."""
         try:
+            total_start = time.perf_counter()
             logger.info(
                 f"Starting regime optimization: {self.total_combinations} combinations, "
                 f"scope={self.scope}"
@@ -91,37 +162,52 @@ class RegimeOptimizationThread(QThread):
 
             results = []
             current = 0
+            self._timing_totals = self._init_timing_totals()
+
+            # Reduce verbose logging during optimization (significant I/O cost)
+            engine_logger = logging.getLogger("src.core.tradingbot.regime_engine_json")
+            indicators_logger = logging.getLogger("src.core.indicators.engine")
+            prev_engine_level = engine_logger.level
+            prev_indicators_level = indicators_logger.level
+            engine_logger.setLevel(logging.WARNING)
+            indicators_logger.setLevel(logging.WARNING)
 
             # Generate all parameter combinations
             param_names = list(self.param_grid.keys())
             param_values = [self.param_grid[name] for name in param_names]
 
-            for combo in product(*param_values):
-                if self._stop_requested:
-                    logger.info("Optimization stopped by user")
-                    break
+            try:
+                for combo in product(*param_values):
+                    if self._stop_requested:
+                        logger.info("Optimization stopped by user")
+                        break
 
-                current += 1
+                    current += 1
 
-                # Create parameter dict from combination
-                params = dict(zip(param_names, combo))
+                    # Create parameter dict from combination
+                    params = dict(zip(param_names, combo))
 
-                # Emit progress
-                param_str = ", ".join([f"{k}={v}" for k, v in params.items()])
-                self.progress.emit(current, self.total_combinations, f"Testing: {param_str}")
+                    # Emit progress
+                    param_str = ", ".join([f"{k}={v}" for k, v in params.items()])
+                    self.progress.emit(current, self.total_combinations, f"Testing: {param_str}")
 
-                # Evaluate this parameter combination
-                try:
-                    result = self._evaluate_params(params)
-                    results.append(result)
-                    self.result_ready.emit(result)
-                except Exception as e:
-                    logger.error(f"Error evaluating params {params}: {e}")
-                    # Continue with next combination
+                    # Evaluate this parameter combination
+                    try:
+                        result = self._evaluate_params(params)
+                        results.append(result)
+                        self.result_ready.emit(result)
+                    except Exception as e:
+                        logger.error(f"Error evaluating params {params}: {e}")
+                        # Continue with next combination
+            finally:
+                engine_logger.setLevel(prev_engine_level)
+                indicators_logger.setLevel(prev_indicators_level)
 
             # Sort results by composite score
             results.sort(key=lambda x: x['score'], reverse=True)
 
+            total_elapsed = time.perf_counter() - total_start
+            self._finalize_timing_summary(total_elapsed, current)
             logger.info(f"Regime optimization complete: {len(results)} results")
             self.finished_with_results.emit(results)
 
@@ -140,16 +226,34 @@ class RegimeOptimizationThread(QThread):
             Result dict with metrics and parameters
         """
         # 1. Create modified config with these parameters
+        t0 = time.perf_counter()
         config_dict = self._create_config_with_params(params)
+        t1 = time.perf_counter()
 
         # 2. Run regime detection on entire DataFrame
         regime_history = self._backtest_regimes(config_dict)
+        t2 = time.perf_counter()
 
         # 3. Calculate evaluation metrics
         metrics = self._calculate_metrics(regime_history)
+        t3 = time.perf_counter()
 
         # 4. Calculate composite score
         score = self._calculate_composite_score(metrics)
+        t4 = time.perf_counter()
+
+        timings = {
+            "config_s": t1 - t0,
+            "backtest_s": t2 - t1,
+            "metrics_s": t3 - t2,
+            "score_s": t4 - t3,
+            "total_eval_s": t4 - t0,
+        }
+
+        if self._last_backtest_timing:
+            timings.update(self._last_backtest_timing)
+
+        self._accumulate_timings(timings)
 
         return {
             'params': params,
@@ -157,6 +261,7 @@ class RegimeOptimizationThread(QThread):
             'regime_history': regime_history,
             'metrics': metrics,
             'score': int(score),  # Integer score
+            'timings': timings,
             'timestamp': datetime.utcnow()
         }
 
@@ -251,9 +356,11 @@ class RegimeOptimizationThread(QThread):
         import tempfile
         import json
 
+        write_start = time.perf_counter()
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(config_dict, f)
             temp_config_path = f.name
+        write_elapsed = time.perf_counter() - write_start
 
         try:
             # Initialize regime engine
@@ -266,6 +373,9 @@ class RegimeOptimizationThread(QThread):
 
             # Sample every N bars to speed up (optional, for large datasets)
             sample_rate = max(1, len(self.df) // 500)  # Max 500 regime checks
+            classify_total = 0.0
+            classify_calls = 0
+            loop_start = time.perf_counter()
 
             for idx in range(0, len(self.df), sample_rate):
                 # Get data up to this point
@@ -276,11 +386,14 @@ class RegimeOptimizationThread(QThread):
 
                 try:
                     # Classify regime
+                    classify_start = time.perf_counter()
                     state = engine.classify_from_config(
                         data=data_window,
                         config_path=temp_config_path,
                         scope=self.scope
                     )
+                    classify_total += time.perf_counter() - classify_start
+                    classify_calls += 1
 
                     regime_name = state.regime_label
 
@@ -317,6 +430,14 @@ class RegimeOptimizationThread(QThread):
                     'duration_bars': len(self.df) - 1 - regime_start_idx,
                     'confidence': 0.5  # Default for last regime
                 })
+
+            loop_elapsed = time.perf_counter() - loop_start
+            self._last_backtest_timing = {
+                "config_write_s": write_elapsed,
+                "classify_s": classify_total,
+                "classify_calls": classify_calls,
+                "backtest_loop_s": loop_elapsed,
+            }
 
             return regime_history
 

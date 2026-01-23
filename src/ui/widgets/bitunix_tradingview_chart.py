@@ -130,6 +130,10 @@ class BitunixTradingViewChart(
         # Initialize UI components
         self._setup_ui()
 
+        # Regime display updates (Issue #13)
+        self._last_regime_hash = ""
+        self._setup_regime_updates()
+
         # Setup event connections
         self._setup_streaming()
 
@@ -141,6 +145,99 @@ class BitunixTradingViewChart(
         self._setup_level_zones()
 
         logger.info("✅ BitunixTradingViewChart initialized (Bitunix-only)")
+
+    def _setup_regime_updates(self) -> None:
+        """Connect regime updates to data load and candle close events."""
+        try:
+            if hasattr(self, "data_loaded"):
+                self.data_loaded.connect(self._update_regime_from_data)
+            if hasattr(self, "candle_closed"):
+                self.candle_closed.connect(self._on_candle_closed_for_regime)
+        except Exception as exc:
+            logger.warning(f"Failed to setup regime updates: {exc}")
+
+    def _on_candle_closed_for_regime(
+        self,
+        prev_open: float,
+        prev_high: float,
+        prev_low: float,
+        prev_close: float,
+        new_open: float,
+    ) -> None:
+        """Update regime after a candle closes."""
+        self._update_regime_from_data()
+
+    def _get_regime_candles(self, max_bars: int = 300) -> list[dict]:
+        """Build candle list from current chart data for regime detection."""
+        data = getattr(self, "data", None)
+        if data is None or not hasattr(data, "iterrows"):
+            return []
+
+        try:
+            from src.ui.widgets.chart_mixins.data_loading_utils import (
+                get_local_timezone_offset_seconds,
+            )
+        except Exception:
+            return []
+
+        candles = []
+        local_offset = get_local_timezone_offset_seconds()
+        has_time_column = "time" in data.columns
+
+        for idx, row in data.tail(max_bars).iterrows():
+            if has_time_column:
+                timestamp = int(row.get("time", 0))
+            else:
+                timestamp = 0
+                if hasattr(idx, "timestamp"):
+                    timestamp = int(idx.timestamp()) + local_offset
+                elif isinstance(idx, (int, float)):
+                    timestamp = int(idx)
+
+            candles.append(
+                {
+                    "timestamp": timestamp,
+                    "open": float(row.get("open", 0)),
+                    "high": float(row.get("high", 0)),
+                    "low": float(row.get("low", 0)),
+                    "close": float(row.get("close", 0)),
+                    "volume": float(row.get("volume", 0)),
+                }
+            )
+
+        return candles
+
+    def _update_regime_from_data(self) -> None:
+        """Detect and display the latest regime based on chart data."""
+        try:
+            candles = self._get_regime_candles()
+            if not candles:
+                if hasattr(self, "update_regime_badge"):
+                    self.update_regime_badge("UNKNOWN")
+                return
+
+            close_hash = str(hash(tuple(c["close"] for c in candles[-5:])))
+            if close_hash == self._last_regime_hash:
+                return
+            self._last_regime_hash = close_hash
+
+            from src.analysis.entry_signals.entry_signal_engine import (
+                OptimParams,
+                calculate_features,
+                detect_regime,
+            )
+
+            params = OptimParams()
+            features = calculate_features(candles, params)
+            regime = detect_regime(features, params)
+            regime_str = regime.value if hasattr(regime, "value") else str(regime)
+
+            if hasattr(self, "update_regime_badge"):
+                self.update_regime_badge(regime_str)
+        except Exception as exc:
+            logger.error(f"Failed to update regime from data: {exc}", exc_info=True)
+            if hasattr(self, "update_regime_badge"):
+                self.update_regime_badge("UNKNOWN")
 
     def _setup_streaming(self):
         """Connect market data event bus signals to chart slots."""

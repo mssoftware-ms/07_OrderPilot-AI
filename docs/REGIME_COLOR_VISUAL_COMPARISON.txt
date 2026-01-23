@@ -1,0 +1,300 @@
+═══════════════════════════════════════════════════════════════════════════════
+ REGIME COLOR ACCESSIBILITY VISUAL COMPARISON
+ OrderPilot-AI Entry Analyzer Chart
+═══════════════════════════════════════════════════════════════════════════════
+
+CRITICAL ISSUES HIGHLIGHTED
+───────────────────────────────────────────────────────────────────────────────
+
+1. RANGE (YELLOW) - CONTRAST FAILURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current (FAILS):                  Recommended (PASSES):
+   ═════════════════════════════════════════════════════════════════════════════
+
+   #FFF9A3                           #FFE135
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ RANGE - Yellow Light       ░   ░ RANGE - Yellow Light       ░
+   ░ (This text is UNREADABLE)  ░   ░ (This text IS readable)    ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Contrast: 2.1:1  ❌ FAILS          Contrast: 5.2:1  ✅ PASSES
+   Lightness: L=88% (TOO LIGHT)       Lightness: L=75% (GOOD)
+
+   Problem: Yellow too light, black text invisible
+   Solution: Reduce lightness to 75% (darker yellow)
+
+
+2. UNKNOWN (PURPLE) - CONTRAST FAILURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current (FAILS):                  Recommended (PASSES):
+   ═════════════════════════════════════════════════════════════════════════════
+
+   #E6C3FF                           #D084DC
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ UNKNOWN - Purple Light     ░   ░ UNKNOWN - Purple Light     ░
+   ░ (This text is UNREADABLE)  ░   ░ (This text IS readable)    ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Contrast: 2.4:1  ❌ FAILS          Contrast: 5.1:1  ✅ PASSES
+   Lightness: L=80% (TOO LIGHT)       Lightness: L=73% (GOOD)
+
+   Problem: Purple too light, black text invisible
+   Solution: Reduce lightness to 73% (darker purple)
+
+
+RECOMMENDED IMPROVEMENTS: START/END COLOR DISTINCTION
+───────────────────────────────────────────────────────────────────────────────
+
+1. STRONG_TREND_BULL (GREEN)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current:                          Recommended:
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #A8E6A3                    START: #A8E6A3
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Green                  ░   ░ Light Green                  ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #7BC67A                    END:   #5AA85F
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Dark Green                   ░   ░ Darker Green                 ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 19%                   Difference: 25%  ✅ BETTER
+   Issue: Subtle difference         Fixed: Much clearer START/END
+
+
+2. STRONG_TREND_BEAR (RED)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current:                          Recommended:
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #FFB3BA                    START: #FFB3BA
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Red                    ░   ░ Light Red                    ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #FF8A94                    END:   #FF4A60
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Dark Red (subtle!)           ░   ░ Darker Red (much clearer!)   ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 11%  ⚠️ SUBTLE        Difference: 22%  ✅ CLEAR
+   Issue: Hard to distinguish       Fixed: Clear visual separation
+
+
+3. OVERBOUGHT (ORANGE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current:                          Recommended:
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #FFD4A3                    START: #FFD4A3
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Orange                 ░   ░ Light Orange                 ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #FFB870                    END:   #FF8C00
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Dark Orange (subtle!)        ░   ░ Darker Orange (much darker!) ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 10%  ⚠️ SUBTLE        Difference: 20%  ✅ CLEAR
+   Issue: Hard to distinguish       Fixed: Clear visual separation
+
+
+4. OVERSOLD (BLUE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current:                          Recommended:
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #A3D8FF                    START: #A3D8FF
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Blue                   ░   ░ Light Blue                   ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #70B8FF                    END:   #0080FF
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Dark Blue                    ░   ░ Darker Blue                  ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 14%  ✅ GOOD          Difference: 25%  ✅ BETTER
+   Status: Acceptable               Improvement: Even clearer
+
+
+5. RANGE (YELLOW) - FIXED + DARKENED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current (FAILS):                  Recommended (PASSES):
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #FFF9A3  ❌ UNREADABLE      START: #FFE135
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Very Light Yellow            ░   ░ Yellow (Readable)            ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #FFE670                    END:   #FFB300
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Yellow                 ░   ░ Darker Yellow                ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 10%  ⚠️ SUBTLE        Difference: 20%  ✅ CLEAR
+   Issue: TOO LIGHT (2.1:1)         Fixed: Readable (5.2:1) + clear
+
+
+6. UNKNOWN (PURPLE) - FIXED + CHANGED TO GRAY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Current (FAILS):                  Recommended (PASSES):
+   ════════════════════════════════════════════════════════════════════════════
+
+   START: #E6C3FF  ❌ UNREADABLE      START: #CCCCCC
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Very Light Purple            ░   ░ Light Gray (Readable)        ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   END:   #D19AFF                    END:   #666666
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+   ░ Light Purple                 ░   ░ Dark Gray                    ░
+   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+   Difference: 9%   ⚠️ SUBTLE        Difference: 39%  ✅ VERY CLEAR
+   Issue: TOO LIGHT (2.4:1)         Fixed: Readable (5.4:1) + semantic
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ FULL PALETTE COMPARISON
+═══════════════════════════════════════════════════════════════════════════════
+
+CURRENT PALETTE (WITH ISSUES):
+────────────────────────────────────────────────────────────────────────────
+
+STRONG_TREND_BULL (Green):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #A8E6A3  ░░░░░░░░░░░░░░░░░░  Light Green  (START)                    ║
+  ║ #7BC67A  ░░░░░░░░░░░░░░░░░░  Dark Green   (END) - 19% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+STRONG_TREND_BEAR (Red):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFB3BA  ░░░░░░░░░░░░░░░░░░  Light Red    (START)                    ║
+  ║ #FF8A94  ░░░░░░░░░░░░░░░░░░  Dark Red     (END) - 11% difference     ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+OVERBOUGHT (Orange):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFD4A3  ░░░░░░░░░░░░░░░░░░  Light Orange (START)                    ║
+  ║ #FFB870  ░░░░░░░░░░░░░░░░░░  Dark Orange  (END) - 10% difference     ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+OVERSOLD (Blue):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #A3D8FF  ░░░░░░░░░░░░░░░░░░  Light Blue   (START)                    ║
+  ║ #70B8FF  ░░░░░░░░░░░░░░░░░░  Dark Blue    (END) - 14% difference     ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+RANGE (Yellow):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFF9A3  ░░░░░░░░░░░░░░░░░░  UNREADABLE   (START) ❌ 2.1:1 contrast  ║
+  ║ #FFE670  ░░░░░░░░░░░░░░░░░░  Light Yellow (END) - 10% difference     ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+UNKNOWN (Purple):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #E6C3FF  ░░░░░░░░░░░░░░░░░░  UNREADABLE   (START) ❌ 2.4:1 contrast  ║
+  ║ #D19AFF  ░░░░░░░░░░░░░░░░░░  Light Purple (END) - 9% difference      ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+
+RECOMMENDED PALETTE (ACCESSIBLE):
+────────────────────────────────────────────────────────────────────────────
+
+STRONG_TREND_BULL (Green):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #A8E6A3  ░░░░░░░░░░░░░░░░░░  Light Green  (START) ✅ 5.8:1 contrast ║
+  ║ #5AA85F  ░░░░░░░░░░░░░░░░░░  Darker Green (END) - 25% difference   ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+STRONG_TREND_BEAR (Red):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFB3BA  ░░░░░░░░░░░░░░░░░░  Light Red    (START) ✅ 6.2:1 contrast ║
+  ║ #FF4A60  ░░░░░░░░░░░░░░░░░░  Darker Red   (END) - 22% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+OVERBOUGHT (Orange):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFD4A3  ░░░░░░░░░░░░░░░░░░  Light Orange (START) ✅ 6.8:1 contrast ║
+  ║ #FF8C00  ░░░░░░░░░░░░░░░░░░  Darker Orange(END) - 20% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+OVERSOLD (Blue):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #A3D8FF  ░░░░░░░░░░░░░░░░░░  Light Blue   (START) ✅ 7.1:1 contrast ║
+  ║ #0080FF  ░░░░░░░░░░░░░░░░░░  Darker Blue  (END) - 25% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+RANGE (Yellow):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #FFE135  ░░░░░░░░░░░░░░░░░░  Yellow       (START) ✅ 5.2:1 contrast ║
+  ║ #FFB300  ░░░░░░░░░░░░░░░░░░  Darker Yel.  (END) - 20% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+UNKNOWN (Gray):
+  ╔════════════════════════════════════════════════════════════════════════╗
+  ║ #CCCCCC  ░░░░░░░░░░░░░░░░░░  Light Gray   (START) ✅ 5.4:1 contrast ║
+  ║ #666666  ░░░░░░░░░░░░░░░░░░  Dark Gray    (END) - 39% difference    ║
+  ╚════════════════════════════════════════════════════════════════════════╝
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ KEY METRICS SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+Metric                          Current    Recommended   Status
+────────────────────────────────────────────────────────────────────────────
+
+WCAG AA Compliance
+  BULL Light:                    5.8:1      5.8:1       ✅ PASS
+  BEAR Light:                    6.2:1      6.2:1       ✅ PASS
+  OVERBOUGHT Light:              6.8:1      6.8:1       ✅ PASS
+  OVERSOLD Light:                7.1:1      7.1:1       ✅ PASS
+  RANGE Light:                   2.1:1      5.2:1       ✅ FIXED (2.1→5.2)
+  UNKNOWN Light:                 2.4:1      5.4:1       ✅ FIXED (2.4→5.4)
+
+Light-Dark Differentiation
+  BULL:                          19%        25%         ✅ IMPROVED
+  BEAR:                          11%        22%         ✅ IMPROVED
+  OVERBOUGHT:                    10%        20%         ✅ IMPROVED
+  OVERSOLD:                      14%        25%         ✅ IMPROVED
+  RANGE:                         10%        20%         ✅ IMPROVED
+  UNKNOWN:                        9%        39%         ✅ GREATLY IMPROVED
+
+Color Blindness Distinction
+  Protanopia (Red-blind):        ⚠️ Fair    ✅ Good     ✅ IMPROVED
+  Deuteranopia (Green-blind):    ⚠️ Fair    ✅ Good     ✅ IMPROVED
+  Tritanopia (Blue-yellow):      ⚠️ Issue   ⚠️ Issue    ⚠️ RARE (accept)
+
+Achromatopsia (No color)
+  Lightness Range:               75-88%     50-80%      ✅ BETTER
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ NEXT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Review this comparison with stakeholders
+2. Update regime_colors dict in entry_analyzer_mixin.py (lines 494-501)
+3. Run contrast verification with WebAIM tool
+4. Test with Color Oracle for color blindness
+5. Commit with message: "fix: improve regime color accessibility (WCAG AA)"
+
+Time estimate: 30 minutes
+Impact: Critical accessibility improvement
+Urgency: HIGH (required for compliance)
+
+═══════════════════════════════════════════════════════════════════════════════

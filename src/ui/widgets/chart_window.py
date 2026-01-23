@@ -205,12 +205,32 @@ class ChartWindow(
             menu.exec(self.chart_widget.mapToGlobal(pos))
     
     def _open_settings(self) -> None:
-        """Open settings dialog."""
+        """Open settings dialog (Issue #11)."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        logger.info("Settings button clicked - searching for main window...")
         main_window = self._get_main_window()
-        if main_window and hasattr(main_window, 'show_settings_dialog'):
-            main_window.show_settings_dialog()
+
+        if main_window:
+            logger.info(f"Main window found: {type(main_window).__name__}")
+            if hasattr(main_window, 'show_settings_dialog'):
+                logger.info("Calling show_settings_dialog()...")
+                main_window.show_settings_dialog()
+                logger.info("Settings dialog opened successfully")
+            else:
+                logger.error(f"Main window has no show_settings_dialog method. Available: {dir(main_window)}")
+                QMessageBox.warning(
+                    self,
+                    "Settings nicht verfügbar",
+                    "Die Settings-Funktion ist in diesem Fenster nicht verfügbar."
+                )
         else:
-            logger.warning("Settings dialog not available")
+            logger.error("No main window found! Cannot open settings dialog.")
+            QMessageBox.warning(
+                self,
+                "Settings nicht verfügbar",
+                "Das Hauptfenster wurde nicht gefunden. Bitte starten Sie die Anwendung neu."
+            )
 
     def open_main_settings_dialog(self) -> None:
         """Open main settings dialog (Issue #19 - called from toolbar)."""
@@ -237,22 +257,53 @@ class ChartWindow(
 
     def _get_main_window(self) -> Optional[QMainWindow]:
         """Return the main window (TradingApplication) if available.
-        
+
         Since ChartWindow may be created without a direct parent in
         'Chart-Only Mode', we search through all top-level widgets.
+
+        Issue #11: Enhanced logging for debugging.
         """
         from PyQt6.QtWidgets import QApplication
-        
+
         # Try direct parent first
         main_window = self.parent()
-        if main_window and hasattr(main_window, "show_settings_dialog"):
-            return main_window
-        
+        logger.debug(f"Chart window parent: {type(main_window).__name__ if main_window else 'None'}")
+
+        if main_window:
+            has_settings = hasattr(main_window, "show_settings_dialog")
+            has_manager = hasattr(main_window, "chart_window_manager")
+            logger.debug(f"Parent has show_settings_dialog: {has_settings}, has chart_window_manager: {has_manager}")
+
+            if has_settings:
+                logger.info(f"Found main window via parent: {type(main_window).__name__}")
+                return main_window
+
         # Search top-level widgets for TradingApplication
+        logger.debug("Searching top-level widgets for TradingApplication...")
+        candidates = []
         for widget in QApplication.topLevelWidgets():
-            if hasattr(widget, "show_settings_dialog") and hasattr(widget, "chart_window_manager"):
-                return widget
-        
+            widget_type = type(widget).__name__
+            has_settings = hasattr(widget, "show_settings_dialog")
+            has_manager = hasattr(widget, "chart_window_manager")
+
+            logger.debug(f"Widget: {widget_type}, settings={has_settings}, manager={has_manager}")
+
+            if has_settings:
+                candidates.append((has_manager, widget_type, widget))
+
+        if candidates:
+            # Prefer widgets that also have a chart_window_manager, but do not require it.
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            has_manager, widget_type, widget = candidates[0]
+            if has_manager:
+                logger.info(f"Found main window via top-level search: {widget_type}")
+            else:
+                logger.info(
+                    f"Found settings-capable top-level widget: {widget_type} (no chart_window_manager)"
+                )
+            return widget
+
+        logger.warning("No main window found after searching parent and all top-level widgets")
         return None
 
     def closeEvent(self, event: QCloseEvent):

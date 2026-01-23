@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QGroupBox, QProgressBar, QSplitter, QHeaderView
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont
 
 from src.core.analysis.context import AnalysisContext
 from src.core.analysis.config_store import AnalysisConfigStore

@@ -77,3 +77,37 @@ class EmbeddedTradingViewChartEventsMixin:
             js_code = f"window.chartAPI?.addHorizontalLine({price}, '{color}', '', 'solid', '{line_id}');"
             self._execute_js(js_code)
             logger.info(f"Line created without label @ {price:.4f} (user cancelled dialog)")
+
+    def _on_vline_draw_requested(self, line_id: str, timestamp: float, color: str):
+        """Handle vertical line draw request from JavaScript.
+
+        Shows a label input dialog and creates the line with the label.
+
+        Args:
+            line_id: Unique ID for the line
+            timestamp: Unix timestamp for the line
+            color: Line color (hex)
+        """
+        from datetime import datetime, timezone
+        dt_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        logger.info(f"Vertical line draw requested: {line_id} @ {dt_str}")
+
+        # Show dialog to get label
+        label, ok = QInputDialog.getText(
+            self,
+            "Vertikale Linie - Beschriftung",
+            f"Bezeichnung für Linie am {dt_str} (UTC):",
+            text=""
+        )
+
+        if ok:
+            # Create line via JavaScript with the label
+            label_escaped = label.replace("'", "\\'").replace('"', '\\"')
+            js_code = f"window.chartAPI?.addVerticalLine({timestamp}, '{color}', '{label_escaped}', 'solid', '{line_id}');"
+            self._execute_js(js_code)
+            logger.info(f"Vertical line created with label: '{label}' @ {dt_str}")
+        else:
+            # User cancelled - create line without label (fallback)
+            js_code = f"window.chartAPI?.addVerticalLine({timestamp}, '{color}', '', 'solid', '{line_id}');"
+            self._execute_js(js_code)
+            logger.info(f"Vertical line created without label @ {dt_str} (user cancelled dialog)")

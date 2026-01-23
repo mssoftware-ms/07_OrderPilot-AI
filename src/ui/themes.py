@@ -74,6 +74,7 @@ class ThemeManager:
         else:
             dropdown_color = p.background_input
             edit_color = p.background_input
+            edit_text_color = p.text_primary
             active_btn_color = p.primary
             inactive_btn_color = p.button_background
             btn_hover_border_color = p.button_hover_border

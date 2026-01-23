@@ -290,6 +290,112 @@ class RegimeTableMixin:
             min_spin.setValue(min_val)
             max_spin.setValue(max_val)
 
+    def auto_select_parameter_ranges_for_regime(self, regime_type: str) -> None:
+        """Automatically select parameter range presets based on detected regime.
+
+        Issue #8: Auto-select parameter ranges when regime is detected.
+
+        Args:
+            regime_type: Detected regime type (trend_up, trend_down, range, etc.)
+        """
+        logger.info(f"AUTO-SELECT CALLED: regime_type={regime_type}")
+
+        if not hasattr(self, '_regime_opt_param_grid') or not self._regime_opt_param_grid:
+            logger.warning("Regime parameter grid not initialized")
+            # Visual feedback: Show warning in status label
+            if hasattr(self, '_regime_opt_status_label'):
+                self._regime_opt_status_label.setText(
+                    "⚠ Parameter grid not yet initialized. Open the Reg. Table tab first."
+                )
+                self._regime_opt_status_label.setStyleSheet("color: orange;")
+            return
+
+        # Mapping: regime_type -> preset selections
+        # Optimized for each market condition
+        regime_presets = {
+            "trend_up": {
+                "adx_period": "12-16-20",      # Longer periods for trend confirmation
+                "adx_threshold": "20-30-50",    # Higher threshold for strong trends
+                "rsi_period": "10-15-20",       # Standard RSI periods
+                "rsi_oversold": "25-35",        # Less aggressive oversold
+                "rsi_overbought": "65-75"       # Less aggressive overbought
+            },
+            "trend_down": {
+                "adx_period": "12-16-20",
+                "adx_threshold": "20-30-50",
+                "rsi_period": "10-15-20",
+                "rsi_oversold": "25-35",
+                "rsi_overbought": "65-75"
+            },
+            "range": {
+                "adx_period": "7-14-21",        # Shorter periods for range detection
+                "adx_threshold": "15-25-35",    # Lower threshold for weak trend
+                "rsi_period": "7-14-18",        # Faster RSI for range
+                "rsi_oversold": "20-30",        # More aggressive levels
+                "rsi_overbought": "70-80"
+            },
+            "high_vol": {
+                "adx_period": "10-14-20",       # Medium periods
+                "adx_threshold": "17-25-40",    # Standard threshold
+                "rsi_period": "9-14-21",        # Standard RSI
+                "rsi_oversold": "15-25",        # Extreme oversold for high vol
+                "rsi_overbought": "75-85"       # Extreme overbought for high vol
+            },
+            "squeeze": {
+                "adx_period": "10-14-20",       # Medium periods
+                "adx_threshold": "15-25-35",    # Lower threshold (squeeze = low ADX)
+                "rsi_period": "9-14-21",        # Standard RSI
+                "rsi_oversold": "25-35",        # Conservative levels
+                "rsi_overbought": "65-75"
+            },
+            "no_trade": {
+                "adx_period": "10-14-20",       # Medium periods
+                "adx_threshold": "17-25-40",    # Standard threshold
+                "rsi_period": "9-14-21",        # Standard RSI
+                "rsi_oversold": "20-30",        # Standard levels
+                "rsi_overbought": "70-80"
+            }
+        }
+
+        # Get presets for this regime type
+        presets = regime_presets.get(regime_type)
+        if not presets:
+            logger.warning(f"No parameter presets defined for regime: {regime_type}")
+            return
+
+        # Apply presets to UI
+        try:
+            for param_name, preset_value in presets.items():
+                if param_name in self._regime_opt_param_grid:
+                    combo, min_spin, max_spin = self._regime_opt_param_grid[param_name]
+
+                    # Find and select preset in combo box
+                    index = combo.findText(preset_value)
+                    if index >= 0:
+                        combo.setCurrentIndex(index)
+                        # _on_param_preset_changed will be called automatically
+                        logger.debug(f"Set {param_name} preset to {preset_value}")
+                    else:
+                        logger.warning(f"Preset {preset_value} not found for {param_name}")
+
+            logger.info(f"Auto-selected parameter ranges for regime: {regime_type}")
+
+            # Visual feedback: Update status label if it exists
+            if hasattr(self, '_regime_opt_status_label'):
+                self._regime_opt_status_label.setText(
+                    f"✓ Auto-selected parameter ranges for {regime_type.replace('_', ' ').title()}"
+                )
+                self._regime_opt_status_label.setStyleSheet("color: green; font-weight: bold;")
+
+        except Exception as e:
+            logger.error(f"Failed to auto-select parameter ranges: {e}", exc_info=True)
+            # Visual feedback: Show error in status label
+            if hasattr(self, '_regime_opt_status_label'):
+                self._regime_opt_status_label.setText(
+                    f"⚠ Failed to auto-select parameter ranges: {e}"
+                )
+                self._regime_opt_status_label.setStyleSheet("color: red;")
+
     def _on_regime_optimization_start(self):
         """Start regime parameter optimization."""
         try:
@@ -305,7 +411,18 @@ class RegimeTableMixin:
             # Convert candles to DataFrame
             import pandas as pd
             df = pd.DataFrame(self._candles)
-            df['time'] = pd.to_datetime(df['time'], unit='s')
+
+            # Handle different time column names (timestamp vs time)
+            time_col = None
+            if 'timestamp' in df.columns:
+                time_col = 'timestamp'
+            elif 'time' in df.columns:
+                time_col = 'time'
+            else:
+                raise ValueError(f"No time column found in candles. Available columns: {list(df.columns)}")
+
+            # Convert to datetime and set as index
+            df['time'] = pd.to_datetime(df[time_col], unit='s')
             df.set_index('time', inplace=True)
 
             # Get parameter grid
@@ -438,10 +555,18 @@ class RegimeTableMixin:
         """
         self._regime_opt_optimize_btn.setEnabled(True)
         self._regime_opt_progress.setVisible(False)
-        self._regime_opt_status_label.setText(
+        summary_text = ""
+        if self._regime_optimization_thread:
+            summary_text = getattr(self._regime_optimization_thread, "timing_summary_text", "")
+
+        status_text = (
             f"Optimization complete! {len(results)} combinations tested. "
             "Select rows and click 'Draw Selected to Chart' to visualize."
         )
+        if summary_text:
+            status_text = f"{status_text}\n{summary_text}"
+
+        self._regime_opt_status_label.setText(status_text)
 
         # Enable buttons
         self._regime_opt_draw_btn.setEnabled(True)
