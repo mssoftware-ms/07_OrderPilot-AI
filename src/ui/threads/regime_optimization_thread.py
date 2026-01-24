@@ -257,29 +257,27 @@ class RegimeOptimizationThread(QThread):
                 return self._stop_requested  # Return True to stop optimization
 
             # Run optimization
-            study = optimizer.optimize(callback=on_trial_complete)
+            optimization_results = optimizer.optimize(callbacks=[on_trial_complete])
 
-            # Get all results and rank them
+            # Convert OptimizationResult objects to dict format for UI
             all_results = []
-            for trial in study.trials:
-                if trial.state != 1:  # COMPLETE
-                    continue
+            for result in optimization_results:
                 all_results.append({
-                    'score': trial.value,
-                    'params': trial.params,
-                    'metrics': trial.user_attrs.get('metrics', {}),
+                    'score': result.score,
+                    'params': result.params.model_dump(),
+                    'metrics': result.metrics.model_dump(),
                 })
 
-            # Sort and rank
+            # Sort and rank (already sorted by optimizer, but use results_manager for consistency)
             ranked_results = results_manager.sort_and_rank(all_results)
 
             # Convert to old result format for UI compatibility
-            results = self._convert_optuna_results_to_grid_format(study, ranked_results)
+            results = self._convert_optuna_results_to_dict_format(ranked_results)
 
             total_elapsed = time.perf_counter() - total_start
             self._finalize_timing_summary(total_elapsed, len(results))
 
-            best_score = study.best_value if study.best_trial else 0
+            best_score = optimization_results[0].score if optimization_results else 0
             logger.info(
                 f"Optuna optimization complete: {len(results)} trials, "
                 f"best_score={best_score:.1f}"
@@ -738,43 +736,35 @@ class RegimeOptimizationThread(QThread):
         logger.info(f"Converted param_grid to ranges: {param_ranges}")
         return param_ranges
 
-    def _convert_optuna_results_to_grid_format(
+    def _convert_optuna_results_to_dict_format(
         self,
-        study,
-        best_result
+        ranked_results: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Convert Optuna study results to old grid search result format.
+        """Convert ranked OptimizationResult dicts to UI-compatible format.
 
         Args:
-            study: Optuna study object
-            best_result: RegimeResult object
+            ranked_results: List of dicts with score, params, metrics (already sorted)
 
         Returns:
             List of result dicts compatible with UI
         """
         results = []
 
-        for trial in study.trials:
-            if trial.state != 1:  # COMPLETE
-                continue
-
-            result = {
-                'params': trial.params,
-                'score': int(trial.value),
-                'metrics': trial.user_attrs.get('metrics', {}),
+        for idx, result in enumerate(ranked_results, start=1):
+            formatted_result = {
+                'params': result['params'],
+                'score': int(result['score']),
+                'metrics': result.get('metrics', {}),
                 'timestamp': datetime.utcnow(),
-                'trial_number': trial.number,
-                'config': None,  # Not stored in Optuna trials
-                'regime_history': None,  # Not stored in Optuna trials
+                'trial_number': idx,
+                'config': None,  # Not needed for Optuna results
+                'regime_history': None,  # Not stored in optimization results
                 'timings': {
-                    'total_eval_s': trial.duration.total_seconds() if trial.duration else 0.0
+                    'total_eval_s': 0.0  # Not tracked per-trial in new implementation
                 }
             }
 
-            results.append(result)
+            results.append(formatted_result)
 
-        # Sort by score descending
-        results.sort(key=lambda x: x['score'], reverse=True)
-
-        logger.info(f"Converted {len(results)} Optuna trials to grid format")
+        logger.info(f"Converted {len(results)} OptimizationResults to UI format")
         return results

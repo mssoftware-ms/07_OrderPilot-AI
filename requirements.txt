@@ -4,12 +4,14 @@
 
 aiohttp==3.13.2
 alpaca-py==0.43.2
+anthropic>=0.40.0
 backtrader==1.9.78.123
 beautifulsoup4==4.14.3
 blinker==1.9.0
 cel-python==0.4.0
 click==8.1.7
 cryptography==46.0.3
+google-generativeai>=0.8.3
 httpx==0.28.1
 ibapi==9.81.1.post1
 jsonschema==4.25.1
@@ -18,12 +20,9 @@ lightweight-charts>=2.0
 matplotlib==3.10.7
 numpy==2.2.6
 openai==1.62.0
-anthropic>=0.40.0
-google-generativeai>=0.8.3
 openpyxl==3.1.5
 optuna==4.6.0
 pandas==2.3.3
-scikit-learn==1.6.1
 pandas-ta==0.4.71b0
 pandas_ta==0.4.71b0
 playwright==1.57.0
@@ -41,6 +40,7 @@ PyYAML==6.0.3
 qasync==0.28.0
 qdrant-client==1.16.2
 rich==13.7.0
+scikit-learn==1.6.1
 SQLAlchemy==2.0.44
 tenacity==9.1.2
 watchdog==6.0.0

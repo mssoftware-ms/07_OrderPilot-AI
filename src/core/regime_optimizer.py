@@ -744,13 +744,17 @@ class RegimeOptimizer:
             return 0.0
 
     def optimize(
-        self, study_name: str | None = None, n_trials: int | None = None
+        self,
+        study_name: str | None = None,
+        n_trials: int | None = None,
+        callbacks: list | None = None,
     ) -> list[OptimizationResult]:
         """Run optimization.
 
         Args:
             study_name: Optional study name
             n_trials: Number of trials (overrides config)
+            callbacks: Optional list of callback functions for trial completion
 
         Returns:
             List of optimization results sorted by score
@@ -772,6 +776,7 @@ class RegimeOptimizer:
             self._objective,
             n_trials=n_trials,
             n_jobs=self.config.n_jobs,
+            callbacks=callbacks,
             show_progress_bar=True,
         )
 
