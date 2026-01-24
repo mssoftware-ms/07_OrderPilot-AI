@@ -99,6 +99,9 @@ class RegimeSetupMixin:
         mode_layout.addStretch()
         layout.addLayout(mode_layout)
 
+        # Initialize state BEFORE creating param ranges group
+        self._regime_setup_param_widgets = {}
+
         # Parameter Ranges Group
         param_group = self._create_regime_param_ranges_group()
         layout.addWidget(param_group, stretch=1)
@@ -127,9 +130,8 @@ class RegimeSetupMixin:
         button_layout.addWidget(self._regime_setup_apply_btn)
         layout.addLayout(button_layout)
 
-        # Initialize state
-        self._regime_setup_param_widgets = {}
-        self._on_regime_setup_preset_changed(0)  # Load default preset
+        # Load default preset
+        self._on_regime_setup_preset_changed(0)
 
     def _create_regime_param_ranges_group(self) -> QGroupBox:
         """Create parameter ranges group with spinboxes.
