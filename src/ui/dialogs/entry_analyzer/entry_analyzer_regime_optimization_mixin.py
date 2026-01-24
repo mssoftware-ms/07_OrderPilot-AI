@@ -129,7 +129,7 @@ class RegimeOptimizationMixin:
         layout.addWidget(results_label)
 
         self._regime_opt_top5_table = QTableWidget()
-        self._regime_opt_top5_table.setColumnCount(8)
+        self._regime_opt_top5_table.setColumnCount(13)
         self._regime_opt_top5_table.setHorizontalHeaderLabels(
             [
                 "Rank",
@@ -139,11 +139,18 @@ class RegimeOptimizationMixin:
                 "SMA Fast",
                 "SMA Slow",
                 "RSI Period",
+                "RSI Low",
+                "RSI High",
+                "BB Period",
+                "BB Std Dev",
+                "BB Width %",
                 "Trial #",
             ]
         )
+        # Make table sortable
+        self._regime_opt_top5_table.setSortingEnabled(True)
         self._regime_opt_top5_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
+            QHeaderView.ResizeMode.ResizeToContents
         )
         self._regime_opt_top5_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows

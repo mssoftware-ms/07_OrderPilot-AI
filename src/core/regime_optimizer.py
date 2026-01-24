@@ -328,6 +328,7 @@ class RegimeOptimizer:
             n_startup_trials=self.config.n_startup_trials,
             multivariate=True,
             seed=self.config.seed,
+            warn_independent_sampling=False,  # Suppress warning for dynamic search space
         )
 
         # Hyperband Pruner

@@ -259,20 +259,31 @@ class RegimeOptimizationThread(QThread):
             # Run optimization
             optimization_results = optimizer.optimize(callbacks=[on_trial_complete])
 
-            # Convert OptimizationResult objects to dict format for UI
-            all_results = []
+            # Add all results to RegimeResultsManager
             for result in optimization_results:
-                all_results.append({
-                    'score': result.score,
-                    'params': result.params.model_dump(),
-                    'metrics': result.metrics.model_dump(),
+                results_manager.add_result(
+                    score=result.score,
+                    params=result.params.model_dump(),
+                    metrics=result.metrics.model_dump(),
+                    timestamp=result.timestamp.isoformat()
+                )
+
+            # Rank results (sorts and assigns rank numbers)
+            results_manager.rank_results()
+
+            # Convert RegimeResult objects to UI-compatible dict format
+            results = []
+            for regime_result in results_manager.results:
+                results.append({
+                    'score': int(regime_result.score),
+                    'params': regime_result.params,
+                    'metrics': regime_result.metrics,
+                    'timestamp': regime_result.timestamp,
+                    'trial_number': regime_result.rank,
+                    'config': None,
+                    'regime_history': None,
+                    'timings': {'total_eval_s': 0.0}
                 })
-
-            # Sort and rank (already sorted by optimizer, but use results_manager for consistency)
-            ranked_results = results_manager.sort_and_rank(all_results)
-
-            # Convert to old result format for UI compatibility
-            results = self._convert_optuna_results_to_dict_format(ranked_results)
 
             total_elapsed = time.perf_counter() - total_start
             self._finalize_timing_summary(total_elapsed, len(results))
