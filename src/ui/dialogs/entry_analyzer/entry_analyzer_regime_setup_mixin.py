@@ -115,14 +115,32 @@ class RegimeSetupMixin:
         counter_layout.addWidget(self._regime_setup_combinations_label)
         counter_layout.addStretch()
 
-        warning_label = QLabel("⚠️ TPE optimizes up to 150 trials max")
+        # Max Trials Input
+        counter_layout.addWidget(QLabel("Max Trials:"))
+        self._regime_setup_max_trials = QSpinBox()
+        self._regime_setup_max_trials.setRange(10, 500)
+        self._regime_setup_max_trials.setValue(150)
+        self._regime_setup_max_trials.setSingleStep(10)
+        self._regime_setup_max_trials.setToolTip("Maximum number of optimization trials (10-500)")
+        counter_layout.addWidget(self._regime_setup_max_trials)
+
+        warning_label = QLabel("⚠️ More trials = better results, but slower")
         warning_label.setStyleSheet("color: #f59e0b;")
         counter_layout.addWidget(warning_label)
         layout.addLayout(counter_layout)
 
-        # Apply Button
+        # Action Buttons
         button_layout = QHBoxLayout()
+
+        # Import Button
+        self._regime_setup_import_btn = QPushButton(get_icon("folder_open"), "Import Config (JSON)")
+        self._regime_setup_import_btn.setToolTip("Import regime configuration with parameter ranges from JSON file")
+        self._regime_setup_import_btn.clicked.connect(self._on_regime_setup_import)
+        button_layout.addWidget(self._regime_setup_import_btn)
+
         button_layout.addStretch()
+
+        # Apply Button
         self._regime_setup_apply_btn = QPushButton(
             get_icon("check_circle"), "Apply & Continue to Optimization"
         )
@@ -488,3 +506,97 @@ class RegimeSetupMixin:
         config["auto_mode"] = self._regime_setup_auto_mode.isChecked()
 
         return config
+
+    @pyqtSlot()
+    def _on_regime_setup_import(self) -> None:
+        """Import regime configuration with parameter ranges from JSON file."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        import json
+
+        # Get default import directory
+        project_root = Path(__file__).parent.parent.parent.parent
+        default_dir = project_root / "03_JSON" / "Entry_Analyzer"
+        default_dir.mkdir(parents=True, exist_ok=True)
+
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Regime Configuration",
+            str(default_dir),
+            "JSON Files (*.json)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            # Load JSON file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Check version
+            if data.get("version") != "2.0":
+                QMessageBox.warning(
+                    self,
+                    "Version Mismatch",
+                    f"File version {data.get('version')} may not be compatible with v2.0. Importing anyway..."
+                )
+
+            # Extract parameter ranges
+            param_ranges = data.get("parameter_ranges", {})
+            if not param_ranges:
+                QMessageBox.warning(
+                    self,
+                    "No Parameter Ranges",
+                    "File does not contain parameter_ranges. Cannot import."
+                )
+                return
+
+            # Update UI with imported ranges
+            for param_name, range_dict in param_ranges.items():
+                if param_name in self._regime_setup_param_widgets:
+                    min_spin, max_spin = self._regime_setup_param_widgets[param_name]
+
+                    # Set values
+                    min_val = range_dict.get("min")
+                    max_val = range_dict.get("max")
+
+                    if min_val is not None:
+                        min_spin.setValue(min_val)
+                    if max_val is not None:
+                        max_spin.setValue(max_val)
+
+            # Update max_trials if present
+            max_trials_meta = data.get("meta", {}).get("max_trials")
+            if max_trials_meta and hasattr(self, "_regime_setup_max_trials"):
+                self._regime_setup_max_trials.setValue(max_trials_meta)
+
+            # Switch to Custom preset
+            self._regime_setup_preset_combo.setCurrentText("Custom")
+            self._regime_setup_auto_mode.setChecked(False)
+
+            # Update combination counter
+            self._update_combinations_count()
+
+            logger.info(f"Imported regime configuration from {file_path}")
+
+            QMessageBox.information(
+                self,
+                "Import Successful",
+                f"Imported parameter ranges from:\n{file_path}\n\nPreset set to 'Custom'."
+            )
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Invalid JSON",
+                f"File is not valid JSON:\n{str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"Import failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Import Failed",
+                f"Failed to import configuration:\n{str(e)}"
+            )

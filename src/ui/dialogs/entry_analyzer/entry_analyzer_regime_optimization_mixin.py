@@ -163,14 +163,24 @@ class RegimeOptimizationMixin:
 
         layout.addStretch()
 
+        # Action Buttons
+        action_layout = QHBoxLayout()
+
+        # Export Button
+        self._regime_opt_export_btn = QPushButton(get_icon("save"), "Export Results (JSON)")
+        self._regime_opt_export_btn.setEnabled(False)
+        self._regime_opt_export_btn.setToolTip("Export optimization results with parameter ranges to JSON file")
+        self._regime_opt_export_btn.clicked.connect(self._on_regime_opt_export)
+        action_layout.addWidget(self._regime_opt_export_btn)
+
+        action_layout.addStretch()
+
         # Continue Button
-        continue_layout = QHBoxLayout()
-        continue_layout.addStretch()
         self._regime_opt_continue_btn = QPushButton(get_icon("arrow_forward"), "View All Results →")
         self._regime_opt_continue_btn.setEnabled(False)
         self._regime_opt_continue_btn.clicked.connect(self._on_regime_opt_continue)
-        continue_layout.addWidget(self._regime_opt_continue_btn)
-        layout.addLayout(continue_layout)
+        action_layout.addWidget(self._regime_opt_continue_btn)
+        layout.addLayout(action_layout)
 
         # Initialize state
         self._regime_opt_thread = None
@@ -228,9 +238,20 @@ class RegimeOptimizationMixin:
             Path(__file__).parent.parent.parent.parent / "config" / "regime_config_default.json"
         )
 
+        # Get max_trials from UI
+        max_trials = getattr(self, "_regime_setup_max_trials", None)
+        if max_trials:
+            max_trials_value = max_trials.value()
+        else:
+            max_trials_value = 150  # Default fallback
+
         # Create and start optimization thread
         self._regime_opt_thread = RegimeOptimizationThread(
-            df=df, config_template_path=config_template_path, param_grid=param_grid, scope="entry"
+            df=df,
+            config_template_path=config_template_path,
+            param_grid=param_grid,
+            scope="entry",
+            max_trials=max_trials_value
         )
 
         # Connect signals
@@ -326,6 +347,7 @@ class RegimeOptimizationMixin:
         self._regime_opt_start_btn.setEnabled(True)
         self._regime_opt_stop_btn.setEnabled(False)
         self._regime_opt_continue_btn.setEnabled(True)
+        self._regime_opt_export_btn.setEnabled(True)
         self._regime_opt_progress_bar.setValue(100)
 
         elapsed = (
@@ -378,10 +400,12 @@ class RegimeOptimizationMixin:
         self._regime_opt_eta_label.setText("ETA: --")
 
     def _update_regime_opt_top5_table(self) -> None:
-        """Update top-5 results table."""
+        """Update top-5 results table with all 13 parameters."""
         # Get top 5 results
         top5 = self._regime_opt_all_results[:5]
 
+        # Disable sorting while updating
+        self._regime_opt_top5_table.setSortingEnabled(False)
         self._regime_opt_top5_table.setRowCount(len(top5))
 
         for row, result in enumerate(top5):
@@ -389,45 +413,151 @@ class RegimeOptimizationMixin:
             score = result.get("score", 0)
             trial_num = result.get("trial_number", row + 1)
 
-            # Rank
+            # Column 0: Rank
             self._regime_opt_top5_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
 
-            # Score
+            # Column 1: Score
             score_item = QTableWidgetItem(f"{score:.1f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_opt_top5_table.setItem(row, 1, score_item)
 
-            # ADX Period
+            # Column 2: ADX Period
             adx_period = params.get("adx_period", params.get("adx.period", "--"))
             self._regime_opt_top5_table.setItem(row, 2, QTableWidgetItem(str(adx_period)))
 
-            # ADX Threshold
+            # Column 3: ADX Threshold
             adx_thresh = params.get("adx_threshold", params.get("adx.threshold", "--"))
             self._regime_opt_top5_table.setItem(row, 3, QTableWidgetItem(str(adx_thresh)))
 
-            # SMA Fast
+            # Column 4: SMA Fast
             sma_fast = params.get("sma_fast_period", params.get("sma_fast.period", "--"))
             self._regime_opt_top5_table.setItem(row, 4, QTableWidgetItem(str(sma_fast)))
 
-            # SMA Slow
+            # Column 5: SMA Slow
             sma_slow = params.get("sma_slow_period", params.get("sma_slow.period", "--"))
             self._regime_opt_top5_table.setItem(row, 5, QTableWidgetItem(str(sma_slow)))
 
-            # RSI Period
+            # Column 6: RSI Period
             rsi_period = params.get("rsi_period", params.get("rsi.period", "--"))
             self._regime_opt_top5_table.setItem(row, 6, QTableWidgetItem(str(rsi_period)))
 
-            # Trial Number
+            # Column 7: RSI Sideways Low
+            rsi_low = params.get("rsi_sideways_low", params.get("rsi.sideways_low", "--"))
+            self._regime_opt_top5_table.setItem(row, 7, QTableWidgetItem(str(rsi_low)))
+
+            # Column 8: RSI Sideways High
+            rsi_high = params.get("rsi_sideways_high", params.get("rsi.sideways_high", "--"))
+            self._regime_opt_top5_table.setItem(row, 8, QTableWidgetItem(str(rsi_high)))
+
+            # Column 9: BB Period
+            bb_period = params.get("bb_period", params.get("bb.period", "--"))
+            self._regime_opt_top5_table.setItem(row, 9, QTableWidgetItem(str(bb_period)))
+
+            # Column 10: BB Std Dev
+            bb_std = params.get("bb_std_dev", params.get("bb.std_dev", "--"))
+            self._regime_opt_top5_table.setItem(row, 10, QTableWidgetItem(str(bb_std)))
+
+            # Column 11: BB Width Percentile
+            bb_width = params.get("bb_width_percentile", params.get("bb.width_percentile", "--"))
+            self._regime_opt_top5_table.setItem(row, 11, QTableWidgetItem(str(bb_width)))
+
+            # Column 12: Trial Number
             trial_item = QTableWidgetItem(str(trial_num))
             trial_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._regime_opt_top5_table.setItem(row, 7, trial_item)
+            self._regime_opt_top5_table.setItem(row, 12, trial_item)
 
-            # Highlight best result
+            # Highlight best result (row 0)
             if row == 0:
-                for col in range(8):
+                for col in range(13):
                     item = self._regime_opt_top5_table.item(row, col)
                     if item:
                         item.setBackground(Qt.GlobalColor.green)
+
+        # Re-enable sorting
+        self._regime_opt_top5_table.setSortingEnabled(True)
+
+    @pyqtSlot()
+    def _on_regime_opt_export(self) -> None:
+        """Export optimization results with parameter ranges to JSON."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        import json
+
+        if not self._regime_opt_all_results:
+            QMessageBox.warning(
+                self,
+                "No Results",
+                "No optimization results available. Run optimization first."
+            )
+            return
+
+        # Get default export directory
+        project_root = Path(__file__).parent.parent.parent.parent
+        default_dir = project_root / "03_JSON" / "Entry_Analyzer"
+        default_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get symbol and timeframe for filename with timestamp
+        symbol = getattr(self, "_current_symbol", "BTCUSDT")
+        timeframe = getattr(self, "_current_timeframe", "5m")
+        timestamp = datetime.utcnow().strftime("%y%m%d%H%M%S")
+        default_filename = f"{timestamp}_regime_optimization_results_{symbol}_{timeframe}.json"
+
+        # Open file dialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Regime Optimization Results",
+            str(default_dir / default_filename),
+            "JSON Files (*.json)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            # Get parameter ranges from Setup tab
+            param_ranges = {}
+            if hasattr(self, "_regime_setup_config"):
+                param_ranges = self._regime_setup_config.copy()
+
+            # Get max_trials
+            max_trials = getattr(self, "_regime_setup_max_trials", None)
+            max_trials_value = max_trials.value() if max_trials else 150
+
+            # Build export data
+            export_data = {
+                "version": "2.0",
+                "meta": {
+                    "stage": "regime_optimization",
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                    "total_combinations": len(self._regime_opt_all_results),
+                    "completed": len(self._regime_opt_all_results),
+                    "method": "tpe_multivariate",
+                    "max_trials": max_trials_value,
+                },
+                "parameter_ranges": param_ranges,
+                "results": self._regime_opt_all_results,
+            }
+
+            # Write to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Exported {len(self._regime_opt_all_results)} results to {file_path}")
+
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Exported {len(self._regime_opt_all_results)} results to:\n{file_path}"
+            )
+
+        except Exception as e:
+            logger.error(f"Export failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Failed to export results:\n{str(e)}"
+            )
 
     @pyqtSlot()
     def _on_regime_opt_continue(self) -> None:

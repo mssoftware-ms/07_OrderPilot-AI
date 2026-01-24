@@ -60,7 +60,8 @@ class RegimeOptimizationThread(QThread):
         df: pd.DataFrame,
         config_template_path: str,
         param_grid: Dict[str, List[Any]],
-        scope: str = "entry"
+        scope: str = "entry",
+        max_trials: int = 150
     ):
         """Initialize regime optimization thread.
 
@@ -74,12 +75,14 @@ class RegimeOptimizationThread(QThread):
                     "rsi.period": [9, 14, 21]
                 }
             scope: Regime scope ("entry", "exit", "in_trade")
+            max_trials: Maximum number of optimization trials (default 150)
         """
         super().__init__()
         self.df = df.copy()
         self.config_template_path = config_template_path
         self.param_grid = param_grid
         self.scope = scope
+        self.max_trials = max_trials
         self._stop_requested = False
         self._last_backtest_timing: dict | None = None
         self._timing_totals = self._init_timing_totals()
@@ -218,7 +221,7 @@ class RegimeOptimizationThread(QThread):
 
             # Create Optuna config
             config = OptimizationConfig(
-                max_trials=min(self.total_combinations, 150),  # Cap at 150 trials
+                max_trials=min(self.total_combinations, self.max_trials),
                 n_jobs=1,  # Single-threaded for Qt compatibility
             )
 
