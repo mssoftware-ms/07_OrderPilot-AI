@@ -9,7 +9,7 @@
       "regime",
       "template"
     ],
-    "notes": "Empty template for v2.0 regime configuration. Fill in your indicators and regimes."
+    "notes": "⚠️ GENERIC TEMPLATE v2.0 - Supports ANY indicator with ANY parameters (1-10 params per indicator). Examples below are just suggestions - replace with YOUR indicators! See .md for all 12+ supported indicator types."
   },
   "optimization_results": [
     {
@@ -19,22 +19,7 @@
       "applied": false,
       "indicators": [
         {
-          "name": "ADX1",
-          "type": "ADX",
-          "params": [
-            {
-              "name": "period",
-              "value": 14,
-              "range": {
-                "min": 7,
-                "max": 21,
-                "step": 1
-              }
-            }
-          ]
-        },
-        {
-          "name": "RSI1",
+          "name": "EXAMPLE_INDICATOR_1",
           "type": "RSI",
           "params": [
             {
@@ -47,179 +32,24 @@
               }
             }
           ]
-        },
-        {
-          "name": "BB1",
-          "type": "BB",
-          "params": [
-            {
-              "name": "period",
-              "value": 20,
-              "range": {
-                "min": 15,
-                "max": 30,
-                "step": 1
-              }
-            },
-            {
-              "name": "std_dev",
-              "value": 2.0,
-              "range": {
-                "min": 1.0,
-                "max": 3.0,
-                "step": 0.1
-              }
-            },
-            {
-              "name": "width_percentile",
-              "value": 20.0,
-              "range": {
-                "min": 10,
-                "max": 40,
-                "step": 1
-              }
-            }
-          ]
-        },
-        {
-          "name": "SMA_FAST1",
-          "type": "SMA",
-          "params": [
-            {
-              "name": "period",
-              "value": 50,
-              "range": {
-                "min": 20,
-                "max": 100,
-                "step": 1
-              }
-            }
-          ]
-        },
-        {
-          "name": "SMA_SLOW1",
-          "type": "SMA",
-          "params": [
-            {
-              "name": "period",
-              "value": 200,
-              "range": {
-                "min": 100,
-                "max": 300,
-                "step": 1
-              }
-            }
-          ]
-        },
-        {
-          "name": "ATR1",
-          "type": "ATR",
-          "params": [
-            {
-              "name": "period",
-              "value": 14,
-              "range": {
-                "min": 10,
-                "max": 20,
-                "step": 1
-              }
-            }
-          ]
         }
       ],
       "regimes": [
         {
-          "id": "BULL",
-          "name": "Bull Market",
+          "id": "EXAMPLE_REGIME_1",
+          "name": "Example Market Phase",
           "thresholds": [
             {
-              "name": "adx_threshold",
-              "value": 25.0,
+              "name": "example_threshold",
+              "value": 50.0,
               "range": {
-                "min": 15,
-                "max": 35,
-                "step": 1
-              }
-            }
-          ],
-          "priority": 80,
-          "scope": "entry"
-        },
-        {
-          "id": "BEAR",
-          "name": "Bear Market",
-          "thresholds": [
-            {
-              "name": "adx_threshold",
-              "value": 25.0,
-              "range": {
-                "min": 15,
-                "max": 35,
-                "step": 1
-              }
-            }
-          ],
-          "priority": 75,
-          "scope": "entry"
-        },
-        {
-          "id": "SIDEWAYS",
-          "name": "Sideways Market",
-          "thresholds": [
-            {
-              "name": "rsi_low",
-              "value": 35,
-              "range": {
-                "min": 25,
-                "max": 45,
-                "step": 1
-              }
-            },
-            {
-              "name": "rsi_high",
-              "value": 65,
-              "range": {
-                "min": 55,
-                "max": 75,
+                "min": 30,
+                "max": 70,
                 "step": 1
               }
             }
           ],
           "priority": 60,
-          "scope": "entry"
-        },
-        {
-          "id": "SQUEEZE",
-          "name": "Squeeze (Low Volatility)",
-          "thresholds": [
-            {
-              "name": "bb_width_threshold",
-              "value": 0.015,
-              "range": {
-                "min": 0.008,
-                "max": 0.025,
-                "step": 0.001
-              }
-            }
-          ],
-          "priority": 70,
-          "scope": "entry"
-        },
-        {
-          "id": "HIGH_VOL",
-          "name": "High Volatility",
-          "thresholds": [
-            {
-              "name": "atr_pct_threshold",
-              "value": 0.018,
-              "range": {
-                "min": 0.010,
-                "max": 0.030,
-                "step": 0.001
-              }
-            }
-          ],
-          "priority": 65,
           "scope": "entry"
         }
       ]

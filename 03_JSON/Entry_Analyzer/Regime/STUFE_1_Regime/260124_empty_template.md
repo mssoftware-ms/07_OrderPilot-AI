@@ -3,7 +3,43 @@
 **Datei:** `260124_empty_template.json`
 **Schema Version:** 2.0.0
 **Datum:** 2026-01-24
-**Zweck:** Leeres Template für Regime-Konfiguration mit Optimierungsparametern
+**Zweck:** **GENERISCHES** Template für Regime-Konfiguration
+
+---
+
+## ⚠️ WICHTIGER HINWEIS: 100% GENERISCHES SYSTEM!
+
+**Das v2.0-Format ist KOMPLETT GENERISCH und NICHT auf bestimmte Indikatoren beschränkt!**
+
+### ✅ Was du tun kannst:
+
+- **JEDEN Indikator** aus der Liste (12+ Typen: ADX, RSI, BB, SMA, EMA, ATR, MACD, STOCH, CCI, SUPERTREND, VWAP, OBV)
+- **EIGENE Parameter-Namen** definieren (z.B. `my_custom_period`, `my_threshold`, etc.)
+- **BIS ZU 10 PARAMETER** pro Indikator verwenden
+- **BELIEBIG VIELE INDIKATOREN** kombinieren (kein Limit!)
+- **MEHRERE INDIKATOREN DESSELBEN TYPS** mit unterschiedlichen Settings (z.B. `RSI1`, `RSI2`, `RSI3`)
+- **BELIEBIGE REGIME-NAMEN** definieren (nicht nur BULL/BEAR/SIDEWAYS!)
+- **EIGENE THRESHOLD-NAMEN** verwenden (z.B. `my_breakout_level`, `my_filter_value`)
+
+### ❌ Was du NICHT tun musst:
+
+- ❌ **Keine festen Indikatoren** vorgeschrieben (die Beispiele in der JSON sind nur Platzhalter!)
+- ❌ **Keine festen Parameter-Namen** erforderlich (du entscheidest!)
+- ❌ **Keine Code-Änderungen** nötig für neue Indikatoren/Parameter
+- ❌ **Keine UI-Anpassungen** nötig (52-Spalten-Tabelle ist dynamisch!)
+
+### 🎯 Beispiele im Dokument:
+
+Alle Beispiele unten (ADX1, RSI1, BB1, etc.) sind **NUR VORSCHLÄGE**!
+
+Sie zeigen die **Struktur**, aber du kannst:
+- Alle ersetzen
+- Eigene hinzufügen
+- Kombinationen erstellen
+- Parameter anpassen
+- Namen ändern
+
+**Das System passt sich AUTOMATISCH an deine Konfiguration an!**
 
 ---
 
@@ -320,15 +356,251 @@ Identisch zu Indikator-Parametern:
 }
 ```
 
-### Standard-Regimes:
+### 🎨 Regime-Beispiele (Copy-Paste Ready!)
 
-| Regime ID | Name | Beschreibung | Typische Thresholds |
-|-----------|------|--------------|---------------------|
-| `BULL` | Bull Market | Starker Aufwärtstrend | `adx_threshold` (ADX > 25) |
-| `BEAR` | Bear Market | Starker Abwärtstrend | `adx_threshold` (ADX > 25) |
-| `SIDEWAYS` | Sideways Market | Seitwärtsbewegung | `rsi_low` (RSI 30-40), `rsi_high` (RSI 60-70) |
-| `SQUEEZE` | Squeeze (Low Volatility) | Niedrige Volatilität | `bb_width_threshold` (BB Width < 0.015) |
-| `HIGH_VOL` | High Volatility | Hohe Volatilität | `atr_pct_threshold` (ATR% > 0.018) |
+⚠️ **WICHTIG:** Du kannst **BELIEBIGE Regime-Namen und Thresholds** definieren!
+
+Die unten stehenden sind **NUR Beispiele** - du kannst:
+- ✅ **Eigene Regime-IDs** definieren (z.B. `MY_CUSTOM_REGIME`)
+- ✅ **Beliebige Threshold-Namen** verwenden
+- ✅ **Bis zu 10 Thresholds** pro Regime
+- ✅ **Beliebige Prioritäten** setzen (0-100)
+
+#### Beispiel 1: Trend-Basierte Regimes
+
+**BULL - Starker Aufwärtstrend:**
+```json
+{
+  "id": "BULL",
+  "name": "Bull Market",
+  "thresholds": [
+    {
+      "name": "adx_threshold",
+      "value": 25.0,
+      "range": {"min": 15, "max": 35, "step": 1}
+    }
+  ],
+  "priority": 80,
+  "scope": "entry"
+}
+```
+
+**BEAR - Starker Abwärtstrend:**
+```json
+{
+  "id": "BEAR",
+  "name": "Bear Market",
+  "thresholds": [
+    {
+      "name": "adx_threshold",
+      "value": 25.0,
+      "range": {"min": 15, "max": 35, "step": 1}
+    }
+  ],
+  "priority": 75,
+  "scope": "entry"
+}
+```
+
+#### Beispiel 2: Volatilitäts-Basierte Regimes
+
+**SQUEEZE - Niedrige Volatilität:**
+```json
+{
+  "id": "SQUEEZE",
+  "name": "Squeeze (Low Volatility)",
+  "thresholds": [
+    {
+      "name": "bb_width_threshold",
+      "value": 0.015,
+      "range": {"min": 0.008, "max": 0.025, "step": 0.001}
+    }
+  ],
+  "priority": 70,
+  "scope": "entry"
+}
+```
+
+**HIGH_VOL - Hohe Volatilität:**
+```json
+{
+  "id": "HIGH_VOL",
+  "name": "High Volatility",
+  "thresholds": [
+    {
+      "name": "atr_pct_threshold",
+      "value": 0.018,
+      "range": {"min": 0.010, "max": 0.030, "step": 0.001}
+    }
+  ],
+  "priority": 65,
+  "scope": "entry"
+}
+```
+
+#### Beispiel 3: RSI-Basierte Regimes
+
+**SIDEWAYS - Seitwärtsbewegung:**
+```json
+{
+  "id": "SIDEWAYS",
+  "name": "Sideways Market",
+  "thresholds": [
+    {
+      "name": "rsi_low",
+      "value": 35,
+      "range": {"min": 25, "max": 45, "step": 1}
+    },
+    {
+      "name": "rsi_high",
+      "value": 65,
+      "range": {"min": 55, "max": 75, "step": 1}
+    }
+  ],
+  "priority": 60,
+  "scope": "entry"
+}
+```
+
+**OVERSOLD - Überverkauft:**
+```json
+{
+  "id": "OVERSOLD",
+  "name": "Oversold Condition",
+  "thresholds": [
+    {
+      "name": "rsi_threshold",
+      "value": 30,
+      "range": {"min": 20, "max": 40, "step": 1}
+    }
+  ],
+  "priority": 70,
+  "scope": "entry"
+}
+```
+
+**OVERBOUGHT - Überkauft:**
+```json
+{
+  "id": "OVERBOUGHT",
+  "name": "Overbought Condition",
+  "thresholds": [
+    {
+      "name": "rsi_threshold",
+      "value": 70,
+      "range": {"min": 60, "max": 80, "step": 1}
+    }
+  ],
+  "priority": 70,
+  "scope": "entry"
+}
+```
+
+#### Beispiel 4: Multi-Indikator-Regimes
+
+**STRONG_TREND - Mehrere Bedingungen:**
+```json
+{
+  "id": "STRONG_TREND",
+  "name": "Strong Trending Market",
+  "thresholds": [
+    {
+      "name": "adx_min",
+      "value": 25,
+      "range": {"min": 20, "max": 35, "step": 1}
+    },
+    {
+      "name": "macd_histogram_min",
+      "value": 0.5,
+      "range": {"min": 0.2, "max": 1.0, "step": 0.1}
+    },
+    {
+      "name": "bb_width_min",
+      "value": 0.02,
+      "range": {"min": 0.015, "max": 0.030, "step": 0.001}
+    }
+  ],
+  "priority": 85,
+  "scope": "entry"
+}
+```
+
+#### Beispiel 5: Eigene Custom Regimes
+
+Du kannst **komplett eigene Namen** verwenden:
+
+```json
+{
+  "id": "MY_BREAKOUT_SETUP",
+  "name": "My Custom Breakout Setup",
+  "thresholds": [
+    {
+      "name": "my_volume_spike",
+      "value": 2.0,
+      "range": {"min": 1.5, "max": 3.0, "step": 0.1}
+    },
+    {
+      "name": "my_price_above_ema",
+      "value": 0.01,
+      "range": {"min": 0.005, "max": 0.020, "step": 0.001}
+    }
+  ],
+  "priority": 75,
+  "scope": "entry"
+}
+```
+
+#### Beispiel 6: Komplexes Multi-Threshold Regime
+
+```json
+{
+  "id": "IDEAL_ENTRY_ZONE",
+  "name": "Ideal Entry Zone (5 Conditions)",
+  "thresholds": [
+    {
+      "name": "adx_strength",
+      "value": 23,
+      "range": {"min": 18, "max": 30, "step": 1}
+    },
+    {
+      "name": "rsi_pullback",
+      "value": 45,
+      "range": {"min": 35, "max": 55, "step": 1}
+    },
+    {
+      "name": "bb_position",
+      "value": 0.3,
+      "range": {"min": 0.2, "max": 0.5, "step": 0.05}
+    },
+    {
+      "name": "volume_above_avg",
+      "value": 1.2,
+      "range": {"min": 1.0, "max": 1.5, "step": 0.1}
+    },
+    {
+      "name": "atr_normalized",
+      "value": 0.015,
+      "range": {"min": 0.010, "max": 0.025, "step": 0.001}
+    }
+  ],
+  "priority": 90,
+  "scope": "entry"
+}
+```
+
+### 📊 Threshold-Namenskonventionen (Empfehlungen)
+
+Du kannst **beliebige Namen** verwenden, aber hier sind sinnvolle Konventionen:
+
+| Threshold-Typ | Namensschema | Beispiele |
+|---------------|--------------|-----------|
+| Minimum-Werte | `<indicator>_min` | `adx_min`, `rsi_min`, `volume_min` |
+| Maximum-Werte | `<indicator>_max` | `rsi_max`, `bb_width_max` |
+| Absolute Schwellen | `<indicator>_threshold` | `adx_threshold`, `macd_threshold` |
+| Bereichsgrenzen | `<indicator>_low/high` | `rsi_low`, `rsi_high` |
+| Prozentuale Werte | `<indicator>_pct` | `atr_pct`, `bb_width_pct` |
+| Faktoren/Multiplikatoren | `<indicator>_factor` | `volume_factor`, `atr_factor` |
+| Boolesche Bedingungen | `<condition>_enabled` | `trend_filter_enabled` |
 
 ### Prioritäts-System:
 
@@ -466,43 +738,488 @@ else:
 
 ---
 
-## Unterstützte Indikatoren
+## 🎨 Komplette Indikator-Bibliothek (Copy-Paste Ready!)
 
-### Standard-Indikatoren (immer verfügbar):
+⚠️ **WICHTIG:** Das v2.0-Format unterstützt **JEDEN Indikator mit BELIEBIGEN Parametern**!
 
-| Type | Name | Parameter | Beschreibung |
-|------|------|-----------|--------------|
-| `ADX` | Average Directional Index | `period` | Trendstärke (0-100) |
-| `RSI` | Relative Strength Index | `period` | Momentum (0-100) |
-| `BB` | Bollinger Bands | `period`, `std_dev`, `width_percentile` | Volatilitätsbänder |
-| `SMA` | Simple Moving Average | `period` | Gleitender Durchschnitt |
-| `EMA` | Exponential Moving Average | `period` | Exponentieller Durchschnitt |
-| `ATR` | Average True Range | `period` | Volatilität (absolute Werte) |
+Die unten stehenden Beispiele sind **KEINE Limits**, sondern **fertige Code-Snippets** zum Kopieren. Du kannst:
+- ✅ **Jeden dieser Indikatoren** verwenden
+- ✅ **Eigene Parameter-Namen** definieren
+- ✅ **Bis zu 10 Parameter** pro Indikator
+- ✅ **Beliebig viele Indikatoren** kombinieren
+- ✅ **Mehrere Indikatoren desselben Typs** mit unterschiedlichen Parametern
 
-### Erweiterte Indikatoren (optional):
+### 📊 Standard-Indikatoren
 
-| Type | Name | Parameter | Beschreibung |
-|------|------|-----------|--------------|
-| `MACD` | Moving Average Convergence Divergence | `fast`, `slow`, `signal` | Momentum-Oszillator |
-| `STOCH` | Stochastic Oscillator | `period`, `smooth_k`, `smooth_d` | Überkauft/Überverkauft |
-| `CCI` | Commodity Channel Index | `period` | Zyklischer Oszillator |
-| `SUPERTREND` | SuperTrend | `period`, `multiplier` | Trend-Following |
-| `VWAP` | Volume Weighted Average Price | - | Volumen-gewichteter Durchschnitt |
-| `OBV` | On Balance Volume | - | Volumen-Akkumulation |
+#### 1. ADX (Average Directional Index) - Trendstärke
 
-### Parameter-Typen:
+```json
+{
+  "name": "ADX1",
+  "type": "ADX",
+  "params": [
+    {
+      "name": "period",
+      "value": 14,
+      "range": {"min": 7, "max": 21, "step": 1}
+    }
+  ]
+}
+```
 
-| Parameter Name | Typ | Typischer Bereich | Beschreibung |
-|----------------|-----|-------------------|--------------|
-| `period` | int | 5-200 | Anzahl Bars für Berechnung |
-| `std_dev` | float | 1.0-3.0 | Standard-Abweichungen (BB) |
-| `multiplier` | float | 1.0-5.0 | Multiplikator (SuperTrend, ATR) |
-| `fast` | int | 8-20 | Schnelle MA-Periode (MACD) |
-| `slow` | int | 20-50 | Langsame MA-Periode (MACD) |
-| `signal` | int | 5-15 | Signal-Linien-Periode (MACD) |
-| `smooth_k` | int | 1-10 | K-Linie Glättung (Stochastic) |
-| `smooth_d` | int | 1-10 | D-Linie Glättung (Stochastic) |
-| `width_percentile` | float | 10-40 | BB-Width-Percentile (für Squeeze) |
+**Weitere mögliche Parameter:**
+```json
+{
+  "name": "ADX_CUSTOM",
+  "type": "ADX",
+  "params": [
+    {"name": "period", "value": 14, "range": {"min": 7, "max": 21, "step": 1}},
+    {"name": "smoothing", "value": 14, "range": {"min": 7, "max": 21, "step": 1}},
+    {"name": "use_ema", "value": true, "range": null}
+  ]
+}
+```
+
+#### 2. RSI (Relative Strength Index) - Momentum
+
+```json
+{
+  "name": "RSI1",
+  "type": "RSI",
+  "params": [
+    {
+      "name": "period",
+      "value": 14,
+      "range": {"min": 9, "max": 20, "step": 1}
+    }
+  ]
+}
+```
+
+**Mehrere RSI mit verschiedenen Perioden:**
+```json
+{
+  "name": "RSI_SHORT",
+  "type": "RSI",
+  "params": [
+    {"name": "period", "value": 7, "range": {"min": 5, "max": 14, "step": 1}}
+  ]
+},
+{
+  "name": "RSI_LONG",
+  "type": "RSI",
+  "params": [
+    {"name": "period", "value": 21, "range": {"min": 14, "max": 30, "step": 1}}
+  ]
+}
+```
+
+#### 3. BB (Bollinger Bands) - Volatilitätsbänder
+
+```json
+{
+  "name": "BB1",
+  "type": "BB",
+  "params": [
+    {
+      "name": "period",
+      "value": 20,
+      "range": {"min": 15, "max": 30, "step": 1}
+    },
+    {
+      "name": "std_dev",
+      "value": 2.0,
+      "range": {"min": 1.0, "max": 3.0, "step": 0.1}
+    },
+    {
+      "name": "width_percentile",
+      "value": 20.0,
+      "range": {"min": 10, "max": 40, "step": 1}
+    }
+  ]
+}
+```
+
+#### 4. SMA (Simple Moving Average) - Gleitender Durchschnitt
+
+```json
+{
+  "name": "SMA_FAST1",
+  "type": "SMA",
+  "params": [
+    {
+      "name": "period",
+      "value": 50,
+      "range": {"min": 20, "max": 100, "step": 1}
+    }
+  ]
+},
+{
+  "name": "SMA_SLOW1",
+  "type": "SMA",
+  "params": [
+    {
+      "name": "period",
+      "value": 200,
+      "range": {"min": 100, "max": 300, "step": 1}
+    }
+  ]
+}
+```
+
+#### 5. EMA (Exponential Moving Average) - Exponentieller Durchschnitt
+
+```json
+{
+  "name": "EMA1",
+  "type": "EMA",
+  "params": [
+    {
+      "name": "period",
+      "value": 21,
+      "range": {"min": 10, "max": 50, "step": 1}
+    }
+  ]
+}
+```
+
+**Dreifach-EMA für Trend-Filter:**
+```json
+{
+  "name": "EMA_FAST",
+  "type": "EMA",
+  "params": [
+    {"name": "period", "value": 8, "range": {"min": 5, "max": 15, "step": 1}}
+  ]
+},
+{
+  "name": "EMA_MID",
+  "type": "EMA",
+  "params": [
+    {"name": "period", "value": 21, "range": {"min": 15, "max": 30, "step": 1}}
+  ]
+},
+{
+  "name": "EMA_SLOW",
+  "type": "EMA",
+  "params": [
+    {"name": "period", "value": 55, "range": {"min": 40, "max": 100, "step": 1}}
+  ]
+}
+```
+
+#### 6. ATR (Average True Range) - Volatilität
+
+```json
+{
+  "name": "ATR1",
+  "type": "ATR",
+  "params": [
+    {
+      "name": "period",
+      "value": 14,
+      "range": {"min": 10, "max": 20, "step": 1}
+    }
+  ]
+}
+```
+
+**ATR mit Smoothing:**
+```json
+{
+  "name": "ATR_SMOOTH",
+  "type": "ATR",
+  "params": [
+    {"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}},
+    {"name": "smoothing", "value": 14, "range": {"min": 7, "max": 21, "step": 1}}
+  ]
+}
+```
+
+### 🔧 Erweiterte Indikatoren
+
+#### 7. MACD (Moving Average Convergence Divergence) - Momentum-Oszillator
+
+```json
+{
+  "name": "MACD1",
+  "type": "MACD",
+  "params": [
+    {
+      "name": "fast",
+      "value": 12,
+      "range": {"min": 8, "max": 20, "step": 1}
+    },
+    {
+      "name": "slow",
+      "value": 26,
+      "range": {"min": 20, "max": 40, "step": 1}
+    },
+    {
+      "name": "signal",
+      "value": 9,
+      "range": {"min": 5, "max": 15, "step": 1}
+    }
+  ]
+}
+```
+
+#### 8. STOCH (Stochastic Oscillator) - Überkauft/Überverkauft
+
+```json
+{
+  "name": "STOCH1",
+  "type": "STOCH",
+  "params": [
+    {
+      "name": "period",
+      "value": 14,
+      "range": {"min": 10, "max": 20, "step": 1}
+    },
+    {
+      "name": "smooth_k",
+      "value": 3,
+      "range": {"min": 1, "max": 7, "step": 1}
+    },
+    {
+      "name": "smooth_d",
+      "value": 3,
+      "range": {"min": 1, "max": 7, "step": 1}
+    }
+  ]
+}
+```
+
+#### 9. CCI (Commodity Channel Index) - Zyklischer Oszillator
+
+```json
+{
+  "name": "CCI1",
+  "type": "CCI",
+  "params": [
+    {
+      "name": "period",
+      "value": 20,
+      "range": {"min": 14, "max": 30, "step": 1}
+    }
+  ]
+}
+```
+
+**CCI mit Konstante:**
+```json
+{
+  "name": "CCI_CUSTOM",
+  "type": "CCI",
+  "params": [
+    {"name": "period", "value": 20, "range": {"min": 14, "max": 30, "step": 1}},
+    {"name": "constant", "value": 0.015, "range": {"min": 0.010, "max": 0.020, "step": 0.001}}
+  ]
+}
+```
+
+#### 10. SUPERTREND - Trend-Following
+
+```json
+{
+  "name": "SUPERTREND1",
+  "type": "SUPERTREND",
+  "params": [
+    {
+      "name": "period",
+      "value": 10,
+      "range": {"min": 7, "max": 20, "step": 1}
+    },
+    {
+      "name": "multiplier",
+      "value": 3.0,
+      "range": {"min": 1.0, "max": 5.0, "step": 0.1}
+    }
+  ]
+}
+```
+
+**SuperTrend mit EMA-Option:**
+```json
+{
+  "name": "SUPERTREND_EMA",
+  "type": "SUPERTREND",
+  "params": [
+    {"name": "period", "value": 10, "range": {"min": 7, "max": 20, "step": 1}},
+    {"name": "multiplier", "value": 3.0, "range": {"min": 1.0, "max": 5.0, "step": 0.1}},
+    {"name": "use_ema", "value": true, "range": null}
+  ]
+}
+```
+
+#### 11. VWAP (Volume Weighted Average Price)
+
+```json
+{
+  "name": "VWAP1",
+  "type": "VWAP",
+  "params": []
+}
+```
+
+**VWAP mit Session-Reset:**
+```json
+{
+  "name": "VWAP_SESSION",
+  "type": "VWAP",
+  "params": [
+    {"name": "session_reset", "value": true, "range": null},
+    {"name": "reset_hour", "value": 9, "range": {"min": 0, "max": 23, "step": 1}}
+  ]
+}
+```
+
+#### 12. OBV (On Balance Volume)
+
+```json
+{
+  "name": "OBV1",
+  "type": "OBV",
+  "params": []
+}
+```
+
+**OBV mit Smoothing:**
+```json
+{
+  "name": "OBV_SMOOTH",
+  "type": "OBV",
+  "params": [
+    {"name": "smooth_period", "value": 14, "range": {"min": 7, "max": 21, "step": 1}}
+  ]
+}
+```
+
+### 🎯 Beliebige eigene Parameter
+
+Du kannst **JEDEN Parameter-Namen** verwenden! Das System ist **komplett generisch**:
+
+```json
+{
+  "name": "MY_CUSTOM_INDICATOR",
+  "type": "RSI",
+  "params": [
+    {"name": "my_period", "value": 14, "range": {"min": 7, "max": 21, "step": 1}},
+    {"name": "my_threshold", "value": 50, "range": {"min": 30, "max": 70, "step": 1}},
+    {"name": "my_factor", "value": 1.5, "range": {"min": 1.0, "max": 3.0, "step": 0.1}},
+    {"name": "my_flag", "value": true, "range": null}
+  ]
+}
+```
+
+**Limits:**
+- ✅ Bis zu **10 Parameter** pro Indikator
+- ✅ **Beliebige Namen** (`name` kann alles sein)
+- ✅ **3 Datentypen**: `integer`, `float`, `boolean`
+- ✅ **Beliebige Ranges** (min/max/step frei wählbar)
+
+### 📋 Unterstützte Indikator-Typen (Enum)
+
+Die folgenden `type`-Werte sind aktuell definiert:
+
+```
+"ADX", "RSI", "BB", "SMA", "EMA", "MACD", "ATR",
+"STOCH", "CCI", "SUPERTREND", "VWAP", "OBV"
+```
+
+⚠️ **Hinweis:** Falls du einen **neuen Indikator-Typ** brauchst (z.B. `"ICHIMOKU"`, `"KELTNER"`):
+1. Füge ihn zum Schema-Enum hinzu: `config/schemas/regime_optimization/optimized_regime_config_v2.schema.json`
+2. Implementiere die Berechnung in deinem Code
+3. Das UI wird ihn **automatisch unterstützen** (dynamische Spalten!)
+
+### 🔥 Kombinationsbeispiele
+
+#### Trend-Following Setup (3 Indikatoren)
+
+```json
+"indicators": [
+  {
+    "name": "ADX_TREND",
+    "type": "ADX",
+    "params": [
+      {"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}}
+    ]
+  },
+  {
+    "name": "EMA_FAST",
+    "type": "EMA",
+    "params": [
+      {"name": "period", "value": 21, "range": {"min": 15, "max": 30, "step": 1}}
+    ]
+  },
+  {
+    "name": "EMA_SLOW",
+    "type": "EMA",
+    "params": [
+      {"name": "period", "value": 55, "range": {"min": 40, "max": 100, "step": 1}}
+    ]
+  }
+]
+```
+
+#### Mean Reversion Setup (4 Indikatoren)
+
+```json
+"indicators": [
+  {
+    "name": "RSI_MEAN",
+    "type": "RSI",
+    "params": [
+      {"name": "period", "value": 14, "range": {"min": 9, "max": 20, "step": 1}}
+    ]
+  },
+  {
+    "name": "BB_MEAN",
+    "type": "BB",
+    "params": [
+      {"name": "period", "value": 20, "range": {"min": 15, "max": 30, "step": 1}},
+      {"name": "std_dev", "value": 2.0, "range": {"min": 1.5, "max": 2.5, "step": 0.1}}
+    ]
+  },
+  {
+    "name": "STOCH_MEAN",
+    "type": "STOCH",
+    "params": [
+      {"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}},
+      {"name": "smooth_k", "value": 3, "range": {"min": 1, "max": 5, "step": 1}}
+    ]
+  },
+  {
+    "name": "ATR_VOL",
+    "type": "ATR",
+    "params": [
+      {"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}}
+    ]
+  }
+]
+```
+
+#### Vollständiges Multi-Timeframe Setup (8 Indikatoren)
+
+```json
+"indicators": [
+  {"name": "ADX_5M", "type": "ADX", "params": [{"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}}]},
+  {"name": "RSI_5M", "type": "RSI", "params": [{"name": "period", "value": 14, "range": {"min": 9, "max": 20, "step": 1}}]},
+  {"name": "MACD_5M", "type": "MACD", "params": [
+    {"name": "fast", "value": 12, "range": {"min": 8, "max": 20, "step": 1}},
+    {"name": "slow", "value": 26, "range": {"min": 20, "max": 40, "step": 1}},
+    {"name": "signal", "value": 9, "range": {"min": 5, "max": 15, "step": 1}}
+  ]},
+  {"name": "BB_5M", "type": "BB", "params": [
+    {"name": "period", "value": 20, "range": {"min": 15, "max": 30, "step": 1}},
+    {"name": "std_dev", "value": 2.0, "range": {"min": 1.5, "max": 2.5, "step": 0.1}}
+  ]},
+  {"name": "EMA_SHORT", "type": "EMA", "params": [{"name": "period", "value": 8, "range": {"min": 5, "max": 15, "step": 1}}]},
+  {"name": "EMA_MID", "type": "EMA", "params": [{"name": "period", "value": 21, "range": {"min": 15, "max": 30, "step": 1}}]},
+  {"name": "EMA_LONG", "type": "EMA", "params": [{"name": "period", "value": 55, "range": {"min": 40, "max": 100, "step": 1}}]},
+  {"name": "ATR_VOL", "type": "ATR", "params": [{"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}}]}
+]
+```
 
 ---
 
