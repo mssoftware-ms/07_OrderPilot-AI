@@ -8,9 +8,11 @@ Runs indicator parameter optimization in the background with:
 """
 
 import logging
-import pandas as pd
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from itertools import product
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 from PyQt6.QtCore import QThread, pyqtSignal
 from src.core.tradingbot.config.loader import ConfigLoader
 from src.core.tradingbot.config.detector import RegimeDetector
@@ -336,7 +338,19 @@ class IndicatorOptimizationThread(QThread):
         """Expand a range definition to a list of values."""
         if "values" in range_def:
             return list(range_def["values"])
-        return list(range(range_def["min"], range_def["max"] + 1, range_def["step"]))
+        min_val = range_def["min"]
+        max_val = range_def["max"]
+        step = range_def["step"]
+        if any(isinstance(v, float) for v in (min_val, max_val, step)):
+            values = []
+            current = float(min_val)
+            max_val = float(max_val)
+            step = float(step)
+            while current <= max_val + 1e-9:
+                values.append(round(current, 6))
+                current += step
+            return values
+        return list(range(int(min_val), int(max_val) + 1, int(step)))
 
     def _generate_parameter_combinations(self) -> Dict[str, List[Dict[str, int]]]:
         """Generate all parameter combinations for selected indicators.
@@ -352,144 +366,32 @@ class IndicatorOptimizationThread(QThread):
         combinations = {}
 
         for indicator in self.selected_indicators:
-            param_list = []
-
-            # Get indicator's param ranges from UI (nested structure)
             indicator_ranges = self.param_ranges.get(indicator, {})
+            if not indicator_ranges:
+                combinations[indicator] = [{}]
+                continue
 
-            if indicator == 'RSI':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
+            param_names = list(indicator_ranges.keys())
+            if len(param_names) > 10:
+                logger.warning(
+                    "Indicator %s has %d params; limiting to 10 for optimization",
+                    indicator,
+                    len(param_names),
+                )
+                param_names = param_names[:10]
 
-            elif indicator == 'MACD':
-                fast_range = self._require_range(indicator, indicator_ranges, "fast")
-                slow_range = self._require_range(indicator, indicator_ranges, "slow")
-                signal_range = self._require_range(indicator, indicator_ranges, "signal")
-                for fast in range(fast_range['min'], fast_range['max'] + 1, fast_range['step']):
-                    for slow in range(slow_range['min'], slow_range['max'] + 1, slow_range['step']):
-                        for signal in range(signal_range['min'], signal_range['max'] + 1, signal_range['step']):
-                            param_list.append({'fast': fast, 'slow': slow, 'signal': signal})
+            value_lists = []
+            for param_name in param_names:
+                range_def = self._require_range(indicator, indicator_ranges, param_name)
+                values = self._expand_range(range_def)
+                if not values:
+                    raise ValueError(f"No values defined for {indicator}.{param_name}")
+                value_lists.append(values)
 
-            elif indicator == 'ADX':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'SMA':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'EMA':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'BB':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                std_range = self._require_range(indicator, indicator_ranges, "std")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    # Handle float step for std
-                    std_val = std_range['min']
-                    while std_val <= std_range['max']:
-                        param_list.append({'period': period, 'std': round(std_val, 2)})
-                        std_val += std_range['step']
-
-            elif indicator == 'ATR':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            # === NEW INDICATORS (13) ===
-
-            elif indicator == 'ICHIMOKU':
-                tenkan_range = self._require_range(indicator, indicator_ranges, "tenkan")
-                kijun_range = self._require_range(indicator, indicator_ranges, "kijun")
-                for tenkan in range(tenkan_range['min'], tenkan_range['max'] + 1, tenkan_range['step']):
-                    for kijun in range(kijun_range['min'], kijun_range['max'] + 1, kijun_range['step']):
-                        param_list.append({
-                            'tenkan': tenkan,
-                            'kijun': kijun,
-                            'senkou': kijun * 2
-                        })
-
-            elif indicator == 'PSAR':
-                accel_range = self._require_range(indicator, indicator_ranges, "accel")
-                max_accel_range = self._require_range(indicator, indicator_ranges, "max_accel")
-                # Handle float steps
-                accel = accel_range['min']
-                while accel <= accel_range['max']:
-                    max_accel = max_accel_range['min']
-                    while max_accel <= max_accel_range['max']:
-                        param_list.append({'accel': round(accel, 3), 'max_accel': round(max_accel, 2)})
-                        max_accel += max_accel_range['step']
-                    accel += accel_range['step']
-
-            elif indicator == 'KC':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                mult_range = self._require_range(indicator, indicator_ranges, "mult")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    mult = mult_range['min']
-                    while mult <= mult_range['max']:
-                        param_list.append({'period': period, 'mult': round(mult, 1)})
-                        mult += mult_range['step']
-
-            elif indicator == 'VWAP':
-                # VWAP typically doesn't have parameters (daily reset)
-                param_list.append({})
-
-            elif indicator == 'PIVOTS':
-                # Pivot Points: Standard, Fibonacci, Camarilla
-                pivot_range = self._require_range(indicator, indicator_ranges, "type")
-                pivot_types = self._expand_range(pivot_range)
-                for pivot_type in pivot_types:
-                    param_list.append({'type': pivot_type})
-
-            elif indicator == 'CHOP':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'STOCH':
-                k_range = self._require_range(indicator, indicator_ranges, "k_period")
-                d_range = self._require_range(indicator, indicator_ranges, "d_period")
-                for k in range(k_range['min'], k_range['max'] + 1, k_range['step']):
-                    for d in range(d_range['min'], d_range['max'] + 1, d_range['step']):
-                        param_list.append({'k_period': k, 'd_period': d})
-
-            elif indicator == 'CCI':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'BB_WIDTH':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                std_range = self._require_range(indicator, indicator_ranges, "std")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    std = std_range['min']
-                    while std <= std_range['max']:
-                        param_list.append({'period': period, 'std': round(std, 1)})
-                        std += std_range['step']
-
-            elif indicator == 'OBV':
-                # OBV doesn't have parameters
-                param_list.append({})
-
-            elif indicator == 'MFI':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
-            elif indicator == 'AD':
-                # A/D Line doesn't have parameters
-                param_list.append({})
-
-            elif indicator == 'CMF':
-                period_range = self._require_range(indicator, indicator_ranges, "period")
-                for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
-                    param_list.append({'period': period})
-
+            param_list = [
+                dict(zip(param_names, values))
+                for values in product(*value_lists)
+            ]
             combinations[indicator] = param_list
 
         return combinations
@@ -571,7 +473,9 @@ class IndicatorOptimizationThread(QThread):
         elif indicator_type == 'ICHIMOKU':
             tenkan = self._require_param_value(params, indicator_type, "tenkan")
             kijun = self._require_param_value(params, indicator_type, "kijun")
-            senkou = self._require_param_value(params, indicator_type, "senkou")
+            senkou = params.get("senkou")
+            if senkou is None:
+                senkou = kijun * 2
             ichimoku_result = ta.ichimoku(df['high'], df['low'], df['close'],
                                           tenkan=tenkan, kijun=kijun, senkou=senkou)
             if ichimoku_result is not None and len(ichimoku_result) > 0:
