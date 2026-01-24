@@ -6,7 +6,7 @@ Provides UI for regime parameter range configuration:
 - SMA_Fast: period (20-100)
 - SMA_Slow: period (100-300)
 - RSI: period (10-20), sideways_low (30-45), sideways_high (55-70)
-- BB: period (15-30), width_percentile (10-40)
+- BB: period (15-30), std_dev (1.5-3.0), width_percentile (10-40)
 - Auto/Manual mode toggle
 - Combination counter (max 150 for TPE)
 """
@@ -20,6 +20,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -302,6 +303,30 @@ class RegimeSetupMixin:
         form.addRow("BB Period:", bb_period_layout)
         self._regime_setup_param_widgets["bb_period"] = (bb_period_min, bb_period_max)
 
+        # BB Std Dev (Standard Deviation)
+        bb_std_layout = QHBoxLayout()
+        bb_std_min = QDoubleSpinBox()
+        bb_std_min.setRange(0.5, 5.0)
+        bb_std_min.setSingleStep(0.1)
+        bb_std_min.setDecimals(1)
+        bb_std_min.setValue(1.5)
+        bb_std_min.valueChanged.connect(self._update_combinations_count)
+        bb_std_layout.addWidget(QLabel("Min:"))
+        bb_std_layout.addWidget(bb_std_min)
+
+        bb_std_max = QDoubleSpinBox()
+        bb_std_max.setRange(0.5, 5.0)
+        bb_std_max.setSingleStep(0.1)
+        bb_std_max.setDecimals(1)
+        bb_std_max.setValue(3.0)
+        bb_std_max.valueChanged.connect(self._update_combinations_count)
+        bb_std_layout.addWidget(QLabel("Max:"))
+        bb_std_layout.addWidget(bb_std_max)
+        bb_std_layout.addStretch()
+
+        form.addRow("BB Std Dev:", bb_std_layout)
+        self._regime_setup_param_widgets["bb_std_dev"] = (bb_std_min, bb_std_max)
+
         # BB Width Percentile
         bb_width_layout = QHBoxLayout()
         bb_width_min = QSpinBox()
@@ -357,6 +382,7 @@ class RegimeSetupMixin:
                 "rsi_sideways_low": (35, 40),
                 "rsi_sideways_high": (60, 65),
                 "bb_period": (18, 24),
+                "bb_std_dev": (1.8, 2.2),
                 "bb_width_percentile": (15, 25),
             },
             1: {  # Standard
@@ -368,6 +394,7 @@ class RegimeSetupMixin:
                 "rsi_sideways_low": (30, 45),
                 "rsi_sideways_high": (55, 70),
                 "bb_period": (15, 30),
+                "bb_std_dev": (1.5, 3.0),
                 "bb_width_percentile": (10, 40),
             },
             2: {  # Aggressive
@@ -379,6 +406,7 @@ class RegimeSetupMixin:
                 "rsi_sideways_low": (25, 50),
                 "rsi_sideways_high": (50, 75),
                 "bb_period": (10, 40),
+                "bb_std_dev": (1.0, 4.0),
                 "bb_width_percentile": (5, 45),
             },
             3: {  # Custom (no change)
@@ -390,6 +418,7 @@ class RegimeSetupMixin:
                 "rsi_sideways_low": None,
                 "rsi_sideways_high": None,
                 "bb_period": None,
+                "bb_std_dev": None,
                 "bb_width_percentile": None,
             },
         }
