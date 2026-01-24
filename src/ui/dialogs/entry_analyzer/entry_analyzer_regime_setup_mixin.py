@@ -1,14 +1,14 @@
-"""Entry Analyzer - Regime Setup Tab (Mixin).
+"""Entry Analyzer - Regime Setup Tab (Mixin) - Dynamic v2.0.
 
-Stufe-1: Regime-Optimierung - Tab 1/3
-Provides UI for regime parameter range configuration:
-- ADX: period (10-30), threshold (20-35)
-- SMA_Fast: period (20-100)
-- SMA_Slow: period (100-300)
-- RSI: period (10-20), sideways_low (30-45), sideways_high (55-70)
-- BB: period (15-30), std_dev (1.5-3.0), width_percentile (10-40)
-- Auto/Manual mode toggle
-- Combination counter (max 150 for TPE)
+Completely dynamic UI generation from JSON optimization_ranges.
+Supports ANY indicator with ANY number of parameters.
+
+Features:
+- Automatically generates spinboxes from indicators[].optimization_ranges
+- Automatically generates threshold spinboxes from regimes[].optimization_ranges
+- No hardcoded parameter lists
+- Two tables: Indicator Parameters & Regime Thresholds
+- Import/Export optimization ranges
 """
 
 from __future__ import annotations
@@ -20,15 +20,17 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QDoubleSpinBox,
-    QFormLayout,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,74 +44,54 @@ logger = logging.getLogger(__name__)
 
 
 class RegimeSetupMixin:
-    """Mixin for Regime Setup tab in Entry Analyzer.
+    """Dynamic Regime Setup tab - generates UI from JSON.
 
-    Provides:
-        - Parameter range configuration (ADX, SMA, RSI, BB)
-        - Auto mode: Load ranges from JSON preset
-        - Manual mode: User adjusts spinboxes
-        - Combination counter (estimates trial count)
+    Reads optimization_ranges from entry_analyzer_regime.json and
+    automatically creates spinboxes for ALL parameters.
+
+    Attributes:
+        _regime_setup_indicators_table: Table showing current indicators
+        _regime_setup_params_table: Dynamic table with min/max spinboxes
+        _regime_setup_thresholds_table: Dynamic table for regime thresholds
+        _regime_setup_param_ranges: Dict storing {param_key: (min_spin, max_spin)}
+        _regime_setup_max_trials: SpinBox for trial count
     """
 
     # Type hints for parent class attributes
-    _regime_setup_auto_mode: QCheckBox
-    _regime_setup_preset_combo: QComboBox
-    _regime_setup_param_widgets: dict[str, tuple[QSpinBox, QSpinBox]]
-    _regime_setup_combinations_label: QLabel
+    _regime_setup_indicators_table: QTableWidget
+    _regime_setup_params_table: QTableWidget
+    _regime_setup_thresholds_table: QTableWidget
+    _regime_setup_param_ranges: dict[str, tuple[QSpinBox | QDoubleSpinBox, QSpinBox | QDoubleSpinBox]]
+    _regime_setup_max_trials: QSpinBox
     _regime_setup_apply_btn: QPushButton
+    _regime_config: object | None
 
     def _setup_regime_setup_tab(self, tab: QWidget) -> None:
-        """Setup Regime Setup tab with parameter ranges.
+        """Setup dynamic Regime Setup tab.
 
-        Args:
-            tab: QWidget to populate
+        Reads optimization_ranges from JSON and generates UI automatically.
         """
         layout = QVBoxLayout(tab)
 
         # Header
-        header = QLabel("Regime Parameter Setup")
+        header = QLabel("Regime Setup (Dynamic)")
         header.setStyleSheet("font-size: 14pt; font-weight: bold;")
         layout.addWidget(header)
 
         description = QLabel(
-            "Configure parameter ranges for regime optimization (Stage 1). "
-            "The optimizer will test combinations using TPE algorithm."
+            "Configure optimization ranges for ALL indicators and regime thresholds. "
+            "The UI is dynamically generated from your JSON configuration."
         )
         description.setWordWrap(True)
         description.setStyleSheet("color: #888; padding: 5px;")
         layout.addWidget(description)
 
-        # Auto/Manual Mode
-        mode_layout = QHBoxLayout()
-        self._regime_setup_auto_mode = QCheckBox("Auto Mode (Load from Preset)")
-        self._regime_setup_auto_mode.setChecked(True)
-        self._regime_setup_auto_mode.stateChanged.connect(self._on_regime_setup_mode_changed)
-        mode_layout.addWidget(self._regime_setup_auto_mode)
+        # Initialize state
+        self._regime_setup_param_ranges = {}
 
-        self._regime_setup_preset_combo = QComboBox()
-        self._regime_setup_preset_combo.addItems(
-            [
-                "Conservative (Narrow Ranges)",
-                "Standard (Balanced)",
-                "Aggressive (Wide Ranges)",
-                "Custom",
-            ]
-        )
-        self._regime_setup_preset_combo.currentIndexChanged.connect(
-            self._on_regime_setup_preset_changed
-        )
-        mode_layout.addWidget(self._regime_setup_preset_combo)
-        mode_layout.addStretch()
-        layout.addLayout(mode_layout)
-
-        # Initialize state BEFORE creating param ranges group
-        self._regime_setup_param_widgets = {}
-
-        # Current Regime Indicators Table
+        # Current Regime Indicators Table (Read-only reference)
         current_indicators_group = QGroupBox("Current Regime Indicators (from JSON)")
         current_indicators_layout = QVBoxLayout()
-
-        from PyQt6.QtWidgets import QHeaderView, QTableWidget
 
         self._regime_setup_indicators_table = QTableWidget()
         self._regime_setup_indicators_table.setColumnCount(3)
@@ -129,22 +111,59 @@ class RegimeSetupMixin:
         current_indicators_group.setLayout(current_indicators_layout)
         layout.addWidget(current_indicators_group)
 
-        # Populate indicators table from loaded regime config
-        self._populate_regime_setup_indicators_table()
+        # Indicator Parameters Optimization Ranges (Dynamic!)
+        params_group = QGroupBox("Indicator Parameter Optimization Ranges")
+        params_layout = QVBoxLayout()
 
-        # Parameter Ranges Group
-        param_group = self._create_regime_param_ranges_group()
-        layout.addWidget(param_group, stretch=1)
+        params_info = QLabel("Set Min/Max ranges for each indicator parameter. UI is generated from JSON.")
+        params_info.setStyleSheet("color: #888; font-style: italic;")
+        params_layout.addWidget(params_info)
 
-        # Combination Counter
+        self._regime_setup_params_table = QTableWidget()
+        self._regime_setup_params_table.setColumnCount(6)
+        self._regime_setup_params_table.setHorizontalHeaderLabels([
+            "Indicator", "Parameter", "Current", "Min", "Max", "Step"
+        ])
+        header = self._regime_setup_params_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self._regime_setup_params_table.setAlternatingRowColors(True)
+
+        params_layout.addWidget(self._regime_setup_params_table)
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group, stretch=2)
+
+        # Regime Threshold Optimization Ranges (Dynamic!)
+        thresholds_group = QGroupBox("Regime Threshold Optimization Ranges")
+        thresholds_layout = QVBoxLayout()
+
+        thresholds_info = QLabel("Set Min/Max ranges for regime detection thresholds.")
+        thresholds_info.setStyleSheet("color: #888; font-style: italic;")
+        thresholds_layout.addWidget(thresholds_info)
+
+        self._regime_setup_thresholds_table = QTableWidget()
+        self._regime_setup_thresholds_table.setColumnCount(5)
+        self._regime_setup_thresholds_table.setHorizontalHeaderLabels([
+            "Regime", "Threshold", "Min", "Max", "Step"
+        ])
+        header = self._regime_setup_thresholds_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self._regime_setup_thresholds_table.setAlternatingRowColors(True)
+
+        thresholds_layout.addWidget(self._regime_setup_thresholds_table)
+        thresholds_group.setLayout(thresholds_layout)
+        layout.addWidget(thresholds_group, stretch=1)
+
+        # Max Trials Counter
         counter_layout = QHBoxLayout()
-        counter_layout.addWidget(QLabel("Estimated Trials:"))
-        self._regime_setup_combinations_label = QLabel("0")
-        self._regime_setup_combinations_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
-        counter_layout.addWidget(self._regime_setup_combinations_label)
-        counter_layout.addStretch()
-
-        # Max Trials Input
         counter_layout.addWidget(QLabel("Max Trials:"))
         self._regime_setup_max_trials = QSpinBox()
         self._regime_setup_max_trials.setRange(10, 500)
@@ -156,6 +175,7 @@ class RegimeSetupMixin:
         warning_label = QLabel("⚠️ More trials = better results, but slower")
         warning_label.setStyleSheet("color: #f59e0b;")
         counter_layout.addWidget(warning_label)
+        counter_layout.addStretch()
         layout.addLayout(counter_layout)
 
         # Action Buttons
@@ -163,9 +183,15 @@ class RegimeSetupMixin:
 
         # Import Button
         self._regime_setup_import_btn = QPushButton(get_icon("folder_open"), "Import Config (JSON)")
-        self._regime_setup_import_btn.setToolTip("Import regime configuration with parameter ranges from JSON file")
+        self._regime_setup_import_btn.setToolTip("Import regime configuration with optimization ranges from JSON file")
         self._regime_setup_import_btn.clicked.connect(self._on_regime_setup_import)
         button_layout.addWidget(self._regime_setup_import_btn)
+
+        # Reload Button
+        reload_btn = QPushButton(get_icon("refresh"), "Reload from JSON")
+        reload_btn.setToolTip("Reload optimization ranges from current regime config")
+        reload_btn.clicked.connect(self._populate_regime_setup_tables)
+        button_layout.addWidget(reload_btn)
 
         button_layout.addStretch()
 
@@ -178,363 +204,9 @@ class RegimeSetupMixin:
         button_layout.addWidget(self._regime_setup_apply_btn)
         layout.addLayout(button_layout)
 
-        # Load default preset
-        self._on_regime_setup_preset_changed(0)
-
-    def _create_regime_param_ranges_group(self) -> QGroupBox:
-        """Create parameter ranges group with spinboxes.
-
-        Returns:
-            QGroupBox with parameter range controls
-        """
-        group = QGroupBox("Parameter Ranges")
-        form = QFormLayout(group)
-
-        # ADX Period
-        adx_period_layout = QHBoxLayout()
-        adx_period_min = QSpinBox()
-        adx_period_min.setRange(3, 50)
-        adx_period_min.setValue(10)
-        adx_period_min.valueChanged.connect(self._update_combinations_count)
-        adx_period_layout.addWidget(QLabel("Min:"))
-        adx_period_layout.addWidget(adx_period_min)
-
-        adx_period_max = QSpinBox()
-        adx_period_max.setRange(3, 50)
-        adx_period_max.setValue(30)
-        adx_period_max.valueChanged.connect(self._update_combinations_count)
-        adx_period_layout.addWidget(QLabel("Max:"))
-        adx_period_layout.addWidget(adx_period_max)
-        adx_period_layout.addStretch()
-
-        form.addRow("ADX Period:", adx_period_layout)
-        self._regime_setup_param_widgets["adx_period"] = (adx_period_min, adx_period_max)
-
-        # ADX Threshold
-        adx_threshold_layout = QHBoxLayout()
-        adx_threshold_min = QSpinBox()
-        adx_threshold_min.setRange(10, 70)
-        adx_threshold_min.setValue(20)
-        adx_threshold_min.valueChanged.connect(self._update_combinations_count)
-        adx_threshold_layout.addWidget(QLabel("Min:"))
-        adx_threshold_layout.addWidget(adx_threshold_min)
-
-        adx_threshold_max = QSpinBox()
-        adx_threshold_max.setRange(10, 70)
-        adx_threshold_max.setValue(35)
-        adx_threshold_max.valueChanged.connect(self._update_combinations_count)
-        adx_threshold_layout.addWidget(QLabel("Max:"))
-        adx_threshold_layout.addWidget(adx_threshold_max)
-        adx_threshold_layout.addStretch()
-
-        form.addRow("ADX Threshold:", adx_threshold_layout)
-        self._regime_setup_param_widgets["adx_threshold"] = (adx_threshold_min, adx_threshold_max)
-
-        # SMA Fast Period
-        sma_fast_layout = QHBoxLayout()
-        sma_fast_min = QSpinBox()
-        sma_fast_min.setRange(10, 200)
-        sma_fast_min.setValue(20)
-        sma_fast_min.valueChanged.connect(self._update_combinations_count)
-        sma_fast_layout.addWidget(QLabel("Min:"))
-        sma_fast_layout.addWidget(sma_fast_min)
-
-        sma_fast_max = QSpinBox()
-        sma_fast_max.setRange(10, 200)
-        sma_fast_max.setValue(100)
-        sma_fast_max.valueChanged.connect(self._update_combinations_count)
-        sma_fast_layout.addWidget(QLabel("Max:"))
-        sma_fast_layout.addWidget(sma_fast_max)
-        sma_fast_layout.addStretch()
-
-        form.addRow("SMA Fast Period:", sma_fast_layout)
-        self._regime_setup_param_widgets["sma_fast_period"] = (sma_fast_min, sma_fast_max)
-
-        # SMA Slow Period
-        sma_slow_layout = QHBoxLayout()
-        sma_slow_min = QSpinBox()
-        sma_slow_min.setRange(50, 500)
-        sma_slow_min.setValue(100)
-        sma_slow_min.valueChanged.connect(self._update_combinations_count)
-        sma_slow_layout.addWidget(QLabel("Min:"))
-        sma_slow_layout.addWidget(sma_slow_min)
-
-        sma_slow_max = QSpinBox()
-        sma_slow_max.setRange(50, 500)
-        sma_slow_max.setValue(300)
-        sma_slow_max.valueChanged.connect(self._update_combinations_count)
-        sma_slow_layout.addWidget(QLabel("Max:"))
-        sma_slow_layout.addWidget(sma_slow_max)
-        sma_slow_layout.addStretch()
-
-        form.addRow("SMA Slow Period:", sma_slow_layout)
-        self._regime_setup_param_widgets["sma_slow_period"] = (sma_slow_min, sma_slow_max)
-
-        # RSI Period
-        rsi_period_layout = QHBoxLayout()
-        rsi_period_min = QSpinBox()
-        rsi_period_min.setRange(5, 30)
-        rsi_period_min.setValue(10)
-        rsi_period_min.valueChanged.connect(self._update_combinations_count)
-        rsi_period_layout.addWidget(QLabel("Min:"))
-        rsi_period_layout.addWidget(rsi_period_min)
-
-        rsi_period_max = QSpinBox()
-        rsi_period_max.setRange(5, 30)
-        rsi_period_max.setValue(20)
-        rsi_period_max.valueChanged.connect(self._update_combinations_count)
-        rsi_period_layout.addWidget(QLabel("Max:"))
-        rsi_period_layout.addWidget(rsi_period_max)
-        rsi_period_layout.addStretch()
-
-        form.addRow("RSI Period:", rsi_period_layout)
-        self._regime_setup_param_widgets["rsi_period"] = (rsi_period_min, rsi_period_max)
-
-        # RSI Sideways Low
-        rsi_low_layout = QHBoxLayout()
-        rsi_low_min = QSpinBox()
-        rsi_low_min.setRange(20, 50)
-        rsi_low_min.setValue(30)
-        rsi_low_min.valueChanged.connect(self._update_combinations_count)
-        rsi_low_layout.addWidget(QLabel("Min:"))
-        rsi_low_layout.addWidget(rsi_low_min)
-
-        rsi_low_max = QSpinBox()
-        rsi_low_max.setRange(20, 50)
-        rsi_low_max.setValue(45)
-        rsi_low_max.valueChanged.connect(self._update_combinations_count)
-        rsi_low_layout.addWidget(QLabel("Max:"))
-        rsi_low_layout.addWidget(rsi_low_max)
-        rsi_low_layout.addStretch()
-
-        form.addRow("RSI Sideways Low:", rsi_low_layout)
-        self._regime_setup_param_widgets["rsi_sideways_low"] = (rsi_low_min, rsi_low_max)
-
-        # RSI Sideways High
-        rsi_high_layout = QHBoxLayout()
-        rsi_high_min = QSpinBox()
-        rsi_high_min.setRange(50, 80)
-        rsi_high_min.setValue(55)
-        rsi_high_min.valueChanged.connect(self._update_combinations_count)
-        rsi_high_layout.addWidget(QLabel("Min:"))
-        rsi_high_layout.addWidget(rsi_high_min)
-
-        rsi_high_max = QSpinBox()
-        rsi_high_max.setRange(50, 80)
-        rsi_high_max.setValue(70)
-        rsi_high_max.valueChanged.connect(self._update_combinations_count)
-        rsi_high_layout.addWidget(QLabel("Max:"))
-        rsi_high_layout.addWidget(rsi_high_max)
-        rsi_high_layout.addStretch()
-
-        form.addRow("RSI Sideways High:", rsi_high_layout)
-        self._regime_setup_param_widgets["rsi_sideways_high"] = (rsi_high_min, rsi_high_max)
-
-        # BB Period
-        bb_period_layout = QHBoxLayout()
-        bb_period_min = QSpinBox()
-        bb_period_min.setRange(10, 50)
-        bb_period_min.setValue(15)
-        bb_period_min.valueChanged.connect(self._update_combinations_count)
-        bb_period_layout.addWidget(QLabel("Min:"))
-        bb_period_layout.addWidget(bb_period_min)
-
-        bb_period_max = QSpinBox()
-        bb_period_max.setRange(10, 50)
-        bb_period_max.setValue(30)
-        bb_period_max.valueChanged.connect(self._update_combinations_count)
-        bb_period_layout.addWidget(QLabel("Max:"))
-        bb_period_layout.addWidget(bb_period_max)
-        bb_period_layout.addStretch()
-
-        form.addRow("BB Period:", bb_period_layout)
-        self._regime_setup_param_widgets["bb_period"] = (bb_period_min, bb_period_max)
-
-        # BB Std Dev (Standard Deviation)
-        bb_std_layout = QHBoxLayout()
-        bb_std_min = QDoubleSpinBox()
-        bb_std_min.setRange(0.5, 5.0)
-        bb_std_min.setSingleStep(0.1)
-        bb_std_min.setDecimals(1)
-        bb_std_min.setValue(1.5)
-        bb_std_min.valueChanged.connect(self._update_combinations_count)
-        bb_std_layout.addWidget(QLabel("Min:"))
-        bb_std_layout.addWidget(bb_std_min)
-
-        bb_std_max = QDoubleSpinBox()
-        bb_std_max.setRange(0.5, 5.0)
-        bb_std_max.setSingleStep(0.1)
-        bb_std_max.setDecimals(1)
-        bb_std_max.setValue(3.0)
-        bb_std_max.valueChanged.connect(self._update_combinations_count)
-        bb_std_layout.addWidget(QLabel("Max:"))
-        bb_std_layout.addWidget(bb_std_max)
-        bb_std_layout.addStretch()
-
-        form.addRow("BB Std Dev:", bb_std_layout)
-        self._regime_setup_param_widgets["bb_std_dev"] = (bb_std_min, bb_std_max)
-
-        # BB Width Percentile
-        bb_width_layout = QHBoxLayout()
-        bb_width_min = QSpinBox()
-        bb_width_min.setRange(5, 50)
-        bb_width_min.setValue(10)
-        bb_width_min.valueChanged.connect(self._update_combinations_count)
-        bb_width_layout.addWidget(QLabel("Min:"))
-        bb_width_layout.addWidget(bb_width_min)
-
-        bb_width_max = QSpinBox()
-        bb_width_max.setRange(5, 50)
-        bb_width_max.setValue(40)
-        bb_width_max.valueChanged.connect(self._update_combinations_count)
-        bb_width_layout.addWidget(QLabel("Max:"))
-        bb_width_layout.addWidget(bb_width_max)
-        bb_width_layout.addStretch()
-
-        form.addRow("BB Width Percentile:", bb_width_layout)
-        self._regime_setup_param_widgets["bb_width_percentile"] = (bb_width_min, bb_width_max)
-
-        return group
-
-    def _on_regime_setup_mode_changed(self, state: int) -> None:
-        """Handle auto/manual mode toggle.
-
-        Args:
-            state: Qt.CheckState
-        """
-        auto_mode = state == Qt.CheckState.Checked.value
-        self._regime_setup_preset_combo.setEnabled(auto_mode)
-
-        # Enable/disable manual editing of spinboxes
-        for min_spin, max_spin in self._regime_setup_param_widgets.values():
-            min_spin.setEnabled(not auto_mode)
-            max_spin.setEnabled(not auto_mode)
-
-        if auto_mode:
-            self._on_regime_setup_preset_changed(self._regime_setup_preset_combo.currentIndex())
-
-    def _on_regime_setup_preset_changed(self, index: int) -> None:
-        """Handle preset selection.
-
-        Args:
-            index: Preset index
-        """
-        presets = {
-            0: {  # Conservative
-                "adx_period": (12, 18),
-                "adx_threshold": (23, 30),
-                "sma_fast_period": (40, 60),
-                "sma_slow_period": (150, 200),
-                "rsi_period": (12, 16),
-                "rsi_sideways_low": (35, 40),
-                "rsi_sideways_high": (60, 65),
-                "bb_period": (18, 24),
-                "bb_std_dev": (1.8, 2.2),
-                "bb_width_percentile": (15, 25),
-            },
-            1: {  # Standard
-                "adx_period": (10, 30),
-                "adx_threshold": (20, 35),
-                "sma_fast_period": (20, 100),
-                "sma_slow_period": (100, 300),
-                "rsi_period": (10, 20),
-                "rsi_sideways_low": (30, 45),
-                "rsi_sideways_high": (55, 70),
-                "bb_period": (15, 30),
-                "bb_std_dev": (1.5, 3.0),
-                "bb_width_percentile": (10, 40),
-            },
-            2: {  # Aggressive
-                "adx_period": (7, 35),
-                "adx_threshold": (15, 45),
-                "sma_fast_period": (10, 150),
-                "sma_slow_period": (50, 400),
-                "rsi_period": (7, 25),
-                "rsi_sideways_low": (25, 50),
-                "rsi_sideways_high": (50, 75),
-                "bb_period": (10, 40),
-                "bb_std_dev": (1.0, 4.0),
-                "bb_width_percentile": (5, 45),
-            },
-            3: {  # Custom (no change)
-                "adx_period": None,
-                "adx_threshold": None,
-                "sma_fast_period": None,
-                "sma_slow_period": None,
-                "rsi_period": None,
-                "rsi_sideways_low": None,
-                "rsi_sideways_high": None,
-                "bb_period": None,
-                "bb_std_dev": None,
-                "bb_width_percentile": None,
-            },
-        }
-
-        preset = presets.get(index, presets[1])
-
-        for param_name, (min_spin, max_spin) in self._regime_setup_param_widgets.items():
-            if preset[param_name] is not None:
-                min_val, max_val = preset[param_name]
-                min_spin.setValue(min_val)
-                max_spin.setValue(max_val)
-
-        self._update_combinations_count()
-
-    def _update_combinations_count(self) -> None:
-        """Update estimated combinations counter."""
-        # For TPE, we don't test all combinations
-        # Just show the configured max_trials (150 default)
-        max_trials = 150  # From OptimizationConfig.STANDARD
-
-        self._regime_setup_combinations_label.setText(f"{max_trials} (TPE-optimized)")
-
-        # Calculate actual grid search size for reference
-        grid_size = 1
-        for min_spin, max_spin in self._regime_setup_param_widgets.values():
-            min_val = min_spin.value()
-            max_val = max_spin.value()
-            range_size = max(1, max_val - min_val + 1)
-            grid_size *= range_size
-
-        if grid_size > 1000000:
-            grid_text = f"(Grid search would be {grid_size:,} trials - impractical!)"
-            self._regime_setup_combinations_label.setToolTip(grid_text)
-
-    def _on_regime_setup_apply(self) -> None:
-        """Apply settings and switch to Regime Optimization tab."""
-        logger.info("Applying regime setup parameters")
-
-        # Store config for next tab
-        self._regime_setup_config = self._get_regime_setup_config()
-
-        # Enable and switch to Regime Optimization tab (next tab)
-        if hasattr(self, "_tabs"):
-            # Find the Regime Optimization tab (should be next after Regime Setup)
-            current_index = self._tabs.currentIndex()
-            next_index = current_index + 1
-            if next_index < self._tabs.count():
-                self._tabs.setTabEnabled(next_index, True)
-                self._tabs.setCurrentIndex(next_index)
-
-        logger.info(f"Regime setup complete, config: {self._regime_setup_config}")
-
-    def _get_regime_setup_config(self) -> dict:
-        """Get current regime setup configuration.
-
-        Returns:
-            Dict with parameter ranges
-        """
-        config = {}
-        for param_name, (min_spin, max_spin) in self._regime_setup_param_widgets.items():
-            config[param_name] = {
-                "min": min_spin.value(),
-                "max": max_spin.value(),
-            }
-
-        config["preset"] = self._regime_setup_preset_combo.currentText()
-        config["auto_mode"] = self._regime_setup_auto_mode.isChecked()
-
-        return config
+        # Populate tables from loaded regime config
+        self._populate_regime_setup_indicators_table()
+        self._populate_regime_setup_tables()
 
     def _populate_regime_setup_indicators_table(self) -> None:
         """Populate indicators table with current regime config from JSON.
@@ -591,96 +263,270 @@ class RegimeSetupMixin:
 
         logger.info(f"Populated indicators table with {len(config.indicators)} indicators")
 
+    def _populate_regime_setup_tables(self) -> None:
+        """Dynamically populate parameter and threshold tables from JSON.
+
+        Reads optimization_ranges from regime config and creates spinboxes automatically.
+        Supports ANY indicator with ANY number of parameters!
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        # Clear existing
+        self._regime_setup_params_table.setRowCount(0)
+        self._regime_setup_thresholds_table.setRowCount(0)
+        self._regime_setup_param_ranges.clear()
+
+        # Get regime config
+        if not hasattr(self, "_regime_config") or self._regime_config is None:
+            logger.warning("No regime config loaded, cannot populate setup tables")
+            return
+
+        config = self._regime_config
+
+        # 1. Populate Indicator Parameters Table
+        for indicator in config.indicators:
+            # Check if indicator has optimization_ranges
+            if not hasattr(indicator, "optimization_ranges") or not indicator.optimization_ranges:
+                logger.debug(f"Indicator {indicator.id} has no optimization_ranges, using defaults")
+                # Create default ranges based on current params
+                optimization_ranges = self._create_default_ranges(indicator.params)
+            else:
+                optimization_ranges = indicator.optimization_ranges
+
+            # Create row for each parameter
+            for param_name, param_value in indicator.params.items():
+                if param_name not in optimization_ranges:
+                    logger.debug(f"No optimization range for {indicator.id}.{param_name}, skipping")
+                    continue
+
+                range_def = optimization_ranges[param_name]
+
+                row = self._regime_setup_params_table.rowCount()
+                self._regime_setup_params_table.insertRow(row)
+
+                # Indicator ID
+                ind_item = QTableWidgetItem(indicator.id)
+                ind_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_setup_params_table.setItem(row, 0, ind_item)
+
+                # Parameter Name
+                param_item = QTableWidgetItem(param_name)
+                param_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_setup_params_table.setItem(row, 1, param_item)
+
+                # Current Value
+                current_item = QTableWidgetItem(str(param_value))
+                current_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                current_item.setForeground(Qt.GlobalColor.blue)
+                self._regime_setup_params_table.setItem(row, 2, current_item)
+
+                # Min SpinBox
+                min_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
+                min_spin.setValue(range_def["min"])
+                self._regime_setup_params_table.setCellWidget(row, 3, min_spin)
+
+                # Max SpinBox
+                max_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
+                max_spin.setValue(range_def["max"])
+                self._regime_setup_params_table.setCellWidget(row, 4, max_spin)
+
+                # Step
+                step_item = QTableWidgetItem(str(range_def.get("step", 1)))
+                step_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                step_item.setForeground(Qt.GlobalColor.gray)
+                self._regime_setup_params_table.setItem(row, 5, step_item)
+
+                # Store reference
+                param_key = f"{indicator.id}.{param_name}"
+                self._regime_setup_param_ranges[param_key] = (min_spin, max_spin)
+
+        # 2. Populate Regime Thresholds Table
+        for regime in config.regimes:
+            # Check if regime has optimization_ranges
+            if not hasattr(regime, "optimization_ranges") or not regime.optimization_ranges:
+                logger.debug(f"Regime {regime.id} has no optimization_ranges, skipping")
+                continue
+
+            # Create row for each threshold
+            for threshold_name, range_def in regime.optimization_ranges.items():
+                row = self._regime_setup_thresholds_table.rowCount()
+                self._regime_setup_thresholds_table.insertRow(row)
+
+                # Regime ID
+                regime_item = QTableWidgetItem(regime.id)
+                regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                # Color code
+                if "BULL" in regime.id:
+                    regime_item.setForeground(Qt.GlobalColor.darkGreen)
+                elif "BEAR" in regime.id:
+                    regime_item.setForeground(Qt.GlobalColor.darkRed)
+                elif "SIDEWAYS" in regime.id:
+                    regime_item.setForeground(Qt.GlobalColor.darkYellow)
+                self._regime_setup_thresholds_table.setItem(row, 0, regime_item)
+
+                # Threshold Name
+                threshold_item = QTableWidgetItem(threshold_name)
+                threshold_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                threshold_item.setToolTip(range_def.get("description", ""))
+                self._regime_setup_thresholds_table.setItem(row, 1, threshold_item)
+
+                # Min SpinBox
+                min_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
+                min_spin.setValue(range_def["min"])
+                self._regime_setup_thresholds_table.setCellWidget(row, 2, min_spin)
+
+                # Max SpinBox
+                max_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
+                max_spin.setValue(range_def["max"])
+                self._regime_setup_thresholds_table.setCellWidget(row, 3, max_spin)
+
+                # Step
+                step_item = QTableWidgetItem(str(range_def.get("step", 1)))
+                step_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                step_item.setForeground(Qt.GlobalColor.gray)
+                self._regime_setup_thresholds_table.setItem(row, 4, step_item)
+
+                # Store reference
+                threshold_key = f"{regime.id}.{threshold_name}"
+                self._regime_setup_param_ranges[threshold_key] = (min_spin, max_spin)
+
+        logger.info(
+            f"Populated {self._regime_setup_params_table.rowCount()} indicator parameters and "
+            f"{self._regime_setup_thresholds_table.rowCount()} regime thresholds"
+        )
+
+    def _create_spinbox(self, min_val: float, max_val: float, step: float) -> QSpinBox | QDoubleSpinBox:
+        """Create appropriate spinbox based on value type.
+
+        Args:
+            min_val: Minimum value
+            max_val: Maximum value
+            step: Step size
+
+        Returns:
+            QSpinBox for integers, QDoubleSpinBox for floats
+        """
+        if isinstance(min_val, float) or isinstance(max_val, float) or isinstance(step, float):
+            spin = QDoubleSpinBox()
+            spin.setDecimals(2)
+        else:
+            spin = QSpinBox()
+
+        spin.setRange(int(min_val) if isinstance(spin, QSpinBox) else min_val,
+                     int(max_val) if isinstance(spin, QSpinBox) else max_val)
+        spin.setSingleStep(int(step) if isinstance(spin, QSpinBox) else step)
+        spin.setMinimumWidth(80)
+
+        return spin
+
+    def _create_default_ranges(self, params: dict) -> dict:
+        """Create default optimization ranges for parameters without ranges.
+
+        Args:
+            params: Current parameter values
+
+        Returns:
+            Dict with default min/max/step for each parameter
+        """
+        default_ranges = {}
+        for param_name, param_value in params.items():
+            if isinstance(param_value, float):
+                # Float parameter: ±50% range
+                default_ranges[param_name] = {
+                    "min": param_value * 0.5,
+                    "max": param_value * 1.5,
+                    "step": param_value * 0.1
+                }
+            else:
+                # Integer parameter: ±50% range
+                default_ranges[param_name] = {
+                    "min": max(1, int(param_value * 0.5)),
+                    "max": int(param_value * 1.5),
+                    "step": 1
+                }
+        return default_ranges
+
+    def _on_regime_setup_apply(self) -> None:
+        """Apply settings and switch to Regime Optimization tab."""
+        logger.info("Applying regime setup parameters")
+
+        # Store config for next tab
+        self._regime_setup_config = self._get_regime_setup_config()
+
+        # Enable and switch to Regime Optimization tab (next tab)
+        if hasattr(self, "_tabs"):
+            # Find the Regime Optimization tab (should be next after Regime Setup)
+            current_index = self._tabs.currentIndex()
+            next_index = current_index + 1
+            if next_index < self._tabs.count():
+                self._tabs.setTabEnabled(next_index, True)
+                self._tabs.setCurrentIndex(next_index)
+
+        logger.info(f"Regime setup complete, {len(self._regime_setup_config)} parameter ranges configured")
+
+    def _get_regime_setup_config(self) -> dict:
+        """Get current regime setup configuration from spinboxes.
+
+        Returns:
+            Dict with parameter ranges: {param_key: {min: X, max: Y}}
+        """
+        config = {}
+
+        for param_key, (min_spin, max_spin) in self._regime_setup_param_ranges.items():
+            config[param_key] = {
+                "min": min_spin.value(),
+                "max": max_spin.value(),
+            }
+
+        logger.info(f"Collected {len(config)} parameter ranges")
+        return config
+
     @pyqtSlot()
     def _on_regime_setup_import(self) -> None:
         """Import regime configuration with parameter ranges from JSON file."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-        import json
-
-        # Get default import directory
         project_root = Path(__file__).parent.parent.parent.parent
-        default_dir = project_root / "03_JSON" / "Entry_Analyzer"
-        default_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = project_root / "03_JSON" / "Entry_Analyzer" / "Regime"
+        base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Open file dialog
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import Regime Configuration",
-            str(default_dir),
-            "JSON Files (*.json)"
+            self, "Import Regime Config", str(base_dir), "JSON Files (*.json)"
         )
-
         if not file_path:
-            return  # User cancelled
+            return
 
         try:
             # Load JSON file
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Check version
-            if data.get("version") != "2.0":
-                QMessageBox.warning(
-                    self,
-                    "Version Mismatch",
-                    f"File version {data.get('version')} may not be compatible with v2.0. Importing anyway..."
-                )
+            # Load config using ConfigLoader
+            from src.core.tradingbot.config.loader import ConfigLoader
+            loader = ConfigLoader()
+            self._regime_config = loader.load_config(Path(file_path))
 
-            # Extract parameter ranges
-            param_ranges = data.get("parameter_ranges", {})
-            if not param_ranges:
-                QMessageBox.warning(
-                    self,
-                    "No Parameter Ranges",
-                    "File does not contain parameter_ranges. Cannot import."
-                )
-                return
-
-            # Update UI with imported ranges
-            for param_name, range_dict in param_ranges.items():
-                if param_name in self._regime_setup_param_widgets:
-                    min_spin, max_spin = self._regime_setup_param_widgets[param_name]
-
-                    # Set values
-                    min_val = range_dict.get("min")
-                    max_val = range_dict.get("max")
-
-                    if min_val is not None:
-                        min_spin.setValue(min_val)
-                    if max_val is not None:
-                        max_spin.setValue(max_val)
+            # Reload all tables
+            self._populate_regime_setup_indicators_table()
+            self._populate_regime_setup_tables()
 
             # Update max_trials if present
-            max_trials_meta = data.get("meta", {}).get("max_trials")
+            max_trials_meta = data.get("metadata", {}).get("max_trials")
             if max_trials_meta and hasattr(self, "_regime_setup_max_trials"):
                 self._regime_setup_max_trials.setValue(max_trials_meta)
-
-            # Switch to Custom preset
-            self._regime_setup_preset_combo.setCurrentText("Custom")
-            self._regime_setup_auto_mode.setChecked(False)
-
-            # Update combination counter
-            self._update_combinations_count()
-
-            logger.info(f"Imported regime configuration from {file_path}")
 
             QMessageBox.information(
                 self,
                 "Import Successful",
-                f"Imported parameter ranges from:\n{file_path}\n\nPreset set to 'Custom'."
+                f"Successfully imported regime configuration from:\n{file_path}\n\n"
+                f"Loaded {len(self._regime_config.indicators)} indicators with optimization ranges."
             )
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Invalid JSON",
-                f"File is not valid JSON:\n{str(e)}"
-            )
+            logger.info(f"Imported regime config from {file_path}")
+
         except Exception as e:
-            logger.error(f"Import failed: {e}", exc_info=True)
+            logger.error(f"Failed to import regime config: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Import Failed",
-                f"Failed to import configuration:\n{str(e)}"
+                f"Failed to import regime configuration:\n\n{str(e)}"
             )
