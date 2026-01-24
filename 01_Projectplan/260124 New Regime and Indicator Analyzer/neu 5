@@ -1,0 +1,111 @@
+❯ da stimmt doch was nicht mit der übernahem der optimierten parameter!! z.b. json datei geladen,
+  adx parameters: '"Blitz" period: 10' Im 'Regime Setup' steht in beiden tabellen 'current' =
+  period 14 oder untere tabelle nur 14. Welche werte werden jetzt wirklich verwendet? Bei
+  'Analyse Visible Range'?? (ATX nur Beisoiel, andere Parameter haben auch einen Blitz).
+
+● Das ist ein wichtiger Punkt! Lass mich untersuchen, wo die Diskrepanz liegt.
+
+● Search(pattern: "Regime Setup|current.*period|_populate.*table", path:
+        "src/ui/dialogs/entry_analyzer")
+  ⎿  Found 7 files (ctrl+o to expand)
+
+● Search(pattern: "_populate_regime", path: "src/ui/dialogs/entry_analyzer", output_mode: "content")
+  ⎿  Found 14 lines (ctrl+o to expand)
+
+● Read(src/ui/dialogs/entry_analyzer/entry_analyzer_regime_setup_mixin.py)
+  ⎿  Read 150 lines
+
+● Ich habe das Problem gefunden!
+
+  Die "Regime Setup" Tabellen zeigen die Basis-Parameter aus indicators, NICHT die optimierten Werte
+  aus optimization_results.
+
+  Was passiert aktuell:
+  - Tabelle zeigt: adx14.period = 14 (aus indicators[].params)
+  - Analyzer verwendet: adx14.period = 10 (aus optimization_results[].params)
+
+  Das ist inkonsistent! Ich fixe das jetzt:
+
+● Read(src/ui/dialogs/entry_analyzer/entry_analyzer_regime_setup_mixin.py)
+  ⎿  Read 80 lines
+
+● Read(src/ui/dialogs/entry_analyzer/entry_analyzer_regime_setup_mixin.py)
+  ⎿  Read 100 lines
+
+● Jetzt modifiziere ich die Funktionen, um die optimierten Parameter anzuzeigen:
+
+● Update(src/ui/dialogs/entry_analyzer/entry_analyzer_regime_setup_mixin.py)
+
+
+
+
+#################################################################################################################
+
+
+
+❯ selbst in der eigenen json steht unter z.b. Type Regime->Bull->Bull Market->Prority
+  80->adx14.value > 25.0 mehr kann ich nicht lesen.. Wird Regime überhaupt geändert, variiert
+  beim Backtesten?
+
+● Das ist ein sehr wichtiger Punkt! Hier liegt eine architektonische Trennung:
+
+  Das Problem: Zwei verschiedene Regime-Detection Systeme!
+  ┌─────────────────────┬─────────────────────────────────────────────────┬─────────────────────────┐
+  │       System        │                     Quelle                      │      Verwendet von      │
+  ├─────────────────────┼─────────────────────────────────────────────────┼─────────────────────────┤
+  │ CEL-basiert         │ regimes[].conditions in JSON (adx14.value > 25) │ Trading Bot (zukünftig) │
+  ├─────────────────────┼─────────────────────────────────────────────────┼─────────────────────────┤
+  │ OptimParams-basiert │ entry_signal_engine.detect_regime()             │ Analyze Visible Range   │
+  └─────────────────────┴─────────────────────────────────────────────────┴─────────────────────────┘
+  Konkret:
+
+  JSON Regimes (CEL-Conditions):
+    BULL: adx14.value > 25 AND macd > 0   ← NICHT verwendet von Analyzer!
+
+  entry_signal_engine.py:
+    detect_regime() verwendet OptimParams.adx_trend (Default: 18.0)
+    generate_entries() verwendet OptimParams.pullback_atr, etc.
+
+  Was tatsächlich passiert:
+
+  1. Du lädst optimization_results mit BULL.adx_threshold: 20
+  2. Der params_loader.py mappt das zu OptimParams.adx_trend = 20.0
+  3. Der Analyzer's detect_regime() nutzt diesen Wert (20.0)
+  4. ABER: Die CEL-Conditions in regimes[] (adx14.value > 25) werden ignoriert!
+
+● Read(src/analysis/entry_signals/entry_signal_engine.py)
+  ⎿  Read 50 lines
+
+● Hier ist die Regime-Detection des Analyzers:
+
+  # entry_signal_engine.py:479
+  if a >= params.adx_trend:  # ← verwendet NICHT die JSON CEL-Conditions!
+      if trend_dir >= 0:
+          return RegimeType.TREND_UP
+      return RegimeType.TREND_DOWN
+
+  Der Analyzer verwendet NICHT die CEL-Conditions aus der JSON!
+
+  Er verwendet eine vereinfachte eigene Logik basierend auf:
+  - params.adx_trend (für TREND_UP/DOWN)
+  - params.squeeze_bb_width (für SQUEEZE)
+  - params.high_vol_atr_pct (für HIGH_VOL)
+  - Fallback: RANGE
+
+  Zusammenfassung
+  ┌────────────────────────────────────────────┬──────────────────────────────────────────────────┐
+  │             Was in JSON steht              │              Was Analyzer verwendet              │
+  ├────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ BULL: adx14.value > 25                     │ params.adx_trend = 20 (aus optimization_results) │
+  ├────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ BEAR: adx14.value > 25 AND macd < 0        │ Nur params.adx_trend + EMA direction             │
+  ├────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │ SIDEWAYS_OVERBOUGHT: adx < 25 AND rsi > 70 │ Nicht verwendet - eigene Range-Logik             │
+  └────────────────────────────────────────────┴──────────────────────────────────────────────────┘
+  Das bedeutet:
+  1. Die JSON-Regime-Definitionen (CEL-Conditions) werden vom Trading Bot verwendet (zukünftig)
+  2. Der Analyzer hat seine eigene, vereinfachte Regime-Detection
+  3. Die optimization_results.params wie BULL.adx_threshold werden korrekt geladen und verwendet
+
+  Frage: Möchtest du, dass der Analyzer die CEL-basierte Regime-Detection aus der JSON verwendet,
+  statt seiner vereinfachten Logik? Das wäre ein größerer Umbau.

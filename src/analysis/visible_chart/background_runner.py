@@ -74,6 +74,7 @@ class RunnerConfig:
         use_optimizer: Whether to use the optimizer.
         auto_start: Start runner on init.
         performance_log_interval: Log performance every N analyses.
+        json_config_path: Path to JSON config for regime parameters.
     """
 
     reanalyze_interval_sec: float = 60.0  # Reanalyze every minute
@@ -82,6 +83,7 @@ class RunnerConfig:
     use_optimizer: bool = True
     auto_start: bool = False
     performance_log_interval: int = 10
+    json_config_path: str | None = None  # Issue #28: JSON config path
 
 
 @dataclass
@@ -136,9 +138,11 @@ class BackgroundRunner:
             config: Runner configuration.
         """
         self.config = config or RunnerConfig()
+        # Issue #28: Pass JSON config path to analyzer
         self._analyzer = VisibleChartAnalyzer(
             use_optimizer=self.config.use_optimizer,
             use_cache=True,
+            json_config_path=self.config.json_config_path,
         )
 
         # Task queue (priority queue)

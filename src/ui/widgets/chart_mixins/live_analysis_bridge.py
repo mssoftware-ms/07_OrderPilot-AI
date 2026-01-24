@@ -49,12 +49,14 @@ class LiveAnalysisBridge(QObject):
         self,
         reanalyze_interval_sec: float = 60.0,
         use_optimizer: bool = True,
+        json_config_path: str | None = None,
     ) -> None:
         """Start the background runner for live analysis.
 
         Args:
             reanalyze_interval_sec: Interval for scheduled reanalysis.
             use_optimizer: Whether to use the optimizer.
+            json_config_path: Path to JSON config file for regime parameters.
         """
         from src.analysis.visible_chart.background_runner import (
             BackgroundRunner,
@@ -64,10 +66,12 @@ class LiveAnalysisBridge(QObject):
         if self._runner:
             self._runner.stop()
 
+        # Issue #28: Pass JSON config path to runner
         config = RunnerConfig(
             reanalyze_interval_sec=reanalyze_interval_sec,
             use_optimizer=use_optimizer,
             debounce_ms=500.0,
+            json_config_path=json_config_path,
         )
 
         self._runner = BackgroundRunner(config)
@@ -77,7 +81,11 @@ class LiveAnalysisBridge(QObject):
         self._runner.on_error = self._on_error
         self._runner.start()
 
-        logger.info("Live analysis started (interval=%.1fs)", reanalyze_interval_sec)
+        logger.info(
+            "Live analysis started (interval=%.1fs, json=%s)",
+            reanalyze_interval_sec,
+            json_config_path,
+        )
 
     def stop_live_analysis(self) -> None:
         """Stop the background runner."""

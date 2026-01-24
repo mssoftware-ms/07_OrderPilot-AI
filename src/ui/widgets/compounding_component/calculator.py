@@ -8,11 +8,13 @@ Pure Berechnungs-Engine für Zinseszins/Compounding im Trading.
 Formeln (Tag d, 1-indexiert):
 Startkapital: capital[d]
 Brutto-Gewinn (auf Margin-Kapital): gross_profit = capital[d] * (daily_profit_pct/100)
-Notional (für Gebühren): notional = capital[d] * leverage
-Gebühren: fee_amount = notional * (fee_pct/100)
+Notional (für Gebühren): notional_open = capital[d] * leverage
+Preisänderung (Underlying): price_change = (daily_profit_pct/100) / leverage
+Notional beim Schließen: notional_close = notional_open * (1 + price_change)
+Gebühren (Roundtrip): fee_amount = (notional_open * fee_open_pct/100) + (notional_close * fee_close_pct/100)
 Gewinn vor Steuern: profit_before_tax = gross_profit - fee_amount
-Steuern: tax_amount = max(profit_before_tax, 0) * (tax_pct/100)
-Netto: net_profit = profit_before_tax - tax_amount
+Steuern (monatlich, am Ende): month_tax = max(sum(profit_before_tax), 0) * (tax_pct/100)
+Netto pro Tag: net_profit = profit_before_tax  (Steuern erst am Monatsende)
 Reinvest: reinvest = max(net_profit, 0) * (reinvest_pct/100)
 Entnahme: withdrawal = max(net_profit, 0) - reinvest
 Kapital nächster Tag:
@@ -46,7 +48,8 @@ def pct(x: Decimal) -> Decimal:
 @dataclass(frozen=True)
 class Params:
     start_capital: Decimal = Decimal("100")
-    fee_pct: Decimal = Decimal("0.08")
+    fee_open_pct: Decimal = Decimal("0.06")
+    fee_close_pct: Decimal = Decimal("0.06")
     leverage: Decimal = Decimal("20")
     daily_profit_pct: Decimal = Decimal("30")
     reinvest_pct: Decimal = Decimal("30")
@@ -62,7 +65,8 @@ class Params:
         if self.leverage <= 0:
             raise ValueError("leverage muss > 0 sein.")
         for name, v, lo, hi in [
-            ("fee_pct", self.fee_pct, Decimal("0"), Decimal("100")),
+            ("fee_open_pct", self.fee_open_pct, Decimal("0"), Decimal("100")),
+            ("fee_close_pct", self.fee_close_pct, Decimal("0"), Decimal("100")),
             ("daily_profit_pct", self.daily_profit_pct, Decimal("-99.999999"), Decimal("1000")),
             ("reinvest_pct", self.reinvest_pct, Decimal("0"), Decimal("100")),
             ("tax_pct", self.tax_pct, Decimal("0"), Decimal("100")),
@@ -103,7 +107,8 @@ def simulate(params: Params) -> Tuple[List[DayResult], MonthKpis]:
     capital = money(_d(params.start_capital))
 
     dp = _d(params.daily_profit_pct) / Decimal("100")
-    fp = _d(params.fee_pct) / Decimal("100")
+    fp_open = _d(params.fee_open_pct) / Decimal("100")
+    fp_close = _d(params.fee_close_pct) / Decimal("100")
     rp = _d(params.reinvest_pct) / Decimal("100")
     tp = _d(params.tax_pct) / Decimal("100")
     lev = _d(params.leverage)
@@ -119,10 +124,14 @@ def simulate(params: Params) -> Tuple[List[DayResult], MonthKpis]:
         start_cap = capital
         gross = money(start_cap * dp)
         notional = money(start_cap * lev)
-        fee = money(notional * fp)
+        price_change = dp / lev
+        notional_close = money(notional * (Decimal("1") + price_change))
+        fee_open = money(notional * fp_open)
+        fee_close = money(notional_close * fp_close)
+        fee = money(fee_open + fee_close)
         pbt = money(gross - fee)
-        tax = money((pbt if pbt > 0 else Decimal("0")) * tp)
-        net = money(pbt - tax)
+        tax = Decimal("0")
+        net = money(pbt)
         reinv = money((net if net > 0 else Decimal("0")) * rp)
         withdrawal = money((net if net > 0 else Decimal("0")) - reinv)
 
@@ -155,6 +164,27 @@ def simulate(params: Params) -> Tuple[List[DayResult], MonthKpis]:
         sum_withdrawal += withdrawal
         capital = capital_next
 
+    # Apply taxes at month end (only if total profit before tax is positive).
+    month_tax = money((sum_net if sum_net > 0 else Decimal("0")) * tp)
+    sum_taxes = month_tax
+    capital = money(capital - month_tax)
+    sum_net = money(sum_net - month_tax)
+    if days:
+        last = days[-1]
+        days[-1] = DayResult(
+            day=last.day,
+            start_capital=last.start_capital,
+            gross_profit=last.gross_profit,
+            notional=last.notional,
+            fee_amount=last.fee_amount,
+            profit_before_tax=last.profit_before_tax,
+            tax_amount=last.tax_amount,
+            net_profit=last.net_profit,
+            reinvest=last.reinvest,
+            withdrawal=last.withdrawal,
+            end_capital=capital,
+        )
+
     roi = Decimal("0")
     if params.start_capital > 0:
         roi = pct((capital - money(_d(params.start_capital))) / money(_d(params.start_capital)) * Decimal("100"))
@@ -182,7 +212,8 @@ class SolveStatus:
 def monthly_net_for_daily_pct(base_params: Params, daily_profit_pct: Decimal) -> Decimal:
     p = Params(
         start_capital=base_params.start_capital,
-        fee_pct=base_params.fee_pct,
+        fee_open_pct=base_params.fee_open_pct,
+        fee_close_pct=base_params.fee_close_pct,
         leverage=base_params.leverage,
         daily_profit_pct=daily_profit_pct,
         reinvest_pct=base_params.reinvest_pct,

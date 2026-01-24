@@ -89,7 +89,8 @@ EntryAnalyzerPopup
 ├── BacktestMixin     - Backtest-Setup, Regime-Analyse, Regime-Set Erstellung
 ├── IndicatorsMixin   - Indikator-Optimierung + Presets
 ├── AnalysisMixin     - Visible Range + Validation
-└── AIMixin           - AI Copilot + Pattern Recognition
+├── AIMixin           - AI Copilot + Pattern Recognition
+└── CompoundingMixin  - Compounding/P&L Calculator Tab
 ```
 
 ### TradingApplication (src/ui/app.py)

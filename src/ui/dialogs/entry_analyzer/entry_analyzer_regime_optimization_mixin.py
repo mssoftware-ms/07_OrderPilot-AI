@@ -661,6 +661,15 @@ class RegimeOptimizationMixin:
             max_trials = getattr(self, "_regime_setup_max_trials", None)
             max_trials_value = max_trials.value() if max_trials else 150
 
+            # Issue #28: Get entry_params and evaluation_params from config if available
+            entry_params = {}
+            evaluation_params = {}
+            if hasattr(self, "_regime_config") and self._regime_config:
+                if hasattr(self._regime_config, "entry_params") and self._regime_config.entry_params:
+                    entry_params = self._regime_config.entry_params
+                if hasattr(self._regime_config, "evaluation_params") and self._regime_config.evaluation_params:
+                    evaluation_params = self._regime_config.evaluation_params
+
             # Build export data
             export_data = {
                 "version": "2.0",
@@ -677,6 +686,12 @@ class RegimeOptimizationMixin:
                 "parameter_ranges": param_ranges,
                 "results": self._regime_opt_all_results,
             }
+
+            # Issue #28: Include entry_params and evaluation_params if present
+            if entry_params:
+                export_data["entry_params"] = entry_params
+            if evaluation_params:
+                export_data["evaluation_params"] = evaluation_params
 
             # Write to file
             with open(file_path, 'w', encoding='utf-8') as f:

@@ -248,7 +248,16 @@ class BacktestConfigMixin:
 
         self._regime_config = config
         self._regime_config_path = config_path
-        self._regime_config_path_label.setText(str(config_path))
+
+        # Build path display with optimization score if available
+        path_text = str(config_path)
+        if hasattr(config, 'optimization_results') and config.optimization_results:
+            applied = [r for r in config.optimization_results if r.get('applied', False)]
+            result = applied[-1] if applied else config.optimization_results[0]
+            score = result.get('score', 0)
+            path_text = f"{config_path.name}  |  Score: {score:.1f}"
+
+        self._regime_config_path_label.setText(path_text)
         self._regime_config_path_label.setStyleSheet("color: #10b981;")
         self._populate_regime_config_table(config)
 
@@ -324,12 +333,36 @@ class BacktestConfigMixin:
         self._regime_config_table.setSortingEnabled(False)
         self._regime_config_table.setRowCount(0)
 
+        # Extract optimized params from optimization_results (if available)
+        optimized_params = {}
+        if hasattr(config, 'optimization_results') and config.optimization_results:
+            # Find the latest applied result, or use the first one
+            applied = [r for r in config.optimization_results if r.get('applied', False)]
+            result = applied[-1] if applied else config.optimization_results[0]
+            optimized_params = result.get('params', {})
+
+        def get_optimized_indicator_params(indicator_id: str, base_params: dict) -> dict:
+            """Apply optimized params over base params."""
+            merged = dict(base_params)
+            # Look for params like "adx14.period" -> applies to indicator "adx14"
+            for key, value in optimized_params.items():
+                if key.startswith(f"{indicator_id}."):
+                    param_name = key.split(".", 1)[1]
+                    merged[param_name] = value
+            return merged
+
         # Indicators
         for indicator in config.indicators:
             row = self._regime_config_table.rowCount()
             self._regime_config_table.insertRow(row)
 
-            params_display, params_full = format_params(indicator.params)
+            # Apply optimized params if available
+            effective_params = get_optimized_indicator_params(indicator.id, indicator.params)
+            params_display, params_full = format_params(effective_params)
+
+            # Mark as optimized if params differ from base
+            if effective_params != indicator.params:
+                params_display = f"⚡ {params_display}"
 
             # Type
             type_item = QTableWidgetItem("Indicator")

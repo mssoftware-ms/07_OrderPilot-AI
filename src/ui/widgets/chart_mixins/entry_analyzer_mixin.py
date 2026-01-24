@@ -41,6 +41,7 @@ class AnalysisWorker(QThread):
         timeframe: str,
         candles: list[dict],
         use_optimizer: bool = True,
+        json_config_path: str | None = None,
         parent: Any = None,
     ) -> None:
         """Initialize the analysis worker.
@@ -51,6 +52,7 @@ class AnalysisWorker(QThread):
             timeframe: Chart timeframe.
             candles: Pre-loaded candle data from chart.
             use_optimizer: If True, run FastOptimizer (Phase 2).
+            json_config_path: Path to JSON config file for regime parameters.
             parent: Parent QObject.
         """
         super().__init__(parent)
@@ -59,6 +61,7 @@ class AnalysisWorker(QThread):
         self._timeframe = timeframe
         self._candles = candles
         self._use_optimizer = use_optimizer
+        self._json_config_path = json_config_path
 
     def run(self) -> None:
         """Execute the analysis in background thread."""
@@ -109,7 +112,11 @@ class AnalysisWorker(QThread):
             )
 
             # Run analysis with pre-loaded candles
-            analyzer = VisibleChartAnalyzer(use_optimizer=self._use_optimizer)
+            # Issue #28: Use JSON config path for regime parameters
+            analyzer = VisibleChartAnalyzer(
+                use_optimizer=self._use_optimizer,
+                json_config_path=self._json_config_path,
+            )
             result = analyzer.analyze_with_candles(
                 visible_range=visible_range,
                 symbol=self._symbol,
@@ -145,6 +152,7 @@ class EntryAnalyzerMixin:
     _live_bridge: LiveAnalysisBridge | None = None
     _live_mode_enabled: bool = False
     _auto_draw_entries: bool = True
+    _current_json_config_path: str | None = None  # Issue #28: Current JSON config path
 
     def _init_entry_analyzer(self) -> None:
         """Initialize entry analyzer connections.
@@ -272,13 +280,20 @@ class EntryAnalyzerMixin:
             self._live_bridge.error_occurred.connect(self._on_live_error)
 
         self._auto_draw_entries = auto_draw
-        self._live_bridge.start_live_analysis(reanalyze_interval_sec, use_optimizer)
+        # Issue #28: Pass JSON config path for regime parameters
+        self._live_bridge.start_live_analysis(
+            reanalyze_interval_sec,
+            use_optimizer,
+            json_config_path=self._current_json_config_path,
+        )
         self._live_mode_enabled = True
 
         # Trigger initial analysis
         self._request_live_analysis()
 
-        logger.info("Live entry analysis started")
+        logger.info(
+            "Live entry analysis started (json=%s)", self._current_json_config_path
+        )
 
     def stop_live_entry_analysis(self) -> None:
         """Stop continuous live entry analysis."""
@@ -367,18 +382,28 @@ class EntryAnalyzerMixin:
 
     # ... (other methods) ...
 
-    def _start_visible_range_analysis(self) -> None:
-        """Start analysis of the visible chart range using Live Bridge."""
+    def _start_visible_range_analysis(self, json_config_path: str = "") -> None:
+        """Start analysis of the visible chart range using Live Bridge.
+
+        Issue #28: Now accepts json_config_path from the popup signal.
+
+        Args:
+            json_config_path: Path to JSON config file from popup (empty for defaults).
+        """
         if not hasattr(self, "get_visible_range"):
             logger.error("Chart widget has no get_visible_range method")
             if self._entry_analyzer_popup:
                 self._entry_analyzer_popup.set_analyzing(False)
             return
 
+        # Store the JSON config path for this analysis
+        self._current_json_config_path = json_config_path if json_config_path else None
+        logger.info("Using JSON config for analysis: %s", self._current_json_config_path)
+
         # Enable live mode and request analysis
         # This unifies the "Analyze" button with the Live/Incremental architecture
         self.start_live_entry_analysis(auto_draw=True)
-        
+
         # Manually set analyzing state (will be cleared in _on_live_result)
         if self._entry_analyzer_popup:
             self._entry_analyzer_popup.set_analyzing(True)

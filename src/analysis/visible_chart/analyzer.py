@@ -8,12 +8,14 @@ Phase 1: MVP with rules-based detection.
 Phase 2: FastOptimizer integration for parameter optimization.
 Phase 2.6: Caching & Wiederverwendung.
 Issue #27: Comprehensive debug logging.
+Issue #28: JSON-based parameter loading (replaces hardcoded OptimParams).
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from .cache import AnalyzerCache, get_analyzer_cache
@@ -55,6 +57,7 @@ class VisibleChartAnalyzer:
         use_optimizer: bool = False,
         use_cache: bool = True,
         cache: AnalyzerCache | None = None,
+        json_config_path: Path | str | None = None,
     ) -> None:
         """Initialize the analyzer.
 
@@ -62,6 +65,9 @@ class VisibleChartAnalyzer:
             use_optimizer: If True, use FastOptimizer for parameter tuning.
             use_cache: If True, use caching for features/regime/optimizer.
             cache: Optional custom cache instance. Uses global if None.
+            json_config_path: Path to JSON config file (entry_analyzer_regime.json).
+                             If provided, parameters are loaded from this file
+                             instead of using hardcoded defaults.
         """
         self._candle_loader = CandleLoader()
         self._use_optimizer = use_optimizer
@@ -70,6 +76,55 @@ class VisibleChartAnalyzer:
         self._optimizer = None
         self._last_symbol: str | None = None
         self._last_regime: RegimeType | None = None
+        self._json_config_path: Path | None = (
+            Path(json_config_path) if json_config_path else None
+        )
+        self._cached_optim_params: Any = None  # Cache loaded params
+
+    def _get_optim_params(self) -> Any:
+        """Get OptimParams from JSON config or use defaults.
+
+        Loads parameters from the JSON config file if available.
+        Caches the loaded params to avoid repeated file reads.
+
+        Returns:
+            OptimParams instance (from JSON or defaults)
+        """
+        from src.analysis.entry_signals.entry_signal_engine import OptimParams
+
+        # Return cached params if available
+        if self._cached_optim_params is not None:
+            return self._cached_optim_params
+
+        # Try to load from JSON config
+        if self._json_config_path is not None:
+            from src.analysis.entry_signals.params_loader import (
+                load_optim_params_from_json,
+            )
+
+            self._cached_optim_params = load_optim_params_from_json(
+                self._json_config_path
+            )
+            logger.info(
+                "Loaded OptimParams from JSON: %s", self._json_config_path
+            )
+            return self._cached_optim_params
+
+        # Fallback to defaults
+        self._cached_optim_params = OptimParams()
+        return self._cached_optim_params
+
+    def set_json_config_path(self, json_path: Path | str | None) -> None:
+        """Set or update the JSON config path.
+
+        Clears cached params so they will be reloaded on next use.
+
+        Args:
+            json_path: Path to JSON config file, or None to use defaults
+        """
+        self._json_config_path = Path(json_path) if json_path else None
+        self._cached_optim_params = None  # Clear cache
+        logger.info("JSON config path updated: %s", self._json_config_path)
 
     def analyze(
         self,
@@ -376,15 +431,14 @@ class VisibleChartAnalyzer:
             Dict of feature name -> values.
         """
         from src.analysis.entry_signals.entry_signal_engine import (
-            OptimParams,
             calculate_features,
         )
 
         if len(candles) < 20:
             return {}
 
-        # Use new robust feature calculation
-        params = OptimParams()
+        # Use params from JSON config or defaults
+        params = self._get_optim_params()
         features = calculate_features(candles, params)
 
         # Add backward-compatible keys for any existing code
@@ -422,16 +476,15 @@ class VisibleChartAnalyzer:
             Detected regime type.
         """
         from src.analysis.entry_signals.entry_signal_engine import (
-            OptimParams,
             detect_regime,
         )
 
         if not features or "closes" not in features:
             return RegimeType.NO_TRADE
 
-        # Use new robust regime detection
+        # Use params from JSON config or defaults
         # The engine's RegimeType enum values are now compatible (lowercase)
-        params = OptimParams()
+        params = self._get_optim_params()
         return detect_regime(features, params)
 
     def _create_default_set(self, regime: RegimeType) -> IndicatorSet:
@@ -517,16 +570,15 @@ class VisibleChartAnalyzer:
             List of detected entry events.
         """
         from src.analysis.entry_signals.entry_signal_engine import (
-            OptimParams,
             generate_entries,
         )
 
         if regime == RegimeType.NO_TRADE:
             return []
 
-        # Use new robust entry generation
+        # Use params from JSON config or defaults
         # Enum values are now directly compatible (lowercase)
-        params = OptimParams()
+        params = self._get_optim_params()
         engine_entries = generate_entries(candles, features, regime, params)
 
         # Convert engine entries to analyzer entries
@@ -606,13 +658,12 @@ class VisibleChartAnalyzer:
             Dict with active_set, alternatives, and entries.
         """
         from src.analysis.entry_signals.entry_signal_engine import (
-            OptimParams,
             generate_entries,
         )
         from src.analysis.indicator_optimization.optimizer import FastOptimizer
 
-        # Run fast optimization
-        base_params = OptimParams()
+        # Use params from JSON config as base for optimization
+        base_params = self._get_optim_params()
         optimizer = FastOptimizer()
         optimized_params = optimizer.optimize(
             candles, base_params=base_params, budget_ms=1200, seed=42

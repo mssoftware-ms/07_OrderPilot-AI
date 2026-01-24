@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-24T00:00:00Z",
+    "tags": [
+      "entry-analyzer",
+      "regime",
+      "hardcoded-defaults"
+    ],
+    "notes": "HARDCODED DEFAULT PARAMETERS from entry_signal_engine.py OptimParams class. Diese Datei dokumentiert die hartcodierten Werte, die NICHT aus der JSON-Config gelesen werden!",
+    "updated_at": "2026-01-24T00:00:00Z"
+  },
+  "indicators": [
+    {
+      "id": "ema_fast",
+      "type": "EMA",
+      "params": {
+        "period": 20
+      }
+    },
+    {
+      "id": "ema_slow",
+      "type": "EMA",
+      "params": {
+        "period": 50
+      }
+    },
+    {
+      "id": "atr14",
+      "type": "ATR",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      }
+    },
+    {
+      "id": "bb20",
+      "type": "BB",
+      "params": {
+        "period": 20,
+        "std_dev": 2.0
+      }
+    },
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      }
+    }
+  ],
+  "regimes": [
+    {
+      "id": "TREND_UP",
+      "name": "Trend Up (Uptrend)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gte",
+            "right": {
+              "value": 18.0
+            },
+            "_comment": "adx_trend threshold"
+          },
+          {
+            "left": {
+              "indicator_id": "ema_fast",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "indicator_id": "ema_slow",
+              "field": "value"
+            },
+            "_comment": "EMA fast > EMA slow = uptrend"
+          }
+        ]
+      },
+      "priority": 80,
+      "scope": "entry"
+    },
+    {
+      "id": "TREND_DOWN",
+      "name": "Trend Down (Downtrend)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "gte",
+            "right": {
+              "value": 18.0
+            },
+            "_comment": "adx_trend threshold"
+          },
+          {
+            "left": {
+              "indicator_id": "ema_fast",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "indicator_id": "ema_slow",
+              "field": "value"
+            },
+            "_comment": "EMA fast < EMA slow = downtrend"
+          }
+        ]
+      },
+      "priority": 80,
+      "scope": "entry"
+    },
+    {
+      "id": "SQUEEZE",
+      "name": "Squeeze (Low Volatility)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "bb20",
+              "field": "width"
+            },
+            "op": "lte",
+            "right": {
+              "value": 0.012
+            },
+            "_comment": "squeeze_bb_width threshold"
+          },
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 18.0
+            },
+            "_comment": "adx_trend threshold (weak trend)"
+          }
+        ]
+      },
+      "priority": 70,
+      "scope": "entry"
+    },
+    {
+      "id": "HIGH_VOL",
+      "name": "High Volatility",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "atr14",
+              "field": "atr_pct"
+            },
+            "op": "gte",
+            "right": {
+              "value": 0.012
+            },
+            "_comment": "high_vol_atr_pct threshold"
+          }
+        ]
+      },
+      "priority": 90,
+      "scope": "entry"
+    },
+    {
+      "id": "RANGE",
+      "name": "Range (Mean Reversion)",
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 18.0
+            },
+            "_comment": "adx_trend threshold (no trend)"
+          }
+        ],
+        "_comment": "Default regime when not TREND/SQUEEZE/HIGH_VOL"
+      },
+      "priority": 10,
+      "scope": "entry"
+    }
+  ],
+  "strategies": [],
+  "strategy_sets": [],
+  "routing": [],
+  "entry_params": {
+    "_description": "ATR-normalized entry thresholds from OptimParams",
+    "pullback_atr": 0.8,
+    "pullback_rsi": 45.0,
+    "wick_reject": 0.55,
+    "bb_entry": 0.15,
+    "rsi_oversold": 35.0,
+    "rsi_overbought": 65.0,
+    "vol_spike_factor": 1.2,
+    "breakout_atr": 0.2,
+    "min_confidence": 0.58,
+    "cooldown_bars": 10,
+    "cluster_window_bars": 6
+  },
+  "evaluation_params": {
+    "_description": "Optimizer objective parameters",
+    "eval_horizon_bars": 40,
+    "eval_tp_atr": 1.0,
+    "eval_sl_atr": 0.8,
+    "min_trades_gate": 8,
+    "target_trades_soft": 30
+  },
+  "optimization_results": []
+}

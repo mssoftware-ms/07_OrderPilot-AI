@@ -2,11 +2,11 @@
 
 ## Struktur
 ```
-compounding_component/
+src/ui/widgets/compounding_component/
   calculator.py
   ui.py
-  tests/
-    test_calculator.py
+tests/compounding_component/
+  test_calculator.py
 ```
 
 ## Kurzbeschreibung
@@ -16,5 +16,5 @@ compounding_component/
 
 ## Tests
 ```bash
-pytest -q
+pytest -q tests/compounding_component
 ```

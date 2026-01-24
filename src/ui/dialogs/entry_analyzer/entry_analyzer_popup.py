@@ -44,6 +44,7 @@ from src.ui.icons import get_icon
 
 from .entry_analyzer_ai import AIMixin
 from .entry_analyzer_analysis import AnalysisMixin
+from .entry_analyzer_compounding_mixin import CompoundingMixin
 
 # Import mixins
 from .entry_analyzer_backtest import BacktestMixin
@@ -80,6 +81,7 @@ class EntryAnalyzerPopup(
     IndicatorsPresetsMixin,
     AnalysisMixin,
     AIMixin,
+    CompoundingMixin,
     RegimeTableMixin,
     RegimeSetupMixin,
     RegimeOptimizationMixin,
@@ -103,6 +105,7 @@ class EntryAnalyzerPopup(
     - IndicatorsMixin: Indicator optimization and entry signals
     - AnalysisMixin: Visible chart analysis and validation
     - AIMixin: AI Copilot and pattern recognition
+    - CompoundingMixin: Compounding/P&L calculator tab
     - RegimeTableMixin: Regime parameter optimization and results table (OLD)
     - RegimeSetupMixin: Regime parameter range setup (NEW - Stufe 1, Tab 1/3)
     - RegimeOptimizationMixin: TPE-based regime optimization (NEW - Stufe 1, Tab 2/3)
@@ -110,7 +113,8 @@ class EntryAnalyzerPopup(
     """
 
     # Signals
-    analyze_requested = pyqtSignal()
+    # Issue #28: analyze_requested now includes json_config_path for regime parameters
+    analyze_requested = pyqtSignal(str)  # json_config_path (or empty string for defaults)
     draw_entries_requested = pyqtSignal(list)
     clear_entries_requested = pyqtSignal()
     draw_regime_lines_requested = pyqtSignal(list)  # Issue #21: Signal for regime lines
@@ -173,6 +177,9 @@ class EntryAnalyzerPopup(
         self._ai_progress: QProgressBar = None
         self._ai_status_label: QLabel = None
         self._ai_results_text: QTextEdit = None
+
+        # Compounding (CompoundingMixin)
+        self._compounding_panel: QWidget = None
 
         # Validation Tab (AnalysisMixin)
         self._validate_btn: QPushButton = None
@@ -328,6 +335,11 @@ class EntryAnalyzerPopup(
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, get_icon("check_circle"), "Validation")
+
+        # Tab 13: Compounding / P&L Calculator (CompoundingMixin)
+        compounding_tab = QWidget()
+        self._setup_compounding_tab(compounding_tab)
+        self._tabs.addTab(compounding_tab, get_icon("trending_up"), "P&L Calculator")
 
         layout.addWidget(self._tabs, stretch=1)
 

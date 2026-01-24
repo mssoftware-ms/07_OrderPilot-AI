@@ -308,10 +308,15 @@ class AnalysisMixin:
 
         Original: entry_analyzer_popup.py:1242-1244
 
-        Emits analyze_requested signal and sets analyzing state.
+        Emits analyze_requested signal with JSON config path and sets analyzing state.
+        Issue #28: Now includes json_config_path for regime parameters from loaded config.
         """
         self.set_analyzing(True)
-        self.analyze_requested.emit()
+        # Get JSON config path from loaded regime config (if any)
+        json_path = ""
+        if hasattr(self, "_regime_config_path") and self._regime_config_path:
+            json_path = str(self._regime_config_path)
+        self.analyze_requested.emit(json_path)
 
     def _on_draw_clicked(self) -> None:
         """Handle draw entries button click.

@@ -2,7 +2,7 @@
 
 ## Minimal
 ```python
-from compounding_component.ui import CompoundingPanel
+from src.ui.widgets.compounding_component.ui import CompoundingPanel
 
 self.compounding_panel = CompoundingPanel(parent=self)
 entry_analyzer_layout.addWidget(self.compounding_panel)

@@ -12,18 +12,34 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSignalBlocker
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
     QDoubleSpinBox, QSpinBox, QCheckBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QMessageBox, QFileDialog, QSignalBlocker, QComboBox,
+    QHeaderView, QMessageBox, QFileDialog, QComboBox,
 )
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from calculator import Params, simulate, solve_daily_profit_pct_for_target, to_csv_rows
+from src.ui.widgets.compounding_component.calculator import (
+    Params,
+    simulate,
+    solve_daily_profit_pct_for_target,
+    to_csv_rows,
+)
+
+FUTURES_FEES_BY_VIP = {
+    "VIP0": {"maker": 0.02, "taker": 0.06},
+    "VIP1": {"maker": 0.02, "taker": 0.05},
+    "VIP2": {"maker": 0.016, "taker": 0.05},
+    "VIP3": {"maker": 0.014, "taker": 0.04},
+    "VIP4": {"maker": 0.012, "taker": 0.0375},
+    "VIP5": {"maker": 0.01, "taker": 0.035},
+    "VIP6": {"maker": 0.008, "taker": 0.0315},
+    "VIP7": {"maker": 0.006, "taker": 0.03},
+}
 
 
 def _to_dec(x: float) -> Decimal:
@@ -72,8 +88,9 @@ class CompoundingPanel(QWidget):
         root = QVBoxLayout(self)
         root.addWidget(self.tabs)
 
-        self._build_tab_inputs()
+        # Build details tab first (creates self.table used by recompute)
         self._build_tab_details()
+        self._build_tab_inputs()
         self.recompute(origin="init")
 
     def _build_tab_inputs(self) -> None:
@@ -82,7 +99,16 @@ class CompoundingPanel(QWidget):
         form = QFormLayout(box)
 
         self.sp_start_capital = QDoubleSpinBox(); self.sp_start_capital.setRange(0, 1e9); self.sp_start_capital.setDecimals(2); self.sp_start_capital.setValue(100.0); self.sp_start_capital.setSuffix(" €")
-        self.sp_fee_pct = QDoubleSpinBox(); self.sp_fee_pct.setRange(0, 100); self.sp_fee_pct.setDecimals(4); self.sp_fee_pct.setSingleStep(0.01); self.sp_fee_pct.setValue(0.08); self.sp_fee_pct.setSuffix(" %")
+        self.cb_vip_level = QComboBox()
+        self.cb_vip_level.addItems(["VIP0", "VIP1", "VIP2", "VIP3", "VIP4", "VIP5", "VIP6", "VIP7", "Custom"])
+        self.cb_vip_level.setCurrentText("VIP0")
+
+        self.cb_order_type = QComboBox()
+        self.cb_order_type.addItems(["Taker/Taker", "Maker/Maker", "Maker/Taker", "Taker/Maker"])
+        self.cb_order_type.setCurrentText("Taker/Taker")
+
+        self.sp_fee_open_pct = QDoubleSpinBox(); self.sp_fee_open_pct.setRange(0, 100); self.sp_fee_open_pct.setDecimals(4); self.sp_fee_open_pct.setSingleStep(0.01); self.sp_fee_open_pct.setSuffix(" %")
+        self.sp_fee_close_pct = QDoubleSpinBox(); self.sp_fee_close_pct.setRange(0, 100); self.sp_fee_close_pct.setDecimals(4); self.sp_fee_close_pct.setSingleStep(0.01); self.sp_fee_close_pct.setSuffix(" %")
         self.sp_leverage = QDoubleSpinBox(); self.sp_leverage.setRange(0.01, 1000); self.sp_leverage.setDecimals(2); self.sp_leverage.setValue(20.0); self.sp_leverage.setSuffix(" x")
         self.sp_daily_profit_pct = QDoubleSpinBox(); self.sp_daily_profit_pct.setRange(-99.0, 1000.0); self.sp_daily_profit_pct.setDecimals(4); self.sp_daily_profit_pct.setValue(30.0); self.sp_daily_profit_pct.setSuffix(" %")
         self.sp_reinvest_pct = QDoubleSpinBox(); self.sp_reinvest_pct.setRange(0, 100); self.sp_reinvest_pct.setDecimals(2); self.sp_reinvest_pct.setValue(30.0); self.sp_reinvest_pct.setSuffix(" %")
@@ -100,11 +126,14 @@ class CompoundingPanel(QWidget):
         self.lbl_solver_status = QLabel(""); self.lbl_solver_status.setWordWrap(True)
 
         form.addRow("Startkapital", self.sp_start_capital)
-        form.addRow("Gebühren", self.sp_fee_pct)
+        form.addRow("VIP Status", self.cb_vip_level)
+        form.addRow("Order Type (Open/Close)", self.cb_order_type)
+        form.addRow("Gebuehren Open", self.sp_fee_open_pct)
+        form.addRow("Gebuehren Close", self.sp_fee_close_pct)
         form.addRow("Hebel", self.sp_leverage)
         form.addRow("Gewinn % / Tag", self.sp_daily_profit_pct)
         form.addRow("Reinvestition", self.sp_reinvest_pct)
-        form.addRow("Steuern", self.sp_tax_pct)
+        form.addRow("Steuern (Monatsende)", self.sp_tax_pct)
         form.addRow("Tage (manuell)", self.sp_days)
         form.addRow("Preset Trading-Tage", self.cb_trading_days_preset)
         form.addRow("", self.cb_apply_losses)
@@ -134,10 +163,23 @@ class CompoundingPanel(QWidget):
         self.sp_daily_profit_pct.valueChanged.connect(lambda _v: self._on_user_edited("daily"))
         self.sp_target_month_net.valueChanged.connect(lambda _v: self._on_user_edited("target"))
 
-        for w in [self.sp_start_capital, self.sp_fee_pct, self.sp_leverage, self.sp_reinvest_pct, self.sp_tax_pct, self.sp_days]:
+        for w in [
+            self.sp_start_capital,
+            self.sp_fee_open_pct,
+            self.sp_fee_close_pct,
+            self.sp_leverage,
+            self.sp_reinvest_pct,
+            self.sp_tax_pct,
+            self.sp_days,
+        ]:
             w.valueChanged.connect(lambda _v: self.recompute(origin="param_change"))
+        self.sp_fee_open_pct.valueChanged.connect(self._on_fee_override)
+        self.sp_fee_close_pct.valueChanged.connect(self._on_fee_override)
         self.cb_apply_losses.stateChanged.connect(lambda _s: self.recompute(origin="param_change"))
         self.cb_trading_days_preset.currentIndexChanged.connect(self._apply_trading_days_preset)
+        self.cb_vip_level.currentIndexChanged.connect(self._apply_fee_preset)
+        self.cb_order_type.currentIndexChanged.connect(self._apply_fee_preset)
+        self._apply_fee_preset()
 
     def _build_tab_details(self) -> None:
         layout = QVBoxLayout(self.tab_details)
@@ -171,6 +213,43 @@ class CompoundingPanel(QWidget):
             self.sp_days.setValue(val)
         self.recompute(origin="preset_days")
 
+    def _apply_fee_preset(self) -> None:
+        vip = self.cb_vip_level.currentText()
+        if vip == "Custom":
+            return
+        fees = FUTURES_FEES_BY_VIP.get(vip)
+        if not fees:
+            return
+        maker = float(fees["maker"])
+        taker = float(fees["taker"])
+        order = self.cb_order_type.currentText()
+        if order == "Maker/Maker":
+            open_fee = maker
+            close_fee = maker
+        elif order == "Maker/Taker":
+            open_fee = maker
+            close_fee = taker
+        elif order == "Taker/Maker":
+            open_fee = taker
+            close_fee = maker
+        else:
+            open_fee = taker
+            close_fee = taker
+
+        with QSignalBlocker(self.sp_fee_open_pct):
+            self.sp_fee_open_pct.setValue(open_fee)
+        with QSignalBlocker(self.sp_fee_close_pct):
+            self.sp_fee_close_pct.setValue(close_fee)
+        self.recompute(origin="fee_preset")
+
+    def _on_fee_override(self) -> None:
+        if self._suppress_updates:
+            return
+        if self.cb_vip_level.currentText() != "Custom":
+            with QSignalBlocker(self.cb_vip_level):
+                self.cb_vip_level.setCurrentText("Custom")
+        self.recompute(origin="fee_override")
+
     def _on_user_edited(self, key: str) -> None:
         self._last_edited = key
         self.recompute(origin=f"user_{key}")
@@ -178,7 +257,8 @@ class CompoundingPanel(QWidget):
     def _get_params(self) -> Params:
         return Params(
             start_capital=_to_dec(self.sp_start_capital.value()),
-            fee_pct=_to_dec(self.sp_fee_pct.value()),
+            fee_open_pct=_to_dec(self.sp_fee_open_pct.value()),
+            fee_close_pct=_to_dec(self.sp_fee_close_pct.value()),
             leverage=_to_dec(self.sp_leverage.value()),
             daily_profit_pct=_to_dec(self.sp_daily_profit_pct.value()),
             reinvest_pct=_to_dec(self.sp_reinvest_pct.value()),

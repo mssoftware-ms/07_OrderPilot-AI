@@ -209,13 +209,40 @@ class RegimeSetupMixin:
         self._populate_regime_setup_indicators_table()
         self._populate_regime_setup_tables()
 
+    def _get_optimized_params_from_config(self, config) -> dict[str, any]:
+        """Extract optimized params from optimization_results if available.
+
+        Args:
+            config: TradingBotConfig object
+
+        Returns:
+            Dict with optimized params (e.g. {"adx14.period": 10, "rsi14.period": 13})
+        """
+        optimized_params = {}
+
+        if not hasattr(config, "optimization_results") or not config.optimization_results:
+            return optimized_params
+
+        # Find the latest applied result (or newest if none applied)
+        applied = [r for r in config.optimization_results if r.get("applied", False)]
+        if applied:
+            result = applied[-1]  # Newest applied
+        else:
+            result = config.optimization_results[0]  # First result
+
+        return result.get("params", {})
+
     def _populate_regime_setup_indicators_table(self) -> None:
         """Populate indicators table with current regime config from JSON.
 
         Shows what indicators are currently configured in entry_analyzer_regime.json
         so users can see what they're optimizing.
+
+        IMPORTANT: If optimization_results exist, shows the OPTIMIZED values
+        with ⚡ marker, not the base indicator values!
         """
         from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QColor
         from PyQt6.QtWidgets import QTableWidgetItem
 
         self._regime_setup_indicators_table.setRowCount(0)
@@ -238,6 +265,9 @@ class RegimeSetupMixin:
 
         config = self._regime_config
 
+        # Get optimized params from optimization_results (if any)
+        optimized_params = self._get_optimized_params_from_config(config)
+
         # Populate table with indicators
         for indicator in config.indicators:
             row = self._regime_setup_indicators_table.rowCount()
@@ -256,21 +286,48 @@ class RegimeSetupMixin:
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_setup_indicators_table.setItem(row, 1, type_item)
 
-            # Current Parameters
-            params_str = ", ".join([f"{k}: {v}" for k, v in indicator.params.items()])
+            # Current Parameters - Apply optimized values if available!
+            effective_params = dict(indicator.params)  # Start with base params
+            has_optimization = False
+
+            for key, value in optimized_params.items():
+                if key.startswith(f"{indicator.id}."):
+                    param_name = key.split(".", 1)[1]
+                    if param_name in effective_params:
+                        effective_params[param_name] = value
+                        has_optimization = True
+
+            # Format params string with ⚡ if optimized
+            params_str = ", ".join([f"{k}: {v}" for k, v in effective_params.items()])
+            if has_optimization:
+                params_str = f"⚡ {params_str}"
+
             params_item = QTableWidgetItem(params_str)
-            params_item.setToolTip(json.dumps(indicator.params, indent=2))
+            params_item.setToolTip(
+                f"Effective params (used by Analyze Visible Range):\n"
+                f"{json.dumps(effective_params, indent=2)}\n\n"
+                f"Base params from indicators[]:\n"
+                f"{json.dumps(indicator.params, indent=2)}"
+            )
+            if has_optimization:
+                params_item.setForeground(QColor("#22c55e"))  # Green for optimized
             self._regime_setup_indicators_table.setItem(row, 2, params_item)
 
-        logger.info(f"Populated indicators table with {len(config.indicators)} indicators")
+        logger.info(
+            f"Populated indicators table with {len(config.indicators)} indicators "
+            f"(optimized params: {len(optimized_params)})"
+        )
 
     def _populate_regime_setup_tables(self) -> None:
         """Dynamically populate parameter and threshold tables from JSON.
 
         Reads optimization_ranges from regime config and creates spinboxes automatically.
         Supports ANY indicator with ANY number of parameters!
+
+        IMPORTANT: Shows OPTIMIZED values (with ⚡) if optimization_results exist!
         """
         from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QColor
         from PyQt6.QtWidgets import QTableWidgetItem
 
         # Clear existing
@@ -284,6 +341,9 @@ class RegimeSetupMixin:
             return
 
         config = self._regime_config
+
+        # Get optimized params from optimization_results (if any)
+        optimized_params = self._get_optimized_params_from_config(config)
 
         # 1. Populate Indicator Parameters Table
         for indicator in config.indicators:
@@ -316,10 +376,26 @@ class RegimeSetupMixin:
                 param_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_setup_params_table.setItem(row, 1, param_item)
 
-                # Current Value
-                current_item = QTableWidgetItem(str(param_value))
+                # Current Value - Use optimized value if available!
+                opt_key = f"{indicator.id}.{param_name}"
+                effective_value = optimized_params.get(opt_key, param_value)
+                is_optimized = opt_key in optimized_params
+
+                if is_optimized:
+                    current_text = f"⚡ {effective_value}"
+                    current_item = QTableWidgetItem(current_text)
+                    current_item.setForeground(QColor("#22c55e"))  # Green
+                    current_item.setToolTip(
+                        f"Optimized value: {effective_value}\n"
+                        f"Base value: {param_value}\n\n"
+                        f"⚡ = Value from optimization_results (used by Analyze Visible Range)"
+                    )
+                else:
+                    current_item = QTableWidgetItem(str(param_value))
+                    current_item.setForeground(Qt.GlobalColor.blue)
+                    current_item.setToolTip(f"Base value from indicators[]: {param_value}")
+
                 current_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                current_item.setForeground(Qt.GlobalColor.blue)
                 self._regime_setup_params_table.setItem(row, 2, current_item)
 
                 # Min SpinBox

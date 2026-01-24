@@ -298,6 +298,38 @@
         "additionalProperties": false
       }
     },
+    "entry_params": {
+      "type": "object",
+      "description": "Entry Signal Parameter für Analyze Visible Range (Issue #28)",
+      "properties": {
+        "pullback_atr": { "type": "number", "description": "ATR-Faktor für Pullback-Erkennung" },
+        "pullback_rsi": { "type": "number", "description": "RSI-Schwelle für Pullback-Erkennung" },
+        "wick_reject": { "type": "number", "description": "Wick-Rejection-Schwelle (0-1)" },
+        "bb_entry": { "type": "number", "description": "Bollinger Band Entry-Schwelle" },
+        "rsi_oversold": { "type": "number", "description": "RSI Überverkauft-Schwelle" },
+        "rsi_overbought": { "type": "number", "description": "RSI Überkauft-Schwelle" },
+        "min_confidence": { "type": "number", "description": "Minimale Konfidenz für Signale" },
+        "cooldown_bars": { "type": "integer", "description": "Cooldown-Periode in Bars" },
+        "squeeze_bb_width": { "type": "number", "description": "BB-Width für Squeeze-Erkennung" },
+        "high_vol_atr_pct": { "type": "number", "description": "ATR% für hohe Volatilität" },
+        "vol_spike_factor": { "type": "number", "description": "Volumen-Spike-Faktor" },
+        "breakout_atr": { "type": "number", "description": "ATR-Faktor für Breakout" },
+        "cluster_window_bars": { "type": "integer", "description": "Fenster für Signal-Clustering" }
+      },
+      "additionalProperties": true
+    },
+    "evaluation_params": {
+      "type": "object",
+      "description": "Evaluierungs-Parameter für Scoring und Validation",
+      "properties": {
+        "eval_horizon_bars": { "type": "integer", "description": "Evaluierungshorizont in Bars" },
+        "eval_tp_atr": { "type": "number", "description": "Take-Profit in ATR-Einheiten" },
+        "eval_sl_atr": { "type": "number", "description": "Stop-Loss in ATR-Einheiten" },
+        "min_trades_gate": { "type": "integer", "description": "Minimum Trades für Evaluation" },
+        "target_trades_soft": { "type": "integer", "description": "Zielanzahl Trades (soft)" }
+      },
+      "additionalProperties": true
+    },
     "optimization_results": {
       "type": "array",
       "description": "Historie der Optimierungsergebnisse für Regime-Parameter.",

@@ -228,6 +228,10 @@ def configure_module_loggers():
     logging.getLogger('qasync._QEventLoop').setLevel(logging.WARNING)
     logging.getLogger('qasync._windows').setLevel(logging.WARNING)
 
+    # Suppress matplotlib font manager verbose debug logs
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+
     # Set specific levels for app modules
     logging.getLogger('tradingapp.broker').setLevel(logging.INFO)
     logging.getLogger('tradingapp.strategy').setLevel(logging.INFO)

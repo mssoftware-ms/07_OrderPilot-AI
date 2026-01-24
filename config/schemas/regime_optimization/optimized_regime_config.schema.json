@@ -127,6 +127,34 @@
           "bars": { "type": "integer" }
         }
       }
+    },
+    "entry_params": {
+      "type": "object",
+      "description": "Entry Signal Parameter für Analyze Visible Range (Issue #28)",
+      "properties": {
+        "pullback_atr": { "type": "number", "minimum": 0 },
+        "pullback_rsi": { "type": "number", "minimum": 0, "maximum": 100 },
+        "wick_reject": { "type": "number", "minimum": 0, "maximum": 1 },
+        "bb_entry": { "type": "number" },
+        "rsi_oversold": { "type": "number", "minimum": 0, "maximum": 100 },
+        "rsi_overbought": { "type": "number", "minimum": 0, "maximum": 100 },
+        "min_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "cooldown_bars": { "type": "integer", "minimum": 0 },
+        "squeeze_bb_width": { "type": "number" },
+        "high_vol_atr_pct": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "evaluation_params": {
+      "type": "object",
+      "description": "Evaluierungs-Parameter für Scoring und Validation",
+      "properties": {
+        "min_trades": { "type": "integer", "minimum": 0 },
+        "min_win_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_drawdown": { "type": "number" },
+        "risk_reward_ratio": { "type": "number" }
+      },
+      "additionalProperties": true
     }
   },
   "$defs": {

@@ -504,6 +504,17 @@ class TradingBotConfig(BaseModel):
     strategy_sets: list[StrategySetDefinition] = Field(..., description="Strategy set definitions")
     routing: list[RoutingRule] = Field(..., description="Routing rules")
 
+    # Issue #28: Entry and evaluation params for Analyze Visible Range
+    entry_params: dict[str, Any] | None = Field(
+        None, description="Entry signal parameters for visible range analysis"
+    )
+    evaluation_params: dict[str, Any] | None = Field(
+        None, description="Evaluation parameters for scoring and validation"
+    )
+    optimization_results: list[dict[str, Any]] | None = Field(
+        None, description="History of optimization results"
+    )
+
     @field_validator("indicators")
     @classmethod
     def validate_indicators(cls, v: list[IndicatorDefinition]) -> list[IndicatorDefinition]:
