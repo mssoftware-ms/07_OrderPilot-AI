@@ -145,23 +145,11 @@ class RegimeOptimizationMixin:
         layout.addWidget(results_label)
 
         self._regime_opt_top5_table = QTableWidget()
-        self._regime_opt_top5_table.setColumnCount(13)
+        # Dynamic columns - will be set when first result arrives
+        # Initial headers: Rank, Score, Trial # (parameters added dynamically)
+        self._regime_opt_top5_table.setColumnCount(3)
         self._regime_opt_top5_table.setHorizontalHeaderLabels(
-            [
-                "Rank",
-                "Score",
-                "ADX Period",
-                "ADX Thresh",
-                "SMA Fast",
-                "SMA Slow",
-                "RSI Period",
-                "RSI Low",
-                "RSI High",
-                "BB Period",
-                "BB Std Dev",
-                "BB Width %",
-                "Trial #",
-            ]
+            ["Rank", "Score", "Trial #"]
         )
         # Make table sortable
         self._regime_opt_top5_table.setSortingEnabled(True)
@@ -519,7 +507,11 @@ class RegimeOptimizationMixin:
         self._regime_opt_eta_label.setText("ETA: --")
 
     def _update_regime_opt_top5_table(self) -> None:
-        """Update results table filtered by score > 50 (or best 10 if none)."""
+        """Update results table filtered by score > 50 (or best 10 if none).
+
+        DYNAMIC column generation - NO hardcoded parameter names!
+        Generates columns based on parameters in the first result.
+        """
         from PyQt6.QtWidgets import QApplication
 
         # Filter results: all with score > 50, or best 10 if none
@@ -531,6 +523,31 @@ class RegimeOptimizationMixin:
             logger.info(f"No results with score > 50, showing best {len(results_to_show)} results")
         else:
             logger.info(f"Showing {len(results_to_show)} results with score > 50")
+
+        if not results_to_show:
+            logger.warning("No results to display in top5 table")
+            return
+
+        # DYNAMIC COLUMN GENERATION: Get parameter names from first result
+        first_result = results_to_show[0]
+        params_dict = first_result.get("params", {})
+
+        # Sort parameter names for consistent column order
+        param_names = sorted(params_dict.keys())
+
+        # Build column headers: Rank, Score, [Dynamic Params], Trial #
+        headers = ["Rank", "Score"] + param_names + ["Trial #"]
+
+        # Update table structure
+        self._regime_opt_top5_table.setColumnCount(len(headers))
+        self._regime_opt_top5_table.setHorizontalHeaderLabels(headers)
+
+        # Configure header resize modes
+        header = self._regime_opt_top5_table.horizontalHeader()
+        for col in range(len(headers)):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        logger.info(f"Dynamic table: {len(headers)} columns ({len(param_names)} parameters)")
 
         # Disable visual updates and sorting while updating for better performance
         self._regime_opt_top5_table.setUpdatesEnabled(False)
@@ -545,67 +562,43 @@ class RegimeOptimizationMixin:
                 if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
                     progress = int((row / len(results_to_show)) * 100)
                     self._waiting_dialog.set_status(f"Top-Ergebnisse: {row}/{len(results_to_show)} ({progress}%)")
+
             params = result.get("params", {})
             score = result.get("score", 0)
             trial_num = result.get("trial_number", row + 1)
 
-            # Debug logging to check params structure
-            if row == 0:
-                logger.debug(f"First result params type: {type(params)}, keys: {list(params.keys()) if isinstance(params, dict) else 'NOT A DICT'}")
-                logger.debug(f"First result score: {score}, params sample: {str(params)[:200]}")
+            col = 0
 
             # Column 0: Rank
-            self._regime_opt_top5_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+            rank_item = QTableWidgetItem(str(row + 1))
+            rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_opt_top5_table.setItem(row, col, rank_item)
+            col += 1
 
             # Column 1: Score
             score_item = QTableWidgetItem(f"{score:.1f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._regime_opt_top5_table.setItem(row, 1, score_item)
+            self._regime_opt_top5_table.setItem(row, col, score_item)
+            col += 1
 
-            # Column 2: ADX Period
-            adx_period = params.get("adx_period", params.get("adx.period", "--"))
-            self._regime_opt_top5_table.setItem(row, 2, QTableWidgetItem(str(adx_period)))
+            # Dynamic Parameter Columns
+            for param_name in param_names:
+                param_value = params.get(param_name, "--")
+                # Format value based on type
+                if isinstance(param_value, float):
+                    value_str = f"{param_value:.2f}"
+                else:
+                    value_str = str(param_value)
 
-            # Column 3: ADX Threshold
-            adx_thresh = params.get("adx_threshold", params.get("adx.threshold", "--"))
-            self._regime_opt_top5_table.setItem(row, 3, QTableWidgetItem(str(adx_thresh)))
+                param_item = QTableWidgetItem(value_str)
+                param_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_opt_top5_table.setItem(row, col, param_item)
+                col += 1
 
-            # Column 4: SMA Fast
-            sma_fast = params.get("sma_fast_period", params.get("sma_fast.period", "--"))
-            self._regime_opt_top5_table.setItem(row, 4, QTableWidgetItem(str(sma_fast)))
-
-            # Column 5: SMA Slow
-            sma_slow = params.get("sma_slow_period", params.get("sma_slow.period", "--"))
-            self._regime_opt_top5_table.setItem(row, 5, QTableWidgetItem(str(sma_slow)))
-
-            # Column 6: RSI Period
-            rsi_period = params.get("rsi_period", params.get("rsi.period", "--"))
-            self._regime_opt_top5_table.setItem(row, 6, QTableWidgetItem(str(rsi_period)))
-
-            # Column 7: RSI Sideways Low
-            rsi_low = params.get("rsi_sideways_low", params.get("rsi.sideways_low", "--"))
-            self._regime_opt_top5_table.setItem(row, 7, QTableWidgetItem(str(rsi_low)))
-
-            # Column 8: RSI Sideways High
-            rsi_high = params.get("rsi_sideways_high", params.get("rsi.sideways_high", "--"))
-            self._regime_opt_top5_table.setItem(row, 8, QTableWidgetItem(str(rsi_high)))
-
-            # Column 9: BB Period
-            bb_period = params.get("bb_period", params.get("bb.period", "--"))
-            self._regime_opt_top5_table.setItem(row, 9, QTableWidgetItem(str(bb_period)))
-
-            # Column 10: BB Std Dev
-            bb_std = params.get("bb_std_dev", params.get("bb.std_dev", "--"))
-            self._regime_opt_top5_table.setItem(row, 10, QTableWidgetItem(str(bb_std)))
-
-            # Column 11: BB Width Percentile
-            bb_width = params.get("bb_width_percentile", params.get("bb.width_percentile", "--"))
-            self._regime_opt_top5_table.setItem(row, 11, QTableWidgetItem(str(bb_width)))
-
-            # Column 12: Trial Number
+            # Last Column: Trial Number
             trial_item = QTableWidgetItem(str(trial_num))
             trial_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._regime_opt_top5_table.setItem(row, 12, trial_item)
+            self._regime_opt_top5_table.setItem(row, col, trial_item)
 
         # Re-enable visual updates and sorting
         self._regime_opt_top5_table.setUpdatesEnabled(True)

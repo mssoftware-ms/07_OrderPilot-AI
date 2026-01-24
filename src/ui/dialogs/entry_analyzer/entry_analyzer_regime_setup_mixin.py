@@ -120,17 +120,30 @@ class RegimeSetupMixin:
         params_layout.addWidget(params_info)
 
         self._regime_setup_params_table = QTableWidget()
-        self._regime_setup_params_table.setColumnCount(6)
-        self._regime_setup_params_table.setHorizontalHeaderLabels([
-            "Indicator", "Parameter", "Current", "Min", "Max", "Step"
-        ])
+        # Wide table format (Variante A): 52 columns for up to 10 parameters per indicator
+        # Structure: Indicator (1) + Type (1) + [Name, Value, Min, Max, Step] × 10 (50) = 52 columns
+        self._regime_setup_params_table.setColumnCount(52)
+
+        # Generate column headers dynamically
+        headers = ["Indicator", "Type"]
+        for i in range(1, 11):  # 10 parameter slots
+            headers.extend([
+                f"Param{i} Name",
+                f"Param{i} Value",
+                f"Param{i} Min",
+                f"Param{i} Max",
+                f"Param{i} Step"
+            ])
+        self._regime_setup_params_table.setHorizontalHeaderLabels(headers)
+
+        # Configure column resize modes
         header = self._regime_setup_params_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Indicator
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Type
+        # All parameter columns: interactive (user can resize)
+        for col in range(2, 52):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+
         self._regime_setup_params_table.setAlternatingRowColors(True)
 
         params_layout.addWidget(self._regime_setup_params_table)
@@ -319,12 +332,13 @@ class RegimeSetupMixin:
         )
 
     def _populate_regime_setup_tables(self) -> None:
-        """Dynamically populate parameter and threshold tables from JSON.
+        """Dynamically populate parameter and threshold tables from JSON v2.0.
 
-        Reads optimization_ranges from regime config and creates spinboxes automatically.
-        Supports ANY indicator with ANY number of parameters!
+        Wide table format (Variante A): One row per indicator with all parameters horizontal.
+        Reads from optimization_results[].indicators[] (v2.0 format).
+        Supports up to 10 parameters per indicator!
 
-        IMPORTANT: Shows OPTIMIZED values (with ⚡) if optimization_results exist!
+        Table structure: Indicator | Type | [Param1-10: Name, Value, Min, Max, Step] × 10
         """
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QColor
@@ -342,134 +356,174 @@ class RegimeSetupMixin:
 
         config = self._regime_config
 
-        # Get optimized params from optimization_results (if any)
-        optimized_params = self._get_optimized_params_from_config(config)
+        # Check schema version to determine data source
+        schema_version = getattr(config, "schema_version", "1.0.0")
 
-        # 1. Populate Indicator Parameters Table
-        for indicator in config.indicators:
-            # Check if indicator has optimization_ranges
-            if not hasattr(indicator, "optimization_ranges") or not indicator.optimization_ranges:
-                logger.debug(f"Indicator {indicator.id} has no optimization_ranges, using defaults")
-                # Create default ranges based on current params
-                optimization_ranges = self._create_default_ranges(indicator.params)
+        # 1. Populate Indicator Parameters Table (WIDE FORMAT)
+        if schema_version.startswith("2."):
+            # v2.0: Read from optimization_results[].indicators[]
+            if not hasattr(config, "optimization_results") or not config.optimization_results:
+                logger.warning("No optimization_results in v2.0 config")
+                return
+
+            # Get the applied result (or first result)
+            applied = [r for r in config.optimization_results if r.get("applied", False)]
+            if applied:
+                result = applied[-1]
             else:
-                optimization_ranges = indicator.optimization_ranges
+                result = config.optimization_results[0]
 
-            # Create row for each parameter
-            for param_name, param_value in indicator.params.items():
-                if param_name not in optimization_ranges:
-                    logger.debug(f"No optimization range for {indicator.id}.{param_name}, skipping")
-                    continue
+            indicators_data = result.get("indicators", [])
+        else:
+            # v1.0: Read from indicators[] (backward compatibility)
+            indicators_data = config.indicators
+            # Need to convert v1.0 format to v2.0-like structure
+            indicators_data = self._convert_v1_to_v2_format(indicators_data, config)
 
-                range_def = optimization_ranges[param_name]
+        # Populate one row per indicator (wide format)
+        for indicator in indicators_data:
+            row = self._regime_setup_params_table.rowCount()
+            self._regime_setup_params_table.insertRow(row)
 
-                row = self._regime_setup_params_table.rowCount()
-                self._regime_setup_params_table.insertRow(row)
+            # Column 0: Indicator Name/ID
+            indicator_name = indicator.get("name") if isinstance(indicator, dict) else indicator.id
+            ind_item = QTableWidgetItem(str(indicator_name))
+            ind_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_setup_params_table.setItem(row, 0, ind_item)
 
-                # Indicator ID
-                ind_item = QTableWidgetItem(indicator.id)
-                ind_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_setup_params_table.setItem(row, 0, ind_item)
+            # Column 1: Indicator Type
+            indicator_type = indicator.get("type") if isinstance(indicator, dict) else indicator.type
+            type_item = QTableWidgetItem(str(indicator_type))
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_setup_params_table.setItem(row, 1, type_item)
 
-                # Parameter Name
-                param_item = QTableWidgetItem(param_name)
-                param_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_setup_params_table.setItem(row, 1, param_item)
+            # Columns 2-51: Parameter slots (10 slots × 5 columns each)
+            params_list = indicator.get("params", []) if isinstance(indicator, dict) else []
 
-                # Current Value - Use optimized value if available!
-                opt_key = f"{indicator.id}.{param_name}"
-                effective_value = optimized_params.get(opt_key, param_value)
-                is_optimized = opt_key in optimized_params
+            for param_idx, param in enumerate(params_list[:10]):  # Max 10 parameters
+                # Base column for this parameter slot
+                base_col = 2 + (param_idx * 5)
 
-                if is_optimized:
-                    current_text = f"⚡ {effective_value}"
-                    current_item = QTableWidgetItem(current_text)
-                    current_item.setForeground(QColor("#22c55e"))  # Green
-                    current_item.setToolTip(
-                        f"Optimized value: {effective_value}\n"
-                        f"Base value: {param_value}\n\n"
-                        f"⚡ = Value from optimization_results (used by Analyze Visible Range)"
-                    )
-                else:
-                    current_item = QTableWidgetItem(str(param_value))
-                    current_item.setForeground(Qt.GlobalColor.blue)
-                    current_item.setToolTip(f"Base value from indicators[]: {param_value}")
+                param_name = param.get("name", "")
+                param_value = param.get("value", 0)
+                param_range = param.get("range", {})
 
-                current_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_setup_params_table.setItem(row, 2, current_item)
+                # Column +0: Parameter Name
+                name_item = QTableWidgetItem(param_name)
+                name_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_setup_params_table.setItem(row, base_col + 0, name_item)
 
-                # Min SpinBox
-                min_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
-                min_spin.setValue(range_def["min"])
-                self._regime_setup_params_table.setCellWidget(row, 3, min_spin)
+                # Column +1: Current Value (read-only, shows optimized value)
+                value_item = QTableWidgetItem(f"⚡ {param_value}")
+                value_item.setForeground(QColor("#22c55e"))  # Green for optimized
+                value_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                value_item.setToolTip(f"Optimized value from v2.0 config: {param_value}")
+                self._regime_setup_params_table.setItem(row, base_col + 1, value_item)
 
-                # Max SpinBox
-                max_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
-                max_spin.setValue(range_def["max"])
-                self._regime_setup_params_table.setCellWidget(row, 4, max_spin)
+                # Column +2: Min SpinBox
+                min_val = param_range.get("min", param_value * 0.5)
+                max_val = param_range.get("max", param_value * 1.5)
+                step_val = param_range.get("step", 1)
 
-                # Step
-                step_item = QTableWidgetItem(str(range_def.get("step", 1)))
+                min_spin = self._create_spinbox(min_val, max_val, step_val)
+                min_spin.setValue(min_val)
+                self._regime_setup_params_table.setCellWidget(row, base_col + 2, min_spin)
+
+                # Column +3: Max SpinBox
+                max_spin = self._create_spinbox(min_val, max_val, step_val)
+                max_spin.setValue(max_val)
+                self._regime_setup_params_table.setCellWidget(row, base_col + 3, max_spin)
+
+                # Column +4: Step (read-only)
+                step_item = QTableWidgetItem(str(step_val))
                 step_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 step_item.setForeground(Qt.GlobalColor.gray)
-                self._regime_setup_params_table.setItem(row, 5, step_item)
+                self._regime_setup_params_table.setItem(row, base_col + 4, step_item)
 
-                # Store reference
-                param_key = f"{indicator.id}.{param_name}"
+                # Store reference for this parameter
+                param_key = f"{indicator_name}.{param_name}"
                 self._regime_setup_param_ranges[param_key] = (min_spin, max_spin)
 
+            # Fill remaining parameter slots with empty cells (if <10 parameters)
+            for empty_idx in range(len(params_list), 10):
+                base_col = 2 + (empty_idx * 5)
+                for offset in range(5):
+                    empty_item = QTableWidgetItem("")
+                    empty_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Disable empty cells
+                    empty_item.setBackground(QColor("#f0f0f0"))  # Light gray background
+                    self._regime_setup_params_table.setItem(row, base_col + offset, empty_item)
+
         # 2. Populate Regime Thresholds Table
-        for regime in config.regimes:
-            # Check if regime has optimization_ranges
-            if not hasattr(regime, "optimization_ranges") or not regime.optimization_ranges:
-                logger.debug(f"Regime {regime.id} has no optimization_ranges, skipping")
+        if schema_version.startswith("2."):
+            # v2.0: Read regimes from optimization_results
+            regimes_data = result.get("regimes", [])
+        else:
+            # v1.0: Read from regimes[]
+            regimes_data = config.regimes
+            regimes_data = self._convert_v1_regimes_to_v2_format(regimes_data)
+
+        for regime in regimes_data:
+            # Check if regime has thresholds
+            thresholds = regime.get("thresholds", []) if isinstance(regime, dict) else []
+            if not thresholds:
+                logger.debug(f"Regime {regime.get('id', 'UNKNOWN')} has no thresholds, skipping")
                 continue
 
             # Create row for each threshold
-            for threshold_name, range_def in regime.optimization_ranges.items():
+            for threshold in thresholds:
                 row = self._regime_setup_thresholds_table.rowCount()
                 self._regime_setup_thresholds_table.insertRow(row)
 
+                regime_id = regime.get("id") if isinstance(regime, dict) else regime.id
+
                 # Regime ID
-                regime_item = QTableWidgetItem(regime.id)
+                regime_item = QTableWidgetItem(regime_id)
                 regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 # Color code
-                if "BULL" in regime.id:
+                if "BULL" in regime_id:
                     regime_item.setForeground(Qt.GlobalColor.darkGreen)
-                elif "BEAR" in regime.id:
+                elif "BEAR" in regime_id:
                     regime_item.setForeground(Qt.GlobalColor.darkRed)
-                elif "SIDEWAYS" in regime.id:
+                elif "SIDEWAYS" in regime_id:
                     regime_item.setForeground(Qt.GlobalColor.darkYellow)
                 self._regime_setup_thresholds_table.setItem(row, 0, regime_item)
+
+                threshold_name = threshold.get("name", "")
+                threshold_value = threshold.get("value", 0)
+                threshold_range = threshold.get("range", {})
 
                 # Threshold Name
                 threshold_item = QTableWidgetItem(threshold_name)
                 threshold_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                threshold_item.setToolTip(range_def.get("description", ""))
                 self._regime_setup_thresholds_table.setItem(row, 1, threshold_item)
 
+                # Min/Max/Step from range
+                min_val = threshold_range.get("min", threshold_value * 0.5)
+                max_val = threshold_range.get("max", threshold_value * 1.5)
+                step_val = threshold_range.get("step", 1)
+
                 # Min SpinBox
-                min_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
-                min_spin.setValue(range_def["min"])
+                min_spin = self._create_spinbox(min_val, max_val, step_val)
+                min_spin.setValue(min_val)
                 self._regime_setup_thresholds_table.setCellWidget(row, 2, min_spin)
 
                 # Max SpinBox
-                max_spin = self._create_spinbox(range_def["min"], range_def["max"], range_def.get("step", 1))
-                max_spin.setValue(range_def["max"])
+                max_spin = self._create_spinbox(min_val, max_val, step_val)
+                max_spin.setValue(max_val)
                 self._regime_setup_thresholds_table.setCellWidget(row, 3, max_spin)
 
                 # Step
-                step_item = QTableWidgetItem(str(range_def.get("step", 1)))
+                step_item = QTableWidgetItem(str(step_val))
                 step_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 step_item.setForeground(Qt.GlobalColor.gray)
                 self._regime_setup_thresholds_table.setItem(row, 4, step_item)
 
                 # Store reference
-                threshold_key = f"{regime.id}.{threshold_name}"
+                threshold_key = f"{regime_id}.{threshold_name}"
                 self._regime_setup_param_ranges[threshold_key] = (min_spin, max_spin)
 
         logger.info(
-            f"Populated {self._regime_setup_params_table.rowCount()} indicator parameters and "
+            f"Populated {self._regime_setup_params_table.rowCount()} indicators (v2.0 wide format) and "
             f"{self._regime_setup_thresholds_table.rowCount()} regime thresholds"
         )
 
@@ -523,6 +577,91 @@ class RegimeSetupMixin:
                     "step": 1
                 }
         return default_ranges
+
+    def _convert_v1_to_v2_format(self, indicators, config) -> list[dict]:
+        """Convert v1.0 indicators to v2.0 format for display.
+
+        Args:
+            indicators: List of v1.0 indicator objects
+            config: Full config object with optimization_results
+
+        Returns:
+            List of dicts in v2.0 format with params array
+        """
+        v2_indicators = []
+
+        # Get optimized params from v1.0 optimization_results
+        optimized_params = self._get_optimized_params_from_config(config)
+
+        for indicator in indicators:
+            # Get optimization ranges
+            if hasattr(indicator, "optimization_ranges") and indicator.optimization_ranges:
+                optimization_ranges = indicator.optimization_ranges
+            else:
+                optimization_ranges = self._create_default_ranges(indicator.params)
+
+            # Build params array (v2.0 format)
+            params_array = []
+            for param_name, param_value in indicator.params.items():
+                # Get optimized value if available
+                opt_key = f"{indicator.id}.{param_name}"
+                effective_value = optimized_params.get(opt_key, param_value)
+
+                # Get range
+                range_def = optimization_ranges.get(param_name, {
+                    "min": param_value * 0.5,
+                    "max": param_value * 1.5,
+                    "step": 1 if isinstance(param_value, int) else 0.1
+                })
+
+                params_array.append({
+                    "name": param_name,
+                    "value": effective_value,
+                    "range": range_def
+                })
+
+            v2_indicators.append({
+                "name": indicator.id,
+                "type": indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type),
+                "params": params_array
+            })
+
+        return v2_indicators
+
+    def _convert_v1_regimes_to_v2_format(self, regimes) -> list[dict]:
+        """Convert v1.0 regimes to v2.0 format with thresholds array.
+
+        Args:
+            regimes: List of v1.0 regime objects
+
+        Returns:
+            List of dicts in v2.0 format with thresholds array
+        """
+        v2_regimes = []
+
+        for regime in regimes:
+            # Check if regime has optimization_ranges
+            if not hasattr(regime, "optimization_ranges") or not regime.optimization_ranges:
+                continue
+
+            # Build thresholds array (v2.0 format)
+            thresholds_array = []
+            for threshold_name, range_def in regime.optimization_ranges.items():
+                thresholds_array.append({
+                    "name": threshold_name,
+                    "value": range_def.get("min", 0),  # Use min as placeholder
+                    "range": range_def
+                })
+
+            v2_regimes.append({
+                "id": regime.id,
+                "name": regime.name,
+                "thresholds": thresholds_array,
+                "priority": regime.priority,
+                "scope": regime.scope
+            })
+
+        return v2_regimes
 
     def _on_regime_setup_apply(self) -> None:
         """Apply settings and switch to Regime Optimization tab."""

@@ -84,27 +84,11 @@ class RegimeResultsMixin:
         self._regime_results_selected_label.setStyleSheet("font-weight: bold; padding: 5px;")
         layout.addWidget(self._regime_results_selected_label)
 
-        # Results Table
+        # Results Table (Dynamic columns - parameters added at runtime)
         self._regime_results_table = QTableWidget()
-        self._regime_results_table.setColumnCount(15)
+        self._regime_results_table.setColumnCount(6)  # Initial: Rank, Score, Selected, Regimes, Avg Duration, Switches
         self._regime_results_table.setHorizontalHeaderLabels(
-            [
-                "Rank",
-                "Score",
-                "Selected",
-                "ADX Period",
-                "ADX Threshold",
-                "SMA Fast",
-                "SMA Slow",
-                "RSI Period",
-                "RSI Low",
-                "RSI High",
-                "BB Period",
-                "BB Width",
-                "Regimes",
-                "Avg Duration",
-                "Switches",
-            ]
+            ["Rank", "Score", "Selected", "Regimes", "Avg Duration", "Switches"]
         )
         self._regime_results_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
@@ -153,7 +137,11 @@ class RegimeResultsMixin:
         layout.addWidget(info_label)
 
     def _populate_regime_results_table(self) -> None:
-        """Populate results table with all optimization results."""
+        """Populate results table with all optimization results.
+
+        DYNAMIC column generation - NO hardcoded parameter names!
+        Structure: Rank | Score | Selected | [Dynamic Params] | Regimes | Avg Duration | Switches
+        """
         from PyQt6.QtWidgets import QApplication
 
         if not hasattr(self, "_regime_opt_all_results"):
@@ -161,6 +149,29 @@ class RegimeResultsMixin:
             return
 
         results = self._regime_opt_all_results
+
+        if not results:
+            logger.warning("No results to display")
+            return
+
+        # DYNAMIC COLUMN GENERATION: Get parameter names from first result
+        first_result = results[0]
+        params_dict = first_result.get("params", {})
+        param_names = sorted(params_dict.keys())  # Sort for consistent order
+
+        # Build column headers: Rank, Score, Selected, [Params], Regimes, Avg Duration, Switches
+        headers = ["Rank", "Score", "Selected"] + param_names + ["Regimes", "Avg Duration", "Switches"]
+
+        # Update table structure
+        self._regime_results_table.setColumnCount(len(headers))
+        self._regime_results_table.setHorizontalHeaderLabels(headers)
+
+        # Configure header resize modes
+        header = self._regime_results_table.horizontalHeader()
+        for col in range(len(headers)):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+
+        logger.info(f"Dynamic results table: {len(headers)} columns ({len(param_names)} parameters)")
 
         # Disable visual updates for better performance
         self._regime_results_table.setUpdatesEnabled(False)
@@ -175,65 +186,52 @@ class RegimeResultsMixin:
                 if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
                     progress = int((row / len(results)) * 100)
                     self._waiting_dialog.set_status(f"Details laden: {row}/{len(results)} ({progress}%)")
+
             params = result.get("params", {})
             metrics = result.get("metrics", {})
             score = result.get("score", 0)
 
-            # Rank
+            col = 0
+
+            # Column 0: Rank
             rank_item = QTableWidgetItem(str(row + 1))
             rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._regime_results_table.setItem(row, 0, rank_item)
+            self._regime_results_table.setItem(row, col, rank_item)
+            col += 1
 
-            # Score
+            # Column 1: Score
             score_item = QTableWidgetItem(f"{score:.1f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             score_item.setData(Qt.ItemDataRole.UserRole, score)  # For sorting
-            self._regime_results_table.setItem(row, 1, score_item)
+            self._regime_results_table.setItem(row, col, score_item)
+            col += 1
 
-            # Selected (checkbox-like indicator)
+            # Column 2: Selected (checkbox-like indicator)
             selected_item = QTableWidgetItem("")
             selected_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._regime_results_table.setItem(row, 2, selected_item)
+            self._regime_results_table.setItem(row, col, selected_item)
+            col += 1
 
-            # ADX Period
-            adx_period = params.get("adx_period", params.get("adx.period", "--"))
-            self._regime_results_table.setItem(row, 3, QTableWidgetItem(str(adx_period)))
+            # Dynamic Parameter Columns
+            for param_name in param_names:
+                param_value = params.get(param_name, "--")
+                # Format value based on type
+                if isinstance(param_value, float):
+                    value_str = f"{param_value:.2f}"
+                else:
+                    value_str = str(param_value)
 
-            # ADX Threshold
-            adx_thresh = params.get("adx_threshold", params.get("adx.threshold", "--"))
-            self._regime_results_table.setItem(row, 4, QTableWidgetItem(str(adx_thresh)))
-
-            # SMA Fast
-            sma_fast = params.get("sma_fast_period", params.get("sma_fast.period", "--"))
-            self._regime_results_table.setItem(row, 5, QTableWidgetItem(str(sma_fast)))
-
-            # SMA Slow
-            sma_slow = params.get("sma_slow_period", params.get("sma_slow.period", "--"))
-            self._regime_results_table.setItem(row, 6, QTableWidgetItem(str(sma_slow)))
-
-            # RSI Period
-            rsi_period = params.get("rsi_period", params.get("rsi.period", "--"))
-            self._regime_results_table.setItem(row, 7, QTableWidgetItem(str(rsi_period)))
-
-            # RSI Sideways Low
-            rsi_low = params.get("rsi_sideways_low", params.get("rsi.sideways_low", "--"))
-            self._regime_results_table.setItem(row, 8, QTableWidgetItem(str(rsi_low)))
-
-            # RSI Sideways High
-            rsi_high = params.get("rsi_sideways_high", params.get("rsi.sideways_high", "--"))
-            self._regime_results_table.setItem(row, 9, QTableWidgetItem(str(rsi_high)))
-
-            # BB Period
-            bb_period = params.get("bb_period", params.get("bb.period", "--"))
-            self._regime_results_table.setItem(row, 10, QTableWidgetItem(str(bb_period)))
-
-            # BB Width Percentile
-            bb_width = params.get("bb_width_percentile", params.get("bb.width_percentile", "--"))
-            self._regime_results_table.setItem(row, 11, QTableWidgetItem(str(bb_width)))
+                param_item = QTableWidgetItem(value_str)
+                param_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_results_table.setItem(row, col, param_item)
+                col += 1
 
             # Regime Count
             regime_count = metrics.get("regime_count", "--")
-            self._regime_results_table.setItem(row, 12, QTableWidgetItem(str(regime_count)))
+            regimes_item = QTableWidgetItem(str(regime_count))
+            regimes_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_results_table.setItem(row, col, regimes_item)
+            col += 1
 
             # Avg Duration
             avg_duration = metrics.get("avg_duration", metrics.get("avg_duration_bars", "--"))
@@ -241,11 +239,16 @@ class RegimeResultsMixin:
                 avg_duration_str = f"{avg_duration:.1f}"
             else:
                 avg_duration_str = str(avg_duration)
-            self._regime_results_table.setItem(row, 13, QTableWidgetItem(avg_duration_str))
+            duration_item = QTableWidgetItem(avg_duration_str)
+            duration_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_results_table.setItem(row, col, duration_item)
+            col += 1
 
             # Switch Count
             switches = metrics.get("switch_count", "--")
-            self._regime_results_table.setItem(row, 14, QTableWidgetItem(str(switches)))
+            switches_item = QTableWidgetItem(str(switches))
+            switches_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_results_table.setItem(row, col, switches_item)
 
             # Highlight top 3
             if row < 3:
