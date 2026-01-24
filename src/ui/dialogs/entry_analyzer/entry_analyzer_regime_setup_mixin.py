@@ -13,7 +13,9 @@ Provides UI for regime parameter range configuration:
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSlot
@@ -102,6 +104,33 @@ class RegimeSetupMixin:
 
         # Initialize state BEFORE creating param ranges group
         self._regime_setup_param_widgets = {}
+
+        # Current Regime Indicators Table
+        current_indicators_group = QGroupBox("Current Regime Indicators (from JSON)")
+        current_indicators_layout = QVBoxLayout()
+
+        from PyQt6.QtWidgets import QHeaderView, QTableWidget
+
+        self._regime_setup_indicators_table = QTableWidget()
+        self._regime_setup_indicators_table.setColumnCount(3)
+        self._regime_setup_indicators_table.setHorizontalHeaderLabels([
+            "Indicator ID", "Type", "Current Parameters"
+        ])
+        header = self._regime_setup_indicators_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._regime_setup_indicators_table.setAlternatingRowColors(True)
+        self._regime_setup_indicators_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._regime_setup_indicators_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._regime_setup_indicators_table.setMaximumHeight(150)
+
+        current_indicators_layout.addWidget(self._regime_setup_indicators_table)
+        current_indicators_group.setLayout(current_indicators_layout)
+        layout.addWidget(current_indicators_group)
+
+        # Populate indicators table from loaded regime config
+        self._populate_regime_setup_indicators_table()
 
         # Parameter Ranges Group
         param_group = self._create_regime_param_ranges_group()
@@ -506,6 +535,61 @@ class RegimeSetupMixin:
         config["auto_mode"] = self._regime_setup_auto_mode.isChecked()
 
         return config
+
+    def _populate_regime_setup_indicators_table(self) -> None:
+        """Populate indicators table with current regime config from JSON.
+
+        Shows what indicators are currently configured in entry_analyzer_regime.json
+        so users can see what they're optimizing.
+        """
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        self._regime_setup_indicators_table.setRowCount(0)
+
+        # Get regime config from parent (loaded in Regime tab)
+        if not hasattr(self, "_regime_config") or self._regime_config is None:
+            # Try to load default config
+            config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
+            if config_path.exists():
+                from src.core.tradingbot.config.loader import ConfigLoader
+                loader = ConfigLoader()
+                try:
+                    self._regime_config = loader.load_config(config_path)
+                except Exception as e:
+                    logger.warning(f"Could not load regime config for indicators table: {e}")
+                    return
+            else:
+                logger.warning("No regime config loaded, indicators table empty")
+                return
+
+        config = self._regime_config
+
+        # Populate table with indicators
+        for indicator in config.indicators:
+            row = self._regime_setup_indicators_table.rowCount()
+            self._regime_setup_indicators_table.insertRow(row)
+
+            # Indicator ID
+            id_item = QTableWidgetItem(indicator.id)
+            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_setup_indicators_table.setItem(row, 0, id_item)
+
+            # Indicator Type
+            indicator_type = (
+                indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
+            )
+            type_item = QTableWidgetItem(indicator_type)
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_setup_indicators_table.setItem(row, 1, type_item)
+
+            # Current Parameters
+            params_str = ", ".join([f"{k}: {v}" for k, v in indicator.params.items()])
+            params_item = QTableWidgetItem(params_str)
+            params_item.setToolTip(json.dumps(indicator.params, indent=2))
+            self._regime_setup_indicators_table.setItem(row, 2, params_item)
+
+        logger.info(f"Populated indicators table with {len(config.indicators)} indicators")
 
     @pyqtSlot()
     def _on_regime_setup_import(self) -> None:
