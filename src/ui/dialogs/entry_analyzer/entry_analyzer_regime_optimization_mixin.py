@@ -206,14 +206,14 @@ class RegimeOptimizationMixin:
         self._regime_opt_save_history_btn.clicked.connect(self._on_save_selected_to_history)
         action_layout.addWidget(self._regime_opt_save_history_btn)
 
-        # Apply Selected to Config Button
-        self._regime_opt_apply_selected_btn = QPushButton(get_icon("check_circle"), "Apply Selected to Config")
+        # Save & Load in Regime Button
+        self._regime_opt_apply_selected_btn = QPushButton(get_icon("check_circle"), "Save && Load in Regime")
         self._regime_opt_apply_selected_btn.setEnabled(False)
         self._regime_opt_apply_selected_btn.setProperty("class", "success")
         self._regime_opt_apply_selected_btn.setToolTip(
-            "Apply SELECTED result to entry_analyzer_regime.json\n"
-            "Updates indicator parameters, regime thresholds, and adds to history\n"
-            "Reloads Regime tab automatically"
+            "Save SELECTED result as new regime config file\n"
+            "Updates indicator parameters and regime thresholds\n"
+            "Clears tables and loads config in Regime tab"
         )
         self._regime_opt_apply_selected_btn.clicked.connect(self._on_apply_selected_to_regime_config)
         action_layout.addWidget(self._regime_opt_apply_selected_btn)
@@ -251,7 +251,34 @@ class RegimeOptimizationMixin:
             self._regime_opt_status_label.setStyleSheet("color: #f59e0b;")
             return
 
-        logger.info("Starting regime optimization with TPE")
+        # Minimum 200 candles required for SMA(200) warmup period
+        MIN_CANDLES_REQUIRED = 200
+        candle_count = len(self._candles)
+        if candle_count < MIN_CANDLES_REQUIRED:
+            timeframe = getattr(self, "_current_timeframe", "5m")
+            timeframe_minutes = self._timeframe_to_minutes(timeframe)
+            required_hours = (timeframe_minutes * MIN_CANDLES_REQUIRED) / 60
+            required_days = (timeframe_minutes * MIN_CANDLES_REQUIRED) / 1440
+
+            if required_days >= 1:
+                time_info = f"{required_days:.1f} Tage ({required_hours:.1f} Stunden)"
+            else:
+                time_info = f"{required_hours:.1f} Stunden"
+
+            self._regime_opt_status_label.setText(
+                f"⚠️ Analyse kann nicht ausgeführt werden!\n"
+                f"Mindestens {MIN_CANDLES_REQUIRED} Kerzen benötigt (aktuell: {candle_count}).\n"
+                f"Bei {timeframe} Kerzen: mindestens {time_info}.\n"
+                f"Bitte Zeitraum ändern."
+            )
+            self._regime_opt_status_label.setStyleSheet("color: #ef4444;")
+            logger.warning(
+                f"Insufficient candles for analysis: {candle_count} < {MIN_CANDLES_REQUIRED}. "
+                f"Timeframe: {timeframe}, required: {time_info}"
+            )
+            return
+
+        logger.info(f"Starting regime optimization with TPE ({candle_count} candles)")
 
         # Convert candles to DataFrame
         import pandas as pd
@@ -279,8 +306,9 @@ class RegimeOptimizationMixin:
 
         # Get config template path
         # Use default regime config from project
+        # Path: src/ui/dialogs/entry_analyzer/this_file.py -> 5x parent = project root
         config_template_path = str(
-            Path(__file__).parent.parent.parent.parent / "config" / "regime_config_default.json"
+            Path(__file__).parent.parent.parent.parent.parent / "config" / "regime_config_default.json"
         )
 
         # Get max_trials from UI
@@ -314,6 +342,14 @@ class RegimeOptimizationMixin:
         self._regime_opt_top5_table.setRowCount(0)
         self._regime_opt_start_time = datetime.utcnow()
 
+        # Show waiting dialog during entire optimization
+        from src.ui.widgets import OptimizationWaitingDialog
+        self._waiting_dialog = OptimizationWaitingDialog(self)
+        self._waiting_dialog.set_status(f"Starte Optimierung mit {max_trials_value} Trials...")
+        self._waiting_dialog.show()
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+
         # Start thread
         self._regime_opt_thread.start()
 
@@ -327,6 +363,10 @@ class RegimeOptimizationMixin:
                 "Stopping optimization... (finishing current trial)"
             )
             self._regime_opt_status_label.setStyleSheet("color: #f59e0b;")
+
+            # Update waiting dialog
+            if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
+                self._waiting_dialog.set_status("Stoppe Optimierung...")
 
     @pyqtSlot(int, int, str)
     def _on_regime_opt_progress(self, current: int, total: int, message: str) -> None:
@@ -345,6 +385,7 @@ class RegimeOptimizationMixin:
         self._regime_opt_status_label.setText(f"Trial {current}/{total}: {message}")
 
         # Calculate ETA
+        eta_text = "--"
         if self._regime_opt_start_time and current > 0:
             elapsed = (datetime.utcnow() - self._regime_opt_start_time).total_seconds()
             avg_per_trial = elapsed / current
@@ -361,6 +402,10 @@ class RegimeOptimizationMixin:
                 eta_text = f"{hours}h {minutes}m"
 
             self._regime_opt_eta_label.setText(f"ETA: {eta_text}")
+
+        # Update waiting dialog if open
+        if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
+            self._waiting_dialog.set_status(f"Trial {current}/{total} ({progress_pct}%) - ETA: {eta_text}")
 
     @pyqtSlot(dict)
     def _on_regime_opt_result(self, result: dict) -> None:
@@ -383,20 +428,24 @@ class RegimeOptimizationMixin:
         Args:
             results: All optimization results
         """
+        from PyQt6.QtWidgets import QApplication
+
         logger.info(f"Regime optimization complete: {len(results)} trials")
+
+        # Ensure waiting dialog is visible (should already be open from start)
+        if not hasattr(self, "_waiting_dialog") or not self._waiting_dialog:
+            from src.ui.widgets import OptimizationWaitingDialog
+            self._waiting_dialog = OptimizationWaitingDialog(self)
+            self._waiting_dialog.show()
+
+        self._waiting_dialog.set_status("Optimierung abgeschlossen - Verarbeite Ergebnisse...")
+        QApplication.processEvents()
 
         # Update results
         self._regime_opt_all_results = results
-
-        # Update UI
-        self._regime_opt_start_btn.setEnabled(True)
-        self._regime_opt_stop_btn.setEnabled(False)
-        self._regime_opt_continue_btn.setEnabled(True)
-        self._regime_opt_export_btn.setEnabled(True)
-        self._regime_opt_save_history_btn.setEnabled(True)
-        self._regime_opt_apply_selected_btn.setEnabled(True)
         self._regime_opt_progress_bar.setValue(100)
 
+        # Calculate elapsed time
         elapsed = (
             (datetime.utcnow() - self._regime_opt_start_time).total_seconds()
             if self._regime_opt_start_time
@@ -406,6 +455,18 @@ class RegimeOptimizationMixin:
             f"{int(elapsed)}s" if elapsed < 60 else f"{int(elapsed / 60)}m {int(elapsed % 60)}s"
         )
 
+        # Update status
+        self._waiting_dialog.set_status("Ergebnisse werden sortiert...")
+        QApplication.processEvents()
+
+        # Update UI buttons
+        self._regime_opt_start_btn.setEnabled(True)
+        self._regime_opt_stop_btn.setEnabled(False)
+        self._regime_opt_continue_btn.setEnabled(True)
+        self._regime_opt_export_btn.setEnabled(True)
+        self._regime_opt_save_history_btn.setEnabled(True)
+        self._regime_opt_apply_selected_btn.setEnabled(True)
+
         self._regime_opt_status_label.setText(
             f"✅ Optimization complete! {len(results)} trials in {elapsed_text}. "
             f"Best score: {results[0]['score']:.1f}"
@@ -413,12 +474,13 @@ class RegimeOptimizationMixin:
         self._regime_opt_status_label.setStyleSheet("color: #22c55e;")
         self._regime_opt_eta_label.setText(f"Total: {elapsed_text}")
 
-        # Update top-5 table
+        # Update top-5 table with waiting dialog feedback
+        self._waiting_dialog.set_status("Top-Ergebnisse werden geladen...")
+        QApplication.processEvents()
         self._update_regime_opt_top5_table()
 
         # Enable Regime Results tab and populate it
         if hasattr(self, "_tabs"):
-            # Find Regime Results tab (should be tab 4)
             for i in range(self._tabs.count()):
                 if "Regime Results" in self._tabs.tabText(
                     i
@@ -428,7 +490,12 @@ class RegimeOptimizationMixin:
 
         # Populate results table in Regime Results tab
         if hasattr(self, "_populate_regime_results_table"):
+            self._waiting_dialog.set_status("Detaillierte Ergebnisse werden geladen...")
+            QApplication.processEvents()
             self._populate_regime_results_table()
+
+        # Close waiting dialog with short delay
+        self._waiting_dialog.close_with_delay(800)
 
     @pyqtSlot(str)
     def _on_regime_opt_error(self, error_msg: str) -> None:
@@ -439,6 +506,11 @@ class RegimeOptimizationMixin:
         """
         logger.error(f"Regime optimization error: {error_msg}")
 
+        # Close waiting dialog if open
+        if hasattr(self, "_waiting_dialog") and self._waiting_dialog:
+            self._waiting_dialog.close()
+            self._waiting_dialog = None
+
         # Update UI
         self._regime_opt_start_btn.setEnabled(True)
         self._regime_opt_stop_btn.setEnabled(False)
@@ -448,6 +520,8 @@ class RegimeOptimizationMixin:
 
     def _update_regime_opt_top5_table(self) -> None:
         """Update results table filtered by score > 50 (or best 10 if none)."""
+        from PyQt6.QtWidgets import QApplication
+
         # Filter results: all with score > 50, or best 10 if none
         results_to_show = [r for r in self._regime_opt_all_results if r.get("score", 0) > 50]
 
@@ -458,11 +532,19 @@ class RegimeOptimizationMixin:
         else:
             logger.info(f"Showing {len(results_to_show)} results with score > 50")
 
-        # Disable sorting while updating
+        # Disable visual updates and sorting while updating for better performance
+        self._regime_opt_top5_table.setUpdatesEnabled(False)
         self._regime_opt_top5_table.setSortingEnabled(False)
         self._regime_opt_top5_table.setRowCount(len(results_to_show))
 
         for row, result in enumerate(results_to_show):
+            # Process events every 5 rows to keep spinner animation smooth
+            if row > 0 and row % 5 == 0:
+                QApplication.processEvents()
+                # Update waiting dialog with progress
+                if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
+                    progress = int((row / len(results_to_show)) * 100)
+                    self._waiting_dialog.set_status(f"Top-Ergebnisse: {row}/{len(results_to_show)} ({progress}%)")
             params = result.get("params", {})
             score = result.get("score", 0)
             trial_num = result.get("trial_number", row + 1)
@@ -525,15 +607,12 @@ class RegimeOptimizationMixin:
             trial_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_opt_top5_table.setItem(row, 12, trial_item)
 
-            # Highlight best result (row 0)
-            if row == 0:
-                for col in range(13):
-                    item = self._regime_opt_top5_table.item(row, col)
-                    if item:
-                        item.setBackground(Qt.GlobalColor.green)
-
-        # Re-enable sorting
+        # Re-enable visual updates and sorting
+        self._regime_opt_top5_table.setUpdatesEnabled(True)
         self._regime_opt_top5_table.setSortingEnabled(True)
+
+        # Final UI update
+        QApplication.processEvents()
 
     @pyqtSlot()
     def _on_regime_opt_export(self) -> None:
@@ -550,8 +629,9 @@ class RegimeOptimizationMixin:
             return
 
         # Get default export directory
-        project_root = Path(__file__).parent.parent.parent.parent
-        default_dir = project_root / "03_JSON" / "Entry_Analyzer"
+        # Path: src/ui/dialogs/entry_analyzer/this_file.py -> 5x parent = project root
+        project_root = Path(__file__).parent.parent.parent.parent.parent
+        default_dir = project_root / "03_JSON" / "Entry_Analyzer" / "Regime"
         default_dir.mkdir(parents=True, exist_ok=True)
 
         # Get symbol and timeframe for filename with timestamp
@@ -645,6 +725,32 @@ class RegimeOptimizationMixin:
             )
             return
 
+        # Minimum 200 candles required for SMA(200) warmup period
+        MIN_CANDLES_REQUIRED = 200
+        candle_count = len(self._candles)
+        if candle_count < MIN_CANDLES_REQUIRED:
+            timeframe = getattr(self, "_current_timeframe", "5m")
+            timeframe_minutes = self._timeframe_to_minutes(timeframe)
+            required_hours = (timeframe_minutes * MIN_CANDLES_REQUIRED) / 60
+            required_days = (timeframe_minutes * MIN_CANDLES_REQUIRED) / 1440
+
+            if required_days >= 1:
+                time_info = f"{required_days:.1f} Tage ({required_hours:.1f} Stunden)"
+            else:
+                time_info = f"{required_hours:.1f} Stunden"
+
+            QMessageBox.warning(
+                self,
+                "Unzureichende Daten",
+                f"Analyse kann nicht ausgeführt werden!\n\n"
+                f"Mindestens {MIN_CANDLES_REQUIRED} Kerzen benötigt.\n"
+                f"Aktuell vorhanden: {candle_count} Kerzen.\n\n"
+                f"Bei {timeframe} Kerzen benötigen Sie mindestens:\n"
+                f"• {time_info}\n\n"
+                f"Bitte Zeitraum im Chart ändern."
+            )
+            return
+
         try:
             # Get current regime config from main app
             # This would typically come from the active trading bot config
@@ -705,11 +811,11 @@ class RegimeOptimizationMixin:
                 ),
             )
 
-            from src.core.regime_optimizer import OptimizationConfig
+            # Create optimizer with default config (we only use it for score calculation,
+            # not for running optimization, so config values don't matter)
             optimizer = RegimeOptimizer(
                 data=df,
                 param_ranges=param_ranges,
-                config=OptimizationConfig(max_trials=1)
             )
 
             # Calculate indicators and metrics
@@ -844,15 +950,14 @@ class RegimeOptimizationMixin:
 
     @pyqtSlot()
     def _on_apply_selected_to_regime_config(self) -> None:
-        """Apply SELECTED optimization result to entry_analyzer_regime.json.
+        """Save & Load in Regime - Export selected result and load in Regime tab.
 
-        Converts flat optimizer parameters to structured JSON format:
-        - Extracts SELECTED result from table (not just rank 1)
-        - Updates indicator configurations in JSON
-        - Updates regime threshold conditions
-        - Saves to optimization_results[] with applied=True
-        - Saves updated entry_analyzer_regime.json
-        - Reloads Regime tab to show changes
+        Workflow:
+        1. Load entry_analyzer_regime.json as base template
+        2. Update indicator parameters and regime thresholds from selected result
+        3. Save to new file: {timestamp}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json
+        4. Clear both tables (Detected Regimes + Optimization Results)
+        5. Load new file in Regime tab via Load Regime Config
         """
         from PyQt6.QtWidgets import QMessageBox
         import json
@@ -881,25 +986,31 @@ class RegimeOptimizationMixin:
             selected_result = self._regime_opt_all_results[row]
             params = selected_result.get("params", {})
             score = selected_result.get("score", 0)
+            rank = row + 1
 
-            logger.info(f"Applying SELECTED optimization result (row {row + 1}, score {score:.2f}) to regime config")
+            logger.info(f"Save & Load in Regime: Rank #{rank}, score {score:.2f}")
 
             # Build parameter summary dynamically
             param_summary = "\n".join([f"  {k}: {v}" for k, v in params.items()])
 
+            # Get symbol and timeframe for filename
+            symbol = getattr(self, "_current_symbol", "BTCUSDT")
+            timeframe = getattr(self, "_current_timeframe", "5m")
+
             # Confirm with user
             reply = QMessageBox.question(
                 self,
-                "Apply Selected Result",
-                f"Apply SELECTED optimization result to entry_analyzer_regime.json?\n\n"
-                f"Rank: {row + 1}\n"
+                "Save & Load in Regime",
+                f"Save and load optimization result in Regime tab?\n\n"
+                f"Rank: #{rank}\n"
                 f"Score: {score:.2f}\n\n"
                 f"Parameters:\n{param_summary}\n\n"
                 f"This will:\n"
-                f"✓ Update indicator parameters\n"
-                f"✓ Update regime thresholds\n"
-                f"✓ Add to optimization history\n"
-                f"✓ Reload Regime tab",
+                f"1. Create new regime config (Rank #{rank})\n"
+                f"2. Update indicator parameters\n"
+                f"3. Update regime thresholds\n"
+                f"4. Clear both tables\n"
+                f"5. Load config in Regime tab",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -907,31 +1018,37 @@ class RegimeOptimizationMixin:
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
-            # Load current JSON config
-            config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
-            if not config_path.exists():
+            # Step 1: Load entry_analyzer_regime.json as base template
+            # Path: src/ui/dialogs/entry_analyzer/this_file.py
+            # Need 5x parent to reach project root
+            project_root = Path(__file__).parent.parent.parent.parent.parent
+            base_config_path = project_root / "03_JSON" / "Entry_Analyzer" / "Regime" / "entry_analyzer_regime.json"
+
+            if not base_config_path.exists():
                 QMessageBox.critical(
                     self,
-                    "Config Not Found",
-                    f"Regime config file not found:\n{config_path}"
+                    "Base Config Not Found",
+                    f"Base regime config file not found:\n{base_config_path}"
                 )
                 return
 
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(base_config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
 
-            # Update indicator parameters dynamically from params dict
-            # Parse params format: "indicator.param_name" -> value
+            # Step 2: Update indicator parameters from selected result
             for param_key, param_value in params.items():
                 if "." in param_key:
                     parts = param_key.split(".", 1)
                     if len(parts) == 2:
                         indicator_id, param_name = parts
 
+                        # Skip regime thresholds (handled separately)
+                        if indicator_id in ["BULL", "BEAR", "SIDEWAYS", "SIDEWAYS_OVERBOUGHT", "SIDEWAYS_OVERSOLD"]:
+                            continue
+
                         # Find indicator in config
                         for indicator in config_data.get("indicators", []):
                             if indicator.get("id") == indicator_id:
-                                # Update parameter value
                                 if param_name in indicator.get("params", {}):
                                     # Preserve type (int vs float)
                                     current_value = indicator["params"][param_name]
@@ -939,25 +1056,21 @@ class RegimeOptimizationMixin:
                                         indicator["params"][param_name] = float(param_value)
                                     else:
                                         indicator["params"][param_name] = int(param_value)
-                                    logger.info(f"Updated {indicator_id}.{param_name} = {param_value}")
+                                    logger.debug(f"Updated {indicator_id}.{param_name} = {param_value}")
                                 break
 
-            # Update regime thresholds dynamically
-            # Parse params format: "REGIME_ID.threshold_name" -> value
+            # Step 3: Update regime thresholds
             for param_key, param_value in params.items():
                 if "." in param_key:
                     parts = param_key.split(".", 1)
                     if len(parts) == 2:
                         regime_id, threshold_name = parts
 
-                        # Check if this is a regime threshold (not indicator param)
                         if regime_id in ["BULL", "BEAR", "SIDEWAYS", "SIDEWAYS_OVERBOUGHT", "SIDEWAYS_OVERSOLD"]:
-                            # Find regime in config
                             for regime in config_data.get("regimes", []):
                                 if regime.get("id") == regime_id:
-                                    # Update threshold in conditions
                                     self._update_regime_threshold(regime, threshold_name, param_value)
-                                    logger.info(f"Updated {regime_id}.{threshold_name} = {param_value}")
+                                    logger.debug(f"Updated {regime_id}.{threshold_name} = {param_value}")
                                     break
 
             # Convert params to v2.0 format for storage
@@ -965,20 +1078,23 @@ class RegimeOptimizationMixin:
 
             # Add to optimization_results with applied=True
             metrics = selected_result.get("metrics", {})
-            trial_number = selected_result.get("trial_number", row + 1)
+            trial_number = selected_result.get("trial_number", rank)
+
+            max_trials = getattr(self, "_regime_setup_max_trials", None)
+            max_trials_value = max_trials.value() if max_trials else 150
 
             result_entry = {
                 "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "score": float(score),
-                "rank": row + 1,
+                "rank": rank,
                 "params": converted_params,
                 "metrics": metrics,
                 "trial_number": trial_number,
                 "optimization_config": {
                     "mode": "QUICK",
-                    "max_trials": getattr(self, "_regime_setup_max_trials", None).value() if hasattr(self, "_regime_setup_max_trials") else 150,
-                    "symbol": getattr(self, "_current_symbol", "UNKNOWN"),
-                    "timeframe": getattr(self, "_current_timeframe", "5m")
+                    "max_trials": max_trials_value,
+                    "symbol": symbol,
+                    "timeframe": timeframe
                 },
                 "applied": True
             }
@@ -986,45 +1102,92 @@ class RegimeOptimizationMixin:
             # Add to optimization_results (insert at beginning)
             if "optimization_results" not in config_data:
                 config_data["optimization_results"] = []
-
             config_data["optimization_results"].insert(0, result_entry)
-
-            # Keep only top 10
             config_data["optimization_results"] = config_data["optimization_results"][:10]
 
             # Update metadata
             config_data["metadata"]["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             config_data["metadata"]["notes"] = (
-                f"Rank {row + 1} optimization result applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                f"Rank #{rank} optimization result applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
                 f"Score: {score:.2f}. Trial: {trial_number}"
             )
 
-            # Save updated config
-            with open(config_path, 'w', encoding='utf-8') as f:
+            # Step 4: Save to new file with Rank in filename
+            export_dir = project_root / "03_JSON" / "Entry_Analyzer" / "Regime"
+            logger.info(f"Export directory: {export_dir}")
+            logger.info(f"Export directory exists: {export_dir.exists()}")
+            export_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Export directory after mkdir: {export_dir.exists()}")
+
+            timestamp = datetime.utcnow().strftime("%y%m%d%H%M%S")
+            export_filename = f"{timestamp}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json"
+            export_path = export_dir / export_filename
+            logger.info(f"Attempting to save to: {export_path}")
+
+            with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Successfully updated regime config: {config_path}")
+            logger.info(f"Successfully saved regime config (Rank #{rank}) to: {export_path}")
+            logger.info(f"File exists after save: {export_path.exists()}")
 
-            # Reload Regime tab
+            # Step 5: Clear both tables
+            if hasattr(self, "_detected_regimes_table"):
+                self._detected_regimes_table.setRowCount(0)
+                logger.info("Cleared Detected Regimes table")
+
+            self._regime_opt_top5_table.setRowCount(0)
+            logger.info("Cleared Optimization Results table")
+
+            # Step 6: Load new file in Regime tab
             if hasattr(self, "_load_regime_config"):
-                self._load_regime_config(config_path, show_error=False)
+                self._load_regime_config(export_path, show_error=True)
+                logger.info(f"Loaded config in Regime tab: {export_path}")
 
             QMessageBox.information(
                 self,
                 "Success",
-                f"Successfully applied optimization result to regime config!\n\n"
-                f"File updated: {config_path}\n"
+                f"Successfully saved and loaded regime config!\n\n"
+                f"File: {export_filename}\n\n"
+                f"Rank: #{rank}\n"
                 f"Score: {score:.2f}\n\n"
-                f"The Regime tab has been reloaded with the new parameters."
+                f"Config loaded in Regime tab."
             )
 
         except Exception as e:
-            logger.error(f"Failed to apply optimization to regime config: {e}", exc_info=True)
+            import traceback
+            full_traceback = traceback.format_exc()
+            logger.error(f"Failed to save & load regime config: {e}")
+            logger.error(f"Full traceback:\n{full_traceback}")
             QMessageBox.critical(
                 self,
-                "Apply Failed",
-                f"Failed to apply optimization to regime config:\n\n{str(e)}"
+                "Save & Load Failed",
+                f"Failed to save & load regime config:\n\n{str(e)}\n\nDetails in log file."
             )
+
+    def _timeframe_to_minutes(self, timeframe: str) -> int:
+        """Convert timeframe string to minutes.
+
+        Args:
+            timeframe: Timeframe string like "1m", "5m", "15m", "1h", "4h", "1d"
+
+        Returns:
+            Number of minutes for one candle
+        """
+        timeframe = timeframe.lower().strip()
+
+        # Parse number and unit
+        if timeframe.endswith("m"):
+            return int(timeframe[:-1])
+        elif timeframe.endswith("h"):
+            return int(timeframe[:-1]) * 60
+        elif timeframe.endswith("d"):
+            return int(timeframe[:-1]) * 1440
+        elif timeframe.endswith("w"):
+            return int(timeframe[:-1]) * 10080
+        else:
+            # Default to 5 minutes if unknown
+            logger.warning(f"Unknown timeframe format: {timeframe}, defaulting to 5m")
+            return 5
 
     def _convert_params_to_v2_format(self, params: dict) -> dict:
         """Convert flat optimizer parameters to v2.0 nested format.

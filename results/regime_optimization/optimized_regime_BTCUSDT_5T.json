@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0.0",
+  "exported_at": "2026-01-24T09:24:42.217652",
+  "symbol": "BTCUSDT",
+  "timeframe": "5T",
+  "optimization_stage": "regime_detection",
+  "rank": 127,
+  "score": 0,
+  "params": {
+    "adx_period": 15,
+    "adx_threshold": 24.0,
+    "bb_period": 26,
+    "bb_std_dev": 3.0,
+    "bb_width_percentile": 20.0,
+    "rsi_period": 20,
+    "rsi_sideways_high": 70,
+    "rsi_sideways_low": 37,
+    "sma_fast_period": 71,
+    "sma_slow_period": 145
+  },
+  "metrics": {
+    "avg_duration_bars": 57.285714285714285,
+    "bear_bars": 0,
+    "bull_bars": 31,
+    "coverage": 1.0,
+    "f1_bear": 0.6666666666666667,
+    "f1_bull": 0.743973399833749,
+    "f1_sideways": 0.4106400665004155,
+    "regime_count": 2,
+    "sideways_bars": 370,
+    "stability_score": 0.9825436408977556,
+    "switch_count": 7
+  },
+  "config": null
+}

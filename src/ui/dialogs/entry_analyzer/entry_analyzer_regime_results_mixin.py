@@ -154,14 +154,27 @@ class RegimeResultsMixin:
 
     def _populate_regime_results_table(self) -> None:
         """Populate results table with all optimization results."""
+        from PyQt6.QtWidgets import QApplication
+
         if not hasattr(self, "_regime_opt_all_results"):
             logger.warning("No optimization results available")
             return
 
         results = self._regime_opt_all_results
+
+        # Disable visual updates for better performance
+        self._regime_results_table.setUpdatesEnabled(False)
+        self._regime_results_table.setSortingEnabled(False)
         self._regime_results_table.setRowCount(len(results))
 
         for row, result in enumerate(results):
+            # Process events every 5 rows to keep spinner animation smooth
+            if row > 0 and row % 5 == 0:
+                QApplication.processEvents()
+                # Update waiting dialog with progress
+                if hasattr(self, "_waiting_dialog") and self._waiting_dialog and self._waiting_dialog.isVisible():
+                    progress = int((row / len(results)) * 100)
+                    self._waiting_dialog.set_status(f"Details laden: {row}/{len(results)} ({progress}%)")
             params = result.get("params", {})
             metrics = result.get("metrics", {})
             score = result.get("score", 0)
@@ -246,8 +259,15 @@ class RegimeResultsMixin:
                     if item:
                         item.setBackground(Qt.GlobalColor.lightGray)
 
+        # Re-enable visual updates and sorting
+        self._regime_results_table.setUpdatesEnabled(True)
+        self._regime_results_table.setSortingEnabled(True)
+
         # Sort by score descending
         self._regime_results_table.sortItems(1, Qt.SortOrder.DescendingOrder)
+
+        # Final UI update
+        QApplication.processEvents()
 
         logger.info(f"Populated regime results table with {len(results)} results")
 
@@ -401,7 +421,8 @@ class RegimeResultsMixin:
         # Auto-export to default location
         symbol = getattr(self, "_symbol", "UNKNOWN")
         timeframe = getattr(self, "_timeframe", "1m")
-        export_dir = Path(__file__).parent.parent.parent.parent / "results" / "regime_optimization"
+        # Path: src/ui/dialogs/entry_analyzer/this_file.py -> 5x parent = project root
+        export_dir = Path(__file__).parent.parent.parent.parent.parent / "results" / "regime_optimization"
         export_dir.mkdir(parents=True, exist_ok=True)
 
         export_path = export_dir / f"optimized_regime_{symbol}_{timeframe}.json"

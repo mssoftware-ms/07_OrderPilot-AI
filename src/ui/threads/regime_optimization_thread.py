@@ -235,27 +235,19 @@ class RegimeOptimizationThread(QThread):
             # Create results manager
             results_manager = RegimeResultsManager()
 
-            # Register progress callback
+            # Register progress callback (emit every 5 trials to reduce UI overhead)
             def on_trial_complete(study, trial):
                 current = len(study.trials)
                 total = config.max_trials
                 best_score = study.best_value if study.best_trial else 0
 
-                self.progress.emit(
-                    current,
-                    total,
-                    f"Trial {current}/{total} | Best: {best_score:.1f}"
-                )
-
-                # Emit individual result
-                result_dict = {
-                    'params': trial.params,
-                    'score': int(trial.value) if trial.value else 0,
-                    'metrics': trial.user_attrs.get('metrics', {}),
-                    'timestamp': datetime.utcnow(),
-                    'trial_number': trial.number,
-                }
-                self.result_ready.emit(result_dict)
+                # Only emit progress every 5 trials to reduce UI overhead
+                if current % 5 == 0 or current == total or current <= 3:
+                    self.progress.emit(
+                        current,
+                        total,
+                        f"Trial {current}/{total} | Best: {best_score:.1f}"
+                    )
 
                 return self._stop_requested  # Return True to stop optimization
 

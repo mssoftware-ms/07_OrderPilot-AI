@@ -488,16 +488,24 @@ class EntryAnalyzerMixin:
             logger.warning("Chart widget has no add_regime_line method")
             return
 
-        # Color mapping: regime_type -> (start_color, end_color)
-        # Issue #5: Each regime has unique, distinguishable light color with black text
+        # Color mapping: regime_type -> start_color (only START lines drawn, no END lines)
+        # Issue #5: Each regime has unique, distinguishable color
         # Colors meet WCAG AA standard (≥4.5:1 contrast ratio) for accessibility
+        # Supports both new JSON regime IDs (BULL, BEAR, SIDEWAYS...) and legacy names
         regime_colors = {
-            "STRONG_TREND_BULL": ("#A8E6A3", "#5AA85F"),  # Light/Dark Green (meets WCAG AA)
-            "STRONG_TREND_BEAR": ("#FFB3BA", "#FF4A60"),  # Light/Dark Red (meets WCAG AA)
-            "OVERBOUGHT": ("#FFD4A3", "#FF8C00"),         # Light/Dark Orange (meets WCAG AA)
-            "OVERSOLD": ("#A3D8FF", "#0080FF"),           # Light/Dark Blue (meets WCAG AA)
-            "RANGE": ("#FFE135", "#FFB300"),              # Light/Dark Yellow - FIXED for readability (5.2:1 contrast)
-            "UNKNOWN": ("#CCCCCC", "#666666"),            # Light/Dark Gray - FIXED for readability (5.4:1 contrast)
+            # New JSON regime IDs (from entry_analyzer_regime.json)
+            "BULL": ("#22c55e", "#22c55e"),               # Green for bullish
+            "BEAR": ("#ef4444", "#ef4444"),               # Red for bearish
+            "SIDEWAYS": ("#f59e0b", "#f59e0b"),           # Amber/Yellow for sideways
+            "SIDEWAYS_OVERBOUGHT": ("#f97316", "#f97316"), # Orange for overbought sideways
+            "SIDEWAYS_OVERSOLD": ("#3b82f6", "#3b82f6"),  # Blue for oversold sideways
+            # Legacy regime names (for backward compatibility)
+            "STRONG_TREND_BULL": ("#22c55e", "#22c55e"),  # Green
+            "STRONG_TREND_BEAR": ("#ef4444", "#ef4444"),  # Red
+            "OVERBOUGHT": ("#f97316", "#f97316"),         # Orange
+            "OVERSOLD": ("#3b82f6", "#3b82f6"),           # Blue
+            "RANGE": ("#f59e0b", "#f59e0b"),              # Amber/Yellow
+            "UNKNOWN": ("#9ca3af", "#9ca3af"),            # Gray
         }
 
         # Clear existing regime lines first
@@ -515,19 +523,17 @@ class EntryAnalyzerMixin:
             # Get colors for this regime type (with fallback to UNKNOWN)
             start_color, end_color = regime_colors.get(regime, regime_colors["UNKNOWN"])
 
-            logger.debug(
-                f"Regime {i}: {regime} -> START: {start_color}, END: {end_color}"
-            )
+            logger.debug(f"Regime {i}: {regime} -> color: {start_color}")
 
-            # Create labels
-            start_label = f"START {regime.replace('_', ' ')} ({score:.1f}) - {duration_time} ({duration_bars} bars)"
+            # Create label (just regime name with score, no "START" prefix)
+            regime_label = f"{regime.replace('_', ' ')} ({score:.1f})"
 
-            # Add START line to chart (light color)
+            # Add regime line to chart
             self.add_regime_line(
-                line_id=f"regime_{i}_start",
+                line_id=f"regime_{i}",
                 timestamp=start_timestamp,
-                regime_name=regime,  # Use original regime name, not with suffix
-                label=start_label,
+                regime_name=regime,
+                label=regime_label,
                 color=start_color
             )
 

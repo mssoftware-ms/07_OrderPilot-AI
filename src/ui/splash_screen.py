@@ -19,7 +19,7 @@ class SplashScreen(QWidget):
             | Qt.WindowType.Tool
             | Qt.WindowType.WindowStaysOnTopHint
         )
-        self.setFixedSize(520, 420)
+        self.setFixedSize(520, 480)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setStyleSheet("background: transparent;")
 
@@ -124,6 +124,25 @@ class SplashScreen(QWidget):
         layout.addWidget(self._logo_label)
 
         # Spacer
+        layout.addSpacing(10)
+
+        # Trading Joke Label
+        self._joke_label = QLabel()
+        self._joke_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._joke_label.setWordWrap(True)
+        self._joke_label.setStyleSheet("""
+            color: #666;
+            font-size: 11px;
+            font-style: italic;
+            font-family: 'Segoe UI', Arial;
+            padding: 5px 15px;
+            background-color: #f8f8f8;
+            border-radius: 8px;
+            margin: 5px;
+        """)
+        self._load_random_joke()
+        layout.addWidget(self._joke_label)
+
         layout.addStretch()
 
         # Status Label
@@ -161,6 +180,19 @@ class SplashScreen(QWidget):
             x = (screen_geometry.width() - self.width()) // 2
             y = (screen_geometry.height() - self.height()) // 2
             self.move(x, y)
+
+    def _load_random_joke(self) -> None:
+        """Load a random trading joke into the joke label."""
+        try:
+            from src.core.jokes import get_random_trading_joke_simple
+            joke = get_random_trading_joke_simple("de")
+            # Truncate if too long for display
+            if len(joke) > 150:
+                joke = joke[:147] + "..."
+            self._joke_label.setText(f'"{joke}"')
+        except Exception as e:
+            logger.warning(f"Could not load trading joke: {e}")
+            self._joke_label.setText('"Buy low, sell high. Klingt einfach, oder?"')
 
     def set_progress(self, value: int, status: str = None) -> None:
         """Set progress bar value (0-100) and optional status text."""

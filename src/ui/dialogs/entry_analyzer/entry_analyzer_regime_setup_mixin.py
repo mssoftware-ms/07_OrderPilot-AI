@@ -486,7 +486,8 @@ class RegimeSetupMixin:
     @pyqtSlot()
     def _on_regime_setup_import(self) -> None:
         """Import regime configuration with parameter ranges from JSON file."""
-        project_root = Path(__file__).parent.parent.parent.parent
+        # Path: src/ui/dialogs/entry_analyzer/this_file.py -> 5x parent = project root
+        project_root = Path(__file__).parent.parent.parent.parent.parent
         base_dir = project_root / "03_JSON" / "Entry_Analyzer" / "Regime"
         base_dir.mkdir(parents=True, exist_ok=True)
 

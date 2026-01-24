@@ -297,6 +297,58 @@
         },
         "additionalProperties": false
       }
+    },
+    "optimization_results": {
+      "type": "array",
+      "description": "Historie der Optimierungsergebnisse für Regime-Parameter.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitstempel der Optimierung."
+          },
+          "score": {
+            "type": "number",
+            "description": "Gesamtscore des Optimierungsergebnisses."
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Rang des Ergebnisses in der Optimierung."
+          },
+          "params": {
+            "type": "object",
+            "description": "Optimierte Parameter (Indikator- und Regime-Schwellenwerte).",
+            "additionalProperties": true
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Detaillierte Metriken der Optimierung.",
+            "additionalProperties": true
+          },
+          "trial_number": {
+            "type": "integer",
+            "description": "Nummer des Optimierungs-Trials."
+          },
+          "optimization_config": {
+            "type": "object",
+            "description": "Konfiguration der Optimierung.",
+            "properties": {
+              "mode": { "type": "string" },
+              "max_trials": { "type": "integer" },
+              "symbol": { "type": "string" },
+              "timeframe": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Ob dieses Ergebnis angewendet wurde."
+          }
+        },
+        "additionalProperties": true
+      }
     }
   },
   "$defs": {

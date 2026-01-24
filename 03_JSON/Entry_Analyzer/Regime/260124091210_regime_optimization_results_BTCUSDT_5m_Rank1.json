@@ -7,8 +7,8 @@
       "entry-analyzer",
       "regime"
     ],
-    "notes": "Rank 1 optimization result applied on 2026-01-24 06:11:42 UTC. Score: 81.00. Trial: 1",
-    "updated_at": "2026-01-24T06:11:42Z"
+    "notes": "Rank #1 optimization result applied on 2026-01-24 09:12:10 UTC. Score: 82.00. Trial: 1",
+    "updated_at": "2026-01-24T09:12:10Z"
   },
   "indicators": [
     {
@@ -207,6 +207,50 @@
   "strategy_sets": [],
   "routing": [],
   "optimization_results": [
+    {
+      "timestamp": "2026-01-24T09:12:10Z",
+      "score": 82.0,
+      "rank": 1,
+      "params": {
+        "adx14.period": 10,
+        "BULL.adx_threshold": 20.0,
+        "BEAR.adx_threshold": 20.0,
+        "SIDEWAYS.adx_threshold": 20.0,
+        "SIDEWAYS_OVERBOUGHT.adx_threshold": 20.0,
+        "SIDEWAYS_OVERSOLD.adx_threshold": 20.0,
+        "rsi14.period": 11,
+        "SIDEWAYS.rsi_low": 32,
+        "SIDEWAYS_OVERSOLD.rsi_oversold": 32,
+        "SIDEWAYS.rsi_high": 67,
+        "SIDEWAYS_OVERBOUGHT.rsi_overbought": 67,
+        "bb20.period": 29,
+        "bb20.std_dev": 3.0,
+        "bb20.width_percentile": 36.0,
+        "sma_fast.period": 46,
+        "sma_slow.period": 100
+      },
+      "metrics": {
+        "avg_duration_bars": 19.095238095238095,
+        "bear_bars": 73,
+        "bull_bars": 58,
+        "coverage": 1.0,
+        "f1_bear": 0.8487115544472154,
+        "f1_bull": 0.8113050706566917,
+        "f1_sideways": 0.6600166251039068,
+        "regime_count": 3,
+        "sideways_bars": 270,
+        "stability_score": 0.9476309226932669,
+        "switch_count": 21
+      },
+      "trial_number": 1,
+      "optimization_config": {
+        "mode": "QUICK",
+        "max_trials": 1000,
+        "symbol": "BTCUSDT",
+        "timeframe": "5m"
+      },
+      "applied": true
+    },
     {
       "timestamp": "2026-01-24T06:11:42Z",
       "score": 81.0,

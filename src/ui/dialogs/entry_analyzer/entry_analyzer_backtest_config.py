@@ -70,7 +70,7 @@ class BacktestConfigMixin:
     _regime_end_day: QLabel  # End day from chart
     _regime_period_days: QLabel  # Period in days
     _regime_num_bars: QLabel  # Number of bars
-    _regime_results_table: QWidget  # Results table (QTableWidget)
+    _detected_regimes_table: QWidget  # Detected regimes table (QTableWidget) - renamed to avoid mixin collision
     _regime_config_path_label: QLabel  # Regime config path display
     _regime_config_table: QWidget  # Regime config table (QTableWidget)
     _regime_config_load_btn: QPushButton  # Regime config load button
@@ -131,9 +131,9 @@ class BacktestConfigMixin:
 
         from PyQt6.QtWidgets import QHeaderView, QTableWidget
 
-        self._regime_results_table = QTableWidget()
-        self._regime_results_table.setColumnCount(8)
-        self._regime_results_table.setHorizontalHeaderLabels(
+        self._detected_regimes_table = QTableWidget()
+        self._detected_regimes_table.setColumnCount(8)
+        self._detected_regimes_table.setHorizontalHeaderLabels(
             [
                 "Start Date",
                 "Start Time",
@@ -145,16 +145,16 @@ class BacktestConfigMixin:
                 "Duration (Time)",
             ]
         )
-        self._regime_results_table.horizontalHeader().setSectionResizeMode(
+        self._detected_regimes_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
-        self._regime_results_table.setAlternatingRowColors(True)
-        self._regime_results_table.setEditTriggers(
+        self._detected_regimes_table.setAlternatingRowColors(True)
+        self._detected_regimes_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers
         )  # Read-only
-        self._regime_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._detected_regimes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
-        results_layout.addWidget(self._regime_results_table)
+        results_layout.addWidget(self._detected_regimes_table)
         results_group.setLayout(results_layout)
         layout.addWidget(results_group)
 
@@ -457,10 +457,10 @@ class BacktestConfigMixin:
 
             # Step 3: Update results table with COMPLETE regime periods (Start + End)
             logger.info(f"About to populate table with {len(detected_regimes)} regime periods")
-            logger.info(f"Table widget: {self._regime_results_table}")
-            logger.info(f"Table column count: {self._regime_results_table.columnCount()}")
+            logger.info(f"Table widget: {self._detected_regimes_table}")
+            logger.info(f"Table column count: {self._detected_regimes_table.columnCount()}")
 
-            self._regime_results_table.setRowCount(0)  # Clear existing rows
+            self._detected_regimes_table.setRowCount(0)  # Clear existing rows
 
             if not detected_regimes:
                 logger.warning("No regime periods detected in the visible range")
@@ -485,63 +485,63 @@ class BacktestConfigMixin:
 
             for idx, regime_data in enumerate(detected_regimes):
                 try:
-                    row = self._regime_results_table.rowCount()
+                    row = self._detected_regimes_table.rowCount()
                     logger.debug(f"Inserting row {row} (index {idx}) for regime {regime_data.get('regime', 'UNKNOWN')}")
-                    self._regime_results_table.insertRow(row)
+                    self._detected_regimes_table.insertRow(row)
 
                     # Start Date
                     start_date_item = QTableWidgetItem(regime_data["start_date"])
-                start_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 0, start_date_item)
+                    start_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 0, start_date_item)
 
-                # Start Time
-                start_time_item = QTableWidgetItem(regime_data["start_time"])
-                start_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 1, start_time_item)
+                    # Start Time
+                    start_time_item = QTableWidgetItem(regime_data["start_time"])
+                    start_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 1, start_time_item)
 
-                # End Date
-                end_date_item = QTableWidgetItem(regime_data["end_date"])
-                end_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 2, end_date_item)
+                    # End Date
+                    end_date_item = QTableWidgetItem(regime_data["end_date"])
+                    end_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 2, end_date_item)
 
-                # End Time
-                end_time_item = QTableWidgetItem(regime_data["end_time"])
-                end_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 3, end_time_item)
+                    # End Time
+                    end_time_item = QTableWidgetItem(regime_data["end_time"])
+                    end_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 3, end_time_item)
 
-                # Regime
-                regime_item = QTableWidgetItem(regime_data["regime"])
-                regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 4, regime_item)
+                    # Regime
+                    regime_item = QTableWidgetItem(regime_data["regime"])
+                    regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 4, regime_item)
 
-                # Score
-                score_item = QTableWidgetItem(f"{regime_data['score']:.2f}")
-                score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 5, score_item)
+                    # Score
+                    score_item = QTableWidgetItem(f"{regime_data['score']:.2f}")
+                    score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 5, score_item)
 
-                # Duration (Bars)
-                duration_bars_item = QTableWidgetItem(str(regime_data["duration_bars"]))
-                duration_bars_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 6, duration_bars_item)
+                    # Duration (Bars)
+                    duration_bars_item = QTableWidgetItem(str(regime_data["duration_bars"]))
+                    duration_bars_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 6, duration_bars_item)
 
-                # Duration (Time)
-                duration_time_item = QTableWidgetItem(regime_data["duration_time"])
-                duration_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_results_table.setItem(row, 7, duration_time_item)
+                    # Duration (Time)
+                    duration_time_item = QTableWidgetItem(regime_data["duration_time"])
+                    duration_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._detected_regimes_table.setItem(row, 7, duration_time_item)
 
                 except Exception as row_error:
                     logger.error(f"Error populating row {idx} for regime {regime_data.get('regime', 'UNKNOWN')}: {row_error}", exc_info=True)
                     continue
 
             # Log table population completion
-            final_row_count = self._regime_results_table.rowCount()
+            final_row_count = self._detected_regimes_table.rowCount()
             logger.info(f"✓ Table population complete! Final row count: {final_row_count}")
             logger.info(f"  Expected: {len(detected_regimes)}, Actual: {final_row_count}")
 
             if final_row_count == 0:
                 logger.error("⚠️ TABLE IS EMPTY after population attempt!")
                 logger.error(f"  detected_regimes length: {len(detected_regimes)}")
-                logger.error(f"  Table widget valid: {self._regime_results_table is not None}")
+                logger.error(f"  Table widget valid: {self._detected_regimes_table is not None}")
 
             # Step 4: Draw vertical lines in chart (Issue #21: Emit signal to chart)
             if hasattr(self, "draw_regime_lines_requested"):
