@@ -227,6 +227,9 @@ class EntryAnalyzerPopup(QDialog):
         self._copilot_worker: CopilotWorker | None = None
         self._validation_worker: ValidationWorker | None = None
         self._backtest_worker: BacktestWorker | None = None
+        self._strategy_config: Any = None
+        self._strategy_config_path: str | None = None
+        self._indicator_param_ranges: dict[str, dict[str, dict[str, float]]] = {}
 
         self._setup_ui()
 
@@ -414,12 +417,91 @@ class EntryAnalyzerPopup(QDialog):
         )
         if file_path:
             self._strategy_path_edit.setText(file_path)
+            self._load_strategy_config(file_path)
+
+    def _load_strategy_config(self, config_path: str) -> None:
+        """Load strategy config and refresh indicator parameter ranges."""
+        from src.core.tradingbot.config.loader import ConfigLoader
+
+        try:
+            loader = ConfigLoader()
+            config = loader.load_config(config_path)
+        except Exception as exc:
+            logger.error("Failed to load strategy config: %s", exc, exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Config Error",
+                f"Failed to load strategy JSON:\n{exc}",
+            )
+            self._strategy_config = None
+            self._strategy_config_path = None
+            self._indicator_param_ranges = {}
+            self._update_parameter_ranges()
+            return
+
+        self._strategy_config = config
+        self._strategy_config_path = config_path
+        self._indicator_param_ranges = self._build_param_ranges_from_config(config)
+        self._update_parameter_ranges()
+
+    def _build_param_ranges_from_config(self, config: Any) -> dict[str, dict[str, dict[str, float]]]:
+        """Build parameter ranges from JSON config indicator definitions."""
+        ranges: dict[str, dict[str, dict[str, float]]] = {}
+
+        for indicator in getattr(config, "indicators", []):
+            indicator_type = str(indicator.type).upper()
+            params = indicator.params or {}
+            ranges.setdefault(indicator_type, {})
+
+            for param_name, param_value in params.items():
+                normalized_name = self._normalize_param_name(indicator_type, param_name)
+                param_range = self._parse_param_range(param_value)
+                if param_range is None:
+                    continue
+                ranges[indicator_type][normalized_name] = param_range
+
+        return ranges
+
+    @staticmethod
+    def _normalize_param_name(indicator_type: str, param_name: str) -> str:
+        """Normalize parameter names to UI/optimization keys."""
+        normalized = param_name
+        if indicator_type == "BB" and param_name in {"std_dev", "std"}:
+            normalized = "std"
+        if indicator_type == "KC" and param_name in {"atr_mult", "mult"}:
+            normalized = "mult"
+        return normalized
+
+    def _parse_param_range(self, value: Any) -> dict[str, float] | None:
+        """Parse parameter ranges from JSON value."""
+        if isinstance(value, dict):
+            if "min" in value and "max" in value:
+                step = value.get("step")
+                if step is None:
+                    step = 1 if isinstance(value.get("min"), int) else 0.01
+                return {"min": float(value["min"]), "max": float(value["max"]), "step": float(step)}
+            if "values" in value and isinstance(value["values"], list):
+                numeric_values = [v for v in value["values"] if isinstance(v, (int, float))]
+                if numeric_values and len(numeric_values) == len(value["values"]):
+                    min_val = min(numeric_values)
+                    max_val = max(numeric_values)
+                    step = value.get("step")
+                    if step is None:
+                        step = 1 if all(isinstance(v, int) for v in numeric_values) else 0.01
+                    return {"min": float(min_val), "max": float(max_val), "step": float(step)}
+                return {"values": value["values"]}
+            return None
+
+        if isinstance(value, (int, float)):
+            step = 1 if isinstance(value, int) else 0.01
+            return {"min": float(value), "max": float(value), "step": float(step)}
+
+        return None
 
     def _on_analyze_current_regime_clicked(self) -> None:
         """Analyze current market regime without running full backtest."""
         import pandas as pd
-        import pandas_ta as ta
-        from src.core.tradingbot.regime_engine import RegimeEngine, FeatureVector
+        from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
 
         try:
             # Get parent chart widget (NOT chart window)
@@ -447,32 +529,6 @@ class EntryAnalyzerPopup(QDialog):
                 QMessageBox.warning(self, "Error", f"Missing required data columns: {', '.join(missing_cols)}")
                 return
 
-            # Calculate indicators using pandas_ta
-            df['rsi'] = ta.rsi(df['close'], length=14)
-
-            macd_result = ta.macd(df['close'], fast=12, slow=26, signal=9)
-            if macd_result is not None and not macd_result.empty:
-                df['macd_line'] = macd_result.iloc[:, 0]
-                df['macd_signal'] = macd_result.iloc[:, 1]
-            else:
-                df['macd_line'] = 0
-                df['macd_signal'] = 0
-
-            adx_result = ta.adx(df['high'], df['low'], df['close'], length=14)
-            if adx_result is not None and not adx_result.empty:
-                df['adx'] = adx_result.iloc[:, 0]
-            else:
-                df['adx'] = 25  # Default
-
-            df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-
-            # Calculate Bollinger Bands for BB Width%
-            bb_result = ta.bbands(df['close'], length=20, std=2)
-            if bb_result is not None and not bb_result.empty:
-                df['bb_lower'] = bb_result.iloc[:, 0]
-                df['bb_middle'] = bb_result.iloc[:, 1]
-                df['bb_upper'] = bb_result.iloc[:, 2]
-
             # Get latest values
             last_row = df.iloc[-1]
 
@@ -488,48 +544,44 @@ class EntryAnalyzerPopup(QDialog):
             # Get symbol from parent if available
             symbol = getattr(parent, '_symbol', None) or getattr(parent, 'current_symbol', 'UNKNOWN')
 
-            # Build FeatureVector
-            features = FeatureVector(
-                timestamp=timestamp,
-                symbol=symbol,
-                close=float(last_row['close']),
-                high=float(last_row['high']),
-                low=float(last_row['low']),
-                open=float(last_row['open']),
-                volume=float(last_row['volume']),
-                rsi=float(last_row['rsi']) if pd.notna(last_row['rsi']) else 50.0,
-                macd_line=float(last_row['macd_line']) if pd.notna(last_row['macd_line']) else 0.0,
-                macd_signal=float(last_row['macd_signal']) if pd.notna(last_row['macd_signal']) else 0.0,
-                adx=float(last_row['adx']) if pd.notna(last_row['adx']) else 25.0,
-                atr=float(last_row['atr']) if pd.notna(last_row['atr']) else 0.0
+            config_path = self._strategy_config_path or self._strategy_path_edit.text()
+            if not config_path or not Path(config_path).exists():
+                QMessageBox.warning(
+                    self,
+                    "Config Missing",
+                    "Please load a valid strategy JSON to analyze regime.",
+                )
+                return
+
+            regime_engine = RegimeEngineJSON()
+            current_regime = regime_engine.classify_from_config(df, config_path, scope="entry")
+            indicator_values = regime_engine.calculate_indicator_values(df, config_path)
+
+            adx_value = (
+                indicator_values.get("adx", {}).get("value")
+                or indicator_values.get("adx14", {}).get("value")
             )
-
-            # Detect current regime using RegimeEngine
-            regime_engine = RegimeEngine()
-            current_regime = regime_engine.classify(features)
-
-            # Calculate ATR% and BB Width% for display
-            atr_pct = (float(last_row['atr']) / float(last_row['close']) * 100.0) if pd.notna(last_row['atr']) and last_row['close'] > 0 else 0.0
-
-            # Calculate BB Width% if we have BB bands
-            bb_width_pct = 0.0
-            if 'bb_upper' in df.columns and 'bb_lower' in df.columns:
-                bb_upper = float(last_row.get('bb_upper', 0))
-                bb_lower = float(last_row.get('bb_lower', 0))
-                bb_middle = (bb_upper + bb_lower) / 2.0
-                if bb_middle > 0:
-                    bb_width_pct = ((bb_upper - bb_lower) / bb_middle) * 100.0
+            rsi_value = (
+                indicator_values.get("rsi14", {}).get("value")
+                or indicator_values.get("rsi", {}).get("value")
+            )
+            atr_value = (
+                indicator_values.get("atr14", {}).get("value")
+                or indicator_values.get("atr", {}).get("value")
+            )
+            bb_width_pct = indicator_values.get("bb20", {}).get("width") or 0.0
+            atr_pct = (float(atr_value) / float(last_row['close']) * 100.0) if atr_value and last_row['close'] > 0 else 0.0
 
             # Build result message
             message = "<h3>📊 Current Market Regime Analysis</h3>"
             message += f"<p><b>Regime:</b> <span style='color: #2563eb; font-size: 14pt; font-weight: bold;'>{current_regime.regime.name}</span></p>"
             message += f"<p><b>Volatility:</b> <span style='color: #ea580c; font-size: 14pt; font-weight: bold;'>{current_regime.volatility.name}</span></p>"
             message += "<hr>"
-            message += f"<p><b>ADX:</b> {float(last_row['adx']):.2f}</p>" if pd.notna(last_row['adx']) else "<p><b>ADX:</b> N/A</p>"
+            message += f"<p><b>ADX:</b> {float(adx_value):.2f}</p>" if adx_value is not None else "<p><b>ADX:</b> N/A</p>"
             message += f"<p><b>ATR%:</b> {atr_pct:.2f}%</p>"
             if bb_width_pct > 0:
                 message += f"<p><b>BB Width%:</b> {bb_width_pct:.2f}%</p>"
-            message += f"<p><b>RSI:</b> {float(last_row['rsi']):.2f}</p>" if pd.notna(last_row['rsi']) else "<p><b>RSI:</b> N/A</p>"
+            message += f"<p><b>RSI:</b> {float(rsi_value):.2f}</p>" if rsi_value is not None else "<p><b>RSI:</b> N/A</p>"
             message += "<hr>"
             message += f"<p><b>Regime Confidence:</b> {current_regime.regime_confidence:.1%}</p>"
             message += f"<p><b>Volatility Confidence:</b> {current_regime.volatility_confidence:.1%}</p>"
@@ -1583,36 +1635,22 @@ class EntryAnalyzerPopup(QDialog):
             self._param_scroll_content_layout.addWidget(no_selection_label)
             return
 
-        # Define parameter configurations for each indicator
-        param_configs = {
-            'RSI': [('period', 5, 50, 10, 20, 2)],
-            'MACD': [('fast', 5, 30, 8, 16, 2), ('slow', 15, 50, 20, 30, 5)],
-            'ADX': [('period', 5, 30, 10, 20, 2)],
-            'SMA': [('period', 10, 200, 20, 100, 10)],
-            'EMA': [('period', 10, 200, 20, 100, 10)],
-            'BB': [('period', 10, 40, 20, 30, 5), ('std', 1.5, 3.0, 2.0, 2.5, 0.5)],
-            'ATR': [('period', 7, 21, 14, 21, 7)],
-            'ICHIMOKU': [('tenkan', 5, 20, 9, 18, 3), ('kijun', 20, 80, 26, 52, 13)],
-            'PSAR': [('accel', 0.01, 0.03, 0.02, 0.02, 0.005)],
-            'KC': [('period', 10, 30, 20, 30, 5), ('atr_mult', 1.0, 3.0, 1.5, 2.5, 0.5)],
-            'CHOP': [('period', 10, 20, 14, 20, 2)],
-            'STOCH': [('k_period', 5, 20, 10, 14, 2), ('d_period', 3, 7, 3, 5, 1)],
-            'CCI': [('period', 10, 30, 14, 20, 2)],
-            'BB_WIDTH': [('period', 10, 40, 20, 30, 5)],
-            'MFI': [('period', 10, 20, 10, 14, 2)],
-            'CMF': [('period', 10, 30, 14, 20, 2)],
-        }
-
         # Create parameter widgets for selected indicators (wider fields with separate labels)
         for indicator_id in selected_indicators:
-            if indicator_id in ['VWAP', 'OBV', 'AD', 'PIVOTS']:
+            if indicator_id in ['VWAP', 'OBV', 'AD']:
                 # No parameters for these indicators
                 label = QLabel(f"{indicator_id}: No parameters")
                 label.setStyleSheet("color: #666; font-style: italic; padding: 5px;")
                 self._param_scroll_content_layout.addWidget(label)
                 continue
 
-            if indicator_id not in param_configs:
+            indicator_ranges = self._indicator_param_ranges.get(indicator_id)
+            if not indicator_ranges:
+                missing_label = QLabel(
+                    f"{indicator_id}: No JSON ranges found (load a strategy JSON)."
+                )
+                missing_label.setStyleSheet("color: #999; font-style: italic; padding: 5px;")
+                self._param_scroll_content_layout.addWidget(missing_label)
                 continue
 
             # Add indicator header
@@ -1623,7 +1661,19 @@ class EntryAnalyzerPopup(QDialog):
             self._param_widgets[indicator_id] = {}
 
             # Add each parameter in its own row with wider fields
-            for param_name, min_val, max_val, default_min, default_max, default_step in param_configs[indicator_id]:
+            for param_name, range_def in indicator_ranges.items():
+                if "values" in range_def:
+                    values_label = QLabel(
+                        f"{param_name}: {', '.join(str(v) for v in range_def['values'])}"
+                    )
+                    values_label.setStyleSheet("color: #666; font-style: italic; padding: 5px 20px;")
+                    self._param_scroll_content_layout.addWidget(values_label)
+                    continue
+                min_val = range_def["min"]
+                max_val = range_def["max"]
+                default_min = range_def["min"]
+                default_max = range_def["max"]
+                default_step = range_def["step"]
                 # Create widget container for this parameter row
                 param_container = QWidget()
                 param_container_layout = QHBoxLayout(param_container)
@@ -1704,13 +1754,35 @@ class EntryAnalyzerPopup(QDialog):
             )
             return
 
-        # Get parameter ranges from dynamic widgets
-        param_ranges = {}
+        if not self._indicator_param_ranges:
+            QMessageBox.warning(
+                self,
+                "Missing JSON Ranges",
+                "Load a strategy JSON with parameter ranges before optimizing."
+            )
+            return
+
+        config_path = self._strategy_config_path or self._strategy_path_edit.text()
+        if not config_path or not Path(config_path).exists():
+            QMessageBox.warning(
+                self,
+                "Missing JSON Config",
+                "Select a valid strategy JSON before optimizing indicators."
+            )
+            return
+
+        # Start with JSON-defined ranges
+        param_ranges = {
+            indicator: dict(self._indicator_param_ranges.get(indicator, {}))
+            for indicator in selected_indicators
+        }
+
+        # Override with UI widget values (numeric ranges)
         for indicator_id, params in self._param_widgets.items():
             if indicator_id not in selected_indicators:
                 continue
 
-            param_ranges[indicator_id] = {}
+            param_ranges.setdefault(indicator_id, {})
             for param_name, widgets in params.items():
                 param_ranges[indicator_id][param_name] = {
                     'min': widgets['min'].value(),
@@ -1762,7 +1834,7 @@ class EntryAnalyzerPopup(QDialog):
         self._optimization_thread = IndicatorOptimizationThread(
             selected_indicators=selected_indicators,
             param_ranges=param_ranges,
-            json_config_path=None,  # Not needed for indicator optimization
+            json_config_path=config_path,
             symbol=symbol,
             start_date=start_date,
             end_date=end_date,

@@ -248,9 +248,11 @@ class RegimeEngineJSON:
         mappings = {
             "sma_20": ("sma20", features.sma_20),
             "sma_50": ("sma50", features.sma_50),
-            "adx": ("adx14", features.adx),
+            "adx": ("adx", features.adx),
+            "adx_14": ("adx14", features.adx),
             "rsi_14": ("rsi14", features.rsi_14),
             "atr_14": ("atr14", features.atr_14),
+            "atr": ("atr", features.atr_14),
             "bb_upper": ("bb20", features.bb_upper),
             "bb_lower": ("bb20", features.bb_lower),
             "bb_width": ("bb20", features.bb_width),
@@ -340,6 +342,36 @@ class RegimeEngineJSON:
 
         return indicator_values
 
+    def calculate_indicator_values(
+        self,
+        data: pd.DataFrame,
+        config_path: str | Path
+    ) -> dict[str, dict[str, float]]:
+        """Calculate indicator values from JSON configuration.
+
+        Args:
+            data: OHLCV DataFrame with columns: open, high, low, close, volume
+            config_path: Path to JSON strategy config
+
+        Returns:
+            Dict mapping indicator_id -> {field -> value}
+        """
+        config = self._load_config(config_path)
+        return self._calculate_indicators(data, config)
+
+    @staticmethod
+    def _first_indicator_value(
+        indicator_values: dict[str, dict[str, float]],
+        ids: list[str],
+        field: str = "value",
+    ) -> float | None:
+        """Return first matching indicator value for a list of IDs."""
+        for indicator_id in ids:
+            value = indicator_values.get(indicator_id, {}).get(field)
+            if value is not None:
+                return value
+        return None
+
     def _convert_to_regime_state(
         self,
         active_regimes: list,
@@ -377,7 +409,7 @@ class RegimeEngineJSON:
                 volatility=volatility,
                 regime_confidence=regime_confidence,
                 volatility_confidence=volatility_confidence,
-                adx_value=indicator_values.get("adx14", {}).get("value"),
+                adx_value=self._first_indicator_value(indicator_values, ["adx", "adx14"]),
                 atr_pct=self._calc_atr_pct_from_indicators(indicator_values),
                 bb_width_pct=indicator_values.get("bb20", {}).get("width")
             )
@@ -456,7 +488,7 @@ class RegimeEngineJSON:
             volatility=volatility,
             regime_confidence=regime_confidence,
             volatility_confidence=volatility_confidence,
-            adx_value=indicator_values.get("adx14", {}).get("value"),
+            adx_value=self._first_indicator_value(indicator_values, ["adx", "adx14"]),
             atr_pct=self._calc_atr_pct_from_indicators(indicator_values),
             bb_width_pct=indicator_values.get("bb20", {}).get("width")
         )
@@ -473,7 +505,7 @@ class RegimeEngineJSON:
         Returns:
             ATR% or None if not available
         """
-        atr = indicator_values.get("atr14", {}).get("value")
+        atr = self._first_indicator_value(indicator_values, ["atr14", "atr"])
 
         # Try to get close price from various sources
         close = None
