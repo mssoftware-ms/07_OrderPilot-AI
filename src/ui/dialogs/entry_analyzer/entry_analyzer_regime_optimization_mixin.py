@@ -205,8 +205,15 @@ class RegimeOptimizationMixin:
                 # For TPE, we just pass min/max ranges, not all values
                 min_val = param_config["min"]
                 max_val = param_config["max"]
-                # Generate sample values for the range (TPE will interpolate)
-                param_grid[param_name] = list(range(min_val, max_val + 1))
+
+                # Handle float vs int parameters
+                if isinstance(min_val, float) or isinstance(max_val, float):
+                    # Float parameter: Create sample values with numpy linspace
+                    import numpy as np
+                    param_grid[param_name] = list(np.linspace(min_val, max_val, num=10))
+                else:
+                    # Integer parameter: Use range
+                    param_grid[param_name] = list(range(min_val, max_val + 1))
 
         # Get config template path
         # Use default regime config from project

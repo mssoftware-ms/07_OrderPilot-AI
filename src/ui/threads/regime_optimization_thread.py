@@ -696,11 +696,13 @@ class RegimeOptimizationThread(QThread):
 
         Old format (grid):
             {"adx.period": [10, 14, 20], "adx.threshold": [17, 25, 40]}
+            {"bb_std_dev": [1.5, 2.0, 2.5, 3.0]}
 
         New format (ParamRange dict):
             {
                 "adx_period": {"min": 10, "max": 20, "step": 1},
-                "adx_threshold": {"min": 17, "max": 40, "step": 1}
+                "adx_threshold": {"min": 17, "max": 40, "step": 1},
+                "bb_std_dev": {"min": 1.5, "max": 3.0, "step": 0.1}
             }
 
         Returns:
@@ -715,11 +717,22 @@ class RegimeOptimizationThread(QThread):
             # Convert dotted path to underscore (adx.period -> adx_period)
             param_key = param_path.replace(".", "_")
 
-            # Create range with min/max (ParamRange fields)
+            min_val = min(values)
+            max_val = max(values)
+
+            # Detect type and calculate appropriate step
+            if isinstance(min_val, float) or isinstance(max_val, float):
+                # Float parameter: Use 0.1 as default step
+                step = 0.1
+            else:
+                # Integer parameter: Use 1 as step
+                step = 1
+
+            # Create range with min/max/step (ParamRange fields)
             param_ranges[param_key] = {
-                "min": min(values),
-                "max": max(values),
-                "step": 1,  # Default step for integer ranges
+                "min": min_val,
+                "max": max_val,
+                "step": step,
             }
 
         logger.info(f"Converted param_grid to ranges: {param_ranges}")
