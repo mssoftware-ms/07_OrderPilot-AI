@@ -12,7 +12,10 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from PyQt6.QtCore import QThread, pyqtSignal
-from src.core.tradingbot.regime_engine import RegimeEngine
+from src.core.tradingbot.config.loader import ConfigLoader
+from src.core.tradingbot.config.detector import RegimeDetector
+from src.core.indicators.engine import IndicatorEngine
+from src.core.indicators.types import IndicatorConfig, IndicatorType
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,7 @@ class IndicatorOptimizationThread(QThread):
     def __init__(
         self,
         selected_indicators: List[str],
-        param_ranges: Dict[str, Dict[str, int]],
+        param_ranges: Dict[str, Dict[str, Any]],
         json_config_path: Optional[str] = None,  # Optional - not used for indicator optimization
         symbol: str = "",
         start_date: datetime = None,
@@ -97,11 +100,9 @@ class IndicatorOptimizationThread(QThread):
 
             # Import required modules
             from src.backtesting.engine import BacktestEngine
-            from src.core.tradingbot.regime_engine import RegimeEngine
             import pandas_ta as ta
 
             engine = BacktestEngine()
-            regime_engine = RegimeEngine()
 
             # Load or use chart data
             if self.chart_data is not None:
@@ -115,9 +116,17 @@ class IndicatorOptimizationThread(QThread):
                 self.error.emit("No data available for optimization")
                 return
 
+            config = None
+            if self.json_config_path:
+                config = ConfigLoader().load_config(self.json_config_path)
+
+            if config is None:
+                self.error.emit("Missing JSON config for regime detection")
+                return
+
             # Detect regimes across the data
             self.progress.emit(5, "Detecting market regimes...")
-            regime_labels = self._detect_regimes(df, regime_engine)
+            regime_labels = self._detect_regimes(df, config)
 
             # Build regime history (track regime changes for visualization)
             regime_history = self._build_regime_history(df, regime_labels)
@@ -201,92 +210,64 @@ class IndicatorOptimizationThread(QThread):
             logger.error(error_msg, exc_info=True)
             self.error.emit(error_msg)
 
-    def _detect_regimes(self, df: pd.DataFrame, regime_engine: RegimeEngine) -> pd.Series:
-        """Detect regime for each bar using RegimeEngine.
+    def _detect_regimes(self, df: pd.DataFrame, config: Any) -> pd.Series:
+        """Detect regime for each bar using JSON config definitions."""
+        indicator_series = self._calculate_indicator_series(df, config)
+        detector = RegimeDetector(config.regimes)
 
-        Returns:
-            Series with regime labels (e.g., "TREND_UP", "RANGE", etc.)
-        """
-        import pandas_ta as ta
+        regimes: list[str] = []
+        for idx in df.index:
+            snapshot: dict[str, dict[str, float]] = {}
+            for indicator_id, values in indicator_series.items():
+                if isinstance(values, pd.Series):
+                    value = values.loc[idx]
+                    snapshot[indicator_id] = {"value": float(value) if pd.notna(value) else None}
+                elif isinstance(values, pd.DataFrame):
+                    snapshot[indicator_id] = {
+                        col: float(values.loc[idx, col]) if pd.notna(values.loc[idx, col]) else None
+                        for col in values.columns
+                    }
+                elif isinstance(values, dict):
+                    snapshot[indicator_id] = {
+                        key: float(series.loc[idx]) if pd.notna(series.loc[idx]) else None
+                        for key, series in values.items()
+                    }
 
-        # Calculate regime indicators (ADX, ATR, BB Width) - robust access
-        adx_df = ta.adx(df['high'], df['low'], df['close'], length=14)
-        if adx_df is not None and not adx_df.empty:
-            # Find ADX column (name may vary: ADX_14, ADX, etc.)
-            adx_col = [c for c in adx_df.columns if 'ADX' in c and 'D' not in c]  # Exclude DMP/DMN
-            df['adx'] = adx_df[adx_col[0]] if adx_col else 25.0
-        else:
-            df['adx'] = 25.0
-
-        atr_series = ta.atr(df['high'], df['low'], df['close'], length=14)
-        df['atr'] = atr_series if atr_series is not None else df['close'] * 0.02  # 2% fallback
-
-        # Bollinger Bands - use robust column access (pandas_ta versions vary)
-        bb = ta.bbands(df['close'], length=20, std=2.0)
-        if bb is not None and not bb.empty and len(bb.columns) >= 3:
-            # pandas_ta returns BBL, BBM, BBU in order (column names may vary)
-            # Use positional access: 0=Lower, 1=Middle, 2=Upper
-            df['bb_width'] = (bb.iloc[:, 2] - bb.iloc[:, 0]) / bb.iloc[:, 1] * 100
-        else:
-            # Fallback: default BB width (2% = normal volatility)
-            df['bb_width'] = 2.0
-
-        # Calculate +DI and -DI for trend direction (robust access)
-        dm = ta.dm(df['high'], df['low'], length=14)
-
-        if dm is not None and not dm.empty:
-            # Get DMP and DMN columns (names may vary)
-            dmp_col = [c for c in dm.columns if 'DMP' in c or 'PLUS' in c.upper()]
-            dmn_col = [c for c in dm.columns if 'DMN' in c or 'MINUS' in c.upper()]
-
-            if dmp_col and dmn_col:
-                # Reuse already calculated ATR from df['atr']
-                df['plus_di'] = dm[dmp_col[0]] / df['atr'] * 100
-                df['minus_di'] = dm[dmn_col[0]] / df['atr'] * 100
+            active = detector.detect_active_regimes(snapshot, scope="entry")
+            if active:
+                regimes.append(active[0].definition.id.upper())
             else:
-                df['plus_di'] = 25.0
-                df['minus_di'] = 25.0
-        else:
-            df['plus_di'] = 25.0
-            df['minus_di'] = 25.0
-
-        # RSI
-        rsi_series = ta.rsi(df['close'], length=14)
-        df['rsi'] = rsi_series if rsi_series is not None else 50.0
-
-        # Classify each bar
-        regimes = []
-        for i in range(len(df)):
-            row = df.iloc[i]
-
-            # Create a simple features dict
-            features = {
-                'adx': row.get('adx', 0),
-                'atr': row.get('atr', 0),
-                'bb_width': row.get('bb_width', 0),
-                'plus_di': row.get('plus_di', 0),
-                'minus_di': row.get('minus_di', 0),
-                'rsi': row.get('rsi', 50),
-                'close': row['close']
-            }
-
-            # Simple regime classification
-            adx = features['adx']
-            atr_pct = (features['atr'] / features['close']) * 100 if features['close'] > 0 else 0
-
-            if adx > 25:  # Strong trend
-                if features['plus_di'] > features['minus_di']:
-                    regime = "TREND_UP"
-                else:
-                    regime = "TREND_DOWN"
-            elif atr_pct > 3:  # High volatility
-                regime = "VOLATILE"
-            else:  # Range-bound
-                regime = "RANGE"
-
-            regimes.append(regime)
+                regimes.append("NO_REGIME")
 
         return pd.Series(regimes, index=df.index)
+
+    def _calculate_indicator_series(
+        self, df: pd.DataFrame, config: Any
+    ) -> dict[str, pd.Series | pd.DataFrame | dict[str, pd.Series]]:
+        """Calculate indicator series for regime detection."""
+        engine = IndicatorEngine()
+        results: dict[str, pd.Series | pd.DataFrame | dict[str, pd.Series]] = {}
+
+        for indicator in config.indicators:
+            indicator_type = IndicatorType(str(indicator.type).lower())
+            indicator_config = IndicatorConfig(
+                indicator_type=indicator_type,
+                params=indicator.params,
+                use_talib=False,
+                cache_results=True,
+            )
+            result = engine.calculate(df, indicator_config)
+
+            if isinstance(result.values, pd.Series):
+                results[indicator.id] = result.values
+            elif isinstance(result.values, pd.DataFrame):
+                results[indicator.id] = result.values
+            elif isinstance(result.values, dict):
+                results[indicator.id] = {
+                    key: series for key, series in result.values.items() if isinstance(series, pd.Series)
+                }
+
+        return results
 
     def _build_regime_history(self, df: pd.DataFrame, regime_labels: pd.Series) -> List[Dict[str, Any]]:
         """Build regime history from regime labels for visualization.
@@ -331,6 +312,32 @@ class IndicatorOptimizationThread(QThread):
 
         return regime_history
 
+    @staticmethod
+    def _require_range(
+        indicator: str,
+        indicator_ranges: Dict[str, Dict[str, Any]],
+        param_name: str,
+    ) -> Dict[str, Any]:
+        """Require parameter range for indicator."""
+        range_def = indicator_ranges.get(param_name)
+        if not range_def:
+            raise ValueError(f"Missing parameter range for {indicator}.{param_name}")
+        if "values" in range_def:
+            return range_def
+        missing_keys = {"min", "max", "step"} - set(range_def.keys())
+        if missing_keys:
+            raise ValueError(
+                f"Parameter range for {indicator}.{param_name} missing keys: {sorted(missing_keys)}"
+            )
+        return range_def
+
+    @staticmethod
+    def _expand_range(range_def: Dict[str, Any]) -> List[Any]:
+        """Expand a range definition to a list of values."""
+        if "values" in range_def:
+            return list(range_def["values"])
+        return list(range(range_def["min"], range_def["max"] + 1, range_def["step"]))
+
     def _generate_parameter_combinations(self) -> Dict[str, List[Dict[str, int]]]:
         """Generate all parameter combinations for selected indicators.
 
@@ -351,37 +358,37 @@ class IndicatorOptimizationThread(QThread):
             indicator_ranges = self.param_ranges.get(indicator, {})
 
             if indicator == 'RSI':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 20, 'step': 2})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'MACD':
-                fast_range = indicator_ranges.get('fast', {'min': 8, 'max': 16, 'step': 2})
-                slow_range = indicator_ranges.get('slow', {'min': 26, 'max': 26, 'step': 1})
-                signal_range = indicator_ranges.get('signal', {'min': 9, 'max': 9, 'step': 1})
+                fast_range = self._require_range(indicator, indicator_ranges, "fast")
+                slow_range = self._require_range(indicator, indicator_ranges, "slow")
+                signal_range = self._require_range(indicator, indicator_ranges, "signal")
                 for fast in range(fast_range['min'], fast_range['max'] + 1, fast_range['step']):
                     for slow in range(slow_range['min'], slow_range['max'] + 1, slow_range['step']):
                         for signal in range(signal_range['min'], signal_range['max'] + 1, signal_range['step']):
                             param_list.append({'fast': fast, 'slow': slow, 'signal': signal})
 
             elif indicator == 'ADX':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 20, 'step': 2})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'SMA':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 50, 'step': 10})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'EMA':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 50, 'step': 10})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'BB':
-                period_range = indicator_ranges.get('period', {'min': 14, 'max': 28, 'step': 7})
-                std_range = indicator_ranges.get('std', {'min': 2.0, 'max': 2.5, 'step': 0.5})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
+                std_range = self._require_range(indicator, indicator_ranges, "std")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     # Handle float step for std
                     std_val = std_range['min']
@@ -390,15 +397,15 @@ class IndicatorOptimizationThread(QThread):
                         std_val += std_range['step']
 
             elif indicator == 'ATR':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 20, 'step': 2})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             # === NEW INDICATORS (13) ===
 
             elif indicator == 'ICHIMOKU':
-                tenkan_range = indicator_ranges.get('tenkan', {'min': 9, 'max': 27, 'step': 9})
-                kijun_range = indicator_ranges.get('kijun', {'min': 26, 'max': 52, 'step': 26})
+                tenkan_range = self._require_range(indicator, indicator_ranges, "tenkan")
+                kijun_range = self._require_range(indicator, indicator_ranges, "kijun")
                 for tenkan in range(tenkan_range['min'], tenkan_range['max'] + 1, tenkan_range['step']):
                     for kijun in range(kijun_range['min'], kijun_range['max'] + 1, kijun_range['step']):
                         param_list.append({
@@ -408,8 +415,8 @@ class IndicatorOptimizationThread(QThread):
                         })
 
             elif indicator == 'PSAR':
-                accel_range = indicator_ranges.get('accel', {'min': 0.01, 'max': 0.02, 'step': 0.005})
-                max_accel_range = indicator_ranges.get('max_accel', {'min': 0.1, 'max': 0.2, 'step': 0.05})
+                accel_range = self._require_range(indicator, indicator_ranges, "accel")
+                max_accel_range = self._require_range(indicator, indicator_ranges, "max_accel")
                 # Handle float steps
                 accel = accel_range['min']
                 while accel <= accel_range['max']:
@@ -420,8 +427,8 @@ class IndicatorOptimizationThread(QThread):
                     accel += accel_range['step']
 
             elif indicator == 'KC':
-                period_range = indicator_ranges.get('period', {'min': 14, 'max': 28, 'step': 7})
-                mult_range = indicator_ranges.get('mult', {'min': 2.0, 'max': 2.0, 'step': 0.5})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
+                mult_range = self._require_range(indicator, indicator_ranges, "mult")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     mult = mult_range['min']
                     while mult <= mult_range['max']:
@@ -430,33 +437,35 @@ class IndicatorOptimizationThread(QThread):
 
             elif indicator == 'VWAP':
                 # VWAP typically doesn't have parameters (daily reset)
-                param_list.append({'anchor': 'D'})
+                param_list.append({})
 
             elif indicator == 'PIVOTS':
                 # Pivot Points: Standard, Fibonacci, Camarilla
-                for pivot_type in ['standard', 'fibonacci', 'camarilla']:
+                pivot_range = self._require_range(indicator, indicator_ranges, "type")
+                pivot_types = self._expand_range(pivot_range)
+                for pivot_type in pivot_types:
                     param_list.append({'type': pivot_type})
 
             elif indicator == 'CHOP':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 20, 'step': 2})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'STOCH':
-                k_range = indicator_ranges.get('k_period', {'min': 10, 'max': 20, 'step': 5})
-                d_range = indicator_ranges.get('d_period', {'min': 3, 'max': 7, 'step': 2})
+                k_range = self._require_range(indicator, indicator_ranges, "k_period")
+                d_range = self._require_range(indicator, indicator_ranges, "d_period")
                 for k in range(k_range['min'], k_range['max'] + 1, k_range['step']):
                     for d in range(d_range['min'], d_range['max'] + 1, d_range['step']):
                         param_list.append({'k_period': k, 'd_period': d})
 
             elif indicator == 'CCI':
-                period_range = indicator_ranges.get('period', {'min': 14, 'max': 28, 'step': 7})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
             elif indicator == 'BB_WIDTH':
-                period_range = indicator_ranges.get('period', {'min': 14, 'max': 28, 'step': 7})
-                std_range = indicator_ranges.get('std', {'min': 2.0, 'max': 2.5, 'step': 0.5})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
+                std_range = self._require_range(indicator, indicator_ranges, "std")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     std = std_range['min']
                     while std <= std_range['max']:
@@ -468,7 +477,7 @@ class IndicatorOptimizationThread(QThread):
                 param_list.append({})
 
             elif indicator == 'MFI':
-                period_range = indicator_ranges.get('period', {'min': 10, 'max': 20, 'step': 2})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
@@ -477,7 +486,7 @@ class IndicatorOptimizationThread(QThread):
                 param_list.append({})
 
             elif indicator == 'CMF':
-                period_range = indicator_ranges.get('period', {'min': 14, 'max': 28, 'step': 7})
+                period_range = self._require_range(indicator, indicator_ranges, "period")
                 for period in range(period_range['min'], period_range['max'] + 1, period_range['step']):
                     param_list.append({'period': period})
 
@@ -494,14 +503,14 @@ class IndicatorOptimizationThread(QThread):
         result_df = df.copy()
 
         if indicator_type == 'RSI':
-            period = params.get('period', 14)
+            period = self._require_param_value(params, indicator_type, "period")
             rsi = ta.rsi(df['close'], length=period)
             result_df['indicator_value'] = rsi if rsi is not None else 50.0
 
         elif indicator_type == 'MACD':
-            fast = params.get('fast', 12)
-            slow = params.get('slow', 26)
-            signal = params.get('signal', 9)
+            fast = self._require_param_value(params, indicator_type, "fast")
+            slow = self._require_param_value(params, indicator_type, "slow")
+            signal = self._require_param_value(params, indicator_type, "signal")
             macd = ta.macd(df['close'], fast=fast, slow=slow, signal=signal)
             if macd is not None and not macd.empty:
                 # MACD returns 3 columns: MACD line, signal, histogram
@@ -516,7 +525,7 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = 0
 
         elif indicator_type == 'ADX':
-            period = params.get('period', 14)
+            period = self._require_param_value(params, indicator_type, "period")
             adx = ta.adx(df['high'], df['low'], df['close'], length=period)
             if adx is not None and not adx.empty:
                 # Find ADX column (excludes DMP/DMN)
@@ -526,18 +535,18 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = 25.0
 
         elif indicator_type == 'SMA':
-            period = params.get('period', 20)
+            period = self._require_param_value(params, indicator_type, "period")
             sma = ta.sma(df['close'], length=period)
             result_df['indicator_value'] = sma if sma is not None else df['close']
 
         elif indicator_type == 'EMA':
-            period = params.get('period', 20)
+            period = self._require_param_value(params, indicator_type, "period")
             ema = ta.ema(df['close'], length=period)
             result_df['indicator_value'] = ema if ema is not None else df['close']
 
         elif indicator_type == 'BB':
-            period = params.get('period', 20)
-            std = params.get('std', 2.0)
+            period = self._require_param_value(params, indicator_type, "period")
+            std = self._require_param_value(params, indicator_type, "std")
             bbands = ta.bbands(df['close'], length=period, std=std)
             if bbands is not None and not bbands.empty and len(bbands.columns) >= 3:
                 # Bollinger Bands returns 3 columns: Lower, Middle, Upper (order may vary)
@@ -553,16 +562,16 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = df['close']
 
         elif indicator_type == 'ATR':
-            period = params.get('period', 14)
+            period = self._require_param_value(params, indicator_type, "period")
             atr = ta.atr(df['high'], df['low'], df['close'], length=period)
             result_df['indicator_value'] = atr if atr is not None else df['close'] * 0.02
 
         # === NEW INDICATORS ===
 
         elif indicator_type == 'ICHIMOKU':
-            tenkan = params.get('tenkan', 9)
-            kijun = params.get('kijun', 26)
-            senkou = params.get('senkou', 52)
+            tenkan = self._require_param_value(params, indicator_type, "tenkan")
+            kijun = self._require_param_value(params, indicator_type, "kijun")
+            senkou = self._require_param_value(params, indicator_type, "senkou")
             ichimoku_result = ta.ichimoku(df['high'], df['low'], df['close'],
                                           tenkan=tenkan, kijun=kijun, senkou=senkou)
             if ichimoku_result is not None and len(ichimoku_result) > 0:
@@ -584,8 +593,8 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = df['close']
 
         elif indicator_type == 'PSAR':
-            accel = params.get('accel', 0.02)
-            max_accel = params.get('max_accel', 0.2)
+            accel = self._require_param_value(params, indicator_type, "accel")
+            max_accel = self._require_param_value(params, indicator_type, "max_accel")
             psar = ta.psar(df['high'], df['low'], af=accel, max_af=max_accel)
             if psar is not None and not psar.empty:
                 # PSAR returns multiple columns (long/short), use first numeric column
@@ -595,8 +604,8 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = df['close']
 
         elif indicator_type == 'KC':
-            period = params.get('period', 20)
-            mult = params.get('mult', 2.0)
+            period = self._require_param_value(params, indicator_type, "period")
+            mult = self._require_param_value(params, indicator_type, "mult")
             kc = ta.kc(df['high'], df['low'], df['close'], length=period, scalar=mult)
             if kc is not None and not kc.empty and len(kc.columns) >= 3:
                 # KC returns lower, basis, upper (positional: 0, 1, 2)
@@ -612,7 +621,7 @@ class IndicatorOptimizationThread(QThread):
             result_df['indicator_value'] = vwap if vwap is not None else df['close']
 
         elif indicator_type == 'PIVOTS':
-            pivot_type = params.get('type', 'standard')
+            pivot_type = self._require_param_value(params, indicator_type, "type")
             # Simplified pivot calculation (using previous day H/L/C)
             if pivot_type == 'standard':
                 pivot = (df['high'].shift(1) + df['low'].shift(1) + df['close'].shift(1)) / 3
@@ -623,13 +632,13 @@ class IndicatorOptimizationThread(QThread):
             result_df['indicator_value'] = pivot
 
         elif indicator_type == 'CHOP':
-            period = params.get('period', 14)
+            period = self._require_param_value(params, indicator_type, "period")
             chop = ta.chop(df['high'], df['low'], df['close'], length=period)
             result_df['indicator_value'] = chop if chop is not None else 50.0
 
         elif indicator_type == 'STOCH':
-            k_period = params.get('k_period', 14)
-            d_period = params.get('d_period', 3)
+            k_period = self._require_param_value(params, indicator_type, "k_period")
+            d_period = self._require_param_value(params, indicator_type, "d_period")
             stoch = ta.stoch(df['high'], df['low'], df['close'], k=k_period, d=d_period)
             if stoch is not None and not stoch.empty:
                 # Stochastic returns %K and %D columns
@@ -646,13 +655,13 @@ class IndicatorOptimizationThread(QThread):
                 result_df['indicator_value'] = 50.0
 
         elif indicator_type == 'CCI':
-            period = params.get('period', 20)
+            period = self._require_param_value(params, indicator_type, "period")
             cci = ta.cci(df['high'], df['low'], df['close'], length=period)
             result_df['indicator_value'] = cci if cci is not None else 0.0
 
         elif indicator_type == 'BB_WIDTH':
-            period = params.get('period', 20)
-            std = params.get('std', 2.0)
+            period = self._require_param_value(params, indicator_type, "period")
+            std = self._require_param_value(params, indicator_type, "std")
             bbands = ta.bbands(df['close'], length=period, std=std)
             if bbands is not None and not bbands.empty and len(bbands.columns) >= 3:
                 # Positional access: [0]=Lower, [1]=Middle, [2]=Upper
@@ -668,7 +677,7 @@ class IndicatorOptimizationThread(QThread):
             result_df['indicator_value'] = obv if obv is not None else df['volume'].cumsum()
 
         elif indicator_type == 'MFI':
-            period = params.get('period', 14)
+            period = self._require_param_value(params, indicator_type, "period")
             mfi = ta.mfi(df['high'], df['low'], df['close'], df['volume'], length=period)
             result_df['indicator_value'] = mfi if mfi is not None else 50.0
 
@@ -677,11 +686,18 @@ class IndicatorOptimizationThread(QThread):
             result_df['indicator_value'] = ad if ad is not None else 0.0
 
         elif indicator_type == 'CMF':
-            period = params.get('period', 20)
+            period = self._require_param_value(params, indicator_type, "period")
             cmf = ta.cmf(df['high'], df['low'], df['close'], df['volume'], length=period)
             result_df['indicator_value'] = cmf if cmf is not None else 0.0
 
         return result_df.dropna()
+
+    @staticmethod
+    def _require_param_value(params: Dict[str, Any], indicator: str, name: str) -> Any:
+        """Require parameter value or raise."""
+        if name not in params:
+            raise ValueError(f"Missing parameter for {indicator}: {name}")
+        return params[name]
 
     def _score_indicator(
         self, df: pd.DataFrame, indicator_type: str, params: Dict[str, int], regime: str
