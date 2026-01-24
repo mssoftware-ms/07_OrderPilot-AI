@@ -159,7 +159,9 @@ def check_dependencies(splash=None) -> bool:
         ('openai', 'OpenAI'),
         ('pydantic', 'Pydantic'),
         ('aiohttp', 'aiohttp'),
-        ('cryptography', 'cryptography')
+        ('cryptography', 'cryptography'),
+        ('sklearn', 'scikit-learn'),
+        ('optuna', 'Optuna')
     ]
 
     missing = []
