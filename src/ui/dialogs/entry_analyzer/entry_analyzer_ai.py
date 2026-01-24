@@ -64,5 +64,3 @@ class AIMixin(AICopilotMixin, AIPatternsMixin):
         _timeframe: str | None - Chart timeframe
         _validation_result: Any | None - Validation data
     """
-
-    pass

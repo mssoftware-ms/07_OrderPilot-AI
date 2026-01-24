@@ -1,0 +1,553 @@
+{
+  "version": "2.0",
+  "meta": {
+    "stage": "indicator_optimization",
+    "regime": "BULL",
+    "created_at": "2026-01-24T02:57:47.479093",
+    "regime_config_ref": "optimized_regime_BULL_BTCUSDT_5m.json",
+    "regime_data": {
+      "total_bars": 5000,
+      "percentage_of_data": 33.3,
+      "periods_count": 15
+    },
+    "source": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m"
+    },
+    "method": "tpe_multivariate",
+    "mode": "auto",
+    "tested_indicators": [
+      "RSI",
+      "MACD",
+      "STOCH",
+      "BB",
+      "ATR",
+      "EMA",
+      "CCI"
+    ],
+    "duration_seconds": 450.5
+  },
+  "optimization_config": {
+    "mode": "standard",
+    "method": "tpe",
+    "trials_per_indicator": 40,
+    "indicator_selection": {
+      "mode": "all",
+      "selected": [
+        "RSI",
+        "MACD",
+        "STOCH",
+        "BB",
+        "ATR",
+        "EMA",
+        "CCI"
+      ]
+    },
+    "early_stopping": {
+      "enabled": true,
+      "min_trades": 5
+    },
+    "actual_performance": {
+      "total_combinations_if_grid": 16800,
+      "actual_trials_run": 280,
+      "speedup_factor": 60.0
+    }
+  },
+  "param_ranges": {
+    "RSI": {
+      "period": {
+        "min": 10,
+        "max": 20,
+        "step": 1
+      },
+      "threshold_low": {
+        "min": 20,
+        "max": 35,
+        "step": 5
+      },
+      "threshold_high": {
+        "min": 65,
+        "max": 80,
+        "step": 5
+      }
+    },
+    "MACD": {
+      "fast": {
+        "min": 8,
+        "max": 16,
+        "step": 2
+      },
+      "slow": {
+        "min": 20,
+        "max": 30,
+        "step": 2
+      },
+      "signal": {
+        "min": 7,
+        "max": 11,
+        "step": 1
+      }
+    },
+    "STOCH": {
+      "k_period": {
+        "min": 10,
+        "max": 18,
+        "step": 2
+      },
+      "d_period": {
+        "min": 3,
+        "max": 5,
+        "step": 1
+      },
+      "threshold_low": {
+        "min": 15,
+        "max": 25,
+        "step": 5
+      },
+      "threshold_high": {
+        "min": 75,
+        "max": 85,
+        "step": 5
+      }
+    },
+    "BB": {
+      "period": {
+        "min": 15,
+        "max": 25,
+        "step": 5
+      },
+      "std_dev": {
+        "min": 1.5,
+        "max": 2.5,
+        "step": 0.5
+      }
+    },
+    "ATR": {
+      "period": {
+        "min": 10,
+        "max": 20,
+        "step": 2
+      },
+      "multiplier": {
+        "min": 1.0,
+        "max": 3.0,
+        "step": 0.5
+      }
+    },
+    "EMA": {
+      "period": {
+        "min": 5,
+        "max": 30,
+        "step": 5
+      }
+    },
+    "CCI": {
+      "period": {
+        "min": 15,
+        "max": 25,
+        "step": 5
+      },
+      "threshold_low": {
+        "min": -150,
+        "max": -100,
+        "step": 25
+      },
+      "threshold_high": {
+        "min": 100,
+        "max": 150,
+        "step": 25
+      }
+    }
+  },
+  "results": {
+    "entry_long": {
+      "total_tested": 40,
+      "statistics": {
+        "score_min": 45.2,
+        "score_max": 78.5,
+        "score_avg": 62.5
+      },
+      "ranked_results": [
+        {
+          "rank": 1,
+          "indicator": "RSI",
+          "indicator_id": "rsi_entry_long_1",
+          "params": {
+            "period": 14,
+            "oversold": 28,
+            "overbought": 72
+          },
+          "score": 78.5,
+          "selected": true,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "rsi_14",
+                  "field": "value"
+                },
+                "op": "lt",
+                "right": {
+                  "value": 28
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 45,
+            "trades": 45,
+            "win_rate": 0.62,
+            "profit_factor": 2.15,
+            "sharpe_ratio": 1.45,
+            "max_drawdown": 0.08,
+            "expectancy": 0.15,
+            "avg_win": 0.025,
+            "avg_loss": -0.012,
+            "avg_bars_in_trade": 12.5
+          },
+          "timestamp": "2026-01-24T02:57:47.479130"
+        },
+        {
+          "rank": 2,
+          "indicator": "MACD",
+          "indicator_id": "macd_entry_long_2",
+          "params": {
+            "fast": 12,
+            "slow": 26,
+            "signal": 9
+          },
+          "score": 72.3,
+          "selected": false,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "macd",
+                  "field": "histogram"
+                },
+                "op": "crosses_above",
+                "right": {
+                  "value": 0
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 38,
+            "trades": 38,
+            "win_rate": 0.58,
+            "profit_factor": 1.89,
+            "sharpe_ratio": 1.22,
+            "max_drawdown": 0.12,
+            "expectancy": 0.12,
+            "avg_win": 0.022,
+            "avg_loss": -0.014,
+            "avg_bars_in_trade": 14.2
+          },
+          "timestamp": "2026-01-24T02:57:47.479133"
+        },
+        {
+          "rank": 3,
+          "indicator": "EMA",
+          "indicator_id": "ema_entry_long_3",
+          "params": {
+            "period": 21
+          },
+          "score": 66.0,
+          "selected": false,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "ema_9",
+                  "field": "value"
+                },
+                "op": "crosses_above",
+                "right": {
+                  "indicator_id": "ema_21",
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 42,
+            "trades": 42,
+            "win_rate": 0.55,
+            "profit_factor": 1.72,
+            "sharpe_ratio": 1.05,
+            "max_drawdown": 0.14,
+            "expectancy": 0.09,
+            "avg_win": 0.02,
+            "avg_loss": -0.015,
+            "avg_bars_in_trade": 15.8
+          },
+          "timestamp": "2026-01-24T02:57:47.479135"
+        }
+      ]
+    },
+    "entry_short": {
+      "total_tested": 40,
+      "statistics": {
+        "score_min": 38.5,
+        "score_max": 55.2,
+        "score_avg": 55.8
+      },
+      "ranked_results": [
+        {
+          "rank": 1,
+          "indicator": "STOCH",
+          "indicator_id": "stoch_entry_short_1",
+          "params": {
+            "k_period": 14,
+            "d_period": 3,
+            "overbought": 80
+          },
+          "score": 55.2,
+          "selected": true,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "stoch_k",
+                  "field": "value"
+                },
+                "op": "gt",
+                "right": {
+                  "value": 80
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 28,
+            "trades": 28,
+            "win_rate": 0.54,
+            "profit_factor": 1.65,
+            "sharpe_ratio": 0.95,
+            "max_drawdown": 0.15,
+            "expectancy": 0.1,
+            "avg_win": 0.021,
+            "avg_loss": -0.016,
+            "avg_bars_in_trade": 10.5
+          },
+          "timestamp": "2026-01-24T02:57:47.479138"
+        },
+        {
+          "rank": 2,
+          "indicator": "CCI",
+          "indicator_id": "cci_entry_short_2",
+          "params": {
+            "period": 20,
+            "overbought": 100
+          },
+          "score": 46.900000000000006,
+          "selected": false,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "cci_20",
+                  "field": "value"
+                },
+                "op": "gt",
+                "right": {
+                  "value": 100
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 25,
+            "trades": 25,
+            "win_rate": 0.51,
+            "profit_factor": 1.48,
+            "sharpe_ratio": 0.78,
+            "max_drawdown": 0.18,
+            "expectancy": 0.07,
+            "avg_win": 0.019,
+            "avg_loss": -0.017,
+            "avg_bars_in_trade": 11.2
+          },
+          "timestamp": "2026-01-24T02:57:47.479143"
+        }
+      ]
+    },
+    "exit_long": {
+      "total_tested": 40,
+      "statistics": {
+        "score_min": 52.3,
+        "score_max": 82.1,
+        "score_avg": 68.5
+      },
+      "ranked_results": [
+        {
+          "rank": 1,
+          "indicator": "ATR",
+          "indicator_id": "atr_exit_long_1",
+          "params": {
+            "period": 14,
+            "multiplier": 2.0
+          },
+          "score": 82.1,
+          "selected": true,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "close",
+                  "field": "value"
+                },
+                "op": "lt",
+                "right": {
+                  "indicator_id": "entry_price_minus_atr",
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 52,
+            "trades": 52,
+            "win_rate": 0.68,
+            "profit_factor": 2.45,
+            "sharpe_ratio": 1.65,
+            "max_drawdown": 0.06,
+            "expectancy": 0.18,
+            "avg_win": 0.028,
+            "avg_loss": -0.01,
+            "avg_bars_in_trade": 9.5
+          },
+          "timestamp": "2026-01-24T02:57:47.479149"
+        },
+        {
+          "rank": 2,
+          "indicator": "BB",
+          "indicator_id": "bb_exit_long_2",
+          "params": {
+            "period": 20,
+            "std_dev": 2.0
+          },
+          "score": 74.6,
+          "selected": false,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "close",
+                  "field": "value"
+                },
+                "op": "lt",
+                "right": {
+                  "indicator_id": "bb_lower",
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 48,
+            "trades": 48,
+            "win_rate": 0.63,
+            "profit_factor": 2.12,
+            "sharpe_ratio": 1.38,
+            "max_drawdown": 0.09,
+            "expectancy": 0.14,
+            "avg_win": 0.024,
+            "avg_loss": -0.011,
+            "avg_bars_in_trade": 10.2
+          },
+          "timestamp": "2026-01-24T02:57:47.479154"
+        }
+      ]
+    },
+    "exit_short": {
+      "total_tested": 40,
+      "statistics": {
+        "score_min": 42.8,
+        "score_max": 60.8,
+        "score_avg": 61.2
+      },
+      "ranked_results": [
+        {
+          "rank": 1,
+          "indicator": "BB",
+          "indicator_id": "bb_exit_short_1",
+          "params": {
+            "period": 20,
+            "std_dev": 2.0
+          },
+          "score": 60.8,
+          "selected": true,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "close",
+                  "field": "value"
+                },
+                "op": "gt",
+                "right": {
+                  "indicator_id": "bb_upper",
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 31,
+            "trades": 31,
+            "win_rate": 0.59,
+            "profit_factor": 1.92,
+            "sharpe_ratio": 1.18,
+            "max_drawdown": 0.11,
+            "expectancy": 0.11,
+            "avg_win": 0.023,
+            "avg_loss": -0.013,
+            "avg_bars_in_trade": 8.5
+          },
+          "timestamp": "2026-01-24T02:57:47.479156"
+        },
+        {
+          "rank": 2,
+          "indicator": "ATR",
+          "indicator_id": "atr_exit_short_2",
+          "params": {
+            "period": 14,
+            "multiplier": 1.5
+          },
+          "score": 51.599999999999994,
+          "selected": false,
+          "conditions": {
+            "all": [
+              {
+                "left": {
+                  "indicator_id": "close",
+                  "field": "value"
+                },
+                "op": "gt",
+                "right": {
+                  "indicator_id": "entry_price_plus_atr",
+                  "field": "value"
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "signals": 29,
+            "trades": 29,
+            "win_rate": 0.56,
+            "profit_factor": 1.75,
+            "sharpe_ratio": 0.98,
+            "max_drawdown": 0.13,
+            "expectancy": 0.09,
+            "avg_win": 0.02,
+            "avg_loss": -0.014,
+            "avg_bars_in_trade": 9.8
+          },
+          "timestamp": "2026-01-24T02:57:47.479158"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,178 @@
+{
+  "version": "2.0",
+  "meta": {
+    "stage": "regime_optimization",
+    "created_at": "2026-01-24T14:30:00Z",
+    "optimization_id": "regime_opt_BTCUSDT_5m_20260124",
+    "total_combinations": 150,
+    "completed": 150,
+    "duration_seconds": 125.3,
+    "method": "tpe_multivariate",
+    "mode": "standard",
+    "source": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "bars": 401,
+      "data_range": {
+        "start": "2026-01-22T12:10:00Z",
+        "end": "2026-01-23T21:30:00Z"
+      }
+    },
+    "statistics": {
+      "score_min": 28.3,
+      "score_max": 78.5,
+      "score_avg": 54.2,
+      "score_median": 55.8
+    }
+  },
+  "optimization_config": {
+    "mode": "standard",
+    "method": "tpe_multivariate",
+    "max_trials": 150,
+    "n_startup_trials": 20,
+    "early_stopping": {
+      "enabled": true,
+      "pruner": "hyperband",
+      "min_fidelity": 0.1,
+      "reduction_factor": 3
+    },
+    "sequential_phases": {
+      "enabled": true,
+      "phases": [
+        { "name": "adx", "params": ["adx_period", "adx_threshold"], "trials": 40 },
+        { "name": "sma", "params": ["sma_fast_period", "sma_slow_period"], "trials": 35 },
+        { "name": "rsi", "params": ["rsi_period", "rsi_sideways_low", "rsi_sideways_high"], "trials": 45 },
+        { "name": "bb", "params": ["bb_period", "bb_width_percentile"], "trials": 30 }
+      ]
+    },
+    "parallel": {
+      "n_jobs": -1,
+      "storage": "sqlite:///optuna_regime.db"
+    },
+    "actual_performance": {
+      "total_combinations_if_grid": 303750,
+      "actual_trials_run": 150,
+      "speedup_factor": 2025
+    }
+  },
+  "param_ranges": {
+    "adx": {
+      "period": { "min": 10, "max": 18, "step": 2 },
+      "threshold": { "min": 20, "max": 30, "step": 2 }
+    },
+    "sma_fast": {
+      "period": { "min": 20, "max": 50, "step": 10 }
+    },
+    "sma_slow": {
+      "period": { "min": 100, "max": 200, "step": 25 }
+    },
+    "rsi": {
+      "period": { "min": 9, "max": 21, "step": 3 },
+      "sideways_low": { "min": 35, "max": 45, "step": 5 },
+      "sideways_high": { "min": 55, "max": 65, "step": 5 }
+    },
+    "bb": {
+      "period": { "min": 15, "max": 25, "step": 5 },
+      "std_dev": { "min": 1.5, "max": 2.5, "step": 0.5 },
+      "width_percentile": { "min": 0.15, "max": 0.25, "step": 0.05 }
+    }
+  },
+  "results": [
+    {
+      "rank": 1,
+      "score": 78.5,
+      "selected": true,
+      "exported": true,
+      "params": {
+        "adx_period": 14,
+        "adx_threshold": 25,
+        "sma_fast_period": 50,
+        "sma_slow_period": 200,
+        "rsi_period": 14,
+        "rsi_sideways_low": 40,
+        "rsi_sideways_high": 60,
+        "bb_period": 20,
+        "bb_std_dev": 2.0,
+        "bb_width_percentile": 0.20
+      },
+      "metrics": {
+        "regime_count": 15,
+        "avg_duration_bars": 26.7,
+        "switch_count": 14,
+        "stability_score": 0.73,
+        "coverage": 100.0,
+        "f1_bull": 0.82,
+        "f1_bear": 0.79,
+        "f1_sideways": 0.71,
+        "bull_bars": 180,
+        "bear_bars": 101,
+        "sideways_bars": 120
+      },
+      "timestamp": "2026-01-24T14:28:15Z"
+    },
+    {
+      "rank": 2,
+      "score": 76.2,
+      "selected": false,
+      "exported": false,
+      "params": {
+        "adx_period": 12,
+        "adx_threshold": 24,
+        "sma_fast_period": 40,
+        "sma_slow_period": 175,
+        "rsi_period": 12,
+        "rsi_sideways_low": 40,
+        "rsi_sideways_high": 60,
+        "bb_period": 20,
+        "bb_std_dev": 2.0,
+        "bb_width_percentile": 0.18
+      },
+      "metrics": {
+        "regime_count": 12,
+        "avg_duration_bars": 33.4,
+        "switch_count": 11,
+        "stability_score": 0.77,
+        "coverage": 100.0,
+        "f1_bull": 0.80,
+        "f1_bear": 0.77,
+        "f1_sideways": 0.73,
+        "bull_bars": 165,
+        "bear_bars": 95,
+        "sideways_bars": 141
+      },
+      "timestamp": "2026-01-24T14:28:18Z"
+    },
+    {
+      "rank": 3,
+      "score": 74.8,
+      "selected": false,
+      "exported": false,
+      "params": {
+        "adx_period": 14,
+        "adx_threshold": 22,
+        "sma_fast_period": 50,
+        "sma_slow_period": 150,
+        "rsi_period": 14,
+        "rsi_sideways_low": 38,
+        "rsi_sideways_high": 62,
+        "bb_period": 18,
+        "bb_std_dev": 2.0,
+        "bb_width_percentile": 0.22
+      },
+      "metrics": {
+        "regime_count": 18,
+        "avg_duration_bars": 22.3,
+        "switch_count": 17,
+        "stability_score": 0.68,
+        "coverage": 100.0,
+        "f1_bull": 0.78,
+        "f1_bear": 0.76,
+        "f1_sideways": 0.69,
+        "bull_bars": 175,
+        "bear_bars": 108,
+        "sideways_bars": 118
+      },
+      "timestamp": "2026-01-24T14:28:22Z"
+    }
+  ]
+}

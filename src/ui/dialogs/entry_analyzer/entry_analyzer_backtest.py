@@ -26,11 +26,7 @@ from .entry_analyzer_backtest_regime import BacktestRegimeMixin
 from .entry_analyzer_backtest_regime_set import BacktestRegimeSetMixin
 
 
-class BacktestMixin(
-    BacktestConfigMixin,
-    BacktestRegimeMixin,
-    BacktestRegimeSetMixin
-):
+class BacktestMixin(BacktestConfigMixin, BacktestRegimeMixin, BacktestRegimeSetMixin):
     """Backtest and regime analysis functionality.
 
     This mixin combines:
@@ -60,5 +56,3 @@ class BacktestMixin(
         _optimization_results: list - Optimization results
         _regime_history: list - Regime change history
     """
-
-    pass

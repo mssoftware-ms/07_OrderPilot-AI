@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "indicator_optimization_results.schema.json",
+  "title": "Indicator Optimization Results (Stufe 2)",
+  "description": "Ergebnistabelle aller getesteten Indikator-Kombinationen für EIN Regime",
+  "type": "object",
+  "required": ["version", "meta", "optimization_config", "param_ranges", "results"],
+  "properties": {
+    "version": { "type": "string", "const": "2.0" },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "regime", "created_at", "regime_config_ref"],
+      "properties": {
+        "stage": { "type": "string", "const": "indicator_optimization" },
+        "regime": {
+          "type": "string",
+          "enum": ["BULL", "BEAR", "SIDEWAYS"],
+          "description": "Für welches Regime diese Optimierung ist"
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "optimization_id": { "type": "string" },
+        "regime_config_ref": { "type": "string", "description": "Referenz zur Regime-Config aus Stufe 1" },
+        "regime_data": {
+          "type": "object",
+          "properties": {
+            "total_bars": { "type": "integer" },
+            "percentage_of_data": { "type": "number" },
+            "periods_count": { "type": "integer" }
+          }
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" }
+          }
+        },
+        "method": {
+          "type": "string",
+          "enum": ["grid_search", "tpe", "tpe_multivariate"],
+          "description": "tpe empfohlen"
+        },
+        "mode": { "type": "string", "enum": ["auto", "manual"] },
+        "tested_indicators": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["RSI", "MACD", "STOCH", "BB", "ATR", "EMA", "CCI"] },
+          "description": "KORREKTE Stufe-2 Indikatoren (7 Stück)"
+        },
+        "duration_seconds": { "type": "number" }
+      }
+    },
+    "optimization_config": {
+      "type": "object",
+      "description": "Performance-Optimierungs-Einstellungen",
+      "properties": {
+        "mode": { "type": "string", "enum": ["quick", "standard", "thorough"], "default": "standard" },
+        "method": { "type": "string", "enum": ["grid_search", "tpe"], "default": "tpe" },
+        "trials_per_indicator": { "type": "integer", "default": 40, "description": "Pro Indikator, nicht total!" },
+        "indicator_selection": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["all", "top3", "custom"] },
+            "selected": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "early_stopping": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "min_trades": { "type": "integer", "default": 5, "description": "Prune wenn < 5 Trades" }
+          }
+        },
+        "actual_performance": {
+          "type": "object",
+          "properties": {
+            "total_combinations_if_grid": { "type": "integer" },
+            "actual_trials_run": { "type": "integer" },
+            "speedup_factor": { "type": "number" }
+          }
+        }
+      }
+    },
+    "param_ranges": {
+      "type": "object",
+      "description": "STUFE-2 Indikator-Ranges (7 Indikatoren)",
+      "properties": {
+        "RSI": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } },
+            "threshold_low": { "type": "object" },
+            "threshold_high": { "type": "object" }
+          }
+        },
+        "MACD": {
+          "type": "object",
+          "properties": {
+            "fast": { "type": "object" },
+            "slow": { "type": "object" },
+            "signal": { "type": "object" }
+          }
+        },
+        "STOCH": {
+          "type": "object",
+          "properties": {
+            "k_period": { "type": "object" },
+            "d_period": { "type": "object" },
+            "threshold_low": { "type": "object" },
+            "threshold_high": { "type": "object" }
+          }
+        },
+        "BB": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object" },
+            "std_dev": { "type": "object" }
+          }
+        },
+        "ATR": {
+          "type": "object",
+          "description": "Volatilitäts-basierte Exits",
+          "properties": {
+            "period": { "type": "object" },
+            "multiplier": { "type": "object" }
+          }
+        },
+        "EMA": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object" }
+          }
+        },
+        "CCI": {
+          "type": "object",
+          "description": "Commodity Channel Index",
+          "properties": {
+            "period": { "type": "object" },
+            "threshold_low": { "type": "object" },
+            "threshold_high": { "type": "object" }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "description": "Ergebnisse für alle 4 Signal-Typen",
+      "required": ["entry_long", "entry_short", "exit_long", "exit_short"],
+      "properties": {
+        "entry_long": { "$ref": "#/$defs/signal_results" },
+        "entry_short": { "$ref": "#/$defs/signal_results" },
+        "exit_long": { "$ref": "#/$defs/signal_results" },
+        "exit_short": { "$ref": "#/$defs/signal_results" }
+      }
+    }
+  },
+  "$defs": {
+    "signal_results": {
+      "type": "object",
+      "properties": {
+        "total_tested": { "type": "integer" },
+        "statistics": {
+          "type": "object",
+          "properties": {
+            "score_min": { "type": "number" },
+            "score_max": { "type": "number" },
+            "score_avg": { "type": "number" }
+          }
+        },
+        "ranked_results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/indicator_result" }
+        }
+      }
+    },
+    "indicator_result": {
+      "type": "object",
+      "required": ["rank", "score", "indicator", "params", "metrics"],
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1 },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "selected": { "type": "boolean", "default": false },
+        "indicator": {
+          "type": "string",
+          "enum": ["RSI", "MACD", "STOCH", "BB", "ATR", "EMA", "CCI"],
+          "description": "Einer der 7 Stufe-2 Indikatoren"
+        },
+        "indicator_id": { "type": "string" },
+        "params": { "type": "object" },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "all": { "type": "array" },
+            "any": { "type": "array" }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "signals": { "type": "integer" },
+            "trades": { "type": "integer" },
+            "win_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "profit_factor": { "type": "number" },
+            "avg_win": { "type": "number" },
+            "avg_loss": { "type": "number" },
+            "max_drawdown": { "type": "number" },
+            "sharpe_ratio": { "type": "number" },
+            "expectancy": { "type": "number" },
+            "avg_bars_in_trade": { "type": "number" }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

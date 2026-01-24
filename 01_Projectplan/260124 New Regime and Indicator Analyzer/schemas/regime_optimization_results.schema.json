@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "regime_optimization_results.schema.json",
+  "title": "Regime Optimization Results (Stufe 1)",
+  "description": "Ergebnistabelle aller getesteten Regime-Parameter-Kombinationen",
+  "type": "object",
+  "required": ["version", "meta", "optimization_config", "param_ranges", "results"],
+  "properties": {
+    "version": { "type": "string", "const": "2.0" },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "created_at", "total_combinations", "method"],
+      "properties": {
+        "stage": { "type": "string", "const": "regime_optimization" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "optimization_id": { "type": "string" },
+        "total_combinations": { "type": "integer" },
+        "completed": { "type": "integer" },
+        "duration_seconds": { "type": "number" },
+        "method": {
+          "type": "string",
+          "enum": ["grid_search", "tpe", "tpe_multivariate", "nsga3"],
+          "description": "tpe_multivariate empfohlen (2000x schneller)"
+        },
+        "mode": { "type": "string", "enum": ["auto", "manual"] },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" },
+            "bars": { "type": "integer" },
+            "data_range": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        },
+        "statistics": {
+          "type": "object",
+          "properties": {
+            "score_min": { "type": "number" },
+            "score_max": { "type": "number" },
+            "score_avg": { "type": "number" },
+            "score_median": { "type": "number" }
+          }
+        }
+      }
+    },
+    "optimization_config": {
+      "type": "object",
+      "description": "Performance-Optimierungs-Einstellungen (TPE ~2000x schneller als Grid Search)",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["quick", "standard", "thorough", "exhaustive"],
+          "default": "standard",
+          "description": "quick=50, standard=150, thorough=300, exhaustive=500 trials"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["grid_search", "tpe", "tpe_multivariate"],
+          "default": "tpe_multivariate"
+        },
+        "max_trials": { "type": "integer", "minimum": 10, "maximum": 1000, "default": 150 },
+        "n_startup_trials": { "type": "integer", "default": 20 },
+        "early_stopping": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "pruner": { "type": "string", "enum": ["median", "successive_halving", "hyperband"], "default": "hyperband" },
+            "min_fidelity": { "type": "number", "default": 0.1 },
+            "reduction_factor": { "type": "integer", "default": 3 }
+          }
+        },
+        "sequential_phases": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "phases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "params": { "type": "array", "items": { "type": "string" } },
+                  "trials": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "parallel": {
+          "type": "object",
+          "properties": {
+            "n_jobs": { "type": "integer", "default": -1 },
+            "storage": { "type": "string" }
+          }
+        },
+        "actual_performance": {
+          "type": "object",
+          "description": "Tatsächliche Performance-Statistiken nach Durchlauf",
+          "properties": {
+            "total_combinations_if_grid": { "type": "integer" },
+            "actual_trials_run": { "type": "integer" },
+            "speedup_factor": { "type": "number" }
+          }
+        }
+      }
+    },
+    "param_ranges": {
+      "type": "object",
+      "description": "STUFE-1 Parameter: ADX, SMA_Fast, SMA_Slow, RSI, BB Width",
+      "properties": {
+        "adx": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } },
+            "threshold": { "type": "object", "properties": { "min": {"type":"number"}, "max": {"type":"number"}, "step": {"type":"number"} } }
+          }
+        },
+        "sma_fast": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } }
+          }
+        },
+        "sma_slow": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } }
+          }
+        },
+        "rsi": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } },
+            "sideways_low": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } },
+            "sideways_high": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } }
+          }
+        },
+        "bb": {
+          "type": "object",
+          "properties": {
+            "period": { "type": "object", "properties": { "min": {"type":"integer"}, "max": {"type":"integer"}, "step": {"type":"integer"} } },
+            "std_dev": { "type": "object", "properties": { "min": {"type":"number"}, "max": {"type":"number"}, "step": {"type":"number"} } },
+            "width_percentile": { "type": "object", "properties": { "min": {"type":"number"}, "max": {"type":"number"}, "step": {"type":"number"} } }
+          }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "description": "Sortiert nach Score (absteigend)",
+      "items": {
+        "type": "object",
+        "required": ["rank", "score", "params", "metrics"],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 1 },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "selected": { "type": "boolean", "default": false },
+          "exported": { "type": "boolean", "default": false },
+          "params": {
+            "type": "object",
+            "description": "STUFE-1 Parameter",
+            "properties": {
+              "adx_period": { "type": "integer" },
+              "adx_threshold": { "type": "number" },
+              "sma_fast_period": { "type": "integer" },
+              "sma_slow_period": { "type": "integer" },
+              "rsi_period": { "type": "integer" },
+              "rsi_sideways_low": { "type": "integer" },
+              "rsi_sideways_high": { "type": "integer" },
+              "bb_period": { "type": "integer" },
+              "bb_std_dev": { "type": "number" },
+              "bb_width_percentile": { "type": "number" }
+            }
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "regime_count": { "type": "integer" },
+              "avg_duration_bars": { "type": "number" },
+              "switch_count": { "type": "integer" },
+              "stability_score": { "type": "number" },
+              "coverage": { "type": "number" },
+              "f1_bull": { "type": "number", "minimum": 0, "maximum": 1 },
+              "f1_bear": { "type": "number", "minimum": 0, "maximum": 1 },
+              "f1_sideways": { "type": "number", "minimum": 0, "maximum": 1 },
+              "bull_bars": { "type": "integer" },
+              "bear_bars": { "type": "integer" },
+              "sideways_bars": { "type": "integer" }
+            }
+          },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

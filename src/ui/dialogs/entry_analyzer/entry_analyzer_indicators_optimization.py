@@ -16,16 +16,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
 )
@@ -99,16 +97,12 @@ class IndicatorsOptimizationMixin:
         """
         # Get selected indicators
         selected_indicators = [
-            ind_type
-            for ind_type, cb in self._opt_indicator_checkboxes.items()
-            if cb.isChecked()
+            ind_type for ind_type, cb in self._opt_indicator_checkboxes.items() if cb.isChecked()
         ]
 
         if not selected_indicators:
             QMessageBox.warning(
-                self,
-                "No Indicators Selected",
-                "Please select at least one indicator to optimize."
+                self, "No Indicators Selected", "Please select at least one indicator to optimize."
             )
             return
 
@@ -118,9 +112,9 @@ class IndicatorsOptimizationMixin:
             param_ranges[indicator_id] = {}
             for param_name, widgets in params.items():
                 param_ranges[indicator_id][param_name] = {
-                    'min': widgets['min'].value(),
-                    'max': widgets['max'].value(),
-                    'step': widgets['step'].value()
+                    "min": widgets["min"].value(),
+                    "max": widgets["max"].value(),
+                    "step": widgets["step"].value(),
                 }
 
         # Get test mode
@@ -129,11 +123,9 @@ class IndicatorsOptimizationMixin:
 
         # Get chart data from parent
         parent = self.parent()
-        if not hasattr(parent, 'data') or parent.data is None:
+        if not hasattr(parent, "data") or parent.data is None:
             QMessageBox.warning(
-                self,
-                "No Chart Data",
-                "Please load chart data before running optimization."
+                self, "No Chart Data", "Please load chart data before running optimization."
             )
             return
 
@@ -154,12 +146,14 @@ class IndicatorsOptimizationMixin:
                 QMessageBox.warning(
                     self,
                     "Data Conversion Error",
-                    f"Could not convert candle data to DataFrame.\n\nError: {str(e)}"
+                    f"Could not convert candle data to DataFrame.\n\nError: {str(e)}",
                 )
                 return
 
         # Create and start optimization thread
-        from src.ui.threads.indicator_optimization_thread import IndicatorOptimizationThread
+        from src.ui.threads.indicator_optimization_thread import (
+            IndicatorOptimizationThread,
+        )
 
         regime_config_path = None
         if getattr(self, "_regime_config_path", None):
@@ -177,7 +171,7 @@ class IndicatorsOptimizationMixin:
             trade_side=trade_side,
             chart_data=chart_df,
             data_timeframe=self._timeframe,
-            parent=self
+            parent=self,
         )
 
         # Connect signals
@@ -217,35 +211,41 @@ class IndicatorsOptimizationMixin:
             QMessageBox.information(
                 self,
                 "Optimization Complete",
-                "No valid results found. Try different parameter ranges or indicators."
+                "No valid results found. Try different parameter ranges or indicators.",
             )
             return
 
         # Sort results by score (descending)
-        sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
+        sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
 
         # Populate results table
         self._optimization_results_table.setRowCount(len(sorted_results))
 
         for row, result in enumerate(sorted_results):
             # Indicator name
-            self._optimization_results_table.setItem(row, 0, QTableWidgetItem(result['indicator']))
+            self._optimization_results_table.setItem(row, 0, QTableWidgetItem(result["indicator"]))
 
             # Parameters (formatted string)
-            params_str = ", ".join([f"{k}={v}" for k, v in result['params'].items()])
+            params_str = ", ".join([f"{k}={v}" for k, v in result["params"].items()])
             self._optimization_results_table.setItem(row, 1, QTableWidgetItem(params_str))
 
             # Regime
-            self._optimization_results_table.setItem(row, 2, QTableWidgetItem(result.get('regime', 'unknown')))
+            self._optimization_results_table.setItem(
+                row, 2, QTableWidgetItem(result.get("regime", "unknown"))
+            )
 
             # Test Type
-            self._optimization_results_table.setItem(row, 3, QTableWidgetItem(result.get('test_type', 'entry')))
+            self._optimization_results_table.setItem(
+                row, 3, QTableWidgetItem(result.get("test_type", "entry"))
+            )
 
             # Trade Side
-            self._optimization_results_table.setItem(row, 4, QTableWidgetItem(result.get('trade_side', 'long')))
+            self._optimization_results_table.setItem(
+                row, 4, QTableWidgetItem(result.get("trade_side", "long"))
+            )
 
             # Score (color-coded)
-            score = result['score']
+            score = result["score"]
             score_item = QTableWidgetItem(f"{score:.2f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -260,15 +260,17 @@ class IndicatorsOptimizationMixin:
             self._optimization_results_table.setItem(row, 5, score_item)
 
             # Win Rate
-            win_rate = result.get('win_rate', 0.0)
+            win_rate = result.get("win_rate", 0.0)
             self._optimization_results_table.setItem(row, 6, QTableWidgetItem(f"{win_rate:.1%}"))
 
             # Profit Factor
-            profit_factor = result.get('profit_factor', 0.0)
-            self._optimization_results_table.setItem(row, 7, QTableWidgetItem(f"{profit_factor:.2f}"))
+            profit_factor = result.get("profit_factor", 0.0)
+            self._optimization_results_table.setItem(
+                row, 7, QTableWidgetItem(f"{profit_factor:.2f}")
+            )
 
             # Trades
-            trades = result.get('trades', 0)
+            trades = result.get("trades", 0)
             self._optimization_results_table.setItem(row, 8, QTableWidgetItem(str(trades)))
 
         # Show completion message
@@ -282,7 +284,7 @@ class IndicatorsOptimizationMixin:
             f"• Regime: {best.get('regime', 'unknown')}\n"
             f"• Score: {best['score']:.2f}\n"
             f"• Win Rate: {best.get('win_rate', 0.0):.1%}\n"
-            f"• Profit Factor: {best.get('profit_factor', 0.0):.2f}"
+            f"• Profit Factor: {best.get('profit_factor', 0.0):.2f}",
         )
 
     def _on_optimization_progress(self, percentage: int, message: str) -> None:
@@ -305,9 +307,7 @@ class IndicatorsOptimizationMixin:
         self._optimization_progress.setText("Error!")
 
         QMessageBox.critical(
-            self,
-            "Optimization Error",
-            f"An error occurred during optimization:\n\n{error_message}"
+            self, "Optimization Error", f"An error occurred during optimization:\n\n{error_message}"
         )
 
         logger.error(f"Optimization error: {error_message}")
@@ -318,4 +318,3 @@ class IndicatorsOptimizationMixin:
 
         This method is implemented in BacktestConfigMixin.
         """
-        pass

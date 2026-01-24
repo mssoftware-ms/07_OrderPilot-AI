@@ -166,7 +166,13 @@ class TrendIndicators(BaseIndicatorCalculator):
         if use_talib and TALIB_AVAILABLE:
             values = talib.ADX(data['high'], data['low'], data['close'], timeperiod=period)
         elif PANDAS_TA_AVAILABLE:
-            values = ta.adx(data['high'], data['low'], data['close'], length=period)['ADX_14']
+            result = ta.adx(data['high'], data['low'], data['close'], length=period)
+            # pandas_ta returns columns like ADX_14, find the ADX column dynamically
+            adx_col = next((col for col in result.columns if col.startswith('ADX_')), None)
+            if adx_col:
+                values = result[adx_col]
+            else:
+                values = pd.Series(index=data.index, dtype=float)
         else:
             # Simplified calculation
             values = pd.Series(index=data.index, dtype=float)

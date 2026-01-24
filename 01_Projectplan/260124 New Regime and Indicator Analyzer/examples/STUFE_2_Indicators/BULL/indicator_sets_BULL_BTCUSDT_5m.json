@@ -1,0 +1,105 @@
+{
+  "version": "2.0",
+  "meta": {
+    "stage": "indicator_sets",
+    "regime": "BULL",
+    "regime_color": "#26a69a",
+    "created_at": "2026-01-24T02:57:47.484993",
+    "name": "BULL Indicator Sets",
+    "regime_config_ref": "optimized_regime_BULL_BTCUSDT_5m.json",
+    "optimization_results_ref": "indicator_optimization_results_BULL_BTCUSDT_5m.json",
+    "source": {
+      "symbol": "BTCUSDT",
+      "timeframe": "5m"
+    },
+    "aggregate_metrics": {
+      "total_signals_enabled": 2,
+      "combined_win_rate": 0.65,
+      "combined_profit_factor": 2.1
+    }
+  },
+  "signal_sets": {
+    "entry_long": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 78.5,
+      "indicator": "RSI",
+      "indicator_id": "rsi_entry_long_1",
+      "params": {
+        "period": 14,
+        "oversold": 28,
+        "overbought": 72
+      },
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "rsi_14",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "value": 28
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 45,
+        "trades": 45,
+        "win_rate": 0.62,
+        "profit_factor": 2.15,
+        "sharpe_ratio": 1.45,
+        "max_drawdown": 0.08,
+        "expectancy": 0.15,
+        "avg_win": 0.025,
+        "avg_loss": -0.012
+      },
+      "research_notes": "RSI oversold condition performs best for long entries in BULL regime"
+    },
+    "exit_long": {
+      "enabled": true,
+      "selected_rank": 1,
+      "score": 82.1,
+      "indicator": "ATR",
+      "indicator_id": "atr_exit_long_1",
+      "params": {
+        "period": 14,
+        "multiplier": 2.0
+      },
+      "conditions": {
+        "all": [
+          {
+            "left": {
+              "indicator_id": "close",
+              "field": "value"
+            },
+            "op": "lt",
+            "right": {
+              "indicator_id": "entry_price_minus_atr",
+              "field": "value"
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "signals": 52,
+        "trades": 52,
+        "win_rate": 0.68,
+        "profit_factor": 2.45,
+        "sharpe_ratio": 1.65,
+        "max_drawdown": 0.06,
+        "expectancy": 0.18,
+        "avg_win": 0.028,
+        "avg_loss": -0.01
+      },
+      "research_notes": "ATR-based stop loss provides optimal risk management"
+    },
+    "entry_short": {
+      "enabled": false
+    },
+    "exit_short": {
+      "enabled": false
+    }
+  }
+}

@@ -28,7 +28,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QProgressBar,
@@ -218,10 +217,9 @@ class AIPatternsMixin:
 
         self.similar_patterns_table = QTableWidget()
         self.similar_patterns_table.setColumnCount(8)
-        self.similar_patterns_table.setHorizontalHeaderLabels([
-            "Symbol", "Timeframe", "Date", "Similarity",
-            "Trend", "Win", "Return %", "Outcome"
-        ])
+        self.similar_patterns_table.setHorizontalHeaderLabels(
+            ["Symbol", "Timeframe", "Date", "Similarity", "Trend", "Win", "Return %", "Outcome"]
+        )
         self.similar_patterns_table.horizontalHeader().setStretchLastSection(True)
         self.similar_patterns_table.setAlternatingRowColors(True)
         self.similar_patterns_table.setSortingEnabled(True)
@@ -254,21 +252,17 @@ class AIPatternsMixin:
         """
         try:
             # Get current chart data
-            if not hasattr(self.parent(), 'chart_widget') or not hasattr(self.parent().chart_widget, 'data'):
+            if not hasattr(self.parent(), "chart_widget") or not hasattr(
+                self.parent().chart_widget, "data"
+            ):
                 QMessageBox.warning(
-                    self,
-                    "No Data",
-                    "No chart data available for pattern analysis."
+                    self, "No Data", "No chart data available for pattern analysis."
                 )
                 return
 
             chart_data = self.parent().chart_widget.data
             if chart_data is None or len(chart_data) == 0:
-                QMessageBox.warning(
-                    self,
-                    "No Data",
-                    "Chart data is empty."
-                )
+                QMessageBox.warning(self, "No Data", "Chart data is empty.")
                 return
 
             # Get settings
@@ -285,21 +279,22 @@ class AIPatternsMixin:
 
             # Convert chart_data to bars
             from src.core.market_data.types import HistoricalBar
+
             bars = []
             for timestamp, row in chart_data.tail(window_size + 50).iterrows():
                 bar = HistoricalBar(
                     timestamp=timestamp,
-                    open=float(row['open']),
-                    high=float(row['high']),
-                    low=float(row['low']),
-                    close=float(row['close']),
-                    volume=float(row.get('volume', 0))
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row.get("volume", 0)),
                 )
                 bars.append(bar)
 
             # Get symbol and timeframe
-            symbol = getattr(self.parent().chart_widget, 'current_symbol', 'UNKNOWN')
-            timeframe = getattr(self.parent().chart_widget, 'timeframe', '1m')
+            symbol = getattr(self.parent().chart_widget, "current_symbol", "UNKNOWN")
+            timeframe = getattr(self.parent().chart_widget, "timeframe", "1m")
 
             # Run pattern analysis in background
             from src.core.pattern_db.pattern_service import PatternService
@@ -308,7 +303,7 @@ class AIPatternsMixin:
                 service = PatternService(
                     window_size=window_size,
                     min_similar_patterns=min_matches,
-                    similarity_threshold=similarity_threshold
+                    similarity_threshold=similarity_threshold,
                 )
                 await service.initialize()
                 return await service.analyze_signal(
@@ -316,7 +311,7 @@ class AIPatternsMixin:
                     symbol=symbol,
                     timeframe=timeframe,
                     signal_direction=signal_direction,
-                    cross_symbol_search=cross_symbol
+                    cross_symbol_search=cross_symbol,
                 )
 
             # Run in event loop
@@ -339,11 +334,7 @@ class AIPatternsMixin:
 
         except Exception as e:
             logger.error(f"Pattern analysis failed: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Analysis Error",
-                f"Pattern analysis failed:\n{e}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Pattern analysis failed:\n{e}")
             self.pattern_progress.setVisible(False)
             self.pattern_analyze_btn.setEnabled(True)
 
@@ -374,7 +365,7 @@ class AIPatternsMixin:
             "buy": "#8bc34a",
             "neutral": "#ffeb3b",
             "avoid": "#ff9800",
-            "strong_avoid": "#f44336"
+            "strong_avoid": "#f44336",
         }
         bg_color = recommendation_colors.get(analysis.recommendation, "#f5f5f5")
 
@@ -392,7 +383,7 @@ class AIPatternsMixin:
         self.pattern_avg_return_label.setText(f"{analysis.avg_return:+.2f}%")
         self.pattern_confidence_label.setText(f"{analysis.confidence:.1%}")
         self.pattern_avg_similarity_label.setText(f"{analysis.avg_similarity_score:.2f}")
-        self.pattern_recommendation_label.setText(analysis.recommendation.replace('_', ' ').title())
+        self.pattern_recommendation_label.setText(analysis.recommendation.replace("_", " ").title())
 
         # Update table
         self.similar_patterns_table.setRowCount(0)
@@ -402,18 +393,36 @@ class AIPatternsMixin:
 
             self.similar_patterns_table.setItem(row, 0, QTableWidgetItem(match.symbol))
             self.similar_patterns_table.setItem(row, 1, QTableWidgetItem(match.timeframe))
-            self.similar_patterns_table.setItem(row, 2, QTableWidgetItem(match.timestamp.strftime("%Y-%m-%d %H:%M") if hasattr(match.timestamp, 'strftime') else str(match.timestamp)))
+            self.similar_patterns_table.setItem(
+                row,
+                2,
+                QTableWidgetItem(
+                    match.timestamp.strftime("%Y-%m-%d %H:%M")
+                    if hasattr(match.timestamp, "strftime")
+                    else str(match.timestamp)
+                ),
+            )
             self.similar_patterns_table.setItem(row, 3, QTableWidgetItem(f"{match.score:.3f}"))
-            self.similar_patterns_table.setItem(row, 4, QTableWidgetItem(match.trend_direction.upper()))
-            self.similar_patterns_table.setItem(row, 5, QTableWidgetItem("✓" if match.was_profitable else "✗"))
-            self.similar_patterns_table.setItem(row, 6, QTableWidgetItem(f"{match.return_pct:+.2f}%"))
+            self.similar_patterns_table.setItem(
+                row, 4, QTableWidgetItem(match.trend_direction.upper())
+            )
+            self.similar_patterns_table.setItem(
+                row, 5, QTableWidgetItem("✓" if match.was_profitable else "✗")
+            )
+            self.similar_patterns_table.setItem(
+                row, 6, QTableWidgetItem(f"{match.return_pct:+.2f}%")
+            )
 
             outcome = "PROFIT" if match.was_profitable else "LOSS"
             outcome_item = QTableWidgetItem(outcome)
-            outcome_item.setForeground(Qt.GlobalColor.green if match.was_profitable else Qt.GlobalColor.red)
+            outcome_item.setForeground(
+                Qt.GlobalColor.green if match.was_profitable else Qt.GlobalColor.red
+            )
             self.similar_patterns_table.setItem(row, 7, outcome_item)
 
-        logger.info(f"Pattern analysis displayed: {analysis.similar_patterns_count} matches, {analysis.win_rate:.1%} win rate")
+        logger.info(
+            f"Pattern analysis displayed: {analysis.similar_patterns_count} matches, {analysis.win_rate:.1%} win rate"
+        )
 
     def _on_pattern_double_clicked(self, item) -> None:
         """Handle pattern table double-click - show detailed comparison.
@@ -435,7 +444,7 @@ class AIPatternsMixin:
             f"Symbol: {symbol}\n"
             f"Date: {date}\n"
             f"Similarity: {similarity}\n\n"
-            f"Feature: Chart overlay comparison coming soon..."
+            f"Feature: Chart overlay comparison coming soon...",
         )
 
     def _on_report_clicked(self) -> None:

@@ -99,13 +99,29 @@ class SchemaValidator:
         if schema_name in self._schema_cache:
             return self._schema_cache[schema_name]
 
-        # Load from file
-        schema_path = self.schemas_dir / f"{schema_name}.schema.json"
-        if not schema_path.exists():
+        # Try multiple search paths in order:
+        # 1. config/schemas/<schema_name>.schema.json (root level)
+        # 2. config/schemas/regime_optimization/<schema_name>.schema.json (subdirectory)
+        search_paths = [
+            self.schemas_dir / f"{schema_name}.schema.json",
+            self.schemas_dir / "regime_optimization" / f"{schema_name}.schema.json"
+        ]
+
+        schema_path = None
+        for path in search_paths:
+            if path.exists():
+                schema_path = path
+                break
+
+        if schema_path is None:
+            available_schemas = [
+                p.stem.replace(".schema", "")
+                for p in self.schemas_dir.rglob("*.schema.json")
+            ]
             raise FileNotFoundError(
-                f"Schema file not found: {schema_path}\n"
-                f"Available schemas in {self.schemas_dir}: "
-                f"{[p.stem for p in self.schemas_dir.glob('*.schema.json')]}"
+                f"Schema file not found: {schema_name}\n"
+                f"Searched paths: {[str(p) for p in search_paths]}\n"
+                f"Available schemas: {available_schemas}"
             )
 
         try:
@@ -116,7 +132,7 @@ class SchemaValidator:
 
         # Cache and return
         self._schema_cache[schema_name] = schema
-        logger.debug(f"Loaded schema: {schema_name}")
+        logger.debug(f"Loaded schema: {schema_name} from {schema_path}")
         return schema
 
     def validate_data(
@@ -212,9 +228,10 @@ class SchemaValidator:
             logger.warning(f"Schemas directory does not exist: {self.schemas_dir}")
             return []
 
+        # Search recursively for all schema files
         schemas = [
             p.stem.replace(".schema", "")
-            for p in self.schemas_dir.glob("*.schema.json")
+            for p in self.schemas_dir.rglob("*.schema.json")
         ]
         return sorted(schemas)
 

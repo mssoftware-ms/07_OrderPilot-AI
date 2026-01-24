@@ -64,8 +64,7 @@ class BacktestRegimeMixin:
             QMessageBox.warning(
                 self,
                 "Insufficient Data",
-                "Need at least 50 candles for regime analysis.\n"
-                "Load more chart data first."
+                "Need at least 50 candles for regime analysis.\n" "Load more chart data first.",
             )
             return
 
@@ -77,13 +76,14 @@ class BacktestRegimeMixin:
 
             # Convert to DataFrame
             import pandas as pd
+
             df = pd.DataFrame(analysis_candles)
 
             # Ensure required columns
-            if 'timestamp' not in df.columns and 'time' in df.columns:
-                df['timestamp'] = df['time']
+            if "timestamp" not in df.columns and "time" in df.columns:
+                df["timestamp"] = df["time"]
 
-            required_cols = ['open', 'high', 'low', 'close', 'volume']
+            required_cols = ["open", "high", "low", "close", "volume"]
             missing = [col for col in required_cols if col not in df.columns]
             if missing:
                 raise ValueError(f"Missing required columns: {missing}")
@@ -95,9 +95,9 @@ class BacktestRegimeMixin:
             if config is None:
                 raise ValueError("Regime config is not loaded.")
 
-            from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
             from src.core.tradingbot.config.detector import RegimeDetector
             from src.core.tradingbot.models import RegimeType
+            from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
 
             engine = RegimeEngineJSON()
             indicator_values = engine._calculate_indicators(df, config)
@@ -106,15 +106,14 @@ class BacktestRegimeMixin:
             regime_state = engine._convert_to_regime_state(
                 active_regimes=active_regimes,
                 indicator_values=indicator_values,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
             )
 
             active_label = active_regimes[0].name if active_regimes else "Unknown"
             active_id = active_regimes[0].id if active_regimes else "unknown"
 
             logger.info(
-                f"Current regime: {active_label} ({active_id}) "
-                f"-> {regime_state.regime_label}"
+                f"Current regime: {active_label} ({active_id}) " f"-> {regime_state.regime_label}"
             )
 
             # Build interpretation text
@@ -172,21 +171,13 @@ class BacktestRegimeMixin:
                 f"  - Monitor for regime changes"
             )
 
-            QMessageBox.information(
-                self,
-                "Current Regime Analysis",
-                details
-            )
+            QMessageBox.information(self, "Current Regime Analysis", details)
 
             logger.info("Regime analysis complete")
 
         except Exception as e:
             logger.error(f"Regime analysis failed: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Analysis Error",
-                f"Failed to analyze regime:\n\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Analysis Error", f"Failed to analyze regime:\n\n{str(e)}")
 
     def _draw_regime_boundaries(self, results: dict) -> None:
         """Draw vertical lines for regime boundaries on chart.
@@ -196,12 +187,10 @@ class BacktestRegimeMixin:
         Args:
             results: Backtest results dict with regime_history
         """
-        regime_history = results.get('regime_history', [])
+        regime_history = results.get("regime_history", [])
         if not regime_history:
             QMessageBox.information(
-                self,
-                "No Regime History",
-                "No regime changes detected in backtest results."
+                self, "No Regime History", "No regime changes detected in backtest results."
             )
             return
 
@@ -221,8 +210,8 @@ class BacktestRegimeMixin:
         }
 
         for change in regime_history:
-            timestamp = change.get('timestamp')
-            regime = change.get('regime', 'unknown')
+            timestamp = change.get("timestamp")
+            regime = change.get("regime", "unknown")
             color = regime_colors.get(regime, "#888")
 
             # TODO: Implement chart.add_regime_line(timestamp, regime, color)
@@ -232,7 +221,7 @@ class BacktestRegimeMixin:
             self,
             "Regime Boundaries",
             f"Drew {len(regime_history)} regime boundaries on chart.\n\n"
-            f"Note: Chart integration pending - boundaries logged for now."
+            f"Note: Chart integration pending - boundaries logged for now.",
         )
 
     def _on_regime_history_ready(self, regime_history: list) -> None:

@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "optimized_indicator_sets.schema.json",
+  "title": "Optimized Indicator Sets (Stufe 2 Export)",
+  "description": "Die ausgewählten besten Entry/Exit Signale für EIN Regime",
+  "type": "object",
+  "required": ["version", "meta", "signal_sets"],
+  "properties": {
+    "version": { "type": "string", "const": "2.0" },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "regime", "created_at", "regime_config_ref"],
+      "properties": {
+        "stage": { "type": "string", "const": "indicator_sets" },
+        "regime": { "type": "string", "enum": ["BULL", "BEAR", "SIDEWAYS"] },
+        "regime_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "name": { "type": "string" },
+        "regime_config_ref": { "type": "string" },
+        "optimization_results_ref": { "type": "string" },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" }
+          }
+        },
+        "aggregate_metrics": {
+          "type": "object",
+          "properties": {
+            "total_signals_enabled": { "type": "integer" },
+            "combined_win_rate": { "type": "number" },
+            "combined_profit_factor": { "type": "number" }
+          }
+        }
+      }
+    },
+    "signal_sets": {
+      "type": "object",
+      "description": "Die 4 Signal-Types mit ihren optimierten Indikatoren",
+      "required": ["entry_long", "entry_short", "exit_long", "exit_short"],
+      "properties": {
+        "entry_long": { "$ref": "#/$defs/signal_set" },
+        "entry_short": { "$ref": "#/$defs/signal_set" },
+        "exit_long": { "$ref": "#/$defs/signal_set" },
+        "exit_short": { "$ref": "#/$defs/signal_set" }
+      }
+    }
+  },
+  "$defs": {
+    "signal_set": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "selected_rank": { "type": "integer", "minimum": 1 },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "indicator": {
+          "type": "string",
+          "enum": ["RSI", "MACD", "STOCH", "BB", "ATR", "EMA", "CCI"],
+          "description": "Einer der 7 Stufe-2 Indikatoren"
+        },
+        "indicator_id": { "type": "string" },
+        "params": { "type": "object" },
+        "conditions": {
+          "type": "object",
+          "oneOf": [
+            { "required": ["all"], "properties": { "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } } } },
+            { "required": ["any"], "properties": { "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } } } }
+          ]
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "signals": { "type": "integer" },
+            "trades": { "type": "integer" },
+            "win_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "profit_factor": { "type": "number" },
+            "avg_win": { "type": "number" },
+            "avg_loss": { "type": "number" },
+            "max_drawdown": { "type": "number" },
+            "sharpe_ratio": { "type": "number" },
+            "expectancy": { "type": "number" }
+          }
+        },
+        "research_notes": { "type": "string" }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "required": ["left", "op", "right"],
+      "properties": {
+        "left": {
+          "type": "object",
+          "required": ["indicator_id", "field"],
+          "properties": {
+            "indicator_id": { "type": "string" },
+            "field": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "op": { "type": "string", "enum": ["gt", "lt", "gte", "lte", "eq", "neq", "between", "crosses_above", "crosses_below"] },
+        "right": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["value"],
+              "properties": { "value": { "type": "number" } },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["indicator_id", "field"],
+              "properties": { "indicator_id": { "type": "string" }, "field": { "type": "string" } },
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    }
+  }
+}

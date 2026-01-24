@@ -29,29 +29,58 @@
       "sideways_percentage": 29.9
     },
     "optimized_params": {
-      "adx_period": 10,
-      "adx_threshold": 17,
-      "rsi_period": 9
+      "adx_period": 14,
+      "adx_threshold": 25,
+      "sma_fast_period": 50,
+      "sma_slow_period": 200,
+      "rsi_period": 14,
+      "rsi_sideways_low": 40,
+      "rsi_sideways_high": 60,
+      "bb_period": 20,
+      "bb_std_dev": 2.0,
+      "bb_width_percentile": 0.20
+    },
+    "classification_logic": {
+      "bull": "ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow",
+      "bear": "ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow",
+      "sideways": "ADX < threshold AND BB_Width < percentile AND RSI between low-high"
     }
   },
   "indicators": [
     {
       "type": "Indicator",
-      "id": "adx10",
+      "id": "adx14",
       "name": "ADX",
-      "params": { "period": 10 }
+      "purpose": "trend_strength",
+      "params": { "period": 14 }
     },
     {
       "type": "Indicator",
-      "id": "rsi9",
+      "id": "sma50",
+      "name": "SMA",
+      "purpose": "trend_direction_fast",
+      "params": { "period": 50 }
+    },
+    {
+      "type": "Indicator",
+      "id": "sma200",
+      "name": "SMA",
+      "purpose": "trend_direction_slow",
+      "params": { "period": 200 }
+    },
+    {
+      "type": "Indicator",
+      "id": "rsi14",
       "name": "RSI",
-      "params": { "period": 9 }
+      "purpose": "sideways_momentum",
+      "params": { "period": 14 }
     },
     {
       "type": "Indicator",
-      "id": "macd_12_26_9",
-      "name": "MACD",
-      "params": { "fast": 12, "slow": 26, "signal": 9 }
+      "id": "bb20",
+      "name": "BB",
+      "purpose": "sideways_volatility",
+      "params": { "period": 20, "std_dev": 2.0 }
     }
   ],
   "regimes": [
@@ -65,19 +94,19 @@
       "conditions": {
         "all": [
           {
-            "left": { "indicator_id": "adx10", "field": "value" },
+            "left": { "indicator_id": "adx14", "field": "value" },
             "op": "gt",
-            "right": { "value": 17 }
+            "right": { "value": 25 }
           },
           {
-            "left": { "indicator_id": "rsi9", "field": "value" },
+            "left": { "indicator_id": "close", "field": "value" },
             "op": "gt",
-            "right": { "value": 50 }
+            "right": { "indicator_id": "sma50", "field": "value" }
           },
           {
-            "left": { "indicator_id": "macd_12_26_9", "field": "histogram" },
+            "left": { "indicator_id": "sma50", "field": "value" },
             "op": "gt",
-            "right": { "value": 0 }
+            "right": { "indicator_id": "sma200", "field": "value" }
           }
         ]
       }
@@ -92,19 +121,19 @@
       "conditions": {
         "all": [
           {
-            "left": { "indicator_id": "adx10", "field": "value" },
+            "left": { "indicator_id": "adx14", "field": "value" },
             "op": "gt",
-            "right": { "value": 17 }
+            "right": { "value": 25 }
           },
           {
-            "left": { "indicator_id": "rsi9", "field": "value" },
+            "left": { "indicator_id": "close", "field": "value" },
             "op": "lt",
-            "right": { "value": 50 }
+            "right": { "indicator_id": "sma50", "field": "value" }
           },
           {
-            "left": { "indicator_id": "macd_12_26_9", "field": "histogram" },
+            "left": { "indicator_id": "sma50", "field": "value" },
             "op": "lt",
-            "right": { "value": 0 }
+            "right": { "indicator_id": "sma200", "field": "value" }
           }
         ]
       }
@@ -119,9 +148,19 @@
       "conditions": {
         "all": [
           {
-            "left": { "indicator_id": "adx10", "field": "value" },
+            "left": { "indicator_id": "adx14", "field": "value" },
             "op": "lt",
-            "right": { "value": 17 }
+            "right": { "value": 25 }
+          },
+          {
+            "left": { "indicator_id": "bb20", "field": "width" },
+            "op": "lt",
+            "right": { "value": 0.20 }
+          },
+          {
+            "left": { "indicator_id": "rsi14", "field": "value" },
+            "op": "between",
+            "right": { "min": 40, "max": 60 }
           }
         ]
       }

@@ -20,7 +20,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,29 +32,40 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
-    QTabWidget,
     QTableWidget,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-# Import mixins
-from .entry_analyzer_backtest import BacktestMixin
-from .entry_analyzer_indicators import IndicatorsMixin
-from .entry_analyzer_indicators_presets import IndicatorsPresetsMixin
-from .entry_analyzer_analysis import AnalysisMixin
-from .entry_analyzer_ai import AIMixin
-from .entry_analyzer_regime_table import RegimeTableMixin
-
-# Import workers
-from .entry_analyzer_workers import CopilotWorker, ValidationWorker, BacktestWorker
-
 # Import icon provider (Issue #12)
 from src.ui.icons import get_icon
 
+from .entry_analyzer_ai import AIMixin
+from .entry_analyzer_analysis import AnalysisMixin
+
+# Import mixins
+from .entry_analyzer_backtest import BacktestMixin
+from .entry_analyzer_indicator_optimization_v2_mixin import IndicatorOptimizationV2Mixin
+from .entry_analyzer_indicator_results_v2_mixin import IndicatorResultsV2Mixin
+
+# Stage 2 (V2) mixins
+from .entry_analyzer_indicator_setup_v2_mixin import IndicatorSetupV2Mixin
+from .entry_analyzer_indicators import IndicatorsMixin
+from .entry_analyzer_indicators_presets import IndicatorsPresetsMixin
+from .entry_analyzer_regime_optimization_mixin import RegimeOptimizationMixin
+from .entry_analyzer_regime_results_mixin import RegimeResultsMixin
+
+# New Stufe-1 Regime Optimization Mixins
+from .entry_analyzer_regime_setup_mixin import RegimeSetupMixin
+from .entry_analyzer_regime_table import RegimeTableMixin
+
+# Import workers
+from .entry_analyzer_workers import BacktestWorker, CopilotWorker, ValidationWorker
+
 if TYPE_CHECKING:
-    from src.analysis.visible_chart.types import AnalysisResult, EntryEvent
+    from src.analysis.visible_chart.types import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +73,21 @@ logger = logging.getLogger(__name__)
 # ==================== Main Dialog Class ====================
 
 
-class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPresetsMixin, AnalysisMixin, AIMixin, RegimeTableMixin):
+class EntryAnalyzerPopup(
+    QDialog,
+    BacktestMixin,
+    IndicatorsMixin,
+    IndicatorsPresetsMixin,
+    AnalysisMixin,
+    AIMixin,
+    RegimeTableMixin,
+    RegimeSetupMixin,
+    RegimeOptimizationMixin,
+    RegimeResultsMixin,
+    IndicatorSetupV2Mixin,
+    IndicatorOptimizationV2Mixin,
+    IndicatorResultsV2Mixin,
+):
     """Entry Analyzer main dialog with mixin composition.
 
     Original: entry_analyzer_popup.py:197-3167 (2,970 LOC)
@@ -78,7 +103,10 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
     - IndicatorsMixin: Indicator optimization and entry signals
     - AnalysisMixin: Visible chart analysis and validation
     - AIMixin: AI Copilot and pattern recognition
-    - RegimeTableMixin: Regime parameter optimization and results table
+    - RegimeTableMixin: Regime parameter optimization and results table (OLD)
+    - RegimeSetupMixin: Regime parameter range setup (NEW - Stufe 1, Tab 1/3)
+    - RegimeOptimizationMixin: TPE-based regime optimization (NEW - Stufe 1, Tab 2/3)
+    - RegimeResultsMixin: Regime results viewing and export (NEW - Stufe 1, Tab 3/3)
     """
 
     # Signals
@@ -232,33 +260,71 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         self._setup_backtest_config_tab(setup_tab)
         self._tabs.addTab(setup_tab, get_icon("analytics"), "Regime")
 
-        # Tab 1: Reg. Table (RegimeTableMixin) - Regime Parameter Optimization
+        # Tab 1: Reg. Table (RegimeTableMixin) - Regime Parameter Optimization (OLD - DEPRECATED)
         regime_table_tab = QWidget()
         self._setup_regime_table_tab(regime_table_tab)
-        self._tabs.addTab(regime_table_tab, get_icon("tune"), "Reg. Table")
+        self._tabs.addTab(regime_table_tab, get_icon("tune"), "Reg. Table (OLD)")
 
-        # Tab 2: Indicator Optimization (IndicatorsMixin)
+        # NEW STUFE-1 TABS: Regime Optimization (3 tabs)
+        # Tab 2: Regime Setup (RegimeSetupMixin) - Parameter Range Configuration
+        regime_setup_tab = QWidget()
+        self._setup_regime_setup_tab(regime_setup_tab)
+        self._tabs.addTab(regime_setup_tab, get_icon("settings"), "1. Regime Setup")
+
+        # Tab 3: Regime Optimization (RegimeOptimizationMixin) - TPE Optimization
+        regime_opt_tab = QWidget()
+        self._setup_regime_optimization_tab(regime_opt_tab)
+        self._tabs.addTab(regime_opt_tab, get_icon("psychology"), "2. Regime Optimization")
+        self._tabs.setTabEnabled(3, False)  # Disabled until setup is complete
+
+        # Tab 4: Regime Results (RegimeResultsMixin) - Results and Export
+        regime_results_tab = QWidget()
+        self._setup_regime_results_tab(regime_results_tab)
+        self._tabs.addTab(regime_results_tab, get_icon("assessment"), "3. Regime Results")
+        self._tabs.setTabEnabled(4, False)  # Disabled until optimization is complete
+
+        # NEW STUFE-2 TABS: Indicator Optimization (3 tabs)
+        # Tab 5: Indicator Setup V2 (IndicatorSetupV2Mixin) - Indicator Selection & Parameters
+        indicator_setup_v2_tab = QWidget()
+        self._setup_indicator_setup_v2_tab(indicator_setup_v2_tab)
+        self._tabs.addTab(indicator_setup_v2_tab, get_icon("tune"), "4. Indicator Setup")
+        self._tabs.setTabEnabled(5, False)  # Disabled until regime results available
+
+        # Tab 6: Indicator Optimization V2 (IndicatorOptimizationV2Mixin) - Per-Signal Type Optimization
+        indicator_opt_v2_tab = QWidget()
+        self._setup_indicator_optimization_v2_tab(indicator_opt_v2_tab)
+        self._tabs.addTab(indicator_opt_v2_tab, get_icon("psychology"), "5. Indicator Optimization")
+        self._tabs.setTabEnabled(6, False)  # Disabled until setup is complete
+
+        # Tab 7: Indicator Results V2 (IndicatorResultsV2Mixin) - Results and Export
+        indicator_results_v2_tab = QWidget()
+        self._setup_indicator_results_v2_tab(indicator_results_v2_tab)
+        self._tabs.addTab(indicator_results_v2_tab, get_icon("assessment"), "6. Indicator Results")
+        self._tabs.setTabEnabled(7, False)  # Disabled until optimization is complete
+
+        # Tab 8: Indicator Optimization (OLD - IndicatorsMixin)
         # Issue #10: Parameter Presets now integrated as sub-tab within Indicator Optimization
         optimization_tab = QWidget()
         self._setup_indicator_optimization_tab(optimization_tab)
-        self._tabs.addTab(optimization_tab, get_icon("build"), "Indicator Optimization")
+        self._tabs.addTab(optimization_tab, get_icon("build"), "Indicator Optimization (OLD)")
+        self._tabs.setTabEnabled(8, False)  # Disabled until regime is selected
 
-        # Tab 3: Pattern Recognition (AIMixin)
+        # Tab 9: Pattern Recognition (AIMixin)
         pattern_tab = QWidget()
         self._setup_pattern_recognition_tab(pattern_tab)
         self._tabs.addTab(pattern_tab, get_icon("search"), "Pattern Recognition")
 
-        # Tab 4: Analysis (AnalysisMixin)
+        # Tab 10: Analysis (AnalysisMixin)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
         self._tabs.addTab(analysis_tab, get_icon("analytics"), "Visible Range")
 
-        # Tab 5: AI Copilot (AIMixin)
+        # Tab 11: AI Copilot (AIMixin)
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
         self._tabs.addTab(ai_tab, get_icon("smart_toy"), "AI Copilot")
 
-        # Tab 6: Validation (AnalysisMixin)
+        # Tab 12: Validation (AnalysisMixin)
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, get_icon("check_circle"), "Validation")
@@ -279,9 +345,7 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
         layout.setContentsMargins(0, 0, 0, 10)
 
         self._regime_label = QLabel("Regime: --")
-        self._regime_label.setStyleSheet(
-            "font-weight: bold; font-size: 14pt; padding: 5px;"
-        )
+        self._regime_label.setStyleSheet("font-weight: bold; font-size: 14pt; padding: 5px;")
         layout.addWidget(self._regime_label)
 
         layout.addStretch()
@@ -421,7 +485,9 @@ class EntryAnalyzerPopup(QDialog, BacktestMixin, IndicatorsMixin, IndicatorsPres
 
         # Issue #8: Auto-select parameter ranges in Regime Table tab
         try:
-            logger.info(f"Calling auto_select_parameter_ranges_for_regime with regime: {result.regime.value}")
+            logger.info(
+                f"Calling auto_select_parameter_ranges_for_regime with regime: {result.regime.value}"
+            )
             self.auto_select_parameter_ranges_for_regime(result.regime.value)
         except Exception as e:
             logger.error(f"Failed to auto-select parameter ranges for regime: {e}", exc_info=True)

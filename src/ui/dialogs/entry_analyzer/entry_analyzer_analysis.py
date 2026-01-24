@@ -177,9 +177,7 @@ class AnalysisMixin:
         self._folds_table.setHorizontalHeaderLabels(
             ["Fold", "Train Score", "Test Score", "Ratio", "OOS WR", "Overfit"]
         )
-        self._folds_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self._folds_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._folds_table)
 
     def _create_indicator_group(self) -> QGroupBox:
@@ -203,9 +201,7 @@ class AnalysisMixin:
         self._params_table = QTableWidget()
         self._params_table.setColumnCount(3)
         self._params_table.setHorizontalHeaderLabels(["Family", "Parameter", "Value"])
-        self._params_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self._params_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._params_table.setMaximumHeight(150)
         layout.addWidget(self._params_table)
 
@@ -251,12 +247,8 @@ class AnalysisMixin:
         self._entries_table.setHorizontalHeaderLabels(
             ["Time", "Side", "Price", "Confidence", "Reasons"]
         )
-        self._entries_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
-        self._entries_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
+        self._entries_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._entries_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         layout.addWidget(self._entries_table)
 
         return group
@@ -353,7 +345,9 @@ class AnalysisMixin:
         - Connects finished/error signals
         """
         if not self._result or not self._candles:
-            QMessageBox.warning(self, "No Data", "Run analysis first and ensure candle data is available")
+            QMessageBox.warning(
+                self, "No Data", "Run analysis first and ensure candle data is available"
+            )
             return
 
         self._validate_btn.setEnabled(False)
@@ -361,7 +355,9 @@ class AnalysisMixin:
         self._val_progress.setRange(0, 0)
         self._val_status_label.setText("Running validation...")
 
-        from src.ui.dialogs.entry_analyzer.entry_analyzer_workers import ValidationWorker
+        from src.ui.dialogs.entry_analyzer.entry_analyzer_workers import (
+            ValidationWorker,
+        )
 
         self._validation_worker = ValidationWorker(
             analysis=self._result,

@@ -1,53 +1,76 @@
-"""Entry Analyzer - Regime Table Tab (Mixin).
+"""DEPRECATED: Entry Analyzer - Regime Table Tab (Mixin).
 
-Provides UI for regime parameter optimization results:
+⚠️ THIS MODULE IS DEPRECATED AND WILL BE REMOVED IN v3.0 ⚠️
+
+This module uses Grid Search (303,750 combinations, ~9 hours runtime).
+Use the new RegimeOptimizationMixin with Optuna TPE instead:
+- 150 trials, ~2 minutes runtime
+- 270x faster
+- Better results via Bayesian optimization
+
+New modules to use:
+- RegimeSetupMixin (Tab "1. Regime Setup")
+- RegimeOptimizationMixin (Tab "2. Regime Optimization")
+- RegimeResultsMixin (Tab "3. Regime Results")
+
+Deprecated features:
 - Grid search over parameter combinations
-- Results table with sorting
-- Draw selected regimes to chart
-- Excel export functionality
+- Manual parameter range configuration
+- Single-threaded optimization
+
+Date: 2026-01-24
+Replacement: entry_analyzer_regime_optimization_mixin.py
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Dict, Any
-from pathlib import Path
+import warnings
 from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QAbstractItemView,
+    QComboBox,
+    QFileDialog,
+    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QMessageBox,
+    QProgressBar,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
-    QSpinBox,
-    QComboBox,
-    QProgressBar,
-    QFileDialog,
-    QMessageBox,
-    QGroupBox
+    QVBoxLayout,
+    QWidget,
 )
 
 from src.ui.icons import get_icon
 from src.ui.threads.regime_optimization_thread import RegimeOptimizationThread
 
 if TYPE_CHECKING:
-    from .entry_analyzer_popup import EntryAnalyzerPopup
+    pass
 
 logger = logging.getLogger(__name__)
 
 
 class RegimeTableMixin:
-    """Mixin for Regime Table tab in Entry Analyzer.
+    """DEPRECATED: Mixin for Regime Table tab in Entry Analyzer.
 
-    Provides:
-        - Parameter range configuration
-        - Regime optimization (grid search)
+    ⚠️ THIS CLASS IS DEPRECATED - Use RegimeOptimizationMixin instead ⚠️
+
+    Deprecated functionality:
+        - Parameter range configuration → Use RegimeSetupMixin
+        - Regime optimization (grid search) → Use RegimeOptimizationMixin with TPE
+        - Results table → Use RegimeResultsMixin
+
+    Performance comparison:
+        - Grid Search: 303,750 combinations, ~9 hours
+        - Optuna TPE: 150 trials, ~2 minutes (270x faster)
         - Results table with sorting
         - Draw to chart functionality
         - Excel export
@@ -66,11 +89,23 @@ class RegimeTableMixin:
     _regime_optimization_results: List[Dict[str, Any]]
 
     def _setup_regime_table_tab(self, tab: QWidget) -> None:
-        """Setup Regime Table tab with parameter grid and results.
+        """DEPRECATED: Setup Regime Table tab with parameter grid and results.
+
+        ⚠️ WARNING: This tab uses slow Grid Search (303,750 combinations, ~9 hours).
+        Switch to new tabs for 270x speedup:
+        - Tab "1. Regime Setup" (RegimeSetupMixin)
+        - Tab "2. Regime Optimization" (RegimeOptimizationMixin with TPE)
+        - Tab "3. Regime Results" (RegimeResultsMixin)
 
         Args:
             tab: QWidget to populate
         """
+        warnings.warn(
+            "RegimeTableMixin is deprecated. "
+            "Use RegimeOptimizationMixin with Optuna TPE for 270x speedup.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         layout = QVBoxLayout(tab)
 
         # Header
@@ -98,7 +133,9 @@ class RegimeTableMixin:
         layout.addLayout(control_layout)
 
         # Status label
-        self._regime_opt_status_label = QLabel("Ready. Configure parameters and click 'Start Optimization'.")
+        self._regime_opt_status_label = QLabel(
+            "Ready. Configure parameters and click 'Start Optimization'."
+        )
         self._regime_opt_status_label.setWordWrap(True)
         layout.addWidget(self._regime_opt_status_label)
 
@@ -125,13 +162,29 @@ class RegimeTableMixin:
 
         self._regime_opt_results_table = QTableWidget()
         self._regime_opt_results_table.setColumnCount(10)
-        self._regime_opt_results_table.setHorizontalHeaderLabels([
-            "Rank", "Score", "ADX Period", "ADX Threshold", "RSI Period",
-            "RSI Oversold", "RSI Overbought", "Regime Count", "Avg Duration", "Switches"
-        ])
-        self._regime_opt_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self._regime_opt_results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._regime_opt_results_table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self._regime_opt_results_table.setHorizontalHeaderLabels(
+            [
+                "Rank",
+                "Score",
+                "ADX Period",
+                "ADX Threshold",
+                "RSI Period",
+                "RSI Oversold",
+                "RSI Overbought",
+                "Regime Count",
+                "Avg Duration",
+                "Switches",
+            ]
+        )
+        self._regime_opt_results_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self._regime_opt_results_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._regime_opt_results_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.MultiSelection
+        )
         self._regime_opt_results_table.setSortingEnabled(True)
         results_layout.addWidget(self._regime_opt_results_table, stretch=1)
 
@@ -174,7 +227,11 @@ class RegimeTableMixin:
         adx_period_layout.addWidget(adx_period_max)
         adx_period_layout.addStretch()
         layout.addLayout(adx_period_layout)
-        self._regime_opt_param_grid["adx_period"] = (adx_period_preset, adx_period_min, adx_period_max)
+        self._regime_opt_param_grid["adx_period"] = (
+            adx_period_preset,
+            adx_period_min,
+            adx_period_max,
+        )
 
         # ADX Threshold
         adx_thresh_layout = QHBoxLayout()
@@ -197,7 +254,11 @@ class RegimeTableMixin:
         adx_thresh_layout.addWidget(adx_thresh_max)
         adx_thresh_layout.addStretch()
         layout.addLayout(adx_thresh_layout)
-        self._regime_opt_param_grid["adx_threshold"] = (adx_thresh_preset, adx_thresh_min, adx_thresh_max)
+        self._regime_opt_param_grid["adx_threshold"] = (
+            adx_thresh_preset,
+            adx_thresh_min,
+            adx_thresh_max,
+        )
 
         # RSI Period
         rsi_period_layout = QHBoxLayout()
@@ -220,7 +281,11 @@ class RegimeTableMixin:
         rsi_period_layout.addWidget(rsi_period_max)
         rsi_period_layout.addStretch()
         layout.addLayout(rsi_period_layout)
-        self._regime_opt_param_grid["rsi_period"] = (rsi_period_preset, rsi_period_min, rsi_period_max)
+        self._regime_opt_param_grid["rsi_period"] = (
+            rsi_period_preset,
+            rsi_period_min,
+            rsi_period_max,
+        )
 
         # RSI Oversold
         rsi_oversold_layout = QHBoxLayout()
@@ -243,7 +308,11 @@ class RegimeTableMixin:
         rsi_oversold_layout.addWidget(rsi_oversold_max)
         rsi_oversold_layout.addStretch()
         layout.addLayout(rsi_oversold_layout)
-        self._regime_opt_param_grid["rsi_oversold"] = (rsi_oversold_preset, rsi_oversold_min, rsi_oversold_max)
+        self._regime_opt_param_grid["rsi_oversold"] = (
+            rsi_oversold_preset,
+            rsi_oversold_min,
+            rsi_oversold_max,
+        )
 
         # RSI Overbought
         rsi_overbought_layout = QHBoxLayout()
@@ -266,7 +335,11 @@ class RegimeTableMixin:
         rsi_overbought_layout.addWidget(rsi_overbought_max)
         rsi_overbought_layout.addStretch()
         layout.addLayout(rsi_overbought_layout)
-        self._regime_opt_param_grid["rsi_overbought"] = (rsi_overbought_preset, rsi_overbought_min, rsi_overbought_max)
+        self._regime_opt_param_grid["rsi_overbought"] = (
+            rsi_overbought_preset,
+            rsi_overbought_min,
+            rsi_overbought_max,
+        )
 
         return group
 
@@ -283,7 +356,7 @@ class RegimeTableMixin:
         _, min_spin, max_spin = self._regime_opt_param_grid[param_name]
 
         # Parse preset (format: "min-max" or "min-mid-max")
-        parts = preset.split('-')
+        parts = preset.split("-")
         if len(parts) >= 2:
             min_val = int(parts[0])
             max_val = int(parts[-1])
@@ -300,10 +373,10 @@ class RegimeTableMixin:
         """
         logger.info(f"AUTO-SELECT CALLED: regime_type={regime_type}")
 
-        if not hasattr(self, '_regime_opt_param_grid') or not self._regime_opt_param_grid:
+        if not hasattr(self, "_regime_opt_param_grid") or not self._regime_opt_param_grid:
             logger.warning("Regime parameter grid not initialized")
             # Visual feedback: Show warning in status label
-            if hasattr(self, '_regime_opt_status_label'):
+            if hasattr(self, "_regime_opt_status_label"):
                 self._regime_opt_status_label.setText(
                     "⚠ Parameter grid not yet initialized. Open the Reg. Table tab first."
                 )
@@ -314,47 +387,47 @@ class RegimeTableMixin:
         # Optimized for each market condition
         regime_presets = {
             "trend_up": {
-                "adx_period": "12-16-20",      # Longer periods for trend confirmation
-                "adx_threshold": "20-30-50",    # Higher threshold for strong trends
-                "rsi_period": "10-15-20",       # Standard RSI periods
-                "rsi_oversold": "25-35",        # Less aggressive oversold
-                "rsi_overbought": "65-75"       # Less aggressive overbought
+                "adx_period": "12-16-20",  # Longer periods for trend confirmation
+                "adx_threshold": "20-30-50",  # Higher threshold for strong trends
+                "rsi_period": "10-15-20",  # Standard RSI periods
+                "rsi_oversold": "25-35",  # Less aggressive oversold
+                "rsi_overbought": "65-75",  # Less aggressive overbought
             },
             "trend_down": {
                 "adx_period": "12-16-20",
                 "adx_threshold": "20-30-50",
                 "rsi_period": "10-15-20",
                 "rsi_oversold": "25-35",
-                "rsi_overbought": "65-75"
+                "rsi_overbought": "65-75",
             },
             "range": {
-                "adx_period": "7-14-21",        # Shorter periods for range detection
-                "adx_threshold": "15-25-35",    # Lower threshold for weak trend
-                "rsi_period": "7-14-18",        # Faster RSI for range
-                "rsi_oversold": "20-30",        # More aggressive levels
-                "rsi_overbought": "70-80"
+                "adx_period": "7-14-21",  # Shorter periods for range detection
+                "adx_threshold": "15-25-35",  # Lower threshold for weak trend
+                "rsi_period": "7-14-18",  # Faster RSI for range
+                "rsi_oversold": "20-30",  # More aggressive levels
+                "rsi_overbought": "70-80",
             },
             "high_vol": {
-                "adx_period": "10-14-20",       # Medium periods
-                "adx_threshold": "17-25-40",    # Standard threshold
-                "rsi_period": "9-14-21",        # Standard RSI
-                "rsi_oversold": "15-25",        # Extreme oversold for high vol
-                "rsi_overbought": "75-85"       # Extreme overbought for high vol
+                "adx_period": "10-14-20",  # Medium periods
+                "adx_threshold": "17-25-40",  # Standard threshold
+                "rsi_period": "9-14-21",  # Standard RSI
+                "rsi_oversold": "15-25",  # Extreme oversold for high vol
+                "rsi_overbought": "75-85",  # Extreme overbought for high vol
             },
             "squeeze": {
-                "adx_period": "10-14-20",       # Medium periods
-                "adx_threshold": "15-25-35",    # Lower threshold (squeeze = low ADX)
-                "rsi_period": "9-14-21",        # Standard RSI
-                "rsi_oversold": "25-35",        # Conservative levels
-                "rsi_overbought": "65-75"
+                "adx_period": "10-14-20",  # Medium periods
+                "adx_threshold": "15-25-35",  # Lower threshold (squeeze = low ADX)
+                "rsi_period": "9-14-21",  # Standard RSI
+                "rsi_oversold": "25-35",  # Conservative levels
+                "rsi_overbought": "65-75",
             },
             "no_trade": {
-                "adx_period": "10-14-20",       # Medium periods
-                "adx_threshold": "17-25-40",    # Standard threshold
-                "rsi_period": "9-14-21",        # Standard RSI
-                "rsi_oversold": "20-30",        # Standard levels
-                "rsi_overbought": "70-80"
-            }
+                "adx_period": "10-14-20",  # Medium periods
+                "adx_threshold": "17-25-40",  # Standard threshold
+                "rsi_period": "9-14-21",  # Standard RSI
+                "rsi_oversold": "20-30",  # Standard levels
+                "rsi_overbought": "70-80",
+            },
         }
 
         # Get presets for this regime type
@@ -381,7 +454,7 @@ class RegimeTableMixin:
             logger.info(f"Auto-selected parameter ranges for regime: {regime_type}")
 
             # Visual feedback: Update status label if it exists
-            if hasattr(self, '_regime_opt_status_label'):
+            if hasattr(self, "_regime_opt_status_label"):
                 self._regime_opt_status_label.setText(
                     f"✓ Auto-selected parameter ranges for {regime_type.replace('_', ' ').title()}"
                 )
@@ -390,7 +463,7 @@ class RegimeTableMixin:
         except Exception as e:
             logger.error(f"Failed to auto-select parameter ranges: {e}", exc_info=True)
             # Visual feedback: Show error in status label
-            if hasattr(self, '_regime_opt_status_label'):
+            if hasattr(self, "_regime_opt_status_label"):
                 self._regime_opt_status_label.setText(
                     f"⚠ Failed to auto-select parameter ranges: {e}"
                 )
@@ -400,30 +473,29 @@ class RegimeTableMixin:
         """Start regime parameter optimization."""
         try:
             # Get chart data
-            if not hasattr(self, '_candles') or not self._candles:
-                QMessageBox.warning(
-                    self,
-                    "No Data",
-                    "Please load chart data first."
-                )
+            if not hasattr(self, "_candles") or not self._candles:
+                QMessageBox.warning(self, "No Data", "Please load chart data first.")
                 return
 
             # Convert candles to DataFrame
             import pandas as pd
+
             df = pd.DataFrame(self._candles)
 
             # Handle different time column names (timestamp vs time)
             time_col = None
-            if 'timestamp' in df.columns:
-                time_col = 'timestamp'
-            elif 'time' in df.columns:
-                time_col = 'time'
+            if "timestamp" in df.columns:
+                time_col = "timestamp"
+            elif "time" in df.columns:
+                time_col = "time"
             else:
-                raise ValueError(f"No time column found in candles. Available columns: {list(df.columns)}")
+                raise ValueError(
+                    f"No time column found in candles. Available columns: {list(df.columns)}"
+                )
 
             # Convert to datetime and set as index
-            df['time'] = pd.to_datetime(df[time_col], unit='s')
-            df.set_index('time', inplace=True)
+            df["time"] = pd.to_datetime(df[time_col], unit="s")
+            df.set_index("time", inplace=True)
 
             # Get parameter grid
             param_grid = {}
@@ -454,7 +526,7 @@ class RegimeTableMixin:
                 f"This will test {total} parameter combinations.\n\n"
                 f"Estimated time: {total * 0.5:.0f}-{total * 1:.0f} seconds\n\n"
                 "Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
 
             if reply != QMessageBox.StandardButton.Yes:
@@ -464,9 +536,7 @@ class RegimeTableMixin:
             config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
             if not config_path.exists():
                 QMessageBox.critical(
-                    self,
-                    "Config Not Found",
-                    f"Regime config not found: {config_path}"
+                    self, "Config Not Found", f"Regime config not found: {config_path}"
                 )
                 return
 
@@ -478,30 +548,29 @@ class RegimeTableMixin:
             self._regime_opt_optimize_btn.setEnabled(False)
             self._regime_opt_progress.setVisible(True)
             self._regime_opt_progress.setValue(0)
-            self._regime_opt_status_label.setText(f"Starting optimization ({total} combinations)...")
+            self._regime_opt_status_label.setText(
+                f"Starting optimization ({total} combinations)..."
+            )
 
             # Create and start optimization thread
             self._regime_optimization_thread = RegimeOptimizationThread(
-                df=df,
-                config_template_path=str(config_path),
-                param_grid=param_grid,
-                scope="entry"
+                df=df, config_template_path=str(config_path), param_grid=param_grid, scope="entry"
             )
 
             self._regime_optimization_thread.progress.connect(self._on_regime_optimization_progress)
-            self._regime_optimization_thread.result_ready.connect(self._on_regime_optimization_result)
-            self._regime_optimization_thread.finished_with_results.connect(self._on_regime_optimization_finished)
+            self._regime_optimization_thread.result_ready.connect(
+                self._on_regime_optimization_result
+            )
+            self._regime_optimization_thread.finished_with_results.connect(
+                self._on_regime_optimization_finished
+            )
             self._regime_optimization_thread.error.connect(self._on_regime_optimization_error)
 
             self._regime_optimization_thread.start()
 
         except Exception as e:
             logger.error(f"Failed to start regime optimization: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to start optimization: {str(e)}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to start optimization: {str(e)}")
 
     def _on_regime_optimization_progress(self, current: int, total: int, message: str):
         """Handle optimization progress update.
@@ -529,20 +598,36 @@ class RegimeTableMixin:
         self._regime_opt_results_table.insertRow(row)
 
         # Extract parameters
-        params = result['params']
-        metrics = result['metrics']
+        params = result["params"]
+        metrics = result["metrics"]
 
         # Populate columns
         self._regime_opt_results_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))  # Rank
-        self._regime_opt_results_table.setItem(row, 1, QTableWidgetItem(str(result['score'])))
-        self._regime_opt_results_table.setItem(row, 2, QTableWidgetItem(str(params.get('adx_period', 'N/A'))))
-        self._regime_opt_results_table.setItem(row, 3, QTableWidgetItem(str(params.get('adx_threshold', 'N/A'))))
-        self._regime_opt_results_table.setItem(row, 4, QTableWidgetItem(str(params.get('rsi_period', 'N/A'))))
-        self._regime_opt_results_table.setItem(row, 5, QTableWidgetItem(str(params.get('rsi_oversold', 'N/A'))))
-        self._regime_opt_results_table.setItem(row, 6, QTableWidgetItem(str(params.get('rsi_overbought', 'N/A'))))
-        self._regime_opt_results_table.setItem(row, 7, QTableWidgetItem(str(metrics['regime_count'])))
-        self._regime_opt_results_table.setItem(row, 8, QTableWidgetItem(f"{metrics['avg_duration']:.1f}"))
-        self._regime_opt_results_table.setItem(row, 9, QTableWidgetItem(str(metrics['switch_count'])))
+        self._regime_opt_results_table.setItem(row, 1, QTableWidgetItem(str(result["score"])))
+        self._regime_opt_results_table.setItem(
+            row, 2, QTableWidgetItem(str(params.get("adx_period", "N/A")))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 3, QTableWidgetItem(str(params.get("adx_threshold", "N/A")))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 4, QTableWidgetItem(str(params.get("rsi_period", "N/A")))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 5, QTableWidgetItem(str(params.get("rsi_oversold", "N/A")))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 6, QTableWidgetItem(str(params.get("rsi_overbought", "N/A")))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 7, QTableWidgetItem(str(metrics["regime_count"]))
+        )
+        self._regime_opt_results_table.setItem(
+            row, 8, QTableWidgetItem(f"{metrics['avg_duration']:.1f}")
+        )
+        self._regime_opt_results_table.setItem(
+            row, 9, QTableWidgetItem(str(metrics["switch_count"]))
+        )
 
         # Store result in row data
         self._regime_opt_results_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, result)
@@ -584,11 +669,7 @@ class RegimeTableMixin:
         self._regime_opt_progress.setVisible(False)
         self._regime_opt_status_label.setText(f"Error: {error_msg}")
 
-        QMessageBox.critical(
-            self,
-            "Optimization Error",
-            error_msg
-        )
+        QMessageBox.critical(self, "Optimization Error", error_msg)
 
     def _on_regime_draw_selected(self):
         """Draw selected regime configurations to chart."""
@@ -596,9 +677,7 @@ class RegimeTableMixin:
 
         if not selected_rows:
             QMessageBox.information(
-                self,
-                "No Selection",
-                "Please select one or more rows to draw on the chart."
+                self, "No Selection", "Please select one or more rows to draw on the chart."
             )
             return
 
@@ -608,7 +687,7 @@ class RegimeTableMixin:
             result_item = self._regime_opt_results_table.item(row, 0)
             result = result_item.data(Qt.ItemDataRole.UserRole)
             if result:
-                regime_histories.append(result['regime_history'])
+                regime_histories.append(result["regime_history"])
 
         # Emit signal to draw regime lines
         # Flatten all regime histories into one list
@@ -626,20 +705,13 @@ class RegimeTableMixin:
     def _on_regime_export_excel(self):
         """Export optimization results to Excel."""
         if not self._regime_optimization_results:
-            QMessageBox.information(
-                self,
-                "No Results",
-                "No optimization results to export."
-            )
+            QMessageBox.information(self, "No Results", "No optimization results to export.")
             return
 
         # Ask user for file path
         default_filename = f"regime_optimization_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export to Excel",
-            default_filename,
-            "Excel Files (*.xlsx);;All Files (*)"
+            self, "Export to Excel", default_filename, "Excel Files (*.xlsx);;All Files (*)"
         )
 
         if not file_path:
@@ -651,22 +723,22 @@ class RegimeTableMixin:
             # Prepare data for export
             export_data = []
             for idx, result in enumerate(self._regime_optimization_results, start=1):
-                params = result['params']
-                metrics = result['metrics']
+                params = result["params"]
+                metrics = result["metrics"]
 
                 row = {
-                    'Rank': idx,
-                    'Score': result['score'],
-                    'ADX Period': params.get('adx_period', 'N/A'),
-                    'ADX Threshold': params.get('adx_threshold', 'N/A'),
-                    'RSI Period': params.get('rsi_period', 'N/A'),
-                    'RSI Oversold': params.get('rsi_oversold', 'N/A'),
-                    'RSI Overbought': params.get('rsi_overbought', 'N/A'),
-                    'Regime Count': metrics['regime_count'],
-                    'Avg Duration (bars)': f"{metrics['avg_duration']:.2f}",
-                    'Switch Count': metrics['switch_count'],
-                    'Stability Score': f"{metrics['stability_score']:.3f}",
-                    'Coverage (%)': f"{metrics['coverage']:.2f}"
+                    "Rank": idx,
+                    "Score": result["score"],
+                    "ADX Period": params.get("adx_period", "N/A"),
+                    "ADX Threshold": params.get("adx_threshold", "N/A"),
+                    "RSI Period": params.get("rsi_period", "N/A"),
+                    "RSI Oversold": params.get("rsi_oversold", "N/A"),
+                    "RSI Overbought": params.get("rsi_overbought", "N/A"),
+                    "Regime Count": metrics["regime_count"],
+                    "Avg Duration (bars)": f"{metrics['avg_duration']:.2f}",
+                    "Switch Count": metrics["switch_count"],
+                    "Stability Score": f"{metrics['stability_score']:.3f}",
+                    "Coverage (%)": f"{metrics['coverage']:.2f}",
                 }
                 export_data.append(row)
 
@@ -674,20 +746,12 @@ class RegimeTableMixin:
             df = pd.DataFrame(export_data)
 
             # Export to Excel
-            df.to_excel(file_path, index=False, sheet_name='Regime Optimization')
+            df.to_excel(file_path, index=False, sheet_name="Regime Optimization")
 
-            QMessageBox.information(
-                self,
-                "Export Successful",
-                f"Results exported to:\n{file_path}"
-            )
+            QMessageBox.information(self, "Export Successful", f"Results exported to:\n{file_path}")
 
             logger.info(f"Exported regime optimization results to {file_path}")
 
         except Exception as e:
             logger.error(f"Failed to export to Excel: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Export Failed",
-                f"Failed to export to Excel:\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Export Failed", f"Failed to export to Excel:\n{str(e)}")

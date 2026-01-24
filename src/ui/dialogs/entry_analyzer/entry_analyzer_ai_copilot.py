@@ -177,7 +177,11 @@ class AICopilotMixin:
 
         lines.append(f"\n## Market Assessment\n{response.summary.market_assessment}")
         lines.append(f"\n**Bias:** {response.summary.overall_bias}")
-        lines.append(f"**Best Entry:** #{response.summary.best_entry_idx + 1}" if response.summary.best_entry_idx >= 0 else "**Best Entry:** None recommended")
+        lines.append(
+            f"**Best Entry:** #{response.summary.best_entry_idx + 1}"
+            if response.summary.best_entry_idx >= 0
+            else "**Best Entry:** None recommended"
+        )
 
         if response.summary.risk_warning:
             lines.append(f"\n⚠️ **Risk Warning:** {response.summary.risk_warning}")

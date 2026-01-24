@@ -2,7 +2,7 @@
 
 **Start:** 2026-01-24  
 **Letzte Aktualisierung:** 2026-01-24  
-**Gesamtfortschritt:** 0% (0/68 Tasks)
+**Gesamtfortschritt:** 0% (0/72 Tasks)
 
 ---
 
@@ -18,21 +18,36 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  STUFE 1: Regime-Optimierung                                            │
-│  • Parameter-Varianten testen (ADX, RSI Perioden/Thresholds)            │
-│  • Beste Kombination für BULL/BEAR/SIDEWAYS Erkennung finden            │
+│  • Indikatoren: ADX, SMA_Fast, SMA_Slow, RSI, BB Width                 │
+│  • Klassifikation: ADX+SMA basiert (NICHT RSI/MACD!)                   │
 │  • Speichern: optimized_regime_BTCUSDT_5m.json                          │
-│  • Chart zeigt Regime-Perioden an                                       │
 └─────────────────────────────────────────────────────────────────────────┘
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  STUFE 2: Indikator-Set-Optimierung (PRO REGIME SEPARAT!)               │
-│                                                                          │
-│  Für BULL (nur BULL-Bars):                                              │
-│  • Entry-Long, Entry-Short, Exit-Long, Exit-Short optimieren            │
-│  • Speichern: indicator_sets_BULL_BTCUSDT_5m.json                       │
-│                                                                          │
-│  Für BEAR (nur BEAR-Bars): → indicator_sets_BEAR_BTCUSDT_5m.json        │
-│  Für SIDEWAYS (nur SIDEWAYS-Bars): → indicator_sets_SIDEWAYS_...json    │
+│  • Indikatoren: RSI, MACD, STOCH, BB, ATR, EMA, CCI (7 Stück)          │
+│  • Pro Regime: Entry-Long, Entry-Short, Exit-Long, Exit-Short          │
+│  • Speichern: indicator_sets_BULL/BEAR/SIDEWAYS_BTCUSDT_5m.json        │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### **⚠️ KRITISCHE REGELN**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  STUFE-1 INDIKATOREN (Regime-Erkennung):                               │
+│  ✓ ADX, SMA_Fast, SMA_Slow, RSI, BB Width                              │
+│  ✗ NICHT: MACD (das ist Stufe 2!)                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│  REGIME-KLASSIFIKATION:                                                 │
+│  BULL:     ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow│
+│  BEAR:     ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow│
+│  SIDEWAYS: ADX < threshold AND BB_Width < percentile AND RSI 40-60     │
+├─────────────────────────────────────────────────────────────────────────┤
+│  STUFE-2 INDIKATOREN (Entry/Exit):                                     │
+│  ✓ RSI, MACD, STOCH, BB, ATR, EMA, CCI (7 Stück)                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│  PERFORMANCE: KEIN Grid Search! → Optuna TPE (2000x schneller)         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,34 +58,6 @@
 | **BULL** | Grün | `#26a69a` |
 | **BEAR** | Rot | `#ef5350` |
 | **SIDEWAYS** | Grau | `#9e9e9e` |
-
-### **⚠️ KRITISCHE ANWEISUNG: CODE-BEREINIGUNG**
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  NACH JEDER PHASE MUSS ALTER/UNGENUTZTER CODE VOLLSTÄNDIG ENTFERNT     │
-│  WERDEN! Keine auskommentierten Funktionen, keine "old_*" Dateien,     │
-│  keine unbenutzten Imports. Nur produktiver Code bleibt im Repo.       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🛠️ **CODE-QUALITÄTS-STANDARDS**
-
-### **✅ ERFORDERLICH:**
-1. Vollständige Implementation - Keine TODO/Platzhalter
-2. Error Handling - try/catch für alle kritischen Operationen  
-3. Type Hints - Alle Function Signatures typisiert
-4. Docstrings - Alle public Functions dokumentiert
-5. Tests - Unit Tests für neue Funktionalität
-6. **Clean Code - Alter Code vollständig entfernt**
-
-### **❌ VERBOTEN:**
-1. `# TODO: Implement later`
-2. `# def old_function():`
-3. `except: pass`
-4. `return "Not implemented"`
-5. Ungenutzte Imports
 
 ---
 
@@ -92,17 +79,41 @@
 
 ---
 
+## Phase 0.5: Performance-Optimierung Setup (2 Stunden) ⚡ NEU
+
+- [ ] **0.5.1 Optuna installieren**  
+  Status: ⬜ → `pip install optuna optuna-dashboard`
+- [ ] **0.5.2 TPESampler konfigurieren**  
+  Status: ⬜ → `multivariate=True, n_startup_trials=20`
+- [ ] **0.5.3 HyperbandPruner einrichten**  
+  Status: ⬜ → `min_resource=1, max_resource=100, reduction_factor=3`
+- [ ] **0.5.4 SQLite Storage für Optuna**  
+  Status: ⬜ → `sqlite:///optuna_regime.db`
+
+```python
+# Referenz-Code für Phase 0.5
+import optuna
+from optuna.samplers import TPESampler
+from optuna.pruners import HyperbandPruner
+
+sampler = TPESampler(n_startup_trials=20, multivariate=True, seed=42)
+pruner = HyperbandPruner(min_resource=1, max_resource=100, reduction_factor=3)
+study = optuna.create_study(direction="maximize", sampler=sampler, pruner=pruner)
+```
+
+---
+
 ## Phase 1: Stufe-1 Core Classes (10 Stunden)
 
 ### 1.1 RegimeOptimizer Klasse (6 Stunden)
 - [ ] **1.1.1 RegimeOptimizer erstellen**  
   Status: ⬜ → *Datei: src/core/regime_optimizer.py*
-- [ ] **1.1.2 Grid-Search Implementation**  
-  Status: ⬜ → *Parameter-Kombinationen: ADX Period/Threshold, RSI Period*
-- [ ] **1.1.3 Auto-Modus vs. Manual-Modus**  
-  Status: ⬜ → *Auto: System wählt sinnvolle Ranges, Manual: Benutzer definiert*
-- [ ] **1.1.4 Regime-Klassifikation (BULL/BEAR/SIDEWAYS)**  
-  Status: ⬜ → *Conditions basierend auf ADX, RSI, MACD*
+- [ ] **1.1.2 TPE Optimization Implementation**  
+  Status: ⬜ → *Optuna statt Grid Search!*
+- [ ] **1.1.3 Korrekte Indikatoren: ADX, SMA_Fast, SMA_Slow, RSI, BB Width**  
+  Status: ⬜ → *NICHT MACD!*
+- [ ] **1.1.4 Korrekte Regime-Klassifikation**  
+  Status: ⬜ → *ADX+SMA basiert, nicht RSI/MACD*
 - [ ] **1.1.5 Composite Score Berechnung**  
   Status: ⬜ → *F1-Bull (25%), F1-Bear (30%), F1-Sideways (20%), Stability (25%)*
 - [ ] **1.1.6 Bar-Indices pro Regime speichern**  
@@ -127,10 +138,10 @@
   Status: ⬜ → *Datei: src/core/indicator_set_optimizer.py*
 - [ ] **2.1.2 Regime-Filter Implementation**  
   Status: ⬜ → *Nur Bars des ausgewählten Regimes verwenden*
-- [ ] **2.1.3 Indikator-Parameter-Ranges**  
-  Status: ⬜ → *RSI, MACD, STOCH, BB, EMA Ranges definieren*
-- [ ] **2.1.4 Auto-Modus vs. Manual-Modus**  
-  Status: ⬜ → *Auto: Maximale Varianten, Manual: Eingestellte Ranges*
+- [ ] **2.1.3 Alle 7 Indikatoren: RSI, MACD, STOCH, BB, ATR, EMA, CCI**  
+  Status: ⬜ → *Nicht nur 5!*
+- [ ] **2.1.4 TPE Optimization pro Indikator**  
+  Status: ⬜ → *40 trials pro Indikator*
 - [ ] **2.1.5 Signal-Backtest: Entry-Long**  
   Status: ⬜ → *Trades simulieren, Metriken berechnen*
 - [ ] **2.1.6 Signal-Backtest: Entry-Short**  
@@ -224,14 +235,16 @@
 
 ### 5.1 Unit Tests (6 Stunden)
 - [ ] **5.1.1 RegimeOptimizer Tests**  
-  Status: ⬜ → *Grid Search, Score Calculation, Bar-Indices*
-- [ ] **5.1.2 IndicatorSetOptimizer Tests**  
-  Status: ⬜ → *Regime-Filter, Backtest, 4 Signal-Types*
-- [ ] **5.1.3 RegimeResultsManager Tests**  
+  Status: ⬜ → *TPE, Score Calculation, Korrekte Indikatoren*
+- [ ] **5.1.2 Test: Korrekte Klassifikationslogik**  
+  Status: ⬜ → *BULL=Close>SMA_Fast>SMA_Slow, nicht RSI/MACD*
+- [ ] **5.1.3 IndicatorSetOptimizer Tests**  
+  Status: ⬜ → *Regime-Filter, Backtest, 4 Signal-Types, 7 Indikatoren*
+- [ ] **5.1.4 RegimeResultsManager Tests**  
   Status: ⬜ → *Sorting, Export*
-- [ ] **5.1.4 IndicatorResultsManager Tests**  
+- [ ] **5.1.5 IndicatorResultsManager Tests**  
   Status: ⬜ → *Pro-Regime Export*
-- [ ] **5.1.5 JSON Schema Validation Tests**  
+- [ ] **5.1.6 JSON Schema Validation Tests**  
   Status: ⬜ → *Alle 4 Schemas gegen Beispiele*
 
 ### 5.2 Integration Tests (2 Stunden)
@@ -255,15 +268,16 @@
 ## 📈 Fortschritts-Tracking
 
 ### Gesamt-Statistik
-- **Total Tasks:** 68
+- **Total Tasks:** 72
 - **Abgeschlossen:** 0 (0%)
 - **In Arbeit:** 0 (0%)
-- **Offen:** 68 (100%)
+- **Offen:** 72 (100%)
 
 ### Phase-Statistik
 | Phase | Tasks | Abgeschlossen | Fortschritt |
 |-------|-------|---------------|-------------|
 | Phase 0 | 4 | 0 | ⬜ 0% |
+| Phase 0.5 | 4 | 0 | ⬜ 0% |
 | Phase 1 | 10 | 0 | ⬜ 0% |
 | Phase 2 | 14 | 0 | ⬜ 0% |
 | Phase 3 | 18 | 0 | ⬜ 0% |
@@ -271,7 +285,7 @@
 | Phase 5 | 11 | 0 | ⬜ 0% |
 
 ### Zeitschätzung
-- **Geschätzte Gesamtzeit:** 64-72 Stunden (2-3 Wochen)
+- **Geschätzte Gesamtzeit:** 66-74 Stunden (2-3 Wochen)
 
 ---
 
@@ -306,8 +320,10 @@
 ## 📄 Referenz-Dokumente
 
 1. **README_JSON_FORMATE.md** - Workflow-Diagramm
-2. **schemas/*.schema.json** - 4 JSON-Schemas
-3. **examples/** - Beispiel-JSONs für beide Stufen
+2. **PERFORMANCE_OPTIMIERUNG.md** - TPE/Optuna Best Practices
+3. **PROMPT_Claude_CLI_Regime_Optimierung.md** - Implementierungs-Anleitung
+4. **schemas/*.schema.json** - 4 JSON-Schemas
+5. **examples/** - Beispiel-JSONs für beide Stufen
 
 ---
 

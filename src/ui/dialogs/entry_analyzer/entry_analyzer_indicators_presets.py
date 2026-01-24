@@ -20,13 +20,11 @@ from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtWidgets import (
     QComboBox,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
-    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -45,264 +43,210 @@ logger = logging.getLogger(__name__)
 # ==================== Parameter Preset Definitions ====================
 
 REGIME_PRESETS = {
-    'trend_up': {
-        'name': 'Trending Up Market',
-        'description': 'Optimized for bullish trending markets with momentum confirmation',
-        'indicators': {
-            'RSI': {
-                'period': (10, 21, 2),  # (min, max, step)
-                'notes': 'Longer periods (14-21) for trend confirmation'
+    "trend_up": {
+        "name": "Trending Up Market",
+        "description": "Optimized for bullish trending markets with momentum confirmation",
+        "indicators": {
+            "RSI": {
+                "period": (10, 21, 2),  # (min, max, step)
+                "notes": "Longer periods (14-21) for trend confirmation",
             },
-            'MACD': {
-                'fast': (8, 16, 2),
-                'slow': (20, 30, 5),
-                'signal': (7, 11, 2),
-                'notes': 'Faster settings (8,17,7) for quicker signals in trends'
+            "MACD": {
+                "fast": (8, 16, 2),
+                "slow": (20, 30, 5),
+                "signal": (7, 11, 2),
+                "notes": "Faster settings (8,17,7) for quicker signals in trends",
             },
-            'EMA': {
-                'period': (20, 50, 5),
-                'notes': 'Shorter EMAs (20-50) for trend following'
+            "EMA": {"period": (20, 50, 5), "notes": "Shorter EMAs (20-50) for trend following"},
+            "SMA": {"period": (50, 100, 10), "notes": "Medium-term SMAs for trend confirmation"},
+            "ADX": {"period": (10, 20, 2), "notes": "Standard ADX for trend strength confirmation"},
+            "BB": {
+                "period": (15, 25, 5),
+                "std": (1.5, 2.5, 0.5),
+                "notes": "Tighter bands for trend breakouts",
             },
-            'SMA': {
-                'period': (50, 100, 10),
-                'notes': 'Medium-term SMAs for trend confirmation'
-            },
-            'ADX': {
-                'period': (10, 20, 2),
-                'notes': 'Standard ADX for trend strength confirmation'
-            },
-            'BB': {
-                'period': (15, 25, 5),
-                'std': (1.5, 2.5, 0.5),
-                'notes': 'Tighter bands for trend breakouts'
-            },
-            'ATR': {
-                'period': (10, 20, 2),
-                'notes': 'Standard ATR for volatility-based stops'
-            },
-        }
+            "ATR": {"period": (10, 20, 2), "notes": "Standard ATR for volatility-based stops"},
+        },
     },
-    'trend_down': {
-        'name': 'Trending Down Market',
-        'description': 'Optimized for bearish trending markets with momentum confirmation',
-        'indicators': {
-            'RSI': {
-                'period': (10, 21, 2),
-                'notes': 'Longer periods (14-21) for trend confirmation'
+    "trend_down": {
+        "name": "Trending Down Market",
+        "description": "Optimized for bearish trending markets with momentum confirmation",
+        "indicators": {
+            "RSI": {
+                "period": (10, 21, 2),
+                "notes": "Longer periods (14-21) for trend confirmation",
             },
-            'MACD': {
-                'fast': (8, 16, 2),
-                'slow': (20, 30, 5),
-                'signal': (7, 11, 2),
-                'notes': 'Faster settings (8,17,7) for quicker signals in trends'
+            "MACD": {
+                "fast": (8, 16, 2),
+                "slow": (20, 30, 5),
+                "signal": (7, 11, 2),
+                "notes": "Faster settings (8,17,7) for quicker signals in trends",
             },
-            'EMA': {
-                'period': (20, 50, 5),
-                'notes': 'Shorter EMAs (20-50) for trend following'
+            "EMA": {"period": (20, 50, 5), "notes": "Shorter EMAs (20-50) for trend following"},
+            "SMA": {"period": (50, 100, 10), "notes": "Medium-term SMAs for trend confirmation"},
+            "ADX": {"period": (10, 20, 2), "notes": "Standard ADX for trend strength confirmation"},
+            "BB": {
+                "period": (15, 25, 5),
+                "std": (1.5, 2.5, 0.5),
+                "notes": "Tighter bands for trend breakouts",
             },
-            'SMA': {
-                'period': (50, 100, 10),
-                'notes': 'Medium-term SMAs for trend confirmation'
-            },
-            'ADX': {
-                'period': (10, 20, 2),
-                'notes': 'Standard ADX for trend strength confirmation'
-            },
-            'BB': {
-                'period': (15, 25, 5),
-                'std': (1.5, 2.5, 0.5),
-                'notes': 'Tighter bands for trend breakouts'
-            },
-            'ATR': {
-                'period': (10, 20, 2),
-                'notes': 'Standard ATR for volatility-based stops'
-            },
-        }
+            "ATR": {"period": (10, 20, 2), "notes": "Standard ATR for volatility-based stops"},
+        },
     },
-    'range': {
-        'name': 'Ranging Market',
-        'description': 'Optimized for sideways/ranging markets with clear support/resistance',
-        'indicators': {
-            'RSI': {
-                'period': (9, 14, 1),
-                'notes': 'Shorter periods (9-10) for faster mean reversion signals. Use 75/25 levels.'
+    "range": {
+        "name": "Ranging Market",
+        "description": "Optimized for sideways/ranging markets with clear support/resistance",
+        "indicators": {
+            "RSI": {
+                "period": (9, 14, 1),
+                "notes": "Shorter periods (9-10) for faster mean reversion signals. Use 75/25 levels.",
             },
-            'MACD': {
-                'fast': (12, 17, 2),
-                'slow': (26, 35, 5),
-                'signal': (9, 12, 1),
-                'notes': 'Standard to slower MACD (12,26,9 or 15,30,12) for cleaner signals'
+            "MACD": {
+                "fast": (12, 17, 2),
+                "slow": (26, 35, 5),
+                "signal": (9, 12, 1),
+                "notes": "Standard to slower MACD (12,26,9 or 15,30,12) for cleaner signals",
             },
-            'EMA': {
-                'period': (10, 30, 5),
-                'notes': 'Shorter EMAs for mean reversion'
+            "EMA": {"period": (10, 30, 5), "notes": "Shorter EMAs for mean reversion"},
+            "SMA": {
+                "period": (20, 50, 10),
+                "notes": "Short-term SMAs for range support/resistance",
             },
-            'SMA': {
-                'period': (20, 50, 10),
-                'notes': 'Short-term SMAs for range support/resistance'
+            "BB": {
+                "period": (20, 30, 5),
+                "std": (2.0, 2.5, 0.25),
+                "notes": "Standard Bollinger Bands (20,2) work beautifully in ranges",
             },
-            'BB': {
-                'period': (20, 30, 5),
-                'std': (2.0, 2.5, 0.25),
-                'notes': 'Standard Bollinger Bands (20,2) work beautifully in ranges'
+            "STOCH": {
+                "k_period": (10, 18, 2),
+                "d_period": (3, 5, 1),
+                "notes": "Effective for overbought/oversold in ranging markets",
             },
-            'STOCH': {
-                'k_period': (10, 18, 2),
-                'd_period': (3, 5, 1),
-                'notes': 'Effective for overbought/oversold in ranging markets'
+            "KC": {
+                "period": (20, 30, 5),
+                "atr_mult": (1.5, 2.5, 0.5),
+                "notes": "Keltner Channels for range boundaries",
             },
-            'KC': {
-                'period': (20, 30, 5),
-                'atr_mult': (1.5, 2.5, 0.5),
-                'notes': 'Keltner Channels for range boundaries'
-            },
-            'ATR': {
-                'period': (14, 20, 2),
-                'notes': 'Standard ATR for range-based stops'
-            },
-        }
+            "ATR": {"period": (14, 20, 2), "notes": "Standard ATR for range-based stops"},
+        },
     },
-    'high_vol': {
-        'name': 'High Volatility Market',
-        'description': 'Optimized for volatile markets with wider filters and adaptive thresholds',
-        'indicators': {
-            'RSI': {
-                'period': (7, 12, 1),
-                'notes': 'Shorter periods (7-9) for faster signals. Use 80/20 or 75/25 levels.'
+    "high_vol": {
+        "name": "High Volatility Market",
+        "description": "Optimized for volatile markets with wider filters and adaptive thresholds",
+        "indicators": {
+            "RSI": {
+                "period": (7, 12, 1),
+                "notes": "Shorter periods (7-9) for faster signals. Use 80/20 or 75/25 levels.",
             },
-            'MACD': {
-                'fast': (8, 14, 2),
-                'slow': (17, 26, 3),
-                'signal': (7, 10, 1),
-                'notes': 'Faster MACD (8,17,7) for quick volatile moves'
+            "MACD": {
+                "fast": (8, 14, 2),
+                "slow": (17, 26, 3),
+                "signal": (7, 10, 1),
+                "notes": "Faster MACD (8,17,7) for quick volatile moves",
             },
-            'EMA': {
-                'period': (30, 100, 10),
-                'notes': 'Longer EMAs to smooth out volatility noise'
+            "EMA": {"period": (30, 100, 10), "notes": "Longer EMAs to smooth out volatility noise"},
+            "SMA": {"period": (50, 150, 20), "notes": "Longer SMAs for volatility smoothing"},
+            "BB": {
+                "period": (20, 30, 5),
+                "std": (2.5, 3.5, 0.5),
+                "notes": "Wider bands (2.5-3.0 std) for volatility expansion",
             },
-            'SMA': {
-                'period': (50, 150, 20),
-                'notes': 'Longer SMAs for volatility smoothing'
+            "ATR": {
+                "period": (7, 14, 2),
+                "notes": "Shorter ATR (7-10) with wider multipliers for volatile stops",
             },
-            'BB': {
-                'period': (20, 30, 5),
-                'std': (2.5, 3.5, 0.5),
-                'notes': 'Wider bands (2.5-3.0 std) for volatility expansion'
+            "ADX": {
+                "period": (10, 18, 2),
+                "notes": "Standard ADX to confirm strong volatile moves",
             },
-            'ATR': {
-                'period': (7, 14, 2),
-                'notes': 'Shorter ATR (7-10) with wider multipliers for volatile stops'
+            "KC": {
+                "period": (15, 25, 5),
+                "atr_mult": (2.0, 3.5, 0.5),
+                "notes": "Wider Keltner multipliers for volatility",
             },
-            'ADX': {
-                'period': (10, 18, 2),
-                'notes': 'Standard ADX to confirm strong volatile moves'
-            },
-            'KC': {
-                'period': (15, 25, 5),
-                'atr_mult': (2.0, 3.5, 0.5),
-                'notes': 'Wider Keltner multipliers for volatility'
-            },
-        }
+        },
     },
-    'squeeze': {
-        'name': 'Squeeze/Consolidation',
-        'description': 'Optimized for low volatility squeeze patterns anticipating breakouts',
-        'indicators': {
-            'RSI': {
-                'period': (14, 21, 2),
-                'notes': 'Standard to longer periods for breakout confirmation'
+    "squeeze": {
+        "name": "Squeeze/Consolidation",
+        "description": "Optimized for low volatility squeeze patterns anticipating breakouts",
+        "indicators": {
+            "RSI": {
+                "period": (14, 21, 2),
+                "notes": "Standard to longer periods for breakout confirmation",
             },
-            'MACD': {
-                'fast': (12, 17, 2),
-                'slow': (26, 35, 5),
-                'signal': (9, 12, 1),
-                'notes': 'Standard MACD for breakout detection'
+            "MACD": {
+                "fast": (12, 17, 2),
+                "slow": (26, 35, 5),
+                "signal": (9, 12, 1),
+                "notes": "Standard MACD for breakout detection",
             },
-            'BB': {
-                'period': (20, 30, 5),
-                'std': (1.5, 2.0, 0.25),
-                'notes': 'Tighter bands to detect squeeze (BB Width indicator)'
+            "BB": {
+                "period": (20, 30, 5),
+                "std": (1.5, 2.0, 0.25),
+                "notes": "Tighter bands to detect squeeze (BB Width indicator)",
             },
-            'BB_WIDTH': {
-                'period': (20, 30, 5),
-                'std': (1.5, 2.0, 0.25),
-                'notes': 'BB Width to measure squeeze intensity'
+            "BB_WIDTH": {
+                "period": (20, 30, 5),
+                "std": (1.5, 2.0, 0.25),
+                "notes": "BB Width to measure squeeze intensity",
             },
-            'KC': {
-                'period': (20, 30, 5),
-                'atr_mult': (1.5, 2.0, 0.25),
-                'notes': 'Keltner Channels to confirm squeeze (inside BB)'
+            "KC": {
+                "period": (20, 30, 5),
+                "atr_mult": (1.5, 2.0, 0.25),
+                "notes": "Keltner Channels to confirm squeeze (inside BB)",
             },
-            'ATR': {
-                'period': (14, 20, 2),
-                'notes': 'ATR to measure volatility compression'
+            "ATR": {"period": (14, 20, 2), "notes": "ATR to measure volatility compression"},
+            "ADX": {"period": (14, 20, 2), "notes": "Low ADX (<20) confirms consolidation"},
+            "CHOP": {
+                "period": (12, 18, 2),
+                "notes": "Choppiness Index to confirm ranging/consolidation",
             },
-            'ADX': {
-                'period': (14, 20, 2),
-                'notes': 'Low ADX (<20) confirms consolidation'
-            },
-            'CHOP': {
-                'period': (12, 18, 2),
-                'notes': 'Choppiness Index to confirm ranging/consolidation'
-            },
-        }
+        },
     },
-    'no_trade': {
-        'name': 'No Trade Zone',
-        'description': 'Conservative settings for uncertain market conditions',
-        'indicators': {
-            'RSI': {
-                'period': (14, 21, 2),
-                'notes': 'Longer periods for conservative signals'
+    "no_trade": {
+        "name": "No Trade Zone",
+        "description": "Conservative settings for uncertain market conditions",
+        "indicators": {
+            "RSI": {"period": (14, 21, 2), "notes": "Longer periods for conservative signals"},
+            "MACD": {
+                "fast": (15, 20, 2),
+                "slow": (30, 40, 5),
+                "signal": (10, 14, 2),
+                "notes": "Slower MACD (15,30,12) for filtered signals",
             },
-            'MACD': {
-                'fast': (15, 20, 2),
-                'slow': (30, 40, 5),
-                'signal': (10, 14, 2),
-                'notes': 'Slower MACD (15,30,12) for filtered signals'
+            "EMA": {
+                "period": (50, 150, 20),
+                "notes": "Long EMAs for major trend confirmation only",
             },
-            'EMA': {
-                'period': (50, 150, 20),
-                'notes': 'Long EMAs for major trend confirmation only'
+            "SMA": {"period": (100, 200, 20), "notes": "Long-term SMAs for conservative entries"},
+            "ADX": {
+                "period": (14, 25, 2),
+                "notes": "Higher ADX threshold (>25) for strong trends only",
             },
-            'SMA': {
-                'period': (100, 200, 20),
-                'notes': 'Long-term SMAs for conservative entries'
-            },
-            'ADX': {
-                'period': (14, 25, 2),
-                'notes': 'Higher ADX threshold (>25) for strong trends only'
-            },
-        }
+        },
     },
-    'scalping': {
-        'name': 'Scalping (5-min)',
-        'description': 'Ultra-fast parameters for 5-minute scalping strategies',
-        'indicators': {
-            'RSI': {
-                'period': (5, 9, 1),
-                'notes': 'Very short RSI (5-7) with 80/20 levels for scalping'
+    "scalping": {
+        "name": "Scalping (5-min)",
+        "description": "Ultra-fast parameters for 5-minute scalping strategies",
+        "indicators": {
+            "RSI": {
+                "period": (5, 9, 1),
+                "notes": "Very short RSI (5-7) with 80/20 levels for scalping",
             },
-            'MACD': {
-                'fast': (5, 10, 1),
-                'slow': (12, 20, 2),
-                'signal': (5, 8, 1),
-                'notes': 'Ultra-fast MACD for quick entries/exits'
+            "MACD": {
+                "fast": (5, 10, 1),
+                "slow": (12, 20, 2),
+                "signal": (5, 8, 1),
+                "notes": "Ultra-fast MACD for quick entries/exits",
             },
-            'EMA': {
-                'period': (5, 20, 5),
-                'notes': 'Very short EMAs (5-20) for immediate signals'
+            "EMA": {"period": (5, 20, 5), "notes": "Very short EMAs (5-20) for immediate signals"},
+            "BB": {
+                "period": (10, 20, 5),
+                "std": (1.5, 2.0, 0.25),
+                "notes": "Tight bands for scalping breakouts",
             },
-            'BB': {
-                'period': (10, 20, 5),
-                'std': (1.5, 2.0, 0.25),
-                'notes': 'Tight bands for scalping breakouts'
-            },
-            'ATR': {
-                'period': (7, 10, 1),
-                'notes': 'Short ATR (7-10) for tight stops'
-            },
-        }
+            "ATR": {"period": (7, 10, 1), "notes": "Short ATR (7-10) for tight stops"},
+        },
     },
 }
 
@@ -356,7 +300,7 @@ class IndicatorsPresetsMixin:
 
         self._preset_combo = QComboBox()
         for regime_key, preset_data in REGIME_PRESETS.items():
-            self._preset_combo.addItem(preset_data['name'], regime_key)
+            self._preset_combo.addItem(preset_data["name"], regime_key)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         preset_select_layout.addWidget(self._preset_combo)
 
@@ -378,7 +322,9 @@ class IndicatorsPresetsMixin:
         # Create table with 4 columns: Indicator, Parameter, Range, Notes
         self._preset_details_table = QTableWidget()
         self._preset_details_table.setColumnCount(4)
-        self._preset_details_table.setHorizontalHeaderLabels(['Indicator', 'Parameter', 'Range', 'Notes'])
+        self._preset_details_table.setHorizontalHeaderLabels(
+            ["Indicator", "Parameter", "Range", "Notes"]
+        )
 
         # Set column widths
         header = self._preset_details_table.horizontalHeader()
@@ -389,7 +335,9 @@ class IndicatorsPresetsMixin:
 
         # Set alternating row colors for better readability
         self._preset_details_table.setAlternatingRowColors(True)
-        self._preset_details_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
+        self._preset_details_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )  # Read-only
         self._preset_details_table.setMaximumHeight(300)
 
         details_layout.addWidget(self._preset_details_table)
@@ -451,12 +399,13 @@ class IndicatorsPresetsMixin:
         if not regime_key or regime_key not in REGIME_PRESETS:
             # BUG-004 FIX: Provide user feedback when preset is invalid
             from PyQt6.QtWidgets import QMessageBox
+
             logger.warning(f"Invalid preset selected: {regime_key}")
             if regime_key:  # Only show message if something was selected
                 QMessageBox.warning(
                     self._preset_details_table,
                     "Ungültiges Preset",
-                    f"Das ausgewählte Preset '{regime_key}' konnte nicht geladen werden."
+                    f"Das ausgewählte Preset '{regime_key}' konnte nicht geladen werden.",
                 )
             return
 
@@ -464,8 +413,8 @@ class IndicatorsPresetsMixin:
 
         # Count total rows needed
         total_rows = sum(
-            len([k for k in ind_config.keys() if k != 'notes'])
-            for ind_config in preset['indicators'].values()
+            len([k for k in ind_config.keys() if k != "notes"])
+            for ind_config in preset["indicators"].values()
         )
 
         # Clear and resize table
@@ -473,10 +422,10 @@ class IndicatorsPresetsMixin:
 
         # Populate table
         row_idx = 0
-        for ind_name, ind_config in preset['indicators'].items():
-            params = [k for k in ind_config.keys() if k != 'notes']
+        for ind_name, ind_config in preset["indicators"].items():
+            params = [k for k in ind_config.keys() if k != "notes"]
             param_count = len(params)
-            notes = ind_config.get('notes', '')
+            notes = ind_config.get("notes", "")
 
             for param_idx, param_name in enumerate(params):
                 # Indicator column (only on first param)
@@ -512,7 +461,7 @@ class IndicatorsPresetsMixin:
         Reads regime from _regime_label and selects matching preset.
         """
         # Extract current regime from label
-        if not hasattr(self, '_regime_label') or not self._regime_label:
+        if not hasattr(self, "_regime_label") or not self._regime_label:
             logger.warning("No regime label available for auto-preset")
             return
 
@@ -556,12 +505,12 @@ class IndicatorsPresetsMixin:
         applied_count = 0
 
         # Update parameter widgets
-        for ind_name, ind_config in preset['indicators'].items():
+        for ind_name, ind_config in preset["indicators"].items():
             if ind_name not in self._param_widgets:
                 continue
 
             for param_name, param_range in ind_config.items():
-                if param_name == 'notes':
+                if param_name == "notes":
                     continue
 
                 if param_name not in self._param_widgets[ind_name]:
@@ -571,16 +520,16 @@ class IndicatorsPresetsMixin:
                 widgets = self._param_widgets[ind_name][param_name]
 
                 # Update spinboxes
-                widgets['min'].setValue(min_val)
-                widgets['max'].setValue(max_val)
-                widgets['step'].setValue(step)
+                widgets["min"].setValue(min_val)
+                widgets["max"].setValue(max_val)
+                widgets["step"].setValue(step)
 
                 applied_count += 1
 
         logger.info(f"Applied {applied_count} parameter ranges from preset '{preset['name']}'")
 
         # Show confirmation (optional)
-        if hasattr(self, '_optimization_progress'):
+        if hasattr(self, "_optimization_progress"):
             self._optimization_progress.setText(
                 f"✅ Applied preset: {preset['name']} ({applied_count} parameters)"
             )

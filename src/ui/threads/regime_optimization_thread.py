@@ -4,11 +4,17 @@ Simulates different regime parameter combinations and evaluates their performanc
 on historical chart data.
 
 Features:
-- Grid search over parameter ranges
+- Grid search over parameter ranges (DEPRECATED - use Optuna TPE)
+- Optuna TPE-based optimization (NEW - 10-100x faster)
 - Backtesting with regime detection
 - Evaluation metrics (accuracy, stability, switches)
 - Progress reporting
 - Result ranking
+
+Migration Status:
+- ✅ New: RegimeOptimizer (Optuna TPE-based)
+- ⚠️ Deprecated: Old grid search code (kept as fallback)
+- 🔄 Use USE_OPTUNA_TPE flag to switch
 """
 
 from __future__ import annotations
@@ -23,8 +29,12 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
 from src.core.indicators.engine import IndicatorEngine
+from src.core import RegimeOptimizer, RegimeOptimizationConfig, RegimeResultsManager
 
 logger = logging.getLogger(__name__)
+
+# Feature Flag: Enable Optuna TPE optimization
+USE_OPTUNA_TPE = True  # Set to False to use old grid search
 
 
 class RegimeOptimizationThread(QThread):
@@ -152,7 +162,105 @@ class RegimeOptimizationThread(QThread):
         logger.info("Regime optimization stop requested")
 
     def run(self):
-        """Execute regime parameter optimization."""
+        """Execute regime parameter optimization.
+
+        Uses Optuna TPE if USE_OPTUNA_TPE=True (recommended),
+        otherwise falls back to grid search (deprecated).
+        """
+        if USE_OPTUNA_TPE:
+            logger.info("Using Optuna TPE-based optimization (10-100x faster)")
+            self._run_optuna_optimization()
+        else:
+            logger.warning("Using DEPRECATED grid search. Set USE_OPTUNA_TPE=True for better performance.")
+            self._run_grid_search_optimization()
+
+    def _run_optuna_optimization(self):
+        """Execute Optuna TPE-based optimization (NEW)."""
+        try:
+            total_start = time.perf_counter()
+            logger.info(
+                f"Starting Optuna regime optimization: max_trials={self.total_combinations}, "
+                f"scope={self.scope}"
+            )
+
+            # Create Optuna config from param_grid
+            config = RegimeOptimizationConfig(
+                config_template_path=self.config_template_path,
+                param_ranges=self._convert_param_grid_to_ranges(),
+                scope=self.scope,
+                n_trials=min(self.total_combinations, 100),  # Cap at 100 trials
+                timeout_seconds=600,  # 10 minutes max
+                n_jobs=1,  # Single-threaded for Qt compatibility
+            )
+
+            # Create optimizer
+            optimizer = RegimeOptimizer(config, self.df.copy())
+
+            # Create results manager
+            results_manager = RegimeResultsManager()
+
+            # Register progress callback
+            def on_trial_complete(study, trial):
+                current = len(study.trials)
+                total = config.n_trials
+                best_score = study.best_value if study.best_trial else 0
+
+                self.progress.emit(
+                    current,
+                    total,
+                    f"Trial {current}/{total} | Best: {best_score:.1f}"
+                )
+
+                # Emit individual result
+                result_dict = {
+                    'params': trial.params,
+                    'score': int(trial.value),
+                    'metrics': trial.user_attrs.get('metrics', {}),
+                    'timestamp': datetime.utcnow(),
+                    'trial_number': trial.number,
+                }
+                self.result_ready.emit(result_dict)
+
+                return self._stop_requested  # Return True to stop optimization
+
+            # Run optimization
+            study = optimizer.optimize(callback=on_trial_complete)
+
+            # Get all results and rank them
+            all_results = []
+            for trial in study.trials:
+                if trial.state != 1:  # COMPLETE
+                    continue
+                all_results.append({
+                    'score': trial.value,
+                    'params': trial.params,
+                    'metrics': trial.user_attrs.get('metrics', {}),
+                })
+
+            # Sort and rank
+            ranked_results = results_manager.sort_and_rank(all_results)
+
+            # Convert to old result format for UI compatibility
+            results = self._convert_optuna_results_to_grid_format(study, ranked_results)
+
+            total_elapsed = time.perf_counter() - total_start
+            self._finalize_timing_summary(total_elapsed, len(results))
+
+            best_score = study.best_value if study.best_trial else 0
+            logger.info(
+                f"Optuna optimization complete: {len(results)} trials, "
+                f"best_score={best_score:.1f}"
+            )
+
+            self.finished_with_results.emit(results)
+
+        except Exception as e:
+            error_msg = f"Optuna regime optimization failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            self.error.emit(error_msg)
+
+    def _run_grid_search_optimization(self):
+        """Execute grid search optimization (DEPRECATED)."""
         try:
             total_start = time.perf_counter()
             logger.info(
@@ -547,3 +655,86 @@ class RegimeOptimizationThread(QThread):
         )
 
         return composite * 100  # 0-100 scale
+
+    # ========== OPTUNA INTEGRATION HELPERS ==========
+
+    def _convert_param_grid_to_ranges(self) -> Dict[str, Dict[str, Any]]:
+        """Convert old param_grid format to Optuna param_ranges format.
+
+        Old format (grid):
+            {"adx.period": [10, 14, 20], "adx.threshold": [17, 25, 40]}
+
+        New format (ranges):
+            {
+                "adx.period": {"type": "int", "low": 10, "high": 20, "step": 1},
+                "adx.threshold": {"type": "int", "low": 17, "high": 40, "step": 1}
+            }
+
+        Returns:
+            Param ranges dict for RegimeOptimizationConfig
+        """
+        param_ranges = {}
+
+        for param_path, values in self.param_grid.items():
+            if not values:
+                continue
+
+            # Detect type
+            is_float = any(isinstance(v, float) for v in values)
+            param_type = "float" if is_float else "int"
+
+            # Create range
+            param_ranges[param_path] = {
+                "type": param_type,
+                "low": min(values),
+                "high": max(values),
+            }
+
+            # Add step if integer
+            if param_type == "int" and len(values) > 1:
+                step = min(abs(values[i+1] - values[i]) for i in range(len(values)-1))
+                param_ranges[param_path]["step"] = step
+
+        logger.info(f"Converted param_grid to ranges: {param_ranges}")
+        return param_ranges
+
+    def _convert_optuna_results_to_grid_format(
+        self,
+        study,
+        best_result
+    ) -> List[Dict[str, Any]]:
+        """Convert Optuna study results to old grid search result format.
+
+        Args:
+            study: Optuna study object
+            best_result: RegimeResult object
+
+        Returns:
+            List of result dicts compatible with UI
+        """
+        results = []
+
+        for trial in study.trials:
+            if trial.state != 1:  # COMPLETE
+                continue
+
+            result = {
+                'params': trial.params,
+                'score': int(trial.value),
+                'metrics': trial.user_attrs.get('metrics', {}),
+                'timestamp': datetime.utcnow(),
+                'trial_number': trial.number,
+                'config': None,  # Not stored in Optuna trials
+                'regime_history': None,  # Not stored in Optuna trials
+                'timings': {
+                    'total_eval_s': trial.duration.total_seconds() if trial.duration else 0.0
+                }
+            }
+
+            results.append(result)
+
+        # Sort by score descending
+        results.sort(key=lambda x: x['score'], reverse=True)
+
+        logger.info(f"Converted {len(results)} Optuna trials to grid format")
+        return results

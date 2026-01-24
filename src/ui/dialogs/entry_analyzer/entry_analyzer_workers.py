@@ -140,7 +140,7 @@ class BacktestWorker(QThread):
         initial_capital: float = 10000.0,
         chart_data: pd.DataFrame = None,
         data_timeframe: str = None,
-        parent: Any = None
+        parent: Any = None,
     ) -> None:
         super().__init__(parent)
         self.config_path = config_path
@@ -158,7 +158,7 @@ class BacktestWorker(QThread):
             from src.backtesting.schema_types import TradingBotConfig
 
             self.progress.emit("Loading strategy configuration...")
-            with open(self.config_path, 'r') as f:
+            with open(self.config_path, "r") as f:
                 config_data = json.load(f)
 
             config = TradingBotConfig(**config_data)
@@ -180,7 +180,7 @@ class BacktestWorker(QThread):
                 end_date=self.end_date,
                 initial_capital=self.initial_capital,
                 chart_data=self.chart_data,
-                data_timeframe=self.data_timeframe
+                data_timeframe=self.data_timeframe,
             )
 
             self.finished.emit(results)

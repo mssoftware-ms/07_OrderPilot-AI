@@ -15,16 +15,15 @@ LOC: ~390
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
-    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -91,15 +90,24 @@ class IndicatorsSetupMixin:
     _create_regime_set_btn: QPushButton
 
     def _setup_indicator_optimization_tab(self, tab: QWidget) -> None:
-        """Setup Indicator Optimization tab with sub-tabs.
+        """DEPRECATED: Setup Indicator Optimization tab with sub-tabs.
+
+        ⚠️ WARNING: This uses old 2-signal-type optimization (entry/exit only).
+        Switch to new Stufe-2 tabs for:
+        - 4 signal types (entry_long, entry_short, exit_long, exit_short)
+        - Regime-specific bar filtering
+        - Optuna TPE optimization (100x faster)
+
+        New tabs: "4. Indicator Setup", "5. Indicator Optimization", "6. Indicator Results"
 
         Original: entry_analyzer_indicators.py:112-136
-
-        Creates:
-        - Setup sub-tab: Indicator selection + parameter ranges
-        - Parameter Presets sub-tab: Regime-based parameter presets (Issue #10)
-        - Results sub-tab: Optimization results table + action buttons
         """
+        warnings.warn(
+            "IndicatorsSetupMixin is deprecated. "
+            "Use IndicatorSetupV2Mixin for regime-specific 4-signal-type optimization.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         layout = QVBoxLayout(tab)
 
         # Create sub-tabs
@@ -142,12 +150,12 @@ class IndicatorsSetupMixin:
 
         # Indicator categories with indicators
         indicator_categories = [
-            ("TREND & OVERLAY", ['SMA', 'EMA', 'ICHIMOKU', 'PSAR', 'VWAP', 'PIVOTS']),
-            ("BREAKOUT & CHANNELS", ['BB', 'KC']),
-            ("REGIME & TREND", ['ADX', 'CHOP']),
-            ("MOMENTUM", ['RSI', 'MACD', 'STOCH', 'CCI']),
-            ("VOLATILITY", ['ATR', 'BB_WIDTH']),
-            ("VOLUME", ['OBV', 'MFI', 'AD', 'CMF']),
+            ("TREND & OVERLAY", ["SMA", "EMA", "ICHIMOKU", "PSAR", "VWAP", "PIVOTS"]),
+            ("BREAKOUT & CHANNELS", ["BB", "KC"]),
+            ("REGIME & TREND", ["ADX", "CHOP"]),
+            ("MOMENTUM", ["RSI", "MACD", "STOCH", "CCI"]),
+            ("VOLATILITY", ["ATR", "BB_WIDTH"]),
+            ("VOLUME", ["OBV", "MFI", "AD", "CMF"]),
         ]
 
         # Create Excel-like table
@@ -157,15 +165,23 @@ class IndicatorsSetupMixin:
 
         # Table styling for Excel-like appearance
         self._opt_indicator_table.setAlternatingRowColors(True)
-        self._opt_indicator_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._opt_indicator_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
         self._opt_indicator_table.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self._opt_indicator_table.verticalHeader().setVisible(False)  # Hide row numbers
         self._opt_indicator_table.setSortingEnabled(True)
 
         # Column widths
-        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Fixed
+        )
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self._opt_indicator_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
         self._opt_indicator_table.setColumnWidth(0, 60)  # Checkbox column
 
         # Set fixed height for better vertical scrolling
@@ -196,12 +212,16 @@ class IndicatorsSetupMixin:
 
                 # Indicator name in second column
                 indicator_item = QTableWidgetItem(ind)
-                indicator_item.setFlags(indicator_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+                indicator_item.setFlags(
+                    indicator_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                )  # Read-only
                 self._opt_indicator_table.setItem(row, 1, indicator_item)
 
                 # Category in third column
                 category_item = QTableWidgetItem(category_name)
-                category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Read-only
+                category_item.setFlags(
+                    category_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                )  # Read-only
                 self._opt_indicator_table.setItem(row, 2, category_item)
 
                 row += 1
@@ -255,9 +275,7 @@ class IndicatorsSetupMixin:
         param_ranges_group = QGroupBox("Parameter Ranges (Dynamic)")
         param_ranges_layout = QVBoxLayout(param_ranges_group)
 
-        info_label = QLabel(
-            "Select indicators above to configure their parameter ranges."
-        )
+        info_label = QLabel("Select indicators above to configure their parameter ranges.")
         info_label.setStyleSheet("color: #888; font-style: italic;")
         param_ranges_layout.addWidget(info_label)
 
@@ -293,17 +311,19 @@ class IndicatorsSetupMixin:
         # Results Table
         self._optimization_results_table = QTableWidget()
         self._optimization_results_table.setColumnCount(9)
-        self._optimization_results_table.setHorizontalHeaderLabels([
-            "Indicator",
-            "Parameters",
-            "Regime",
-            "Test Type",
-            "Trade Side",
-            "Score (0-100)",
-            "Win Rate",
-            "Profit Factor",
-            "Trades"
-        ])
+        self._optimization_results_table.setHorizontalHeaderLabels(
+            [
+                "Indicator",
+                "Parameters",
+                "Regime",
+                "Test Type",
+                "Trade Side",
+                "Score (0-100)",
+                "Win Rate",
+                "Profit Factor",
+                "Trades",
+            ]
+        )
 
         # Configure table
         header = self._optimization_results_table.horizontalHeader()
@@ -318,7 +338,9 @@ class IndicatorsSetupMixin:
             header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Profit Factor
             header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)  # Trades
 
-        self._optimization_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._optimization_results_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self._optimization_results_table.setAlternatingRowColors(True)
 
         layout.addWidget(self._optimization_results_table)
@@ -388,8 +410,7 @@ class IndicatorsSetupMixin:
 
         # Get selected indicators
         selected_indicators = [
-            ind_id for ind_id, cb in self._opt_indicator_checkboxes.items()
-            if cb.isChecked()
+            ind_id for ind_id, cb in self._opt_indicator_checkboxes.items() if cb.isChecked()
         ]
 
         if not selected_indicators:
@@ -399,43 +420,28 @@ class IndicatorsSetupMixin:
         # Define parameter configurations for each indicator
         # Format: (param_name, min, max, default_min, default_max, step)
         param_configs = {
-            'RSI': [('period', 5, 50, 10, 20, 2)],
-            'MACD': [
-                ('fast', 5, 30, 8, 16, 2),
-                ('slow', 15, 50, 20, 30, 5),
-                ('signal', 5, 20, 7, 11, 2)
+            "RSI": [("period", 5, 50, 10, 20, 2)],
+            "MACD": [
+                ("fast", 5, 30, 8, 16, 2),
+                ("slow", 15, 50, 20, 30, 5),
+                ("signal", 5, 20, 7, 11, 2),
             ],
-            'ADX': [('period', 5, 30, 10, 20, 2)],
-            'SMA': [('period', 10, 200, 20, 100, 10)],
-            'EMA': [('period', 10, 200, 20, 100, 10)],
-            'BB': [
-                ('period', 10, 40, 20, 30, 5),
-                ('std', 1.5, 3.0, 2.0, 2.5, 0.5)
+            "ADX": [("period", 5, 30, 10, 20, 2)],
+            "SMA": [("period", 10, 200, 20, 100, 10)],
+            "EMA": [("period", 10, 200, 20, 100, 10)],
+            "BB": [("period", 10, 40, 20, 30, 5), ("std", 1.5, 3.0, 2.0, 2.5, 0.5)],
+            "ATR": [("period", 5, 30, 10, 20, 2)],
+            "STOCH": [("k_period", 5, 30, 10, 18, 2), ("d_period", 3, 10, 3, 5, 1)],
+            "CCI": [("period", 10, 40, 15, 25, 5)],
+            "KC": [("period", 10, 40, 20, 30, 5), ("atr_mult", 1.0, 3.0, 1.5, 2.5, 0.5)],
+            "PSAR": [
+                ("accel_start", 0.01, 0.05, 0.02, 0.03, 0.01),
+                ("accel_max", 0.1, 0.3, 0.15, 0.25, 0.05),
             ],
-            'ATR': [('period', 5, 30, 10, 20, 2)],
-            'STOCH': [
-                ('k_period', 5, 30, 10, 18, 2),
-                ('d_period', 3, 10, 3, 5, 1)
-            ],
-            'CCI': [('period', 10, 40, 15, 25, 5)],
-            'KC': [
-                ('period', 10, 40, 20, 30, 5),
-                ('atr_mult', 1.0, 3.0, 1.5, 2.5, 0.5)
-            ],
-            'PSAR': [
-                ('accel_start', 0.01, 0.05, 0.02, 0.03, 0.01),
-                ('accel_max', 0.1, 0.3, 0.15, 0.25, 0.05)
-            ],
-            'ICHIMOKU': [
-                ('conv_period', 5, 15, 8, 10, 1),
-                ('base_period', 15, 35, 20, 28, 2)
-            ],
-            'CHOP': [('period', 10, 30, 12, 18, 2)],
-            'BB_WIDTH': [
-                ('period', 10, 40, 20, 30, 5),
-                ('std', 1.5, 3.0, 2.0, 2.5, 0.5)
-            ],
-            'MFI': [('period', 10, 30, 12, 18, 2)],
+            "ICHIMOKU": [("conv_period", 5, 15, 8, 10, 1), ("base_period", 15, 35, 20, 28, 2)],
+            "CHOP": [("period", 10, 30, 12, 18, 2)],
+            "BB_WIDTH": [("period", 10, 40, 20, 30, 5), ("std", 1.5, 3.0, 2.0, 2.5, 0.5)],
+            "MFI": [("period", 10, 30, 12, 18, 2)],
         }
 
         # Create parameter widgets for selected indicators
@@ -502,9 +508,9 @@ class IndicatorsSetupMixin:
 
                 # Store widgets
                 self._param_widgets[indicator_id][param_name] = {
-                    'min': min_spin,
-                    'max': max_spin,
-                    'step': step_spin
+                    "min": min_spin,
+                    "max": max_spin,
+                    "step": step_spin,
                 }
 
                 # Add to form

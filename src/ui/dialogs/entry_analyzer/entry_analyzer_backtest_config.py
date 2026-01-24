@@ -16,24 +16,17 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QDateEdit,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -43,7 +36,7 @@ from PyQt6.QtWidgets import (
 from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
-    from PyQt6.QtCore import QThread
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -136,15 +129,29 @@ class BacktestConfigMixin:
         results_group = QGroupBox("Detected Regimes (Periods)")
         results_layout = QVBoxLayout()
 
-        from PyQt6.QtWidgets import QTableWidget, QHeaderView
+        from PyQt6.QtWidgets import QHeaderView, QTableWidget
+
         self._regime_results_table = QTableWidget()
         self._regime_results_table.setColumnCount(8)
-        self._regime_results_table.setHorizontalHeaderLabels([
-            "Start Date", "Start Time", "End Date", "End Time", "Regime", "Score", "Duration (Bars)", "Duration (Time)"
-        ])
-        self._regime_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._regime_results_table.setHorizontalHeaderLabels(
+            [
+                "Start Date",
+                "Start Time",
+                "End Date",
+                "End Time",
+                "Regime",
+                "Score",
+                "Duration (Bars)",
+                "Duration (Time)",
+            ]
+        )
+        self._regime_results_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self._regime_results_table.setAlternatingRowColors(True)
-        self._regime_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
+        self._regime_results_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )  # Read-only
         self._regime_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         results_layout.addWidget(self._regime_results_table)
@@ -168,12 +175,11 @@ class BacktestConfigMixin:
 
         config_layout.addLayout(path_layout)
 
-        from PyQt6.QtWidgets import QTableWidget, QHeaderView
+        from PyQt6.QtWidgets import QHeaderView, QTableWidget
+
         self._regime_config_table = QTableWidget()
         self._regime_config_table.setColumnCount(4)
-        self._regime_config_table.setHorizontalHeaderLabels([
-            "Type", "ID", "Name/Type", "Details"
-        ])
+        self._regime_config_table.setHorizontalHeaderLabels(["Type", "ID", "Name/Type", "Details"])
         header = self._regime_config_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -212,10 +218,7 @@ class BacktestConfigMixin:
         base_dir.mkdir(parents=True, exist_ok=True)
 
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load Regime Config",
-            str(base_dir),
-            "JSON Files (*.json)"
+            self, "Load Regime Config", str(base_dir), "JSON Files (*.json)"
         )
         if not file_path:
             return
@@ -233,9 +236,7 @@ class BacktestConfigMixin:
             logger.error(f"Failed to load regime config: {e}")
             if show_error:
                 QMessageBox.critical(
-                    self,
-                    "Regime Config Error",
-                    f"Failed to load regime config:\n\n{e}"
+                    self, "Regime Config Error", f"Failed to load regime config:\n\n{e}"
                 )
             return
 
@@ -247,8 +248,8 @@ class BacktestConfigMixin:
 
     def _populate_regime_config_table(self, config) -> None:
         """Populate the regime config table with indicators and regimes."""
-        from PyQt6.QtWidgets import QTableWidgetItem
         from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
 
         def format_details(payload: dict, max_len: int = 160) -> tuple[str, str]:
             text = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
@@ -268,7 +269,9 @@ class BacktestConfigMixin:
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_config_table.setItem(row, 0, type_item)
             self._regime_config_table.setItem(row, 1, QTableWidgetItem(indicator.id))
-            indicator_type = indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
+            indicator_type = (
+                indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
+            )
             self._regime_config_table.setItem(row, 2, QTableWidgetItem(indicator_type))
 
             details_item = QTableWidgetItem(details)
@@ -306,8 +309,7 @@ class BacktestConfigMixin:
             QMessageBox.warning(
                 self,
                 "Insufficient Data",
-                "Need at least 50 candles for regime analysis.\n"
-                "Load more chart data first."
+                "Need at least 50 candles for regime analysis.\n" "Load more chart data first.",
             )
             return
 
@@ -315,16 +317,23 @@ class BacktestConfigMixin:
             logger.info("Starting visible range regime analysis...")
 
             # Step 1: Extract chart data information
-            import pandas as pd
             from datetime import datetime
 
-            start_timestamp = self._candles[0].get('timestamp') or self._candles[0].get('time')
-            end_timestamp = self._candles[-1].get('timestamp') or self._candles[-1].get('time')
+            start_timestamp = self._candles[0].get("timestamp") or self._candles[0].get("time")
+            end_timestamp = self._candles[-1].get("timestamp") or self._candles[-1].get("time")
             num_bars = len(self._candles)
 
             # Convert timestamps to datetime
-            start_dt = datetime.fromtimestamp(start_timestamp / 1000) if start_timestamp > 1e10 else datetime.fromtimestamp(start_timestamp)
-            end_dt = datetime.fromtimestamp(end_timestamp / 1000) if end_timestamp > 1e10 else datetime.fromtimestamp(end_timestamp)
+            start_dt = (
+                datetime.fromtimestamp(start_timestamp / 1000)
+                if start_timestamp > 1e10
+                else datetime.fromtimestamp(start_timestamp)
+            )
+            end_dt = (
+                datetime.fromtimestamp(end_timestamp / 1000)
+                if end_timestamp > 1e10
+                else datetime.fromtimestamp(end_timestamp)
+            )
             period_days = (end_dt - start_dt).days
 
             # Update UI fields
@@ -347,31 +356,31 @@ class BacktestConfigMixin:
                 row = self._regime_results_table.rowCount()
                 self._regime_results_table.insertRow(row)
 
-                from PyQt6.QtWidgets import QTableWidgetItem
                 from PyQt6.QtCore import Qt
+                from PyQt6.QtWidgets import QTableWidgetItem
 
                 # Start Date
-                start_date_item = QTableWidgetItem(regime_data['start_date'])
+                start_date_item = QTableWidgetItem(regime_data["start_date"])
                 start_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 0, start_date_item)
 
                 # Start Time
-                start_time_item = QTableWidgetItem(regime_data['start_time'])
+                start_time_item = QTableWidgetItem(regime_data["start_time"])
                 start_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 1, start_time_item)
 
                 # End Date
-                end_date_item = QTableWidgetItem(regime_data['end_date'])
+                end_date_item = QTableWidgetItem(regime_data["end_date"])
                 end_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 2, end_date_item)
 
                 # End Time
-                end_time_item = QTableWidgetItem(regime_data['end_time'])
+                end_time_item = QTableWidgetItem(regime_data["end_time"])
                 end_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 3, end_time_item)
 
                 # Regime
-                regime_item = QTableWidgetItem(regime_data['regime'])
+                regime_item = QTableWidgetItem(regime_data["regime"])
                 regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 4, regime_item)
 
@@ -381,17 +390,17 @@ class BacktestConfigMixin:
                 self._regime_results_table.setItem(row, 5, score_item)
 
                 # Duration (Bars)
-                duration_bars_item = QTableWidgetItem(str(regime_data['duration_bars']))
+                duration_bars_item = QTableWidgetItem(str(regime_data["duration_bars"]))
                 duration_bars_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 6, duration_bars_item)
 
                 # Duration (Time)
-                duration_time_item = QTableWidgetItem(regime_data['duration_time'])
+                duration_time_item = QTableWidgetItem(regime_data["duration_time"])
                 duration_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 7, duration_time_item)
 
             # Step 4: Draw vertical lines in chart (Issue #21: Emit signal to chart)
-            if hasattr(self, 'draw_regime_lines_requested'):
+            if hasattr(self, "draw_regime_lines_requested"):
                 # Emit signal with regime data for chart visualization
                 self.draw_regime_lines_requested.emit(detected_regimes)
                 logger.info(f"Emitted signal to draw {len(detected_regimes)} regime lines in chart")
@@ -402,15 +411,13 @@ class BacktestConfigMixin:
                 "Regime Analysis Complete",
                 f"Successfully analyzed {num_bars} candles.\n"
                 f"Detected {len(detected_regimes)} regime changes.\n"
-                f"Period: {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({period_days} days)"
+                f"Period: {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')} ({period_days} days)",
             )
 
         except Exception as e:
             logger.error(f"Regime analysis failed: {e}", exc_info=True)
             QMessageBox.critical(
-                self,
-                "Analysis Error",
-                f"Failed to analyze visible range:\n\n{str(e)}"
+                self, "Analysis Error", f"Failed to analyze visible range:\n\n{str(e)}"
             )
 
     def _perform_incremental_regime_detection(self) -> list[dict]:
@@ -424,12 +431,14 @@ class BacktestConfigMixin:
                 'start_timestamp', 'end_timestamp', 'start_bar_index', 'end_bar_index'
             }
         """
-        import pandas as pd
         from datetime import datetime
-        from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+
+        import pandas as pd
+
+        from src.core.indicators.types import IndicatorConfig, IndicatorType
         from src.core.tradingbot.config.detector import RegimeDetector
         from src.core.tradingbot.config.evaluator import ConditionEvaluationError
-        from src.core.indicators.types import IndicatorConfig, IndicatorType
+        from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
 
         regime_periods = []  # List of complete regime periods
         current_regime = None  # Currently active regime
@@ -446,10 +455,10 @@ class BacktestConfigMixin:
         df = pd.DataFrame(self._candles)
 
         # Ensure required columns
-        if 'timestamp' not in df.columns and 'time' in df.columns:
-            df['timestamp'] = df['time']
+        if "timestamp" not in df.columns and "time" in df.columns:
+            df["timestamp"] = df["time"]
 
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = ["open", "high", "low", "close", "volume"]
         missing = [col for col in required_cols if col not in df.columns]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
@@ -462,7 +471,7 @@ class BacktestConfigMixin:
                 indicator_type=IndicatorType(ind_def.type.lower()),
                 params=ind_def.params,
                 use_talib=False,
-                cache_results=True
+                cache_results=True,
             )
             result = engine.indicator_engine.calculate(df, ind_config)
             indicator_results[ind_def.id] = result.values
@@ -485,8 +494,8 @@ class BacktestConfigMixin:
                     for col in result.columns:
                         val = result[col].iloc[index] if index < len(result) else float("nan")
                         values[ind_id][col] = _safe_value(val)
-                    if 'bandwidth' in values[ind_id]:
-                        values[ind_id]['width'] = values[ind_id]['bandwidth']
+                    if "bandwidth" in values[ind_id]:
+                        values[ind_id]["width"] = values[ind_id]["bandwidth"]
                 elif isinstance(result, dict):
                     values[ind_id] = result
                 else:
@@ -505,7 +514,7 @@ class BacktestConfigMixin:
                     regime_state = engine._convert_to_regime_state(
                         active_regimes=active_regimes,
                         indicator_values=indicator_values,
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.utcnow(),
                     )
                 except ConditionEvaluationError as e:
                     logger.debug(f"Skipping bar {i} due to condition evaluation error: {e}")
@@ -524,36 +533,48 @@ class BacktestConfigMixin:
                 score = max(0.0, min(100.0, regime_state.regime_confidence * 100))
 
                 # Get timestamp
-                timestamp = df.iloc[i]['timestamp']
-                dt = datetime.fromtimestamp(timestamp / 1000) if timestamp > 1e10 else datetime.fromtimestamp(timestamp)
+                timestamp = df.iloc[i]["timestamp"]
+                dt = (
+                    datetime.fromtimestamp(timestamp / 1000)
+                    if timestamp > 1e10
+                    else datetime.fromtimestamp(timestamp)
+                )
 
                 # Check if regime changed
                 if current_regime is None:
                     # First regime detected - start new period
                     current_regime = {
-                        'regime': regime_label,
-                        'score': score,
-                        'start_timestamp': timestamp,
-                        'start_date': dt.strftime("%Y-%m-%d"),
-                        'start_time': dt.strftime("%H:%M:%S"),
-                        'start_bar_index': i
+                        "regime": regime_label,
+                        "score": score,
+                        "start_timestamp": timestamp,
+                        "start_date": dt.strftime("%Y-%m-%d"),
+                        "start_time": dt.strftime("%H:%M:%S"),
+                        "start_bar_index": i,
                     }
-                    logger.debug(f"First regime started at bar {i}: {regime_label} (score: {score:.2f})")
+                    logger.debug(
+                        f"First regime started at bar {i}: {regime_label} (score: {score:.2f})"
+                    )
 
-                elif current_regime['regime'] != regime_label:
+                elif current_regime["regime"] != regime_label:
                     # Regime changed - close previous period and start new one
-                    current_regime['end_timestamp'] = timestamp
-                    current_regime['end_date'] = dt.strftime("%Y-%m-%d")
-                    current_regime['end_time'] = dt.strftime("%H:%M:%S")
-                    current_regime['end_bar_index'] = i
+                    current_regime["end_timestamp"] = timestamp
+                    current_regime["end_date"] = dt.strftime("%Y-%m-%d")
+                    current_regime["end_time"] = dt.strftime("%H:%M:%S")
+                    current_regime["end_bar_index"] = i
 
                     # Calculate duration
-                    duration_bars = current_regime['end_bar_index'] - current_regime['start_bar_index']
-                    duration_seconds = (current_regime['end_timestamp'] - current_regime['start_timestamp']) / 1000 if current_regime['end_timestamp'] > 1e10 else (current_regime['end_timestamp'] - current_regime['start_timestamp'])
+                    duration_bars = (
+                        current_regime["end_bar_index"] - current_regime["start_bar_index"]
+                    )
+                    duration_seconds = (
+                        (current_regime["end_timestamp"] - current_regime["start_timestamp"]) / 1000
+                        if current_regime["end_timestamp"] > 1e10
+                        else (current_regime["end_timestamp"] - current_regime["start_timestamp"])
+                    )
                     duration_time = self._format_duration(duration_seconds)
 
-                    current_regime['duration_bars'] = duration_bars
-                    current_regime['duration_time'] = duration_time
+                    current_regime["duration_bars"] = duration_bars
+                    current_regime["duration_time"] = duration_time
 
                     # Add to periods list
                     regime_periods.append(current_regime)
@@ -564,12 +585,12 @@ class BacktestConfigMixin:
 
                     # Start new regime
                     current_regime = {
-                        'regime': regime_label,
-                        'score': score,
-                        'start_timestamp': timestamp,
-                        'start_date': dt.strftime("%Y-%m-%d"),
-                        'start_time': dt.strftime("%H:%M:%S"),
-                        'start_bar_index': i
+                        "regime": regime_label,
+                        "score": score,
+                        "start_timestamp": timestamp,
+                        "start_date": dt.strftime("%Y-%m-%d"),
+                        "start_time": dt.strftime("%H:%M:%S"),
+                        "start_bar_index": i,
                     }
         finally:
             detector_logger.setLevel(prev_level)
@@ -577,25 +598,35 @@ class BacktestConfigMixin:
         # Close the last regime with the final candle
         if current_regime is not None:
             last_candle = self._candles[-1]
-            last_timestamp = last_candle.get('timestamp') or last_candle.get('time')
-            last_dt = datetime.fromtimestamp(last_timestamp / 1000) if last_timestamp > 1e10 else datetime.fromtimestamp(last_timestamp)
+            last_timestamp = last_candle.get("timestamp") or last_candle.get("time")
+            last_dt = (
+                datetime.fromtimestamp(last_timestamp / 1000)
+                if last_timestamp > 1e10
+                else datetime.fromtimestamp(last_timestamp)
+            )
 
-            current_regime['end_timestamp'] = last_timestamp
-            current_regime['end_date'] = last_dt.strftime("%Y-%m-%d")
-            current_regime['end_time'] = last_dt.strftime("%H:%M:%S")
-            current_regime['end_bar_index'] = len(self._candles)
+            current_regime["end_timestamp"] = last_timestamp
+            current_regime["end_date"] = last_dt.strftime("%Y-%m-%d")
+            current_regime["end_time"] = last_dt.strftime("%H:%M:%S")
+            current_regime["end_bar_index"] = len(self._candles)
 
             # Calculate duration
-            duration_bars = current_regime['end_bar_index'] - current_regime['start_bar_index']
-            duration_seconds = (current_regime['end_timestamp'] - current_regime['start_timestamp']) / 1000 if current_regime['end_timestamp'] > 1e10 else (current_regime['end_timestamp'] - current_regime['start_timestamp'])
+            duration_bars = current_regime["end_bar_index"] - current_regime["start_bar_index"]
+            duration_seconds = (
+                (current_regime["end_timestamp"] - current_regime["start_timestamp"]) / 1000
+                if current_regime["end_timestamp"] > 1e10
+                else (current_regime["end_timestamp"] - current_regime["start_timestamp"])
+            )
             duration_time = self._format_duration(duration_seconds)
 
-            current_regime['duration_bars'] = duration_bars
-            current_regime['duration_time'] = duration_time
+            current_regime["duration_bars"] = duration_bars
+            current_regime["duration_time"] = duration_time
 
             # Add final regime
             regime_periods.append(current_regime)
-            logger.debug(f"Last regime closed at final candle: {current_regime['regime']} (duration: {duration_bars} bars, {duration_time})")
+            logger.debug(
+                f"Last regime closed at final candle: {current_regime['regime']} (duration: {duration_bars} bars, {duration_time})"
+            )
 
         return regime_periods
 
@@ -691,16 +722,16 @@ class BacktestConfigMixin:
         df = pd.DataFrame(candles)
 
         # Ensure timestamp column exists
-        if 'timestamp' not in df.columns and 'time' in df.columns:
-            df['timestamp'] = df['time']
+        if "timestamp" not in df.columns and "time" in df.columns:
+            df["timestamp"] = df["time"]
 
         # Convert timestamp to datetime
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df.set_index("timestamp", inplace=True)
 
         # Validate required columns
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = ["open", "high", "low", "close", "volume"]
         missing_cols = [col for col in required_cols if col not in df.columns]
 
         if missing_cols:
@@ -736,8 +767,7 @@ class BacktestConfigMixin:
             QMessageBox.information(
                 self,
                 "Backtest Started",
-                f"Running backtest on regime set...\n"
-                f"This may take a few moments."
+                f"Running backtest on regime set...\n" f"This may take a few moments.",
             )
 
             # Run backtest
@@ -749,7 +779,7 @@ class BacktestConfigMixin:
                 symbol=symbol,
                 start_date=start_date,
                 end_date=end_date,
-                initial_capital=capital
+                initial_capital=capital,
             )
 
             # Display results summary
@@ -764,9 +794,7 @@ class BacktestConfigMixin:
             self._bt_run_btn.setEnabled(True)
 
             QMessageBox.critical(
-                self,
-                "Backtest Error",
-                f"Failed to backtest regime set:\n\n{str(e)}"
+                self, "Backtest Error", f"Failed to backtest regime set:\n\n{str(e)}"
             )
 
     def _on_backtest_finished(self, results: dict) -> None:
@@ -781,16 +809,12 @@ class BacktestConfigMixin:
         """Handle backtest error (summary only)."""
         self._bt_run_btn.setEnabled(True)
         self._bt_status_label.setText("Error")
-        QMessageBox.critical(
-            self,
-            "Backtest Error",
-            f"Failed to run backtest:\n\n{error_msg}"
-        )
+        QMessageBox.critical(self, "Backtest Error", f"Failed to run backtest:\n\n{error_msg}")
         logger.error(f"Backtest error: {error_msg}")
 
     def _show_backtest_summary(self, results: dict, title: str) -> None:
         """Show a compact backtest summary dialog."""
-        stats = results.get('statistics', {}) if isinstance(results, dict) else {}
+        stats = results.get("statistics", {}) if isinstance(results, dict) else {}
         summary_lines = [
             title,
             "",
@@ -800,8 +824,4 @@ class BacktestConfigMixin:
             f"Profit Factor: {stats.get('profit_factor', 0):.2f}",
             f"Total Trades: {stats.get('total_trades', 0)}",
         ]
-        QMessageBox.information(
-            self,
-            "Backtest Results",
-            "\n".join(summary_lines)
-        )
+        QMessageBox.information(self, "Backtest Results", "\n".join(summary_lines))

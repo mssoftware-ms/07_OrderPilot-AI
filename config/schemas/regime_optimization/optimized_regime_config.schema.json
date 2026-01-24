@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "optimized_regime_config.schema.json",
+  "title": "Optimized Regime Configuration (Stufe 1 Export)",
+  "description": "Die ausgewählte Regime-Erkennung mit KORREKTER Klassifikationslogik",
+  "type": "object",
+  "required": ["version", "meta", "indicators", "regimes", "regime_periods"],
+  "properties": {
+    "version": { "type": "string", "const": "2.0" },
+    "meta": {
+      "type": "object",
+      "required": ["stage", "created_at", "optimization_score"],
+      "properties": {
+        "stage": { "type": "string", "const": "regime_config" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "name": { "type": "string" },
+        "optimization_score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "selected_rank": { "type": "integer", "minimum": 1 },
+        "source_file": { "type": "string" },
+        "source": {
+          "type": "object",
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" },
+            "bars": { "type": "integer" },
+            "data_range": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "f1_bull": { "type": "number" },
+            "f1_bear": { "type": "number" },
+            "f1_sideways": { "type": "number" },
+            "stability_score": { "type": "number" },
+            "bull_bars": { "type": "integer" },
+            "bear_bars": { "type": "integer" },
+            "sideways_bars": { "type": "integer" },
+            "bull_percentage": { "type": "number" },
+            "bear_percentage": { "type": "number" },
+            "sideways_percentage": { "type": "number" }
+          }
+        },
+        "optimized_params": {
+          "type": "object",
+          "description": "KORREKTE Stufe-1 Parameter",
+          "properties": {
+            "adx_period": { "type": "integer" },
+            "adx_threshold": { "type": "number" },
+            "sma_fast_period": { "type": "integer" },
+            "sma_slow_period": { "type": "integer" },
+            "rsi_period": { "type": "integer" },
+            "rsi_sideways_low": { "type": "integer" },
+            "rsi_sideways_high": { "type": "integer" },
+            "bb_period": { "type": "integer" },
+            "bb_std_dev": { "type": "number" },
+            "bb_width_percentile": { "type": "number" }
+          }
+        },
+        "classification_logic": {
+          "type": "object",
+          "description": "KORREKTE Klassifikationslogik aus Regime-Erkennungs-System.md",
+          "properties": {
+            "bull": { "type": "string", "const": "ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow" },
+            "bear": { "type": "string", "const": "ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow" },
+            "sideways": { "type": "string", "const": "ADX < threshold AND BB_Width < percentile AND RSI between low-high" }
+          }
+        }
+      }
+    },
+    "indicators": {
+      "type": "array",
+      "description": "KORREKTE Stufe-1 Indikatoren: ADX, SMA_Fast, SMA_Slow, RSI, BB",
+      "items": {
+        "type": "object",
+        "required": ["type", "id", "name", "params"],
+        "properties": {
+          "type": { "type": "string", "const": "Indicator" },
+          "id": { "type": "string" },
+          "name": { "type": "string", "enum": ["ADX", "SMA", "RSI", "BB"] },
+          "purpose": { 
+            "type": "string", 
+            "enum": ["trend_strength", "trend_direction_fast", "trend_direction_slow", "sideways_momentum", "sideways_volatility"],
+            "description": "Zweck des Indikators"
+          },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "regimes": {
+      "type": "array",
+      "description": "Die 3 Regime-Definitionen mit KORREKTER Logik",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["type", "id", "name", "priority", "color", "conditions"],
+        "properties": {
+          "type": { "type": "string", "const": "Regime" },
+          "id": { "type": "string", "enum": ["bull", "bear", "sideways"] },
+          "name": { "type": "string", "enum": ["BULL", "BEAR", "SIDEWAYS"] },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "bar_count": { "type": "integer" },
+          "conditions": { "$ref": "#/$defs/condition_group" }
+        }
+      }
+    },
+    "regime_periods": {
+      "type": "array",
+      "description": "Zeitliche Perioden für Stufe 2 und Chart-Darstellung",
+      "items": {
+        "type": "object",
+        "required": ["regime", "start_idx", "end_idx", "bars"],
+        "properties": {
+          "regime": { "type": "string", "enum": ["BULL", "BEAR", "SIDEWAYS"] },
+          "start_idx": { "type": "integer" },
+          "end_idx": { "type": "integer" },
+          "start_timestamp": { "type": "string", "format": "date-time" },
+          "end_timestamp": { "type": "string", "format": "date-time" },
+          "bars": { "type": "integer" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "condition_group": {
+      "type": "object",
+      "oneOf": [
+        { "required": ["all"], "properties": { "all": { "type": "array", "items": { "$ref": "#/$defs/condition" } } } },
+        { "required": ["any"], "properties": { "any": { "type": "array", "items": { "$ref": "#/$defs/condition" } } } }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "required": ["left", "op", "right"],
+      "properties": {
+        "left": {
+          "type": "object",
+          "properties": {
+            "indicator_id": { "type": "string" },
+            "field": { "type": "string", "enum": ["value", "close", "width"] }
+          }
+        },
+        "op": { "type": "string", "enum": ["gt", "lt", "gte", "lte", "eq", "neq", "between"] },
+        "right": {
+          "oneOf": [
+            { "type": "object", "properties": { "value": { "type": "number" } } },
+            { "type": "object", "properties": { "min": { "type": "number" }, "max": { "type": "number" } } },
+            { "type": "object", "properties": { "indicator_id": { "type": "string" }, "field": { "type": "string" } } }
+          ]
+        }
+      }
+    }
+  }
+}
