@@ -81,6 +81,21 @@ class RegimeOptimizationMixin:
         description.setStyleSheet("color: #888; padding: 5px;")
         layout.addWidget(description)
 
+        # Current Regime Score Display
+        current_score_layout = QHBoxLayout()
+        current_score_layout.addWidget(QLabel("Current Regime Score:"))
+        self._regime_opt_current_score_label = QLabel("--")
+        self._regime_opt_current_score_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #3b82f6;")
+        self._regime_opt_current_score_label.setToolTip("Score of currently active regime configuration")
+        current_score_layout.addWidget(self._regime_opt_current_score_label)
+        current_score_layout.addStretch()
+
+        refresh_score_btn = QPushButton(get_icon("refresh"), "Calculate Current Score")
+        refresh_score_btn.setToolTip("Calculate score for currently active regime parameters")
+        refresh_score_btn.clicked.connect(self._on_calculate_current_regime_score)
+        current_score_layout.addWidget(refresh_score_btn)
+        layout.addLayout(current_score_layout)
+
         # Control Buttons
         control_layout = QHBoxLayout()
         self._regime_opt_start_btn = QPushButton(get_icon("play_arrow"), "Start Optimization")
@@ -571,3 +586,106 @@ class RegimeOptimizationMixin:
                 self._tabs.setCurrentIndex(next_index)
 
         logger.info("Continuing to Regime Results tab")
+
+    @pyqtSlot()
+    def _on_calculate_current_regime_score(self) -> None:
+        """Calculate and display score for currently active regime configuration."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        # Check if we have chart data
+        if not hasattr(self, "_candles") or len(self._candles) == 0:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "No chart data available. Please load chart first!"
+            )
+            return
+
+        try:
+            # Get current regime config from main app
+            # This would typically come from the active trading bot config
+            # For now, we'll use default values or load from a config file
+            from src.core.regime_optimizer import (
+                RegimeOptimizer,
+                AllParamRanges,
+                ADXParamRanges,
+                SMAParamRanges,
+                RSIParamRanges,
+                BBParamRanges,
+                ParamRange,
+                RegimeParams,
+            )
+            import pandas as pd
+
+            # Convert candles to DataFrame
+            df = pd.DataFrame(self._candles)
+            if "timestamp" in df.columns:
+                df.set_index("timestamp", inplace=True)
+
+            # TODO: Load actual current regime params from config
+            # For now, use default/standard values as example
+            current_params = RegimeParams(
+                adx_period=14,
+                adx_threshold=25.0,
+                sma_fast_period=50,
+                sma_slow_period=200,
+                rsi_period=14,
+                rsi_sideways_low=40,
+                rsi_sideways_high=60,
+                bb_period=20,
+                bb_std_dev=2.0,
+                bb_width_percentile=30.0,
+            )
+
+            # Create minimal optimizer to calculate score
+            param_ranges = AllParamRanges(
+                adx=ADXParamRanges(
+                    period=ParamRange(min=14, max=14, step=1),
+                    threshold=ParamRange(min=25, max=25, step=1),
+                ),
+                sma_fast=SMAParamRanges(
+                    period=ParamRange(min=50, max=50, step=1)
+                ),
+                sma_slow=SMAParamRanges(
+                    period=ParamRange(min=200, max=200, step=1)
+                ),
+                rsi=RSIParamRanges(
+                    period=ParamRange(min=14, max=14, step=1),
+                    sideways_low=ParamRange(min=40, max=40, step=1),
+                    sideways_high=ParamRange(min=60, max=60, step=1),
+                ),
+                bb=BBParamRanges(
+                    period=ParamRange(min=20, max=20, step=1),
+                    std_dev=ParamRange(min=2.0, max=2.0, step=0.1),
+                    width_percentile=ParamRange(min=30, max=30, step=1),
+                ),
+            )
+
+            from src.core.regime_optimizer import OptimizationConfig
+            optimizer = RegimeOptimizer(
+                data=df,
+                param_ranges=param_ranges,
+                config=OptimizationConfig(max_trials=1)
+            )
+
+            # Calculate indicators and metrics
+            indicators = optimizer._calculate_indicators(current_params)
+            regimes = optimizer._classify_regimes(current_params, indicators)
+            metrics = optimizer._calculate_metrics(regimes, current_params)
+            score = optimizer._calculate_composite_score(metrics)
+
+            # Update label
+            self._regime_opt_current_score_label.setText(f"{score:.2f}")
+            self._regime_opt_current_score_label.setStyleSheet(
+                f"font-weight: bold; font-size: 12pt; color: {'#22c55e' if score >= 75 else '#ef4444'};"
+            )
+
+            logger.info(f"Current regime score: {score:.2f}")
+
+        except Exception as e:
+            logger.error(f"Failed to calculate current regime score: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Calculation Failed",
+                f"Failed to calculate score:\n{str(e)}"
+            )
