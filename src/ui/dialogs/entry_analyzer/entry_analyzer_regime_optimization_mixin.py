@@ -11,6 +11,7 @@ Provides UI for running regime optimization:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -188,6 +189,17 @@ class RegimeOptimizationMixin:
         self._regime_opt_export_btn.clicked.connect(self._on_regime_opt_export)
         action_layout.addWidget(self._regime_opt_export_btn)
 
+        # Apply to Regime Config Button
+        self._regime_opt_apply_btn = QPushButton(get_icon("check_circle"), "Apply to Regime Config")
+        self._regime_opt_apply_btn.setEnabled(False)
+        self._regime_opt_apply_btn.setProperty("class", "success")
+        self._regime_opt_apply_btn.setToolTip(
+            "Apply best optimization result to entry_analyzer_regime.json\n"
+            "Updates indicator parameters and reloads Regime tab"
+        )
+        self._regime_opt_apply_btn.clicked.connect(self._on_apply_to_regime_config)
+        action_layout.addWidget(self._regime_opt_apply_btn)
+
         action_layout.addStretch()
 
         # Continue Button
@@ -363,6 +375,7 @@ class RegimeOptimizationMixin:
         self._regime_opt_stop_btn.setEnabled(False)
         self._regime_opt_continue_btn.setEnabled(True)
         self._regime_opt_export_btn.setEnabled(True)
+        self._regime_opt_apply_btn.setEnabled(True)
         self._regime_opt_progress_bar.setValue(100)
 
         elapsed = (
@@ -688,4 +701,155 @@ class RegimeOptimizationMixin:
                 self,
                 "Calculation Failed",
                 f"Failed to calculate score:\n{str(e)}"
+            )
+
+    @pyqtSlot()
+    def _on_apply_to_regime_config(self) -> None:
+        """Apply best optimization result to entry_analyzer_regime.json.
+
+        Converts flat optimizer parameters to structured JSON format:
+        - Extracts best result (rank 1) parameters
+        - Updates indicator configurations in JSON
+        - Saves updated entry_analyzer_regime.json
+        - Reloads Regime tab to show changes
+        """
+        from PyQt6.QtWidgets import QMessageBox
+        import json
+
+        try:
+            # Get best result (rank 1)
+            if not self._regime_opt_all_results or len(self._regime_opt_all_results) == 0:
+                QMessageBox.warning(
+                    self,
+                    "No Results",
+                    "No optimization results available to apply."
+                )
+                return
+
+            best_result = self._regime_opt_all_results[0]
+            params = best_result.get("params", {})
+            score = best_result.get("score", 0)
+
+            logger.info(f"Applying optimization result with score {score:.2f} to regime config")
+
+            # Confirm with user
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "Apply Optimization Result",
+                f"Apply best optimization result to entry_analyzer_regime.json?\n\n"
+                f"Score: {score:.2f}\n\n"
+                f"Parameters:\n"
+                f"  ADX: period={params.get('adx_period')}, threshold={params.get('adx_threshold')}\n"
+                f"  SMA: fast={params.get('sma_fast_period')}, slow={params.get('sma_slow_period')}\n"
+                f"  RSI: period={params.get('rsi_period')}, low={params.get('rsi_sideways_low')}, high={params.get('rsi_sideways_high')}\n"
+                f"  BB: period={params.get('bb_period')}, std_dev={params.get('bb_std_dev'):.2f}, width%={params.get('bb_width_percentile')}\n\n"
+                f"This will update the regime configuration file.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Load current JSON config
+            config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
+            if not config_path.exists():
+                QMessageBox.critical(
+                    self,
+                    "Config Not Found",
+                    f"Regime config file not found:\n{config_path}"
+                )
+                return
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+
+            # Update indicator parameters
+            # Map optimizer flat parameters to structured JSON indicators
+            indicator_updates = {
+                "adx14": {
+                    "id": "adx14",
+                    "type": "ADX",
+                    "params": {"period": int(params.get("adx_period", 14))}
+                },
+                "rsi14": {
+                    "id": "rsi14",
+                    "type": "RSI",
+                    "params": {"period": int(params.get("rsi_period", 14))}
+                },
+                "bb20": {
+                    "id": "bb20",
+                    "type": "BB",
+                    "params": {
+                        "period": int(params.get("bb_period", 20)),
+                        "std_dev": float(params.get("bb_std_dev", 2.0))
+                    }
+                }
+            }
+
+            # Update indicators in config
+            for indicator in config_data.get("indicators", []):
+                ind_id = indicator.get("id")
+                if ind_id in indicator_updates:
+                    indicator["params"] = indicator_updates[ind_id]["params"]
+                    logger.info(f"Updated indicator {ind_id}: {indicator['params']}")
+
+            # Update regime conditions with new thresholds
+            for regime in config_data.get("regimes", []):
+                regime_id = regime.get("id")
+                conditions = regime.get("conditions", {})
+
+                # Update ADX threshold conditions
+                if "all" in conditions:
+                    for cond in conditions["all"]:
+                        left = cond.get("left", {})
+                        ind_id = left.get("indicator_id")
+
+                        # Update ADX threshold (25 -> optimized value)
+                        if ind_id == "adx14" and cond.get("op") in ["gt", "lt"]:
+                            cond["right"]["value"] = int(params.get("adx_threshold", 25))
+
+                        # Update RSI sideways thresholds
+                        elif ind_id == "rsi14":
+                            if cond.get("op") == "gt":  # Overbought threshold
+                                cond["right"]["value"] = int(params.get("rsi_sideways_high", 70))
+                            elif cond.get("op") == "lt":  # Oversold threshold
+                                cond["right"]["value"] = int(params.get("rsi_sideways_low", 30))
+                            elif cond.get("op") == "between":  # Range bounds
+                                cond["right"]["min"] = int(params.get("rsi_sideways_low", 30))
+                                cond["right"]["max"] = int(params.get("rsi_sideways_high", 70))
+
+            # Update metadata
+            config_data["metadata"]["notes"] = (
+                f"Optimized parameters applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                f"Score: {score:.2f}. "
+                f"Original: {config_data['metadata'].get('notes', 'N/A')}"
+            )
+
+            # Save updated config
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Successfully updated regime config: {config_path}")
+
+            # Reload Regime tab
+            if hasattr(self, "_load_regime_config"):
+                self._load_regime_config(config_path, show_error=False)
+
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Successfully applied optimization result to regime config!\n\n"
+                f"File updated: {config_path}\n"
+                f"Score: {score:.2f}\n\n"
+                f"The Regime tab has been reloaded with the new parameters."
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to apply optimization to regime config: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Apply Failed",
+                f"Failed to apply optimization to regime config:\n\n{str(e)}"
             )
