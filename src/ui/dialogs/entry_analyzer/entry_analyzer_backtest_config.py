@@ -178,16 +178,22 @@ class BacktestConfigMixin:
         from PyQt6.QtWidgets import QHeaderView, QTableWidget
 
         self._regime_config_table = QTableWidget()
-        self._regime_config_table.setColumnCount(4)
-        self._regime_config_table.setHorizontalHeaderLabels(["Type", "ID", "Name/Type", "Details"])
+        self._regime_config_table.setColumnCount(6)
+        self._regime_config_table.setHorizontalHeaderLabels([
+            "Type", "ID", "Name/Indicator", "Priority", "Parameters", "Conditions"
+        ])
         header = self._regime_config_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self._regime_config_table.setAlternatingRowColors(True)
         self._regime_config_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._regime_config_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # Make table sortable
+        self._regime_config_table.setSortingEnabled(True)
 
         config_layout.addWidget(self._regime_config_table)
         config_group.setLayout(config_layout)
@@ -247,15 +253,75 @@ class BacktestConfigMixin:
         self._populate_regime_config_table(config)
 
     def _populate_regime_config_table(self, config) -> None:
-        """Populate the regime config table with indicators and regimes."""
+        """Populate the regime config table with indicators and regimes.
+
+        Enhanced table with 6 columns:
+        - Type: "Indicator" or "Regime"
+        - ID: Unique identifier
+        - Name/Indicator: Display name or indicator type
+        - Priority: Regime priority (empty for indicators)
+        - Parameters: Indicator parameters (empty for regimes)
+        - Conditions: Regime conditions (empty for indicators)
+        """
         from PyQt6.QtCore import Qt
         from PyQt6.QtWidgets import QTableWidgetItem
 
-        def format_details(payload: dict, max_len: int = 160) -> tuple[str, str]:
-            text = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
-            display = text if len(text) <= max_len else f"{text[:max_len - 3]}..."
+        def format_params(params: dict) -> tuple[str, str]:
+            """Format indicator parameters."""
+            if not params:
+                return "", ""
+            # Create readable format: "period: 14, std_dev: 2.0"
+            parts = [f"{k}: {v}" for k, v in params.items()]
+            text = ", ".join(parts)
+            display = text if len(text) <= 80 else f"{text[:77]}..."
             return display, text
 
+        def format_conditions(conditions: dict) -> tuple[str, str]:
+            """Format regime conditions in readable form."""
+            if not conditions:
+                return "", ""
+
+            # Extract condition logic
+            text_parts = []
+
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    op = cond.get("op", "")
+                    right = cond.get("right", {})
+
+                    # Format: "indicator.field op value"
+                    ind_id = left.get("indicator_id", "?")
+                    field = left.get("field", "value")
+
+                    if op == "gt":
+                        op_str = ">"
+                    elif op == "lt":
+                        op_str = "<"
+                    elif op == "eq":
+                        op_str = "=="
+                    elif op == "between":
+                        min_val = right.get("min", "?")
+                        max_val = right.get("max", "?")
+                        text_parts.append(f"{ind_id}.{field} in [{min_val}, {max_val}]")
+                        continue
+                    else:
+                        op_str = op
+
+                    right_val = right.get("value", "?")
+                    text_parts.append(f"{ind_id}.{field} {op_str} {right_val}")
+
+            elif "any" in conditions:
+                text_parts.append("OR: " + ", ".join([str(c) for c in conditions["any"]]))
+
+            text = " AND ".join(text_parts)
+            full_text = json.dumps(conditions, ensure_ascii=True, separators=(",", ":"))
+            display = text if len(text) <= 120 else f"{text[:117]}..."
+
+            return display, full_text
+
+        # Disable sorting while populating
+        self._regime_config_table.setSortingEnabled(False)
         self._regime_config_table.setRowCount(0)
 
         # Indicators
@@ -263,20 +329,34 @@ class BacktestConfigMixin:
             row = self._regime_config_table.rowCount()
             self._regime_config_table.insertRow(row)
 
-            details, full_details = format_details(indicator.params)
+            params_display, params_full = format_params(indicator.params)
 
+            # Type
             type_item = QTableWidgetItem("Indicator")
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_config_table.setItem(row, 0, type_item)
+
+            # ID
             self._regime_config_table.setItem(row, 1, QTableWidgetItem(indicator.id))
+
+            # Indicator Type
             indicator_type = (
                 indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
             )
             self._regime_config_table.setItem(row, 2, QTableWidgetItem(indicator_type))
 
-            details_item = QTableWidgetItem(details)
-            details_item.setToolTip(full_details)
-            self._regime_config_table.setItem(row, 3, details_item)
+            # Priority (empty for indicators)
+            priority_item = QTableWidgetItem("")
+            priority_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_config_table.setItem(row, 3, priority_item)
+
+            # Parameters
+            params_item = QTableWidgetItem(params_display)
+            params_item.setToolTip(params_full)
+            self._regime_config_table.setItem(row, 4, params_item)
+
+            # Conditions (empty for indicators)
+            self._regime_config_table.setItem(row, 5, QTableWidgetItem(""))
 
         # Regimes
         for regime in config.regimes:
@@ -284,17 +364,42 @@ class BacktestConfigMixin:
             self._regime_config_table.insertRow(row)
 
             conditions = regime.conditions.model_dump()
-            details, full_details = format_details(conditions)
+            cond_display, cond_full = format_conditions(conditions)
 
+            # Type
             type_item = QTableWidgetItem("Regime")
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_config_table.setItem(row, 0, type_item)
-            self._regime_config_table.setItem(row, 1, QTableWidgetItem(regime.id))
+
+            # ID
+            id_item = QTableWidgetItem(regime.id)
+            # Color code regime IDs
+            if "BULL" in regime.id:
+                id_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif "BEAR" in regime.id:
+                id_item.setForeground(Qt.GlobalColor.darkRed)
+            elif "SIDEWAYS" in regime.id:
+                id_item.setForeground(Qt.GlobalColor.darkYellow)
+            self._regime_config_table.setItem(row, 1, id_item)
+
+            # Name
             self._regime_config_table.setItem(row, 2, QTableWidgetItem(regime.name))
 
-            details_item = QTableWidgetItem(details)
-            details_item.setToolTip(full_details)
-            self._regime_config_table.setItem(row, 3, details_item)
+            # Priority
+            priority_item = QTableWidgetItem(str(regime.priority))
+            priority_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._regime_config_table.setItem(row, 3, priority_item)
+
+            # Parameters (empty for regimes)
+            self._regime_config_table.setItem(row, 4, QTableWidgetItem(""))
+
+            # Conditions
+            cond_item = QTableWidgetItem(cond_display)
+            cond_item.setToolTip(cond_full)
+            self._regime_config_table.setItem(row, 5, cond_item)
+
+        # Re-enable sorting
+        self._regime_config_table.setSortingEnabled(True)
 
     def _on_analyze_visible_range_clicked(self) -> None:
         """Analyze visible chart range for regime detection (Issue #21).

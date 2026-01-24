@@ -103,6 +103,10 @@ class RegimeSetupMixin:
         # Initialize state BEFORE creating param ranges group
         self._regime_setup_param_widgets = {}
 
+        # Current Indicators Section
+        indicators_section = self._create_current_indicators_section()
+        layout.addWidget(indicators_section)
+
         # Parameter Ranges Group
         param_group = self._create_regime_param_ranges_group()
         layout.addWidget(param_group, stretch=1)

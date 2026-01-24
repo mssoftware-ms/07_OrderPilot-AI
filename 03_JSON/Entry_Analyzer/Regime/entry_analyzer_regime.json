@@ -48,8 +48,8 @@
   ],
   "regimes": [
     {
-      "id": "strong_uptrend",
-      "name": "Strong Uptrend",
+      "id": "BULL",
+      "name": "Bull Market",
       "conditions": {
         "all": [
           {
@@ -68,8 +68,8 @@
       "scope": "entry"
     },
     {
-      "id": "strong_downtrend",
-      "name": "Strong Downtrend",
+      "id": "BEAR",
+      "name": "Bear Market",
       "conditions": {
         "all": [
           {
@@ -88,8 +88,8 @@
       "scope": "entry"
     },
     {
-      "id": "range_overbought",
-      "name": "Range - Overbought",
+      "id": "SIDEWAYS_OVERBOUGHT",
+      "name": "Sideways - Overbought",
       "conditions": {
         "all": [
           {
@@ -108,8 +108,8 @@
       "scope": "entry"
     },
     {
-      "id": "range_oversold",
-      "name": "Range - Oversold",
+      "id": "SIDEWAYS_OVERSOLD",
+      "name": "Sideways - Oversold",
       "conditions": {
         "all": [
           {
@@ -128,8 +128,8 @@
       "scope": "entry"
     },
     {
-      "id": "range",
-      "name": "Range",
+      "id": "SIDEWAYS",
+      "name": "Sideways",
       "conditions": {
         "all": [
           {
