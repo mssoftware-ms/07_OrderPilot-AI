@@ -211,6 +211,7 @@ class RegimeOptimizationThread(QThread):
                 ),
                 bb=BBParamRanges(
                     period=ParamRange(**ranges_dict.get("bb_period", {"min": 15, "max": 30, "step": 1})),
+                    std_dev=ParamRange(**ranges_dict.get("bb_std_dev", {"min": 1.5, "max": 3.0, "step": 0.5})),
                     width_percentile=ParamRange(**ranges_dict.get("bb_width_percentile", {"min": 10, "max": 40, "step": 1}))
                 )
             )
