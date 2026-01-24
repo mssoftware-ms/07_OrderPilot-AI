@@ -195,29 +195,54 @@ class RegimeOptimizationThread(QThread):
             # Convert param_grid to structured param_ranges
             ranges_dict = self._convert_param_grid_to_ranges()
 
-            # Build structured AllParamRanges from flat dict
-            param_ranges = AllParamRanges(
-                adx=ADXParamRanges(
-                    period=ParamRange(**ranges_dict.get("adx_period", {"min": 10, "max": 30, "step": 1})),
-                    threshold=ParamRange(**ranges_dict.get("adx_threshold", {"min": 20, "max": 35, "step": 1}))
-                ),
-                sma_fast=SMAParamRanges(
-                    period=ParamRange(**ranges_dict.get("sma_fast_period", {"min": 20, "max": 100, "step": 1}))
-                ),
-                sma_slow=SMAParamRanges(
-                    period=ParamRange(**ranges_dict.get("sma_slow_period", {"min": 100, "max": 300, "step": 1}))
-                ),
-                rsi=RSIParamRanges(
-                    period=ParamRange(**ranges_dict.get("rsi_period", {"min": 10, "max": 20, "step": 1})),
-                    sideways_low=ParamRange(**ranges_dict.get("rsi_sideways_low", {"min": 30, "max": 45, "step": 1})),
-                    sideways_high=ParamRange(**ranges_dict.get("rsi_sideways_high", {"min": 55, "max": 70, "step": 1}))
-                ),
-                bb=BBParamRanges(
-                    period=ParamRange(**ranges_dict.get("bb_period", {"min": 15, "max": 30, "step": 1})),
-                    std_dev=ParamRange(**ranges_dict.get("bb_std_dev", {"min": 1.5, "max": 3.0, "step": 0.5})),
-                    width_percentile=ParamRange(**ranges_dict.get("bb_width_percentile", {"min": 10, "max": 40, "step": 1}))
+            # Helper to get required parameter range (NO FALLBACKS!)
+            def get_required_range(key: str) -> dict:
+                """Get required parameter range from ranges_dict.
+
+                Raises ValueError if parameter is missing from JSON config.
+                This ensures all parameters come from JSON, no hardcoded fallbacks!
+                """
+                if key not in ranges_dict:
+                    raise ValueError(
+                        f"Missing required parameter range '{key}' in regime config! "
+                        f"Please define this parameter in 'Regime Setup' tab. "
+                        f"Available ranges: {list(ranges_dict.keys())}"
+                    )
+                return ranges_dict[key]
+
+            # Build structured AllParamRanges from flat dict (NO FALLBACKS!)
+            try:
+                param_ranges = AllParamRanges(
+                    adx=ADXParamRanges(
+                        period=ParamRange(**get_required_range("adx_period")),
+                        threshold=ParamRange(**get_required_range("adx_threshold"))
+                    ),
+                    sma_fast=SMAParamRanges(
+                        period=ParamRange(**get_required_range("sma_fast_period"))
+                    ),
+                    sma_slow=SMAParamRanges(
+                        period=ParamRange(**get_required_range("sma_slow_period"))
+                    ),
+                    rsi=RSIParamRanges(
+                        period=ParamRange(**get_required_range("rsi_period")),
+                        sideways_low=ParamRange(**get_required_range("rsi_sideways_low")),
+                        sideways_high=ParamRange(**get_required_range("rsi_sideways_high"))
+                    ),
+                    bb=BBParamRanges(
+                        period=ParamRange(**get_required_range("bb_period")),
+                        std_dev=ParamRange(**get_required_range("bb_std_dev")),
+                        width_percentile=ParamRange(**get_required_range("bb_width_percentile"))
+                    )
                 )
-            )
+            except ValueError as e:
+                error_msg = (
+                    f"❌ KONFIGURATIONSFEHLER: {str(e)}\n\n"
+                    f"Bitte stelle sicher, dass ALLE benötigten Parameter im Tab 'Regime Setup' "
+                    f"mit Min/Max-Werten konfiguriert sind!"
+                )
+                logger.error(error_msg)
+                self.error.emit(error_msg)
+                return
 
             # Create Optuna config
             config = OptimizationConfig(

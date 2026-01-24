@@ -73,14 +73,14 @@ def _build_optim_params_from_opt_result(params: dict, config: dict) -> OptimPara
         sma_fast.period            -> ema_fast
         sma_slow.period            -> ema_slow
         atr14.period               -> atr_period
-        rsi14.period               -> rsi_period
-        bb20.period                -> bb_period
-        bb20.std_dev               -> bb_std
-        adx14.period               -> adx_period
+        rsi.period               -> rsi_period
+        bb.period                -> bb_period
+        bb.std_dev               -> bb_std
+        adx.period               -> adx_period
         BULL.adx_threshold         -> adx_trend
         SIDEWAYS.rsi_low           -> rsi_oversold
         SIDEWAYS.rsi_high          -> rsi_overbought
-        bb20.width_percentile      -> squeeze_bb_width (converted)
+        bb.width_percentile      -> squeeze_bb_width (converted)
 
     Args:
         params: Dict from optimization_results[].params
@@ -103,10 +103,10 @@ def _build_optim_params_from_opt_result(params: dict, config: dict) -> OptimPara
         ema_fast=int(get_param("sma_fast.period", defaults.ema_fast)),
         ema_slow=int(get_param("sma_slow.period", defaults.ema_slow)),
         atr_period=int(get_param("atr14.period", defaults.atr_period)),
-        rsi_period=int(get_param("rsi14.period", defaults.rsi_period)),
-        bb_period=int(get_param("bb20.period", defaults.bb_period)),
-        bb_std=float(get_param("bb20.std_dev", defaults.bb_std)),
-        adx_period=int(get_param("adx14.period", defaults.adx_period)),
+        rsi_period=int(get_param("rsi.period", defaults.rsi_period)),
+        bb_period=int(get_param("bb.period", defaults.bb_period)),
+        bb_std=float(get_param("bb.std_dev", defaults.bb_std)),
+        adx_period=int(get_param("adx.period", defaults.adx_period)),
         # Regime thresholds aus optimization_results
         adx_trend=float(get_param("BULL.adx_threshold", defaults.adx_trend)),
         # RSI thresholds
@@ -114,7 +114,7 @@ def _build_optim_params_from_opt_result(params: dict, config: dict) -> OptimPara
         rsi_overbought=float(get_param("SIDEWAYS.rsi_high", defaults.rsi_overbought)),
         # BB width percentile -> squeeze threshold (convert percentile to ratio)
         squeeze_bb_width=_convert_bb_width_percentile(
-            get_param("bb20.width_percentile", None), defaults.squeeze_bb_width
+            get_param("bb.width_percentile", None), defaults.squeeze_bb_width
         ),
         # Entry params (from entry_params section or defaults)
         pullback_atr=float(entry_params.get("pullback_atr", defaults.pullback_atr)),
@@ -172,9 +172,9 @@ def _build_optim_params_from_indicators(config: dict) -> OptimParams:
 
     return OptimParams(
         atr_period=int(get_indicator_param("atr14", "period", defaults.atr_period)),
-        rsi_period=int(get_indicator_param("rsi14", "period", defaults.rsi_period)),
-        bb_period=int(get_indicator_param("bb20", "period", defaults.bb_period)),
-        bb_std=float(get_indicator_param("bb20", "std_dev", defaults.bb_std)),
+        rsi_period=int(get_indicator_param("rsi", "period", defaults.rsi_period)),
+        bb_period=int(get_indicator_param("bb", "period", defaults.bb_period)),
+        bb_std=float(get_indicator_param("bb", "std_dev", defaults.bb_std)),
         adx_period=int(get_indicator_param("adx14", "period", defaults.adx_period)),
         # EMA from ema_fast/ema_slow indicators if present
         ema_fast=int(

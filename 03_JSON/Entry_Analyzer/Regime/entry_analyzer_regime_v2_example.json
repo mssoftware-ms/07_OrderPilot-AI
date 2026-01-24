@@ -1,0 +1,248 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-24T20:33:23Z",
+    "updated_at": "2026-01-24T20:33:23Z",
+    "tags": [
+      "entry-analyzer",
+      "regime",
+      "optimized"
+    ],
+    "notes": "Generic regime configuration v2.0 - Rank 1 optimization result. Score: 81.00. Trial: 1"
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-24T20:33:23Z",
+      "score": 81.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "ADX1",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 10,
+              "range": {
+                "min": 7,
+                "max": 21,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "RSI1",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 13,
+              "range": {
+                "min": 9,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "BB1",
+          "type": "BB",
+          "params": [
+            {
+              "name": "period",
+              "value": 22,
+              "range": {
+                "min": 15,
+                "max": 30,
+                "step": 1
+              }
+            },
+            {
+              "name": "std_dev",
+              "value": 1.5,
+              "range": {
+                "min": 1.0,
+                "max": 3.0,
+                "step": 0.1
+              }
+            },
+            {
+              "name": "width_percentile",
+              "value": 25.0,
+              "range": {
+                "min": 10,
+                "max": 40,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "SMA_FAST1",
+          "type": "SMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 53,
+              "range": {
+                "min": 20,
+                "max": 100,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "SMA_SLOW1",
+          "type": "SMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 200,
+              "range": {
+                "min": 100,
+                "max": 300,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "ATR1",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "BULL",
+          "name": "Bull Market",
+          "thresholds": [
+            {
+              "name": "adx_threshold",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 35,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Bear Market",
+          "thresholds": [
+            {
+              "name": "adx_threshold",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 35,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 75,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Sideways Market",
+          "thresholds": [
+            {
+              "name": "rsi_low",
+              "value": 33,
+              "range": {
+                "min": 25,
+                "max": 45,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_high",
+              "value": 57,
+              "range": {
+                "min": 55,
+                "max": 75,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 60,
+          "scope": "entry"
+        },
+        {
+          "id": "SQUEEZE",
+          "name": "Squeeze (Low Volatility)",
+          "thresholds": [
+            {
+              "name": "bb_width_threshold",
+              "value": 0.012,
+              "range": {
+                "min": 0.008,
+                "max": 0.020,
+                "step": 0.001
+              }
+            }
+          ],
+          "priority": 70,
+          "scope": "entry"
+        },
+        {
+          "id": "HIGH_VOL",
+          "name": "High Volatility",
+          "thresholds": [
+            {
+              "name": "atr_pct_threshold",
+              "value": 0.015,
+              "range": {
+                "min": 0.010,
+                "max": 0.025,
+                "step": 0.001
+              }
+            }
+          ],
+          "priority": 65,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "pullback_atr": 0.8,
+    "pullback_rsi": 45.0,
+    "wick_reject": 0.55,
+    "bb_entry": 0.15,
+    "rsi_oversold": 35.0,
+    "rsi_overbought": 65.0,
+    "vol_spike_factor": 1.2,
+    "breakout_atr": 0.2,
+    "min_confidence": 0.58,
+    "cooldown_bars": 10,
+    "cluster_window_bars": 6
+  },
+  "evaluation_params": {
+    "eval_horizon_bars": 40,
+    "eval_tp_atr": 1.0,
+    "eval_sl_atr": 0.8,
+    "min_trades_gate": 8,
+    "target_trades_soft": 30
+  }
+}

@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtWidgets import (
@@ -787,43 +787,132 @@ class RegimeOptimizationMixin:
             if "timestamp" in df.columns:
                 df.set_index("timestamp", inplace=True)
 
-            # TODO: Load actual current regime params from config
-            # For now, use default/standard values as example
+            # Load ACTUAL params from JSON config (NO HARDCODED VALUES!)
+            if not hasattr(self, "_regime_config") or self._regime_config is None:
+                raise ValueError(
+                    "No regime config loaded! Please load a JSON config in the 'Regime' tab first."
+                )
+
+            config = self._regime_config
+
+            # Get optimized params from optimization_results if available
+            optimized_params = {}
+            if hasattr(config, "optimization_results") and config.optimization_results:
+                applied = [r for r in config.optimization_results if r.get("applied", False)]
+                if applied:
+                    optimized_params = applied[-1].get("params", {})
+                else:
+                    optimized_params = config.optimization_results[0].get("params", {})
+
+            # Helper to get param value (optimized or base)
+            def get_param(indicator_id: str, param_name: str, default: Any) -> Any:
+                # Try optimized first
+                opt_key = f"{indicator_id}.{param_name}"
+                if opt_key in optimized_params:
+                    return optimized_params[opt_key]
+
+                # Fallback to indicators base params
+                for ind in config.indicators:
+                    if ind.id == indicator_id:
+                        return ind.params.get(param_name, default)
+
+                return default
+
+            # Helper for regime thresholds
+            def get_regime_threshold(regime_id: str, threshold_name: str, default: Any) -> Any:
+                opt_key = f"{regime_id}.{threshold_name}"
+                if opt_key in optimized_params:
+                    return optimized_params[opt_key]
+
+                for regime in config.regimes:
+                    if regime.id == regime_id:
+                        return getattr(regime, threshold_name, default)
+
+                return default
+
+            # Build current_params from JSON config
             current_params = RegimeParams(
-                adx_period=14,
-                adx_threshold=25.0,
-                sma_fast_period=50,
-                sma_slow_period=200,
-                rsi_period=14,
-                rsi_sideways_low=40,
-                rsi_sideways_high=60,
-                bb_period=20,
-                bb_std_dev=2.0,
-                bb_width_percentile=30.0,
+                adx_period=int(get_param("adx", "period", 14)),
+                adx_threshold=float(get_regime_threshold("BULL", "adx_threshold", 25.0)),
+                sma_fast_period=int(get_param("sma_fast", "period", 50)),
+                sma_slow_period=int(get_param("sma_slow", "period", 200)),
+                rsi_period=int(get_param("rsi", "period", 14)),
+                rsi_sideways_low=float(get_regime_threshold("SIDEWAYS", "rsi_low", 40)),
+                rsi_sideways_high=float(get_regime_threshold("SIDEWAYS", "rsi_high", 60)),
+                bb_period=int(get_param("bb", "period", 20)),
+                bb_std_dev=float(get_param("bb", "std_dev", 2.0)),
+                bb_width_percentile=float(get_param("bb", "width_percentile", 30.0)),
             )
 
-            # Create minimal optimizer to calculate score
+            # Create param_ranges with SAME VALUES (for optimizer - single-value ranges)
             param_ranges = AllParamRanges(
                 adx=ADXParamRanges(
-                    period=ParamRange(min=14, max=14, step=1),
-                    threshold=ParamRange(min=25, max=25, step=1),
+                    period=ParamRange(
+                        min=current_params.adx_period,
+                        max=current_params.adx_period,
+                        step=1
+                    ),
+                    threshold=ParamRange(
+                        min=current_params.adx_threshold,
+                        max=current_params.adx_threshold,
+                        step=1
+                    ),
                 ),
                 sma_fast=SMAParamRanges(
-                    period=ParamRange(min=50, max=50, step=1)
+                    period=ParamRange(
+                        min=current_params.sma_fast_period,
+                        max=current_params.sma_fast_period,
+                        step=1
+                    )
                 ),
                 sma_slow=SMAParamRanges(
-                    period=ParamRange(min=200, max=200, step=1)
+                    period=ParamRange(
+                        min=current_params.sma_slow_period,
+                        max=current_params.sma_slow_period,
+                        step=1
+                    )
                 ),
                 rsi=RSIParamRanges(
-                    period=ParamRange(min=14, max=14, step=1),
-                    sideways_low=ParamRange(min=40, max=40, step=1),
-                    sideways_high=ParamRange(min=60, max=60, step=1),
+                    period=ParamRange(
+                        min=current_params.rsi_period,
+                        max=current_params.rsi_period,
+                        step=1
+                    ),
+                    sideways_low=ParamRange(
+                        min=current_params.rsi_sideways_low,
+                        max=current_params.rsi_sideways_low,
+                        step=1
+                    ),
+                    sideways_high=ParamRange(
+                        min=current_params.rsi_sideways_high,
+                        max=current_params.rsi_sideways_high,
+                        step=1
+                    ),
                 ),
                 bb=BBParamRanges(
-                    period=ParamRange(min=20, max=20, step=1),
-                    std_dev=ParamRange(min=2.0, max=2.0, step=0.1),
-                    width_percentile=ParamRange(min=30, max=30, step=1),
+                    period=ParamRange(
+                        min=current_params.bb_period,
+                        max=current_params.bb_period,
+                        step=1
+                    ),
+                    std_dev=ParamRange(
+                        min=current_params.bb_std_dev,
+                        max=current_params.bb_std_dev,
+                        step=0.1
+                    ),
+                    width_percentile=ParamRange(
+                        min=current_params.bb_width_percentile,
+                        max=current_params.bb_width_percentile,
+                        step=1
+                    ),
                 ),
+            )
+
+            logger.info(
+                f"Calculating score with params from JSON: "
+                f"adx={current_params.adx_period}/{current_params.adx_threshold}, "
+                f"rsi={current_params.rsi_period}, "
+                f"bb={current_params.bb_period}/{current_params.bb_std_dev}"
             )
 
             # Create optimizer with default config (we only use it for score calculation,
@@ -1211,20 +1300,20 @@ class RegimeOptimizationMixin:
             params: Flat dict like {"adx_period": 14, "rsi_period": 12, ...}
 
         Returns:
-            Nested dict like {"adx14.period": 14, "rsi14.period": 12, ...}
+            Nested dict like {"adx.period": 14, "rsi.period": 12, ...}
         """
         converted = {}
 
         # Known mappings from old flat format to new v2.0 format
         param_mappings = {
-            "adx_period": "adx14.period",
+            "adx_period": "adx.period",
             "adx_threshold": "BULL.adx_threshold",  # Will be duplicated for all regimes
-            "rsi_period": "rsi14.period",
+            "rsi_period": "rsi.period",
             "rsi_sideways_low": "SIDEWAYS.rsi_low",
             "rsi_sideways_high": "SIDEWAYS.rsi_high",
-            "bb_period": "bb20.period",
-            "bb_std_dev": "bb20.std_dev",
-            "bb_width_percentile": "bb20.width_percentile",
+            "bb_period": "bb.period",
+            "bb_std_dev": "bb.std_dev",
+            "bb_width_percentile": "bb.width_percentile",
             "sma_fast_period": "sma_fast.period",
             "sma_slow_period": "sma_slow.period",
             "macd_fast": "macd_12_26_9.fast",
@@ -1275,7 +1364,7 @@ class RegimeOptimizationMixin:
             if "all" in conditions:
                 for cond in conditions["all"]:
                     left = cond.get("left", {})
-                    if left.get("indicator_id") == "adx14" and cond.get("op") in ["gt", "lt"]:
+                    if left.get("indicator_id") == "adx" and cond.get("op") in ["gt", "lt"]:
                         cond["right"]["value"] = int(threshold_value)
 
         elif threshold_name == "rsi_low":
@@ -1283,7 +1372,7 @@ class RegimeOptimizationMixin:
             if "all" in conditions:
                 for cond in conditions["all"]:
                     left = cond.get("left", {})
-                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "between":
+                    if left.get("indicator_id") == "rsi" and cond.get("op") == "between":
                         cond["right"]["min"] = int(threshold_value)
 
         elif threshold_name == "rsi_high":
@@ -1291,7 +1380,7 @@ class RegimeOptimizationMixin:
             if "all" in conditions:
                 for cond in conditions["all"]:
                     left = cond.get("left", {})
-                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "between":
+                    if left.get("indicator_id") == "rsi" and cond.get("op") == "between":
                         cond["right"]["max"] = int(threshold_value)
 
         elif threshold_name == "rsi_overbought":
@@ -1299,7 +1388,7 @@ class RegimeOptimizationMixin:
             if "all" in conditions:
                 for cond in conditions["all"]:
                     left = cond.get("left", {})
-                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "gt":
+                    if left.get("indicator_id") == "rsi" and cond.get("op") == "gt":
                         cond["right"]["value"] = int(threshold_value)
 
         elif threshold_name == "rsi_oversold":
@@ -1307,5 +1396,5 @@ class RegimeOptimizationMixin:
             if "all" in conditions:
                 for cond in conditions["all"]:
                     left = cond.get("left", {})
-                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "lt":
+                    if left.get("indicator_id") == "rsi" and cond.get("op") == "lt":
                         cond["right"]["value"] = int(threshold_value)

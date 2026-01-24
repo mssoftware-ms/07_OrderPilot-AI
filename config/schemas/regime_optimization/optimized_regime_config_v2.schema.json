@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot-ai.com/schemas/regime_optimization/optimized_regime_config_v2.json",
+  "title": "Optimized Regime Configuration v2.0",
+  "description": "Generic regime configuration with optimized parameters only. Supports any indicator with up to 10 parameters. No backward compatibility with v1.0.",
+  "type": "object",
+  "required": ["schema_version", "optimization_results"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0.0",
+      "description": "Schema version identifier"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata about the configuration",
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "optimization_results": {
+      "type": "array",
+      "description": "List of optimization results. Only optimized parameters are stored here.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "score", "trial_number", "applied", "indicators"],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this optimization was performed"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Composite score (0-100)"
+          },
+          "trial_number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Trial number in optimization run"
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Whether this result is currently active"
+          },
+          "indicators": {
+            "type": "array",
+            "description": "List of indicators with their optimized parameters",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "params"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Z0-9_]+$",
+                  "description": "Unique indicator name (e.g., 'RSI1', 'ADX1', 'BB1')"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["ADX", "RSI", "BB", "SMA", "EMA", "MACD", "ATR", "STOCH", "CCI", "SUPERTREND", "VWAP", "OBV"],
+                  "description": "Indicator type"
+                },
+                "params": {
+                  "type": "array",
+                  "description": "List of indicator parameters (up to 10)",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "value"],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Parameter name (e.g., 'period', 'std_dev', 'multiplier')"
+                      },
+                      "value": {
+                        "oneOf": [
+                          {"type": "number"},
+                          {"type": "integer"},
+                          {"type": "boolean"}
+                        ],
+                        "description": "Optimized parameter value"
+                      },
+                      "range": {
+                        "type": "object",
+                        "description": "Optimization range for this parameter",
+                        "required": ["min", "max", "step"],
+                        "properties": {
+                          "min": {
+                            "type": "number",
+                            "description": "Minimum value for optimization"
+                          },
+                          "max": {
+                            "type": "number",
+                            "description": "Maximum value for optimization"
+                          },
+                          "step": {
+                            "type": "number",
+                            "description": "Step size for optimization",
+                            "exclusiveMinimum": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "regimes": {
+            "type": "array",
+            "description": "List of regime definitions with optimized thresholds",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "priority", "scope"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Z_]+$",
+                  "description": "Regime identifier (e.g., 'BULL', 'BEAR', 'SIDEWAYS')"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable regime name"
+                },
+                "thresholds": {
+                  "type": "array",
+                  "description": "List of regime thresholds (generic structure like indicator params)",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "value"],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Threshold name (e.g., 'adx_threshold', 'rsi_low', 'rsi_high')"
+                      },
+                      "value": {
+                        "type": "number",
+                        "description": "Optimized threshold value"
+                      },
+                      "range": {
+                        "type": "object",
+                        "description": "Optimization range for this threshold",
+                        "required": ["min", "max", "step"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          },
+                          "step": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "priority": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "Regime priority (higher = evaluated first)"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": ["entry", "exit", "in_trade"],
+                  "description": "Regime scope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entry_params": {
+      "type": "object",
+      "description": "Entry signal parameters for Analyze Visible Range",
+      "additionalProperties": true
+    },
+    "evaluation_params": {
+      "type": "object",
+      "description": "Evaluation parameters for scoring and validation",
+      "additionalProperties": true
+    }
+  }
+}
