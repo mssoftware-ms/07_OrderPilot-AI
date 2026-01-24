@@ -195,23 +195,23 @@ class RegimeOptimizationThread(QThread):
             # Build structured AllParamRanges from flat dict
             param_ranges = AllParamRanges(
                 adx=ADXParamRanges(
-                    period=ParamRange(**ranges_dict.get("adx_period", {"low": 10, "high": 30, "type": "int"})),
-                    threshold=ParamRange(**ranges_dict.get("adx_threshold", {"low": 20, "high": 35, "type": "int"}))
+                    period=ParamRange(**ranges_dict.get("adx_period", {"min": 10, "max": 30, "step": 1})),
+                    threshold=ParamRange(**ranges_dict.get("adx_threshold", {"min": 20, "max": 35, "step": 1}))
                 ),
                 sma_fast=SMAParamRanges(
-                    period=ParamRange(**ranges_dict.get("sma_fast_period", {"low": 20, "high": 100, "type": "int"}))
+                    period=ParamRange(**ranges_dict.get("sma_fast_period", {"min": 20, "max": 100, "step": 1}))
                 ),
                 sma_slow=SMAParamRanges(
-                    period=ParamRange(**ranges_dict.get("sma_slow_period", {"low": 100, "high": 300, "type": "int"}))
+                    period=ParamRange(**ranges_dict.get("sma_slow_period", {"min": 100, "max": 300, "step": 1}))
                 ),
                 rsi=RSIParamRanges(
-                    period=ParamRange(**ranges_dict.get("rsi_period", {"low": 10, "high": 20, "type": "int"})),
-                    sideways_low=ParamRange(**ranges_dict.get("rsi_sideways_low", {"low": 30, "high": 45, "type": "int"})),
-                    sideways_high=ParamRange(**ranges_dict.get("rsi_sideways_high", {"low": 55, "high": 70, "type": "int"}))
+                    period=ParamRange(**ranges_dict.get("rsi_period", {"min": 10, "max": 20, "step": 1})),
+                    sideways_low=ParamRange(**ranges_dict.get("rsi_sideways_low", {"min": 30, "max": 45, "step": 1})),
+                    sideways_high=ParamRange(**ranges_dict.get("rsi_sideways_high", {"min": 55, "max": 70, "step": 1}))
                 ),
                 bb=BBParamRanges(
-                    period=ParamRange(**ranges_dict.get("bb_period", {"low": 15, "high": 30, "type": "int"})),
-                    width_percentile=ParamRange(**ranges_dict.get("bb_width_percentile", {"low": 10, "high": 40, "type": "int"}))
+                    period=ParamRange(**ranges_dict.get("bb_period", {"min": 15, "max": 30, "step": 1})),
+                    width_percentile=ParamRange(**ranges_dict.get("bb_width_percentile", {"min": 10, "max": 40, "step": 1}))
                 )
             )
 
@@ -691,15 +691,15 @@ class RegimeOptimizationThread(QThread):
     # ========== OPTUNA INTEGRATION HELPERS ==========
 
     def _convert_param_grid_to_ranges(self) -> Dict[str, Dict[str, Any]]:
-        """Convert old param_grid format to Optuna param_ranges format.
+        """Convert old param_grid format to ParamRange-compatible format.
 
         Old format (grid):
             {"adx.period": [10, 14, 20], "adx.threshold": [17, 25, 40]}
 
-        New format (ranges):
+        New format (ParamRange dict):
             {
-                "adx_period": {"type": "int", "low": 10, "high": 20},
-                "adx_threshold": {"type": "int", "low": 17, "high": 40}
+                "adx_period": {"min": 10, "max": 20, "step": 1},
+                "adx_threshold": {"min": 17, "max": 40, "step": 1}
             }
 
         Returns:
@@ -714,15 +714,11 @@ class RegimeOptimizationThread(QThread):
             # Convert dotted path to underscore (adx.period -> adx_period)
             param_key = param_path.replace(".", "_")
 
-            # Detect type
-            is_float = any(isinstance(v, float) for v in values)
-            param_type = "float" if is_float else "int"
-
-            # Create range (without step - ParamRange doesn't use it)
+            # Create range with min/max (ParamRange fields)
             param_ranges[param_key] = {
-                "type": param_type,
-                "low": min(values),
-                "high": max(values),
+                "min": min(values),
+                "max": max(values),
+                "step": 1,  # Default step for integer ranges
             }
 
         logger.info(f"Converted param_grid to ranges: {param_ranges}")
