@@ -492,11 +492,19 @@ class EntryAnalyzerPopup(QDialog):
                 return {"values": value["values"]}
             return None
 
-        if isinstance(value, (int, float)):
-            step = 1 if isinstance(value, int) else 0.01
-            return {"min": float(value), "max": float(value), "step": float(step)}
+        if isinstance(value, list):
+            return {"values": value}
 
         return None
+
+    def _filter_optimized_params(self, indicator_type: str, params: dict) -> dict:
+        """Filter params to only include optimized parameters (exclude defaults)."""
+        if not isinstance(params, dict):
+            return params
+        ranges = self._indicator_param_ranges.get(indicator_type.upper())
+        if not ranges:
+            return params
+        return {key: value for key, value in params.items() if key in ranges}
 
     def _on_analyze_current_regime_clicked(self) -> None:
         """Analyze current market regime without running full backtest."""
@@ -2577,12 +2585,16 @@ class EntryAnalyzerPopup(QDialog):
             for ind_result in regime_data['indicators']:
                 indicator_counter += 1
                 ind_id = f"ind_{indicator_counter}_{ind_result['indicator'].lower()}"
+                optimized_params = self._filter_optimized_params(
+                    ind_result['indicator'],
+                    ind_result['params'],
+                )
 
                 config['indicators'].append({
                     "id": ind_id,
                     "type": ind_result['indicator'],
                     "timeframe": "1m",  # Default timeframe
-                    "params": ind_result['params']
+                    "params": optimized_params
                 })
 
                 regime_indicators.append(ind_id)
