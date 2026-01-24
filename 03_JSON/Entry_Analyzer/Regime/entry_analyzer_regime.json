@@ -1,14 +1,10 @@
 {
-  "schema_version": "2.0.0",
+  "schema_version": "1.0.0",
   "metadata": {
     "author": "OrderPilot-AI",
     "created_at": "2026-01-22T00:00:00Z",
-    "updated_at": "2026-01-24T06:00:00Z",
-    "description": "Unified regime configuration with optimization ranges and Bull/Bear/Sideways naming",
-    "symbol": "BTCUSDT",
-    "timeframe": "5m",
-    "tags": ["entry-analyzer", "regime", "optimization"],
-    "notes": "Migrated to v2.0 with dynamic optimization ranges support."
+    "tags": ["entry-analyzer", "regime"],
+    "notes": "Regime config used by Entry Analyzer (JSON-based detection with Bull/Bear/Sideways)."
   },
   "indicators": [
     {
@@ -16,15 +12,7 @@
       "type": "ADX",
       "params": {
         "period": 14
-      },
-      "optimization_ranges": {
-        "period": {
-          "min": 10,
-          "max": 30,
-          "step": 1
-        }
-      },
-      "enabled": true
+      }
     },
     {
       "id": "macd_12_26_9",
@@ -33,55 +21,21 @@
         "fast": 12,
         "slow": 26,
         "signal": 9
-      },
-      "optimization_ranges": {
-        "fast": {
-          "min": 8,
-          "max": 16,
-          "step": 1
-        },
-        "slow": {
-          "min": 20,
-          "max": 32,
-          "step": 2
-        },
-        "signal": {
-          "min": 7,
-          "max": 12,
-          "step": 1
-        }
-      },
-      "enabled": true
+      }
     },
     {
       "id": "rsi14",
       "type": "RSI",
       "params": {
         "period": 14
-      },
-      "optimization_ranges": {
-        "period": {
-          "min": 10,
-          "max": 20,
-          "step": 1
-        }
-      },
-      "enabled": true
+      }
     },
     {
       "id": "atr14",
       "type": "ATR",
       "params": {
         "period": 14
-      },
-      "optimization_ranges": {
-        "period": {
-          "min": 10,
-          "max": 20,
-          "step": 1
-        }
-      },
-      "enabled": true
+      }
     },
     {
       "id": "bb20",
@@ -89,20 +43,7 @@
       "params": {
         "period": 20,
         "std_dev": 2.0
-      },
-      "optimization_ranges": {
-        "period": {
-          "min": 15,
-          "max": 30,
-          "step": 1
-        },
-        "std_dev": {
-          "min": 1.5,
-          "max": 3.0,
-          "step": 0.1
-        }
-      },
-      "enabled": true
+      }
     }
   ],
   "regimes": [
@@ -123,17 +64,8 @@
           }
         ]
       },
-      "optimization_ranges": {
-        "adx_threshold": {
-          "min": 20,
-          "max": 35,
-          "step": 1,
-          "description": "ADX threshold for strong trend detection"
-        }
-      },
       "priority": 80,
-      "scope": "entry",
-      "enabled": true
+      "scope": "entry"
     },
     {
       "id": "BEAR",
@@ -152,17 +84,8 @@
           }
         ]
       },
-      "optimization_ranges": {
-        "adx_threshold": {
-          "min": 20,
-          "max": 35,
-          "step": 1,
-          "description": "ADX threshold for strong trend detection"
-        }
-      },
       "priority": 80,
-      "scope": "entry",
-      "enabled": true
+      "scope": "entry"
     },
     {
       "id": "SIDEWAYS_OVERBOUGHT",
@@ -181,23 +104,8 @@
           }
         ]
       },
-      "optimization_ranges": {
-        "adx_threshold": {
-          "min": 20,
-          "max": 35,
-          "step": 1,
-          "description": "ADX threshold for sideways detection (inverted)"
-        },
-        "rsi_overbought": {
-          "min": 60,
-          "max": 80,
-          "step": 1,
-          "description": "RSI overbought threshold"
-        }
-      },
       "priority": 60,
-      "scope": "entry",
-      "enabled": true
+      "scope": "entry"
     },
     {
       "id": "SIDEWAYS_OVERSOLD",
@@ -216,23 +124,8 @@
           }
         ]
       },
-      "optimization_ranges": {
-        "adx_threshold": {
-          "min": 20,
-          "max": 35,
-          "step": 1,
-          "description": "ADX threshold for sideways detection (inverted)"
-        },
-        "rsi_oversold": {
-          "min": 20,
-          "max": 40,
-          "step": 1,
-          "description": "RSI oversold threshold"
-        }
-      },
       "priority": 60,
-      "scope": "entry",
-      "enabled": true
+      "scope": "entry"
     },
     {
       "id": "SIDEWAYS",
@@ -251,32 +144,10 @@
           }
         ]
       },
-      "optimization_ranges": {
-        "adx_threshold": {
-          "min": 20,
-          "max": 35,
-          "step": 1,
-          "description": "ADX threshold for sideways detection (inverted)"
-        },
-        "rsi_low": {
-          "min": 25,
-          "max": 45,
-          "step": 1,
-          "description": "RSI lower bound for sideways range"
-        },
-        "rsi_high": {
-          "min": 55,
-          "max": 75,
-          "step": 1,
-          "description": "RSI upper bound for sideways range"
-        }
-      },
       "priority": 10,
-      "scope": "entry",
-      "enabled": true
+      "scope": "entry"
     }
   ],
-  "optimization_results": [],
   "strategies": [],
   "strategy_sets": [],
   "routing": []

@@ -179,6 +179,12 @@ class RegimeOptimizationMixin:
 
         layout.addStretch()
 
+        # Selection Info
+        selection_layout = QHBoxLayout()
+        selection_layout.addWidget(QLabel("💡 Tip: Select a row, then click 'Apply Selected' or 'Save to History'"))
+        selection_layout.addStretch()
+        layout.addLayout(selection_layout)
+
         # Action Buttons
         action_layout = QHBoxLayout()
 
@@ -189,16 +195,27 @@ class RegimeOptimizationMixin:
         self._regime_opt_export_btn.clicked.connect(self._on_regime_opt_export)
         action_layout.addWidget(self._regime_opt_export_btn)
 
-        # Apply to Regime Config Button
-        self._regime_opt_apply_btn = QPushButton(get_icon("check_circle"), "Apply to Regime Config")
-        self._regime_opt_apply_btn.setEnabled(False)
-        self._regime_opt_apply_btn.setProperty("class", "success")
-        self._regime_opt_apply_btn.setToolTip(
-            "Apply best optimization result to entry_analyzer_regime.json\n"
-            "Updates indicator parameters and reloads Regime tab"
+        # Save Selected to History Button
+        self._regime_opt_save_history_btn = QPushButton(get_icon("history"), "Save Selected to History")
+        self._regime_opt_save_history_btn.setEnabled(False)
+        self._regime_opt_save_history_btn.setToolTip(
+            "Save selected result to optimization_results[] in JSON\n"
+            "Keeps top 10 results in history for future reference"
         )
-        self._regime_opt_apply_btn.clicked.connect(self._on_apply_to_regime_config)
-        action_layout.addWidget(self._regime_opt_apply_btn)
+        self._regime_opt_save_history_btn.clicked.connect(self._on_save_selected_to_history)
+        action_layout.addWidget(self._regime_opt_save_history_btn)
+
+        # Apply Selected to Config Button
+        self._regime_opt_apply_selected_btn = QPushButton(get_icon("check_circle"), "Apply Selected to Config")
+        self._regime_opt_apply_selected_btn.setEnabled(False)
+        self._regime_opt_apply_selected_btn.setProperty("class", "success")
+        self._regime_opt_apply_selected_btn.setToolTip(
+            "Apply SELECTED result to entry_analyzer_regime.json\n"
+            "Updates indicator parameters, regime thresholds, and adds to history\n"
+            "Reloads Regime tab automatically"
+        )
+        self._regime_opt_apply_selected_btn.clicked.connect(self._on_apply_selected_to_regime_config)
+        action_layout.addWidget(self._regime_opt_apply_selected_btn)
 
         action_layout.addStretch()
 
@@ -375,7 +392,8 @@ class RegimeOptimizationMixin:
         self._regime_opt_stop_btn.setEnabled(False)
         self._regime_opt_continue_btn.setEnabled(True)
         self._regime_opt_export_btn.setEnabled(True)
-        self._regime_opt_apply_btn.setEnabled(True)
+        self._regime_opt_save_history_btn.setEnabled(True)
+        self._regime_opt_apply_selected_btn.setEnabled(True)
         self._regime_opt_progress_bar.setValue(100)
 
         elapsed = (
@@ -704,12 +722,122 @@ class RegimeOptimizationMixin:
             )
 
     @pyqtSlot()
-    def _on_apply_to_regime_config(self) -> None:
-        """Apply best optimization result to entry_analyzer_regime.json.
+    def _on_save_selected_to_history(self) -> None:
+        """Save selected optimization result to optimization_results[] in JSON.
+
+        Adds selected result to history without applying parameters.
+        Keeps top 10 results in history.
+        """
+        from PyQt6.QtWidgets import QMessageBox
+        import json
+
+        try:
+            # Get selected row from table
+            selected_rows = self._regime_opt_top5_table.selectedItems()
+            if not selected_rows:
+                QMessageBox.warning(
+                    self,
+                    "No Selection",
+                    "Please select a result row from the table first."
+                )
+                return
+
+            # Get row index
+            row = selected_rows[0].row()
+            if row >= len(self._regime_opt_all_results):
+                QMessageBox.warning(
+                    self,
+                    "Invalid Selection",
+                    "Selected row is out of range."
+                )
+                return
+
+            selected_result = self._regime_opt_all_results[row]
+            params = selected_result.get("params", {})
+            score = selected_result.get("score", 0)
+            metrics = selected_result.get("metrics", {})
+            trial_number = selected_result.get("trial_number", row + 1)
+
+            logger.info(f"Saving optimization result (score {score:.2f}) to history")
+
+            # Load current JSON config
+            config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
+            if not config_path.exists():
+                QMessageBox.critical(
+                    self,
+                    "Config Not Found",
+                    f"Regime config file not found:\n{config_path}"
+                )
+                return
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+
+            # Convert params to new v2.0 format (indicator.param: value)
+            converted_params = self._convert_params_to_v2_format(params)
+
+            # Create optimization result entry
+            result_entry = {
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "score": float(score),
+                "rank": row + 1,
+                "params": converted_params,
+                "metrics": metrics,
+                "trial_number": trial_number,
+                "optimization_config": {
+                    "mode": "QUICK",
+                    "max_trials": getattr(self, "_regime_setup_max_trials", None).value() if hasattr(self, "_regime_setup_max_trials") else 150,
+                    "symbol": getattr(self, "_current_symbol", "UNKNOWN"),
+                    "timeframe": getattr(self, "_current_timeframe", "5m")
+                },
+                "applied": False
+            }
+
+            # Add to optimization_results (insert at beginning)
+            if "optimization_results" not in config_data:
+                config_data["optimization_results"] = []
+
+            config_data["optimization_results"].insert(0, result_entry)
+
+            # Keep only top 10
+            config_data["optimization_results"] = config_data["optimization_results"][:10]
+
+            # Update metadata
+            config_data["metadata"]["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            # Save updated config
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Successfully saved result to history: {config_path}")
+
+            QMessageBox.information(
+                self,
+                "Saved to History",
+                f"Successfully saved optimization result to history!\n\n"
+                f"Score: {score:.2f}\n"
+                f"Rank: {row + 1}\n"
+                f"Trial: {trial_number}\n\n"
+                f"Total in history: {len(config_data['optimization_results'])}/10"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to save result to history: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Save Failed",
+                f"Failed to save result to history:\n\n{str(e)}"
+            )
+
+    @pyqtSlot()
+    def _on_apply_selected_to_regime_config(self) -> None:
+        """Apply SELECTED optimization result to entry_analyzer_regime.json.
 
         Converts flat optimizer parameters to structured JSON format:
-        - Extracts best result (rank 1) parameters
+        - Extracts SELECTED result from table (not just rank 1)
         - Updates indicator configurations in JSON
+        - Updates regime threshold conditions
+        - Saves to optimization_results[] with applied=True
         - Saves updated entry_analyzer_regime.json
         - Reloads Regime tab to show changes
         """
@@ -717,34 +845,48 @@ class RegimeOptimizationMixin:
         import json
 
         try:
-            # Get best result (rank 1)
-            if not self._regime_opt_all_results or len(self._regime_opt_all_results) == 0:
+            # Get selected row from table
+            selected_rows = self._regime_opt_top5_table.selectedItems()
+            if not selected_rows:
                 QMessageBox.warning(
                     self,
-                    "No Results",
-                    "No optimization results available to apply."
+                    "No Selection",
+                    "Please select a result row from the table first."
                 )
                 return
 
-            best_result = self._regime_opt_all_results[0]
-            params = best_result.get("params", {})
-            score = best_result.get("score", 0)
+            # Get row index
+            row = selected_rows[0].row()
+            if row >= len(self._regime_opt_all_results):
+                QMessageBox.warning(
+                    self,
+                    "Invalid Selection",
+                    "Selected row is out of range."
+                )
+                return
 
-            logger.info(f"Applying optimization result with score {score:.2f} to regime config")
+            selected_result = self._regime_opt_all_results[row]
+            params = selected_result.get("params", {})
+            score = selected_result.get("score", 0)
+
+            logger.info(f"Applying SELECTED optimization result (row {row + 1}, score {score:.2f}) to regime config")
+
+            # Build parameter summary dynamically
+            param_summary = "\n".join([f"  {k}: {v}" for k, v in params.items()])
 
             # Confirm with user
-            from PyQt6.QtWidgets import QMessageBox
             reply = QMessageBox.question(
                 self,
-                "Apply Optimization Result",
-                f"Apply best optimization result to entry_analyzer_regime.json?\n\n"
+                "Apply Selected Result",
+                f"Apply SELECTED optimization result to entry_analyzer_regime.json?\n\n"
+                f"Rank: {row + 1}\n"
                 f"Score: {score:.2f}\n\n"
-                f"Parameters:\n"
-                f"  ADX: period={params.get('adx_period')}, threshold={params.get('adx_threshold')}\n"
-                f"  SMA: fast={params.get('sma_fast_period')}, slow={params.get('sma_slow_period')}\n"
-                f"  RSI: period={params.get('rsi_period')}, low={params.get('rsi_sideways_low')}, high={params.get('rsi_sideways_high')}\n"
-                f"  BB: period={params.get('bb_period')}, std_dev={params.get('bb_std_dev'):.2f}, width%={params.get('bb_width_percentile')}\n\n"
-                f"This will update the regime configuration file.",
+                f"Parameters:\n{param_summary}\n\n"
+                f"This will:\n"
+                f"✓ Update indicator parameters\n"
+                f"✓ Update regime thresholds\n"
+                f"✓ Add to optimization history\n"
+                f"✓ Reload Regime tab",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -765,66 +907,83 @@ class RegimeOptimizationMixin:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
 
-            # Update indicator parameters
-            # Map optimizer flat parameters to structured JSON indicators
-            indicator_updates = {
-                "adx14": {
-                    "id": "adx14",
-                    "type": "ADX",
-                    "params": {"period": int(params.get("adx_period", 14))}
+            # Update indicator parameters dynamically from params dict
+            # Parse params format: "indicator.param_name" -> value
+            for param_key, param_value in params.items():
+                if "." in param_key:
+                    parts = param_key.split(".", 1)
+                    if len(parts) == 2:
+                        indicator_id, param_name = parts
+
+                        # Find indicator in config
+                        for indicator in config_data.get("indicators", []):
+                            if indicator.get("id") == indicator_id:
+                                # Update parameter value
+                                if param_name in indicator.get("params", {}):
+                                    # Preserve type (int vs float)
+                                    current_value = indicator["params"][param_name]
+                                    if isinstance(current_value, float):
+                                        indicator["params"][param_name] = float(param_value)
+                                    else:
+                                        indicator["params"][param_name] = int(param_value)
+                                    logger.info(f"Updated {indicator_id}.{param_name} = {param_value}")
+                                break
+
+            # Update regime thresholds dynamically
+            # Parse params format: "REGIME_ID.threshold_name" -> value
+            for param_key, param_value in params.items():
+                if "." in param_key:
+                    parts = param_key.split(".", 1)
+                    if len(parts) == 2:
+                        regime_id, threshold_name = parts
+
+                        # Check if this is a regime threshold (not indicator param)
+                        if regime_id in ["BULL", "BEAR", "SIDEWAYS", "SIDEWAYS_OVERBOUGHT", "SIDEWAYS_OVERSOLD"]:
+                            # Find regime in config
+                            for regime in config_data.get("regimes", []):
+                                if regime.get("id") == regime_id:
+                                    # Update threshold in conditions
+                                    self._update_regime_threshold(regime, threshold_name, param_value)
+                                    logger.info(f"Updated {regime_id}.{threshold_name} = {param_value}")
+                                    break
+
+            # Convert params to v2.0 format for storage
+            converted_params = self._convert_params_to_v2_format(params)
+
+            # Add to optimization_results with applied=True
+            metrics = selected_result.get("metrics", {})
+            trial_number = selected_result.get("trial_number", row + 1)
+
+            result_entry = {
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "score": float(score),
+                "rank": row + 1,
+                "params": converted_params,
+                "metrics": metrics,
+                "trial_number": trial_number,
+                "optimization_config": {
+                    "mode": "QUICK",
+                    "max_trials": getattr(self, "_regime_setup_max_trials", None).value() if hasattr(self, "_regime_setup_max_trials") else 150,
+                    "symbol": getattr(self, "_current_symbol", "UNKNOWN"),
+                    "timeframe": getattr(self, "_current_timeframe", "5m")
                 },
-                "rsi14": {
-                    "id": "rsi14",
-                    "type": "RSI",
-                    "params": {"period": int(params.get("rsi_period", 14))}
-                },
-                "bb20": {
-                    "id": "bb20",
-                    "type": "BB",
-                    "params": {
-                        "period": int(params.get("bb_period", 20)),
-                        "std_dev": float(params.get("bb_std_dev", 2.0))
-                    }
-                }
+                "applied": True
             }
 
-            # Update indicators in config
-            for indicator in config_data.get("indicators", []):
-                ind_id = indicator.get("id")
-                if ind_id in indicator_updates:
-                    indicator["params"] = indicator_updates[ind_id]["params"]
-                    logger.info(f"Updated indicator {ind_id}: {indicator['params']}")
+            # Add to optimization_results (insert at beginning)
+            if "optimization_results" not in config_data:
+                config_data["optimization_results"] = []
 
-            # Update regime conditions with new thresholds
-            for regime in config_data.get("regimes", []):
-                regime_id = regime.get("id")
-                conditions = regime.get("conditions", {})
+            config_data["optimization_results"].insert(0, result_entry)
 
-                # Update ADX threshold conditions
-                if "all" in conditions:
-                    for cond in conditions["all"]:
-                        left = cond.get("left", {})
-                        ind_id = left.get("indicator_id")
-
-                        # Update ADX threshold (25 -> optimized value)
-                        if ind_id == "adx14" and cond.get("op") in ["gt", "lt"]:
-                            cond["right"]["value"] = int(params.get("adx_threshold", 25))
-
-                        # Update RSI sideways thresholds
-                        elif ind_id == "rsi14":
-                            if cond.get("op") == "gt":  # Overbought threshold
-                                cond["right"]["value"] = int(params.get("rsi_sideways_high", 70))
-                            elif cond.get("op") == "lt":  # Oversold threshold
-                                cond["right"]["value"] = int(params.get("rsi_sideways_low", 30))
-                            elif cond.get("op") == "between":  # Range bounds
-                                cond["right"]["min"] = int(params.get("rsi_sideways_low", 30))
-                                cond["right"]["max"] = int(params.get("rsi_sideways_high", 70))
+            # Keep only top 10
+            config_data["optimization_results"] = config_data["optimization_results"][:10]
 
             # Update metadata
+            config_data["metadata"]["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             config_data["metadata"]["notes"] = (
-                f"Optimized parameters applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
-                f"Score: {score:.2f}. "
-                f"Original: {config_data['metadata'].get('notes', 'N/A')}"
+                f"Rank {row + 1} optimization result applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                f"Score: {score:.2f}. Trial: {trial_number}"
             )
 
             # Save updated config
@@ -853,3 +1012,109 @@ class RegimeOptimizationMixin:
                 "Apply Failed",
                 f"Failed to apply optimization to regime config:\n\n{str(e)}"
             )
+
+    def _convert_params_to_v2_format(self, params: dict) -> dict:
+        """Convert flat optimizer parameters to v2.0 nested format.
+
+        Args:
+            params: Flat dict like {"adx_period": 14, "rsi_period": 12, ...}
+
+        Returns:
+            Nested dict like {"adx14.period": 14, "rsi14.period": 12, ...}
+        """
+        converted = {}
+
+        # Known mappings from old flat format to new v2.0 format
+        param_mappings = {
+            "adx_period": "adx14.period",
+            "adx_threshold": "BULL.adx_threshold",  # Will be duplicated for all regimes
+            "rsi_period": "rsi14.period",
+            "rsi_sideways_low": "SIDEWAYS.rsi_low",
+            "rsi_sideways_high": "SIDEWAYS.rsi_high",
+            "bb_period": "bb20.period",
+            "bb_std_dev": "bb20.std_dev",
+            "bb_width_percentile": "bb20.width_percentile",
+            "sma_fast_period": "sma_fast.period",
+            "sma_slow_period": "sma_slow.period",
+            "macd_fast": "macd_12_26_9.fast",
+            "macd_slow": "macd_12_26_9.slow",
+            "macd_signal": "macd_12_26_9.signal",
+        }
+
+        for old_key, new_key in param_mappings.items():
+            if old_key in params:
+                converted[new_key] = params[old_key]
+
+                # Special handling for shared thresholds
+                if old_key == "adx_threshold":
+                    # ADX threshold is used by BULL, BEAR, and all SIDEWAYS regimes
+                    converted["BEAR.adx_threshold"] = params[old_key]
+                    converted["SIDEWAYS.adx_threshold"] = params[old_key]
+                    converted["SIDEWAYS_OVERBOUGHT.adx_threshold"] = params[old_key]
+                    converted["SIDEWAYS_OVERSOLD.adx_threshold"] = params[old_key]
+
+                elif old_key == "rsi_sideways_high":
+                    # RSI high also used for SIDEWAYS_OVERBOUGHT
+                    converted["SIDEWAYS_OVERBOUGHT.rsi_overbought"] = params[old_key]
+
+                elif old_key == "rsi_sideways_low":
+                    # RSI low also used for SIDEWAYS_OVERSOLD
+                    converted["SIDEWAYS_OVERSOLD.rsi_oversold"] = params[old_key]
+
+        # Pass through any already-converted params
+        for key, value in params.items():
+            if "." in key and key not in converted:
+                converted[key] = value
+
+        return converted
+
+    def _update_regime_threshold(self, regime: dict, threshold_name: str, threshold_value: float) -> None:
+        """Update regime threshold in conditions.
+
+        Args:
+            regime: Regime dict from JSON
+            threshold_name: Name of threshold (e.g., "adx_threshold", "rsi_low")
+            threshold_value: New threshold value
+        """
+        conditions = regime.get("conditions", {})
+
+        # Map threshold names to condition updates
+        if threshold_name == "adx_threshold":
+            # Update ADX value threshold in conditions
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    if left.get("indicator_id") == "adx14" and cond.get("op") in ["gt", "lt"]:
+                        cond["right"]["value"] = int(threshold_value)
+
+        elif threshold_name == "rsi_low":
+            # Update RSI lower bound (SIDEWAYS regime)
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "between":
+                        cond["right"]["min"] = int(threshold_value)
+
+        elif threshold_name == "rsi_high":
+            # Update RSI upper bound (SIDEWAYS regime)
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "between":
+                        cond["right"]["max"] = int(threshold_value)
+
+        elif threshold_name == "rsi_overbought":
+            # Update RSI overbought threshold (SIDEWAYS_OVERBOUGHT)
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "gt":
+                        cond["right"]["value"] = int(threshold_value)
+
+        elif threshold_name == "rsi_oversold":
+            # Update RSI oversold threshold (SIDEWAYS_OVERSOLD)
+            if "all" in conditions:
+                for cond in conditions["all"]:
+                    left = cond.get("left", {})
+                    if left.get("indicator_id") == "rsi14" and cond.get("op") == "lt":
+                        cond["right"]["value"] = int(threshold_value)

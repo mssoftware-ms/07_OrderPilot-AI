@@ -457,6 +457,23 @@ class BacktestConfigMixin:
 
             # Step 3: Update results table with COMPLETE regime periods (Start + End)
             self._regime_results_table.setRowCount(0)  # Clear existing rows
+
+            if not detected_regimes:
+                logger.warning("No regime periods detected in the visible range")
+                QMessageBox.warning(
+                    self,
+                    "No Regimes Detected",
+                    "No regime changes were detected in the visible range.\n\n"
+                    "Possible reasons:\n"
+                    "- Not enough data (need at least 50 candles)\n"
+                    "- Regime config is not loaded\n"
+                    "- All indicator values are invalid (NaN)\n"
+                    "- No regime conditions are met\n\n"
+                    f"Candles available: {len(self._candles)}\n"
+                    f"Regime config loaded: {'Yes' if self._regime_config else 'No'}"
+                )
+                return
+
             for regime_data in detected_regimes:
                 row = self._regime_results_table.rowCount()
                 self._regime_results_table.insertRow(row)
@@ -551,10 +568,16 @@ class BacktestConfigMixin:
 
         # Load config (JSON-based)
         if self._regime_config is None:
+            logger.info("Regime config not loaded, attempting to load default config...")
             self._load_default_regime_config()
         config = self._regime_config
         if config is None:
-            raise ValueError("Regime config is not loaded.")
+            logger.error("Failed to load regime config - cannot perform detection")
+            raise ValueError(
+                "Regime config is not loaded. Please load a regime config using 'Load Regime Config' button first."
+            )
+
+        logger.info(f"Using regime config with {len(config.indicators)} indicators and {len(config.regimes)} regimes")
 
         # Build DataFrame once
         df = pd.DataFrame(self._candles)
@@ -700,6 +723,8 @@ class BacktestConfigMixin:
         finally:
             detector_logger.setLevel(prev_level)
 
+        logger.info(f"Processed {len(df)} candles, detected {len(regime_periods)} regime changes so far")
+
         # Close the last regime with the final candle
         if current_regime is not None:
             last_candle = self._candles[-1]
@@ -731,6 +756,18 @@ class BacktestConfigMixin:
             regime_periods.append(current_regime)
             logger.debug(
                 f"Last regime closed at final candle: {current_regime['regime']} (duration: {duration_bars} bars, {duration_time})"
+            )
+
+        logger.info(
+            f"Regime detection complete: {len(regime_periods)} regime periods detected "
+            f"from {len(df)} candles (starting at candle {min_candles})"
+        )
+        if len(regime_periods) == 0:
+            logger.warning(
+                "No regime periods detected! This may indicate:\n"
+                "  - All indicator values are NaN (check calculation)\n"
+                "  - No regime conditions are met (check thresholds in config)\n"
+                "  - Errors during detection (check logs above)"
             )
 
         return regime_periods
