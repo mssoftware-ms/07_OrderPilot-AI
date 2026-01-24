@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unified Regime Configuration Schema",
+  "description": "Complete regime configuration with indicators, ranges, regimes, and optimization history. Used by all regime tabs.",
+  "type": "object",
+  "required": ["schema_version", "metadata", "indicators", "regimes"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version for compatibility checking",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "author": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "description": {"type": "string"},
+        "symbol": {"type": "string"},
+        "timeframe": {"type": "string"},
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "indicators": {
+      "type": "array",
+      "description": "Indicator configurations with current params and optimization ranges",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "params"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique indicator identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["ADX", "MACD", "RSI", "ATR", "BB", "SMA", "EMA", "STOCH"]
+          },
+          "params": {
+            "type": "object",
+            "description": "Current active parameters",
+            "additionalProperties": true
+          },
+          "optimization_ranges": {
+            "type": "object",
+            "description": "Min/Max ranges for each parameter (used in Regime Setup tab)",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["min", "max"],
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"},
+                "step": {"type": "number", "default": 1}
+              }
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether this indicator is active"
+          }
+        }
+      }
+    },
+    "regimes": {
+      "type": "array",
+      "description": "Regime definitions with conditions and threshold ranges",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "conditions"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Regime identifier (BULL, BEAR, SIDEWAYS, etc.)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable regime name"
+          },
+          "conditions": {
+            "type": "object",
+            "description": "CEL-based condition logic"
+          },
+          "optimization_ranges": {
+            "type": "object",
+            "description": "Threshold ranges for regime detection (e.g., adx_threshold, rsi_overbought)",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["min", "max"],
+              "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"},
+                "step": {"type": "number", "default": 1}
+              }
+            }
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Priority when multiple regimes match (higher = higher priority)"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["entry", "exit", "both"],
+            "default": "entry"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "optimization_results": {
+      "type": "array",
+      "description": "Historical optimization results (top results saved)",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "score", "rank", "params"],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this optimization was run"
+          },
+          "score": {
+            "type": "number",
+            "description": "Composite optimization score"
+          },
+          "rank": {
+            "type": "integer",
+            "description": "Rank among optimization results (1 = best)"
+          },
+          "params": {
+            "type": "object",
+            "description": "Optimized parameters (flattened: indicator.param_name: value)",
+            "additionalProperties": true
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Performance metrics for this configuration",
+            "properties": {
+              "regime_clarity": {"type": "number"},
+              "regime_stability": {"type": "number"},
+              "regime_coverage": {"type": "number"},
+              "regime_balance": {"type": "number"}
+            }
+          },
+          "trial_number": {
+            "type": "integer",
+            "description": "Trial number in optimization run"
+          },
+          "optimization_config": {
+            "type": "object",
+            "description": "Config used for this optimization",
+            "properties": {
+              "mode": {"type": "string"},
+              "max_trials": {"type": "integer"},
+              "symbol": {"type": "string"},
+              "timeframe": {"type": "string"}
+            }
+          },
+          "applied": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this result was applied to active config"
+          }
+        }
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "description": "Strategy configurations (future use)",
+      "items": {"type": "object"}
+    },
+    "strategy_sets": {
+      "type": "array",
+      "description": "Strategy set mappings (future use)",
+      "items": {"type": "object"}
+    },
+    "routing": {
+      "type": "array",
+      "description": "Routing rules (future use)",
+      "items": {"type": "object"}
+    }
+  }
+}

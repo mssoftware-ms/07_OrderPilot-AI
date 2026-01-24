@@ -1,0 +1,441 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-24T05:00:00Z",
+    "updated_at": "2026-01-24T05:30:00Z",
+    "description": "Unified regime configuration with optimization ranges and results history",
+    "symbol": "BTCUSDT",
+    "timeframe": "5m",
+    "tags": ["regime", "optimization", "entry-analyzer"]
+  },
+  "indicators": [
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {
+        "period": 14
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 10,
+          "max": 30,
+          "step": 1
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "macd_12_26_9",
+      "type": "MACD",
+      "params": {
+        "fast": 12,
+        "slow": 26,
+        "signal": 9
+      },
+      "optimization_ranges": {
+        "fast": {
+          "min": 8,
+          "max": 16,
+          "step": 1
+        },
+        "slow": {
+          "min": 20,
+          "max": 32,
+          "step": 2
+        },
+        "signal": {
+          "min": 7,
+          "max": 12,
+          "step": 1
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "rsi14",
+      "type": "RSI",
+      "params": {
+        "period": 14
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 10,
+          "max": 20,
+          "step": 1
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "atr14",
+      "type": "ATR",
+      "params": {
+        "period": 14
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 10,
+          "max": 20,
+          "step": 1
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "bb20",
+      "type": "BB",
+      "params": {
+        "period": 20,
+        "std_dev": 2.0
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 15,
+          "max": 30,
+          "step": 1
+        },
+        "std_dev": {
+          "min": 1.5,
+          "max": 3.0,
+          "step": 0.1
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "sma_fast",
+      "type": "SMA",
+      "params": {
+        "period": 50
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 20,
+          "max": 100,
+          "step": 5
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "sma_slow",
+      "type": "SMA",
+      "params": {
+        "period": 200
+      },
+      "optimization_ranges": {
+        "period": {
+          "min": 100,
+          "max": 300,
+          "step": 10
+        }
+      },
+      "enabled": true
+    },
+    {
+      "id": "ichimoku_cloud",
+      "type": "ICHIMOKU",
+      "params": {
+        "tenkan_period": 9,
+        "kijun_period": 26,
+        "senkou_b_period": 52,
+        "displacement": 26
+      },
+      "optimization_ranges": {
+        "tenkan_period": {
+          "min": 7,
+          "max": 12,
+          "step": 1
+        },
+        "kijun_period": {
+          "min": 20,
+          "max": 32,
+          "step": 2
+        },
+        "senkou_b_period": {
+          "min": 40,
+          "max": 60,
+          "step": 4
+        },
+        "displacement": {
+          "min": 20,
+          "max": 32,
+          "step": 2
+        }
+      },
+      "enabled": false,
+      "note": "Example of indicator with 4 parameters - currently disabled"
+    },
+    {
+      "id": "custom_composite_v2",
+      "type": "CUSTOM_COMPOSITE",
+      "params": {
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9,
+        "smoothing_factor": 2.5,
+        "threshold_upper": 0.8,
+        "threshold_lower": 0.2,
+        "lookback_bars": 50,
+        "volatility_multiplier": 1.5
+      },
+      "optimization_ranges": {
+        "fast_period": {"min": 8, "max": 16, "step": 1},
+        "slow_period": {"min": 20, "max": 32, "step": 2},
+        "signal_period": {"min": 7, "max": 12, "step": 1},
+        "smoothing_factor": {"min": 1.5, "max": 3.5, "step": 0.1},
+        "threshold_upper": {"min": 0.7, "max": 0.9, "step": 0.05},
+        "threshold_lower": {"min": 0.1, "max": 0.3, "step": 0.05},
+        "lookback_bars": {"min": 30, "max": 100, "step": 5},
+        "volatility_multiplier": {"min": 1.0, "max": 2.5, "step": 0.1}
+      },
+      "enabled": false,
+      "note": "Example of complex custom indicator with 8 parameters - currently disabled"
+    }
+  ],
+  "regimes": [
+    {
+      "id": "BULL",
+      "name": "Bull Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "adx14", "field": "value"},
+            "op": "gt",
+            "right": {"value": 25}
+          },
+          {
+            "left": {"indicator_id": "macd_12_26_9", "field": "MACD_12_26_9"},
+            "op": "gt",
+            "right": {"value": 0}
+          }
+        ]
+      },
+      "optimization_ranges": {
+        "adx_threshold": {
+          "min": 20,
+          "max": 35,
+          "step": 1,
+          "description": "ADX threshold for trend strength detection"
+        }
+      },
+      "priority": 80,
+      "scope": "entry",
+      "enabled": true
+    },
+    {
+      "id": "BEAR",
+      "name": "Bear Market",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "adx14", "field": "value"},
+            "op": "gt",
+            "right": {"value": 25}
+          },
+          {
+            "left": {"indicator_id": "macd_12_26_9", "field": "MACD_12_26_9"},
+            "op": "lt",
+            "right": {"value": 0}
+          }
+        ]
+      },
+      "optimization_ranges": {
+        "adx_threshold": {
+          "min": 20,
+          "max": 35,
+          "step": 1,
+          "description": "ADX threshold for trend strength detection"
+        }
+      },
+      "priority": 80,
+      "scope": "entry",
+      "enabled": true
+    },
+    {
+      "id": "SIDEWAYS_OVERBOUGHT",
+      "name": "Sideways - Overbought",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "adx14", "field": "value"},
+            "op": "lt",
+            "right": {"value": 25}
+          },
+          {
+            "left": {"indicator_id": "rsi14", "field": "value"},
+            "op": "gt",
+            "right": {"value": 70}
+          }
+        ]
+      },
+      "optimization_ranges": {
+        "adx_threshold": {
+          "min": 20,
+          "max": 35,
+          "step": 1,
+          "description": "ADX threshold for sideways detection (inverted)"
+        },
+        "rsi_overbought": {
+          "min": 60,
+          "max": 80,
+          "step": 1,
+          "description": "RSI overbought threshold"
+        }
+      },
+      "priority": 60,
+      "scope": "entry",
+      "enabled": true
+    },
+    {
+      "id": "SIDEWAYS_OVERSOLD",
+      "name": "Sideways - Oversold",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "adx14", "field": "value"},
+            "op": "lt",
+            "right": {"value": 25}
+          },
+          {
+            "left": {"indicator_id": "rsi14", "field": "value"},
+            "op": "lt",
+            "right": {"value": 30}
+          }
+        ]
+      },
+      "optimization_ranges": {
+        "adx_threshold": {
+          "min": 20,
+          "max": 35,
+          "step": 1,
+          "description": "ADX threshold for sideways detection (inverted)"
+        },
+        "rsi_oversold": {
+          "min": 20,
+          "max": 40,
+          "step": 1,
+          "description": "RSI oversold threshold"
+        }
+      },
+      "priority": 60,
+      "scope": "entry",
+      "enabled": true
+    },
+    {
+      "id": "SIDEWAYS",
+      "name": "Sideways",
+      "conditions": {
+        "all": [
+          {
+            "left": {"indicator_id": "adx14", "field": "value"},
+            "op": "lt",
+            "right": {"value": 25}
+          },
+          {
+            "left": {"indicator_id": "rsi14", "field": "value"},
+            "op": "between",
+            "right": {"min": 30, "max": 70}
+          }
+        ]
+      },
+      "optimization_ranges": {
+        "adx_threshold": {
+          "min": 20,
+          "max": 35,
+          "step": 1,
+          "description": "ADX threshold for sideways detection (inverted)"
+        },
+        "rsi_low": {
+          "min": 25,
+          "max": 45,
+          "step": 1,
+          "description": "RSI lower bound for sideways range"
+        },
+        "rsi_high": {
+          "min": 55,
+          "max": 75,
+          "step": 1,
+          "description": "RSI upper bound for sideways range"
+        }
+      },
+      "priority": 10,
+      "scope": "entry",
+      "enabled": true
+    }
+  ],
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-24T05:15:00Z",
+      "score": 87.5,
+      "rank": 1,
+      "params": {
+        "adx14.period": 14,
+        "rsi14.period": 12,
+        "bb20.period": 22,
+        "bb20.std_dev": 2.2,
+        "sma_fast.period": 45,
+        "sma_slow.period": 210,
+        "BULL.adx_threshold": 28,
+        "BEAR.adx_threshold": 28,
+        "SIDEWAYS.adx_threshold": 28,
+        "SIDEWAYS.rsi_low": 32,
+        "SIDEWAYS.rsi_high": 68,
+        "SIDEWAYS_OVERBOUGHT.rsi_overbought": 72,
+        "SIDEWAYS_OVERSOLD.rsi_oversold": 28
+      },
+      "metrics": {
+        "regime_clarity": 0.92,
+        "regime_stability": 0.85,
+        "regime_coverage": 0.88,
+        "regime_balance": 0.86
+      },
+      "trial_number": 142,
+      "optimization_config": {
+        "mode": "QUICK",
+        "max_trials": 150,
+        "symbol": "BTCUSDT",
+        "timeframe": "5m"
+      },
+      "applied": true
+    },
+    {
+      "timestamp": "2026-01-24T05:15:00Z",
+      "score": 85.2,
+      "rank": 2,
+      "params": {
+        "adx14.period": 15,
+        "rsi14.period": 14,
+        "bb20.period": 20,
+        "bb20.std_dev": 2.0,
+        "sma_fast.period": 50,
+        "sma_slow.period": 200,
+        "BULL.adx_threshold": 25,
+        "BEAR.adx_threshold": 25,
+        "SIDEWAYS.adx_threshold": 25,
+        "SIDEWAYS.rsi_low": 30,
+        "SIDEWAYS.rsi_high": 70,
+        "SIDEWAYS_OVERBOUGHT.rsi_overbought": 70,
+        "SIDEWAYS_OVERSOLD.rsi_oversold": 30
+      },
+      "metrics": {
+        "regime_clarity": 0.89,
+        "regime_stability": 0.84,
+        "regime_coverage": 0.86,
+        "regime_balance": 0.82
+      },
+      "trial_number": 87,
+      "optimization_config": {
+        "mode": "QUICK",
+        "max_trials": 150,
+        "symbol": "BTCUSDT",
+        "timeframe": "5m"
+      },
+      "applied": false
+    }
+  ],
+  "strategies": [],
+  "strategy_sets": [],
+  "routing": []
+}
