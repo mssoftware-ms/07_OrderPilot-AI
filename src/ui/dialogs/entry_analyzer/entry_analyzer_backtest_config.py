@@ -456,6 +456,10 @@ class BacktestConfigMixin:
             detected_regimes = self._perform_incremental_regime_detection()
 
             # Step 3: Update results table with COMPLETE regime periods (Start + End)
+            logger.info(f"About to populate table with {len(detected_regimes)} regime periods")
+            logger.info(f"Table widget: {self._regime_results_table}")
+            logger.info(f"Table column count: {self._regime_results_table.columnCount()}")
+
             self._regime_results_table.setRowCount(0)  # Clear existing rows
 
             if not detected_regimes:
@@ -474,15 +478,19 @@ class BacktestConfigMixin:
                 )
                 return
 
-            for regime_data in detected_regimes:
-                row = self._regime_results_table.rowCount()
-                self._regime_results_table.insertRow(row)
+            logger.info(f"Starting to populate {len(detected_regimes)} rows in table")
 
-                from PyQt6.QtCore import Qt
-                from PyQt6.QtWidgets import QTableWidgetItem
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtWidgets import QTableWidgetItem
 
-                # Start Date
-                start_date_item = QTableWidgetItem(regime_data["start_date"])
+            for idx, regime_data in enumerate(detected_regimes):
+                try:
+                    row = self._regime_results_table.rowCount()
+                    logger.debug(f"Inserting row {row} (index {idx}) for regime {regime_data.get('regime', 'UNKNOWN')}")
+                    self._regime_results_table.insertRow(row)
+
+                    # Start Date
+                    start_date_item = QTableWidgetItem(regime_data["start_date"])
                 start_date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 0, start_date_item)
 
@@ -520,6 +528,20 @@ class BacktestConfigMixin:
                 duration_time_item = QTableWidgetItem(regime_data["duration_time"])
                 duration_time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._regime_results_table.setItem(row, 7, duration_time_item)
+
+                except Exception as row_error:
+                    logger.error(f"Error populating row {idx} for regime {regime_data.get('regime', 'UNKNOWN')}: {row_error}", exc_info=True)
+                    continue
+
+            # Log table population completion
+            final_row_count = self._regime_results_table.rowCount()
+            logger.info(f"✓ Table population complete! Final row count: {final_row_count}")
+            logger.info(f"  Expected: {len(detected_regimes)}, Actual: {final_row_count}")
+
+            if final_row_count == 0:
+                logger.error("⚠️ TABLE IS EMPTY after population attempt!")
+                logger.error(f"  detected_regimes length: {len(detected_regimes)}")
+                logger.error(f"  Table widget valid: {self._regime_results_table is not None}")
 
             # Step 4: Draw vertical lines in chart (Issue #21: Emit signal to chart)
             if hasattr(self, "draw_regime_lines_requested"):
