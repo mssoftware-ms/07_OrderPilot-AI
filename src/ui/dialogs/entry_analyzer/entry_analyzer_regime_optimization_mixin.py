@@ -139,8 +139,8 @@ class RegimeOptimizationMixin:
 
         layout.addLayout(status_layout)
 
-        # Live Top-5 Results Table
-        results_label = QLabel("Live Top-5 Results:")
+        # Live Results Table (filtered by score)
+        results_label = QLabel("Live Results (Score > 50 or Best 10):")
         results_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         layout.addWidget(results_label)
 
@@ -174,7 +174,8 @@ class RegimeOptimizationMixin:
         self._regime_opt_top5_table.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
         )
-        self._regime_opt_top5_table.setMaximumHeight(200)
+        self._regime_opt_top5_table.setMinimumHeight(600)  # Increased from 200 to 600 (+200%)
+        self._regime_opt_top5_table.setMaximumHeight(800)  # Allow scrolling beyond 600
         layout.addWidget(self._regime_opt_top5_table)
 
         layout.addStretch()
@@ -446,18 +447,30 @@ class RegimeOptimizationMixin:
         self._regime_opt_eta_label.setText("ETA: --")
 
     def _update_regime_opt_top5_table(self) -> None:
-        """Update top-5 results table with all 13 parameters."""
-        # Get top 5 results
-        top5 = self._regime_opt_all_results[:5]
+        """Update results table filtered by score > 50 (or best 10 if none)."""
+        # Filter results: all with score > 50, or best 10 if none
+        results_to_show = [r for r in self._regime_opt_all_results if r.get("score", 0) > 50]
+
+        if not results_to_show:
+            # No results over 50, show best 10
+            results_to_show = self._regime_opt_all_results[:10]
+            logger.info(f"No results with score > 50, showing best {len(results_to_show)} results")
+        else:
+            logger.info(f"Showing {len(results_to_show)} results with score > 50")
 
         # Disable sorting while updating
         self._regime_opt_top5_table.setSortingEnabled(False)
-        self._regime_opt_top5_table.setRowCount(len(top5))
+        self._regime_opt_top5_table.setRowCount(len(results_to_show))
 
-        for row, result in enumerate(top5):
+        for row, result in enumerate(results_to_show):
             params = result.get("params", {})
             score = result.get("score", 0)
             trial_num = result.get("trial_number", row + 1)
+
+            # Debug logging to check params structure
+            if row == 0:
+                logger.debug(f"First result params type: {type(params)}, keys: {list(params.keys()) if isinstance(params, dict) else 'NOT A DICT'}")
+                logger.debug(f"First result score: {score}, params sample: {str(params)[:200]}")
 
             # Column 0: Rank
             self._regime_opt_top5_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))

@@ -166,10 +166,11 @@ class RegimeSetupMixin:
         counter_layout = QHBoxLayout()
         counter_layout.addWidget(QLabel("Max Trials:"))
         self._regime_setup_max_trials = QSpinBox()
-        self._regime_setup_max_trials.setRange(10, 500)
+        self._regime_setup_max_trials.setRange(10, 9999)  # Increased upper limit to 9999 (unbegrenzt)
         self._regime_setup_max_trials.setValue(150)
         self._regime_setup_max_trials.setSingleStep(10)
-        self._regime_setup_max_trials.setToolTip("Maximum number of optimization trials (10-500)")
+        self._regime_setup_max_trials.setToolTip("Maximum number of optimization trials (10-9999, unbegrenzt)")
+        self._regime_setup_max_trials.setMinimumWidth(150)  # Make input field 2x wider
         counter_layout.addWidget(self._regime_setup_max_trials)
 
         warning_label = QLabel("⚠️ More trials = better results, but slower")
