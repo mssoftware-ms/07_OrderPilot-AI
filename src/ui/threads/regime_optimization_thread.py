@@ -183,18 +183,50 @@ class RegimeOptimizationThread(QThread):
                 f"scope={self.scope}"
             )
 
-            # Create Optuna config from param_grid
-            config = RegimeOptimizationConfig(
-                config_template_path=self.config_template_path,
-                param_ranges=self._convert_param_grid_to_ranges(),
-                scope=self.scope,
-                n_trials=min(self.total_combinations, 100),  # Cap at 100 trials
-                timeout_seconds=600,  # 10 minutes max
+            # Import required types
+            from src.core.regime_optimizer import (
+                AllParamRanges, ADXParamRanges, SMAParamRanges,
+                RSIParamRanges, BBParamRanges, ParamRange, OptimizationConfig
+            )
+
+            # Convert param_grid to structured param_ranges
+            ranges_dict = self._convert_param_grid_to_ranges()
+
+            # Build structured AllParamRanges from flat dict
+            param_ranges = AllParamRanges(
+                adx=ADXParamRanges(
+                    period=ParamRange(**ranges_dict.get("adx_period", {"low": 10, "high": 30, "type": "int"})),
+                    threshold=ParamRange(**ranges_dict.get("adx_threshold", {"low": 20, "high": 35, "type": "int"}))
+                ),
+                sma_fast=SMAParamRanges(
+                    period=ParamRange(**ranges_dict.get("sma_fast_period", {"low": 20, "high": 100, "type": "int"}))
+                ),
+                sma_slow=SMAParamRanges(
+                    period=ParamRange(**ranges_dict.get("sma_slow_period", {"low": 100, "high": 300, "type": "int"}))
+                ),
+                rsi=RSIParamRanges(
+                    period=ParamRange(**ranges_dict.get("rsi_period", {"low": 10, "high": 20, "type": "int"})),
+                    sideways_low=ParamRange(**ranges_dict.get("rsi_sideways_low", {"low": 30, "high": 45, "type": "int"})),
+                    sideways_high=ParamRange(**ranges_dict.get("rsi_sideways_high", {"low": 55, "high": 70, "type": "int"}))
+                ),
+                bb=BBParamRanges(
+                    period=ParamRange(**ranges_dict.get("bb_period", {"low": 15, "high": 30, "type": "int"})),
+                    width_percentile=ParamRange(**ranges_dict.get("bb_width_percentile", {"low": 10, "high": 40, "type": "int"}))
+                )
+            )
+
+            # Create Optuna config
+            config = OptimizationConfig(
+                max_trials=min(self.total_combinations, 150),  # Cap at 150 trials
                 n_jobs=1,  # Single-threaded for Qt compatibility
             )
 
-            # Create optimizer
-            optimizer = RegimeOptimizer(config, self.df.copy())
+            # Create optimizer with correct argument order
+            optimizer = RegimeOptimizer(
+                data=self.df.copy(),
+                param_ranges=param_ranges,
+                config=config
+            )
 
             # Create results manager
             results_manager = RegimeResultsManager()
@@ -202,7 +234,7 @@ class RegimeOptimizationThread(QThread):
             # Register progress callback
             def on_trial_complete(study, trial):
                 current = len(study.trials)
-                total = config.n_trials
+                total = config.max_trials
                 best_score = study.best_value if study.best_trial else 0
 
                 self.progress.emit(
@@ -214,7 +246,7 @@ class RegimeOptimizationThread(QThread):
                 # Emit individual result
                 result_dict = {
                     'params': trial.params,
-                    'score': int(trial.value),
+                    'score': int(trial.value) if trial.value else 0,
                     'metrics': trial.user_attrs.get('metrics', {}),
                     'timestamp': datetime.utcnow(),
                     'trial_number': trial.number,
@@ -666,12 +698,12 @@ class RegimeOptimizationThread(QThread):
 
         New format (ranges):
             {
-                "adx.period": {"type": "int", "low": 10, "high": 20, "step": 1},
-                "adx.threshold": {"type": "int", "low": 17, "high": 40, "step": 1}
+                "adx_period": {"type": "int", "low": 10, "high": 20},
+                "adx_threshold": {"type": "int", "low": 17, "high": 40}
             }
 
         Returns:
-            Param ranges dict for RegimeOptimizationConfig
+            Param ranges dict with underscore keys for AllParamRanges construction
         """
         param_ranges = {}
 
@@ -679,21 +711,19 @@ class RegimeOptimizationThread(QThread):
             if not values:
                 continue
 
+            # Convert dotted path to underscore (adx.period -> adx_period)
+            param_key = param_path.replace(".", "_")
+
             # Detect type
             is_float = any(isinstance(v, float) for v in values)
             param_type = "float" if is_float else "int"
 
-            # Create range
-            param_ranges[param_path] = {
+            # Create range (without step - ParamRange doesn't use it)
+            param_ranges[param_key] = {
                 "type": param_type,
                 "low": min(values),
                 "high": max(values),
             }
-
-            # Add step if integer
-            if param_type == "int" and len(values) > 1:
-                step = min(abs(values[i+1] - values[i]) for i in range(len(values)-1))
-                param_ranges[param_path]["step"] = step
 
         logger.info(f"Converted param_grid to ranges: {param_ranges}")
         return param_ranges
