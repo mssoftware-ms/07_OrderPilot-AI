@@ -144,12 +144,20 @@ class CheckableComboBox(QComboBox):
         sys.stdout.flush()
 
     def eventFilter(self, obj, event) -> bool:
-        """Prevent popup from closing when clicking checkboxes."""
-        from PyQt6.QtCore import QEvent
-        if event.type() == QEvent.Type.MouseButtonRelease:
-            # Don't close popup on click
-            return True
+        """Event filter for viewport - not used for blocking anymore."""
         return super().eventFilter(obj, event)
+
+    def hidePopup(self) -> None:
+        """Override to prevent popup from closing when clicking items."""
+        # Only hide if user clicked outside the popup or pressed Escape
+        # Check if mouse is still over the view
+        view = self.view()
+        if view and view.underMouse():
+            # Mouse is over the dropdown - don't close
+            print(f"[COMBO] hidePopup blocked - mouse over view", flush=True)
+            return
+        print(f"[COMBO] hidePopup allowed", flush=True)
+        super().hidePopup()
 
     def showPopup(self) -> None:
         """Override to log when popup is shown."""
@@ -168,16 +176,46 @@ class CheckableComboBox(QComboBox):
 
     def _handle_item_pressed(self, index) -> None:
         """Toggle check state when item is clicked."""
+        print(f"[COMBO] _handle_item_pressed called, index={index.row()}", flush=True)
         item = self._model.itemFromIndex(index)
-        if item and item.isCheckable():
+        if not item:
+            return
+
+        # Check if it's the header item (index 0 or special data)
+        is_header = index.row() == 0 or item.data(Qt.ItemDataRole.UserRole) == "__header__"
+        
+        if is_header:
+            # Toggle all items based on current header state (approximation)
+            # If current text says "All", uncheck all. If "None" or mixed, check all.
+            current_text = item.text()
+            should_check = "✗" in current_text or "/" in current_text or not "✓ Alle" in current_text
+            
+            print(f"[COMBO] Header clicked. Toggle all to: {should_check}", flush=True)
+            
+            for i in range(self._model.rowCount()):
+                child = self._model.item(i)
+                if child and child.isCheckable():
+                    child.setCheckState(Qt.CheckState.Checked if should_check else Qt.CheckState.Unchecked)
+            
+            self._update_display_text()
+            selected = self.get_selected_items()
+            print(f"[COMBO] Emitting selectionChanged (ALL): {selected}", flush=True)
+            self.selectionChanged.emit(selected)
+            return
+
+        if item.isCheckable():
             # Toggle check state
             if item.checkState() == Qt.CheckState.Checked:
                 item.setCheckState(Qt.CheckState.Unchecked)
+                print(f"[COMBO] Set to UNCHECKED", flush=True)
             else:
                 item.setCheckState(Qt.CheckState.Checked)
+                print(f"[COMBO] Set to CHECKED", flush=True)
             self._update_display_text()
-            self.selectionChanged.emit(self.get_selected_items())
-            logger.debug(f"Toggled {item.text()}, selected: {self.get_selected_items()}")
+            selected = self.get_selected_items()
+            print(f"[COMBO] Emitting selectionChanged: {selected}", flush=True)
+            self.selectionChanged.emit(selected)
+            logger.debug(f"Toggled {item.text()}, selected: {selected}")
 
     def _update_display_text(self) -> None:
         """Update the display text to show selected count."""
@@ -658,9 +696,9 @@ class EntryAnalyzerMixin:
             self._reconstruct_regime_data_from_chart()
 
         if not self._current_regime_data:
-            logger.warning("No regime data available to filter")
-            print(f"[FILTER] WARNING: No regime data to filter!", flush=True)
-            return
+            logger.warning("No regime data available to filter - clearing all lines")
+            print(f"[FILTER] WARNING: No regime data to filter! Clearing lines.", flush=True)
+            # Proceed to _apply_regime_filter anyway, which will clear lines if data is empty
 
         print(f"[FILTER] Have {len(self._current_regime_data)} regime entries to filter", flush=True)
         # Apply filter and redraw
@@ -701,6 +739,11 @@ class EntryAnalyzerMixin:
         reconstructed.sort(key=lambda x: x['start_timestamp'])
         self._current_regime_data = reconstructed
         logger.info(f"Reconstructed {len(reconstructed)} regime entries")
+        
+        # Update the filter dropdown with the actual regimes we found
+        # This fixes the issue where restored regimes (e.g. "STRONG_TREND_BEAR") 
+        # were hidden because they weren't in the default filter list.
+        self._update_regime_filter_from_data(reconstructed)
 
     def _apply_regime_filter(self, selected_regimes: list[str] | None = None) -> None:
         """Apply regime filter and redraw regime lines.
@@ -729,6 +772,12 @@ class EntryAnalyzerMixin:
 
         logger.info(f"Applying filter: {len(filtered_regimes)}/{len(self._current_regime_data)} regimes visible")
         print(f"[FILTER] Filtered: {len(filtered_regimes)}/{len(self._current_regime_data)} regimes", flush=True)
+        
+        # Debug: Show what was filtered out
+        if len(self._current_regime_data) > 0 and len(filtered_regimes) == 0:
+            all_regimes = set(r.get('regime', 'UNKNOWN') for r in self._current_regime_data)
+            print(f"[FILTER] All available regimes: {all_regimes}", flush=True)
+            print(f"[FILTER] Selected regimes: {selected_regimes}", flush=True)
 
         # Redraw filtered regimes (use internal method to avoid storing again)
         self._draw_regime_lines_internal(filtered_regimes)

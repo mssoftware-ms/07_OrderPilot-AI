@@ -45,6 +45,8 @@ from src.ui.icons import get_icon
 from .entry_analyzer_ai import AIMixin
 from .entry_analyzer_analysis import AnalysisMixin
 from .entry_analyzer_compounding_mixin import CompoundingMixin
+from .entry_analyzer_advanced_validation_mixin import AdvancedValidationMixin
+from .entry_analyzer_patterns_mixin import PatternDetectionMixin
 
 # Import mixins
 from .entry_analyzer_backtest import BacktestMixin
@@ -85,6 +87,8 @@ class EntryAnalyzerPopup(
     IndicatorSetupV2Mixin,
     IndicatorOptimizationV2Mixin,
     IndicatorResultsV2Mixin,
+    AdvancedValidationMixin,
+    PatternDetectionMixin,
 ):
     """Entry Analyzer main dialog with mixin composition.
 
@@ -275,22 +279,32 @@ class EntryAnalyzerPopup(
         self._tabs.addTab(indicator_results_v2_tab, get_icon("assessment"), "6. Indicator Results")
         # self._tabs.setTabEnabled(6, False)  # Always enabled (user request)
 
-        # Tab 7: Analysis (AnalysisMixin)
+        # Tab 7: Advanced Validation (OOS / Phases / WF)
+        advanced_tab = QWidget()
+        self._setup_advanced_validation_tab(advanced_tab)
+        self._tabs.addTab(advanced_tab, get_icon("analytics"), "7. Advanced Validation")
+
+        # Tab 8: Patterns (PatternDetectionMixin)
+        patterns_tab = QWidget()
+        self._setup_pattern_tab(patterns_tab)
+        self._tabs.addTab(patterns_tab, get_icon("auto_graph"), "8. Patterns")
+
+        # Tab 9: Analysis (AnalysisMixin)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
-        self._tabs.addTab(analysis_tab, get_icon("analytics"), "Visible Range")
+        self._tabs.addTab(analysis_tab, get_icon("bar_chart"), "Visible Range")
 
-        # Tab 8: AI Copilot (AIMixin)
+        # Tab 10: AI Copilot (AIMixin)
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
         self._tabs.addTab(ai_tab, get_icon("smart_toy"), "AI Copilot")
 
-        # Tab 9: Validation (AnalysisMixin)
+        # Tab 11: Validation (AnalysisMixin)
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, get_icon("check_circle"), "Validation")
 
-        # Tab 10: Compounding / P&L Calculator (CompoundingMixin)
+        # Tab 12: Compounding / P&L Calculator (CompoundingMixin)
         compounding_tab = QWidget()
         self._setup_compounding_tab(compounding_tab)
         self._tabs.addTab(compounding_tab, get_icon("trending_up"), "P&L Calculator")

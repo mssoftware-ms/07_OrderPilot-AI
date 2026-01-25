@@ -94,9 +94,9 @@ EntryAnalyzerPopup [v2.0 - Generic Parameter System]
 ├── RegimeSetupMixin          - Regime Setup Tab (v2.0 - 52-column table)
 ├── RegimeOptimizationMixin   - Regime Optimization Tab (v2.0 - pure export)
 ├── RegimeResultsMixin        - Regime Results Tab (v2.0 - dynamic columns)
-├── IndicatorSetupV2Mixin     - Indicator Setup Tab (v2.0 - generic params)
-├── IndicatorOptimizationV2Mixin - Indicator Optimization Tab (v2.0)
-└── IndicatorResultsV2Mixin   - Indicator Results Tab (v2.0)
+├── IndicatorSetupV2Mixin     - Indicator Setup Tab (v2.0, indicator-only, 52-col ranges)
+├── IndicatorOptimizationV2Mixin - Indicator Optimization Tab (v2.0, data source live/historical, max trials)
+└── IndicatorResultsV2Mixin   - Indicator Results Tab (v2.0, no Regime selector)
 
 [11 active tabs - removed: IndicatorsMixin, RegimeTableMixin]
 ```

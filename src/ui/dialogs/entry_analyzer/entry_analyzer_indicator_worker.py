@@ -1,20 +1,15 @@
-"""Entry Analyzer - Indicator Optimization Worker V2 (Stage 2).
+"""Entry Analyzer - Indicator Optimization Worker V2 (Indicators only).
 
-Background worker thread for Stage 2 indicator optimization:
-- Per-regime optimization (uses only regime-specific bar indices)
-- Per-signal-type optimization (entry_long, entry_short, exit_long, exit_short)
-- Parallel/sequential execution based on configuration
-- Progress reporting and result emission
-- Graceful stop support
-
-Date: 2026-01-24
-Stage: 2 (Indicator Optimization)
+Runs optimization for indicator parameter ranges (Entry/Exit Long/Short) without Regime dependency.
+Deterministic scoring (kein Random) auf Basis von Candle-Statistiken.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+import itertools
+from statistics import mean, stdev
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -25,22 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class IndicatorOptimizationWorkerV2(QThread):
-    """Background worker for Stage 2 indicator optimization.
-
-    Runs optimization for each enabled signal type sequentially:
-    1. Filter chart data to regime-specific bars
-    2. For each signal type:
-       - Test all selected indicators with parameter ranges
-       - Calculate metrics (win rate, profit factor, sharpe, etc.)
-       - Emit best result for signal type
-    3. Emit final results when complete
-
-    Signals:
-        progress: (signal_type, current, total, best_score)
-        result_ready: (signal_type, result_dict)
-        finished: (all_results_dict)
-        error: (error_message)
-    """
+    """Background worker for indicator optimization (Stage 2)."""
 
     progress = pyqtSignal(str, int, int, float)  # signal_type, current, total, best_score
     result_ready = pyqtSignal(str, dict)  # signal_type, result
@@ -48,261 +28,272 @@ class IndicatorOptimizationWorkerV2(QThread):
     error = pyqtSignal(str)
 
     def __init__(self, config: dict, parent: Any = None) -> None:
-        """Initialize worker with optimization configuration.
-
-        Args:
-            config: Dictionary with:
-                - regime: str (BULL, BEAR, SIDEWAYS)
-                - bar_indices: list[int] (regime-specific bar indices)
-                - signal_types: list[str] (enabled signal types)
-                - indicators: list[str] (selected indicators)
-                - param_ranges: dict (parameter ranges per indicator)
-                - symbol: str
-                - timeframe: str
-                - candles: list[dict] (full chart data)
-            parent: Parent widget
-        """
         super().__init__(parent)
         self.config = config
         self._stop_requested = False
 
     def run(self) -> None:
-        """Execute optimization in background thread.
-
-        Main workflow:
-        1. Filter candles to regime bars
-        2. For each signal type:
-           - Optimize each indicator
-           - Emit progress and results
-        3. Emit final results
-        """
         try:
-            regime = self.config["regime"]
-            bar_indices = self.config["bar_indices"]
             signal_types = self.config["signal_types"]
             indicators = self.config["indicators"]
             param_ranges = self.config["param_ranges"]
             candles = self.config["candles"]
+            max_trials = int(self.config.get("max_trials", 150))
 
-            logger.info(
-                f"Starting Stage 2 optimization: {regime} regime, "
-                f"{len(bar_indices)} bars, {len(signal_types)} signal types, "
-                f"{len(indicators)} indicators"
-            )
-
-            # Filter candles to regime bars
-            regime_candles = [candles[i] for i in bar_indices if i < len(candles)]
-
-            if not regime_candles:
-                self.error.emit(f"No candles found for {regime} regime bars")
+            if not candles:
+                self.error.emit("No candles provided for optimization")
                 return
 
-            logger.info(f"Filtered to {len(regime_candles)} regime-specific candles")
+            logger.info(
+                "Starting indicator optimization: %s signals, %s indicators, max_trials=%s",
+                len(signal_types),
+                len(indicators),
+                max_trials,
+            )
 
-            # Results storage
             all_results = {}
-
-            # Optimize each signal type
             for signal_type in signal_types:
                 if self._stop_requested:
                     logger.info("Optimization stopped by user")
                     break
 
-                logger.info(f"Optimizing {signal_type}...")
-
-                # Optimize this signal type
-                signal_results = self._optimize_signal_type(
+                results = self._optimize_signal_type(
                     signal_type=signal_type,
-                    regime_candles=regime_candles,
                     indicators=indicators,
                     param_ranges=param_ranges,
+                    candles=candles,
+                    max_trials=max_trials,
                 )
+                all_results[signal_type] = results
 
-                all_results[signal_type] = signal_results
+                if results:
+                    best = max(results, key=lambda r: r.get("score", 0.0))
+                    self.result_ready.emit(signal_type, best)
 
-                # Emit best result for this signal type
-                if signal_results:
-                    best_result = max(signal_results, key=lambda r: r.get("score", 0.0))
-                    self.result_ready.emit(signal_type, best_result)
-
-            # Emit final results
             self.finished.emit(all_results)
 
         except Exception as e:
-            logger.exception("Stage 2 optimization failed")
+            logger.exception("Indicator optimization failed")
             self.error.emit(str(e))
 
+    # ------------------------------------------------------------------ Core
     def _optimize_signal_type(
         self,
         signal_type: str,
-        regime_candles: list[dict],
-        indicators: list[str],
-        param_ranges: dict,
-    ) -> list[dict]:
-        """Optimize indicators for one signal type.
-
-        Args:
-            signal_type: Signal type (entry_long, entry_short, exit_long, exit_short)
-            regime_candles: Filtered candles for regime
-            indicators: List of indicator names to test
-            param_ranges: Parameter ranges per indicator
-
-        Returns:
-            List of result dictionaries with scores and metrics
-        """
+        indicators: List[str],
+        param_ranges: Dict[str, Dict[str, dict]],
+        candles: List[Dict],
+        max_trials: int,
+    ) -> List[Dict]:
         results = []
-        total_combinations = self._count_total_combinations(indicators, param_ranges)
         current = 0
-
-        logger.info(f"{signal_type}: Testing {total_combinations} parameter combinations")
 
         for indicator in indicators:
             if self._stop_requested:
                 break
-
-            if indicator not in param_ranges:
-                logger.warning(f"No parameter ranges for {indicator}, skipping")
+            ranges = param_ranges.get(indicator, {})
+            if not ranges:
+                logger.warning("No ranges for indicator %s", indicator)
                 continue
 
-            # Get parameter combinations for this indicator
-            param_combinations = self._generate_param_combinations(param_ranges[indicator])
-
-            logger.debug(f"{signal_type}/{indicator}: {len(param_combinations)} combinations")
-
+            combos = self._generate_param_combinations(ranges, max_trials=max_trials)
+            total_for_indicator = min(len(combos), max_trials - current)
             best_score = 0.0
 
-            for params in param_combinations:
-                if self._stop_requested:
+            for params in combos:
+                if self._stop_requested or current >= max_trials:
                     break
 
                 current += 1
-
-                # Simulate optimization (placeholder)
-                # TODO: Replace with actual indicator optimization logic
-                result = self._test_indicator_params(
+                result = self._evaluate_params(
                     indicator=indicator,
                     params=params,
                     signal_type=signal_type,
-                    regime_candles=regime_candles,
+                    candles=candles,
                 )
-
                 results.append(result)
+                best_score = max(best_score, result["score"])
 
-                # Update best score
-                if result["score"] > best_score:
-                    best_score = result["score"]
+                if current % 10 == 0 or current == max_trials:
+                    self.progress.emit(signal_type, current, max_trials, best_score)
 
-                # Emit progress every 10 trials
-                if current % 10 == 0 or current == total_combinations:
-                    self.progress.emit(signal_type, current, total_combinations, best_score)
+            if current >= max_trials:
+                break
 
-        logger.info(f"{signal_type}: Completed {len(results)} tests")
+        logger.info("%s: completed %s tests", signal_type, len(results))
         return results
 
-    def _count_total_combinations(self, indicators: list[str], param_ranges: dict) -> int:
-        """Count total parameter combinations across all indicators.
+    # ------------------------------------------------------------------ Helpers
+    def _generate_param_combinations(self, ranges: Dict[str, dict], max_trials: int) -> List[Dict]:
+        """Generate parameter combinations respecting max_trials (simple slice)."""
+        names = list(ranges.keys())
+        value_lists = []
+        for name in names:
+            rng = ranges[name]
+            min_v = rng.get("min")
+            max_v = rng.get("max")
+            step = rng.get("step")
+            if min_v is None or max_v is None or step is None or step <= 0:
+                # fallback: single value
+                base_val = rng.get("value", 0)
+                value_lists.append([base_val])
+                continue
+            vals = []
+            v = min_v
+            # simple inclusive range
+            while v <= max_v + 1e-9:
+                vals.append(v)
+                v += step
+            value_lists.append(vals or [rng.get("value", min_v)])
 
-        Args:
-            indicators: List of indicator names
-            param_ranges: Parameter ranges per indicator
+        combos = []
+        for combo in itertools.product(*value_lists):
+            combos.append({names[i]: combo[i] for i in range(len(names))})
+            if len(combos) >= max_trials:
+                break
+        return combos
 
-        Returns:
-            Total number of combinations
-        """
-        total = 0
-        for indicator in indicators:
-            if indicator in param_ranges:
-                combinations = self._generate_param_combinations(param_ranges[indicator])
-                total += len(combinations)
-        return total
+    def _evaluate_params(
+        self, indicator: str, params: Dict, signal_type: str, candles: List[Dict]
+    ) -> Dict:
+        """Lightweight deterministic backtest on candles using simple crossover/RSI logic."""
+        # Limit bars for speed
+        MAX_BARS = 20000
+        series = candles[-MAX_BARS:] if len(candles) > MAX_BARS else candles
+        closes = [c["close"] for c in series]
+        highs = [c.get("high", c["close"]) for c in series]
+        lows = [c.get("low", c["close"]) for c in series]
 
-    def _generate_param_combinations(self, ranges: dict) -> list[dict]:
-        """Generate all parameter combinations from ranges.
+        # Helper indicators
+        def ema(values, period):
+            if not values:
+                return []
+            k = 2 / (period + 1)
+            ema_vals = [values[0]]
+            for price in values[1:]:
+                ema_vals.append(price * k + ema_vals[-1] * (1 - k))
+            return ema_vals
 
-        Args:
-            ranges: Dictionary with param_name -> {min, max, step}
+        def rsi(values, period):
+            if len(values) < period + 1:
+                return [50.0] * len(values)
+            gains = []
+            losses = []
+            rsis = []
+            for i in range(1, len(values)):
+                diff = values[i] - values[i - 1]
+                gains.append(max(diff, 0))
+                losses.append(-min(diff, 0))
+                if i >= period:
+                    avg_gain = mean(gains[-period:])
+                    avg_loss = mean(losses[-period:])
+                    if avg_loss == 0:
+                        rs = 999
+                    else:
+                        rs = avg_gain / avg_loss
+                    rsis.append(100 - (100 / (1 + rs)))
+                else:
+                    rsis.append(50.0)
+            return [50.0] + rsis
 
-        Returns:
-            List of parameter dictionaries
-        """
-        import itertools
+        period = int(params.get("period") or params.get("atr_period") or 14)
+        period = max(2, min(period, 200))
 
-        # Extract parameter names and values
-        param_names = list(ranges.keys())
-        param_values = []
+        rsi_series = rsi(closes, period)
+        ema_series = ema(closes, period)
 
-        for param_name in param_names:
-            param_range = ranges[param_name]
-            min_val = param_range["min"]
-            max_val = param_range["max"]
-            step = param_range["step"]
+        # Signals
+        def entry_long(idx):
+            if indicator.upper().find("RSI") >= 0:
+                oversold = params.get("oversold", 35)
+                return rsi_series[idx - 1] < oversold and rsi_series[idx] >= oversold
+            # default: EMA cross
+            return closes[idx - 1] <= ema_series[idx - 1] and closes[idx] > ema_series[idx]
 
-            # Generate values for this parameter
-            values = []
-            current = min_val
-            while current <= max_val:
-                values.append(current)
-                current += step
+        def exit_long(idx):
+            if indicator.upper().find("RSI") >= 0:
+                overbought = params.get("overbought", 65)
+                return rsi_series[idx - 1] > overbought and rsi_series[idx] <= overbought
+            return closes[idx - 1] >= ema_series[idx - 1] and closes[idx] < ema_series[idx]
 
-            param_values.append(values)
+        def entry_short(idx):
+            if indicator.upper().find("RSI") >= 0:
+                overbought = params.get("overbought", 65)
+                return rsi_series[idx - 1] > overbought and rsi_series[idx] <= overbought
+            return closes[idx - 1] >= ema_series[idx - 1] and closes[idx] < ema_series[idx]
 
-        # Generate all combinations
-        combinations = []
-        for combo in itertools.product(*param_values):
-            param_dict = {param_names[i]: combo[i] for i in range(len(param_names))}
-            combinations.append(param_dict)
+        def exit_short(idx):
+            if indicator.upper().find("RSI") >= 0:
+                oversold = params.get("oversold", 35)
+                return rsi_series[idx - 1] < oversold and rsi_series[idx] >= oversold
+            return closes[idx - 1] <= ema_series[idx - 1] and closes[idx] > ema_series[idx]
 
-        return combinations
+        trades = []
+        position = None  # {"side": "long/short", "price": float}
+        for i in range(1, len(series)):
+            if position is None:
+                if signal_type == "entry_long" and entry_long(i):
+                    position = {"side": "long", "price": closes[i]}
+                elif signal_type == "entry_short" and entry_short(i):
+                    position = {"side": "short", "price": closes[i]}
+            else:
+                if position["side"] == "long" and (signal_type == "exit_long" or signal_type == "entry_long"):
+                    if exit_long(i):
+                        pnl = closes[i] - position["price"]
+                        trades.append(pnl)
+                        position = None
+                elif position["side"] == "short" and (signal_type == "exit_short" or signal_type == "entry_short"):
+                    if exit_short(i):
+                        pnl = position["price"] - closes[i]
+                        trades.append(pnl)
+                        position = None
 
-    def _test_indicator_params(
-        self,
-        indicator: str,
-        params: dict,
-        signal_type: str,
-        regime_candles: list[dict],
-    ) -> dict:
-        """Test indicator with specific parameters.
+        if position is not None:
+            # force close at last price
+            pnl = closes[-1] - position["price"] if position["side"] == "long" else position["price"] - closes[-1]
+            trades.append(pnl)
 
-        Placeholder for actual optimization logic.
-        TODO: Integrate with IndicatorSetOptimizer or BacktestEngine
+        if not trades:
+            win_rate = 0.0
+            profit_factor = 0.0
+            sharpe = 0.0
+            score = 20.0
+        else:
+            wins = [t for t in trades if t > 0]
+            losses = [t for t in trades if t <= 0]
+            win_rate = len(wins) / len(trades) if trades else 0.0
+            gross_profit = sum(wins) if wins else 0.0
+            gross_loss = -sum(losses) if losses else 0.0
+            profit_factor = gross_profit / gross_loss if gross_loss > 0 else gross_profit if gross_profit > 0 else 0.0
 
-        Args:
-            indicator: Indicator name (RSI, MACD, etc.)
-            params: Parameter dictionary
-            signal_type: Signal type being tested
-            regime_candles: Candles for regime
+            # per-trade returns
+            returns = trades
+            if len(returns) > 1:
+                avg_ret = mean(returns)
+                vol_ret = stdev(returns) if len(returns) > 2 else abs(avg_ret)
+                sharpe = avg_ret / vol_ret if vol_ret else 0.0
+            else:
+                sharpe = 0.0
 
-        Returns:
-            Result dictionary with metrics
-        """
-        import random
+            score = (
+                win_rate * 100 * 0.6
+                + min(profit_factor, 4.0) * 15
+                + min(len(trades), 200) * 0.1
+            )
+            score = max(20.0, min(90.0, score))
 
-        # Simulate calculation (placeholder)
-        # TODO: Replace with actual indicator evaluation
-        score = random.uniform(30.0, 90.0)
-        win_rate = random.uniform(0.4, 0.8)
-        profit_factor = random.uniform(1.0, 3.0)
-        sharpe_ratio = random.uniform(0.5, 2.5)
-        trades = random.randint(5, 50)
-
-        result = {
+        return {
             "indicator": indicator,
             "params": params,
             "signal_type": signal_type,
             "score": score,
             "win_rate": win_rate,
             "profit_factor": profit_factor,
-            "sharpe_ratio": sharpe_ratio,
-            "trades": trades,
-            "regime": self.config["regime"],
+            "sharpe_ratio": sharpe,
+            "trades": len(trades),
         }
 
-        return result
-
     def stop(self) -> None:
-        """Request graceful stop of optimization.
-
-        Sets internal flag, worker will stop at next checkpoint.
-        """
+        """Request graceful stop of optimization."""
         self._stop_requested = True
         logger.info("Stop requested for Stage 2 optimization")

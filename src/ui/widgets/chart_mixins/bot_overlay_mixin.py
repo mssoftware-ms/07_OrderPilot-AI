@@ -431,8 +431,11 @@ class BotOverlayMixin:
 
     def clear_regime_lines(self) -> None:
         """Clear all regime lines from chart."""
-        for line_id in list(self._bot_overlay_state.regime_lines.keys()):
-            self._remove_chart_regime_line(line_id)
+        # Use the prefix-based removal to catch all lines, even those not in state
+        # (e.g. lines restored by chart persistence but not in python state)
+        self._execute_js("window.chartAPI?.removeDrawingsByPrefix('regime_');")
+        
+        # Also clear local state
         self._bot_overlay_state.regime_lines.clear()
         logger.debug("Cleared all regime lines")
 
@@ -656,3 +659,55 @@ class BotOverlayMixin:
         self.clear_stop_lines()
         self.set_debug_hud_visible(False)
         logger.info("Cleared all bot overlay elements")
+
+    def restore_state_from_dict(self, state_dict: dict) -> None:
+        """Restore bot overlay state from chart state dictionary.
+
+        This allows restoring regime lines and other overlays that were
+        persisted in the chart's state but lost from Python memory.
+
+        Args:
+            state_dict: Complete chart state dictionary from QSettings
+        """
+        if not state_dict or 'drawings' not in state_dict:
+            return
+
+        drawings = state_dict.get('drawings', [])
+        restored_count = 0
+
+        for drawing in drawings:
+            drawing_id = drawing.get('id', '')
+            drawing_type = drawing.get('type', '')
+
+            # Restore Regime Lines
+            if drawing_type == 'vline' and drawing_id.startswith('regime_'):
+                timestamp = drawing.get('timestamp', 0)
+                color = drawing.get('color')
+                label = drawing.get('label', '')
+                
+                # Try to extract pure regime name from label "NAME (SCORE)"
+                # e.g. "STRONG TREND BULL (95.0)" -> "STRONG_TREND_BULL"
+                regime_name = label.split(' (')[0].replace(' ', '_')
+                
+                # Fallback if label is empty or different format
+                if not regime_name:
+                    regime_name = "UNKNOWN"
+
+                regime_line = RegimeLine(
+                    line_id=drawing_id,
+                    timestamp=timestamp,
+                    color=color,
+                    regime_name=regime_name,
+                    label=label
+                )
+                self._bot_overlay_state.regime_lines[drawing_id] = regime_line
+                restored_count += 1
+                logger.debug(f"Restored regime line: {regime_name} (ID: {drawing_id})")
+
+        if restored_count > 0:
+            logger.info(f"Restored {restored_count} regime lines from saved chart state")
+            # If we have an EntryAnalyzerMixin, update its data too
+            if hasattr(self, '_reconstruct_regime_data_from_chart'):
+                # This will use the populated _bot_overlay_state to fill _current_regime_data
+                self._reconstruct_regime_data_from_chart()
+

@@ -2450,6 +2450,17 @@
                     const d = drawings.find(x => x.id === id);
                     if (d) removeDrawing(d);
                 };
+                window.chartAPI.removeDrawingsByPrefix = (prefix) => {
+                    try {
+                        const toRemove = drawings.filter(d => d.id && d.id.toString().startsWith(prefix));
+                        toRemove.forEach(d => removeDrawing(d));
+                        console.log('Removed ' + toRemove.length + ' drawings with prefix: ' + prefix);
+                        return true;
+                    } catch (e) {
+                        console.error('removeDrawingsByPrefix error:', e);
+                        return false;
+                    }
+                };
 
                 // Clear all lines (hline and vline type drawings)
                 window.chartAPI.clearLines = () => {

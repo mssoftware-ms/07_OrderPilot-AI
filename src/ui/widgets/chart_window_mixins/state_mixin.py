@@ -152,6 +152,13 @@ class StateMixin:
                     if complete_state and isinstance(complete_state, dict) and complete_state.get('version'):
                         logger.info(f"Restoring complete chart state for {self.symbol}")
                         self.chart_widget.set_chart_state(complete_state)
+                        
+                        # Hydrate Python-side overlay state from the saved chart state
+                        # This ensures features like the Regime Filter have data to work with
+                        if hasattr(self.chart_widget, 'restore_state_from_dict'):
+                            logger.info("Hydrating Python overlay state from saved chart data")
+                            self.chart_widget.restore_state_from_dict(complete_state)
+                            
                         logger.info("Complete chart state restoration initiated")
                         self._finalize_restoration()
                         return

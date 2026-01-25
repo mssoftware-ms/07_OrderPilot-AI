@@ -1,0 +1,41 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-25T00:00:00Z",
+    "updated_at": "2026-01-25T00:00:00Z",
+    "tags": ["BTCUSDT", "1m", "indicator-set"],
+    "trading_style": "Scalping",
+    "notes": "Template reference only"
+  },
+  "indicators": [
+    {
+      "name": "TREND_SUPERTREND_FAST",
+      "type": "SUPERTREND",
+      "params": [
+        {"name": "atr_period", "value": 10, "range": {"min": 7, "max": 20, "step": 1}},
+        {"name": "multiplier", "value": 2.0, "range": {"min": 1.5, "max": 3.5, "step": 0.1}}
+      ]
+    },
+    {
+      "name": "MOMENTUM_RSI",
+      "type": "RSI",
+      "params": [
+        {"name": "period", "value": 14, "range": {"min": 9, "max": 30, "step": 1}}
+      ]
+    },
+    {
+      "name": "TREND_EMA_FAST",
+      "type": "EMA",
+      "params": [
+        {"name": "period", "value": 9, "range": {"min": 5, "max": 30, "step": 1}}
+      ]
+    }
+  ],
+  "backtest": {
+    "source": "historical",
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "bars_used": 50000
+  }
+}

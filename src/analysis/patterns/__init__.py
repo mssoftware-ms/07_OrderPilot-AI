@@ -1,19 +1,20 @@
-"""Chart pattern detection module.
+"""Pattern detection package (pivot engine, named patterns, scoring)."""
 
-This module provides detectors for identifying geometric chart patterns
-such as Cup & Handle, Triple Bottom, Ascending Triangle, etc.
-"""
-
-from src.analysis.patterns.base_detector import (
-    BaseDetector,
-    Pattern,
+from .pivot_engine import (
     Pivot,
-    DirectionBias
+    detect_pivots_percent,
+    detect_pivots_atr,
+    validate_swing_point,
+    filter_minor_pivots,
 )
+from .named_patterns import Pattern, PatternDetector
 
 __all__ = [
-    'BaseDetector',
-    'Pattern',
-    'Pivot',
-    'DirectionBias'
+    "Pivot",
+    "Pattern",
+    "PatternDetector",
+    "detect_pivots_percent",
+    "detect_pivots_atr",
+    "validate_swing_point",
+    "filter_minor_pivots",
 ]

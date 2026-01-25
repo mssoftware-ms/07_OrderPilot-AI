@@ -1,14 +1,10 @@
-"""Entry Analyzer - Indicator Setup V2 Mixin (Stage 2).
+"""Entry Analyzer - Indicator Setup V2 Mixin (Rebuilt for Indicator Sets).
 
-Handles Indicator Optimization Setup UI for Stage 2:
-- Regime selection dropdown (BULL, BEAR, SIDEWAYS)
-- Signal type selection (Entry Long/Short, Exit Long/Short)
-- 7 indicator selection with checkboxes (RSI, MACD, STOCH, BB, ATR, EMA, CCI)
-- Dynamic parameter range configuration
-- Loads bar indices from optimized_regime_*.json
-
-Date: 2026-01-24
-Stage: 2 (Indicator Optimization)
+Handles Indicator Setup for Stage 2 (Indicators only, ohne Regime):
+- JSON-Import einer reinen Indikatorliste (v2 Schema angelehnt an Regime-Template)
+- Signal-Typ Auswahl (Entry/Exit Long/Short) – alle vorgewählt
+- Dynamische Parameter-Range-Tabelle (bis 10 Parameter/Indikator, Name/Value/Min/Max/Step)
+- Keine Regime-Auswahl, keine alten Checkbox-Listen
 """
 
 from __future__ import annotations
@@ -20,17 +16,21 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QScrollArea,
-    QSpinBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
+    QMessageBox,
 )
+
+from src.core.tradingbot.config.validator import SchemaValidator, ValidationError
+from src.ui.icons import get_icon
 
 if TYPE_CHECKING:
     pass
@@ -39,371 +39,258 @@ logger = logging.getLogger(__name__)
 
 
 class IndicatorSetupV2Mixin:
-    """Stage 2: Indicator Setup UI for regime-specific optimization.
+    """Stage 2: Indicator Setup UI (neu, ohne Regime)."""
 
-    Provides:
-    - Regime selection dropdown (loads bar indices from JSON)
-    - Signal type checkboxes (entry_long, entry_short, exit_long, exit_short)
-    - 7 indicator checkboxes (RSI, MACD, STOCH, BB, ATR, EMA, CCI)
-    - Dynamic parameter range widgets per indicator
-    - Validation and UI state management
-
-    Attributes (defined in parent):
-        _ind_v2_regime_combo: QComboBox - Regime selector
-        _ind_v2_signal_types: dict[str, QCheckBox] - Signal type checkboxes
-        _ind_v2_indicator_checkboxes: dict[str, QCheckBox] - Indicator selection
-        _ind_v2_param_widgets: dict - Parameter range widgets
-        _ind_v2_param_layout: QFormLayout - Dynamic parameter layout
-        _regime_bar_indices: dict[str, list[int]] - Bar indices per regime
-        _optimized_regime_config: dict - Loaded regime config
-    """
-
-    # Type hints for parent attributes
-    _ind_v2_regime_combo: QComboBox
+    # Attributes injected by parent
     _ind_v2_signal_types: dict[str, QCheckBox]
-    _ind_v2_indicator_checkboxes: dict[str, QCheckBox]
-    _ind_v2_param_widgets: dict
-    _ind_v2_param_layout: QFormLayout
-    _regime_bar_indices: dict[str, list[int]]
-    _optimized_regime_config: dict | None
-    _symbol: str
-    _timeframe: str
+    _ind_v2_params_table: QTableWidget
+    _ind_v2_indicator_config: dict | None
+    _ind_v2_indicator_config_path: Path | None
 
     def _setup_indicator_setup_v2_tab(self, tab: QWidget) -> None:
-        """Setup Indicator Setup V2 tab (Stage 2).
-
-        Creates:
-        - Regime selection dropdown
-        - Signal type selector (4 checkboxes)
-        - Indicator selection (7 checkboxes)
-        - Dynamic parameter ranges
-        """
+        """Setup Indicator Setup V2 tab (Indicators only)."""
         layout = QVBoxLayout(tab)
 
-        # ===== Regime Selection Group =====
-        regime_group = QGroupBox("Regime Selection")
-        regime_layout = QHBoxLayout(regime_group)
+        header = QLabel("Indicator Setup (Long/Short Entry & Exit)")
+        header.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        layout.addWidget(header)
 
-        regime_layout.addWidget(QLabel("Select Regime:"))
-        self._ind_v2_regime_combo = QComboBox()
-        self._ind_v2_regime_combo.addItems(["BULL", "BEAR", "SIDEWAYS"])
-        self._ind_v2_regime_combo.currentTextChanged.connect(self._on_indicator_v2_regime_changed)
-        regime_layout.addWidget(self._ind_v2_regime_combo)
-
-        # Regime info label
-        self._ind_v2_regime_info = QLabel("No regime config loaded")
-        self._ind_v2_regime_info.setStyleSheet("color: #888; font-style: italic;")
-        regime_layout.addWidget(self._ind_v2_regime_info)
-        regime_layout.addStretch()
-
-        layout.addWidget(regime_group)
+        desc = QLabel(
+            "Lade eine Indikator-JSON (v2) mit einer reinen Indikatorliste. "
+            "Lege für jeden Parameter Min/Max/Step fest (bis zu 10 Parameter/Indikator). "
+            "Signal-Typen sind standardmäßig aktiv."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #666; padding: 4px;")
+        layout.addWidget(desc)
 
         # ===== Signal Type Selection Group =====
         signal_group = QGroupBox("Signal Types to Optimize")
-        signal_layout = QVBoxLayout(signal_group)
+        signal_layout = QHBoxLayout(signal_group)
 
-        info_label = QLabel("Select which signal types to optimize for the selected regime:")
-        info_label.setStyleSheet("color: #888; font-style: italic;")
-        signal_layout.addWidget(info_label)
-
-        # 4 signal type checkboxes
-        signal_checkbox_layout = QHBoxLayout()
         self._ind_v2_signal_types = {
             "entry_long": QCheckBox("Entry Long"),
             "entry_short": QCheckBox("Entry Short"),
             "exit_long": QCheckBox("Exit Long"),
             "exit_short": QCheckBox("Exit Short"),
         }
-
-        # Default: Entry Long and Exit Long enabled
-        self._ind_v2_signal_types["entry_long"].setChecked(True)
-        self._ind_v2_signal_types["exit_long"].setChecked(True)
-
-        for signal_type, checkbox in self._ind_v2_signal_types.items():
-            signal_checkbox_layout.addWidget(checkbox)
-
-        signal_checkbox_layout.addStretch()
-        signal_layout.addLayout(signal_checkbox_layout)
+        for cb in self._ind_v2_signal_types.values():
+            cb.setChecked(True)  # Vorgabe: alle aktiv
+            signal_layout.addWidget(cb)
+        signal_layout.addStretch()
         layout.addWidget(signal_group)
 
-        # ===== Indicator Selection Group =====
-        indicator_group = QGroupBox("Select Indicators to Test (Stage 2)")
-        indicator_layout = QVBoxLayout(indicator_group)
+        # ===== Indicator Parameter Optimization Ranges (Regime-Style 52 Col) =====
+        params_group = QGroupBox("Indicator Parameter Optimization Ranges")
+        params_layout = QVBoxLayout(params_group)
 
-        # Info about Stage 2 indicators
-        stage_info = QLabel("Stage 2 Indicators: RSI, MACD, STOCH, BB, ATR, EMA, CCI (7 total)")
-        stage_info.setStyleSheet("color: #555; font-weight: bold;")
-        indicator_layout.addWidget(stage_info)
+        info = QLabel(
+            "Spalten-Layout wie Regime-Setup: Indicator/Type + (Param Name, Value, Min, Max, Step) × 10."
+        )
+        info.setStyleSheet("color: #888; font-style: italic;")
+        params_layout.addWidget(info)
 
-        # 7 indicator checkboxes in 2 rows
-        indicators_grid = QHBoxLayout()
-        self._ind_v2_indicator_checkboxes = {
-            "RSI": QCheckBox("RSI (Momentum)"),
-            "MACD": QCheckBox("MACD (Trend-Momentum)"),
-            "STOCH": QCheckBox("Stochastic (Mean-Reversion)"),
-            "BB": QCheckBox("Bollinger Bands (Volatility)"),
-            "ATR": QCheckBox("ATR (Trailing Stops)"),
-            "EMA": QCheckBox("EMA (Trend-Following)"),
-            "CCI": QCheckBox("CCI (Overbought/Oversold)"),
-        }
+        self._ind_v2_params_table = QTableWidget()
+        self._ind_v2_params_table.setColumnCount(52)
+        headers = ["Indicator", "Type"]
+        for i in range(1, 11):
+            headers.extend(
+                [
+                    f"Param{i} Name",
+                    f"Param{i} Value",
+                    f"Param{i} Min",
+                    f"Param{i} Max",
+                    f"Param{i} Step",
+                ]
+            )
+        self._ind_v2_params_table.setHorizontalHeaderLabels(headers)
 
-        # Default: Select RSI, MACD, ATR (most common for entries/exits)
-        self._ind_v2_indicator_checkboxes["RSI"].setChecked(True)
-        self._ind_v2_indicator_checkboxes["MACD"].setChecked(True)
-        self._ind_v2_indicator_checkboxes["ATR"].setChecked(True)
+        header_view = self._ind_v2_params_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        for col in range(2, 52):
+            header_view.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        self._ind_v2_params_table.setAlternatingRowColors(True)
 
-        # Add checkboxes to layout (2 columns)
-        col1 = QVBoxLayout()
-        col2 = QVBoxLayout()
+        params_layout.addWidget(self._ind_v2_params_table)
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group, stretch=2)
 
-        for idx, (ind_name, checkbox) in enumerate(self._ind_v2_indicator_checkboxes.items()):
-            checkbox.stateChanged.connect(self._on_indicator_v2_selection_changed)
-            if idx < 4:
-                col1.addWidget(checkbox)
-            else:
-                col2.addWidget(checkbox)
+        # ===== Buttons =====
+        btn_layout = QHBoxLayout()
 
-        col1.addStretch()
-        col2.addStretch()
-        indicators_grid.addLayout(col1)
-        indicators_grid.addLayout(col2)
+        self._ind_v2_import_btn = QPushButton(get_icon("folder_open"), "Load Indicator Config (JSON)")
+        self._ind_v2_import_btn.clicked.connect(self._on_indicator_v2_import)
+        btn_layout.addWidget(self._ind_v2_import_btn)
 
-        indicator_layout.addLayout(indicators_grid)
-        layout.addWidget(indicator_group)
+        reload_btn = QPushButton(get_icon("refresh"), "Reload")
+        reload_btn.clicked.connect(self._populate_indicator_setup_table)
+        btn_layout.addWidget(reload_btn)
 
-        # ===== Parameter Ranges Group =====
-        param_group = QGroupBox("Parameter Ranges (Dynamic)")
-        param_layout = QVBoxLayout(param_group)
+        btn_layout.addStretch()
 
-        param_info = QLabel("Select indicators above to configure their optimization ranges.")
-        param_info.setStyleSheet("color: #888; font-style: italic;")
-        param_layout.addWidget(param_info)
+        self._ind_v2_apply_btn = QPushButton(get_icon("check_circle"), "Apply & Continue")
+        self._ind_v2_apply_btn.setProperty("class", "success")
+        self._ind_v2_apply_btn.clicked.connect(self._on_indicator_v2_apply)
+        btn_layout.addWidget(self._ind_v2_apply_btn)
 
-        # Scrollable area for parameter widgets
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(300)
+        layout.addLayout(btn_layout)
 
-        param_widget = QWidget()
-        self._ind_v2_param_layout = QFormLayout(param_widget)
-        scroll.setWidget(param_widget)
-
-        param_layout.addWidget(scroll)
-        layout.addWidget(param_group)
-
-        # Initialize state
-        self._regime_bar_indices = {}
-        self._optimized_regime_config = None
-        self._ind_v2_param_widgets = {}
-
-        # Initial parameter range update
-        self._update_indicator_v2_parameter_ranges()
+        # State
+        self._ind_v2_indicator_config = None
+        self._ind_v2_indicator_config_path = None
 
         layout.addStretch()
 
-    def _on_indicator_v2_regime_changed(self, regime: str) -> None:
-        """Handle regime selection change.
+    # ------------------------------------------------------------------ UI Actions
+    def _on_indicator_v2_import(self) -> None:
+        """Import indicator config JSON (Indicators only)."""
+        project_root = Path(__file__).parents[4]
+        default_dir = project_root / "03_JSON" / "Trading_Indicatorsets"
+        default_dir.mkdir(parents=True, exist_ok=True)
 
-        Loads bar indices for the selected regime from optimized_regime_*.json.
-
-        Args:
-            regime: Selected regime name (BULL, BEAR, SIDEWAYS)
-        """
-        logger.info(f"Stage 2: Regime changed to {regime}")
-
-        # Try to load bar indices from optimized_regime_*.json
-        self._load_regime_bar_indices(regime)
-
-        # Update UI info
-        if regime in self._regime_bar_indices:
-            bar_count = len(self._regime_bar_indices[regime])
-            self._ind_v2_regime_info.setText(
-                f"{regime}: {bar_count} bars available for optimization"
-            )
-            self._ind_v2_regime_info.setStyleSheet("color: #22c55e; font-weight: bold;")
-        else:
-            self._ind_v2_regime_info.setText(
-                f"{regime}: No regime config loaded (load from Stage 1 results)"
-            )
-            self._ind_v2_regime_info.setStyleSheet("color: #ef4444; font-style: italic;")
-
-    def _load_regime_bar_indices(self, regime: str) -> None:
-        """Load bar indices for regime from optimized_regime_*.json.
-
-        Searches for file:
-        - 03_JSON/Entry_Analyzer/Regime/STUFE_1_Regime/optimized_regime_{symbol}_{timeframe}.json
-
-        Args:
-            regime: Regime name (BULL, BEAR, SIDEWAYS)
-        """
-        try:
-            # Build path to optimized_regime_*.json
-            project_root = Path(__file__).parents[4]  # Go up to project root
-            regime_file = (
-                project_root
-                / "03_JSON"
-                / "Entry_Analyzer"
-                / "Regime"
-                / "STUFE_1_Regime"
-                / f"optimized_regime_{self._symbol}_{self._timeframe}.json"
-            )
-
-            if not regime_file.exists():
-                logger.warning(f"Regime config not found: {regime_file}")
-                return
-
-            # Load regime config
-            with open(regime_file, "r", encoding="utf-8") as f:
-                self._optimized_regime_config = json.load(f)
-
-            # Extract bar indices for each regime
-            regimes = self._optimized_regime_config.get("regimes", [])
-            for regime_data in regimes:
-                regime_name = regime_data.get("name")
-                periods = regime_data.get("periods", [])
-
-                # Collect all bar indices for this regime
-                bar_indices = []
-                for period in periods:
-                    start_idx = period.get("start_index", 0)
-                    end_idx = period.get("end_index", 0)
-                    bar_indices.extend(range(start_idx, end_idx + 1))
-
-                self._regime_bar_indices[regime_name] = sorted(set(bar_indices))
-
-            logger.info(f"Loaded regime config with {len(self._regime_bar_indices)} regimes")
-            logger.debug(
-                f"Regime bar counts: {[(r, len(idxs)) for r, idxs in self._regime_bar_indices.items()]}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to load regime config: {e}", exc_info=True)
-            self._regime_bar_indices = {}
-            self._optimized_regime_config = None
-
-    def _on_indicator_v2_selection_changed(self) -> None:
-        """Handle indicator selection change.
-
-        Updates parameter range widgets based on selected indicators.
-        """
-        self._update_indicator_v2_parameter_ranges()
-
-    def _update_indicator_v2_parameter_ranges(self) -> None:
-        """Dynamically update parameter range widgets for selected indicators.
-
-        Creates Min/Max/Step spinboxes for each parameter of selected indicators.
-        Follows the parameter configurations from Stage 2 (7 indicators).
-        """
-        # Clear existing widgets
-        while self._ind_v2_param_layout.count():
-            item = self._ind_v2_param_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
-
-        self._ind_v2_param_widgets.clear()
-
-        # Get selected indicators
-        selected_indicators = [
-            ind_id for ind_id, cb in self._ind_v2_indicator_checkboxes.items() if cb.isChecked()
-        ]
-
-        if not selected_indicators:
-            self._ind_v2_param_layout.addRow(QLabel("No indicators selected"))
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Indicator Config (v2)",
+            str(default_dir),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
             return
 
-        # Define parameter configurations for Stage 2 indicators
-        # Format: (param_name, min, max, default_min, default_max, step)
-        param_configs = {
-            "RSI": [("period", 5, 50, 9, 21, 2)],
-            "MACD": [
-                ("fast", 5, 30, 8, 16, 2),
-                ("slow", 15, 50, 20, 30, 5),
-                ("signal", 5, 20, 7, 11, 2),
-            ],
-            "STOCH": [
-                ("k_period", 5, 30, 10, 18, 2),
-                ("d_period", 3, 10, 3, 5, 1),
-            ],
-            "BB": [
-                ("period", 10, 40, 20, 30, 5),
-                ("std", 1.5, 3.0, 2.0, 2.5, 0.5),
-            ],
-            "ATR": [
-                ("period", 5, 30, 10, 20, 2),
-                ("multiplier", 1.0, 4.0, 2.0, 3.0, 0.5),
-            ],
-            "EMA": [("period", 10, 200, 20, 100, 10)],
-            "CCI": [("period", 10, 40, 15, 25, 5)],
-        }
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed", f"Could not load JSON:\n{e}")
+            logger.error("Indicator config load failed", exc_info=True)
+            return
 
-        # Create parameter widgets for selected indicators
-        for indicator_id in selected_indicators:
-            if indicator_id not in param_configs:
+        # Validate against indicator_sets schema
+        try:
+            validator = SchemaValidator()
+            validator.validate_data(config, schema_name="indicator_sets")
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Schema validation failed",
+                f"Indicator config is invalid:\n{e}",
+            )
+            logger.error("Indicator config schema validation failed", exc_info=True)
+            return
+
+        self._ind_v2_indicator_config = config
+        self._ind_v2_indicator_config_path = Path(file_path)
+        self._populate_indicator_setup_table()
+
+    def _on_indicator_v2_apply(self) -> None:
+        """Validate config and keep ranges ready for optimization."""
+        if not self._ind_v2_indicator_config:
+            QMessageBox.warning(
+                self, "No config", "Please load an Indicator Config JSON before continuing."
+            )
+            return
+
+        param_ranges = self._get_indicator_param_ranges()
+        if not param_ranges:
+            QMessageBox.warning(
+                self,
+                "No parameters",
+                "No parameter ranges found. Please fill the table.",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Indicator Setup",
+            "Indicator parameters recorded. Continue with Optimization tab.",
+        )
+
+    # ------------------------------------------------------------------ Helpers
+    def _populate_indicator_setup_table(self) -> None:
+        """Populate parameter table from loaded indicator config."""
+        table = self._ind_v2_params_table
+        table.setRowCount(0)
+
+        if not self._ind_v2_indicator_config:
+            return
+
+        indicators = self._ind_v2_indicator_config.get("indicators") or []
+        if not indicators and "optimization_results" in self._ind_v2_indicator_config:
+            # allow Regime-like v2 structure
+            opt = self._ind_v2_indicator_config.get("optimization_results", [])
+            if opt:
+                indicators = opt[0].get("indicators", [])
+
+        for row_idx, indicator in enumerate(indicators):
+            table.insertRow(row_idx)
+            name = indicator.get("name") or indicator.get("id") or indicator.get("indicator") or "UNKNOWN"
+            ind_type = indicator.get("type") or indicator.get("category") or ""
+
+            table.setItem(row_idx, 0, QTableWidgetItem(str(name)))
+            table.setItem(row_idx, 1, QTableWidgetItem(str(ind_type)))
+
+            params = indicator.get("params") or []
+            # cap to 10
+            params = params[:10]
+            for i, param in enumerate(params, start=1):
+                base_col = 2 + (i - 1) * 5
+                table.setItem(row_idx, base_col, QTableWidgetItem(str(param.get("name", ""))))
+                table.setItem(
+                    row_idx, base_col + 1, QTableWidgetItem(str(param.get("value", "")))
+                )
+                rng = param.get("range", {})
+                table.setItem(
+                    row_idx, base_col + 2, QTableWidgetItem(str(rng.get("min", "")))
+                )
+                table.setItem(
+                    row_idx, base_col + 3, QTableWidgetItem(str(rng.get("max", "")))
+                )
+                table.setItem(
+                    row_idx, base_col + 4, QTableWidgetItem(str(rng.get("step", "")))
+                )
+
+    def _get_indicator_param_ranges(self) -> dict:
+        """Read parameter ranges from table -> dict structure for worker."""
+        ranges: dict[str, dict] = {}
+        table = self._ind_v2_params_table
+        rows = table.rowCount()
+        for row in range(rows):
+            ind_name_item = table.item(row, 0)
+            if not ind_name_item:
                 continue
+            ind_name = ind_name_item.text().strip()
+            if not ind_name:
+                continue
+            ranges[ind_name] = {}
 
-            # Add indicator header
-            header_label = QLabel(f"<b>{indicator_id}</b>")
-            self._ind_v2_param_layout.addRow(header_label)
+            for i in range(1, 11):
+                base_col = 2 + (i - 1) * 5
+                name_item = table.item(row, base_col)
+                if not name_item:
+                    continue
+                param_name = name_item.text().strip()
+                if not param_name:
+                    continue
 
-            self._ind_v2_param_widgets[indicator_id] = {}
+                def _num(item):
+                    try:
+                        return float(item.text())
+                    except Exception:
+                        return None
 
-            for param_config in param_configs[indicator_id]:
-                param_name, abs_min, abs_max, default_min, default_max, step = param_config
+                val_item = table.item(row, base_col + 1)
+                min_item = table.item(row, base_col + 2)
+                max_item = table.item(row, base_col + 3)
+                step_item = table.item(row, base_col + 4)
 
-                # Create horizontal layout for Min/Max/Step
-                param_layout = QHBoxLayout()
-
-                # Determine if float or int parameter
-                is_float = isinstance(step, float)
-
-                # Min spinbox
-                if is_float:
-                    min_spin = QDoubleSpinBox()
-                    min_spin.setDecimals(2)
-                else:
-                    min_spin = QSpinBox()
-
-                min_spin.setMinimum(abs_min)
-                min_spin.setMaximum(abs_max)
-                min_spin.setValue(default_min)
-                min_spin.setSingleStep(step)
-                min_spin.setPrefix("Min: ")
-                param_layout.addWidget(min_spin)
-
-                # Max spinbox
-                if is_float:
-                    max_spin = QDoubleSpinBox()
-                    max_spin.setDecimals(2)
-                else:
-                    max_spin = QSpinBox()
-
-                max_spin.setMinimum(abs_min)
-                max_spin.setMaximum(abs_max)
-                max_spin.setValue(default_max)
-                max_spin.setSingleStep(step)
-                max_spin.setPrefix("Max: ")
-                param_layout.addWidget(max_spin)
-
-                # Step spinbox
-                if is_float:
-                    step_spin = QDoubleSpinBox()
-                    step_spin.setDecimals(2)
-                else:
-                    step_spin = QSpinBox()
-
-                step_spin.setMinimum(step)
-                step_spin.setMaximum(abs_max - abs_min)
-                step_spin.setValue(step)
-                step_spin.setSingleStep(step)
-                step_spin.setPrefix("Step: ")
-                param_layout.addWidget(step_spin)
-
-                # Store widgets
-                self._ind_v2_param_widgets[indicator_id][param_name] = {
-                    "min": min_spin,
-                    "max": max_spin,
-                    "step": step_spin,
+                ranges[ind_name][param_name] = {
+                    "value": _num(val_item) if val_item else None,
+                    "min": _num(min_item) if min_item else None,
+                    "max": _num(max_item) if max_item else None,
+                    "step": _num(step_item) if step_item else None,
                 }
 
-                # Add to form
-                self._ind_v2_param_layout.addRow(f"{param_name}:", param_layout)
+        # Remove empty indicators
+        ranges = {k: v for k, v in ranges.items() if v}
+        return ranges
