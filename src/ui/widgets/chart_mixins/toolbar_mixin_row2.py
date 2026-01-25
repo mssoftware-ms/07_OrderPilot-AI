@@ -42,9 +42,11 @@ class ToolbarMixinRow2:
 
     def build_toolbar_row2(self, toolbar: QToolBar) -> None:
         """Build toolbar row 2."""
+        print(f"[TOOLBAR] build_toolbar_row2 called, parent type: {type(self.parent).__name__}")
         self.add_live_stream_toggle(toolbar)
         toolbar.addSeparator()
         self.add_regime_badge_to_toolbar(toolbar)  # Phase 2.2: Regime Badge
+        self.add_regime_filter_to_toolbar(toolbar)  # Phase 4: Regime Filter Dropdown
         toolbar.addSeparator()
         self.add_chart_marking_button(toolbar)
         # Levels + Export buttons are in ToolbarMixinFeatures
@@ -74,6 +76,34 @@ class ToolbarMixinRow2:
         self.parent.regime_button.clicked.connect(self.on_regime_button_clicked)
         toolbar.addWidget(self.parent.regime_button)
         logger.debug("Regime button added to toolbar (Issue #18)")
+
+    def add_regime_filter_to_toolbar(self, toolbar: QToolBar) -> None:
+        """Add regime filter dropdown to toolbar (Phase 4: Regime Filtering).
+
+        Creates a checkable combobox allowing users to filter which regime lines
+        are displayed on the chart.
+        """
+        print(f"[TOOLBAR] add_regime_filter_to_toolbar called, parent={type(self.parent).__name__}")
+        # Check if the parent has the create_regime_filter_widget method (from EntryAnalyzerMixin)
+        has_method = hasattr(self.parent, 'create_regime_filter_widget')
+        print(f"[TOOLBAR] hasattr(parent, 'create_regime_filter_widget') = {has_method}")
+        if has_method:
+            try:
+                print("[TOOLBAR] Calling create_regime_filter_widget...")
+                filter_widget = self.parent.create_regime_filter_widget()
+                print(f"[TOOLBAR] Widget created: {filter_widget}")
+                toolbar.addWidget(filter_widget)
+                logger.info("✓ Regime filter dropdown added to toolbar (Phase 4)")
+                print("[TOOLBAR] ✓ Filter widget added to toolbar")
+            except Exception as e:
+                logger.error(f"Failed to create regime filter widget: {e}", exc_info=True)
+                print(f"[TOOLBAR] ERROR: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            logger.warning("Parent has no create_regime_filter_widget method - EntryAnalyzerMixin not loaded?")
+            print("[TOOLBAR] WARNING: Parent has no create_regime_filter_widget method!")
+            print(f"[TOOLBAR] Parent MRO: {type(self.parent).__mro__}")
 
     def on_regime_button_clicked(self) -> None:
         """Handle regime button click - ermittle aktuelles Regime (Issue #18)."""

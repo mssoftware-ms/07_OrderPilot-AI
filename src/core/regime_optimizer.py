@@ -1,12 +1,14 @@
 """Regime Optimizer for Stage 1: Regime Detection Parameter Optimization.
 
 This module implements Optuna-based optimization for regime detection parameters
-using ADX, SMA, RSI, and Bollinger Bands indicators.
+using ADX, DI+, DI-, RSI, and ATR indicators (matching original regime_engine.py logic).
 
-Regime Classification Logic:
-- BULL: ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow
-- BEAR: ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow
-- SIDEWAYS: ADX < threshold AND BB_Width < percentile AND RSI between low-high
+Regime Classification Logic (ADX/DI-based like original):
+- PRIORITY 1: Strong price moves (>strong_move_pct%) override ADX
+- PRIORITY 2: Extreme moves (>extreme_move_pct%) ALWAYS override ADX
+- BULL: ADX >= trending_threshold AND (DI+ - DI-) > di_diff_threshold
+- BEAR: ADX >= trending_threshold AND (DI- - DI+) > di_diff_threshold
+- SIDEWAYS: ADX < weak_threshold
 
 Scoring (5-component RegimeScore 0-100):
 - Separability (30%): Silhouette, CH, DB cluster metrics
@@ -24,12 +26,27 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
+import numpy as np
 import optuna
 import pandas as pd
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sklearn.metrics import f1_score
+
+# Try to import talib for DI calculations
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    TALIB_AVAILABLE = False
+
+# Try to import pandas_ta as fallback
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    PANDAS_TA_AVAILABLE = False
 
 from src.core.indicators.momentum import MomentumIndicators
 from src.core.indicators.trend import TrendIndicators
@@ -88,18 +105,12 @@ class ParamRange(BaseModel):
 
 
 class ADXParamRanges(BaseModel):
-    """ADX parameter ranges."""
+    """ADX parameter ranges for trend strength and direction detection."""
 
     period: ParamRange
-    threshold: ParamRange
-
-    model_config = ConfigDict(frozen=True)
-
-
-class SMAParamRanges(BaseModel):
-    """SMA parameter ranges."""
-
-    period: ParamRange
+    trending_threshold: ParamRange  # ADX above this = trending market
+    weak_threshold: ParamRange  # ADX below this = ranging market
+    di_diff_threshold: ParamRange  # Minimum DI+ - DI- difference for direction
 
     model_config = ConfigDict(frozen=True)
 
@@ -108,30 +119,28 @@ class RSIParamRanges(BaseModel):
     """RSI parameter ranges."""
 
     period: ParamRange
-    sideways_low: ParamRange
-    sideways_high: ParamRange
+    strong_bull: ParamRange  # RSI above this confirms bullish direction
+    strong_bear: ParamRange  # RSI below this confirms bearish direction
 
     model_config = ConfigDict(frozen=True)
 
 
-class BBParamRanges(BaseModel):
-    """Bollinger Bands parameter ranges."""
+class ATRParamRanges(BaseModel):
+    """ATR parameter ranges for volatility-based moves."""
 
     period: ParamRange
-    std_dev: ParamRange
-    width_percentile: ParamRange
+    strong_move_pct: ParamRange  # Price move % to detect strong momentum
+    extreme_move_pct: ParamRange  # Price move % to override ADX
 
     model_config = ConfigDict(frozen=True)
 
 
 class AllParamRanges(BaseModel):
-    """All parameter ranges for Stage 1."""
+    """All parameter ranges for Stage 1 (ADX/DI-based regime detection)."""
 
     adx: ADXParamRanges
-    sma_fast: SMAParamRanges
-    sma_slow: SMAParamRanges
     rsi: RSIParamRanges
-    bb: BBParamRanges
+    atr: ATRParamRanges
 
     model_config = ConfigDict(frozen=True)
 
@@ -183,18 +192,23 @@ class OptimizationConfig(BaseModel):
 
 
 class RegimeParams(BaseModel):
-    """Optimized regime detection parameters."""
+    """Optimized regime detection parameters (ADX/DI-based like original)."""
 
+    # ADX parameters
     adx_period: int
-    adx_threshold: float
-    sma_fast_period: int
-    sma_slow_period: int
+    adx_trending_threshold: float  # ADX >= this = trending market
+    adx_weak_threshold: float  # ADX < this = ranging/sideways market
+    di_diff_threshold: float  # Minimum |DI+ - DI-| for direction confirmation
+
+    # RSI parameters (for direction confirmation)
     rsi_period: int
-    rsi_sideways_low: int
-    rsi_sideways_high: int
-    bb_period: int
-    bb_std_dev: float
-    bb_width_percentile: float
+    rsi_strong_bull: float  # RSI > this confirms bullish direction
+    rsi_strong_bear: float  # RSI < this confirms bearish direction
+
+    # ATR/Momentum parameters (for strong move detection)
+    atr_period: int
+    strong_move_pct: float  # Price move % to detect strong momentum
+    extreme_move_pct: float  # Price move % to override ADX (fast crashes/rallies)
 
     model_config = ConfigDict(frozen=True)
 
@@ -366,7 +380,7 @@ class RegimeOptimizer:
         return study
 
     def _suggest_params(self, trial: optuna.Trial) -> RegimeParams:
-        """Suggest parameters for trial.
+        """Suggest parameters for trial (ADX/DI-based like original regime_engine).
 
         Args:
             trial: Optuna trial
@@ -374,96 +388,108 @@ class RegimeOptimizer:
         Returns:
             RegimeParams with suggested values
         """
-        # ADX
+        # ADX period
         adx_period = trial.suggest_int(
             "adx_period",
             int(self.param_ranges.adx.period.min),
             int(self.param_ranges.adx.period.max),
             step=int(self.param_ranges.adx.period.step),
         )
-        adx_threshold = trial.suggest_float(
-            "adx_threshold",
-            float(self.param_ranges.adx.threshold.min),
-            float(self.param_ranges.adx.threshold.max),
-            step=float(self.param_ranges.adx.threshold.step),
+
+        # ADX trending threshold (above = trending market)
+        adx_trending_threshold = trial.suggest_float(
+            "adx_trending_threshold",
+            float(self.param_ranges.adx.trending_threshold.min),
+            float(self.param_ranges.adx.trending_threshold.max),
+            step=float(self.param_ranges.adx.trending_threshold.step),
         )
 
-        # SMA Fast
-        sma_fast_period = trial.suggest_int(
-            "sma_fast_period",
-            int(self.param_ranges.sma_fast.period.min),
-            int(self.param_ranges.sma_fast.period.max),
-            step=int(self.param_ranges.sma_fast.period.step),
+        # ADX weak threshold (below = ranging market)
+        adx_weak_threshold = trial.suggest_float(
+            "adx_weak_threshold",
+            float(self.param_ranges.adx.weak_threshold.min),
+            min(float(self.param_ranges.adx.weak_threshold.max), adx_trending_threshold - 1),
+            step=float(self.param_ranges.adx.weak_threshold.step),
         )
 
-        # SMA Slow (must be > fast)
-        sma_slow_min = max(int(self.param_ranges.sma_slow.period.min), sma_fast_period + 1)
-        sma_slow_period = trial.suggest_int(
-            "sma_slow_period",
-            sma_slow_min,
-            int(self.param_ranges.sma_slow.period.max),
-            step=int(self.param_ranges.sma_slow.period.step),
+        # DI difference threshold (minimum |DI+ - DI-| for direction)
+        di_diff_threshold = trial.suggest_float(
+            "di_diff_threshold",
+            float(self.param_ranges.adx.di_diff_threshold.min),
+            float(self.param_ranges.adx.di_diff_threshold.max),
+            step=float(self.param_ranges.adx.di_diff_threshold.step),
         )
 
-        # RSI
+        # RSI period
         rsi_period = trial.suggest_int(
             "rsi_period",
             int(self.param_ranges.rsi.period.min),
             int(self.param_ranges.rsi.period.max),
             step=int(self.param_ranges.rsi.period.step),
         )
-        rsi_sideways_low = trial.suggest_int(
-            "rsi_sideways_low",
-            int(self.param_ranges.rsi.sideways_low.min),
-            int(self.param_ranges.rsi.sideways_low.max),
-            step=int(self.param_ranges.rsi.sideways_low.step),
-        )
-        rsi_sideways_high = trial.suggest_int(
-            "rsi_sideways_high",
-            int(self.param_ranges.rsi.sideways_high.min),
-            int(self.param_ranges.rsi.sideways_high.max),
-            step=int(self.param_ranges.rsi.sideways_high.step),
+
+        # RSI strong bull threshold (RSI > this confirms bull)
+        rsi_strong_bull = trial.suggest_float(
+            "rsi_strong_bull",
+            float(self.param_ranges.rsi.strong_bull.min),
+            float(self.param_ranges.rsi.strong_bull.max),
+            step=float(self.param_ranges.rsi.strong_bull.step),
         )
 
-        # Ensure RSI high > low
-        if rsi_sideways_high <= rsi_sideways_low:
-            rsi_sideways_high = rsi_sideways_low + 5
+        # RSI strong bear threshold (RSI < this confirms bear)
+        rsi_strong_bear = trial.suggest_float(
+            "rsi_strong_bear",
+            float(self.param_ranges.rsi.strong_bear.min),
+            min(float(self.param_ranges.rsi.strong_bear.max), rsi_strong_bull - 10),
+            step=float(self.param_ranges.rsi.strong_bear.step),
+        )
 
-        # Bollinger Bands
-        bb_period = trial.suggest_int(
-            "bb_period",
-            int(self.param_ranges.bb.period.min),
-            int(self.param_ranges.bb.period.max),
-            step=int(self.param_ranges.bb.period.step),
+        # ATR period for momentum detection
+        atr_period = trial.suggest_int(
+            "atr_period",
+            int(self.param_ranges.atr.period.min),
+            int(self.param_ranges.atr.period.max),
+            step=int(self.param_ranges.atr.period.step),
         )
-        bb_std_dev = trial.suggest_float(
-            "bb_std_dev",
-            float(self.param_ranges.bb.std_dev.min),
-            float(self.param_ranges.bb.std_dev.max),
-            step=float(self.param_ranges.bb.std_dev.step),
+
+        # Strong move percentage threshold
+        strong_move_pct = trial.suggest_float(
+            "strong_move_pct",
+            float(self.param_ranges.atr.strong_move_pct.min),
+            float(self.param_ranges.atr.strong_move_pct.max),
+            step=float(self.param_ranges.atr.strong_move_pct.step),
         )
-        bb_width_percentile = trial.suggest_float(
-            "bb_width_percentile",
-            float(self.param_ranges.bb.width_percentile.min),
-            float(self.param_ranges.bb.width_percentile.max),
-            step=float(self.param_ranges.bb.width_percentile.step),
+
+        # Extreme move percentage threshold (overrides ADX)
+        extreme_move_pct = trial.suggest_float(
+            "extreme_move_pct",
+            max(float(self.param_ranges.atr.extreme_move_pct.min), strong_move_pct + 0.5),
+            float(self.param_ranges.atr.extreme_move_pct.max),
+            step=float(self.param_ranges.atr.extreme_move_pct.step),
         )
 
         return RegimeParams(
             adx_period=adx_period,
-            adx_threshold=adx_threshold,
-            sma_fast_period=sma_fast_period,
-            sma_slow_period=sma_slow_period,
+            adx_trending_threshold=adx_trending_threshold,
+            adx_weak_threshold=adx_weak_threshold,
+            di_diff_threshold=di_diff_threshold,
             rsi_period=rsi_period,
-            rsi_sideways_low=rsi_sideways_low,
-            rsi_sideways_high=rsi_sideways_high,
-            bb_period=bb_period,
-            bb_std_dev=bb_std_dev,
-            bb_width_percentile=bb_width_percentile,
+            rsi_strong_bull=rsi_strong_bull,
+            rsi_strong_bear=rsi_strong_bear,
+            atr_period=atr_period,
+            strong_move_pct=strong_move_pct,
+            extreme_move_pct=extreme_move_pct,
         )
 
     def _calculate_indicators(self, params: RegimeParams) -> dict[str, pd.Series]:
-        """Calculate all required indicators.
+        """Calculate all required indicators for ADX/DI-based regime detection.
+
+        Calculates:
+        - ADX (trend strength)
+        - DI+ and DI- (directional indicators for trend direction)
+        - RSI (momentum confirmation)
+        - ATR (volatility for strong move detection)
+        - Price change % (for momentum override)
 
         Args:
             params: Regime parameters
@@ -472,48 +498,70 @@ class RegimeOptimizer:
             Dictionary of indicator values
         """
         indicators = {}
+        high = self.data["high"]
+        low = self.data["low"]
+        close = self.data["close"]
 
-        # ADX
-        adx_result = TrendIndicators.calculate_adx(
-            self.data, {"period": params.adx_period}, use_talib=True
-        )
-        indicators["adx"] = adx_result.values
+        # Calculate ADX, DI+, DI- using talib or pandas_ta
+        if TALIB_AVAILABLE:
+            indicators["adx"] = pd.Series(
+                talib.ADX(high, low, close, timeperiod=params.adx_period),
+                index=self.data.index
+            )
+            indicators["plus_di"] = pd.Series(
+                talib.PLUS_DI(high, low, close, timeperiod=params.adx_period),
+                index=self.data.index
+            )
+            indicators["minus_di"] = pd.Series(
+                talib.MINUS_DI(high, low, close, timeperiod=params.adx_period),
+                index=self.data.index
+            )
+        elif PANDAS_TA_AVAILABLE:
+            adx_df = ta.adx(high, low, close, length=params.adx_period)
+            # pandas_ta returns columns like ADX_14, DMP_14, DMN_14
+            adx_col = [c for c in adx_df.columns if c.startswith("ADX_")][0]
+            dmp_col = [c for c in adx_df.columns if c.startswith("DMP_")][0]
+            dmn_col = [c for c in adx_df.columns if c.startswith("DMN_")][0]
+            indicators["adx"] = adx_df[adx_col]
+            indicators["plus_di"] = adx_df[dmp_col]
+            indicators["minus_di"] = adx_df[dmn_col]
+        else:
+            # Fallback: simple ADX approximation (not recommended)
+            logger.warning("Neither talib nor pandas_ta available. Using simplified ADX.")
+            indicators["adx"] = pd.Series(25.0, index=self.data.index)  # Neutral
+            indicators["plus_di"] = pd.Series(25.0, index=self.data.index)
+            indicators["minus_di"] = pd.Series(25.0, index=self.data.index)
 
-        # SMA Fast
-        sma_fast_result = TrendIndicators.calculate_sma(
-            self.data, {"period": params.sma_fast_period, "price": "close"}, use_talib=True
-        )
-        indicators["sma_fast"] = sma_fast_result.values
-
-        # SMA Slow
-        sma_slow_result = TrendIndicators.calculate_sma(
-            self.data, {"period": params.sma_slow_period, "price": "close"}, use_talib=True
-        )
-        indicators["sma_slow"] = sma_slow_result.values
-
-        # RSI
+        # RSI for direction confirmation
         rsi_result = MomentumIndicators.calculate_rsi(
             self.data, {"period": params.rsi_period}, use_talib=True
         )
         indicators["rsi"] = rsi_result.values
 
-        # Bollinger Bands
-        bb_result = VolatilityIndicators.calculate_bb(
-            self.data, {"period": params.bb_period, "std_dev": params.bb_std_dev}, use_talib=True
+        # ATR for volatility-based strong move detection
+        atr_result = VolatilityIndicators.calculate_atr(
+            self.data, {"period": params.atr_period}, use_talib=True
         )
-        indicators["bb_width"] = bb_result.values["bandwidth"]
+        indicators["atr"] = atr_result.values
+
+        # Price change percentage over lookback (for strong move detection)
+        lookback = params.atr_period
+        indicators["price_change_pct"] = (close - close.shift(lookback)) / close.shift(lookback) * 100
 
         return indicators
 
     def _classify_regimes(
         self, params: RegimeParams, indicators: dict[str, pd.Series]
     ) -> pd.Series:
-        """Classify regimes based on parameters and indicators.
+        """Classify regimes using ADX/DI-based logic (like original regime_engine.py).
 
-        Classification Logic:
-        - BULL: ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow
-        - BEAR: ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow
-        - SIDEWAYS: ADX < threshold AND BB_Width < percentile AND RSI between low-high
+        Classification Logic (Priority-based):
+        1. PRIORITY 1: Extreme price moves (>extreme_move_pct%) ALWAYS override ADX
+        2. PRIORITY 2: Strong price moves (>strong_move_pct%) override weak ADX
+        3. PRIORITY 3: ADX/DI-based classification:
+           - BULL: ADX >= trending AND (DI+ - DI-) > di_diff (or RSI > strong_bull)
+           - BEAR: ADX >= trending AND (DI- - DI+) > di_diff (or RSI < strong_bear)
+           - SIDEWAYS: ADX < weak_threshold
 
         Args:
             params: Regime parameters
@@ -522,35 +570,58 @@ class RegimeOptimizer:
         Returns:
             Series of regime classifications
         """
-        close = self.data["close"]
         adx = indicators["adx"]
-        sma_fast = indicators["sma_fast"]
-        sma_slow = indicators["sma_slow"]
+        plus_di = indicators["plus_di"]
+        minus_di = indicators["minus_di"]
         rsi = indicators["rsi"]
-        bb_width = indicators["bb_width"]
+        price_change_pct = indicators["price_change_pct"]
 
-        # Calculate BB width percentile threshold
-        bb_width_threshold = bb_width.quantile(params.bb_width_percentile / 100.0)
+        # Calculate DI difference
+        di_diff = plus_di - minus_di
 
-        # Initialize regime array
+        # Initialize regime array with SIDEWAYS as default
         regimes = pd.Series(RegimeType.SIDEWAYS.value, index=self.data.index)
 
-        # BULL: ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow
-        bull_mask = (adx > params.adx_threshold) & (close > sma_fast) & (sma_fast > sma_slow)
-        regimes[bull_mask] = RegimeType.BULL.value
-
-        # BEAR: ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow
-        bear_mask = (adx > params.adx_threshold) & (close < sma_fast) & (sma_fast < sma_slow)
-        regimes[bear_mask] = RegimeType.BEAR.value
-
-        # SIDEWAYS: ADX < threshold AND BB_Width < percentile AND RSI between low-high
-        sideways_mask = (
-            (adx < params.adx_threshold)
-            & (bb_width < bb_width_threshold)
-            & (rsi >= params.rsi_sideways_low)
-            & (rsi <= params.rsi_sideways_high)
-        )
+        # ==================== PRIORITY 3: ADX/DI-based classification ====================
+        # SIDEWAYS: ADX < weak_threshold (ranging/choppy market)
+        sideways_mask = adx < params.adx_weak_threshold
         regimes[sideways_mask] = RegimeType.SIDEWAYS.value
+
+        # BULL: ADX >= trending AND DI+ > DI- by threshold
+        bull_di_mask = (adx >= params.adx_trending_threshold) & (di_diff > params.di_diff_threshold)
+        regimes[bull_di_mask] = RegimeType.BULL.value
+
+        # BEAR: ADX >= trending AND DI- > DI+ by threshold
+        bear_di_mask = (adx >= params.adx_trending_threshold) & (di_diff < -params.di_diff_threshold)
+        regimes[bear_di_mask] = RegimeType.BEAR.value
+
+        # Borderline ADX (between weak and trending): use RSI for direction
+        borderline_mask = (adx >= params.adx_weak_threshold) & (adx < params.adx_trending_threshold)
+
+        # RSI confirmation for borderline cases
+        bull_rsi_mask = borderline_mask & (rsi > params.rsi_strong_bull)
+        regimes[bull_rsi_mask] = RegimeType.BULL.value
+
+        bear_rsi_mask = borderline_mask & (rsi < params.rsi_strong_bear)
+        regimes[bear_rsi_mask] = RegimeType.BEAR.value
+
+        # ==================== PRIORITY 2: Strong price moves ====================
+        # Strong bullish move with weak ADX -> still BULL
+        strong_bull_move = (price_change_pct >= params.strong_move_pct) & (adx < params.adx_trending_threshold)
+        regimes[strong_bull_move] = RegimeType.BULL.value
+
+        # Strong bearish move with weak ADX -> still BEAR
+        strong_bear_move = (price_change_pct <= -params.strong_move_pct) & (adx < params.adx_trending_threshold)
+        regimes[strong_bear_move] = RegimeType.BEAR.value
+
+        # ==================== PRIORITY 1: Extreme price moves (ALWAYS override) ====================
+        # Extreme bullish move -> ALWAYS BULL regardless of ADX
+        extreme_bull_move = price_change_pct >= params.extreme_move_pct
+        regimes[extreme_bull_move] = RegimeType.BULL.value
+
+        # Extreme bearish move -> ALWAYS BEAR regardless of ADX
+        extreme_bear_move = price_change_pct <= -params.extreme_move_pct
+        regimes[extreme_bear_move] = RegimeType.BEAR.value
 
         return regimes
 
@@ -749,9 +820,8 @@ class RegimeOptimizer:
             # Feature lookback: Max of indicator periods, but capped to leave enough data
             max_indicator_period = max(
                 params.adx_period,
-                params.sma_slow_period,
                 params.rsi_period,
-                params.bb_period,
+                params.atr_period,
             )
             # Cap lookback to leave at least 60% of data for scoring
             max_feature_lookback = min(max_indicator_period, data_len // 4)
@@ -895,18 +965,18 @@ class RegimeOptimizer:
             if trial.value is None:
                 continue
 
-            # Extract params
+            # Extract params (ADX/DI-based parameters)
             params = RegimeParams(
                 adx_period=trial.params["adx_period"],
-                adx_threshold=trial.params["adx_threshold"],
-                sma_fast_period=trial.params["sma_fast_period"],
-                sma_slow_period=trial.params["sma_slow_period"],
+                adx_trending_threshold=trial.params["adx_trending_threshold"],
+                adx_weak_threshold=trial.params["adx_weak_threshold"],
+                di_diff_threshold=trial.params["di_diff_threshold"],
                 rsi_period=trial.params["rsi_period"],
-                rsi_sideways_low=trial.params["rsi_sideways_low"],
-                rsi_sideways_high=trial.params["rsi_sideways_high"],
-                bb_period=trial.params["bb_period"],
-                bb_std_dev=trial.params["bb_std_dev"],
-                bb_width_percentile=trial.params["bb_width_percentile"],
+                rsi_strong_bull=trial.params["rsi_strong_bull"],
+                rsi_strong_bear=trial.params["rsi_strong_bear"],
+                atr_period=trial.params["atr_period"],
+                strong_move_pct=trial.params["strong_move_pct"],
+                extreme_move_pct=trial.params["extreme_move_pct"],
             )
 
             # Recalculate metrics for this trial

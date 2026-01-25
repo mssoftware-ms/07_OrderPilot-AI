@@ -355,9 +355,9 @@ class RegimeResultsManager:
             },
             "optimized_params": params,
             "classification_logic": {
-                "bull": "ADX > threshold AND Close > SMA_Fast AND SMA_Fast > SMA_Slow",
-                "bear": "ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow",
-                "sideways": "ADX < threshold AND BB_Width < percentile AND RSI between low-high",
+                "bull": "ADX > trending_threshold AND DI+ > DI- AND (DI+ - DI-) > di_diff_threshold",
+                "bear": "ADX > trending_threshold AND DI- > DI+ AND (DI- - DI+) > di_diff_threshold",
+                "sideways": "ADX < weak_threshold (low directional strength)",
             },
         }
 
@@ -412,46 +412,27 @@ class RegimeResultsManager:
         return output_path
 
     def _build_indicators(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Build indicators list from parameters.
+        """Build indicators list from parameters (ADX/DI-based).
 
         Args:
-            params: Optimized parameters
+            params: Optimized parameters (ADX/DI-based)
 
         Returns:
             List of indicator definitions
         """
         indicators = []
 
-        # ADX
+        # ADX (includes DI+/DI- internally)
         indicators.append(
             {
                 "type": "Indicator",
                 "id": f"adx{params['adx_period']}",
                 "name": "ADX",
                 "purpose": "trend_strength",
-                "params": {"period": params["adx_period"]},
-            }
-        )
-
-        # SMA Fast
-        indicators.append(
-            {
-                "type": "Indicator",
-                "id": f"sma{params['sma_fast_period']}",
-                "name": "SMA",
-                "purpose": "trend_direction_fast",
-                "params": {"period": params["sma_fast_period"]},
-            }
-        )
-
-        # SMA Slow
-        indicators.append(
-            {
-                "type": "Indicator",
-                "id": f"sma{params['sma_slow_period']}",
-                "name": "SMA",
-                "purpose": "trend_direction_slow",
-                "params": {"period": params["sma_slow_period"]},
+                "params": {
+                    "period": params["adx_period"],
+                    "di_diff_threshold": params.get("di_diff_threshold", 5.0),
+                },
             }
         )
 
@@ -461,21 +442,26 @@ class RegimeResultsManager:
                 "type": "Indicator",
                 "id": f"rsi{params['rsi_period']}",
                 "name": "RSI",
-                "purpose": "sideways_momentum",
-                "params": {"period": params["rsi_period"]},
+                "purpose": "momentum_filter",
+                "params": {
+                    "period": params["rsi_period"],
+                    "strong_bull": params.get("rsi_strong_bull", 55.0),
+                    "strong_bear": params.get("rsi_strong_bear", 45.0),
+                },
             }
         )
 
-        # BB
+        # ATR (for move detection)
         indicators.append(
             {
                 "type": "Indicator",
-                "id": f"bb{params['bb_period']}",
-                "name": "BB",
-                "purpose": "sideways_volatility",
+                "id": f"atr{params['atr_period']}",
+                "name": "ATR",
+                "purpose": "volatility_move_detection",
                 "params": {
-                    "period": params["bb_period"],
-                    "std_dev": params["bb_std_dev"],
+                    "period": params["atr_period"],
+                    "strong_move_pct": params.get("strong_move_pct", 1.5),
+                    "extreme_move_pct": params.get("extreme_move_pct", 3.0),
                 },
             }
         )
@@ -487,24 +473,27 @@ class RegimeResultsManager:
         params: dict[str, Any],
         metrics: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """Build regimes list from parameters and metrics.
+        """Build regimes list from parameters and metrics (ADX/DI-based).
 
         Args:
-            params: Optimized parameters
+            params: Optimized parameters (ADX/DI-based)
             metrics: Performance metrics
 
         Returns:
             List of regime definitions
         """
         adx_id = f"adx{params['adx_period']}"
-        sma_fast_id = f"sma{params['sma_fast_period']}"
-        sma_slow_id = f"sma{params['sma_slow_period']}"
         rsi_id = f"rsi{params['rsi_period']}"
-        bb_id = f"bb{params['bb_period']}"
+        atr_id = f"atr{params['atr_period']}"
+
+        # Get thresholds with defaults
+        adx_trending = params.get("adx_trending_threshold", 25.0)
+        adx_weak = params.get("adx_weak_threshold", 20.0)
+        di_diff = params.get("di_diff_threshold", 5.0)
 
         regimes = []
 
-        # BULL Regime
+        # BULL Regime (ADX > trending AND DI+ > DI- AND diff > threshold)
         regimes.append(
             {
                 "type": "Regime",
@@ -518,24 +507,24 @@ class RegimeResultsManager:
                         {
                             "left": {"indicator_id": adx_id, "field": "value"},
                             "op": "gt",
-                            "right": {"value": params["adx_threshold"]},
+                            "right": {"value": adx_trending},
                         },
                         {
-                            "left": {"indicator_id": "close", "field": "close"},
+                            "left": {"indicator_id": adx_id, "field": "plus_di"},
                             "op": "gt",
-                            "right": {"indicator_id": sma_fast_id, "field": "value"},
+                            "right": {"indicator_id": adx_id, "field": "minus_di"},
                         },
                         {
-                            "left": {"indicator_id": sma_fast_id, "field": "value"},
+                            "left": {"indicator_id": adx_id, "field": "di_diff"},
                             "op": "gt",
-                            "right": {"indicator_id": sma_slow_id, "field": "value"},
+                            "right": {"value": di_diff},
                         },
                     ]
                 },
             }
         )
 
-        # BEAR Regime
+        # BEAR Regime (ADX > trending AND DI- > DI+ AND diff > threshold)
         regimes.append(
             {
                 "type": "Regime",
@@ -549,24 +538,24 @@ class RegimeResultsManager:
                         {
                             "left": {"indicator_id": adx_id, "field": "value"},
                             "op": "gt",
-                            "right": {"value": params["adx_threshold"]},
+                            "right": {"value": adx_trending},
                         },
                         {
-                            "left": {"indicator_id": "close", "field": "close"},
-                            "op": "lt",
-                            "right": {"indicator_id": sma_fast_id, "field": "value"},
+                            "left": {"indicator_id": adx_id, "field": "minus_di"},
+                            "op": "gt",
+                            "right": {"indicator_id": adx_id, "field": "plus_di"},
                         },
                         {
-                            "left": {"indicator_id": sma_fast_id, "field": "value"},
-                            "op": "lt",
-                            "right": {"indicator_id": sma_slow_id, "field": "value"},
+                            "left": {"indicator_id": adx_id, "field": "di_diff"},
+                            "op": "gt",
+                            "right": {"value": di_diff},
                         },
                     ]
                 },
             }
         )
 
-        # SIDEWAYS Regime
+        # SIDEWAYS Regime (ADX < weak threshold - low directional strength)
         regimes.append(
             {
                 "type": "Regime",
@@ -580,20 +569,7 @@ class RegimeResultsManager:
                         {
                             "left": {"indicator_id": adx_id, "field": "value"},
                             "op": "lt",
-                            "right": {"value": params["adx_threshold"]},
-                        },
-                        {
-                            "left": {"indicator_id": bb_id, "field": "width"},
-                            "op": "lt",
-                            "right": {"value": params["bb_width_percentile"]},
-                        },
-                        {
-                            "left": {"indicator_id": rsi_id, "field": "value"},
-                            "op": "between",
-                            "right": {
-                                "min": params["rsi_sideways_low"],
-                                "max": params["rsi_sideways_high"],
-                            },
+                            "right": {"value": adx_weak},
                         },
                     ]
                 },

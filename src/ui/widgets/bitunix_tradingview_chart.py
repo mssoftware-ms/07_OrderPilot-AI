@@ -35,6 +35,7 @@ from .chart_mixins import (
     LevelZonesMixin,
 )
 from .chart_mixins.bitunix_streaming_mixin import BitunixStreamingMixin
+from .chart_mixins.entry_analyzer_mixin import EntryAnalyzerMixin
 from .chart_js_template import get_chart_html_template
 from .embedded_tradingview_bridge import ChartBridge
 from .embedded_tradingview_chart_events_mixin import EmbeddedTradingViewChartEventsMixin
@@ -52,6 +53,7 @@ class BitunixTradingViewChart(
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
     ChartMarkingMixin,
     LevelZonesMixin,  # Phase 5.5: Level zones support
+    EntryAnalyzerMixin,  # Phase 4: Entry Analyzer popup + regime filter
     BotOverlayMixin,
     ToolbarMixin,
     IndicatorMixin,

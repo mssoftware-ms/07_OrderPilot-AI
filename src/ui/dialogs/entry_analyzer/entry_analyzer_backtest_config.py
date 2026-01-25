@@ -647,6 +647,44 @@ class BacktestConfigMixin:
                 logger.error(f"Fehler bei Indikator {name}: {e}")
                 indicator_values[name] = pd.Series([np.nan] * len(df))
 
+        # ===== 3b. Calculate ADX/DI components for ADX/DI-based regime detection =====
+        # Find ADX indicator config to get period
+        adx_period = 14  # Default
+        for ind in indicators_v2:
+            if ind['type'].upper() == 'ADX':
+                for p in ind.get('params', []):
+                    if p['name'] == 'period':
+                        adx_period = p['value']
+                        break
+                break
+
+        try:
+            import pandas_ta as ta
+            # Calculate DI+ and DI-
+            adx_df = ta.adx(df['high'], df['low'], df['close'], length=adx_period)
+            if adx_df is not None and not adx_df.empty:
+                # pandas_ta returns columns like ADX_14, DMP_14, DMN_14
+                di_plus_col = f'DMP_{adx_period}'
+                di_minus_col = f'DMN_{adx_period}'
+                if di_plus_col in adx_df.columns:
+                    indicator_values['PLUS_DI'] = adx_df[di_plus_col]
+                    indicator_values['MINUS_DI'] = adx_df[di_minus_col]
+                    indicator_values['DI_DIFF'] = adx_df[di_plus_col] - adx_df[di_minus_col]
+                    logger.debug(f"DI+/DI-/DI_DIFF berechnet mit Periode {adx_period}")
+        except Exception as e:
+            logger.warning(f"Could not calculate DI+/DI-: {e}")
+            indicator_values['PLUS_DI'] = pd.Series([np.nan] * len(df))
+            indicator_values['MINUS_DI'] = pd.Series([np.nan] * len(df))
+            indicator_values['DI_DIFF'] = pd.Series([np.nan] * len(df))
+
+        # ===== 3c. Calculate price change percentage for extreme move detection =====
+        try:
+            indicator_values['PRICE_CHANGE_PCT'] = df['close'].pct_change() * 100
+            logger.debug("Price change percentage berechnet")
+        except Exception as e:
+            logger.warning(f"Could not calculate price change %: {e}")
+            indicator_values['PRICE_CHANGE_PCT'] = pd.Series([np.nan] * len(df))
+
         # ===== 4. Build threshold evaluation functions =====
         def get_indicator_value(ind_name: str, idx: int) -> float:
             """Get indicator value at specific bar index."""
@@ -661,22 +699,122 @@ class BacktestConfigMixin:
             return np.nan
 
         def evaluate_regime_at(regime: dict, idx: int) -> bool:
-            """Evaluate if regime conditions are met at bar index."""
+            """Evaluate if regime conditions are met at bar index.
+
+            Supports ADX/DI-based thresholds:
+            - adx_min: ADX >= value (trend strength)
+            - adx_max: ADX < value (weak trend)
+            - di_diff_min: (DI+ - DI-) > value (for BULL) or (DI- - DI+) > value (for BEAR)
+            - rsi_strong_bull: RSI > value (bullish momentum confirmation)
+            - rsi_strong_bear: RSI < value (bearish momentum confirmation)
+            - rsi_confirm_bull: RSI > value (confirms STRONG_BULL with momentum)
+            - rsi_confirm_bear: RSI < value (confirms STRONG_BEAR with momentum)
+            - rsi_exhaustion_max: RSI < value (BULL losing momentum = reversal warning)
+            - rsi_exhaustion_min: RSI > value (BEAR losing momentum = reversal warning)
+            - extreme_move_pct: |price_change| >= value (extreme price moves)
+            """
             thresholds = regime.get('thresholds', [])
-            
+            regime_id = regime.get('id', '').upper()
+
             for thresh in thresholds:
                 name = thresh['name']
                 value = thresh['value']
-                
-                # Parse threshold name to get indicator + condition
-                # Format: adx_min, adx_max, rsi_min, rsi_max, etc.
+
+                # ===== ADX/DI-based threshold handling =====
+
+                # DI difference threshold (direction confirmation)
+                if name == 'di_diff_min':
+                    di_diff = get_indicator_value('DI_DIFF', idx)
+                    if np.isnan(di_diff):
+                        return False
+                    # For TF/TREND_FOLLOWING: absolute DI diff >= threshold (either direction)
+                    # For BULL: DI+ > DI- (positive diff)
+                    # For BEAR: DI- > DI+ (negative diff)
+                    if regime_id in ('TF', 'STRONG_TF') or 'TREND' in regime_id or 'FOLLOWING' in regime_id:
+                        # Strong trend in either direction (direction-agnostic)
+                        if abs(di_diff) < value:
+                            return False
+                    elif 'BULL' in regime_id:
+                        if di_diff < value:  # DI+ - DI- must be > threshold
+                            return False
+                    elif 'BEAR' in regime_id:
+                        if di_diff > -value:  # DI- - DI+ must be > threshold (diff < -threshold)
+                            return False
+                    else:
+                        # Unknown regime type - check absolute value
+                        if abs(di_diff) < value:
+                            return False
+                    continue
+
+                # RSI strong bull threshold
+                if name == 'rsi_strong_bull':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val < value:
+                        return False
+                    continue
+
+                # RSI strong bear threshold
+                if name == 'rsi_strong_bear':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val > value:
+                        return False
+                    continue
+
+                # RSI confirmation for bullish momentum (STRONG_BULL)
+                # RSI must be ABOVE threshold to confirm bullish momentum
+                if name == 'rsi_confirm_bull':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val < value:
+                        return False
+                    continue
+
+                # RSI confirmation for bearish momentum (STRONG_BEAR)
+                # RSI must be BELOW threshold to confirm bearish momentum
+                if name == 'rsi_confirm_bear':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val > value:
+                        return False
+                    continue
+
+                # RSI exhaustion for bullish trend (BULL_EXHAUSTION)
+                # Bullish trend but RSI BELOW threshold = losing momentum = potential reversal
+                if name == 'rsi_exhaustion_max':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val > value:
+                        return False
+                    continue
+
+                # RSI exhaustion for bearish trend (BEAR_EXHAUSTION)
+                # Bearish trend but RSI ABOVE threshold = losing momentum = potential reversal
+                if name == 'rsi_exhaustion_min':
+                    rsi_val = get_indicator_value('MOMENTUM_RSI', idx)
+                    if np.isnan(rsi_val) or rsi_val < value:
+                        return False
+                    continue
+
+                # Extreme price move percentage
+                if name == 'extreme_move_pct':
+                    price_change = get_indicator_value('PRICE_CHANGE_PCT', idx)
+                    if np.isnan(price_change):
+                        return False
+                    # For BULL: price_change >= value
+                    # For BEAR: price_change <= -value
+                    if 'BULL' in regime_id:
+                        if price_change < value:
+                            return False
+                    elif 'BEAR' in regime_id:
+                        if price_change > -value:
+                            return False
+                    continue
+
+                # ===== Standard _min/_max threshold handling =====
                 if name.endswith('_min'):
                     base = name[:-4]  # adx, rsi
                     ind_name = self._threshold_to_indicator_name(base)
                     ind_val = get_indicator_value(ind_name, idx)
                     if np.isnan(ind_val) or ind_val < value:
                         return False
-                        
+
                 elif name.endswith('_max'):
                     base = name[:-4]
                     ind_name = self._threshold_to_indicator_name(base)
@@ -684,8 +822,9 @@ class BacktestConfigMixin:
                     if np.isnan(ind_val) or ind_val >= value:
                         return False
                 else:
-                    logger.warning(f"Unbekanntes Threshold-Format: {name}")
-                    
+                    # Unknown threshold - log but don't fail
+                    logger.debug(f"Unbekanntes Threshold-Format: {name} (ignored)")
+
             return True  # All thresholds passed
 
         # ===== 5. Iterate through candles and detect regimes =====

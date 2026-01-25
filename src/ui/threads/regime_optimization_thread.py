@@ -6,20 +6,23 @@ Fully compatible with JSON v2 format.
 Features:
 - Optuna TPE-based optimization (10-100x faster than grid search)
 - 5-component RegimeScore (Separability, Coherence, Fidelity, Boundary, Coverage)
+- ADX/DI-based regime detection (matching original regime_engine.py)
 - JSON v2 format support with intelligent parameter mapping
 - Progress reporting with ETA
 - Result ranking and storage
 
-JSON v2 Parameter Mapping:
+JSON v2 Parameter Mapping (ADX/DI-based):
     Indicators:
         STRENGTH_ADX_period -> adx_period
-        TREND_FILTER_period -> sma_slow_period
         MOMENTUM_RSI_period -> rsi_period
-        VOLATILITY_ATR_period -> (used as bb_period fallback)
+        VOLATILITY_ATR_period -> atr_period
 
     Thresholds (from regimes):
-        Multiple ADX thresholds -> adx_threshold (avg)
-        Multiple RSI thresholds -> rsi_sideways_low/high (avg)
+        ADX trending threshold (BULL/BEAR) -> adx_trending_threshold
+        ADX weak threshold (SIDEWAYS) -> adx_weak_threshold
+        DI difference threshold -> di_diff_threshold
+        RSI strong bull/bear -> rsi_strong_bull/rsi_strong_bear
+        ATR move percentages -> strong_move_pct/extreme_move_pct
 """
 
 from __future__ import annotations
@@ -99,10 +102,10 @@ class RegimeOptimizationThread(QThread):
                 f"scope={self.scope}"
             )
 
-            # Import required types
+            # Import required types (ADX/DI-based)
             from src.core.regime_optimizer import (
-                AllParamRanges, ADXParamRanges, SMAParamRanges,
-                RSIParamRanges, BBParamRanges, ParamRange, OptimizationConfig
+                AllParamRanges, ADXParamRanges, RSIParamRanges,
+                ATRParamRanges, ParamRange, OptimizationConfig
             )
 
             # Convert param_grid to structured param_ranges
@@ -110,7 +113,7 @@ class RegimeOptimizationThread(QThread):
 
             # Build AllParamRanges with intelligent defaults for missing params
             param_ranges = self._build_param_ranges_with_defaults(
-                ranges_dict, ADXParamRanges, SMAParamRanges, RSIParamRanges, BBParamRanges, ParamRange
+                ranges_dict, ADXParamRanges, RSIParamRanges, ATRParamRanges, ParamRange
             )
 
             # Create Optuna config
@@ -198,21 +201,25 @@ class RegimeOptimizationThread(QThread):
             self.error.emit(error_msg)
 
     def _convert_param_grid_to_ranges_v2(self) -> Dict[str, Dict[str, Any]]:
-        """Convert JSON v2 param_grid to optimizer-compatible format with intelligent mapping.
+        """Convert JSON v2 param_grid to ADX/DI-based optimizer format.
 
         JSON v2 Format:
             {
                 "STRENGTH_ADX_period": [10, 14, 20],
-                "TREND_FILTER_period": [100, 150, 200],
+                "MOMENTUM_RSI_period": [12, 14, 16],
+                "VOLATILITY_ATR_period": [10, 14, 20],
                 "BULL_adx_min": [20, 25, 30],
-                "BEAR_adx_min": [20, 25, 30]
+                "SIDEWAYS_adx_max": [15, 18, 20]
             }
 
-        Optimizer Format:
+        Optimizer Format (ADX/DI-based):
             {
                 "adx_period": {"min": 10, "max": 20, "step": 1},
-                "sma_slow_period": {"min": 100, "max": 200, "step": 10},
-                "adx_threshold": {"min": 20, "max": 30, "step": 1}  # avg of all ADX thresholds
+                "adx_trending_threshold": {"min": 20, "max": 30, "step": 1},
+                "adx_weak_threshold": {"min": 15, "max": 20, "step": 1},
+                "di_diff_threshold": {"min": 3, "max": 10, "step": 1},
+                "rsi_period": {"min": 12, "max": 16, "step": 1},
+                ...
             }
 
         Returns:
@@ -221,15 +228,15 @@ class RegimeOptimizationThread(QThread):
         # JSON v2 -> Optimizer parameter name mapping
         INDICATOR_MAPPING = {
             "STRENGTH_ADX_period": "adx_period",
-            "TREND_FILTER_period": "sma_slow_period",
             "MOMENTUM_RSI_period": "rsi_period",
-            "VOLATILITY_ATR_period": "atr_period",  # Keep separate for now
+            "VOLATILITY_ATR_period": "atr_period",
         }
 
-        # Collect all threshold ranges for averaging
-        adx_threshold_ranges = []
-        rsi_low_ranges = []
-        rsi_high_ranges = []
+        # Collect threshold ranges
+        adx_trending_ranges = []  # BULL/BEAR adx_min
+        adx_weak_ranges = []  # SIDEWAYS adx_max
+        rsi_bull_ranges = []  # RSI strong bull
+        rsi_bear_ranges = []  # RSI strong bear
 
         param_ranges = {}
 
@@ -245,7 +252,7 @@ class RegimeOptimizationThread(QThread):
             if isinstance(min_val, float) or isinstance(max_val, float):
                 step = 0.1
             elif max_val - min_val >= 100:
-                step = 10  # Large ranges use step=10
+                step = 10
             else:
                 step = 1
 
@@ -257,65 +264,94 @@ class RegimeOptimizationThread(QThread):
                 param_ranges[mapped_key] = range_dict
                 continue
 
-            # Collect ADX thresholds for averaging
-            if "_adx_min" in param_key or "_adx_max" in param_key:
-                adx_threshold_ranges.append(range_dict)
+            # Collect ADX trending thresholds (BULL/BEAR adx_min)
+            if ("BULL" in param_key or "BEAR" in param_key) and "_adx_min" in param_key:
+                adx_trending_ranges.append(range_dict)
                 continue
 
-            # Collect RSI thresholds
-            if "_rsi_min" in param_key:
-                rsi_high_ranges.append(range_dict)
-                continue
-            if "_rsi_max" in param_key:
-                rsi_low_ranges.append(range_dict)
+            # Collect ADX weak thresholds (SIDEWAYS adx_max)
+            if "SIDEWAYS" in param_key and "_adx_max" in param_key:
+                adx_weak_ranges.append(range_dict)
                 continue
 
-        # Average ADX thresholds
-        if adx_threshold_ranges:
-            avg_min = sum(r["min"] for r in adx_threshold_ranges) / len(adx_threshold_ranges)
-            avg_max = sum(r["max"] for r in adx_threshold_ranges) / len(adx_threshold_ranges)
-            param_ranges["adx_threshold"] = {
+            # Collect DI difference thresholds
+            if "di_diff" in param_key.lower():
+                param_ranges["di_diff_threshold"] = range_dict
+                continue
+
+            # Collect RSI strong bull thresholds
+            if "rsi_strong_bull" in param_key.lower() or ("BULL" in param_key and "rsi" in param_key.lower()):
+                rsi_bull_ranges.append(range_dict)
+                continue
+
+            # Collect RSI strong bear thresholds
+            if "rsi_strong_bear" in param_key.lower() or ("BEAR" in param_key and "rsi" in param_key.lower()):
+                rsi_bear_ranges.append(range_dict)
+                continue
+
+            # Collect ATR move percentages
+            if "strong_move_pct" in param_key.lower():
+                param_ranges["strong_move_pct"] = range_dict
+                continue
+            if "extreme_move_pct" in param_key.lower():
+                param_ranges["extreme_move_pct"] = range_dict
+                continue
+
+        # Average ADX trending thresholds
+        if adx_trending_ranges:
+            avg_min = sum(r["min"] for r in adx_trending_ranges) / len(adx_trending_ranges)
+            avg_max = sum(r["max"] for r in adx_trending_ranges) / len(adx_trending_ranges)
+            param_ranges["adx_trending_threshold"] = {
+                "min": avg_min,
+                "max": avg_max,
+                "step": 1
+            }
+
+        # Average ADX weak thresholds
+        if adx_weak_ranges:
+            avg_min = sum(r["min"] for r in adx_weak_ranges) / len(adx_weak_ranges)
+            avg_max = sum(r["max"] for r in adx_weak_ranges) / len(adx_weak_ranges)
+            param_ranges["adx_weak_threshold"] = {
                 "min": avg_min,
                 "max": avg_max,
                 "step": 1
             }
 
         # Average RSI thresholds
-        if rsi_low_ranges:
-            avg_min = sum(r["min"] for r in rsi_low_ranges) / len(rsi_low_ranges)
-            avg_max = sum(r["max"] for r in rsi_low_ranges) / len(rsi_low_ranges)
-            param_ranges["rsi_sideways_low"] = {
+        if rsi_bull_ranges:
+            avg_min = sum(r["min"] for r in rsi_bull_ranges) / len(rsi_bull_ranges)
+            avg_max = sum(r["max"] for r in rsi_bull_ranges) / len(rsi_bull_ranges)
+            param_ranges["rsi_strong_bull"] = {
                 "min": avg_min,
                 "max": avg_max,
                 "step": 1
             }
 
-        if rsi_high_ranges:
-            avg_min = sum(r["min"] for r in rsi_high_ranges) / len(rsi_high_ranges)
-            avg_max = sum(r["max"] for r in rsi_high_ranges) / len(rsi_high_ranges)
-            param_ranges["rsi_sideways_high"] = {
+        if rsi_bear_ranges:
+            avg_min = sum(r["min"] for r in rsi_bear_ranges) / len(rsi_bear_ranges)
+            avg_max = sum(r["max"] for r in rsi_bear_ranges) / len(rsi_bear_ranges)
+            param_ranges["rsi_strong_bear"] = {
                 "min": avg_min,
                 "max": avg_max,
                 "step": 1
             }
 
-        logger.info(f"Converted v2 param_grid to ranges: {param_ranges}")
+        logger.info(f"Converted v2 param_grid to ADX/DI-based ranges: {param_ranges}")
         return param_ranges
 
     def _build_param_ranges_with_defaults(
-        self, ranges_dict, ADXParamRanges, SMAParamRanges, RSIParamRanges, BBParamRanges, ParamRange
+        self, ranges_dict, ADXParamRanges, RSIParamRanges, ATRParamRanges, ParamRange
     ):
         """Build AllParamRanges with intelligent defaults for missing parameters.
 
-        Required parameters from RegimeOptimizer:
-        - adx_period, adx_threshold
-        - sma_fast_period, sma_slow_period
-        - rsi_period, rsi_sideways_low, rsi_sideways_high
-        - bb_period, bb_std_dev, bb_width_percentile
+        Required parameters from RegimeOptimizer (ADX/DI-based):
+        - adx_period, adx_trending_threshold, adx_weak_threshold, di_diff_threshold
+        - rsi_period, rsi_strong_bull, rsi_strong_bear
+        - atr_period, strong_move_pct, extreme_move_pct
 
         Args:
             ranges_dict: Extracted ranges from JSON v2
-            ADXParamRanges, SMAParamRanges, etc.: Pydantic classes
+            ADXParamRanges, RSIParamRanges, ATRParamRanges: Pydantic classes
 
         Returns:
             AllParamRanges instance
@@ -334,29 +370,25 @@ class RegimeOptimizationThread(QThread):
                 )
                 return ParamRange(min=default_min, max=default_max, step=default_step)
 
-        # Build AllParamRanges
+        # Build AllParamRanges with ADX/DI-based parameters
         param_ranges = AllParamRanges(
             adx=ADXParamRanges(
                 period=get_range("adx_period", 10, 25, 1),
-                threshold=get_range("adx_threshold", 20, 35, 1)
-            ),
-            sma_fast=SMAParamRanges(
-                period=get_range("sma_fast_period", 20, 50, 5)  # Default: 20-50
-            ),
-            sma_slow=SMAParamRanges(
-                period=get_range("sma_slow_period", 100, 200, 10)
+                trending_threshold=get_range("adx_trending_threshold", 20, 35, 1),
+                weak_threshold=get_range("adx_weak_threshold", 15, 25, 1),
+                di_diff_threshold=get_range("di_diff_threshold", 3, 10, 1),
             ),
             rsi=RSIParamRanges(
                 period=get_range("rsi_period", 9, 21, 1),
-                sideways_low=get_range("rsi_sideways_low", 35, 45, 1),
-                sideways_high=get_range("rsi_sideways_high", 55, 65, 1)
+                strong_bull=get_range("rsi_strong_bull", 50, 65, 1),
+                strong_bear=get_range("rsi_strong_bear", 35, 50, 1),
             ),
-            bb=BBParamRanges(
-                period=get_range("bb_period", 15, 25, 1),  # Default BB period
-                std_dev=get_range("bb_std_dev", 1.5, 2.5, 0.1),
-                width_percentile=get_range("bb_width_percentile", 20, 40, 5)
-            )
+            atr=ATRParamRanges(
+                period=get_range("atr_period", 10, 20, 1),
+                strong_move_pct=get_range("strong_move_pct", 1.0, 2.5, 0.1),
+                extreme_move_pct=get_range("extreme_move_pct", 2.0, 4.0, 0.5),
+            ),
         )
 
-        logger.info("Built AllParamRanges with defaults for missing parameters")
+        logger.info("Built AllParamRanges with ADX/DI-based defaults for missing parameters")
         return param_ranges

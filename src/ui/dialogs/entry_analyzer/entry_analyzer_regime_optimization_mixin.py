@@ -863,9 +863,8 @@ class RegimeOptimizationMixin:
                 RegimeOptimizer,
                 AllParamRanges,
                 ADXParamRanges,
-                SMAParamRanges,
                 RSIParamRanges,
-                BBParamRanges,
+                ATRParamRanges,
                 ParamRange,
                 RegimeParams,
             )
@@ -969,18 +968,18 @@ class RegimeOptimizationMixin:
 
                 return default
 
-            # Build current_params from JSON config
+            # Build current_params from JSON config (ADX/DI-based like original regime_engine)
             current_params = RegimeParams(
                 adx_period=int(get_param("adx", "period", 14)),
-                adx_threshold=float(get_regime_threshold("BULL", "adx_threshold", 25.0)),
-                sma_fast_period=int(get_param("sma_fast", "period", 50)),
-                sma_slow_period=int(get_param("sma_slow", "period", 200)),
+                adx_trending_threshold=float(get_regime_threshold("BULL", "adx_min", 25.0)),
+                adx_weak_threshold=float(get_regime_threshold("SIDEWAYS", "adx_max", 20.0)),
+                di_diff_threshold=float(get_param("adx", "di_diff_threshold", 5.0)),
                 rsi_period=int(get_param("rsi", "period", 14)),
-                rsi_sideways_low=float(get_regime_threshold("SIDEWAYS", "rsi_low", 40)),
-                rsi_sideways_high=float(get_regime_threshold("SIDEWAYS", "rsi_high", 60)),
-                bb_period=int(get_param("bb", "period", 20)),
-                bb_std_dev=float(get_param("bb", "std_dev", 2.0)),
-                bb_width_percentile=float(get_param("bb", "width_percentile", 30.0)),
+                rsi_strong_bull=float(get_regime_threshold("BULL", "rsi_strong_bull", 55.0)),
+                rsi_strong_bear=float(get_regime_threshold("BEAR", "rsi_strong_bear", 45.0)),
+                atr_period=int(get_param("atr", "period", 14)),
+                strong_move_pct=float(get_param("atr", "strong_move_pct", 1.5)),
+                extreme_move_pct=float(get_param("atr", "extreme_move_pct", 3.0)),
             )
 
             # Create param_ranges with SAME VALUES (for optimizer - single-value ranges)
@@ -991,25 +990,21 @@ class RegimeOptimizationMixin:
                         max=current_params.adx_period,
                         step=1
                     ),
-                    threshold=ParamRange(
-                        min=current_params.adx_threshold,
-                        max=current_params.adx_threshold,
+                    trending_threshold=ParamRange(
+                        min=current_params.adx_trending_threshold,
+                        max=current_params.adx_trending_threshold,
                         step=1
                     ),
-                ),
-                sma_fast=SMAParamRanges(
-                    period=ParamRange(
-                        min=current_params.sma_fast_period,
-                        max=current_params.sma_fast_period,
+                    weak_threshold=ParamRange(
+                        min=current_params.adx_weak_threshold,
+                        max=current_params.adx_weak_threshold,
                         step=1
-                    )
-                ),
-                sma_slow=SMAParamRanges(
-                    period=ParamRange(
-                        min=current_params.sma_slow_period,
-                        max=current_params.sma_slow_period,
+                    ),
+                    di_diff_threshold=ParamRange(
+                        min=current_params.di_diff_threshold,
+                        max=current_params.di_diff_threshold,
                         step=1
-                    )
+                    ),
                 ),
                 rsi=RSIParamRanges(
                     period=ParamRange(
@@ -1017,41 +1012,41 @@ class RegimeOptimizationMixin:
                         max=current_params.rsi_period,
                         step=1
                     ),
-                    sideways_low=ParamRange(
-                        min=current_params.rsi_sideways_low,
-                        max=current_params.rsi_sideways_low,
+                    strong_bull=ParamRange(
+                        min=current_params.rsi_strong_bull,
+                        max=current_params.rsi_strong_bull,
                         step=1
                     ),
-                    sideways_high=ParamRange(
-                        min=current_params.rsi_sideways_high,
-                        max=current_params.rsi_sideways_high,
+                    strong_bear=ParamRange(
+                        min=current_params.rsi_strong_bear,
+                        max=current_params.rsi_strong_bear,
                         step=1
                     ),
                 ),
-                bb=BBParamRanges(
+                atr=ATRParamRanges(
                     period=ParamRange(
-                        min=current_params.bb_period,
-                        max=current_params.bb_period,
+                        min=current_params.atr_period,
+                        max=current_params.atr_period,
                         step=1
                     ),
-                    std_dev=ParamRange(
-                        min=current_params.bb_std_dev,
-                        max=current_params.bb_std_dev,
+                    strong_move_pct=ParamRange(
+                        min=current_params.strong_move_pct,
+                        max=current_params.strong_move_pct,
                         step=0.1
                     ),
-                    width_percentile=ParamRange(
-                        min=current_params.bb_width_percentile,
-                        max=current_params.bb_width_percentile,
-                        step=1
+                    extreme_move_pct=ParamRange(
+                        min=current_params.extreme_move_pct,
+                        max=current_params.extreme_move_pct,
+                        step=0.5
                     ),
                 ),
             )
 
             logger.info(
                 f"Calculating score with params from JSON: "
-                f"adx={current_params.adx_period}/{current_params.adx_threshold}, "
-                f"rsi={current_params.rsi_period}, "
-                f"bb={current_params.bb_period}/{current_params.bb_std_dev}"
+                f"adx={current_params.adx_period}/{current_params.adx_trending_threshold}/{current_params.adx_weak_threshold}, "
+                f"di_diff={current_params.di_diff_threshold}, "
+                f"rsi={current_params.rsi_period}"
             )
 
             # Create optimizer to classify regimes (we need the regimes Series)
@@ -1074,9 +1069,8 @@ class RegimeOptimizationMixin:
                 warmup_bars=200,
                 max_feature_lookback=max(
                     current_params.adx_period,
-                    current_params.sma_slow_period,
                     current_params.rsi_period,
-                    current_params.bb_period,
+                    current_params.atr_period,
                 ),
             )
             score_result = calculate_regime_score(
@@ -1477,28 +1471,29 @@ class RegimeOptimizationMixin:
         """Convert flat optimizer parameters to v2.0 nested format.
 
         Args:
-            params: Flat dict like {"adx_period": 14, "rsi_period": 12, ...}
+            params: Flat dict like {"adx_period": 14, "adx_trending_threshold": 25, ...}
 
         Returns:
-            Nested dict like {"adx.period": 14, "rsi.period": 12, ...}
+            Nested dict like {"adx.period": 14, "BULL.adx_min": 25, ...}
         """
         converted = {}
 
-        # Known mappings from old flat format to new v2.0 format
+        # Known mappings from ADX/DI-based flat format to v2.0 format
         param_mappings = {
+            # ADX indicator parameters
             "adx_period": "adx.period",
-            "adx_threshold": "BULL.adx_threshold",  # Will be duplicated for all regimes
+            "di_diff_threshold": "adx.di_diff_threshold",
+            # Regime thresholds
+            "adx_trending_threshold": "BULL.adx_min",  # Trending threshold for BULL/BEAR
+            "adx_weak_threshold": "SIDEWAYS.adx_max",  # Weak threshold for SIDEWAYS
+            # RSI parameters
             "rsi_period": "rsi.period",
-            "rsi_sideways_low": "SIDEWAYS.rsi_low",
-            "rsi_sideways_high": "SIDEWAYS.rsi_high",
-            "bb_period": "bb.period",
-            "bb_std_dev": "bb.std_dev",
-            "bb_width_percentile": "bb.width_percentile",
-            "sma_fast_period": "sma_fast.period",
-            "sma_slow_period": "sma_slow.period",
-            "macd_fast": "macd_12_26_9.fast",
-            "macd_slow": "macd_12_26_9.slow",
-            "macd_signal": "macd_12_26_9.signal",
+            "rsi_strong_bull": "BULL.rsi_strong_bull",
+            "rsi_strong_bear": "BEAR.rsi_strong_bear",
+            # ATR parameters
+            "atr_period": "atr.period",
+            "strong_move_pct": "atr.strong_move_pct",
+            "extreme_move_pct": "atr.extreme_move_pct",
         }
 
         for old_key, new_key in param_mappings.items():
@@ -1506,20 +1501,19 @@ class RegimeOptimizationMixin:
                 converted[new_key] = params[old_key]
 
                 # Special handling for shared thresholds
-                if old_key == "adx_threshold":
-                    # ADX threshold is used by BULL, BEAR, and all SIDEWAYS regimes
-                    converted["BEAR.adx_threshold"] = params[old_key]
-                    converted["SIDEWAYS.adx_threshold"] = params[old_key]
-                    converted["SIDEWAYS_OVERBOUGHT.adx_threshold"] = params[old_key]
-                    converted["SIDEWAYS_OVERSOLD.adx_threshold"] = params[old_key]
+                if old_key == "adx_trending_threshold":
+                    # Trending threshold is used by both BULL and BEAR
+                    converted["BEAR.adx_min"] = params[old_key]
 
-                elif old_key == "rsi_sideways_high":
-                    # RSI high also used for SIDEWAYS_OVERBOUGHT
-                    converted["SIDEWAYS_OVERBOUGHT.rsi_overbought"] = params[old_key]
+                elif old_key == "di_diff_threshold":
+                    # DI difference used by both BULL and BEAR
+                    converted["BULL.di_diff_min"] = params[old_key]
+                    converted["BEAR.di_diff_min"] = params[old_key]
 
-                elif old_key == "rsi_sideways_low":
-                    # RSI low also used for SIDEWAYS_OVERSOLD
-                    converted["SIDEWAYS_OVERSOLD.rsi_oversold"] = params[old_key]
+                elif old_key == "extreme_move_pct":
+                    # Extreme move threshold shared
+                    converted["BULL.extreme_move_pct"] = params[old_key]
+                    converted["BEAR.extreme_move_pct"] = params[old_key]
 
         # Pass through any already-converted params
         for key, value in params.items():
@@ -1585,14 +1579,14 @@ class RegimeOptimizationMixin:
         Converts params like {"adx_period": 14, "rsi_period": 12} to:
         [
             {
-                "name": "ADX1",
+                "name": "STRENGTH_ADX",
                 "type": "ADX",
                 "params": [{"name": "period", "value": 14, "range": {...}}]
             },
             ...
         ]
 
-        Supports both underscore format (adx_period) and dot format (adx.period).
+        Supports ADX/DI-based parameters (adx_period, adx_trending_threshold, etc.).
 
         Args:
             params: Flattened params dict from optimization result
@@ -1606,33 +1600,34 @@ class RegimeOptimizationMixin:
         indicator_info = {
             "adx": {"name": "STRENGTH_ADX", "type": "ADX"},
             "rsi": {"name": "MOMENTUM_RSI", "type": "RSI"},
-            "bb": {"name": "VOLATILITY_BB", "type": "BB"},
-            "sma_fast": {"name": "TREND_FILTER_FAST", "type": "SMA"},
-            "sma_slow": {"name": "TREND_FILTER", "type": "SMA"},
+            "atr": {"name": "VOLATILITY_ATR", "type": "ATR"},
         }
 
         # Mapping from flat param names to (indicator_id, param_name)
+        # ADX/DI-based parameters from regime_optimizer.py
         param_mapping = {
             "adx_period": ("adx", "period"),
-            "adx_threshold": ("adx", "threshold"),
+            "adx_trending_threshold": ("adx", "trending_threshold"),
+            "adx_weak_threshold": ("adx", "weak_threshold"),
+            "di_diff_threshold": ("adx", "di_diff_threshold"),
             "rsi_period": ("rsi", "period"),
-            "rsi_sideways_low": ("rsi", "sideways_low"),
-            "rsi_sideways_high": ("rsi", "sideways_high"),
-            "bb_period": ("bb", "period"),
-            "bb_std_dev": ("bb", "std_dev"),
-            "bb_width_percentile": ("bb", "width_percentile"),
-            "sma_fast_period": ("sma_fast", "period"),
-            "sma_slow_period": ("sma_slow", "period"),
+            "rsi_strong_bull": ("rsi", "strong_bull"),
+            "rsi_strong_bear": ("rsi", "strong_bear"),
+            "atr_period": ("atr", "period"),
+            "strong_move_pct": ("atr", "strong_move_pct"),
+            "extreme_move_pct": ("atr", "extreme_move_pct"),
         }
 
-        # Default parameter ranges for common indicators
+        # Default parameter ranges for ADX/DI-based indicators
         param_ranges = {
-            "period": {"min": 5, "max": 200, "step": 1},
-            "threshold": {"min": 15, "max": 40, "step": 1},
-            "std_dev": {"min": 1.5, "max": 3.0, "step": 0.1},
-            "sideways_low": {"min": 30, "max": 50, "step": 1},
-            "sideways_high": {"min": 50, "max": 70, "step": 1},
-            "width_percentile": {"min": 10, "max": 50, "step": 5},
+            "period": {"min": 5, "max": 50, "step": 1},
+            "trending_threshold": {"min": 20, "max": 40, "step": 1},
+            "weak_threshold": {"min": 15, "max": 25, "step": 1},
+            "di_diff_threshold": {"min": 3, "max": 15, "step": 1},
+            "strong_bull": {"min": 50, "max": 70, "step": 1},
+            "strong_bear": {"min": 30, "max": 50, "step": 1},
+            "strong_move_pct": {"min": 0.5, "max": 3.0, "step": 0.1},
+            "extreme_move_pct": {"min": 2.0, "max": 5.0, "step": 0.5},
         }
 
         # Parse params and group by indicator
@@ -1690,13 +1685,12 @@ class RegimeOptimizationMixin:
     def _build_regimes_from_params(self, params: dict) -> list[dict]:
         """Build v2.0 regimes[] structure from optimization params.
 
-        Converts optimizer params like {"adx_threshold": 25, "rsi_sideways_low": 40}
-        to regime definitions with thresholds applied.
+        Converts ADX/DI-based optimizer params to regime definitions with thresholds.
 
-        The optimizer uses global thresholds, which we apply to standard regime types:
-        - BULL: ADX > threshold, price > SMA
-        - BEAR: ADX > threshold, price < SMA
-        - SIDEWAYS: ADX < threshold, RSI in sideways range
+        The optimizer uses DI+/DI- for direction detection (like original regime_engine.py):
+        - BULL: ADX >= trending_threshold AND (DI+ - DI-) > di_diff_threshold
+        - BEAR: ADX >= trending_threshold AND (DI- - DI+) > di_diff_threshold
+        - SIDEWAYS: ADX < weak_threshold
 
         Args:
             params: Flattened params dict from optimization result
@@ -1704,26 +1698,36 @@ class RegimeOptimizationMixin:
         Returns:
             List of regime dicts in v2.0 format
         """
-        # Extract global thresholds from optimizer params
-        adx_threshold = params.get("adx_threshold", 25)
-        rsi_sideways_low = params.get("rsi_sideways_low", 40)
-        rsi_sideways_high = params.get("rsi_sideways_high", 60)
+        # Extract ADX/DI thresholds from optimizer params
+        adx_trending = params.get("adx_trending_threshold", 25)
+        adx_weak = params.get("adx_weak_threshold", 20)
+        di_diff = params.get("di_diff_threshold", 5)
+        rsi_strong_bull = params.get("rsi_strong_bull", 55)
+        rsi_strong_bear = params.get("rsi_strong_bear", 45)
+        strong_move_pct = params.get("strong_move_pct", 1.5)
+        extreme_move_pct = params.get("extreme_move_pct", 3.0)
 
         # Threshold ranges for v2.0 format
         threshold_ranges = {
-            "adx_min": {"min": 15, "max": 50, "step": 1},
-            "adx_max": {"min": 15, "max": 50, "step": 1},
-            "rsi_min": {"min": 30, "max": 70, "step": 1},
-            "rsi_max": {"min": 30, "max": 70, "step": 1},
+            "adx_min": {"min": 15, "max": 40, "step": 1},
+            "adx_max": {"min": 15, "max": 30, "step": 1},
+            "di_diff_min": {"min": 3, "max": 15, "step": 1},
+            "rsi_strong_bull": {"min": 50, "max": 70, "step": 1},
+            "rsi_strong_bear": {"min": 30, "max": 50, "step": 1},
+            "strong_move_pct": {"min": 0.5, "max": 3.0, "step": 0.1},
+            "extreme_move_pct": {"min": 2.0, "max": 5.0, "step": 0.5},
         }
 
-        # Build standard 3 regime types from global thresholds
+        # Build 3 regime types from ADX/DI-based thresholds
         regimes = [
             {
                 "id": "BULL",
                 "name": "Bullischer Trend",
                 "thresholds": [
-                    {"name": "adx_min", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_min"]},
+                    {"name": "adx_min", "value": round(adx_trending, 1), "range": threshold_ranges["adx_min"]},
+                    {"name": "di_diff_min", "value": round(di_diff, 1), "range": threshold_ranges["di_diff_min"]},
+                    {"name": "rsi_strong_bull", "value": round(rsi_strong_bull, 1), "range": threshold_ranges["rsi_strong_bull"]},
+                    {"name": "extreme_move_pct", "value": round(extreme_move_pct, 2), "range": threshold_ranges["extreme_move_pct"]},
                 ],
                 "priority": 90,
                 "scope": "entry"
@@ -1732,25 +1736,29 @@ class RegimeOptimizationMixin:
                 "id": "BEAR",
                 "name": "Bärischer Trend",
                 "thresholds": [
-                    {"name": "adx_min", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_min"]},
+                    {"name": "adx_min", "value": round(adx_trending, 1), "range": threshold_ranges["adx_min"]},
+                    {"name": "di_diff_min", "value": round(di_diff, 1), "range": threshold_ranges["di_diff_min"]},
+                    {"name": "rsi_strong_bear", "value": round(rsi_strong_bear, 1), "range": threshold_ranges["rsi_strong_bear"]},
+                    {"name": "extreme_move_pct", "value": round(extreme_move_pct, 2), "range": threshold_ranges["extreme_move_pct"]},
                 ],
                 "priority": 85,
                 "scope": "entry"
             },
             {
                 "id": "SIDEWAYS",
-                "name": "Seitwärts / Neutral",
+                "name": "Seitwärts / Range",
                 "thresholds": [
-                    {"name": "adx_max", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_max"]},
-                    {"name": "rsi_min", "value": round(rsi_sideways_low, 1), "range": threshold_ranges["rsi_min"]},
-                    {"name": "rsi_max", "value": round(rsi_sideways_high, 1), "range": threshold_ranges["rsi_max"]},
+                    {"name": "adx_max", "value": round(adx_weak, 1), "range": threshold_ranges["adx_max"]},
                 ],
                 "priority": 50,
                 "scope": "entry"
             },
         ]
 
-        logger.info(f"Built {len(regimes)} regimes from global thresholds: adx={adx_threshold:.1f}, rsi=[{rsi_sideways_low:.1f}, {rsi_sideways_high:.1f}]")
+        logger.info(
+            f"Built {len(regimes)} regimes from ADX/DI thresholds: "
+            f"adx_trending={adx_trending:.1f}, adx_weak={adx_weak:.1f}, di_diff={di_diff:.1f}"
+        )
         return regimes
 
     @pyqtSlot()

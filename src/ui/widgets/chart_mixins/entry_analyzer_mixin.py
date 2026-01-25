@@ -4,6 +4,7 @@ Provides integration of the Entry Analyzer popup
 with the embedded TradingView chart.
 
 Phase 3: Added BackgroundRunner for live analysis.
+Phase 4: Added Regime Filter dropdown for filtering regime lines on chart.
 """
 
 from __future__ import annotations
@@ -11,8 +12,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtGui import QStandardItemModel, QStandardItem
+from PyQt6.QtWidgets import QMessageBox, QComboBox, QStyledItemDelegate, QWidget, QHBoxLayout, QLabel
 
 from .live_analysis_bridge import LiveAnalysisBridge
 
@@ -26,6 +28,295 @@ try:
     from src.analysis.visible_chart.debug_logger import debug_logger
 except ImportError:
     debug_logger = logger
+
+
+# ==================== Regime Filter CheckableComboBox ====================
+
+
+class CheckBoxDelegate(QStyledItemDelegate):
+    """Delegate to render checkboxes in QComboBox dropdown."""
+
+    def paint(self, painter, option, index):
+        """Paint the item with a checkbox if checkable."""
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtGui import QPen, QColor, QBrush
+        from PyQt6.QtWidgets import QStyle, QStyleOptionButton, QApplication
+
+        # Get the item
+        model = index.model()
+        item = model.itemFromIndex(index) if hasattr(model, 'itemFromIndex') else None
+
+        # Draw selection background if selected/hovered
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(option.rect, QColor(60, 60, 70))
+
+        if item and item.isCheckable():
+            # Draw checkbox
+            check_option = QStyleOptionButton()
+            check_option.rect = QRect(option.rect.x() + 4, option.rect.y(), 20, option.rect.height())
+            check_option.state = QStyle.StateFlag.State_Enabled
+
+            if item.checkState() == Qt.CheckState.Checked:
+                check_option.state |= QStyle.StateFlag.State_On
+            else:
+                check_option.state |= QStyle.StateFlag.State_Off
+
+            QApplication.style().drawControl(QStyle.ControlElement.CE_CheckBox, check_option, painter)
+
+            # Draw text after checkbox with item's foreground color
+            text_rect = QRect(option.rect.x() + 26, option.rect.y(), option.rect.width() - 30, option.rect.height())
+            foreground = item.foreground()
+            if foreground.color().isValid():
+                painter.setPen(QPen(foreground.color()))
+            else:
+                painter.setPen(QPen(option.palette.text().color()))
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, index.data())
+        else:
+            # Non-checkable item (header) - draw with bold style
+            painter.save()
+            font = painter.font()
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor("#e0e0e0")))  # Light gray for header
+            text_rect = QRect(option.rect.x() + 6, option.rect.y(), option.rect.width() - 10, option.rect.height())
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, index.data())
+            painter.restore()
+
+    def sizeHint(self, option, index):
+        """Return size hint for items."""
+        from PyQt6.QtCore import QSize
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), max(size.height(), 24))  # Minimum height of 24px
+
+
+class CheckableComboBox(QComboBox):
+    """QComboBox with checkable items for multi-select regime filtering.
+
+    Allows users to select multiple regimes to display on the chart.
+    Emits selectionChanged signal when selection changes.
+    """
+
+    selectionChanged = pyqtSignal(list)  # Emits list of selected regime IDs
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # Use QStandardItemModel for checkable items
+        self._model = QStandardItemModel(self)
+        self.setModel(self._model)
+
+        # CRITICAL: Set delegate to render checkboxes
+        self._delegate = CheckBoxDelegate(self)
+        self.setItemDelegate(self._delegate)
+
+        # Configure the view for better dropdown
+        view = self.view()
+        view.pressed.connect(self._handle_item_pressed)
+        view.viewport().installEventFilter(self)  # Don't close popup on click
+        view.setMouseTracking(True)  # Enable hover effects
+
+        # Set minimum width and max visible items
+        self.setMinimumWidth(140)
+        self.setMaximumWidth(200)
+        self.setMaxVisibleItems(12)  # Show all 10 items (1 header + 9 regimes)
+
+        # Placeholder text
+        self._placeholder = "Filter..."
+
+        # Regime colors for visual indication
+        self._regime_colors = {
+            "STRONG_TF": "#6d28d9",
+            "STRONG_BULL": "#16a34a",
+            "STRONG_BEAR": "#dc2626",
+            "TF": "#8b5cf6",
+            "BULL_EXHAUSTION": "#fbbf24",
+            "BEAR_EXHAUSTION": "#fb923c",
+            "BULL": "#22c55e",
+            "BEAR": "#ef4444",
+            "SIDEWAYS": "#f59e0b",
+        }
+
+        logger.debug("CheckableComboBox initialized with CheckBoxDelegate")
+        import sys
+        print(f"[COMBO] Created CheckableComboBox id={id(self)}, model id={id(self._model)}", flush=True)
+        sys.stdout.flush()
+
+    def eventFilter(self, obj, event) -> bool:
+        """Prevent popup from closing when clicking checkboxes."""
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            # Don't close popup on click
+            return True
+        return super().eventFilter(obj, event)
+
+    def showPopup(self) -> None:
+        """Override to log when popup is shown."""
+        item_count = self._model.rowCount()
+        logger.info(f"🔽 [v2] Regime filter popup: {item_count} items, enabled={self.isEnabled()}, id={id(self)}")
+        print(f"[COMBO] showPopup called on {id(self)}, model={id(self._model)}, items={item_count}", flush=True)
+        if item_count == 0:
+            logger.warning("⚠️ No items in regime filter - this shouldn't happen!")
+            # Debug: Check if model is the same as _model
+            actual_model = self.model()
+            print(f"[COMBO] self.model()={id(actual_model)}, self._model={id(self._model)}, same={actual_model is self._model}", flush=True)
+            # Emergency: try populating directly
+            print(f"[COMBO] Emergency populate with 9 regimes...", flush=True)
+            self._emergency_populate()
+        super().showPopup()
+
+    def _handle_item_pressed(self, index) -> None:
+        """Toggle check state when item is clicked."""
+        item = self._model.itemFromIndex(index)
+        if item and item.isCheckable():
+            # Toggle check state
+            if item.checkState() == Qt.CheckState.Checked:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            else:
+                item.setCheckState(Qt.CheckState.Checked)
+            self._update_display_text()
+            self.selectionChanged.emit(self.get_selected_items())
+            logger.debug(f"Toggled {item.text()}, selected: {self.get_selected_items()}")
+
+    def _update_display_text(self) -> None:
+        """Update the display text to show selected count."""
+        selected = self.get_selected_items()
+        # Count only checkable items (exclude header)
+        checkable_count = 0
+        for i in range(self._model.rowCount()):
+            item = self._model.item(i)
+            if item and item.isCheckable():
+                checkable_count += 1
+
+        if checkable_count == 0:
+            return
+
+        # Update the first item (header) to show count
+        header_item = self._model.item(0)
+        if header_item:
+            if len(selected) == checkable_count:
+                header_item.setText(f"✓ Alle ({checkable_count})")
+            elif len(selected) == 0:
+                header_item.setText(f"✗ Keine (0/{checkable_count})")
+            else:
+                header_item.setText(f"✓ {len(selected)}/{checkable_count}")
+            self.setCurrentIndex(0)  # Always show header
+
+    def add_header_item(self, text: str = "✓ Alle") -> None:
+        """Add a non-checkable header item that shows selection count."""
+        item = QStandardItem(text)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)  # Not checkable, just display
+        item.setData("__header__", Qt.ItemDataRole.UserRole)
+        self._model.appendRow(item)
+
+    def add_item(self, text: str, data: Any = None, checked: bool = True) -> None:
+        """Add a checkable item to the combobox."""
+        item = QStandardItem(text)
+        item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        item.setData(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+        if data is not None:
+            item.setData(data, Qt.ItemDataRole.UserRole)
+
+        # Add color indicator if available
+        regime_id = data if data else text.upper().replace(" ", "_")
+        if regime_id in self._regime_colors:
+            from PyQt6.QtGui import QColor
+            item.setForeground(QColor(self._regime_colors[regime_id]))
+
+        self._model.appendRow(item)
+
+    def add_separator_item(self, text: str = "─" * 15) -> None:
+        """Add a non-selectable separator item."""
+        item = QStandardItem(text)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        item.setEnabled(False)
+        self._model.appendRow(item)
+
+    def get_selected_items(self) -> list[str]:
+        """Get list of selected regime IDs."""
+        selected = []
+        for i in range(self._model.rowCount()):
+            item = self._model.item(i)
+            if item and item.isCheckable() and item.checkState() == Qt.CheckState.Checked:
+                data = item.data(Qt.ItemDataRole.UserRole)
+                if data and data != "__header__":
+                    selected.append(data)
+        return selected
+
+    def select_all(self) -> None:
+        """Select all checkable items."""
+        for i in range(self._model.rowCount()):
+            item = self._model.item(i)
+            if item and item.isCheckable():
+                item.setCheckState(Qt.CheckState.Checked)
+        self._update_display_text()
+        self.selectionChanged.emit(self.get_selected_items())
+
+    def deselect_all(self) -> None:
+        """Deselect all checkable items."""
+        for i in range(self._model.rowCount()):
+            item = self._model.item(i)
+            if item and item.isCheckable():
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self._update_display_text()
+        self.selectionChanged.emit(self.get_selected_items())
+
+    def set_selected(self, regime_ids: list[str]) -> None:
+        """Set which regimes are selected."""
+        for i in range(self._model.rowCount()):
+            item = self._model.item(i)
+            if item and item.isCheckable():
+                data = item.data(Qt.ItemDataRole.UserRole)
+                regime_id = data if data else item.text()
+                if regime_id in regime_ids:
+                    item.setCheckState(Qt.CheckState.Checked)
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked)
+        self._update_display_text()
+
+    def clear_items(self) -> None:
+        """Clear all items from the combobox."""
+        import traceback
+        print(f"[REGIME_FILTER] clear_items called! Stack trace:", flush=True)
+        traceback.print_stack(limit=5)
+        self._model.clear()
+
+    def _emergency_populate(self) -> None:
+        """Emergency method to populate if items are missing."""
+        from PyQt6.QtGui import QColor
+        print(f"[COMBO] _emergency_populate: clearing and adding items...", flush=True)
+        self._model.clear()
+
+        # Add header
+        header = QStandardItem("✓ Alle (9)")
+        header.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        header.setData("__header__", Qt.ItemDataRole.UserRole)
+        self._model.appendRow(header)
+
+        # Add regimes
+        regimes = [
+            ("🟣 STRONG_TF", "STRONG_TF", "#6d28d9"),
+            ("🟢 STRONG_BULL", "STRONG_BULL", "#16a34a"),
+            ("🔴 STRONG_BEAR", "STRONG_BEAR", "#dc2626"),
+            ("💜 TF", "TF", "#8b5cf6"),
+            ("⚠️ BULL_EXHAUST", "BULL_EXHAUSTION", "#fbbf24"),
+            ("⚠️ BEAR_EXHAUST", "BEAR_EXHAUSTION", "#fb923c"),
+            ("🟢 BULL", "BULL", "#22c55e"),
+            ("🔴 BEAR", "BEAR", "#ef4444"),
+            ("🟡 SIDEWAYS", "SIDEWAYS", "#f59e0b"),
+        ]
+
+        for display, regime_id, color in regimes:
+            item = QStandardItem(display)
+            item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            item.setData(Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+            item.setData(regime_id, Qt.ItemDataRole.UserRole)
+            item.setForeground(QColor(color))
+            self._model.appendRow(item)
+
+        self.setCurrentIndex(0)
+        print(f"[COMBO] _emergency_populate done: {self._model.rowCount()} items", flush=True)
 
 
 class AnalysisWorker(QThread):
@@ -145,6 +436,10 @@ class EntryAnalyzerMixin:
     - Live mode with BackgroundRunner
     - Incremental updates on new candles
     - Auto-reanalysis on schedule
+
+    Phase 4 additions:
+    - Regime filter dropdown for filtering displayed regime lines
+    - Store current regime data for re-filtering
     """
 
     _entry_analyzer_popup = None
@@ -153,6 +448,11 @@ class EntryAnalyzerMixin:
     _live_mode_enabled: bool = False
     _auto_draw_entries: bool = True
     _current_json_config_path: str | None = None  # Issue #28: Current JSON config path
+
+    # Phase 4: Regime Filter
+    _regime_filter_combo: CheckableComboBox | None = None
+    _current_regime_data: list[dict] = []  # Store current regime data for re-filtering
+    _regime_filter_enabled: bool = True  # Whether filtering is active
 
     def _init_entry_analyzer(self) -> None:
         """Initialize entry analyzer connections.
@@ -166,6 +466,295 @@ class EntryAnalyzerMixin:
             self.timeframe_changed.connect(self._on_entry_analyzer_timeframe_changed)
         if hasattr(self, "data_loaded"):
             self.data_loaded.connect(self._on_entry_analyzer_data_loaded)
+
+    # ==================== Regime Filter Methods (Phase 4) ====================
+
+    def create_regime_filter_widget(self) -> QWidget:
+        """Create the regime filter widget for toolbar integration.
+
+        Returns a container widget with label and checkable combobox.
+        Call this from toolbar setup to add the filter.
+
+        Returns:
+            QWidget containing label and filter combobox
+        """
+        container = QWidget()
+        container.setMinimumWidth(180)  # Ensure container has minimum width
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.setSpacing(4)
+
+        # Label
+        label = QLabel("Filter:")
+        label.setStyleSheet("color: #9ca3af; font-size: 11px;")
+        layout.addWidget(label)
+
+        # Checkable ComboBox
+        self._regime_filter_combo = CheckableComboBox()
+        self._regime_filter_combo.setToolTip("Wähle welche Regimes im Chart angezeigt werden")
+
+        # Apply styling to ensure visibility
+        self._regime_filter_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2d2d30;
+                color: #e0e0e0;
+                border: 1px solid #4a4a4d;
+                border-radius: 3px;
+                padding: 3px 8px;
+                min-width: 130px;
+            }
+            QComboBox:hover {
+                border-color: #6366f1;
+            }
+            QComboBox:enabled {
+                background-color: #2d2d30;
+            }
+            QComboBox:disabled {
+                background-color: #1a1a1a;
+                color: #666;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #9ca3af;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2d2d30;
+                border: 1px solid #4a4a4d;
+                selection-background-color: #3d3d40;
+                outline: none;
+            }
+        """)
+
+        self._regime_filter_combo.setEnabled(True)  # Ensure enabled
+
+        # Add default regime types (will be updated when regimes are detected)
+        self._populate_regime_filter_defaults()
+
+        # Connect signal
+        self._regime_filter_combo.selectionChanged.connect(self._on_regime_filter_changed)
+
+        layout.addWidget(self._regime_filter_combo)
+
+        # Debug: Check if items were added
+        item_count = self._regime_filter_combo._model.rowCount()
+        logger.info(f"✓ Regime filter widget created with {item_count} items, enabled={self._regime_filter_combo.isEnabled()}")
+        print(f"[REGIME_FILTER] Widget created with {item_count} items, enabled={self._regime_filter_combo.isEnabled()}")
+
+        return container
+
+    def _populate_regime_filter_defaults(self) -> None:
+        """Populate the regime filter with default regime types."""
+        print("[REGIME_FILTER] _populate_regime_filter_defaults called")  # Direct stdout
+        if not self._regime_filter_combo:
+            logger.warning("_populate_regime_filter_defaults: combo is None")
+            print("[REGIME_FILTER] ERROR: combo is None!")
+            return
+
+        logger.debug("_populate_regime_filter_defaults: Starting...")
+
+        # Clear existing items
+        self._regime_filter_combo.clear_items()
+
+        # Add header item first (shows selection count)
+        self._regime_filter_combo.add_header_item("✓ Alle (9)")
+        logger.debug(f"After header: rowCount={self._regime_filter_combo._model.rowCount()}")
+
+        # Default regimes based on 9-level hierarchy
+        default_regimes = [
+            ("🟣 STRONG_TF", "STRONG_TF"),
+            ("🟢 STRONG_BULL", "STRONG_BULL"),
+            ("🔴 STRONG_BEAR", "STRONG_BEAR"),
+            ("💜 TF", "TF"),
+            ("⚠️ BULL_EXHAUST", "BULL_EXHAUSTION"),
+            ("⚠️ BEAR_EXHAUST", "BEAR_EXHAUSTION"),
+            ("🟢 BULL", "BULL"),
+            ("🔴 BEAR", "BEAR"),
+            ("🟡 SIDEWAYS", "SIDEWAYS"),
+        ]
+
+        for display_name, regime_id in default_regimes:
+            self._regime_filter_combo.add_item(display_name, data=regime_id, checked=True)
+
+        final_count = self._regime_filter_combo._model.rowCount()
+        logger.debug(f"After adding items: rowCount={final_count}")
+
+        self._regime_filter_combo._update_display_text()
+        self._regime_filter_combo.setCurrentIndex(0)
+        self._regime_filter_combo.setEnabled(True)  # Ensure enabled after populating
+
+        logger.info(f"✓ Regime filter populated: {final_count} items (1 header + {len(default_regimes)} regimes)")
+        print(f"[REGIME_FILTER] ✓ Populated combo id={id(self._regime_filter_combo)} with {final_count} items")
+
+    def _update_regime_filter_from_data(self, regimes: list[dict]) -> None:
+        """Update regime filter options based on detected regimes.
+
+        Args:
+            regimes: List of regime period dicts with 'regime' key
+        """
+        if not self._regime_filter_combo:
+            return
+
+        # Extract unique regime IDs from data
+        detected_regime_ids = set()
+        for regime_data in regimes:
+            regime_id = regime_data.get('regime', 'UNKNOWN')
+            detected_regime_ids.add(regime_id)
+
+        # Get currently selected items to preserve selection
+        currently_selected = self._regime_filter_combo.get_selected_items()
+
+        # Clear and repopulate
+        self._regime_filter_combo.clear_items()
+
+        # Regime display mapping with colors
+        regime_display = {
+            "STRONG_TF": "🟣 STRONG_TF",
+            "STRONG_BULL": "🟢 STRONG_BULL",
+            "STRONG_BEAR": "🔴 STRONG_BEAR",
+            "TF": "💜 TF",
+            "BULL_EXHAUSTION": "⚠️ BULL_EXHAUST",
+            "BEAR_EXHAUSTION": "⚠️ BEAR_EXHAUST",
+            "BULL": "🟢 BULL",
+            "BEAR": "🔴 BEAR",
+            "SIDEWAYS": "🟡 SIDEWAYS",
+            "UNKNOWN": "❓ UNKNOWN",
+        }
+
+        # Add header item first
+        num_regimes = len(detected_regime_ids)
+        self._regime_filter_combo.add_header_item(f"✓ Alle ({num_regimes})")
+
+        # Add detected regimes
+        for regime_id in sorted(detected_regime_ids):
+            display_name = regime_display.get(regime_id, f"📊 {regime_id}")
+            # Preserve previous selection state, default to checked
+            is_checked = regime_id in currently_selected if currently_selected else True
+            self._regime_filter_combo.add_item(display_name, data=regime_id, checked=is_checked)
+
+        self._regime_filter_combo._update_display_text()
+        self._regime_filter_combo.setCurrentIndex(0)
+        logger.info(f"Regime filter updated with {num_regimes} detected regimes: {detected_regime_ids}")
+
+    def _on_regime_filter_changed(self, selected_regimes: list[str]) -> None:
+        """Handle regime filter selection change.
+
+        Re-draws regime lines based on current filter selection.
+
+        Args:
+            selected_regimes: List of selected regime IDs
+        """
+        logger.info(f"Regime filter changed: {selected_regimes}")
+        print(f"[FILTER] _on_regime_filter_changed: {selected_regimes}", flush=True)
+
+        # If no cached regime data, try to reconstruct from existing chart lines
+        if not self._current_regime_data:
+            self._reconstruct_regime_data_from_chart()
+
+        if not self._current_regime_data:
+            logger.warning("No regime data available to filter")
+            print(f"[FILTER] WARNING: No regime data to filter!", flush=True)
+            return
+
+        print(f"[FILTER] Have {len(self._current_regime_data)} regime entries to filter", flush=True)
+        # Apply filter and redraw
+        self._apply_regime_filter(selected_regimes)
+
+    def _reconstruct_regime_data_from_chart(self) -> None:
+        """Reconstruct _current_regime_data from existing regime lines in chart.
+
+        This is needed when regime lines were loaded from saved chart state
+        but _current_regime_data is empty.
+        """
+        if not hasattr(self, '_bot_overlay_state'):
+            logger.debug("No _bot_overlay_state available")
+            return
+
+        regime_lines = getattr(self._bot_overlay_state, 'regime_lines', {})
+        if not regime_lines:
+            logger.debug("No regime lines in bot overlay state")
+            return
+
+        logger.info(f"Reconstructing regime data from {len(regime_lines)} chart lines")
+        print(f"[FILTER] Reconstructing from {len(regime_lines)} existing lines", flush=True)
+
+        reconstructed = []
+        for line_id, regime_line in regime_lines.items():
+            # RegimeLine has: line_id, timestamp, color, regime_name, label
+            regime_entry = {
+                'start_timestamp': regime_line.timestamp,
+                'regime': regime_line.regime_name,
+                'score': 100.0,  # Default score since we don't have original
+                'duration_bars': 0,
+                'duration_time': '0s',
+                'line_id': line_id,
+            }
+            reconstructed.append(regime_entry)
+
+        # Sort by timestamp
+        reconstructed.sort(key=lambda x: x['start_timestamp'])
+        self._current_regime_data = reconstructed
+        logger.info(f"Reconstructed {len(reconstructed)} regime entries")
+
+    def _apply_regime_filter(self, selected_regimes: list[str] | None = None) -> None:
+        """Apply regime filter and redraw regime lines.
+
+        Args:
+            selected_regimes: List of regime IDs to show. If None, get from combo.
+        """
+        print(f"[FILTER] _apply_regime_filter called with: {selected_regimes}", flush=True)
+
+        if selected_regimes is None and self._regime_filter_combo:
+            selected_regimes = self._regime_filter_combo.get_selected_items()
+            print(f"[FILTER] Got selection from combo: {selected_regimes}", flush=True)
+
+        if not selected_regimes:
+            # No selection means show nothing
+            print(f"[FILTER] No regimes selected - clearing all lines", flush=True)
+            if hasattr(self, "clear_regime_lines"):
+                self.clear_regime_lines()
+            return
+
+        # Filter regime data
+        filtered_regimes = [
+            r for r in self._current_regime_data
+            if r.get('regime', 'UNKNOWN') in selected_regimes
+        ]
+
+        logger.info(f"Applying filter: {len(filtered_regimes)}/{len(self._current_regime_data)} regimes visible")
+        print(f"[FILTER] Filtered: {len(filtered_regimes)}/{len(self._current_regime_data)} regimes", flush=True)
+
+        # Redraw filtered regimes (use internal method to avoid storing again)
+        self._draw_regime_lines_internal(filtered_regimes)
+        print(f"[FILTER] Redraw complete", flush=True)
+
+    def select_all_regimes(self) -> None:
+        """Select all regimes in the filter."""
+        if self._regime_filter_combo:
+            self._regime_filter_combo.select_all()
+
+    def deselect_all_regimes(self) -> None:
+        """Deselect all regimes in the filter."""
+        if self._regime_filter_combo:
+            self._regime_filter_combo.deselect_all()
+
+    def set_regime_filter_visible(self, regime_ids: list[str]) -> None:
+        """Set which regimes are visible via the filter.
+
+        Args:
+            regime_ids: List of regime IDs to show
+        """
+        if self._regime_filter_combo:
+            self._regime_filter_combo.set_selected(regime_ids)
+            self._apply_regime_filter(regime_ids)
+
+    # ==================== End Regime Filter Methods ====================
 
     def show_entry_analyzer(self) -> None:
         """Show the Entry Analyzer popup dialog."""
@@ -490,6 +1079,8 @@ class EntryAnalyzerMixin:
     def _draw_regime_lines(self, regimes: list[dict]) -> None:
         """Draw regime period lines on the chart (Issue #21 COMPLETE).
 
+        Stores regime data for filtering and draws lines based on current filter.
+
         Displays vertical lines showing START of each regime period with:
         - Start line: Light color for regime start
         - Each regime type has unique color pair
@@ -513,6 +1104,36 @@ class EntryAnalyzerMixin:
             logger.warning("Chart widget has no add_regime_line method")
             return
 
+        # Phase 4: Store regime data for filtering
+        self._current_regime_data = regimes.copy() if regimes else []
+
+        # Update filter dropdown with detected regimes
+        self._update_regime_filter_from_data(regimes)
+
+        # Apply current filter (if filter exists, use its selection; otherwise show all)
+        if self._regime_filter_combo:
+            selected = self._regime_filter_combo.get_selected_items()
+            if selected:
+                filtered_regimes = [r for r in regimes if r.get('regime', 'UNKNOWN') in selected]
+            else:
+                filtered_regimes = regimes  # Show all if nothing selected
+        else:
+            filtered_regimes = regimes  # No filter widget, show all
+
+        # Draw the filtered regimes
+        self._draw_regime_lines_internal(filtered_regimes)
+
+    def _draw_regime_lines_internal(self, regimes: list[dict]) -> None:
+        """Internal method to draw regime lines without storing data.
+
+        Called by _draw_regime_lines and _apply_regime_filter.
+
+        Args:
+            regimes: Filtered list of regime PERIODS to draw
+        """
+        if not hasattr(self, "add_regime_line"):
+            return
+
         # Color mapping: regime_type -> (start_color, end_color)
         # Issue #5: Each regime has unique, distinguishable color
         # Supports v2 JSON regime IDs (BULL_TREND, BEAR_TREND, CHOP_ZONE...) and legacy names
@@ -530,10 +1151,18 @@ class EntryAnalyzerMixin:
             "RANGE": ("#f59e0b", "#f59e0b"),                # Amber for range
             
             # === Extended V2 Regimes ===
-            "STRONG_BULL": ("#16a34a", "#16a34a"),          # Dark green for strong bull
-            "STRONG_BEAR": ("#dc2626", "#dc2626"),          # Dark red for strong bear
+            "STRONG_BULL": ("#16a34a", "#16a34a"),          # Dark green for strong bull (RSI confirmed)
+            "STRONG_BEAR": ("#dc2626", "#dc2626"),          # Dark red for strong bear (RSI confirmed)
+            "STRONG_TF": ("#6d28d9", "#6d28d9"),            # Dark purple for strong trend following
+            "TF": ("#8b5cf6", "#8b5cf6"),                   # Purple for trend following
+            "TREND_FOLLOWING": ("#8b5cf6", "#8b5cf6"),      # Purple for trend following (alias)
+            "STRONG_TREND": ("#6d28d9", "#6d28d9"),         # Dark purple for strong trend
             "WEAK_TREND": ("#a3a3a3", "#a3a3a3"),           # Gray for weak trend
             "NO_TRADE": ("#6b7280", "#6b7280"),             # Dark gray for no trade zone
+
+            # === Exhaustion / Reversal Warning Regimes ===
+            "BULL_EXHAUSTION": ("#fbbf24", "#fbbf24"),      # Yellow-amber for bullish exhaustion (reversal warning)
+            "BEAR_EXHAUSTION": ("#fb923c", "#fb923c"),      # Orange for bearish exhaustion (reversal warning)
             
             # === Overbought/Oversold ===
             "OVERBOUGHT": ("#f97316", "#f97316"),           # Orange
@@ -558,7 +1187,23 @@ class EntryAnalyzerMixin:
             # Pattern matching for v2 regime IDs
             regime_upper = regime_id.upper()
             
-            if "BULL" in regime_upper:
+            # Check for TF/TREND_FOLLOWING first (before BULL/BEAR checks)
+            if regime_upper == "STRONG_TF":
+                return ("#6d28d9", "#6d28d9")  # Dark purple for strong TF
+            elif regime_upper == "TF":
+                return ("#8b5cf6", "#8b5cf6")  # Purple for TF
+            elif "TREND_FOLLOWING" in regime_upper or ("TREND" in regime_upper and "FOLLOWING" in regime_upper):
+                return ("#8b5cf6", "#8b5cf6")  # Purple for trend following
+            elif "STRONG_TREND" in regime_upper:
+                return ("#6d28d9", "#6d28d9")  # Dark purple for strong trend
+            # Check for exhaustion/reversal patterns BEFORE general BULL/BEAR
+            elif "EXHAUSTION" in regime_upper:
+                if "BULL" in regime_upper:
+                    return ("#fbbf24", "#fbbf24")  # Yellow-amber for bull exhaustion
+                elif "BEAR" in regime_upper:
+                    return ("#fb923c", "#fb923c")  # Orange for bear exhaustion
+                return ("#fbbf24", "#fbbf24")  # Default yellow for any exhaustion
+            elif "BULL" in regime_upper:
                 return ("#22c55e", "#22c55e")  # Green
             elif "BEAR" in regime_upper:
                 return ("#ef4444", "#ef4444")  # Red
