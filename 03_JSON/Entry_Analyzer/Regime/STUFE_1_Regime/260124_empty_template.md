@@ -46,15 +46,16 @@ Sie zeigen die **Struktur**, aber du kannst:
 ## 📋 Inhaltsverzeichnis
 
 1. [Überblick](#überblick)
-2. [Schema Version](#schema-version)
-3. [Metadata](#metadata)
-4. [Optimization Results](#optimization-results)
-5. [Indicators](#indicators)
-6. [Regimes](#regimes)
-7. [Entry Params](#entry-params)
-8. [Evaluation Params](#evaluation-params)
-9. [Unterstützte Indikatoren](#unterstützte-indikatoren)
-10. [Verwendungsbeispiele](#verwendungsbeispiele)
+2. [Pflichtfelder](#pflichtfelder)
+3. [Schema Version](#schema-version)
+4. [Metadata](#metadata)
+5. [Optimization Results](#optimization-results)
+6. [Indicators](#indicators)
+7. [Regimes](#regimes)
+8. [Entry Params](#entry-params)
+9. [Evaluation Params](#evaluation-params)
+10. [Unterstützte Indikatoren](#unterstützte-indikatoren)
+11. [Verwendungsbeispiele](#verwendungsbeispiele)
 
 ---
 
@@ -73,6 +74,162 @@ Diese JSON-Datei definiert die Konfiguration für **Regime Detection** (Marktpha
 2. **Regime Optimization Tab**: Verwendet diese Ranges für **Optuna TPE-Optimierung**
 3. **Analyze Visible Range**: Verwendet optimierte Parameter für Regime-Erkennung
 4. **Trading Bot**: Importiert finale optimierte Parameter für Live-Handel
+
+---
+
+## Pflichtfelder
+
+**Wichtig:** Die folgenden Felder sind **OBLIGATORISCH** und müssen in jeder gültigen v2.0-Konfiguration vorhanden sein.
+
+### Root-Ebene (Pflicht)
+
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `schema_version` | string | MUSS `"2.0.0"` sein |
+| `optimization_results` | array | MUSS mindestens 1 Element enthalten |
+| `entry_params` | object | Entry-Signal-Parameter |
+| `evaluation_params` | object | Backtest-Parameter |
+
+### Optimization Result (Pflicht pro Element)
+
+Jedes Element in `optimization_results[]` **MUSS** folgende Felder haben:
+
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `timestamp` | string | ISO 8601 Format (z.B. `"2026-01-24T20:33:23Z"`) |
+| `score` | number | Composite Score (0-100) |
+| `trial_number` | integer | Trial-Nummer (≥ 1) |
+| `applied` | boolean | Ist dieser Trial aktiv? (`true`/`false`) |
+| `indicators` | array | MUSS mindestens 1 Indikator enthalten |
+
+### Indicator-Struktur (Pflicht pro Indikator)
+
+Jedes Element in `indicators[]` **MUSS** folgende Felder haben:
+
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `name` | string | Eindeutiger Indikator-Name (z.B. `"RSI1"`, `"ADX1"`) |
+| `type` | string | Indikator-Typ (z.B. `"RSI"`, `"ADX"`, `"MACD"`) |
+| `params` | array | MUSS mindestens 1 Parameter enthalten |
+
+### ⚠️ Parameter-Struktur (Pflicht pro Parameter)
+
+**WICHTIG:** Jedes Element in `params[]` **MUSS** folgende Felder haben:
+
+| Feld | Typ | Beschreibung | Pflicht |
+|------|-----|--------------|---------|
+| `name` | string | Parameter-Name (z.B. `"period"`, `"length"`, `"threshold"`) | ✅ **JA** |
+| `value` | number/boolean | Aktueller optimierter Wert | ✅ **JA** |
+| `range` | object | **Optimierungsbereich** (siehe unten) | ✅ **JA** |
+
+**⚠️ Range-Struktur (Pflicht für numerische Parameter):**
+
+Wenn `value` ein **Number** ist, **MUSS** `range` folgende Felder haben:
+
+| Feld | Typ | Beschreibung | Pflicht |
+|------|-----|--------------|---------|
+| `min` | number | Minimum-Wert für Optimierung | ✅ **JA** |
+| `max` | number | Maximum-Wert für Optimierung | ✅ **JA** |
+| `step` | number | Schrittweite (z.B. `1` für Integer, `0.1` für Float) | ✅ **JA** |
+
+**Beispiel (Korrekt):**
+```json
+{
+  "name": "period",
+  "value": 14,
+  "range": {
+    "min": 9,
+    "max": 20,
+    "step": 1
+  }
+}
+```
+
+**❌ Häufige Fehler:**
+```json
+// FALSCH: range fehlt
+{
+  "name": "period",
+  "value": 14
+}
+
+// FALSCH: step fehlt
+{
+  "name": "period",
+  "value": 14,
+  "range": {
+    "min": 9,
+    "max": 20
+  }
+}
+
+// FALSCH: range ist null (nur bei boolean erlaubt!)
+{
+  "name": "period",
+  "value": 14,
+  "range": null
+}
+```
+
+**✅ Ausnahme: Boolean-Parameter**
+
+Bei **Boolean-Werten** darf `range` `null` sein:
+```json
+{
+  "name": "use_ema",
+  "value": true,
+  "range": null
+}
+```
+
+### Regime-Struktur (Optional, aber empfohlen)
+
+Wenn `regimes[]` vorhanden ist, **MUSS** jedes Regime folgende Felder haben:
+
+| Feld | Typ | Beschreibung | Pflicht |
+|------|-----|--------------|---------|
+| `id` | string | Eindeutiger Regime-Name (z.B. `"BULL"`, `"BEAR"`) | ✅ **JA** |
+| `name` | string | Anzeigename (z.B. `"Bull Market"`) | ✅ **JA** |
+| `thresholds` | array | Array von Threshold-Objekten | ✅ **JA** |
+| `priority` | integer | Priorität (höher = wichtiger, 0-100) | ✅ **JA** |
+| `scope` | string | `"entry"` oder `"all"` | ✅ **JA** |
+
+### Threshold-Struktur (Pflicht pro Threshold)
+
+Jedes Element in `thresholds[]` **MUSS** folgende Felder haben:
+
+| Feld | Typ | Beschreibung | Pflicht |
+|------|-----|--------------|---------|
+| `name` | string | Threshold-Name (z.B. `"adx_strength"`) | ✅ **JA** |
+| `value` | number | Aktueller optimierter Schwellenwert | ✅ **JA** |
+| `range` | object | **Optimierungsbereich** (min, max, step) | ✅ **JA** |
+
+**⚠️ Auch bei Thresholds gilt: `range` mit `min`, `max`, `step` ist PFLICHT!**
+
+```json
+{
+  "name": "adx_strength",
+  "value": 25.0,
+  "range": {
+    "min": 15,
+    "max": 35,
+    "step": 1
+  }
+}
+```
+
+### Zusammenfassung: Was ist IMMER Pflicht?
+
+**Für JEDEN Parameter (Indicator + Threshold):**
+1. ✅ `name` (string)
+2. ✅ `value` (number/boolean)
+3. ✅ `range` (object mit `min`, `max`, `step`) - **AUSSER bei boolean**
+
+**Warum ist `range` Pflicht?**
+- Die **Regime Optimization** benötigt Min/Max/Step für Optuna TPE
+- Die **52-Spalten-Tabelle** zeigt Min/Max/Step an
+- Der **Backtest** validiert gegen diese Ranges
+- Ohne `range` kann der Parameter **nicht optimiert** werden!
 
 ---
 
