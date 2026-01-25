@@ -248,32 +248,32 @@ class EntryAnalyzerPopup(
         regime_opt_tab = QWidget()
         self._setup_regime_optimization_tab(regime_opt_tab)
         self._tabs.addTab(regime_opt_tab, get_icon("psychology"), "2. Regime Optimization")
-        self._tabs.setTabEnabled(2, False)  # Disabled until setup is complete
+        # self._tabs.setTabEnabled(2, False)  # Always enabled (user request)
 
         # Tab 3: Regime Results (RegimeResultsMixin) - Results and Export
         regime_results_tab = QWidget()
         self._setup_regime_results_tab(regime_results_tab)
         self._tabs.addTab(regime_results_tab, get_icon("assessment"), "3. Regime Results")
-        self._tabs.setTabEnabled(3, False)  # Disabled until optimization is complete
+        # self._tabs.setTabEnabled(3, False)  # Always enabled (user request)
 
         # STUFE-2 TABS: Indicator Optimization (3 tabs)
         # Tab 4: Indicator Setup V2 (IndicatorSetupV2Mixin) - Indicator Selection & Parameters
         indicator_setup_v2_tab = QWidget()
         self._setup_indicator_setup_v2_tab(indicator_setup_v2_tab)
         self._tabs.addTab(indicator_setup_v2_tab, get_icon("tune"), "4. Indicator Setup")
-        self._tabs.setTabEnabled(4, False)  # Disabled until regime results available
+        # self._tabs.setTabEnabled(4, False)  # Always enabled (user request)
 
         # Tab 5: Indicator Optimization V2 (IndicatorOptimizationV2Mixin) - Per-Signal Type Optimization
         indicator_opt_v2_tab = QWidget()
         self._setup_indicator_optimization_v2_tab(indicator_opt_v2_tab)
         self._tabs.addTab(indicator_opt_v2_tab, get_icon("psychology"), "5. Indicator Optimization")
-        self._tabs.setTabEnabled(5, False)  # Disabled until setup is complete
+        # self._tabs.setTabEnabled(5, False)  # Always enabled (user request)
 
         # Tab 6: Indicator Results V2 (IndicatorResultsV2Mixin) - Results and Export
         indicator_results_v2_tab = QWidget()
         self._setup_indicator_results_v2_tab(indicator_results_v2_tab)
         self._tabs.addTab(indicator_results_v2_tab, get_icon("assessment"), "6. Indicator Results")
-        self._tabs.setTabEnabled(6, False)  # Disabled until optimization is complete
+        # self._tabs.setTabEnabled(6, False)  # Always enabled (user request)
 
         # Tab 7: Pattern Recognition (AIMixin)
         pattern_tab = QWidget()
