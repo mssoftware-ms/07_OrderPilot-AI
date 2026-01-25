@@ -1,8 +1,14 @@
-"""Load OptimParams from JSON config file.
+"""Load OptimParams from JSON config file (v2.0 format support).
 
 This module bridges the gap between the JSON-based configuration
 (used in Regime tab tables) and the OptimParams dataclass
 (used by entry_signal_engine for Analyze Visible Range).
+
+v2.0 Update:
+- Supports new v2.0 format with optimization_results[].indicators[]
+- Uses RegimeConfigLoaderV2 for proper v2.0 loading
+- Builds flattened params from nested v2.0 structure
+- Maintains backward compatibility with v1.0 root-level indicators[]
 
 Fixes the architectural issue where "Analyze Visible Range" was
 using hardcoded defaults instead of optimized parameters.
@@ -10,7 +16,6 @@ using hardcoded defaults instead of optimized parameters.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -21,10 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def load_optim_params_from_json(json_path: Path | str) -> OptimParams:
-    """Load OptimParams from entry_analyzer_regime.json format.
+    """Load OptimParams from entry_analyzer_regime.json format (v2.0 support).
 
-    Falls JSON existiert und optimization_results hat, nutze die neuesten
-    applied=true Parameter. Sonst nutze indicators direkt.
+    Supports both v2.0 and v1.0 formats:
+    - v2.0: optimization_results[].indicators[] (nested params array)
+    - v1.0: root-level indicators[] (fallback)
 
     Args:
         json_path: Pfad zur JSON-Datei
@@ -38,31 +44,156 @@ def load_optim_params_from_json(json_path: Path | str) -> OptimParams:
         logger.warning("JSON config not found: %s, using defaults", json_path)
         return OptimParams()
 
+    # Try to load with RegimeConfigLoaderV2 (v2.0 format)
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error("Failed to load JSON config: %s", e)
+        from src.core.tradingbot.config.regime_loader_v2 import (
+            RegimeConfigLoaderV2,
+            RegimeConfigLoadError,
+        )
+
+        loader = RegimeConfigLoaderV2()
+        config = loader.load_config(json_path)
+
+        # Get applied result from v2.0 format
+        applied = loader.get_applied_result(config)
+        if applied:
+            indicators = applied.get("indicators", [])
+            regimes = applied.get("regimes", [])
+
+            # Build flattened params from v2.0 nested structure
+            flattened_params = _flatten_v2_params(indicators, regimes)
+
+            logger.info(
+                "Loading OptimParams from v2.0 format (score=%.1f, trial=%d)",
+                applied.get("score", 0),
+                applied.get("trial_number", 0),
+            )
+            return _build_optim_params_from_opt_result(flattened_params, config)
+
+        # No applied result in v2.0 format
+        logger.info("No applied optimization results in v2.0 format, using defaults")
         return OptimParams()
 
-    # 1. Versuche optimization_results (neueste applied=true)
-    opt_results = config.get("optimization_results", [])
-    applied_results = [r for r in opt_results if r.get("applied", False)]
+    except (RegimeConfigLoadError, Exception) as e:
+        # v2.0 loading failed, try v1.0 fallback
+        logger.debug("v2.0 loading failed (%s), trying v1.0 fallback", e)
 
-    if applied_results:
-        # Neuestes Ergebnis (letztes in Liste)
-        latest = applied_results[-1]
-        params_dict = latest.get("params", {})
-        logger.info(
-            "Loading OptimParams from optimization_results (score=%.1f, trial=%d)",
-            latest.get("score", 0),
-            latest.get("trial_number", 0),
-        )
-        return _build_optim_params_from_opt_result(params_dict, config)
+    # Fallback: Try v1.0 format (root-level indicators[])
+    try:
+        import json
 
-    # 2. Fallback: Nutze indicators direkt
-    logger.info("No applied optimization results, using indicator defaults from JSON")
-    return _build_optim_params_from_indicators(config)
+        with open(json_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+
+        # Check for old v1.0 format with root-level indicators
+        if "indicators" in config:
+            logger.info("Loading OptimParams from v1.0 format (root-level indicators)")
+            return _build_optim_params_from_indicators(config)
+
+        # No valid format found
+        logger.warning("No valid format found in %s, using defaults", json_path)
+        return OptimParams()
+
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error("Failed to load JSON config: %s, using defaults", e)
+        return OptimParams()
+
+
+def _flatten_v2_params(indicators: list[dict], regimes: list[dict]) -> dict[str, Any]:
+    """Flatten v2.0 nested params structure to v1.0 flattened format.
+
+    Converts:
+        indicators: [{name: "ADX1", type: "ADX", params: [{name: "period", value: 14}]}]
+        regimes: [{id: "BULL", thresholds: [{name: "adx_threshold", value: 25}]}]
+
+    To:
+        {"adx.period": 14, "BULL.adx_threshold": 25}
+
+    This allows using the existing _build_optim_params_from_opt_result() logic.
+
+    Args:
+        indicators: List of indicator dicts from v2.0 format
+        regimes: List of regime dicts from v2.0 format
+
+    Returns:
+        Flattened params dict compatible with v1.0 format
+    """
+    flattened = {}
+
+    # Flatten indicator params
+    for ind in indicators:
+        ind_name = ind.get("name", "")
+        ind_type = ind.get("type", "")
+
+        # Map v2.0 indicator names to v1.0 IDs
+        # v2.0: "TREND_FILTER", "STRENGTH_ADX" → v1.0: "sma_fast", "adx"
+        ind_id = _map_v2_indicator_name_to_v1_id(ind_name, ind_type)
+
+        for param in ind.get("params", []):
+            param_name = param.get("name")
+            param_value = param.get("value")
+
+            if param_name and param_value is not None:
+                key = f"{ind_id}.{param_name}"
+                flattened[key] = param_value
+
+    # Flatten regime thresholds
+    for regime in regimes:
+        regime_id = regime.get("id", "")
+
+        for threshold in regime.get("thresholds", []):
+            threshold_name = threshold.get("name")
+            threshold_value = threshold.get("value")
+
+            if threshold_name and threshold_value is not None:
+                key = f"{regime_id}.{threshold_name}"
+                flattened[key] = threshold_value
+
+    logger.debug("Flattened v2.0 params: %s", flattened)
+    return flattened
+
+
+def _map_v2_indicator_name_to_v1_id(name: str, ind_type: str) -> str:
+    """Map v2.0 indicator name to v1.0 indicator ID.
+
+    v2.0 names are generic (e.g., "TREND_FILTER", "STRENGTH_ADX").
+    v1.0 IDs are specific (e.g., "sma_fast", "adx", "rsi").
+
+    This mapping uses indicator type + common naming patterns.
+
+    Args:
+        name: v2.0 indicator name (e.g., "TREND_FILTER")
+        ind_type: Indicator type (e.g., "EMA", "ADX", "RSI")
+
+    Returns:
+        v1.0 indicator ID (e.g., "sma_fast", "adx")
+    """
+    # Direct type-based mapping (most common)
+    type_map = {
+        "ADX": "adx",
+        "RSI": "rsi",
+        "BB": "bb",
+        "ATR": "atr14",
+        "MACD": "macd",
+    }
+
+    # If type is in map, use it directly
+    if ind_type in type_map:
+        return type_map[ind_type]
+
+    # For EMA/SMA, check if it's fast or slow based on name
+    if ind_type in ("EMA", "SMA"):
+        name_lower = name.lower()
+        if "fast" in name_lower or "trend" in name_lower or "filter" in name_lower:
+            return "sma_fast"
+        elif "slow" in name_lower:
+            return "sma_slow"
+        else:
+            # Default to sma_fast if unclear
+            return "sma_fast"
+
+    # Fallback: Use lowercase type
+    return ind_type.lower()
 
 
 def _build_optim_params_from_opt_result(params: dict, config: dict) -> OptimParams:
