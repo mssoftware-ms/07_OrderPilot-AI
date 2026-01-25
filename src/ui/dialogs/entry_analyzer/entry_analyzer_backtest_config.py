@@ -576,285 +576,217 @@ class BacktestConfigMixin:
             )
 
     def _perform_incremental_regime_detection(self) -> list[dict]:
-        """Perform incremental regime detection candle-by-candle (Issue #21 COMPLETE).
+        """Perform regime detection on visible chart range (v2 JSON optimized).
+
+        Evaluates v2.0 regime thresholds directly against calculated indicator values.
+        No legacy model conversions - pure v2 format.
 
         Returns:
-            List of regime PERIODS with start, end, duration for each regime.
-            Structure: {
-                'start_date', 'start_time', 'end_date', 'end_time',
-                'regime', 'score', 'duration_bars', 'duration_time',
-                'start_timestamp', 'end_timestamp', 'start_bar_index', 'end_bar_index'
-            }
+            List of regime periods with start, end, duration for each regime.
         """
         from datetime import datetime
-
         import pandas as pd
+        import numpy as np
 
         from src.core.indicators.types import IndicatorConfig, IndicatorType
-        from src.core.tradingbot.config.detector import RegimeDetector
-        from src.core.tradingbot.config.evaluator import ConditionEvaluationError
         from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
 
-        regime_periods = []  # List of complete regime periods
-        current_regime = None  # Currently active regime
-        min_candles = 50  # Minimum candles needed for regime detection
-
-        # Load config (JSON-based)
+        # ===== 1. Load and validate v2 config =====
         if self._regime_config is None:
-            logger.info("Regime config not loaded, attempting to load default config...")
             self._load_default_regime_config()
+        
         config = self._regime_config
         if config is None:
-            logger.error("Failed to load regime config - cannot perform detection")
-            raise ValueError(
-                "Regime config is not loaded. Please load a regime config using 'Load Regime Config' button first."
-            )
+            raise ValueError("Keine Regime-Config geladen. Bitte zuerst eine Config laden.")
 
-        # Extract indicators and regimes from v2.0 config
-        indicators = []
-        regimes = []
+        # Extract v2 data from optimization_results
+        if "optimization_results" not in config or not config["optimization_results"]:
+            raise ValueError("Config hat kein 'optimization_results' - kein v2 Format?")
 
-        if "optimization_results" in config and config["optimization_results"]:
-            # Find the latest applied result, or use the first one
-            applied = [r for r in config["optimization_results"] if r.get('applied', False)]
-            result = applied[-1] if applied else config["optimization_results"][0]
+        applied = [r for r in config["optimization_results"] if r.get('applied', False)]
+        opt_result = applied[-1] if applied else config["optimization_results"][0]
 
-            indicators = result.get('indicators', [])
-            regimes = result.get('regimes', [])
+        indicators_v2 = opt_result.get('indicators', [])
+        regimes_v2 = opt_result.get('regimes', [])
 
-        logger.info(f"Using regime config with {len(indicators)} indicators and {len(regimes)} regimes")
+        if not indicators_v2 or not regimes_v2:
+            raise ValueError(f"Config enthält keine Indikatoren oder Regimes: {len(indicators_v2)} indicators, {len(regimes_v2)} regimes")
 
-        # Build DataFrame once
+        logger.info(f"V2 Config: {len(indicators_v2)} Indikatoren, {len(regimes_v2)} Regimes")
+
+        # ===== 2. Build DataFrame =====
         df = pd.DataFrame(self._candles)
-
-        # Ensure required columns
         if "timestamp" not in df.columns and "time" in df.columns:
             df["timestamp"] = df["time"]
 
-        required_cols = ["open", "high", "low", "close", "volume"]
-        missing = [col for col in required_cols if col not in df.columns]
+        required = ["open", "high", "low", "close", "volume", "timestamp"]
+        missing = [c for c in required if c not in df.columns]
         if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+            raise ValueError(f"Fehlende Spalten: {missing}")
 
-        # Pre-calculate indicator results for full range
+        # ===== 3. Calculate all indicators once =====
         engine = RegimeEngineJSON()
-        indicator_results = {}
-        for ind_def in indicators:
-            # Convert v2.0 params array to dict format
-            params_dict = {}
-            for param in ind_def.get('params', []):
-                params_dict[param['name']] = param['value']
+        indicator_values = {}  # name -> pd.Series or DataFrame
 
-            ind_config = IndicatorConfig(
-                indicator_type=IndicatorType(ind_def['type'].lower()),
-                params=params_dict,
-                use_talib=False,
-                cache_results=True,
-            )
-            result = engine.indicator_engine.calculate(df, ind_config)
-            indicator_results[ind_def['name']] = result.values
+        for ind in indicators_v2:
+            name = ind['name']
+            ind_type = ind['type'].upper()
+            params = {p['name']: p['value'] for p in ind.get('params', [])}
 
-        # Convert v2.0 regimes to Pydantic models for RegimeDetector
-        from src.core.tradingbot.config.models import RegimeConfig, RegimeThreshold
-
-        regime_configs = []
-        for regime in regimes:
-            # Convert v2.0 thresholds array to dict format
-            thresholds_dict = {}
-            for threshold in regime.get('thresholds', []):
-                thresholds_dict[threshold['name']] = threshold['value']
-
-            # Build conditions from thresholds
-            conditions = []
-            for name, value in thresholds_dict.items():
-                # Map threshold names to condition expressions
-                if name == 'adx_min':
-                    conditions.append(f"STRENGTH_ADX.value >= {value}")
-                elif name == 'adx_max':
-                    conditions.append(f"STRENGTH_ADX.value < {value}")
-                elif name == 'rsi_min':
-                    conditions.append(f"MOMENTUM_RSI.value >= {value}")
-                elif name == 'rsi_max':
-                    conditions.append(f"MOMENTUM_RSI.value < {value}")
-                # Add more mappings as needed
-
-            regime_config = RegimeConfig(
-                id=regime['id'],
-                name=regime['name'],
-                conditions=conditions,
-                priority=regime.get('priority', 50),
-                scope=regime.get('scope', 'entry'),
-                tags=regime.get('tags', [])
-            )
-            regime_configs.append(regime_config)
-
-        detector = RegimeDetector(regime_configs)
-
-        def _safe_value(value) -> float:
-            if pd.isna(value):
-                return float("nan")
-            return float(value)
-
-        def _indicator_values_at(index: int) -> dict[str, dict[str, float]]:
-            values: dict[str, dict[str, float]] = {}
-            for ind_id, result in indicator_results.items():
-                if isinstance(result, pd.Series):
-                    val = result.iloc[index] if index < len(result) else float("nan")
-                    values[ind_id] = {"value": _safe_value(val)}
-                elif isinstance(result, pd.DataFrame):
-                    values[ind_id] = {}
-                    for col in result.columns:
-                        val = result[col].iloc[index] if index < len(result) else float("nan")
-                        values[ind_id][col] = _safe_value(val)
-                    if "bandwidth" in values[ind_id]:
-                        values[ind_id]["width"] = values[ind_id]["bandwidth"]
-                elif isinstance(result, dict):
-                    values[ind_id] = result
-                else:
-                    values[ind_id] = {"value": float("nan")}
-            return values
-
-        detector_logger = logging.getLogger("src.core.tradingbot.config.detector")
-        prev_level = detector_logger.level
-        detector_logger.setLevel(logging.WARNING)
-        try:
-            # Iterate through candles incrementally
-            for i in range(min_candles - 1, len(df)):
-                try:
-                    indicator_values = _indicator_values_at(i)
-                    active_regimes = detector.detect_active_regimes(indicator_values, scope="entry")
-                    regime_state = engine._convert_to_regime_state(
-                        active_regimes=active_regimes,
-                        indicator_values=indicator_values,
-                        timestamp=datetime.utcnow(),
-                    )
-                except ConditionEvaluationError as e:
-                    logger.debug(f"Skipping bar {i} due to condition evaluation error: {e}")
-                    continue
-                except Exception as e:
-                    logger.error(f"Error calculating regimes at bar {i}: {e}")
-                    continue
-
-                # Determine regime label
-                if active_regimes:
-                    regime_label = active_regimes[0].id.upper()
-                else:
-                    regime_label = "UNKNOWN"
-
-                # Score based on regime confidence
-                score = max(0.0, min(100.0, regime_state.regime_confidence * 100))
-
-                # Get timestamp
-                timestamp = df.iloc[i]["timestamp"]
-                dt = (
-                    datetime.fromtimestamp(timestamp / 1000)
-                    if timestamp > 1e10
-                    else datetime.fromtimestamp(timestamp)
+            try:
+                ind_config = IndicatorConfig(
+                    indicator_type=IndicatorType(ind_type.lower()),
+                    params=params,
+                    use_talib=False,
+                    cache_results=True,
                 )
+                result = engine.indicator_engine.calculate(df, ind_config)
+                indicator_values[name] = result.values
+                logger.debug(f"Indikator {name} ({ind_type}) berechnet: {len(result.values)} Werte")
+            except Exception as e:
+                logger.error(f"Fehler bei Indikator {name}: {e}")
+                indicator_values[name] = pd.Series([np.nan] * len(df))
 
-                # Check if regime changed
-                if current_regime is None:
-                    # First regime detected - start new period
-                    current_regime = {
-                        "regime": regime_label,
-                        "score": score,
-                        "start_timestamp": timestamp,
-                        "start_date": dt.strftime("%Y-%m-%d"),
-                        "start_time": dt.strftime("%H:%M:%S"),
-                        "start_bar_index": i,
-                    }
-                    logger.debug(
-                        f"First regime started at bar {i}: {regime_label} (score: {score:.2f})"
-                    )
+        # ===== 4. Build threshold evaluation functions =====
+        def get_indicator_value(ind_name: str, idx: int) -> float:
+            """Get indicator value at specific bar index."""
+            if ind_name not in indicator_values:
+                return np.nan
+            vals = indicator_values[ind_name]
+            if isinstance(vals, pd.DataFrame):
+                # Multi-column indicator (e.g., BB) - use first numeric column
+                return float(vals.iloc[idx, 0]) if idx < len(vals) else np.nan
+            elif isinstance(vals, pd.Series):
+                return float(vals.iloc[idx]) if idx < len(vals) else np.nan
+            return np.nan
 
-                elif current_regime["regime"] != regime_label:
-                    # Regime changed - close previous period and start new one
-                    current_regime["end_timestamp"] = timestamp
-                    current_regime["end_date"] = dt.strftime("%Y-%m-%d")
-                    current_regime["end_time"] = dt.strftime("%H:%M:%S")
-                    current_regime["end_bar_index"] = i
+        def evaluate_regime_at(regime: dict, idx: int) -> bool:
+            """Evaluate if regime conditions are met at bar index."""
+            thresholds = regime.get('thresholds', [])
+            
+            for thresh in thresholds:
+                name = thresh['name']
+                value = thresh['value']
+                
+                # Parse threshold name to get indicator + condition
+                # Format: adx_min, adx_max, rsi_min, rsi_max, etc.
+                if name.endswith('_min'):
+                    base = name[:-4]  # adx, rsi
+                    ind_name = self._threshold_to_indicator_name(base)
+                    ind_val = get_indicator_value(ind_name, idx)
+                    if np.isnan(ind_val) or ind_val < value:
+                        return False
+                        
+                elif name.endswith('_max'):
+                    base = name[:-4]
+                    ind_name = self._threshold_to_indicator_name(base)
+                    ind_val = get_indicator_value(ind_name, idx)
+                    if np.isnan(ind_val) or ind_val >= value:
+                        return False
+                else:
+                    logger.warning(f"Unbekanntes Threshold-Format: {name}")
+                    
+            return True  # All thresholds passed
 
-                    # Calculate duration
-                    duration_bars = (
-                        current_regime["end_bar_index"] - current_regime["start_bar_index"]
-                    )
-                    duration_seconds = (
-                        (current_regime["end_timestamp"] - current_regime["start_timestamp"]) / 1000
-                        if current_regime["end_timestamp"] > 1e10
-                        else (current_regime["end_timestamp"] - current_regime["start_timestamp"])
-                    )
-                    duration_time = self._format_duration(duration_seconds)
+        # ===== 5. Iterate through candles and detect regimes =====
+        min_candles = 50  # Warmup for indicator calculation
+        regime_periods = []
+        current_regime = None
 
-                    current_regime["duration_bars"] = duration_bars
-                    current_regime["duration_time"] = duration_time
+        # Sort regimes by priority (highest first)
+        sorted_regimes = sorted(regimes_v2, key=lambda r: r.get('priority', 0), reverse=True)
+        
+        # Fallback to lowest priority regime (usually SIDEWAYS) instead of UNKNOWN
+        fallback_regime_id = sorted_regimes[-1]['id'] if sorted_regimes else "SIDEWAYS"
 
-                    # Add to periods list
-                    regime_periods.append(current_regime)
-                    logger.debug(
-                        f"Regime ended at bar {i}: {current_regime['regime']} -> {regime_label} "
-                        f"(duration: {duration_bars} bars, {duration_time})"
-                    )
+        for i in range(min_candles, len(df)):
+            # Find first matching regime (highest priority)
+            active_regime_id = fallback_regime_id  # Use fallback instead of UNKNOWN
+            for regime in sorted_regimes:
+                if evaluate_regime_at(regime, i):
+                    active_regime_id = regime['id']
+                    break
 
-                    # Start new regime
-                    current_regime = {
-                        "regime": regime_label,
-                        "score": score,
-                        "start_timestamp": timestamp,
-                        "start_date": dt.strftime("%Y-%m-%d"),
-                        "start_time": dt.strftime("%H:%M:%S"),
-                        "start_bar_index": i,
-                    }
-        finally:
-            detector_logger.setLevel(prev_level)
+            # Get timestamp for this bar
+            ts = df.iloc[i]["timestamp"]
+            dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
 
-        logger.info(f"Processed {len(df)} candles, detected {len(regime_periods)} regime changes so far")
+            # Track regime changes
+            if current_regime is None:
+                # First regime
+                current_regime = {
+                    "regime": active_regime_id,
+                    "score": 100.0,  # Simplified: 100 if active
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
+            elif current_regime["regime"] != active_regime_id:
+                # Regime changed - close previous
+                current_regime["end_timestamp"] = ts
+                current_regime["end_date"] = dt.strftime("%Y-%m-%d")
+                current_regime["end_time"] = dt.strftime("%H:%M:%S")
+                current_regime["end_bar_index"] = i
+                current_regime["duration_bars"] = i - current_regime["start_bar_index"]
+                
+                duration_s = (ts - current_regime["start_timestamp"])
+                if current_regime["start_timestamp"] > 1e10:
+                    duration_s /= 1000
+                current_regime["duration_time"] = self._format_duration(duration_s)
+                
+                regime_periods.append(current_regime)
+                
+                # Start new
+                current_regime = {
+                    "regime": active_regime_id,
+                    "score": 100.0,
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
 
-        # Close the last regime with the final candle
+        # ===== 6. Close final regime =====
         if current_regime is not None:
-            last_candle = self._candles[-1]
-            last_timestamp = last_candle.get("timestamp") or last_candle.get("time")
-            last_dt = (
-                datetime.fromtimestamp(last_timestamp / 1000)
-                if last_timestamp > 1e10
-                else datetime.fromtimestamp(last_timestamp)
-            )
-
-            current_regime["end_timestamp"] = last_timestamp
+            last_ts = df.iloc[-1]["timestamp"]
+            last_dt = datetime.fromtimestamp(last_ts / 1000 if last_ts > 1e10 else last_ts)
+            
+            current_regime["end_timestamp"] = last_ts
             current_regime["end_date"] = last_dt.strftime("%Y-%m-%d")
             current_regime["end_time"] = last_dt.strftime("%H:%M:%S")
-            current_regime["end_bar_index"] = len(self._candles)
-
-            # Calculate duration
-            duration_bars = current_regime["end_bar_index"] - current_regime["start_bar_index"]
-            duration_seconds = (
-                (current_regime["end_timestamp"] - current_regime["start_timestamp"]) / 1000
-                if current_regime["end_timestamp"] > 1e10
-                else (current_regime["end_timestamp"] - current_regime["start_timestamp"])
-            )
-            duration_time = self._format_duration(duration_seconds)
-
-            current_regime["duration_bars"] = duration_bars
-            current_regime["duration_time"] = duration_time
-
-            # Add final regime
+            current_regime["end_bar_index"] = len(df)
+            current_regime["duration_bars"] = len(df) - current_regime["start_bar_index"]
+            
+            duration_s = (last_ts - current_regime["start_timestamp"])
+            if current_regime["start_timestamp"] > 1e10:
+                duration_s /= 1000
+            current_regime["duration_time"] = self._format_duration(duration_s)
+            
             regime_periods.append(current_regime)
-            logger.debug(
-                f"Last regime closed at final candle: {current_regime['regime']} (duration: {duration_bars} bars, {duration_time})"
-            )
 
-        logger.info(
-            f"Regime detection complete: {len(regime_periods)} regime periods detected "
-            f"from {len(df)} candles (starting at candle {min_candles})"
-        )
-        if len(regime_periods) == 0:
-            logger.warning(
-                "No regime periods detected! This may indicate:\n"
-                "  - All indicator values are NaN (check calculation)\n"
-                "  - No regime conditions are met (check thresholds in config)\n"
-                "  - Errors during detection (check logs above)"
-            )
-
+        logger.info(f"Regime-Erkennung abgeschlossen: {len(regime_periods)} Perioden aus {len(df)} Kerzen")
         return regime_periods
+
+    def _threshold_to_indicator_name(self, base: str) -> str:
+        """Map threshold base name to indicator name from v2 config.
+        
+        Args:
+            base: Threshold base name like 'adx', 'rsi'
+            
+        Returns:
+            Indicator name from config like 'STRENGTH_ADX', 'MOMENTUM_RSI'
+        """
+        # Standard mappings based on common v2 naming conventions
+        mappings = {
+            'adx': 'STRENGTH_ADX',
+            'rsi': 'MOMENTUM_RSI',
+            'ema': 'TREND_FILTER',
+            'sma': 'TREND_SMA',
+            'bb': 'VOLATILITY_BB',
+            'atr': 'VOLATILITY_ATR',
+        }
+        return mappings.get(base.lower(), base.upper())
 
     def _format_duration(self, seconds: float) -> str:
         """Format duration in seconds to human-readable string.

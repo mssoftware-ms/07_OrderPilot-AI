@@ -379,6 +379,36 @@ class EntryAnalyzerPopup(
 
         return widget
 
+    def _on_report_clicked(self) -> None:
+        """Generate and show analysis report.
+        
+        Placeholder for report generation functionality.
+        """
+        from PyQt6.QtWidgets import QMessageBox
+        
+        if not self._result:
+            QMessageBox.information(
+                self,
+                "No Results",
+                "Please run an analysis first before generating a report."
+            )
+            return
+        
+        # TODO: Implement full report generation
+        # For now, show a summary dialog
+        regime = self._result.regime.value.replace("_", " ").title()
+        entries_count = len(self._result.entries)
+        
+        QMessageBox.information(
+            self,
+            "Analysis Report",
+            f"Regime: {regime}\n"
+            f"Long Signals: {self._result.long_count}\n"
+            f"Short Signals: {self._result.short_count}\n"
+            f"Total Entries: {entries_count}\n"
+            f"Signal Rate: {self._result.signal_rate_per_hour:.1f}/h"
+        )
+
     # ========== Public API ==========
 
     def set_context(self, symbol: str, timeframe: str, candles: list[dict]) -> None:

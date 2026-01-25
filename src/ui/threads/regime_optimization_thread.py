@@ -1,20 +1,25 @@
-"""Regime Parameter Optimization Thread.
+"""Regime Parameter Optimization Thread - v2.0 (Optuna TPE Only).
 
-Simulates different regime parameter combinations and evaluates their performance
-on historical chart data.
+Fast TPE-based optimization using RegimeOptimizer with 5-component RegimeScore.
+Fully compatible with JSON v2 format.
 
 Features:
-- Grid search over parameter ranges (DEPRECATED - use Optuna TPE)
-- Optuna TPE-based optimization (NEW - 10-100x faster)
-- Backtesting with regime detection
-- Evaluation metrics (accuracy, stability, switches)
-- Progress reporting
-- Result ranking
+- Optuna TPE-based optimization (10-100x faster than grid search)
+- 5-component RegimeScore (Separability, Coherence, Fidelity, Boundary, Coverage)
+- JSON v2 format support with intelligent parameter mapping
+- Progress reporting with ETA
+- Result ranking and storage
 
-Migration Status:
-- ✅ New: RegimeOptimizer (Optuna TPE-based)
-- ⚠️ Deprecated: Old grid search code (kept as fallback)
-- 🔄 Use USE_OPTUNA_TPE flag to switch
+JSON v2 Parameter Mapping:
+    Indicators:
+        STRENGTH_ADX_period -> adx_period
+        TREND_FILTER_period -> sma_slow_period
+        MOMENTUM_RSI_period -> rsi_period
+        VOLATILITY_ATR_period -> (used as bb_period fallback)
+
+    Thresholds (from regimes):
+        Multiple ADX thresholds -> adx_threshold (avg)
+        Multiple RSI thresholds -> rsi_sideways_low/high (avg)
 """
 
 from __future__ import annotations
@@ -22,31 +27,22 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
-from itertools import product
 from typing import Dict, List, Any
 import pandas as pd
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
-from src.core.indicators.engine import IndicatorEngine
 from src.core import RegimeOptimizer, RegimeOptimizationConfig, RegimeResultsManager
 
 logger = logging.getLogger(__name__)
 
-# Feature Flag: Enable Optuna TPE optimization
-USE_OPTUNA_TPE = True  # Set to False to use old grid search
-
 
 class RegimeOptimizationThread(QThread):
-    """Background thread for regime parameter optimization.
-
-    Performs grid search over parameter combinations and evaluates
-    regime detection quality on historical data.
+    """Background thread for Optuna TPE regime optimization.
 
     Signals:
         progress: (current, total, message)
-        result_ready: (result_dict)
-        finished_with_results: (results_list)
+        result_ready: (result_dict) - emitted for each trial
+        finished_with_results: (results_list) - emitted at end
         error: (error_message)
     """
 
@@ -67,15 +63,14 @@ class RegimeOptimizationThread(QThread):
 
         Args:
             df: OHLCV DataFrame for backtesting
-            config_template_path: Path to base JSON regime config
-            param_grid: Dict mapping parameter paths to value lists
+            config_template_path: Path to base JSON regime config (v2 format)
+            param_grid: Dict mapping parameter paths to value lists (from JSON v2)
                 Example: {
-                    "adx.period": [10, 14, 20],
-                    "adx.threshold": [17, 25, 40],
-                    "rsi.period": [9, 14, 21]
+                    "STRENGTH_ADX_period": [10, 14, 20],
+                    "BULL_adx_min": [20, 25, 30]
                 }
             scope: Regime scope ("entry", "exit", "in_trade")
-            max_trials: Maximum number of optimization trials (default 150)
+            max_trials: Maximum number of optimization trials
         """
         super().__init__()
         self.df = df.copy()
@@ -84,80 +79,11 @@ class RegimeOptimizationThread(QThread):
         self.scope = scope
         self.max_trials = max_trials
         self._stop_requested = False
-        self._last_backtest_timing: dict | None = None
-        self._timing_totals = self._init_timing_totals()
-        self.timing_summary: dict | None = None
-        self.timing_summary_text = ""
 
-        # Calculate total combinations
+        # Calculate total combinations (for progress bar)
         self.total_combinations = 1
         for values in param_grid.values():
             self.total_combinations *= len(values)
-
-    @staticmethod
-    def _init_timing_totals() -> dict:
-        """Initialize timing counters for performance analysis."""
-        return {
-            "config_s": 0.0,
-            "backtest_s": 0.0,
-            "metrics_s": 0.0,
-            "score_s": 0.0,
-            "total_eval_s": 0.0,
-            "config_write_s": 0.0,
-            "classify_s": 0.0,
-            "classify_calls": 0,
-            "backtest_loop_s": 0.0,
-        }
-
-    def _accumulate_timings(self, timings: dict) -> None:
-        """Accumulate timing totals for optimization analysis."""
-        self._timing_totals["config_s"] += timings.get("config_s", 0.0)
-        self._timing_totals["backtest_s"] += timings.get("backtest_s", 0.0)
-        self._timing_totals["metrics_s"] += timings.get("metrics_s", 0.0)
-        self._timing_totals["score_s"] += timings.get("score_s", 0.0)
-        self._timing_totals["total_eval_s"] += timings.get("total_eval_s", 0.0)
-        self._timing_totals["config_write_s"] += timings.get("config_write_s", 0.0)
-        self._timing_totals["classify_s"] += timings.get("classify_s", 0.0)
-        self._timing_totals["classify_calls"] += timings.get("classify_calls", 0)
-        self._timing_totals["backtest_loop_s"] += timings.get("backtest_loop_s", 0.0)
-
-    def _finalize_timing_summary(self, total_s: float, combos_tested: int) -> None:
-        """Build and store a timing summary for UI and logs."""
-        totals = self._timing_totals
-        avg_per_combo = total_s / combos_tested if combos_tested else 0.0
-        classify_calls = totals["classify_calls"] or 1
-        classify_avg_ms = (totals["classify_s"] / classify_calls) * 1000.0
-        backtest_pct = (totals["backtest_s"] / total_s) if total_s > 0 else 0.0
-
-        self.timing_summary = {
-            "total_s": total_s,
-            "combos_tested": combos_tested,
-            "avg_per_combo_s": avg_per_combo,
-            "backtest_s": totals["backtest_s"],
-            "backtest_pct": backtest_pct,
-            "classify_calls": totals["classify_calls"],
-            "classify_avg_ms": classify_avg_ms,
-            "config_s": totals["config_s"],
-            "metrics_s": totals["metrics_s"],
-            "score_s": totals["score_s"],
-        }
-
-        self.timing_summary_text = (
-            f"Timing: total {total_s:.1f}s | avg/combo {avg_per_combo:.2f}s | "
-            f"backtest {totals['backtest_s']:.1f}s ({backtest_pct:.0%}) | "
-            f"classify avg {classify_avg_ms:.1f}ms"
-        )
-
-        logger.info(
-            "Optimization timing summary: total=%.2fs combos=%d avg=%.3fs "
-            "backtest=%.2fs (%.0f%%) classify_avg=%.2fms",
-            total_s,
-            combos_tested,
-            avg_per_combo,
-            totals["backtest_s"],
-            backtest_pct * 100.0,
-            classify_avg_ms,
-        )
 
     def request_stop(self):
         """Request graceful stop of optimization."""
@@ -165,24 +91,11 @@ class RegimeOptimizationThread(QThread):
         logger.info("Regime optimization stop requested")
 
     def run(self):
-        """Execute regime parameter optimization.
-
-        Uses Optuna TPE if USE_OPTUNA_TPE=True (recommended),
-        otherwise falls back to grid search (deprecated).
-        """
-        if USE_OPTUNA_TPE:
-            logger.info("Using Optuna TPE-based optimization (10-100x faster)")
-            self._run_optuna_optimization()
-        else:
-            logger.warning("Using DEPRECATED grid search. Set USE_OPTUNA_TPE=True for better performance.")
-            self._run_grid_search_optimization()
-
-    def _run_optuna_optimization(self):
-        """Execute Optuna TPE-based optimization (NEW)."""
+        """Execute Optuna TPE regime optimization."""
         try:
             total_start = time.perf_counter()
             logger.info(
-                f"Starting Optuna regime optimization: max_trials={self.total_combinations}, "
+                f"Starting Optuna regime optimization: max_trials={min(self.total_combinations, self.max_trials)}, "
                 f"scope={self.scope}"
             )
 
@@ -193,56 +106,12 @@ class RegimeOptimizationThread(QThread):
             )
 
             # Convert param_grid to structured param_ranges
-            ranges_dict = self._convert_param_grid_to_ranges()
+            ranges_dict = self._convert_param_grid_to_ranges_v2()
 
-            # Helper to get required parameter range (NO FALLBACKS!)
-            def get_required_range(key: str) -> dict:
-                """Get required parameter range from ranges_dict.
-
-                Raises ValueError if parameter is missing from JSON config.
-                This ensures all parameters come from JSON, no hardcoded fallbacks!
-                """
-                if key not in ranges_dict:
-                    raise ValueError(
-                        f"Missing required parameter range '{key}' in regime config! "
-                        f"Please define this parameter in 'Regime Setup' tab. "
-                        f"Available ranges: {list(ranges_dict.keys())}"
-                    )
-                return ranges_dict[key]
-
-            # Build structured AllParamRanges from flat dict (NO FALLBACKS!)
-            try:
-                param_ranges = AllParamRanges(
-                    adx=ADXParamRanges(
-                        period=ParamRange(**get_required_range("adx_period")),
-                        threshold=ParamRange(**get_required_range("adx_threshold"))
-                    ),
-                    sma_fast=SMAParamRanges(
-                        period=ParamRange(**get_required_range("sma_fast_period"))
-                    ),
-                    sma_slow=SMAParamRanges(
-                        period=ParamRange(**get_required_range("sma_slow_period"))
-                    ),
-                    rsi=RSIParamRanges(
-                        period=ParamRange(**get_required_range("rsi_period")),
-                        sideways_low=ParamRange(**get_required_range("rsi_sideways_low")),
-                        sideways_high=ParamRange(**get_required_range("rsi_sideways_high"))
-                    ),
-                    bb=BBParamRanges(
-                        period=ParamRange(**get_required_range("bb_period")),
-                        std_dev=ParamRange(**get_required_range("bb_std_dev")),
-                        width_percentile=ParamRange(**get_required_range("bb_width_percentile"))
-                    )
-                )
-            except ValueError as e:
-                error_msg = (
-                    f"❌ KONFIGURATIONSFEHLER: {str(e)}\n\n"
-                    f"Bitte stelle sicher, dass ALLE benötigten Parameter im Tab 'Regime Setup' "
-                    f"mit Min/Max-Werten konfiguriert sind!"
-                )
-                logger.error(error_msg)
-                self.error.emit(error_msg)
-                return
+            # Build AllParamRanges with intelligent defaults for missing params
+            param_ranges = self._build_param_ranges_with_defaults(
+                ranges_dict, ADXParamRanges, SMAParamRanges, RSIParamRanges, BBParamRanges, ParamRange
+            )
 
             # Create Optuna config
             config = OptimizationConfig(
@@ -250,7 +119,7 @@ class RegimeOptimizationThread(QThread):
                 n_jobs=1,  # Single-threaded for Qt compatibility
             )
 
-            # Create optimizer with correct argument order
+            # Create optimizer
             optimizer = RegimeOptimizer(
                 data=self.df.copy(),
                 param_ranges=param_ranges,
@@ -260,13 +129,13 @@ class RegimeOptimizationThread(QThread):
             # Create results manager
             results_manager = RegimeResultsManager()
 
-            # Register progress callback (emit every 5 trials to reduce UI overhead)
+            # Register progress callback
             def on_trial_complete(study, trial):
                 current = len(study.trials)
                 total = config.max_trials
                 best_score = study.best_value if study.best_trial else 0
 
-                # Only emit progress every 5 trials to reduce UI overhead
+                # Emit progress every 5 trials to reduce UI overhead
                 if current % 5 == 0 or current == total or current <= 3:
                     self.progress.emit(
                         current,
@@ -288,97 +157,39 @@ class RegimeOptimizationThread(QThread):
                     timestamp=result.timestamp.isoformat()
                 )
 
-            # Rank results (sorts and assigns rank numbers)
+            # Rank results
             results_manager.rank_results()
 
-            # Convert RegimeResult objects to UI-compatible dict format
+            # Convert to UI-compatible format
             results = []
             for regime_result in results_manager.results:
-                results.append({
+                # Ensure params and metrics are dicts (not Pydantic models)
+                params_dict = regime_result.params if isinstance(regime_result.params, dict) else {}
+                metrics_dict = regime_result.metrics if isinstance(regime_result.metrics, dict) else {}
+
+                ui_result = {
                     'score': int(regime_result.score),
-                    'params': regime_result.params,
-                    'metrics': regime_result.metrics,
-                    'timestamp': regime_result.timestamp,
-                    'trial_number': regime_result.rank,
-                    'config': None,
+                    'params': params_dict,
+                    'metrics': metrics_dict,
+                    'timestamp': datetime.fromisoformat(regime_result.timestamp),
+                    'rank': regime_result.rank,
+                    'trial_number': regime_result.rank,  # Use rank as trial number
+                    'config': None,  # Not needed for Optuna results
                     'regime_history': None,
-                    'timings': {'total_eval_s': 0.0}
-                })
+                }
+                results.append(ui_result)
+
+                # NOTE: Don't emit individual results here - causes 150x table rebuilds!
+                # Progress updates come from on_trial_complete callback during optimization
+                # Final results are emitted via finished_with_results below
 
             total_elapsed = time.perf_counter() - total_start
-            self._finalize_timing_summary(total_elapsed, len(results))
-
-            best_score = optimization_results[0].score if optimization_results else 0
             logger.info(
-                f"Optuna optimization complete: {len(results)} trials, "
-                f"best_score={best_score:.1f}"
+                f"Regime optimization complete: {len(results)} results in {total_elapsed:.1f}s "
+                f"({total_elapsed/len(results):.2f}s per trial)"
             )
 
-            self.finished_with_results.emit(results)
-
-        except Exception as e:
-            error_msg = f"Optuna regime optimization failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            self.error.emit(error_msg)
-
-    def _run_grid_search_optimization(self):
-        """Execute grid search optimization (DEPRECATED)."""
-        try:
-            total_start = time.perf_counter()
-            logger.info(
-                f"Starting regime optimization: {self.total_combinations} combinations, "
-                f"scope={self.scope}"
-            )
-
-            results = []
-            current = 0
-            self._timing_totals = self._init_timing_totals()
-
-            # Reduce verbose logging during optimization (significant I/O cost)
-            engine_logger = logging.getLogger("src.core.tradingbot.regime_engine_json")
-            indicators_logger = logging.getLogger("src.core.indicators.engine")
-            prev_engine_level = engine_logger.level
-            prev_indicators_level = indicators_logger.level
-            engine_logger.setLevel(logging.WARNING)
-            indicators_logger.setLevel(logging.WARNING)
-
-            # Generate all parameter combinations
-            param_names = list(self.param_grid.keys())
-            param_values = [self.param_grid[name] for name in param_names]
-
-            try:
-                for combo in product(*param_values):
-                    if self._stop_requested:
-                        logger.info("Optimization stopped by user")
-                        break
-
-                    current += 1
-
-                    # Create parameter dict from combination
-                    params = dict(zip(param_names, combo))
-
-                    # Emit progress
-                    param_str = ", ".join([f"{k}={v}" for k, v in params.items()])
-                    self.progress.emit(current, self.total_combinations, f"Testing: {param_str}")
-
-                    # Evaluate this parameter combination
-                    try:
-                        result = self._evaluate_params(params)
-                        results.append(result)
-                        self.result_ready.emit(result)
-                    except Exception as e:
-                        logger.error(f"Error evaluating params {params}: {e}")
-                        # Continue with next combination
-            finally:
-                engine_logger.setLevel(prev_engine_level)
-                indicators_logger.setLevel(prev_indicators_level)
-
-            # Sort results by composite score
-            results.sort(key=lambda x: x['score'], reverse=True)
-
-            total_elapsed = time.perf_counter() - total_start
-            self._finalize_timing_summary(total_elapsed, current)
-            logger.info(f"Regime optimization complete: {len(results)} results")
+            # Emit all results
             self.finished_with_results.emit(results)
 
         except Exception as e:
@@ -386,416 +197,166 @@ class RegimeOptimizationThread(QThread):
             logger.error(error_msg, exc_info=True)
             self.error.emit(error_msg)
 
-    def _evaluate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Evaluate a single parameter combination.
+    def _convert_param_grid_to_ranges_v2(self) -> Dict[str, Dict[str, Any]]:
+        """Convert JSON v2 param_grid to optimizer-compatible format with intelligent mapping.
 
-        Args:
-            params: Parameter dictionary
-
-        Returns:
-            Result dict with metrics and parameters
-        """
-        # 1. Create modified config with these parameters
-        t0 = time.perf_counter()
-        config_dict = self._create_config_with_params(params)
-        t1 = time.perf_counter()
-
-        # 2. Run regime detection on entire DataFrame
-        regime_history = self._backtest_regimes(config_dict)
-        t2 = time.perf_counter()
-
-        # 3. Calculate evaluation metrics
-        metrics = self._calculate_metrics(regime_history)
-        t3 = time.perf_counter()
-
-        # 4. Calculate composite score
-        score = self._calculate_composite_score(metrics)
-        t4 = time.perf_counter()
-
-        timings = {
-            "config_s": t1 - t0,
-            "backtest_s": t2 - t1,
-            "metrics_s": t3 - t2,
-            "score_s": t4 - t3,
-            "total_eval_s": t4 - t0,
-        }
-
-        if self._last_backtest_timing:
-            timings.update(self._last_backtest_timing)
-
-        self._accumulate_timings(timings)
-
-        return {
-            'params': params,
-            'config': config_dict,
-            'regime_history': regime_history,
-            'metrics': metrics,
-            'score': int(score),  # Integer score
-            'timings': timings,
-            'timestamp': datetime.utcnow()
-        }
-
-    def _create_config_with_params(self, params: Dict[str, Any]) -> dict:
-        """Create JSON config dict with modified parameters.
-
-        Args:
-            params: Parameters to override (path notation)
-                Example: {"adx.period": 20, "adx.threshold": 30}
-
-        Returns:
-            Modified config dict
-        """
-        # Load base config
-        import json
-        from pathlib import Path
-
-        with open(self.config_template_path, 'r') as f:
-            config = json.load(f)
-
-        # Apply parameter overrides
-        for param_path, value in params.items():
-            parts = param_path.split('.')
-
-            if len(parts) == 2:
-                # indicator.param (e.g., "adx.period")
-                indicator_type = parts[0].upper()
-                param_name = parts[1]
-
-                # Find and update indicator
-                for ind in config['indicators']:
-                    if ind['type'].upper() == indicator_type or ind['id'].lower() == parts[0].lower():
-                        ind['params'][param_name] = value
-                        logger.debug(f"Updated {ind['id']}.{param_name} = {value}")
-                        break
-
-            elif len(parts) == 3 and parts[0] == 'regime':
-                # regime.regime_id.threshold (e.g., "regime.strong_uptrend.adx_threshold")
-                regime_id = parts[1]
-                threshold_name = parts[2]
-
-                # Find and update regime condition
-                for regime in config['regimes']:
-                    if regime['id'] == regime_id:
-                        # Update threshold in conditions
-                        # This requires traversing the condition tree
-                        self._update_regime_threshold(regime['conditions'], threshold_name, value)
-                        break
-
-        return config
-
-    def _update_regime_threshold(self, conditions: dict, threshold_name: str, value: Any):
-        """Recursively update threshold in condition tree.
-
-        Args:
-            conditions: Condition dict (recursive structure)
-            threshold_name: Name of threshold to update (e.g., "adx_threshold")
-            value: New threshold value
-        """
-        if 'all' in conditions:
-            for cond in conditions['all']:
-                self._update_regime_threshold(cond, threshold_name, value)
-        elif 'any' in conditions:
-            for cond in conditions['any']:
-                self._update_regime_threshold(cond, threshold_name, value)
-        elif 'left' in conditions and 'right' in conditions:
-            # Leaf condition
-            indicator_id = conditions['left'].get('indicator_id', '')
-
-            # Check if this condition matches the threshold
-            if threshold_name in indicator_id or threshold_name.replace('_threshold', '') in indicator_id:
-                if 'value' in conditions['right']:
-                    conditions['right']['value'] = value
-                    logger.debug(f"Updated regime threshold {threshold_name} = {value}")
-                elif 'min' in conditions['right'] or 'max' in conditions['right']:
-                    # For 'between' operators, update both bounds proportionally
-                    if 'min' in conditions['right']:
-                        conditions['right']['min'] = value
-                    if 'max' in conditions['right']:
-                        conditions['right']['max'] = value
-
-    def _backtest_regimes(self, config_dict: dict) -> List[Dict[str, Any]]:
-        """Backtest regime detection on historical data.
-
-        Args:
-            config_dict: JSON config dictionary
-
-        Returns:
-            List of regime periods with timestamps and regime names
-        """
-        # Save config to temp file
-        import tempfile
-        import json
-
-        write_start = time.perf_counter()
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_dict, f)
-            temp_config_path = f.name
-        write_elapsed = time.perf_counter() - write_start
-
-        try:
-            # Initialize regime engine
-            engine = RegimeEngineJSON()
-
-            # Iterate through DataFrame and detect regimes
-            regime_history = []
-            current_regime = None
-            regime_start_idx = 0
-
-            # Sample every N bars to speed up (optional, for large datasets)
-            sample_rate = max(1, len(self.df) // 500)  # Max 500 regime checks
-            classify_total = 0.0
-            classify_calls = 0
-            loop_start = time.perf_counter()
-
-            for idx in range(0, len(self.df), sample_rate):
-                # Get data up to this point
-                data_window = self.df.iloc[:idx+1]
-
-                if len(data_window) < 50:  # Need minimum bars for indicators
-                    continue
-
-                try:
-                    # Classify regime
-                    classify_start = time.perf_counter()
-                    state = engine.classify_from_config(
-                        data=data_window,
-                        config_path=temp_config_path,
-                        scope=self.scope
-                    )
-                    classify_total += time.perf_counter() - classify_start
-                    classify_calls += 1
-
-                    regime_name = state.regime_label
-
-                    # Check for regime change
-                    if regime_name != current_regime:
-                        # End previous regime
-                        if current_regime is not None:
-                            regime_history.append({
-                                'regime': current_regime,
-                                'start_idx': regime_start_idx,
-                                'end_idx': idx - sample_rate,
-                                'start_time': self.df.index[regime_start_idx],
-                                'end_time': self.df.index[idx - sample_rate],
-                                'duration_bars': (idx - sample_rate) - regime_start_idx,
-                                'confidence': state.regime_confidence
-                            })
-
-                        # Start new regime
-                        current_regime = regime_name
-                        regime_start_idx = idx
-
-                except Exception as e:
-                    logger.debug(f"Regime detection failed at idx {idx}: {e}")
-                    continue
-
-            # Add final regime
-            if current_regime is not None:
-                regime_history.append({
-                    'regime': current_regime,
-                    'start_idx': regime_start_idx,
-                    'end_idx': len(self.df) - 1,
-                    'start_time': self.df.index[regime_start_idx],
-                    'end_time': self.df.index[-1],
-                    'duration_bars': len(self.df) - 1 - regime_start_idx,
-                    'confidence': 0.5  # Default for last regime
-                })
-
-            loop_elapsed = time.perf_counter() - loop_start
-            self._last_backtest_timing = {
-                "config_write_s": write_elapsed,
-                "classify_s": classify_total,
-                "classify_calls": classify_calls,
-                "backtest_loop_s": loop_elapsed,
+        JSON v2 Format:
+            {
+                "STRENGTH_ADX_period": [10, 14, 20],
+                "TREND_FILTER_period": [100, 150, 200],
+                "BULL_adx_min": [20, 25, 30],
+                "BEAR_adx_min": [20, 25, 30]
             }
 
-            return regime_history
-
-        finally:
-            # Cleanup temp file
-            import os
-            try:
-                os.unlink(temp_config_path)
-            except:
-                pass
-
-    def _calculate_metrics(self, regime_history: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Calculate evaluation metrics for regime history.
-
-        Args:
-            regime_history: List of regime periods
-
-        Returns:
-            Dict with metrics:
-                - regime_count: Number of distinct regimes
-                - avg_duration: Average regime duration (bars)
-                - stability_score: How stable regimes are (0-1)
-                - switch_count: Number of regime switches
-                - coverage: % of chart covered by regimes
-        """
-        if not regime_history:
-            return {
-                'regime_count': 0,
-                'avg_duration': 0.0,
-                'stability_score': 0.0,
-                'switch_count': 0,
-                'coverage': 0.0
-            }
-
-        # 1. Regime count (distinct regime types)
-        regime_types = set([r['regime'] for r in regime_history])
-        regime_count = len(regime_types)
-
-        # 2. Average duration
-        durations = [r['duration_bars'] for r in regime_history]
-        avg_duration = sum(durations) / len(durations)
-
-        # 3. Stability score (longer regimes = more stable)
-        # Normalize to 0-1: longer average duration = higher score
-        # Assume 100 bars = max stable duration for normalization
-        stability_score = min(avg_duration / 100.0, 1.0)
-
-        # 4. Switch count (fewer switches = better)
-        switch_count = len(regime_history) - 1  # Transitions between regimes
-
-        # 5. Coverage (% of bars covered by regimes)
-        total_bars = len(self.df)
-        covered_bars = sum(durations)
-        coverage = (covered_bars / total_bars) * 100 if total_bars > 0 else 0.0
-
-        return {
-            'regime_count': regime_count,
-            'avg_duration': avg_duration,
-            'stability_score': stability_score,
-            'switch_count': switch_count,
-            'coverage': coverage
-        }
-
-    def _calculate_composite_score(self, metrics: Dict[str, float]) -> float:
-        """Calculate composite score from metrics.
-
-        Weighting:
-            - Stability: 40% (longer regimes = better)
-            - Coverage: 30% (more of chart covered = better)
-            - Regime Count: 20% (moderate diversity = better, 3-5 optimal)
-            - Switch Count: 10% (fewer switches = better)
-
-        Args:
-            metrics: Evaluation metrics
-
-        Returns:
-            Composite score (0-100)
-        """
-        # 1. Stability score (already 0-1)
-        stability_score = metrics['stability_score']
-
-        # 2. Coverage score (0-100 → 0-1)
-        coverage_score = min(metrics['coverage'] / 100.0, 1.0)
-
-        # 3. Regime count score (optimal = 3-5 regimes)
-        regime_count = metrics['regime_count']
-        if regime_count == 0:
-            regime_score = 0.0
-        elif 3 <= regime_count <= 5:
-            regime_score = 1.0  # Optimal
-        elif regime_count < 3:
-            regime_score = regime_count / 3.0  # Too few
-        else:
-            regime_score = max(0.0, 1.0 - (regime_count - 5) * 0.1)  # Too many
-
-        # 4. Switch count score (fewer = better, normalized to 0-1)
-        # Assume 50 switches = 0 score, 0 switches = 1.0 score
-        switch_count = metrics['switch_count']
-        switch_score = max(0.0, 1.0 - (switch_count / 50.0))
-
-        # Composite score (weighted)
-        composite = (
-            stability_score * 0.40 +
-            coverage_score * 0.30 +
-            regime_score * 0.20 +
-            switch_score * 0.10
-        )
-
-        return composite * 100  # 0-100 scale
-
-    # ========== OPTUNA INTEGRATION HELPERS ==========
-
-    def _convert_param_grid_to_ranges(self) -> Dict[str, Dict[str, Any]]:
-        """Convert old param_grid format to ParamRange-compatible format.
-
-        Old format (grid):
-            {"adx.period": [10, 14, 20], "adx.threshold": [17, 25, 40]}
-            {"bb_std_dev": [1.5, 2.0, 2.5, 3.0]}
-
-        New format (ParamRange dict):
+        Optimizer Format:
             {
                 "adx_period": {"min": 10, "max": 20, "step": 1},
-                "adx_threshold": {"min": 17, "max": 40, "step": 1},
-                "bb_std_dev": {"min": 1.5, "max": 3.0, "step": 0.1}
+                "sma_slow_period": {"min": 100, "max": 200, "step": 10},
+                "adx_threshold": {"min": 20, "max": 30, "step": 1}  # avg of all ADX thresholds
             }
 
         Returns:
-            Param ranges dict with underscore keys for AllParamRanges construction
+            Dict with optimizer parameter names and ranges
         """
+        # JSON v2 -> Optimizer parameter name mapping
+        INDICATOR_MAPPING = {
+            "STRENGTH_ADX_period": "adx_period",
+            "TREND_FILTER_period": "sma_slow_period",
+            "MOMENTUM_RSI_period": "rsi_period",
+            "VOLATILITY_ATR_period": "atr_period",  # Keep separate for now
+        }
+
+        # Collect all threshold ranges for averaging
+        adx_threshold_ranges = []
+        rsi_low_ranges = []
+        rsi_high_ranges = []
+
         param_ranges = {}
 
         for param_path, values in self.param_grid.items():
             if not values:
                 continue
 
-            # Convert dotted path to underscore (adx.period -> adx_period)
             param_key = param_path.replace(".", "_")
-
             min_val = min(values)
             max_val = max(values)
 
-            # Detect type and calculate appropriate step
+            # Detect step based on type and value range
             if isinstance(min_val, float) or isinstance(max_val, float):
-                # Float parameter: Use 0.1 as default step
                 step = 0.1
+            elif max_val - min_val >= 100:
+                step = 10  # Large ranges use step=10
             else:
-                # Integer parameter: Use 1 as step
                 step = 1
 
-            # Create range with min/max/step (ParamRange fields)
-            param_ranges[param_key] = {
-                "min": min_val,
-                "max": max_val,
-                "step": step,
+            range_dict = {"min": min_val, "max": max_val, "step": step}
+
+            # Map indicators directly
+            if param_key in INDICATOR_MAPPING:
+                mapped_key = INDICATOR_MAPPING[param_key]
+                param_ranges[mapped_key] = range_dict
+                continue
+
+            # Collect ADX thresholds for averaging
+            if "_adx_min" in param_key or "_adx_max" in param_key:
+                adx_threshold_ranges.append(range_dict)
+                continue
+
+            # Collect RSI thresholds
+            if "_rsi_min" in param_key:
+                rsi_high_ranges.append(range_dict)
+                continue
+            if "_rsi_max" in param_key:
+                rsi_low_ranges.append(range_dict)
+                continue
+
+        # Average ADX thresholds
+        if adx_threshold_ranges:
+            avg_min = sum(r["min"] for r in adx_threshold_ranges) / len(adx_threshold_ranges)
+            avg_max = sum(r["max"] for r in adx_threshold_ranges) / len(adx_threshold_ranges)
+            param_ranges["adx_threshold"] = {
+                "min": avg_min,
+                "max": avg_max,
+                "step": 1
             }
 
-        logger.info(f"Converted param_grid to ranges: {param_ranges}")
+        # Average RSI thresholds
+        if rsi_low_ranges:
+            avg_min = sum(r["min"] for r in rsi_low_ranges) / len(rsi_low_ranges)
+            avg_max = sum(r["max"] for r in rsi_low_ranges) / len(rsi_low_ranges)
+            param_ranges["rsi_sideways_low"] = {
+                "min": avg_min,
+                "max": avg_max,
+                "step": 1
+            }
+
+        if rsi_high_ranges:
+            avg_min = sum(r["min"] for r in rsi_high_ranges) / len(rsi_high_ranges)
+            avg_max = sum(r["max"] for r in rsi_high_ranges) / len(rsi_high_ranges)
+            param_ranges["rsi_sideways_high"] = {
+                "min": avg_min,
+                "max": avg_max,
+                "step": 1
+            }
+
+        logger.info(f"Converted v2 param_grid to ranges: {param_ranges}")
         return param_ranges
 
-    def _convert_optuna_results_to_dict_format(
-        self,
-        ranked_results: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Convert ranked OptimizationResult dicts to UI-compatible format.
+    def _build_param_ranges_with_defaults(
+        self, ranges_dict, ADXParamRanges, SMAParamRanges, RSIParamRanges, BBParamRanges, ParamRange
+    ):
+        """Build AllParamRanges with intelligent defaults for missing parameters.
+
+        Required parameters from RegimeOptimizer:
+        - adx_period, adx_threshold
+        - sma_fast_period, sma_slow_period
+        - rsi_period, rsi_sideways_low, rsi_sideways_high
+        - bb_period, bb_std_dev, bb_width_percentile
 
         Args:
-            ranked_results: List of dicts with score, params, metrics (already sorted)
+            ranges_dict: Extracted ranges from JSON v2
+            ADXParamRanges, SMAParamRanges, etc.: Pydantic classes
 
         Returns:
-            List of result dicts compatible with UI
+            AllParamRanges instance
         """
-        results = []
+        from src.core.regime_optimizer import AllParamRanges
 
-        for idx, result in enumerate(ranked_results, start=1):
-            formatted_result = {
-                'params': result['params'],
-                'score': int(result['score']),
-                'metrics': result.get('metrics', {}),
-                'timestamp': datetime.utcnow(),
-                'trial_number': idx,
-                'config': None,  # Not needed for Optuna results
-                'regime_history': None,  # Not stored in optimization results
-                'timings': {
-                    'total_eval_s': 0.0  # Not tracked per-trial in new implementation
-                }
-            }
+        # Helper to get range with default fallback
+        def get_range(key: str, default_min: float, default_max: float, default_step: float) -> ParamRange:
+            if key in ranges_dict:
+                r = ranges_dict[key]
+                return ParamRange(min=r["min"], max=r["max"], step=r["step"])
+            else:
+                logger.warning(
+                    f"Parameter '{key}' not found in JSON v2, using default: "
+                    f"min={default_min}, max={default_max}"
+                )
+                return ParamRange(min=default_min, max=default_max, step=default_step)
 
-            results.append(formatted_result)
+        # Build AllParamRanges
+        param_ranges = AllParamRanges(
+            adx=ADXParamRanges(
+                period=get_range("adx_period", 10, 25, 1),
+                threshold=get_range("adx_threshold", 20, 35, 1)
+            ),
+            sma_fast=SMAParamRanges(
+                period=get_range("sma_fast_period", 20, 50, 5)  # Default: 20-50
+            ),
+            sma_slow=SMAParamRanges(
+                period=get_range("sma_slow_period", 100, 200, 10)
+            ),
+            rsi=RSIParamRanges(
+                period=get_range("rsi_period", 9, 21, 1),
+                sideways_low=get_range("rsi_sideways_low", 35, 45, 1),
+                sideways_high=get_range("rsi_sideways_high", 55, 65, 1)
+            ),
+            bb=BBParamRanges(
+                period=get_range("bb_period", 15, 25, 1),  # Default BB period
+                std_dev=get_range("bb_std_dev", 1.5, 2.5, 0.1),
+                width_percentile=get_range("bb_width_percentile", 20, 40, 5)
+            )
+        )
 
-        logger.info(f"Converted {len(results)} OptimizationResults to UI format")
-        return results
+        logger.info("Built AllParamRanges with defaults for missing parameters")
+        return param_ranges

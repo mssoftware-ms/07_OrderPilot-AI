@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RegimeScore Hilfe - OrderPilot-AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(30, 30, 50, 0.95);
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            color: #4fc3f7;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        h2 {
+            color: #81c784;
+            margin: 25px 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #81c784;
+            font-size: 20px;
+        }
+        h3 {
+            color: #ffb74d;
+            margin: 20px 0 10px 0;
+            font-size: 16px;
+        }
+        .score-card {
+            background: rgba(50, 50, 80, 0.5);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #4fc3f7;
+        }
+        .score-card.sep { border-left-color: #e91e63; }
+        .score-card.coh { border-left-color: #9c27b0; }
+        .score-card.fid { border-left-color: #2196f3; }
+        .score-card.bnd { border-left-color: #ff9800; }
+        .score-card.cov { border-left-color: #4caf50; }
+        .weight {
+            display: inline-block;
+            background: #4fc3f7;
+            color: #1a1a2e;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+        .weight.sep { background: #e91e63; }
+        .weight.coh { background: #9c27b0; }
+        .weight.fid { background: #2196f3; }
+        .weight.bnd { background: #ff9800; color: #1a1a2e; }
+        .weight.cov { background: #4caf50; }
+        .formula {
+            background: #2a2a4a;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background: #2a2a4a;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: rgba(79, 195, 247, 0.1);
+        }
+        .good { color: #81c784; }
+        .bad { color: #ef5350; }
+        .neutral { color: #ffb74d; }
+        ul {
+            margin: 10px 0 10px 25px;
+        }
+        li {
+            margin: 8px 0;
+        }
+        .tip {
+            background: rgba(79, 195, 247, 0.15);
+            border-left: 4px solid #4fc3f7;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .tip-title {
+            font-weight: bold;
+            color: #4fc3f7;
+            margin-bottom: 5px;
+        }
+        code {
+            background: #2a2a4a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            color: #ffb74d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RegimeScore Hilfe</h1>
+        <p class="subtitle">5-Komponenten Qualitätsbewertung für Regime-Erkennung (0-100 Punkte)</p>
+
+        <h2>Gesamtscore Berechnung</h2>
+        <div class="formula">
+Total = (Separability × 0.30) + (Coherence × 0.25) + (Fidelity × 0.25) + (Boundary × 0.10) + (Coverage × 0.10)
+        </div>
+        <p>Jede Komponente wird auf 0-100 normalisiert, dann gewichtet summiert.</p>
+
+        <h2>Die 5 Score-Komponenten</h2>
+
+        <div class="score-card sep">
+            <h3>Separability (Sep) <span class="weight sep">30%</span></h3>
+            <p><strong>Was wird gemessen?</strong> Wie gut sind die Regimes voneinander trennbar?</p>
+            <p><strong>Metriken:</strong></p>
+            <ul>
+                <li><strong>Silhouette Score</strong> [-1, 1]: Wie gut passt jeder Punkt zu seinem Cluster vs. anderen</li>
+                <li><strong>Calinski-Harabasz</strong> [0, ∞): Verhältnis von Inter- zu Intra-Cluster-Varianz</li>
+                <li><strong>Davies-Bouldin</strong> [0, ∞): Cluster-Ähnlichkeit (niedriger = besser)</li>
+            </ul>
+            <p class="good">✓ Hoher Wert = Regimes sind klar unterscheidbar</p>
+            <p class="bad">✗ Niedriger Wert = Regimes überlappen sich</p>
+        </div>
+
+        <div class="score-card coh">
+            <h3>Coherence (Coh) <span class="weight coh">25%</span></h3>
+            <p><strong>Was wird gemessen?</strong> Zeitliche Stabilität der Regime-Erkennung</p>
+            <p><strong>Metriken:</strong></p>
+            <ul>
+                <li><strong>Switch Rate</strong>: Wechsel pro 1000 Bars (weniger = stabiler)</li>
+                <li><strong>Avg Duration</strong>: Durchschnittliche Regime-Dauer in Bars</li>
+                <li><strong>Markov Self-Transition</strong>: Wahrscheinlichkeit im gleichen Regime zu bleiben</li>
+            </ul>
+            <p class="good">✓ Hoher Wert = Stabile, langanhaltende Regimes</p>
+            <p class="bad">✗ Niedriger Wert = Häufiges Hin-und-Her-Wechseln ("Chop")</p>
+        </div>
+
+        <div class="score-card fid">
+            <h3>Fidelity (Fid) <span class="weight fid">25%</span></h3>
+            <p><strong>Was wird gemessen?</strong> Entspricht das Regime-Verhalten den Erwartungen?</p>
+            <p><strong>Metrik:</strong> Hurst-Exponent pro Regime-Typ</p>
+            <ul>
+                <li><strong>BULL/BEAR</strong>: Sollte H > 0.5 sein (persistent/trending)</li>
+                <li><strong>SIDEWAYS</strong>: Sollte H < 0.5 sein (mean-reverting)</li>
+            </ul>
+            <table>
+                <tr><th>Hurst H</th><th>Bedeutung</th><th>Erwartetes Regime</th></tr>
+                <tr><td>H > 0.5</td><td>Trending/Persistent</td><td>BULL, BEAR</td></tr>
+                <tr><td>H ≈ 0.5</td><td>Random Walk</td><td>-</td></tr>
+                <tr><td>H < 0.5</td><td>Mean-Reverting</td><td>SIDEWAYS, RANGE</td></tr>
+            </table>
+            <p class="good">✓ Hoher Wert = Regime-Verhalten passt zur Klassifikation</p>
+        </div>
+
+        <div class="score-card bnd">
+            <h3>Boundary (Bnd) <span class="weight bnd">10%</span></h3>
+            <p><strong>Was wird gemessen?</strong> Wie deutlich sind die Regime-Übergänge?</p>
+            <p><strong>Metrik:</strong> Mahalanobis-Distanz an Regime-Grenzen</p>
+            <ul>
+                <li>Misst Feature-Distanz vor/nach einem Regime-Wechsel</li>
+                <li>Große Distanz = klarer Übergang (gut)</li>
+                <li>Kleine Distanz = unscharfe Grenze (schlecht)</li>
+            </ul>
+            <p class="good">✓ Hoher Wert = Regime-Wechsel sind klar erkennbar</p>
+        </div>
+
+        <div class="score-card cov">
+            <h3>Coverage (Cov) <span class="weight cov">10%</span></h3>
+            <p><strong>Was wird gemessen?</strong> Vollständigkeit und Balance der Klassifikation</p>
+            <p><strong>Metriken:</strong></p>
+            <ul>
+                <li><strong>Coverage Ratio</strong>: Anteil klassifizierter Bars (sollte ~100% sein)</li>
+                <li><strong>Balance Penalty</strong>: Strafe für extreme Ungleichverteilung</li>
+            </ul>
+            <p class="good">✓ Hoher Wert = Alle Bars klassifiziert, ausgewogene Verteilung</p>
+            <p class="bad">✗ Niedriger Wert = Ein Regime dominiert extrem (z.B. 95% SIDEWAYS)</p>
+        </div>
+
+        <h2>Score Interpretation</h2>
+        <table>
+            <tr><th>Score</th><th>Bewertung</th><th>Empfehlung</th></tr>
+            <tr class="good"><td>70-100</td><td>Exzellent</td><td>Parameter für Live-Trading geeignet</td></tr>
+            <tr><td>55-70</td><td>Gut</td><td>Verwendbar, evtl. Fine-Tuning</td></tr>
+            <tr class="neutral"><td>45-55</td><td>Durchschnitt</td><td>Weitere Optimierung empfohlen</td></tr>
+            <tr class="bad"><td>0-45</td><td>Schlecht</td><td>Parameter anpassen, mehr Daten</td></tr>
+        </table>
+
+        <div class="tip">
+            <div class="tip-title">💡 Optimierungs-Tipps</div>
+            <ul>
+                <li><strong>Niedriger Sep-Score:</strong> ADX-Threshold anpassen, um Regimes besser zu trennen</li>
+                <li><strong>Niedriger Coh-Score:</strong> Längere Indikator-Perioden verwenden, um Rauschen zu reduzieren</li>
+                <li><strong>Niedriger Fid-Score:</strong> RSI-Thresholds für SIDEWAYS prüfen</li>
+                <li><strong>Niedriger Bnd-Score:</strong> Schärfere Threshold-Grenzen setzen</li>
+                <li><strong>Niedriger Cov-Score:</strong> Regime-Bedingungen erweitern</li>
+            </ul>
+        </div>
+
+        <h2>Gates (Mindestanforderungen)</h2>
+        <p>Trials, die diese Gates nicht erfüllen, erhalten automatisch Score = 0:</p>
+        <table>
+            <tr><th>Gate</th><th>Beschreibung</th><th>Typischer Wert</th></tr>
+            <tr><td><code>min_segments</code></td><td>Mindestanzahl Regime-Wechsel</td><td>≥ 3</td></tr>
+            <tr><td><code>min_avg_duration</code></td><td>Mindest-Durchschnittsdauer</td><td>≥ 3 Bars</td></tr>
+            <tr><td><code>max_switch_rate</code></td><td>Max. Wechsel pro 1000 Bars</td><td>≤ 80</td></tr>
+            <tr><td><code>min_unique_labels</code></td><td>Mindestens verschiedene Regimes</td><td>≥ 2</td></tr>
+            <tr><td><code>min_bars_for_scoring</code></td><td>Mindest-Bars nach Warmup</td><td>≥ 50</td></tr>
+        </table>
+
+        <p style="text-align: center; margin-top: 30px; color: #666; font-size: 12px;">
+            OrderPilot-AI © 2026 | RegimeScore v2.0
+        </p>
+    </div>
+</body>
+</html>

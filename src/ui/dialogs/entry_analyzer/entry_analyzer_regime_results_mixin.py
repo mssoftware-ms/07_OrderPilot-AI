@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -66,10 +67,20 @@ class RegimeResultsMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # Header
+        # Header with help button
+        header_layout = QHBoxLayout()
         header = QLabel("Regime Optimization Results")
         header.setStyleSheet("font-size: 14pt; font-weight: bold;")
-        layout.addWidget(header)
+        header_layout.addWidget(header)
+        header_layout.addStretch()
+
+        # Help button for RegimeScore
+        help_btn = QPushButton(get_icon("help"), "")
+        help_btn.setToolTip("Open RegimeScore Help")
+        help_btn.setFixedSize(28, 28)
+        help_btn.clicked.connect(self._on_regime_score_help_clicked)
+        header_layout.addWidget(help_btn)
+        layout.addLayout(header_layout)
 
         description = QLabel(
             "View all optimization results sorted by score. "
@@ -159,8 +170,11 @@ class RegimeResultsMixin:
         params_dict = first_result.get("params", {})
         param_names = sorted(params_dict.keys())  # Sort for consistent order
 
-        # Build column headers: Rank, Score, Selected, [Params], Regimes, Avg Duration, Switches
-        headers = ["Rank", "Score", "Selected"] + param_names + ["Regimes", "Avg Duration", "Switches"]
+        # Score component columns (5-component RegimeScore)
+        score_components = ["Sep", "Coh", "Fid", "Bnd", "Cov"]
+
+        # Build column headers: Rank, Total, Sep, Coh, Fid, Bnd, Cov, Selected, [Params], Regimes, Avg Duration, Switches
+        headers = ["Rank", "Total"] + score_components + ["Selected"] + param_names + ["Regimes", "Avg Duration", "Switches"]
 
         # Update table structure
         self._regime_results_table.setColumnCount(len(headers))
@@ -199,14 +213,33 @@ class RegimeResultsMixin:
             self._regime_results_table.setItem(row, col, rank_item)
             col += 1
 
-            # Column 1: Score
+            # Column 1: Total Score
             score_item = QTableWidgetItem(f"{score:.1f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             score_item.setData(Qt.ItemDataRole.UserRole, score)  # For sorting
+            # Color-code score
+            if score >= 75:
+                score_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif score >= 50:
+                score_item.setForeground(Qt.GlobalColor.darkYellow)
+            else:
+                score_item.setForeground(Qt.GlobalColor.darkRed)
             self._regime_results_table.setItem(row, col, score_item)
             col += 1
 
-            # Column 2: Selected (checkbox-like indicator)
+            # Score Components (5 columns): Sep, Coh, Fid, Bnd, Cov
+            component_keys = ["separability", "coherence", "fidelity", "boundary", "coverage_score"]
+            for comp_key in component_keys:
+                comp_value = metrics.get(comp_key, 0.0) if isinstance(metrics, dict) else 0.0
+                # Convert 0-1 to 0-100 for display
+                comp_pct = comp_value * 100
+                comp_item = QTableWidgetItem(f"{comp_pct:.0f}")
+                comp_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                comp_item.setToolTip(f"{comp_key}: {comp_value:.3f}")
+                self._regime_results_table.setItem(row, col, comp_item)
+                col += 1
+
+            # Selected (checkbox-like indicator)
             selected_item = QTableWidgetItem("")
             selected_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_results_table.setItem(row, col, selected_item)
@@ -226,15 +259,17 @@ class RegimeResultsMixin:
                 self._regime_results_table.setItem(row, col, param_item)
                 col += 1
 
-            # Regime Count
-            regime_count = metrics.get("regime_count", "--")
+            # Regime Count (safe access)
+            regime_count = metrics.get("regime_count", "--") if isinstance(metrics, dict) else "--"
             regimes_item = QTableWidgetItem(str(regime_count))
             regimes_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_results_table.setItem(row, col, regimes_item)
             col += 1
 
-            # Avg Duration
-            avg_duration = metrics.get("avg_duration", metrics.get("avg_duration_bars", "--"))
+            # Avg Duration (safe access)
+            avg_duration = "--"
+            if isinstance(metrics, dict):
+                avg_duration = metrics.get("avg_duration", metrics.get("avg_duration_bars", "--"))
             if isinstance(avg_duration, (int, float)):
                 avg_duration_str = f"{avg_duration:.1f}"
             else:
@@ -244,21 +279,23 @@ class RegimeResultsMixin:
             self._regime_results_table.setItem(row, col, duration_item)
             col += 1
 
-            # Switch Count
-            switches = metrics.get("switch_count", "--")
+            # Switch Count (safe access)
+            switches = "--"
+            if isinstance(metrics, dict):
+                switches = metrics.get("switch_count", metrics.get("switches", "--"))
             switches_item = QTableWidgetItem(str(switches))
             switches_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_results_table.setItem(row, col, switches_item)
 
-            # Highlight top 3
+            # Highlight top 3 (DYNAMIC column count)
             if row < 3:
                 colors = [
                     "#22c55e",  # Green for #1
                     "#3b82f6",  # Blue for #2
                     "#a855f7",  # Purple for #3
                 ]
-                for col in range(15):
-                    item = self._regime_results_table.item(row, col)
+                for col_idx in range(len(headers)):  # Use actual column count
+                    item = self._regime_results_table.item(row, col_idx)
                     if item:
                         item.setBackground(Qt.GlobalColor.lightGray)
 
@@ -365,7 +402,12 @@ class RegimeResultsMixin:
         # Get save file path
         symbol = getattr(self, "_symbol", "UNKNOWN")
         timeframe = getattr(self, "_timeframe", "1m")
-        default_filename = f"optimized_regime_{symbol}_{timeframe}.json"
+
+        # Get rank from selected row
+        selected_rows = self._regime_results_table.selectedIndexes()
+        row = selected_rows[0].row() if selected_rows else 0
+        rank = int(self._regime_results_table.item(row, 0).text()) if self._regime_results_table.item(row, 0) else 1
+        default_filename = f"optimized_regime_{symbol}_{timeframe}_#{rank}.json"
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Export Regime Configuration", default_filename, "JSON Files (*.json)"
@@ -500,3 +542,18 @@ class RegimeResultsMixin:
             f"Auto-exported to: {export_path}\n\n"
             f"You can now proceed to Indicator Optimization (Stage 2).",
         )
+
+    @pyqtSlot()
+    def _on_regime_score_help_clicked(self) -> None:
+        """Open RegimeScore help file in browser."""
+        help_path = Path(__file__).parent.parent.parent.parent.parent / "help" / "regime_score_help.html"
+        if help_path.exists():
+            webbrowser.open(help_path.as_uri())
+            logger.info(f"Opened help file: {help_path}")
+        else:
+            QMessageBox.warning(
+                self,
+                "Help Not Found",
+                f"Help file not found at:\n{help_path}\n\n"
+                "Please ensure the help file exists.",
+            )

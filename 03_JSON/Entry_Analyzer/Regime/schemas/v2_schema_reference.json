@@ -1,0 +1,412 @@
+{
+  "_schema_documentation": {
+    "version": "2.0.0",
+    "last_updated": "2026-01-25",
+    "description": "Regime Config v2.0 Schema-Referenz für OrderPilot-AI Entry Analyzer",
+    "warning": "DIESE DATEI IST SCHREIBGESCHÜTZT - NUR ALS REFERENZ VERWENDEN!",
+
+    "structure_overview": {
+      "root_level": [
+        "schema_version (PFLICHT)",
+        "metadata (PFLICHT)",
+        "optimization_results (PFLICHT, min. 1 Eintrag)",
+        "entry_params (OPTIONAL)",
+        "evaluation_params (OPTIONAL)"
+      ]
+    },
+
+    "field_definitions": {
+
+      "schema_version": {
+        "type": "string",
+        "required": true,
+        "format": "semver",
+        "example": "2.0.0",
+        "description": "Versionsnummer des Schemas. MUSS '2.0.0' sein für v2 Format."
+      },
+
+      "metadata": {
+        "type": "object",
+        "required": true,
+        "fields": {
+          "author": {"type": "string", "required": true, "example": "OrderPilot-AI"},
+          "created_at": {"type": "string", "required": true, "format": "ISO8601", "example": "2026-01-25T00:00:00Z"},
+          "updated_at": {"type": "string", "required": true, "format": "ISO8601", "example": "2026-01-25T12:00:00Z"},
+          "tags": {"type": "array[string]", "required": false, "example": ["BTCUSDT", "5m", "regime"]},
+          "notes": {"type": "string", "required": false, "example": "Beschreibung der Config"},
+          "trading_style": {"type": "string", "required": false, "enum": ["Daytrading", "Swing", "Scalping"]}
+        }
+      },
+
+      "optimization_results": {
+        "type": "array",
+        "required": true,
+        "min_items": 1,
+        "description": "Array von Optimierungsergebnissen. Mindestens 1 Eintrag erforderlich.",
+        "item_fields": {
+          "timestamp": {"type": "string", "required": true, "format": "ISO8601"},
+          "score": {"type": "number", "required": true, "min": 0, "max": 100},
+          "trial_number": {"type": "integer", "required": true, "min": 1},
+          "applied": {"type": "boolean", "required": true, "description": "true = aktive Config"},
+          "indicators": {"type": "array", "required": true, "min_items": 1, "description": "SIEHE indicators_schema"},
+          "regimes": {"type": "array", "required": true, "min_items": 1, "description": "SIEHE regimes_schema"}
+        }
+      },
+
+      "indicators_schema": {
+        "description": "Indikator-Definition innerhalb optimization_results[].indicators[]",
+        "fields": {
+          "name": {
+            "type": "string",
+            "required": true,
+            "naming_convention": "KATEGORIE_TYP oder KATEGORIE_TYP_SUFFIX",
+            "valid_prefixes": ["TREND_FILTER", "STRENGTH_", "MOMENTUM_", "VOLATILITY_"],
+            "examples": ["TREND_FILTER", "STRENGTH_ADX", "MOMENTUM_RSI", "VOLATILITY_ATR", "VOLATILITY_BB"]
+          },
+          "type": {
+            "type": "string",
+            "required": true,
+            "enum": ["EMA", "SMA", "ADX", "RSI", "ATR", "BB", "MACD", "STOCH"],
+            "description": "Technischer Indikator-Typ"
+          },
+          "params": {
+            "type": "array",
+            "required": true,
+            "min_items": 1,
+            "item_fields": {
+              "name": {"type": "string", "required": true, "examples": ["period", "std_dev", "fast", "slow", "signal"]},
+              "value": {"type": "number", "required": true},
+              "range": {
+                "type": "object",
+                "required": false,
+                "fields": {
+                  "min": {"type": "number", "required": true},
+                  "max": {"type": "number", "required": true},
+                  "step": {"type": "number", "required": true}
+                }
+              }
+            }
+          }
+        }
+      },
+
+      "regimes_schema": {
+        "description": "Regime-Definition innerhalb optimization_results[].regimes[]",
+        "fields": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "enum": ["STRONG_BULL", "BULL", "STRONG_BEAR", "BEAR", "OVERBOUGHT", "OVERSOLD", "RANGE", "SIDEWAYS", "SQUEEZE", "HIGH_VOL", "NO_TRADE"],
+            "description": "Eindeutige Regime-ID (v2.0 Naming: BULL/BEAR/SIDEWAYS statt TREND_UP/TREND_DOWN/RANGE)"
+          },
+          "name": {
+            "type": "string",
+            "required": true,
+            "description": "Anzeigename für UI",
+            "examples": ["Bullischer Trend", "Bärischer Trend", "Seitwärts / Neutral"]
+          },
+          "thresholds": {
+            "type": "array",
+            "required": true,
+            "min_items": 1,
+            "item_fields": {
+              "name": {
+                "type": "string",
+                "required": true,
+                "valid_names": ["adx_min", "adx_max", "rsi_min", "rsi_max", "atr_pct_min", "atr_pct_max", "bb_width_min", "bb_width_max"]
+              },
+              "value": {"type": "number", "required": true},
+              "range": {
+                "type": "object",
+                "required": false,
+                "fields": {
+                  "min": {"type": "number", "required": true},
+                  "max": {"type": "number", "required": true},
+                  "step": {"type": "number", "required": true}
+                }
+              }
+            }
+          },
+          "priority": {
+            "type": "integer",
+            "required": true,
+            "min": 1,
+            "max": 100,
+            "description": "Höhere Priorität = wird zuerst geprüft (100=höchste, 1=niedrigste)"
+          },
+          "scope": {
+            "type": "string",
+            "required": true,
+            "enum": ["entry", "exit", "in_trade", "all"],
+            "description": "Anwendungsbereich des Regimes"
+          }
+        }
+      },
+
+      "entry_params": {
+        "type": "object",
+        "required": false,
+        "description": "ATR-normalisierte Entry-Parameter",
+        "fields": {
+          "pullback_atr": {"type": "number", "default": 0.8},
+          "pullback_rsi": {"type": "number", "default": 45.0},
+          "wick_reject": {"type": "number", "default": 0.55},
+          "bb_entry": {"type": "number", "default": 0.15},
+          "rsi_oversold": {"type": "number", "default": 35.0},
+          "rsi_overbought": {"type": "number", "default": 65.0},
+          "vol_spike_factor": {"type": "number", "default": 1.2},
+          "breakout_atr": {"type": "number", "default": 0.2},
+          "min_confidence": {"type": "number", "default": 0.58, "min": 0, "max": 1},
+          "cooldown_bars": {"type": "integer", "default": 10},
+          "cluster_window_bars": {"type": "integer", "default": 6}
+        }
+      },
+
+      "evaluation_params": {
+        "type": "object",
+        "required": false,
+        "description": "Optimizer/Backtest Evaluations-Parameter",
+        "fields": {
+          "eval_horizon_bars": {"type": "integer", "default": 40},
+          "eval_tp_atr": {"type": "number", "default": 1.0},
+          "eval_sl_atr": {"type": "number", "default": 0.8},
+          "min_trades_gate": {"type": "integer", "default": 8},
+          "target_trades_soft": {"type": "integer", "default": 30}
+        }
+      }
+    },
+
+    "regime_priority_guidelines": {
+      "100": "STRONG_BULL - Stärkster bullischer Trend",
+      "95": "STRONG_BEAR - Stärkster bärischer Trend",
+      "90": "BULL - Normaler bullischer Trend",
+      "85": "BEAR - Normaler bärischer Trend",
+      "80": "OVERBOUGHT - Überkauft-Zone",
+      "75": "OVERSOLD - Überverkauft-Zone",
+      "70": "HIGH_VOL - Hohe Volatilität",
+      "60": "RANGE - Range-Bound Markt",
+      "50": "SIDEWAYS - Seitwärts/Chop",
+      "40": "SQUEEZE - Niedrige Volatilität",
+      "10": "NO_TRADE - Kein Handel empfohlen"
+    },
+
+    "threshold_naming_convention": {
+      "_min_suffix": "Wert muss >= threshold sein (z.B. adx_min=25 → ADX >= 25)",
+      "_max_suffix": "Wert muss <= threshold sein (z.B. adx_max=20 → ADX <= 20)",
+      "common_thresholds": {
+        "adx_min": "ADX Minimum für Trendstärke",
+        "adx_max": "ADX Maximum für Seitwärts-Erkennung",
+        "rsi_min": "RSI Minimum (Bullish-Bias)",
+        "rsi_max": "RSI Maximum (Bearish-Bias)",
+        "atr_pct_min": "ATR% Minimum für Volatilität",
+        "bb_width_max": "BB-Width Maximum für Squeeze"
+      }
+    },
+
+    "v1_to_v2_migration": {
+      "regime_naming": {
+        "TREND_UP": "→ BULL",
+        "TREND_DOWN": "→ BEAR",
+        "RANGE": "→ SIDEWAYS oder RANGE"
+      },
+      "structure_changes": {
+        "v1_indicators": "indicators[] mit id, type, params (object)",
+        "v2_indicators": "optimization_results[0].indicators[] mit name, type, params (array)",
+        "v1_regimes": "regimes[] mit conditions.all[] (complex)",
+        "v2_regimes": "optimization_results[0].regimes[] mit thresholds[] (simplified)"
+      }
+    }
+  },
+
+  "_example_minimal_config": {
+    "schema_version": "2.0.0",
+    "metadata": {
+      "author": "OrderPilot-AI",
+      "created_at": "2026-01-25T00:00:00Z",
+      "updated_at": "2026-01-25T00:00:00Z"
+    },
+    "optimization_results": [
+      {
+        "timestamp": "2026-01-25T00:00:00Z",
+        "score": 50.0,
+        "trial_number": 1,
+        "applied": true,
+        "indicators": [
+          {
+            "name": "STRENGTH_ADX",
+            "type": "ADX",
+            "params": [{"name": "period", "value": 14}]
+          }
+        ],
+        "regimes": [
+          {
+            "id": "BULL",
+            "name": "Bullish",
+            "thresholds": [{"name": "adx_min", "value": 25}],
+            "priority": 90,
+            "scope": "entry"
+          },
+          {
+            "id": "BEAR",
+            "name": "Bearish",
+            "thresholds": [{"name": "adx_min", "value": 25}],
+            "priority": 85,
+            "scope": "entry"
+          },
+          {
+            "id": "SIDEWAYS",
+            "name": "Neutral",
+            "thresholds": [{"name": "adx_max", "value": 25}],
+            "priority": 50,
+            "scope": "entry"
+          }
+        ]
+      }
+    ]
+  },
+
+  "_example_full_config": {
+    "schema_version": "2.0.0",
+    "metadata": {
+      "author": "OrderPilot-AI",
+      "created_at": "2026-01-25T00:00:00Z",
+      "updated_at": "2026-01-25T12:00:00Z",
+      "tags": ["BTCUSDT", "5m", "regime", "optimized"],
+      "notes": "Vollständige Config mit allen Indikatoren und Regimes",
+      "trading_style": "Daytrading"
+    },
+    "optimization_results": [
+      {
+        "timestamp": "2026-01-25T12:00:00Z",
+        "score": 56.0,
+        "trial_number": 42,
+        "applied": true,
+        "indicators": [
+          {
+            "name": "TREND_FILTER",
+            "type": "SMA",
+            "params": [
+              {"name": "period", "value": 200, "range": {"min": 100, "max": 200, "step": 10}}
+            ]
+          },
+          {
+            "name": "TREND_FILTER_FAST",
+            "type": "SMA",
+            "params": [
+              {"name": "period", "value": 50, "range": {"min": 20, "max": 50, "step": 5}}
+            ]
+          },
+          {
+            "name": "STRENGTH_ADX",
+            "type": "ADX",
+            "params": [
+              {"name": "period", "value": 14, "range": {"min": 10, "max": 25, "step": 1}}
+            ]
+          },
+          {
+            "name": "MOMENTUM_RSI",
+            "type": "RSI",
+            "params": [
+              {"name": "period", "value": 14, "range": {"min": 9, "max": 21, "step": 1}}
+            ]
+          },
+          {
+            "name": "VOLATILITY_ATR",
+            "type": "ATR",
+            "params": [
+              {"name": "period", "value": 14, "range": {"min": 10, "max": 20, "step": 1}}
+            ]
+          },
+          {
+            "name": "VOLATILITY_BB",
+            "type": "BB",
+            "params": [
+              {"name": "period", "value": 20, "range": {"min": 15, "max": 30, "step": 1}},
+              {"name": "std_dev", "value": 2.0, "range": {"min": 1.5, "max": 3.0, "step": 0.1}}
+            ]
+          }
+        ],
+        "regimes": [
+          {
+            "id": "STRONG_BULL",
+            "name": "Starker Bullischer Trend",
+            "thresholds": [
+              {"name": "adx_min", "value": 40, "range": {"min": 35, "max": 50, "step": 1}},
+              {"name": "rsi_min", "value": 60, "range": {"min": 55, "max": 70, "step": 1}}
+            ],
+            "priority": 100,
+            "scope": "entry"
+          },
+          {
+            "id": "BULL",
+            "name": "Bullischer Trend",
+            "thresholds": [
+              {"name": "adx_min", "value": 25, "range": {"min": 20, "max": 35, "step": 1}}
+            ],
+            "priority": 90,
+            "scope": "entry"
+          },
+          {
+            "id": "STRONG_BEAR",
+            "name": "Starker Bärischer Trend",
+            "thresholds": [
+              {"name": "adx_min", "value": 40, "range": {"min": 35, "max": 50, "step": 1}},
+              {"name": "rsi_max", "value": 40, "range": {"min": 30, "max": 45, "step": 1}}
+            ],
+            "priority": 95,
+            "scope": "entry"
+          },
+          {
+            "id": "BEAR",
+            "name": "Bärischer Trend",
+            "thresholds": [
+              {"name": "adx_min", "value": 25, "range": {"min": 20, "max": 35, "step": 1}}
+            ],
+            "priority": 85,
+            "scope": "entry"
+          },
+          {
+            "id": "SIDEWAYS",
+            "name": "Seitwärts / Neutral",
+            "thresholds": [
+              {"name": "adx_max", "value": 25, "range": {"min": 15, "max": 30, "step": 1}},
+              {"name": "rsi_min", "value": 40, "range": {"min": 35, "max": 45, "step": 1}},
+              {"name": "rsi_max", "value": 60, "range": {"min": 55, "max": 65, "step": 1}}
+            ],
+            "priority": 50,
+            "scope": "entry"
+          },
+          {
+            "id": "NO_TRADE",
+            "name": "Kein Handel",
+            "thresholds": [
+              {"name": "adx_max", "value": 15, "range": {"min": 10, "max": 20, "step": 1}}
+            ],
+            "priority": 10,
+            "scope": "entry"
+          }
+        ]
+      }
+    ],
+    "entry_params": {
+      "pullback_atr": 0.8,
+      "pullback_rsi": 45.0,
+      "wick_reject": 0.55,
+      "bb_entry": 0.15,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 65.0,
+      "vol_spike_factor": 1.2,
+      "breakout_atr": 0.2,
+      "min_confidence": 0.58,
+      "cooldown_bars": 10,
+      "cluster_window_bars": 6
+    },
+    "evaluation_params": {
+      "eval_horizon_bars": 40,
+      "eval_tp_atr": 1.0,
+      "eval_sl_atr": 0.8,
+      "min_trades_gate": 8,
+      "target_trades_soft": 30
+    }
+  }
+}

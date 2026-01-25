@@ -1,0 +1,184 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-24T00:00:00Z",
+    "updated_at": "2026-01-25T06:50:00Z",
+    "tags": ["defaults", "hardcoded", "entry-analyzer", "regime"],
+    "notes": "Hardcoded Default-Parameter aus entry_signal_engine.py OptimParams. Korrekt konvertiert nach v2.0 Schema.",
+    "trading_style": "Daytrading"
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-24T00:00:00Z",
+      "score": 0.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "TREND_FILTER_FAST",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 20,
+              "range": {"min": 10, "max": 30, "step": 1}
+            }
+          ]
+        },
+        {
+          "name": "TREND_FILTER",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 50,
+              "range": {"min": 40, "max": 100, "step": 5}
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {"min": 10, "max": 20, "step": 1}
+            }
+          ]
+        },
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {"min": 9, "max": 21, "step": 1}
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_BB",
+          "type": "BB",
+          "params": [
+            {
+              "name": "period",
+              "value": 20,
+              "range": {"min": 15, "max": 30, "step": 1}
+            },
+            {
+              "name": "std_dev",
+              "value": 2.0,
+              "range": {"min": 1.5, "max": 3.0, "step": 0.1}
+            }
+          ]
+        },
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {"min": 10, "max": 25, "step": 1}
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "HIGH_VOL",
+          "name": "Hohe Volatilität",
+          "thresholds": [
+            {
+              "name": "atr_pct_min",
+              "value": 0.012,
+              "range": {"min": 0.008, "max": 0.02, "step": 0.001}
+            }
+          ],
+          "priority": 90,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 18.0,
+              "range": {"min": 15, "max": 30, "step": 1}
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 18.0,
+              "range": {"min": 15, "max": 30, "step": 1}
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "SQUEEZE",
+          "name": "Squeeze (Niedrige Volatilität)",
+          "thresholds": [
+            {
+              "name": "bb_width_max",
+              "value": 0.012,
+              "range": {"min": 0.008, "max": 0.02, "step": 0.001}
+            },
+            {
+              "name": "adx_max",
+              "value": 18.0,
+              "range": {"min": 15, "max": 25, "step": 1}
+            }
+          ],
+          "priority": 70,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwärts / Range",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 18.0,
+              "range": {"min": 15, "max": 25, "step": 1}
+            }
+          ],
+          "priority": 10,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "pullback_atr": 0.8,
+    "pullback_rsi": 45.0,
+    "wick_reject": 0.55,
+    "bb_entry": 0.15,
+    "rsi_oversold": 35.0,
+    "rsi_overbought": 65.0,
+    "vol_spike_factor": 1.2,
+    "breakout_atr": 0.2,
+    "min_confidence": 0.58,
+    "cooldown_bars": 10,
+    "cluster_window_bars": 6
+  },
+  "evaluation_params": {
+    "eval_horizon_bars": 40,
+    "eval_tp_atr": 1.0,
+    "eval_sl_atr": 0.8,
+    "min_trades_gate": 8,
+    "target_trades_soft": 30
+  }
+}

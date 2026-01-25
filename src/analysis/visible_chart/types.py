@@ -20,14 +20,28 @@ class EntrySide(str, Enum):
 
 
 class RegimeType(str, Enum):
-    """Market regime classification."""
+    """Market regime classification.
 
-    TREND_UP = "trend_up"
-    TREND_DOWN = "trend_down"
-    RANGE = "range"
-    HIGH_VOL = "high_vol"
-    SQUEEZE = "squeeze"
-    NO_TRADE = "no_trade"
+    Unified naming convention (v2.0):
+    - BULL: Bullish trend (was TREND_UP)
+    - BEAR: Bearish trend (was TREND_DOWN)
+    - SIDEWAYS: Range/neutral market (was RANGE)
+    - HIGH_VOL: High volatility
+    - SQUEEZE: Low volatility compression
+    - NO_TRADE: Avoid trading
+    """
+
+    BULL = "BULL"
+    BEAR = "BEAR"
+    SIDEWAYS = "SIDEWAYS"
+    HIGH_VOL = "HIGH_VOL"
+    SQUEEZE = "SQUEEZE"
+    NO_TRADE = "NO_TRADE"
+
+    # Legacy aliases for backwards compatibility
+    TREND_UP = "BULL"
+    TREND_DOWN = "BEAR"
+    RANGE = "SIDEWAYS"
 
 
 @dataclass

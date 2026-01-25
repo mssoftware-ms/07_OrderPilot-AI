@@ -309,7 +309,10 @@ class BacktestRegimeSetMixin:
         # Simplified regime conditions
         # In production, these would be more sophisticated
 
-        if "TREND_UP" in regime_name.upper():
+        name_upper = regime_name.upper()
+
+        # BULL / TREND_UP: Bullish trend
+        if "BULL" in name_upper or "TREND_UP" in name_upper:
             return {
                 "type": "group",
                 "operator": "and",
@@ -323,7 +326,8 @@ class BacktestRegimeSetMixin:
                     },
                 ],
             }
-        elif "TREND_DOWN" in regime_name.upper():
+        # BEAR / TREND_DOWN: Bearish trend
+        elif "BEAR" in name_upper or "TREND_DOWN" in name_upper:
             return {
                 "type": "group",
                 "operator": "and",
@@ -337,7 +341,8 @@ class BacktestRegimeSetMixin:
                     },
                 ],
             }
-        elif "RANGE" in regime_name.upper():
+        # SIDEWAYS / RANGE: Range-bound
+        elif "SIDEWAYS" in name_upper or "RANGE" in name_upper:
             return {
                 "type": "group",
                 "operator": "and",

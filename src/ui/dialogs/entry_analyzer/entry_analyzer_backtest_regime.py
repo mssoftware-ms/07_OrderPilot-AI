@@ -116,19 +116,27 @@ class BacktestRegimeMixin:
                 f"Current regime: {active_label} ({active_id}) " f"-> {regime_state.regime_label}"
             )
 
-            # Build interpretation text
+            # Build interpretation text (v2.0 unified naming: BULL/BEAR/SIDEWAYS)
             regime_colors = {
-                RegimeType.TREND_UP: "#22c55e",
-                RegimeType.TREND_DOWN: "#ef4444",
-                RegimeType.RANGE: "#f59e0b",
+                RegimeType.BULL: "#22c55e",
+                RegimeType.BEAR: "#ef4444",
+                RegimeType.SIDEWAYS: "#f59e0b",
                 RegimeType.UNKNOWN: "#6b7280",
+                # Legacy aliases
+                "BULL": "#22c55e",
+                "BEAR": "#ef4444",
+                "SIDEWAYS": "#f59e0b",
             }
 
             regime_interpretations = {
-                RegimeType.TREND_UP: "Strong uptrend - focus on LONG pullbacks",
-                RegimeType.TREND_DOWN: "Strong downtrend - focus on SHORT rallies",
-                RegimeType.RANGE: "Range-bound market - trade support/resistance",
+                RegimeType.BULL: "Bullish trend - focus on LONG pullbacks",
+                RegimeType.BEAR: "Bearish trend - focus on SHORT rallies",
+                RegimeType.SIDEWAYS: "Range-bound market - trade support/resistance",
                 RegimeType.UNKNOWN: "No clear regime - reduce exposure",
+                # Legacy aliases
+                "BULL": "Bullish trend - focus on LONG pullbacks",
+                "BEAR": "Bearish trend - focus on SHORT rallies",
+                "SIDEWAYS": "Range-bound market - trade support/resistance",
             }
 
             color = regime_colors.get(regime_state.regime, "#888")

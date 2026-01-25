@@ -8,11 +8,14 @@ Regime Classification Logic:
 - BEAR: ADX > threshold AND Close < SMA_Fast AND SMA_Fast < SMA_Slow
 - SIDEWAYS: ADX < threshold AND BB_Width < percentile AND RSI between low-high
 
-Composite Score:
-- F1-Bull: 25%
-- F1-Bear: 30%
-- F1-Sideways: 20%
-- Stability: 25%
+Scoring (5-component RegimeScore 0-100):
+- Separability (30%): Silhouette, CH, DB cluster metrics
+- Temporal Coherence (25%): switch_rate, duration, Markov self-transition
+- Fidelity (25%): Hurst exponent per regime type
+- Boundary Strength (10%): Feature distance at regime changes
+- Coverage/Balance (10%): coverage ratio, balance penalty
+
+Note: First 200 bars are warmup and excluded from scoring.
 """
 
 import logging
@@ -31,6 +34,7 @@ from sklearn.metrics import f1_score
 from src.core.indicators.momentum import MomentumIndicators
 from src.core.indicators.trend import TrendIndicators
 from src.core.indicators.volatility import VolatilityIndicators
+from src.core.scoring import calculate_regime_score, RegimeScoreConfig, RegimeScoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +213,13 @@ class RegimeMetrics(BaseModel):
     bull_bars: int
     bear_bars: int
     sideways_bars: int
+
+    # RegimeScore components (5-component score)
+    separability: float = Field(default=0.0, ge=0.0, le=1.0)
+    coherence: float = Field(default=0.0, ge=0.0, le=1.0)
+    fidelity: float = Field(default=0.0, ge=0.0, le=1.0)
+    boundary: float = Field(default=0.0, ge=0.0, le=1.0)
+    coverage_score: float = Field(default=0.0, ge=0.0, le=1.0)  # Renamed to avoid conflict
 
     model_config = ConfigDict(frozen=True)
 
@@ -707,13 +718,13 @@ class RegimeOptimizer:
         return periods
 
     def _objective(self, trial: optuna.Trial) -> float:
-        """Optimization objective function.
+        """Optimization objective function using 5-component RegimeScore.
 
         Args:
             trial: Optuna trial
 
         Returns:
-            Composite score to maximize
+            RegimeScore (0-100) to maximize
         """
         try:
             # Suggest parameters
@@ -725,11 +736,78 @@ class RegimeOptimizer:
             # Classify regimes
             regimes = self._classify_regimes(params, indicators)
 
-            # Calculate metrics
-            metrics = self._calculate_metrics(regimes, params)
+            # Convert regimes to Series for scoring
+            regimes_series = pd.Series(regimes, index=self.data.index)
 
-            # Calculate composite score
-            score = self._calculate_composite_score(metrics)
+            # Calculate new 5-component RegimeScore
+            # Adaptive warmup/lookback: Scale with data size
+            data_len = len(self.data)
+
+            # Warmup: Max 10% of data, capped at 200
+            warmup_bars = min(200, max(50, data_len // 10))
+
+            # Feature lookback: Max of indicator periods, but capped to leave enough data
+            max_indicator_period = max(
+                params.adx_period,
+                params.sma_slow_period,
+                params.rsi_period,
+                params.bb_period,
+            )
+            # Cap lookback to leave at least 60% of data for scoring
+            max_feature_lookback = min(max_indicator_period, data_len // 4)
+
+            # Log first trial for debugging
+            if trial.number == 0:
+                logger.info(
+                    f"Trial 0 config: data_len={data_len}, warmup={warmup_bars}, "
+                    f"lookback={max_feature_lookback}, max_indicator={max_indicator_period}"
+                )
+
+            score_config = RegimeScoreConfig(
+                warmup_bars=warmup_bars,
+                max_feature_lookback=max_feature_lookback,
+                # Relax gates for small datasets
+                min_segments=max(3, data_len // 200),  # Reduced: 3 segments per 200 bars
+                min_avg_duration=3,  # Reduced from 5
+                max_switch_rate_per_1000=80,  # Relaxed from 60
+                min_unique_labels=2,  # Must have at least 2 regimes
+                min_bars_for_scoring=max(30, data_len // 10),  # Scale with data size
+            )
+            score_result = calculate_regime_score(
+                data=self.data,
+                regimes=regimes_series,
+                config=score_config,
+            )
+
+            # If gates failed, log details and return 0
+            if not score_result.gates_passed:
+                # Use INFO level to ensure visibility
+                logger.info(
+                    f"[GATE FAIL] Trial {trial.number}: {score_result.gate_failures} | "
+                    f"bars_scored={score_result.n_bars_scored}, excluded={score_result.n_bars_excluded}, "
+                    f"labels={score_result.unique_labels}"
+                )
+                return 0.0
+
+            score = score_result.total_score
+
+            # Log successful scoring for first few trials
+            if trial.number < 3:
+                logger.info(
+                    f"[SCORE OK] Trial {trial.number}: total={score:.1f} | "
+                    f"sep={score_result.separability.normalized:.2f}, "
+                    f"coh={score_result.coherence.normalized:.2f}, "
+                    f"fid={score_result.fidelity.normalized:.2f}, "
+                    f"bnd={score_result.boundary.normalized:.2f}, "
+                    f"cov={score_result.coverage.normalized:.2f}"
+                )
+
+            # Store score components for analysis
+            trial.set_user_attr("separability", score_result.separability.normalized)
+            trial.set_user_attr("coherence", score_result.coherence.normalized)
+            trial.set_user_attr("fidelity", score_result.fidelity.normalized)
+            trial.set_user_attr("boundary", score_result.boundary.normalized)
+            trial.set_user_attr("coverage", score_result.coverage.normalized)
 
             # Report intermediate result for pruning
             trial.report(score, step=1)
@@ -740,6 +818,8 @@ class RegimeOptimizer:
 
             return score
 
+        except optuna.TrialPruned:
+            raise
         except Exception as e:
             logger.error(f"Trial {trial.number} failed: {e}", exc_info=True)
             return 0.0
@@ -833,6 +913,24 @@ class RegimeOptimizer:
             indicators = self._calculate_indicators(params)
             regimes = self._classify_regimes(params, indicators)
             metrics = self._calculate_metrics(regimes, params)
+
+            # Extract score components from user_attrs (saved during optimization)
+            separability = trial.user_attrs.get("separability", 0.0)
+            coherence = trial.user_attrs.get("coherence", 0.0)
+            fidelity = trial.user_attrs.get("fidelity", 0.0)
+            boundary = trial.user_attrs.get("boundary", 0.0)
+            coverage_comp = trial.user_attrs.get("coverage", 0.0)
+
+            # Create new metrics dict with score components
+            metrics_dict = metrics.model_dump()
+            metrics_dict.update({
+                "separability": separability,
+                "coherence": coherence,
+                "fidelity": fidelity,
+                "boundary": boundary,
+                "coverage_score": coverage_comp,
+            })
+            metrics = RegimeMetrics(**metrics_dict)
 
             results.append(
                 OptimizationResult(

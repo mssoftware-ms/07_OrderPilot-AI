@@ -26,14 +26,24 @@ logger = logging.getLogger(__name__)
 
 # Types
 class RegimeType(str, Enum):
-    """Market regime classification (compatible with existing types)."""
+    """Market regime classification (unified v2.0 naming).
 
-    NO_TRADE = "no_trade"
-    TREND_UP = "trend_up"
-    TREND_DOWN = "trend_down"
-    RANGE = "range"
-    SQUEEZE = "squeeze"
-    HIGH_VOL = "high_vol"
+    - BULL: Bullish trend (was TREND_UP)
+    - BEAR: Bearish trend (was TREND_DOWN)
+    - SIDEWAYS: Range/neutral (was RANGE)
+    """
+
+    NO_TRADE = "NO_TRADE"
+    BULL = "BULL"
+    BEAR = "BEAR"
+    SIDEWAYS = "SIDEWAYS"
+    SQUEEZE = "SQUEEZE"
+    HIGH_VOL = "HIGH_VOL"
+
+    # Legacy aliases
+    TREND_UP = "BULL"
+    TREND_DOWN = "BEAR"
+    RANGE = "SIDEWAYS"
 
 
 class EntrySide(str, Enum):

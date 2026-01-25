@@ -1,0 +1,313 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-25T00:00:00Z",
+    "updated_at": "2026-01-25T04:28:00Z",
+    "tags": [
+      "BTCUSDT",
+      "regime",
+      "comprehensive"
+    ],
+    "notes": "Vollständige Regime-Erkennung mit allen Marktphasen. Prioritäten: STRONG > Normal > SIDEWAYS."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-25T04:28:00Z",
+      "score": 0.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "TREND_FILTER",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 200,
+              "range": {
+                "min": 100,
+                "max": 200,
+                "step": 10
+              }
+            }
+          ]
+        },
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 9,
+                "max": 21,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "STRONG_BULL",
+          "name": "Starker Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 60.0,
+              "range": {
+                "min": 55,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 100,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BEAR",
+          "name": "Starker Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 40.0,
+              "range": {
+                "min": 30,
+                "max": 45,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 95,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 55.0,
+              "range": {
+                "min": 50,
+                "max": 60,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 90,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 45.0,
+              "range": {
+                "min": 40,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 85,
+          "scope": "entry"
+        },
+        {
+          "id": "OVERBOUGHT",
+          "name": "Überkauft",
+          "thresholds": [
+            {
+              "name": "rsi_min",
+              "value": 70.0,
+              "range": {
+                "min": 65,
+                "max": 80,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "OVERSOLD",
+          "name": "Überverkauft",
+          "thresholds": [
+            {
+              "name": "rsi_max",
+              "value": 30.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 75,
+          "scope": "entry"
+        },
+        {
+          "id": "RANGE",
+          "name": "Range-Bound",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 30,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 45,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 60.0,
+              "range": {
+                "min": 55,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 60,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwärts / Chop",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 50,
+          "scope": "entry"
+        },
+        {
+          "id": "NO_TRADE",
+          "name": "Kein Handel",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 15.0,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 10,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "pullback_atr": 0.8,
+    "pullback_rsi": 45.0,
+    "wick_reject": 0.55,
+    "bb_entry": 0.15,
+    "rsi_oversold": 35.0,
+    "rsi_overbought": 65.0,
+    "vol_spike_factor": 1.2,
+    "breakout_atr": 0.2,
+    "min_confidence": 0.60,
+    "cooldown_bars": 12,
+    "cluster_window_bars": 6
+  },
+  "evaluation_params": {
+    "eval_horizon_bars": 40,
+    "eval_tp_atr": 1.2,
+    "eval_sl_atr": 0.8,
+    "min_trades_gate": 10,
+    "target_trades_soft": 35
+  }
+}

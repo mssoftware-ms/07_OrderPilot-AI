@@ -4,7 +4,12 @@
     "author": "OrderPilot-AI",
     "created_at": "2026-01-25T00:00:00Z",
     "updated_at": "2026-01-25T00:00:00Z",
-    "tags": ["BTCUSDT", "sideways", "scalping", "mean-reversion"],
+    "tags": [
+      "BTCUSDT",
+      "sideways",
+      "scalping",
+      "mean-reversion"
+    ],
     "notes": "Spezialisiert auf Mean-Reversion in Seitwärtsmärkten. Erkennt Range-Extrema und Squeezes."
   },
   "optimization_results": [
@@ -21,12 +26,20 @@
             {
               "name": "period",
               "value": 20,
-              "range": {"min": 15, "max": 30, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 30,
+                "step": 1
+              }
             },
             {
               "name": "std_dev",
               "value": 2.0,
-              "range": {"min": 1.5, "max": 2.5, "step": 0.1}
+              "range": {
+                "min": 1.5,
+                "max": 2.5,
+                "step": 0.1
+              }
             }
           ]
         },
@@ -37,19 +50,37 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 9, "max": 20, "step": 1}
+              "range": {
+                "min": 9,
+                "max": 20,
+                "step": 1
+              }
             },
             {
               "name": "smooth_k",
               "value": 3,
-              "range": {"min": 1, "max": 5, "step": 1}
+              "range": {
+                "min": 1,
+                "max": 5,
+                "step": 1
+              }
             }
           ]
         },
         {
           "name": "VWAP_ANCHOR",
           "type": "VWAP",
-          "params": []
+          "params": [
+            {
+              "name": "period",
+              "value": 1,
+              "range": {
+                "min": 1,
+                "max": 1,
+                "step": 1
+              }
+            }
+          ]
         }
       ],
       "regimes": [
@@ -60,7 +91,11 @@
             {
               "name": "stoch_low",
               "value": 20.0,
-              "range": {"min": 10, "max": 30, "step": 1}
+              "range": {
+                "min": 10,
+                "max": 30,
+                "step": 1
+              }
             }
           ],
           "priority": 80,
@@ -73,7 +108,11 @@
             {
               "name": "stoch_high",
               "value": 80.0,
-              "range": {"min": 70, "max": 90, "step": 1}
+              "range": {
+                "min": 70,
+                "max": 90,
+                "step": 1
+              }
             }
           ],
           "priority": 80,
@@ -86,7 +125,11 @@
             {
               "name": "bb_width_max",
               "value": 0.012,
-              "range": {"min": 0.005, "max": 0.02, "step": 0.001}
+              "range": {
+                "min": 0.005,
+                "max": 0.02,
+                "step": 0.001
+              }
             }
           ],
           "priority": 70,

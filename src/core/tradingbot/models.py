@@ -38,11 +38,22 @@ class BotAction(str, Enum):
 
 
 class RegimeType(str, Enum):
-    """Market regime types (legacy 3-regime system)."""
-    TREND_UP = "trend_up"
-    TREND_DOWN = "trend_down"
-    RANGE = "range"
-    UNKNOWN = "unknown"
+    """Market regime types (unified v2.0 naming).
+
+    - BULL: Bullish trend (was TREND_UP)
+    - BEAR: Bearish trend (was TREND_DOWN)
+    - SIDEWAYS: Range/neutral (was RANGE)
+    - UNKNOWN: Unclassified
+    """
+    BULL = "BULL"
+    BEAR = "BEAR"
+    SIDEWAYS = "SIDEWAYS"
+    UNKNOWN = "UNKNOWN"
+
+    # Legacy aliases for backwards compatibility
+    TREND_UP = "BULL"
+    TREND_DOWN = "BEAR"
+    RANGE = "SIDEWAYS"
 
 
 class RegimeID(str, Enum):

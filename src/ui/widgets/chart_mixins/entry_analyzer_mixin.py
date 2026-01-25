@@ -513,25 +513,66 @@ class EntryAnalyzerMixin:
             logger.warning("Chart widget has no add_regime_line method")
             return
 
-        # Color mapping: regime_type -> start_color (only START lines drawn, no END lines)
+        # Color mapping: regime_type -> (start_color, end_color)
         # Issue #5: Each regime has unique, distinguishable color
-        # Colors meet WCAG AA standard (≥4.5:1 contrast ratio) for accessibility
-        # Supports both new JSON regime IDs (BULL, BEAR, SIDEWAYS...) and legacy names
+        # Supports v2 JSON regime IDs (BULL_TREND, BEAR_TREND, CHOP_ZONE...) and legacy names
         regime_colors = {
-            # New JSON regime IDs (from entry_analyzer_regime.json)
-            "BULL": ("#22c55e", "#22c55e"),               # Green for bullish
-            "BEAR": ("#ef4444", "#ef4444"),               # Red for bearish
-            "SIDEWAYS": ("#f59e0b", "#f59e0b"),           # Amber/Yellow for sideways
-            "SIDEWAYS_OVERBOUGHT": ("#f97316", "#f97316"), # Orange for overbought sideways
-            "SIDEWAYS_OVERSOLD": ("#3b82f6", "#3b82f6"),  # Blue for oversold sideways
-            # Legacy regime names (for backward compatibility)
-            "STRONG_TREND_BULL": ("#22c55e", "#22c55e"),  # Green
-            "STRONG_TREND_BEAR": ("#ef4444", "#ef4444"),  # Red
-            "OVERBOUGHT": ("#f97316", "#f97316"),         # Orange
-            "OVERSOLD": ("#3b82f6", "#3b82f6"),           # Blue
-            "RANGE": ("#f59e0b", "#f59e0b"),              # Amber/Yellow
-            "UNKNOWN": ("#9ca3af", "#9ca3af"),            # Gray
+            # === V2 JSON Regime IDs ===
+            "BULL_TREND": ("#22c55e", "#22c55e"),           # Green for bullish trend
+            "BEAR_TREND": ("#ef4444", "#ef4444"),           # Red for bearish trend
+            "CHOP_ZONE": ("#f59e0b", "#f59e0b"),            # Amber for chop/sideways
+            "SIDEWAYS": ("#f59e0b", "#f59e0b"),             # Amber for sideways
+            
+            # === Generic V2 Pattern Matching ===
+            "BULL": ("#22c55e", "#22c55e"),                 # Green for any bullish
+            "BEAR": ("#ef4444", "#ef4444"),                 # Red for any bearish
+            "CHOP": ("#f59e0b", "#f59e0b"),                 # Amber for chop
+            "RANGE": ("#f59e0b", "#f59e0b"),                # Amber for range
+            
+            # === Extended V2 Regimes ===
+            "STRONG_BULL": ("#16a34a", "#16a34a"),          # Dark green for strong bull
+            "STRONG_BEAR": ("#dc2626", "#dc2626"),          # Dark red for strong bear
+            "WEAK_TREND": ("#a3a3a3", "#a3a3a3"),           # Gray for weak trend
+            "NO_TRADE": ("#6b7280", "#6b7280"),             # Dark gray for no trade zone
+            
+            # === Overbought/Oversold ===
+            "OVERBOUGHT": ("#f97316", "#f97316"),           # Orange
+            "OVERSOLD": ("#3b82f6", "#3b82f6"),             # Blue
+            "SIDEWAYS_OVERBOUGHT": ("#f97316", "#f97316"),  # Orange
+            "SIDEWAYS_OVERSOLD": ("#3b82f6", "#3b82f6"),    # Blue
+            
+            # === Legacy Names ===
+            "STRONG_TREND_BULL": ("#22c55e", "#22c55e"),
+            "STRONG_TREND_BEAR": ("#ef4444", "#ef4444"),
+            
+            # === Fallback ===
+            "UNKNOWN": ("#9ca3af", "#9ca3af"),              # Gray for unknown
         }
+        
+        def get_regime_color(regime_id: str) -> tuple[str, str]:
+            """Get color for regime ID with intelligent pattern matching."""
+            # Exact match first
+            if regime_id in regime_colors:
+                return regime_colors[regime_id]
+            
+            # Pattern matching for v2 regime IDs
+            regime_upper = regime_id.upper()
+            
+            if "BULL" in regime_upper:
+                return ("#22c55e", "#22c55e")  # Green
+            elif "BEAR" in regime_upper:
+                return ("#ef4444", "#ef4444")  # Red
+            elif "CHOP" in regime_upper or "SIDEWAYS" in regime_upper or "RANGE" in regime_upper:
+                return ("#f59e0b", "#f59e0b")  # Amber
+            elif "OVERBOUGHT" in regime_upper:
+                return ("#f97316", "#f97316")  # Orange
+            elif "OVERSOLD" in regime_upper:
+                return ("#3b82f6", "#3b82f6")  # Blue
+            elif "NO_TRADE" in regime_upper or "NOTRADE" in regime_upper:
+                return ("#6b7280", "#6b7280")  # Dark gray
+            
+            # Fallback
+            return regime_colors["UNKNOWN"]
 
         # Clear existing regime lines first
         if hasattr(self, "clear_regime_lines"):
@@ -545,8 +586,8 @@ class EntryAnalyzerMixin:
             duration_bars = regime_data.get('duration_bars', 0)
             duration_time = regime_data.get('duration_time', '0s')
 
-            # Get colors for this regime type (with fallback to UNKNOWN)
-            start_color, end_color = regime_colors.get(regime, regime_colors["UNKNOWN"])
+            # Get colors for this regime type (with intelligent pattern matching)
+            start_color, end_color = get_regime_color(regime)
 
             logger.debug(f"Regime {i}: {regime} -> color: {start_color}")
 

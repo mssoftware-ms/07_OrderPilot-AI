@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -69,10 +71,20 @@ class RegimeOptimizationMixin:
         """
         layout = QVBoxLayout(tab)
 
-        # Header
+        # Header with help button
+        header_layout = QHBoxLayout()
         header = QLabel("Regime Optimization (TPE)")
         header.setStyleSheet("font-size: 14pt; font-weight: bold;")
-        layout.addWidget(header)
+        header_layout.addWidget(header)
+        header_layout.addStretch()
+
+        # Help button for RegimeScore
+        help_btn = QPushButton(get_icon("help"), "")
+        help_btn.setToolTip("Open RegimeScore Help")
+        help_btn.setFixedSize(28, 28)
+        help_btn.clicked.connect(self._on_regime_score_help_clicked)
+        header_layout.addWidget(help_btn)
+        layout.addLayout(header_layout)
 
         description = QLabel(
             "Run TPE-based optimization to find optimal regime detection parameters. "
@@ -87,12 +99,25 @@ class RegimeOptimizationMixin:
         current_score_layout.addWidget(QLabel("Current Regime Score:"))
         self._regime_opt_current_score_label = QLabel("--")
         self._regime_opt_current_score_label.setStyleSheet("font-weight: bold; font-size: 12pt; color: #3b82f6;")
-        self._regime_opt_current_score_label.setToolTip("Score of currently active regime configuration")
+        self._regime_opt_current_score_label.setToolTip(
+            "RegimeScore (0-100) with 5 components:\n"
+            "• Sep: Separability (30%)\n"
+            "• Coh: Coherence (25%)\n"
+            "• Fid: Fidelity (25%)\n"
+            "• Bnd: Boundary (10%)\n"
+            "• Cov: Coverage (10%)"
+        )
         current_score_layout.addWidget(self._regime_opt_current_score_label)
+        
+        # Component details label (compact)
+        self._regime_opt_components_label = QLabel("")
+        self._regime_opt_components_label.setStyleSheet("color: #888; font-size: 9pt;")
+        current_score_layout.addWidget(self._regime_opt_components_label)
+        
         current_score_layout.addStretch()
 
         refresh_score_btn = QPushButton(get_icon("refresh"), "Calculate Current Score")
-        refresh_score_btn.setToolTip("Calculate score for currently active regime parameters")
+        refresh_score_btn.setToolTip("Calculate 5-component RegimeScore for currently active regime parameters")
         refresh_score_btn.clicked.connect(self._on_calculate_current_regime_score)
         current_score_layout.addWidget(refresh_score_btn)
         layout.addLayout(current_score_layout)
@@ -193,6 +218,16 @@ class RegimeOptimizationMixin:
         )
         self._regime_opt_save_history_btn.clicked.connect(self._on_save_selected_to_history)
         action_layout.addWidget(self._regime_opt_save_history_btn)
+
+        # Draw on Chart Button
+        self._regime_opt_draw_btn = QPushButton(get_icon("show_chart"), "Draw on Chart")
+        self._regime_opt_draw_btn.setEnabled(False)
+        self._regime_opt_draw_btn.setToolTip(
+            "Draw selected regime periods on chart\n"
+            "Clears all existing regime lines first"
+        )
+        self._regime_opt_draw_btn.clicked.connect(self._on_regime_opt_draw_selected)
+        action_layout.addWidget(self._regime_opt_draw_btn)
 
         # Save & Load in Regime Button
         self._regime_opt_apply_selected_btn = QPushButton(get_icon("check_circle"), "Save && Load in Regime")
@@ -317,7 +352,8 @@ class RegimeOptimizationMixin:
 
         # Connect signals
         self._regime_opt_thread.progress.connect(self._on_regime_opt_progress)
-        self._regime_opt_thread.result_ready.connect(self._on_regime_opt_result)
+        # NOTE: result_ready signal removed - was causing 150x table rebuilds
+        # self._regime_opt_thread.result_ready.connect(self._on_regime_opt_result)
         self._regime_opt_thread.finished_with_results.connect(self._on_regime_opt_finished)
         self._regime_opt_thread.error.connect(self._on_regime_opt_error)
 
@@ -399,15 +435,14 @@ class RegimeOptimizationMixin:
     def _on_regime_opt_result(self, result: dict) -> None:
         """Handle individual optimization result.
 
+        DEPRECATED: This method caused 150x table rebuilds (once per result).
+        Now we only update the table once at the end via _on_regime_opt_finished.
+
         Args:
             result: Result dictionary from optimization
         """
-        # Add to results list
-        self._regime_opt_all_results.append(result)
-
-        # Sort by score and update top-5 table
-        self._regime_opt_all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-        self._update_regime_opt_top5_table()
+        # DEPRECATED - Signal connection removed to prevent performance issues
+        pass
 
     @pyqtSlot(list)
     def _on_regime_opt_finished(self, results: list) -> None:
@@ -418,72 +453,105 @@ class RegimeOptimizationMixin:
         """
         from PyQt6.QtWidgets import QApplication
 
-        logger.info(f"Regime optimization complete: {len(results)} trials")
+        try:
+            logger.info(f"Regime optimization complete: {len(results)} trials")
 
-        # Ensure waiting dialog is visible (should already be open from start)
-        if not hasattr(self, "_waiting_dialog") or not self._waiting_dialog:
-            from src.ui.widgets import OptimizationWaitingDialog
-            self._waiting_dialog = OptimizationWaitingDialog(self)
-            self._waiting_dialog.show()
+            # Ensure waiting dialog is visible (should already be open from start)
+            if not hasattr(self, "_waiting_dialog") or not self._waiting_dialog:
+                from src.ui.widgets import OptimizationWaitingDialog
+                self._waiting_dialog = OptimizationWaitingDialog(self)
+                self._waiting_dialog.show()
 
-        self._waiting_dialog.set_status("Optimierung abgeschlossen - Verarbeite Ergebnisse...")
-        QApplication.processEvents()
-
-        # Update results
-        self._regime_opt_all_results = results
-        self._regime_opt_progress_bar.setValue(100)
-
-        # Calculate elapsed time
-        elapsed = (
-            (datetime.utcnow() - self._regime_opt_start_time).total_seconds()
-            if self._regime_opt_start_time
-            else 0
-        )
-        elapsed_text = (
-            f"{int(elapsed)}s" if elapsed < 60 else f"{int(elapsed / 60)}m {int(elapsed % 60)}s"
-        )
-
-        # Update status
-        self._waiting_dialog.set_status("Ergebnisse werden sortiert...")
-        QApplication.processEvents()
-
-        # Update UI buttons
-        self._regime_opt_start_btn.setEnabled(True)
-        self._regime_opt_stop_btn.setEnabled(False)
-        self._regime_opt_continue_btn.setEnabled(True)
-        self._regime_opt_export_btn.setEnabled(True)
-        self._regime_opt_save_history_btn.setEnabled(True)
-        self._regime_opt_apply_selected_btn.setEnabled(True)
-
-        self._regime_opt_status_label.setText(
-            f"✅ Optimization complete! {len(results)} trials in {elapsed_text}. "
-            f"Best score: {results[0]['score']:.1f}"
-        )
-        self._regime_opt_status_label.setStyleSheet("color: #22c55e;")
-        self._regime_opt_eta_label.setText(f"Total: {elapsed_text}")
-
-        # Update top-5 table with waiting dialog feedback
-        self._waiting_dialog.set_status("Top-Ergebnisse werden geladen...")
-        QApplication.processEvents()
-        self._update_regime_opt_top5_table()
-
-        # Enable Regime Results tab and populate it
-        if hasattr(self, "_tabs"):
-            for i in range(self._tabs.count()):
-                if "Regime Results" in self._tabs.tabText(
-                    i
-                ) or "3. Regime Results" in self._tabs.tabText(i):
-                    self._tabs.setTabEnabled(i, True)
-                    break
-
-        # Populate results table in Regime Results tab
-        if hasattr(self, "_populate_regime_results_table"):
-            self._waiting_dialog.set_status("Detaillierte Ergebnisse werden geladen...")
+            self._waiting_dialog.set_status("Optimierung abgeschlossen - Verarbeite Ergebnisse...")
             QApplication.processEvents()
-            self._populate_regime_results_table()
 
-        # Close waiting dialog with short delay
-        self._waiting_dialog.close_with_delay(800)
+            # Update results
+            self._regime_opt_all_results = results
+            self._regime_opt_progress_bar.setValue(100)
+
+            # Calculate elapsed time
+            elapsed = (
+                (datetime.utcnow() - self._regime_opt_start_time).total_seconds()
+                if self._regime_opt_start_time
+                else 0
+            )
+            elapsed_text = (
+                f"{int(elapsed)}s" if elapsed < 60 else f"{int(elapsed / 60)}m {int(elapsed % 60)}s"
+            )
+
+            # Update status
+            self._waiting_dialog.set_status("Ergebnisse werden sortiert...")
+            QApplication.processEvents()
+
+            # Update UI buttons
+            self._regime_opt_start_btn.setEnabled(True)
+            self._regime_opt_stop_btn.setEnabled(False)
+            self._regime_opt_continue_btn.setEnabled(True)
+            self._regime_opt_export_btn.setEnabled(True)
+            self._regime_opt_save_history_btn.setEnabled(True)
+            self._regime_opt_apply_selected_btn.setEnabled(True)
+            self._regime_opt_draw_btn.setEnabled(True)
+
+            # Get best score safely
+            best_score = 0
+            if results and len(results) > 0:
+                best_score = results[0].get('score', 0)
+
+            self._regime_opt_status_label.setText(
+                f"✅ Optimization complete! {len(results)} trials in {elapsed_text}. "
+                f"Best score: {best_score:.1f}"
+            )
+            self._regime_opt_status_label.setStyleSheet("color: #22c55e;")
+            self._regime_opt_eta_label.setText(f"Total: {elapsed_text}")
+
+            # Update top-5 table with waiting dialog feedback
+            self._waiting_dialog.set_status("Top-Ergebnisse werden geladen...")
+            QApplication.processEvents()
+
+            try:
+                self._update_regime_opt_top5_table()
+            except Exception as e:
+                logger.error(f"Failed to update top5 table: {e}", exc_info=True)
+                self._regime_opt_status_label.setText(
+                    f"⚠️ Optimization complete but table update failed: {str(e)}"
+                )
+
+            # Enable Regime Results tab and populate it
+            if hasattr(self, "_tabs"):
+                for i in range(self._tabs.count()):
+                    if "Regime Results" in self._tabs.tabText(
+                        i
+                    ) or "3. Regime Results" in self._tabs.tabText(i):
+                        self._tabs.setTabEnabled(i, True)
+                        break
+
+            # Populate results table in Regime Results tab
+            if hasattr(self, "_populate_regime_results_table"):
+                self._waiting_dialog.set_status("Detaillierte Ergebnisse werden geladen...")
+                QApplication.processEvents()
+
+                try:
+                    self._populate_regime_results_table()
+                except Exception as e:
+                    logger.error(f"Failed to populate regime results table: {e}", exc_info=True)
+
+            # Close waiting dialog with short delay
+            self._waiting_dialog.close_with_delay(800)
+
+        except Exception as e:
+            logger.error(f"Critical error in _on_regime_opt_finished: {e}", exc_info=True)
+
+            # Close waiting dialog if open
+            if hasattr(self, "_waiting_dialog") and self._waiting_dialog:
+                self._waiting_dialog.close()
+
+            # Show error to user
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Optimization Error",
+                f"Failed to process optimization results:\n{str(e)}\n\nCheck logs for details."
+            )
 
     @pyqtSlot(str)
     def _on_regime_opt_error(self, error_msg: str) -> None:
@@ -531,12 +599,16 @@ class RegimeOptimizationMixin:
         # DYNAMIC COLUMN GENERATION: Get parameter names from first result
         first_result = results_to_show[0]
         params_dict = first_result.get("params", {})
+        metrics_dict = first_result.get("metrics", {})
 
         # Sort parameter names for consistent column order
         param_names = sorted(params_dict.keys())
 
-        # Build column headers: Rank, Score, [Dynamic Params], Trial #
-        headers = ["Rank", "Score"] + param_names + ["Trial #"]
+        # Score component columns (5-component RegimeScore)
+        score_components = ["Sep", "Coh", "Fid", "Bnd", "Cov"]
+
+        # Build column headers: Rank, Total Score, Sep, Coh, Fid, Bnd, Cov, [Dynamic Params], Trial #
+        headers = ["Rank", "Total"] + score_components + param_names + ["Trial #"]
 
         # Update table structure
         self._regime_opt_top5_table.setColumnCount(len(headers))
@@ -564,22 +636,46 @@ class RegimeOptimizationMixin:
                     self._waiting_dialog.set_status(f"Top-Ergebnisse: {row}/{len(results_to_show)} ({progress}%)")
 
             params = result.get("params", {})
+            metrics = result.get("metrics", {})
             score = result.get("score", 0)
             trial_num = result.get("trial_number", row + 1)
 
+            # Find original index in _regime_opt_all_results
+            original_index = self._regime_opt_all_results.index(result) if result in self._regime_opt_all_results else row
+
             col = 0
 
-            # Column 0: Rank
+            # Column 0: Rank (display rank, but store original index in UserRole)
             rank_item = QTableWidgetItem(str(row + 1))
             rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            rank_item.setData(Qt.ItemDataRole.UserRole, original_index)  # Store original index for correct retrieval
             self._regime_opt_top5_table.setItem(row, col, rank_item)
             col += 1
 
-            # Column 1: Score
+            # Column 1: Total Score
             score_item = QTableWidgetItem(f"{score:.1f}")
             score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Color-code score
+            if score >= 75:
+                score_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif score >= 50:
+                score_item.setForeground(Qt.GlobalColor.darkYellow)
+            else:
+                score_item.setForeground(Qt.GlobalColor.darkRed)
             self._regime_opt_top5_table.setItem(row, col, score_item)
             col += 1
+
+            # Score Components (5 columns): Sep, Coh, Fid, Bnd, Cov
+            component_keys = ["separability", "coherence", "fidelity", "boundary", "coverage_score"]
+            for comp_key in component_keys:
+                comp_value = metrics.get(comp_key, 0.0) if isinstance(metrics, dict) else 0.0
+                # Convert 0-1 to 0-100 for display
+                comp_pct = comp_value * 100
+                comp_item = QTableWidgetItem(f"{comp_pct:.0f}")
+                comp_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                comp_item.setToolTip(f"{comp_key}: {comp_value:.3f}")
+                self._regime_opt_top5_table.setItem(row, col, comp_item)
+                col += 1
 
             # Dynamic Parameter Columns
             for param_name in param_names:
@@ -790,12 +886,18 @@ class RegimeOptimizationMixin:
 
             # Get optimized params from optimization_results if available
             optimized_params = {}
-            if hasattr(config, "optimization_results") and config.optimization_results:
-                applied = [r for r in config.optimization_results if r.get("applied", False)]
+            opt_results = []
+            if isinstance(config, dict):
+                opt_results = config.get("optimization_results", [])
+            elif hasattr(config, "optimization_results"):
+                opt_results = config.optimization_results or []
+
+            if opt_results:
+                applied = [r for r in opt_results if r.get("applied", False)]
                 if applied:
                     optimized_params = applied[-1].get("params", {})
                 else:
-                    optimized_params = config.optimization_results[0].get("params", {})
+                    optimized_params = opt_results[0].get("params", {})
 
             # Helper to get param value (optimized or base)
             def get_param(indicator_id: str, param_name: str, default: Any) -> Any:
@@ -804,10 +906,35 @@ class RegimeOptimizationMixin:
                 if opt_key in optimized_params:
                     return optimized_params[opt_key]
 
-                # Fallback to indicators base params
-                for ind in config.indicators:
-                    if ind.id == indicator_id:
-                        return ind.params.get(param_name, default)
+                # Also try underscore format (from optimizer)
+                underscore_key = f"{indicator_id}_{param_name}"
+                if underscore_key in optimized_params:
+                    return optimized_params[underscore_key]
+
+                # Fallback to indicators from config (dict or object)
+                indicators = config.get("indicators", []) if isinstance(config, dict) else getattr(config, "indicators", [])
+
+                # Also check optimization_results[0].indicators for v2 format
+                if not indicators and isinstance(config, dict):
+                    opt_results = config.get("optimization_results", [])
+                    if opt_results:
+                        indicators = opt_results[0].get("indicators", [])
+
+                for ind in indicators:
+                    ind_id = ind.get("id") or ind.get("name", "") if isinstance(ind, dict) else getattr(ind, "id", getattr(ind, "name", ""))
+                    # Match by id or name (handle both v1 and v2 naming)
+                    if ind_id.lower().replace("_", "") == indicator_id.lower().replace("_", "") or indicator_id.lower() in ind_id.lower():
+                        if isinstance(ind, dict):
+                            params = ind.get("params", {})
+                            # v2 format: params is a list of {name, value}
+                            if isinstance(params, list):
+                                for p in params:
+                                    if p.get("name") == param_name:
+                                        return p.get("value", default)
+                            else:
+                                return params.get(param_name, default)
+                        else:
+                            return getattr(ind, "params", {}).get(param_name, default)
 
                 return default
 
@@ -817,9 +944,28 @@ class RegimeOptimizationMixin:
                 if opt_key in optimized_params:
                     return optimized_params[opt_key]
 
-                for regime in config.regimes:
-                    if regime.id == regime_id:
-                        return getattr(regime, threshold_name, default)
+                # Get regimes from config (dict or object)
+                regimes = config.get("regimes", []) if isinstance(config, dict) else getattr(config, "regimes", [])
+
+                # Also check optimization_results[0].regimes for v2 format
+                if not regimes and isinstance(config, dict):
+                    opt_results = config.get("optimization_results", [])
+                    if opt_results:
+                        regimes = opt_results[0].get("regimes", [])
+
+                for regime in regimes:
+                    r_id = regime.get("id", "") if isinstance(regime, dict) else getattr(regime, "id", "")
+                    if r_id == regime_id:
+                        if isinstance(regime, dict):
+                            # v2 format: thresholds is a list of {name, value}
+                            thresholds = regime.get("thresholds", [])
+                            for t in thresholds:
+                                if t.get("name") == threshold_name:
+                                    return t.get("value", default)
+                            # Also check direct keys for backwards compatibility
+                            return regime.get(threshold_name, default)
+                        else:
+                            return getattr(regime, threshold_name, default)
 
                 return default
 
@@ -908,26 +1054,77 @@ class RegimeOptimizationMixin:
                 f"bb={current_params.bb_period}/{current_params.bb_std_dev}"
             )
 
-            # Create optimizer with default config (we only use it for score calculation,
-            # not for running optimization, so config values don't matter)
+            # Create optimizer to classify regimes (we need the regimes Series)
             optimizer = RegimeOptimizer(
                 data=df,
                 param_ranges=param_ranges,
             )
 
-            # Calculate indicators and metrics
+            # Calculate indicators and classify regimes
             indicators = optimizer._calculate_indicators(current_params)
             regimes = optimizer._classify_regimes(current_params, indicators)
-            metrics = optimizer._calculate_metrics(regimes, current_params)
-            score = optimizer._calculate_composite_score(metrics)
-
-            # Update label
-            self._regime_opt_current_score_label.setText(f"{score:.2f}")
-            self._regime_opt_current_score_label.setStyleSheet(
-                f"font-weight: bold; font-size: 12pt; color: {'#22c55e' if score >= 75 else '#ef4444'};"
+            
+            # Convert regimes to Series for new scoring
+            regimes_series = pd.Series(regimes, index=df.index)
+            
+            # Use new 5-component RegimeScore
+            from src.core.scoring import calculate_regime_score, RegimeScoreConfig
+            
+            score_config = RegimeScoreConfig(
+                warmup_bars=200,
+                max_feature_lookback=max(
+                    current_params.adx_period,
+                    current_params.sma_slow_period,
+                    current_params.rsi_period,
+                    current_params.bb_period,
+                ),
             )
+            score_result = calculate_regime_score(
+                data=df,
+                regimes=regimes_series,
+                config=score_config,
+            )
+            
+            score = score_result.total_score
 
-            logger.info(f"Current regime score: {score:.2f}")
+            # Update main score label
+            self._regime_opt_current_score_label.setText(f"{score:.1f}")
+            
+            # Color based on score and gate status
+            if not score_result.gates_passed:
+                color = "#ef4444"  # Red for gate failure
+            elif score >= 75:
+                color = "#22c55e"  # Green for good
+            elif score >= 50:
+                color = "#f59e0b"  # Orange for medium
+            else:
+                color = "#ef4444"  # Red for poor
+                
+            self._regime_opt_current_score_label.setStyleSheet(
+                f"font-weight: bold; font-size: 12pt; color: {color};"
+            )
+            
+            # Update components label with breakdown
+            sep = score_result.separability.normalized * 100
+            coh = score_result.coherence.normalized * 100
+            fid = score_result.fidelity.normalized * 100
+            bnd = score_result.boundary.normalized * 100
+            cov = score_result.coverage.normalized * 100
+            
+            if score_result.gates_passed:
+                self._regime_opt_components_label.setText(
+                    f"[Sep:{sep:.0f} Coh:{coh:.0f} Fid:{fid:.0f} Bnd:{bnd:.0f} Cov:{cov:.0f}]"
+                )
+            else:
+                # Show gate failure reason
+                failures = ", ".join(score_result.gate_failures[:2])
+                self._regime_opt_components_label.setText(f"⚠️ {failures}")
+                self._regime_opt_components_label.setStyleSheet("color: #ef4444; font-size: 9pt;")
+
+            logger.info(
+                f"Current regime score: {score:.2f} "
+                f"(Sep:{sep:.1f} Coh:{coh:.1f} Fid:{fid:.1f} Bnd:{bnd:.1f} Cov:{cov:.1f})"
+            )
 
         except Exception as e:
             logger.error(f"Failed to calculate current regime score: {e}", exc_info=True)
@@ -958,9 +1155,25 @@ class RegimeOptimizationMixin:
                 )
                 return
 
-            # Get row index
+            # Get row index and retrieve original index from UserRole
             row = selected_rows[0].row()
-            if row >= len(self._regime_opt_all_results):
+            rank_item = self._regime_opt_top5_table.item(row, 0)  # Rank column stores original index
+
+            if rank_item is None:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Selection",
+                    "Could not retrieve selection data."
+                )
+                return
+
+            # Get original index from UserRole (stored during table population)
+            original_index = rank_item.data(Qt.ItemDataRole.UserRole)
+            if original_index is None:
+                # Fallback to row index if UserRole not set (backwards compatibility)
+                original_index = row
+
+            if original_index >= len(self._regime_opt_all_results):
                 QMessageBox.warning(
                     self,
                     "Invalid Selection",
@@ -968,11 +1181,12 @@ class RegimeOptimizationMixin:
                 )
                 return
 
-            selected_result = self._regime_opt_all_results[row]
+            selected_result = self._regime_opt_all_results[original_index]
             params = selected_result.get("params", {})
             score = selected_result.get("score", 0)
             metrics = selected_result.get("metrics", {})
-            trial_number = selected_result.get("trial_number", row + 1)
+            trial_number = selected_result.get("trial_number", original_index + 1)
+            rank = row + 1  # Visual rank for display
 
             logger.info(f"Saving optimization result (score {score:.2f}) to history")
 
@@ -996,7 +1210,7 @@ class RegimeOptimizationMixin:
             result_entry = {
                 "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "score": float(score),
-                "rank": row + 1,
+                "rank": rank,
                 "params": converted_params,
                 "metrics": metrics,
                 "trial_number": trial_number,
@@ -1032,7 +1246,7 @@ class RegimeOptimizationMixin:
                 "Saved to History",
                 f"Successfully saved optimization result to history!\n\n"
                 f"Score: {score:.2f}\n"
-                f"Rank: {row + 1}\n"
+                f"Rank: #{rank}\n"
                 f"Trial: {trial_number}\n\n"
                 f"Total in history: {len(config_data['optimization_results'])}/10"
             )
@@ -1074,9 +1288,25 @@ class RegimeOptimizationMixin:
                 )
                 return
 
-            # Get row index
+            # Get row index and retrieve original index from UserRole
             row = selected_rows[0].row()
-            if row >= len(self._regime_opt_all_results):
+            rank_item = self._regime_opt_top5_table.item(row, 0)  # Rank column stores original index
+
+            if rank_item is None:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Selection",
+                    "Could not retrieve selection data."
+                )
+                return
+
+            # Get original index from UserRole (stored during table population)
+            original_index = rank_item.data(Qt.ItemDataRole.UserRole)
+            if original_index is None:
+                # Fallback to row index if UserRole not set (backwards compatibility)
+                original_index = row
+
+            if original_index >= len(self._regime_opt_all_results):
                 QMessageBox.warning(
                     self,
                     "Invalid Selection",
@@ -1084,10 +1314,10 @@ class RegimeOptimizationMixin:
                 )
                 return
 
-            selected_result = self._regime_opt_all_results[row]
+            selected_result = self._regime_opt_all_results[original_index]
             params = selected_result.get("params", {})
             score = selected_result.get("score", 0)
-            rank = row + 1
+            rank = row + 1  # Display rank (visual position in table)
 
             logger.info(f"Save & Load in Regime: Rank #{rank}, score {score:.2f}")
 
@@ -1110,8 +1340,7 @@ class RegimeOptimizationMixin:
                 f"1. Create new regime config (Rank #{rank})\n"
                 f"2. Update indicator parameters\n"
                 f"3. Update regime thresholds\n"
-                f"4. Clear both tables\n"
-                f"5. Load config in Regime tab",
+                f"4. Load config in Regime tab",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -1176,7 +1405,7 @@ class RegimeOptimizationMixin:
             export_dir.mkdir(parents=True, exist_ok=True)
 
             timestamp_str = datetime.utcnow().strftime("%y%m%d%H%M%S")
-            export_filename = f"{timestamp_str}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json"
+            export_filename = f"{timestamp_str}_regime_optimization_results_{symbol}_{timeframe}_#{rank}.json"
             export_path = export_dir / export_filename
 
             logger.info(f"Saving v2.0 config to: {export_path}")
@@ -1187,13 +1416,11 @@ class RegimeOptimizationMixin:
 
             logger.info(f"Successfully saved v2.0 regime config (Rank #{rank}) to: {export_path}")
 
-            # Step 5: Clear both tables
+            # Step 5: Clear detected regimes table (will be repopulated with new config)
+            # NOTE: Keep optimization results table - results are valuable for reference
             if hasattr(self, "_detected_regimes_table"):
                 self._detected_regimes_table.setRowCount(0)
-                logger.info("Cleared Detected Regimes table")
-
-            self._regime_opt_top5_table.setRowCount(0)
-            logger.info("Cleared Optimization Results table")
+                logger.info("Cleared Detected Regimes table (will repopulate with new config)")
 
             # Step 6: Load new file in Regime tab
             if hasattr(self, "_load_regime_config"):
@@ -1355,7 +1582,7 @@ class RegimeOptimizationMixin:
     def _build_indicators_from_params(self, params: dict) -> list[dict]:
         """Build v2.0 indicators[] structure from flattened params.
 
-        Converts params like {"adx.period": 14, "rsi.period": 12} to:
+        Converts params like {"adx_period": 14, "rsi_period": 12} to:
         [
             {
                 "name": "ADX1",
@@ -1365,6 +1592,8 @@ class RegimeOptimizationMixin:
             ...
         ]
 
+        Supports both underscore format (adx_period) and dot format (adx.period).
+
         Args:
             params: Flattened params dict from optimization result
 
@@ -1373,44 +1602,60 @@ class RegimeOptimizationMixin:
         """
         indicators_map = {}
 
-        # Known indicator mappings (old ID -> new name/type)
+        # Known indicator mappings (prefix -> name/type)
         indicator_info = {
-            "adx": {"name": "ADX1", "type": "ADX"},
-            "rsi": {"name": "RSI1", "type": "RSI"},
-            "bb": {"name": "BB1", "type": "BB"},
-            "sma_fast": {"name": "SMA_FAST", "type": "SMA"},
-            "sma_slow": {"name": "SMA_SLOW", "type": "SMA"},
-            "macd_12_26_9": {"name": "MACD1", "type": "MACD"},
+            "adx": {"name": "STRENGTH_ADX", "type": "ADX"},
+            "rsi": {"name": "MOMENTUM_RSI", "type": "RSI"},
+            "bb": {"name": "VOLATILITY_BB", "type": "BB"},
+            "sma_fast": {"name": "TREND_FILTER_FAST", "type": "SMA"},
+            "sma_slow": {"name": "TREND_FILTER", "type": "SMA"},
+        }
+
+        # Mapping from flat param names to (indicator_id, param_name)
+        param_mapping = {
+            "adx_period": ("adx", "period"),
+            "adx_threshold": ("adx", "threshold"),
+            "rsi_period": ("rsi", "period"),
+            "rsi_sideways_low": ("rsi", "sideways_low"),
+            "rsi_sideways_high": ("rsi", "sideways_high"),
+            "bb_period": ("bb", "period"),
+            "bb_std_dev": ("bb", "std_dev"),
+            "bb_width_percentile": ("bb", "width_percentile"),
+            "sma_fast_period": ("sma_fast", "period"),
+            "sma_slow_period": ("sma_slow", "period"),
         }
 
         # Default parameter ranges for common indicators
         param_ranges = {
-            "period": {"min": 5, "max": 50, "step": 1},
+            "period": {"min": 5, "max": 200, "step": 1},
+            "threshold": {"min": 15, "max": 40, "step": 1},
             "std_dev": {"min": 1.5, "max": 3.0, "step": 0.1},
-            "fast": {"min": 8, "max": 20, "step": 1},
-            "slow": {"min": 20, "max": 40, "step": 1},
-            "signal": {"min": 5, "max": 15, "step": 1},
-            "width_percentile": {"min": 50, "max": 95, "step": 5},
+            "sideways_low": {"min": 30, "max": 50, "step": 1},
+            "sideways_high": {"min": 50, "max": 70, "step": 1},
+            "width_percentile": {"min": 10, "max": 50, "step": 5},
         }
 
         # Parse params and group by indicator
         for param_key, param_value in params.items():
-            if "." not in param_key:
-                continue
-
-            parts = param_key.split(".", 1)
-            if len(parts) != 2:
-                continue
-
-            indicator_id, param_name = parts
-
-            # Skip regime thresholds
-            if indicator_id.isupper():  # BULL, BEAR, SIDEWAYS, etc.
+            # Try direct mapping first (underscore format from optimizer)
+            if param_key in param_mapping:
+                indicator_id, param_name = param_mapping[param_key]
+            # Try dot format (legacy)
+            elif "." in param_key:
+                parts = param_key.split(".", 1)
+                if len(parts) != 2:
+                    continue
+                indicator_id, param_name = parts
+                # Skip regime thresholds
+                if indicator_id.isupper():
+                    continue
+            else:
+                # Skip unknown params
                 continue
 
             # Get indicator info
             if indicator_id not in indicator_info:
-                logger.warning(f"Unknown indicator ID: {indicator_id}, skipping")
+                logger.debug(f"Unknown indicator ID: {indicator_id}, skipping")
                 continue
 
             info = indicator_info[indicator_id]
@@ -1426,7 +1671,7 @@ class RegimeOptimizationMixin:
             # Add parameter
             param_entry = {
                 "name": param_name,
-                "value": int(param_value) if isinstance(param_value, (int, float)) and param_value == int(param_value) else float(param_value)
+                "value": int(param_value) if isinstance(param_value, (int, float)) and param_value == int(param_value) else round(float(param_value), 2)
             }
 
             # Add range if known
@@ -1439,23 +1684,19 @@ class RegimeOptimizationMixin:
         indicators = list(indicators_map.values())
         indicators.sort(key=lambda x: x["name"])
 
-        logger.info(f"Built {len(indicators)} indicators from params")
+        logger.info(f"Built {len(indicators)} indicators from params: {[i['name'] for i in indicators]}")
         return indicators
 
     def _build_regimes_from_params(self, params: dict) -> list[dict]:
-        """Build v2.0 regimes[] structure from regime threshold params.
+        """Build v2.0 regimes[] structure from optimization params.
 
-        Converts params like {"BULL.adx_threshold": 25, "SIDEWAYS.rsi_low": 40} to:
-        [
-            {
-                "id": "BULL",
-                "name": "Strong Bullish Trend",
-                "thresholds": [{"name": "adx_threshold", "value": 25, "range": {...}}],
-                "priority": 90,
-                "scope": "entry"
-            },
-            ...
-        ]
+        Converts optimizer params like {"adx_threshold": 25, "rsi_sideways_low": 40}
+        to regime definitions with thresholds applied.
+
+        The optimizer uses global thresholds, which we apply to standard regime types:
+        - BULL: ADX > threshold, price > SMA
+        - BEAR: ADX > threshold, price < SMA
+        - SIDEWAYS: ADX < threshold, RSI in sideways range
 
         Args:
             params: Flattened params dict from optimization result
@@ -1463,67 +1704,141 @@ class RegimeOptimizationMixin:
         Returns:
             List of regime dicts in v2.0 format
         """
-        regimes_map = {}
+        # Extract global thresholds from optimizer params
+        adx_threshold = params.get("adx_threshold", 25)
+        rsi_sideways_low = params.get("rsi_sideways_low", 40)
+        rsi_sideways_high = params.get("rsi_sideways_high", 60)
 
-        # Known regime info
-        regime_info = {
-            "BULL": {"name": "Strong Bullish Trend", "priority": 90, "scope": "entry"},
-            "BEAR": {"name": "Strong Bearish Trend", "priority": 90, "scope": "entry"},
-            "SIDEWAYS": {"name": "Sideways Range", "priority": 70, "scope": "entry"},
-            "SIDEWAYS_OVERBOUGHT": {"name": "Sideways Overbought", "priority": 60, "scope": "entry"},
-            "SIDEWAYS_OVERSOLD": {"name": "Sideways Oversold", "priority": 60, "scope": "entry"},
-        }
-
-        # Default threshold ranges
+        # Threshold ranges for v2.0 format
         threshold_ranges = {
-            "adx_threshold": {"min": 15, "max": 35, "step": 1},
-            "rsi_low": {"min": 30, "max": 45, "step": 1},
-            "rsi_high": {"min": 55, "max": 70, "step": 1},
-            "rsi_overbought": {"min": 65, "max": 80, "step": 1},
-            "rsi_oversold": {"min": 20, "max": 35, "step": 1},
+            "adx_min": {"min": 15, "max": 50, "step": 1},
+            "adx_max": {"min": 15, "max": 50, "step": 1},
+            "rsi_min": {"min": 30, "max": 70, "step": 1},
+            "rsi_max": {"min": 30, "max": 70, "step": 1},
         }
 
-        # Parse params and group by regime
-        for param_key, param_value in params.items():
-            if "." not in param_key:
-                continue
+        # Build standard 3 regime types from global thresholds
+        regimes = [
+            {
+                "id": "BULL",
+                "name": "Bullischer Trend",
+                "thresholds": [
+                    {"name": "adx_min", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_min"]},
+                ],
+                "priority": 90,
+                "scope": "entry"
+            },
+            {
+                "id": "BEAR",
+                "name": "Bärischer Trend",
+                "thresholds": [
+                    {"name": "adx_min", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_min"]},
+                ],
+                "priority": 85,
+                "scope": "entry"
+            },
+            {
+                "id": "SIDEWAYS",
+                "name": "Seitwärts / Neutral",
+                "thresholds": [
+                    {"name": "adx_max", "value": round(adx_threshold, 1), "range": threshold_ranges["adx_max"]},
+                    {"name": "rsi_min", "value": round(rsi_sideways_low, 1), "range": threshold_ranges["rsi_min"]},
+                    {"name": "rsi_max", "value": round(rsi_sideways_high, 1), "range": threshold_ranges["rsi_max"]},
+                ],
+                "priority": 50,
+                "scope": "entry"
+            },
+        ]
 
-            parts = param_key.split(".", 1)
-            if len(parts) != 2:
-                continue
-
-            regime_id, threshold_name = parts
-
-            # Only process regime thresholds
-            if regime_id not in regime_info:
-                continue
-
-            # Initialize regime entry if not exists
-            if regime_id not in regimes_map:
-                info = regime_info[regime_id]
-                regimes_map[regime_id] = {
-                    "id": regime_id,
-                    "name": info["name"],
-                    "thresholds": [],
-                    "priority": info["priority"],
-                    "scope": info["scope"]
-                }
-
-            # Add threshold
-            threshold_entry = {
-                "name": threshold_name,
-                "value": float(param_value)
-            }
-
-            # Add range if known
-            if threshold_name in threshold_ranges:
-                threshold_entry["range"] = threshold_ranges[threshold_name]
-
-            regimes_map[regime_id]["thresholds"].append(threshold_entry)
-
-        # Convert to list and sort by priority (descending)
-        regimes = list(regimes_map.values())
-        regimes.sort(key=lambda x: x["priority"], reverse=True)
-
-        logger.info(f"Built {len(regimes)} regimes from params")
+        logger.info(f"Built {len(regimes)} regimes from global thresholds: adx={adx_threshold:.1f}, rsi=[{rsi_sideways_low:.1f}, {rsi_sideways_high:.1f}]")
         return regimes
+
+    @pyqtSlot()
+    def _on_regime_score_help_clicked(self) -> None:
+        """Open RegimeScore help file in browser."""
+        help_path = Path(__file__).parent.parent.parent.parent.parent / "help" / "regime_score_help.html"
+        if help_path.exists():
+            webbrowser.open(help_path.as_uri())
+            logger.info(f"Opened help file: {help_path}")
+        else:
+            QMessageBox.warning(
+                self,
+                "Help Not Found",
+                f"Help file not found at:\n{help_path}\n\n"
+                "Please ensure the help file exists.",
+            )
+
+    @pyqtSlot()
+    def _on_regime_opt_draw_selected(self) -> None:
+        """Draw selected optimization result's regime periods on chart.
+
+        Clears all existing regime lines first, then draws the new ones.
+        """
+        # Get selected row from table
+        selected_rows = self._regime_opt_top5_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select a result row from the table first."
+            )
+            return
+
+        # Get row index and retrieve original index from UserRole
+        row = selected_rows[0].row()
+        rank_item = self._regime_opt_top5_table.item(row, 0)
+
+        if rank_item is None:
+            QMessageBox.warning(
+                self,
+                "Invalid Selection",
+                "Could not retrieve selection data."
+            )
+            return
+
+        # Get original index from UserRole
+        original_index = rank_item.data(Qt.ItemDataRole.UserRole)
+        if original_index is None:
+            original_index = row
+
+        if original_index >= len(self._regime_opt_all_results):
+            QMessageBox.warning(
+                self,
+                "Invalid Selection",
+                "Selected row is out of range."
+            )
+            return
+
+        selected_result = self._regime_opt_all_results[original_index]
+        regime_history = selected_result.get("regime_history", [])
+
+        if not regime_history:
+            QMessageBox.warning(
+                self,
+                "No Regime Data",
+                "Selected result has no regime history to draw.\n\n"
+                "The optimization may not have saved regime periods."
+            )
+            return
+
+        # Emit signal to draw regime lines on chart (clears existing lines automatically)
+        if hasattr(self, "draw_regime_lines_requested"):
+            self.draw_regime_lines_requested.emit(regime_history)
+            rank = row + 1
+            score = selected_result.get("score", 0)
+            logger.info(f"Drawing {len(regime_history)} regime periods from Rank #{rank} (score: {score:.1f})")
+
+            QMessageBox.information(
+                self,
+                "Regime Lines Drawn",
+                f"Drew {len(regime_history)} regime periods on chart.\n\n"
+                f"Rank: #{rank}\n"
+                f"Score: {score:.1f}"
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Signal Not Connected",
+                "Chart drawing signal is not connected.\n"
+                "Cannot draw regime lines."
+            )

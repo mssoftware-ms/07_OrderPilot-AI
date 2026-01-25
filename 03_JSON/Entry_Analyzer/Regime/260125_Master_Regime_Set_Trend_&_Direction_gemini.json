@@ -3,13 +3,17 @@
   "metadata": {
     "author": "OrderPilot-AI",
     "created_at": "2026-01-25T00:00:00Z",
-    "updated_at": "2026-01-25T00:00:00Z",
-    "tags": ["BTCUSDT", "regime", "trend-following"],
-    "notes": "Optimal für Trend-Scalping. Nutzt EMA 200 zur Richtungserkennung und ADX zur Filterung von Seitwärts-Rauschen."
+    "updated_at": "2026-01-25T04:28:00Z",
+    "tags": [
+      "BTCUSDT",
+      "regime",
+      "comprehensive"
+    ],
+    "notes": "Vollständige Regime-Erkennung mit allen Marktphasen. Prioritäten: STRONG > Normal > SIDEWAYS."
   },
   "optimization_results": [
     {
-      "timestamp": "2026-01-25T00:00:00Z",
+      "timestamp": "2026-01-25T04:28:00Z",
       "score": 0.0,
       "trial_number": 1,
       "applied": true,
@@ -21,7 +25,11 @@
             {
               "name": "period",
               "value": 200,
-              "range": {"min": 100, "max": 200, "step": 10}
+              "range": {
+                "min": 100,
+                "max": 200,
+                "step": 10
+              }
             }
           ]
         },
@@ -32,7 +40,11 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 10, "max": 25, "step": 1}
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
             }
           ]
         },
@@ -43,59 +55,236 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 9, "max": 21, "step": 1}
+              "range": {
+                "min": 9,
+                "max": 21,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
             }
           ]
         }
       ],
       "regimes": [
         {
-          "id": "BULL_TREND",
-          "name": "Strong Bullish Bias",
+          "id": "STRONG_BULL",
+          "name": "Starker Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 60.0,
+              "range": {
+                "min": 55,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 100,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BEAR",
+          "name": "Starker Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 40.0,
+              "range": {
+                "min": 30,
+                "max": 45,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 95,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Bullischer Trend",
           "thresholds": [
             {
               "name": "adx_min",
               "value": 25.0,
-              "range": {"min": 20, "max": 35, "step": 1}
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
             },
             {
               "name": "rsi_min",
               "value": 55.0,
-              "range": {"min": 50, "max": 65, "step": 1}
+              "range": {
+                "min": 50,
+                "max": 60,
+                "step": 1
+              }
             }
           ],
           "priority": 90,
           "scope": "entry"
         },
         {
-          "id": "BEAR_TREND",
-          "name": "Strong Bearish Bias",
+          "id": "BEAR",
+          "name": "Bärischer Trend",
           "thresholds": [
             {
               "name": "adx_min",
               "value": 25.0,
-              "range": {"min": 20, "max": 35, "step": 1}
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
             },
             {
               "name": "rsi_max",
               "value": 45.0,
-              "range": {"min": 35, "max": 50, "step": 1}
+              "range": {
+                "min": 40,
+                "max": 50,
+                "step": 1
+              }
             }
           ],
           "priority": 85,
           "scope": "entry"
         },
         {
-          "id": "CHOP_ZONE",
-          "name": "Volatile Sideways / No Trade",
+          "id": "OVERBOUGHT",
+          "name": "Überkauft",
+          "thresholds": [
+            {
+              "name": "rsi_min",
+              "value": 70.0,
+              "range": {
+                "min": 65,
+                "max": 80,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "OVERSOLD",
+          "name": "Überverkauft",
+          "thresholds": [
+            {
+              "name": "rsi_max",
+              "value": 30.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 75,
+          "scope": "entry"
+        },
+        {
+          "id": "RANGE",
+          "name": "Range-Bound",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 30,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 45,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 60.0,
+              "range": {
+                "min": 55,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 60,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwärts / Chop",
           "thresholds": [
             {
               "name": "adx_max",
               "value": 20.0,
-              "range": {"min": 15, "max": 25, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
             }
           ],
-          "priority": 70,
+          "priority": 50,
+          "scope": "entry"
+        },
+        {
+          "id": "NO_TRADE",
+          "name": "Kein Handel",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 15.0,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 10,
           "scope": "entry"
         }
       ]

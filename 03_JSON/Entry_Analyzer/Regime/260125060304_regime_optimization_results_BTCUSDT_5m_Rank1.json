@@ -1,0 +1,232 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-25T06:03:04Z",
+    "updated_at": "2026-01-25T06:03:04Z",
+    "tags": [
+      "BTCUSDT",
+      "5m",
+      "regime",
+      "optimization"
+    ],
+    "notes": "Rank #1 optimization result applied on 2026-01-25 06:03:04 UTC. Score: 64.00. Trial: 1",
+    "trading_style": "Daytrading",
+    "description": "Optimized regime configuration for BTCUSDT 5m with 5 indicators and 3 regimes."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-25T06:03:04Z",
+      "score": 64.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 15,
+              "range": {
+                "min": 5,
+                "max": 200,
+                "step": 1
+              }
+            },
+            {
+              "name": "sideways_high",
+              "value": 62,
+              "range": {
+                "min": 50,
+                "max": 70,
+                "step": 1
+              }
+            },
+            {
+              "name": "sideways_low",
+              "value": 42,
+              "range": {
+                "min": 30,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 17,
+              "range": {
+                "min": 5,
+                "max": 200,
+                "step": 1
+              }
+            },
+            {
+              "name": "threshold",
+              "value": 26,
+              "range": {
+                "min": 15,
+                "max": 40,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "TREND_FILTER",
+          "type": "SMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 88,
+              "range": {
+                "min": 5,
+                "max": 200,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "TREND_FILTER_FAST",
+          "type": "SMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 50,
+              "range": {
+                "min": 5,
+                "max": 200,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_BB",
+          "type": "BB",
+          "params": [
+            {
+              "name": "period",
+              "value": 19,
+              "range": {
+                "min": 5,
+                "max": 200,
+                "step": 1
+              }
+            },
+            {
+              "name": "std_dev",
+              "value": 2,
+              "range": {
+                "min": 1.5,
+                "max": 3.0,
+                "step": 0.1
+              }
+            },
+            {
+              "name": "width_percentile",
+              "value": 20,
+              "range": {
+                "min": 10,
+                "max": 50,
+                "step": 5
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "BULL",
+          "name": "Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 26.0,
+              "range": {
+                "min": 15,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 90,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 26.0,
+              "range": {
+                "min": 15,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 85,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwärts / Neutral",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 26.0,
+              "range": {
+                "min": 15,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_min",
+              "value": 42,
+              "range": {
+                "min": 30,
+                "max": 70,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_max",
+              "value": 62,
+              "range": {
+                "min": 30,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 50,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "min_score": 70,
+    "require_regime_match": true,
+    "max_signals_per_regime": 5
+  },
+  "evaluation_params": {
+    "lookback_periods": 200,
+    "min_regime_duration": 3,
+    "score_weights": {
+      "regime_distribution": 0.3,
+      "regime_stability": 0.3,
+      "indicator_quality": 0.4
+    }
+  }
+}
