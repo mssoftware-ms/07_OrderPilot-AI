@@ -9,7 +9,9 @@
       "regime",
       "template"
     ],
-    "notes": "⚠️ GENERIC TEMPLATE v2.0 - Supports ANY indicator with ANY parameters (1-10 params per indicator). Examples below are just suggestions - replace with YOUR indicators! See .md for all 12+ supported indicator types."
+    "notes": "⚠️ GENERIC TEMPLATE v2.0 - Supports ANY indicator with ANY parameters (1-10 params per indicator). Examples below are just suggestions - replace with YOUR indicators! See .md for all 12+ supported indicator types.",
+    "trading_style": "Example: Daytrading",
+    "description": "Example: Trend-following strategy for identifying and scalping sideways market phases"
   },
   "optimization_results": [
     {

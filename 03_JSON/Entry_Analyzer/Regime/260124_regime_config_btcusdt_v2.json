@@ -1,0 +1,478 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-24T00:00:00Z",
+    "updated_at": "2026-01-24T00:00:00Z",
+    "tags": [
+      "entry-analyzer",
+      "regime",
+      "btc",
+      "ohlcv",
+      "warmup200",
+      "v2"
+    ],
+    "notes": "BTCUSDT (Futures) Regime-Detection Konfiguration. Warmup: Die ersten 200 Kerzen dienen ausschließlich zur Indikator-Stabilisierung und werden NICHT klassifiziert. Regimes werden erst ab Kerze 201 erkannt. Indikator-Set fokussiert Trendstärke (ADX), Trendrichtung (EMA-Alignment/MACD), Range/Squeeze (BB-Width/RSI) und Volatilitäts-Regimes (Normalized ATR)."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-24T00:00:00Z",
+      "score": 0.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "ADX_MAIN",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 30,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "EMA_FAST",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 21,
+              "range": {
+                "min": 8,
+                "max": 55,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "EMA_SLOW",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 55,
+              "range": {
+                "min": 34,
+                "max": 144,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "EMA_BASELINE",
+          "type": "EMA",
+          "params": [
+            {
+              "name": "period",
+              "value": 200,
+              "range": {
+                "min": 120,
+                "max": 300,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "MACD_MAIN",
+          "type": "MACD",
+          "params": [
+            {
+              "name": "fast",
+              "value": 12,
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "slow",
+              "value": 26,
+              "range": {
+                "min": 20,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "signal",
+              "value": 9,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "RSI_MAIN",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 7,
+                "max": 28,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "BB_MAIN",
+          "type": "BB",
+          "params": [
+            {
+              "name": "period",
+              "value": 20,
+              "range": {
+                "min": 14,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "std_dev",
+              "value": 2.0,
+              "range": {
+                "min": 1.5,
+                "max": 3.0,
+                "step": 0.1
+              }
+            }
+          ]
+        },
+        {
+          "name": "ATR_MAIN",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 7,
+                "max": 30,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "SUPERTREND_MAIN",
+          "type": "SUPERTREND",
+          "params": [
+            {
+              "name": "period",
+              "value": 10,
+              "range": {
+                "min": 7,
+                "max": 21,
+                "step": 1
+              }
+            },
+            {
+              "name": "multiplier",
+              "value": 3.0,
+              "range": {
+                "min": 1.5,
+                "max": 5.0,
+                "step": 0.1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VWAP_MAIN",
+          "type": "VWAP",
+          "params": []
+        },
+        {
+          "name": "OBV_SMOOTH",
+          "type": "OBV",
+          "params": [
+            {
+              "name": "smooth_period",
+              "value": 14,
+              "range": {
+                "min": 7,
+                "max": 30,
+                "step": 1
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "TREND_UP",
+          "name": "Trend Up (stark) – ADX hoch + EMA-Alignment bullish + Momentum positiv",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "ema_fast_over_ema_slow",
+              "value": 1,
+              "range": {
+                "min": 0,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "price_over_ema_baseline",
+              "value": 1,
+              "range": {
+                "min": 0,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "macd_hist_sign",
+              "value": 1,
+              "range": {
+                "min": -1,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "atr_pct_min",
+              "value": 0.01,
+              "range": {
+                "min": 0.004,
+                "max": 0.02,
+                "step": 0.001
+              }
+            }
+          ],
+          "priority": 86,
+          "scope": "entry"
+        },
+        {
+          "id": "TREND_DOWN",
+          "name": "Trend Down (stark) – ADX hoch + EMA-Alignment bearish + Momentum negativ",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 20,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "ema_fast_over_ema_slow",
+              "value": 0,
+              "range": {
+                "min": 0,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "price_over_ema_baseline",
+              "value": 0,
+              "range": {
+                "min": 0,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "macd_hist_sign",
+              "value": -1,
+              "range": {
+                "min": -1,
+                "max": 1,
+                "step": 1
+              }
+            },
+            {
+              "name": "atr_pct_min",
+              "value": 0.01,
+              "range": {
+                "min": 0.004,
+                "max": 0.02,
+                "step": 0.001
+              }
+            }
+          ],
+          "priority": 85,
+          "scope": "entry"
+        },
+        {
+          "id": "SQUEEZE",
+          "name": "Squeeze (sehr niedrige Volatilität) – BB-Width eng + ATR% niedrig",
+          "thresholds": [
+            {
+              "name": "bb_width_pct_max",
+              "value": 0.012,
+              "range": {
+                "min": 0.006,
+                "max": 0.02,
+                "step": 0.001
+              }
+            },
+            {
+              "name": "atr_pct_max",
+              "value": 0.01,
+              "range": {
+                "min": 0.004,
+                "max": 0.016,
+                "step": 0.001
+              }
+            },
+            {
+              "name": "adx_max",
+              "value": 20.0,
+              "range": {
+                "min": 12,
+                "max": 28,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "HIGH_VOL_CHOP",
+          "name": "High-Vol Chop (hohe Volatilität ohne klaren Trend) – ATR% hoch + ADX niedrig/mittel",
+          "thresholds": [
+            {
+              "name": "atr_pct_min",
+              "value": 0.02,
+              "range": {
+                "min": 0.012,
+                "max": 0.04,
+                "step": 0.001
+              }
+            },
+            {
+              "name": "adx_max",
+              "value": 22.0,
+              "range": {
+                "min": 16,
+                "max": 30,
+                "step": 1
+              }
+            },
+            {
+              "name": "bb_width_pct_min",
+              "value": 0.022,
+              "range": {
+                "min": 0.012,
+                "max": 0.05,
+                "step": 0.001
+              }
+            },
+            {
+              "name": "rsi_low",
+              "value": 40.0,
+              "range": {
+                "min": 30,
+                "max": 48,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_high",
+              "value": 60.0,
+              "range": {
+                "min": 52,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 70,
+          "scope": "entry"
+        },
+        {
+          "id": "RANGE",
+          "name": "Range/Sideways (niedrige Trendstärke) – ADX niedrig + RSI um 50 + BB-Width moderat/eng",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 18.0,
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_low",
+              "value": 42.0,
+              "range": {
+                "min": 35,
+                "max": 48,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_high",
+              "value": 58.0,
+              "range": {
+                "min": 52,
+                "max": 65,
+                "step": 1
+              }
+            },
+            {
+              "name": "bb_width_pct_max",
+              "value": 0.02,
+              "range": {
+                "min": 0.01,
+                "max": 0.035,
+                "step": 0.001
+              }
+            }
+          ],
+          "priority": 60,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "pullback_atr": 0.8,
+    "pullback_rsi": 45.0,
+    "wick_reject": 0.55,
+    "bb_entry": 0.15,
+    "rsi_oversold": 35.0,
+    "rsi_overbought": 65.0,
+    "vol_spike_factor": 1.2,
+    "breakout_atr": 0.2,
+    "min_confidence": 0.58,
+    "cooldown_bars": 10,
+    "cluster_window_bars": 6
+  },
+  "evaluation_params": {
+    "eval_horizon_bars": 40,
+    "eval_tp_atr": 1.0,
+    "eval_sl_atr": 0.8,
+    "min_trades_gate": 8,
+    "target_trades_soft": 30
+  }
+}

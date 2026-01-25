@@ -1049,15 +1049,19 @@ class RegimeOptimizationMixin:
     def _on_apply_selected_to_regime_config(self) -> None:
         """Save & Load in Regime - Export selected result and load in Regime tab.
 
+        Builds pure v2.0 format from scratch (no v1.0 base config).
+
         Workflow:
-        1. Load entry_analyzer_regime.json as base template
-        2. Update indicator parameters and regime thresholds from selected result
-        3. Save to new file: {timestamp}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json
-        4. Clear both tables (Detected Regimes + Optimization Results)
-        5. Load new file in Regime tab via Load Regime Config
+        1. Build v2.0 config from optimization result
+        2. Build indicators[] from flattened params
+        3. Build regimes[] from regime threshold params
+        4. Save to new file using RegimeConfigLoaderV2
+        5. Clear both tables
+        6. Load new config in Regime tab
         """
         from PyQt6.QtWidgets import QMessageBox
-        import json
+        from datetime import datetime
+        from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
 
         try:
             # Get selected row from table
@@ -1115,117 +1119,73 @@ class RegimeOptimizationMixin:
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
-            # Step 1: Load entry_analyzer_regime.json as base template
-            # Path: src/ui/dialogs/entry_analyzer/this_file.py
-            # Need 5x parent to reach project root
-            project_root = Path(__file__).parent.parent.parent.parent.parent
-            base_config_path = project_root / "03_JSON" / "Entry_Analyzer" / "Regime" / "entry_analyzer_regime.json"
+            # Step 1: Build indicators[] from flattened params
+            indicators = self._build_indicators_from_params(params)
 
-            if not base_config_path.exists():
-                QMessageBox.critical(
-                    self,
-                    "Base Config Not Found",
-                    f"Base regime config file not found:\n{base_config_path}"
-                )
-                return
+            # Step 2: Build regimes[] from regime threshold params
+            regimes = self._build_regimes_from_params(params)
 
-            with open(base_config_path, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-
-            # Step 2: Update indicator parameters from selected result
-            for param_key, param_value in params.items():
-                if "." in param_key:
-                    parts = param_key.split(".", 1)
-                    if len(parts) == 2:
-                        indicator_id, param_name = parts
-
-                        # Skip regime thresholds (handled separately)
-                        if indicator_id in ["BULL", "BEAR", "SIDEWAYS", "SIDEWAYS_OVERBOUGHT", "SIDEWAYS_OVERSOLD"]:
-                            continue
-
-                        # Find indicator in config
-                        for indicator in config_data.get("indicators", []):
-                            if indicator.get("id") == indicator_id:
-                                if param_name in indicator.get("params", {}):
-                                    # Preserve type (int vs float)
-                                    current_value = indicator["params"][param_name]
-                                    if isinstance(current_value, float):
-                                        indicator["params"][param_name] = float(param_value)
-                                    else:
-                                        indicator["params"][param_name] = int(param_value)
-                                    logger.debug(f"Updated {indicator_id}.{param_name} = {param_value}")
-                                break
-
-            # Step 3: Update regime thresholds
-            for param_key, param_value in params.items():
-                if "." in param_key:
-                    parts = param_key.split(".", 1)
-                    if len(parts) == 2:
-                        regime_id, threshold_name = parts
-
-                        if regime_id in ["BULL", "BEAR", "SIDEWAYS", "SIDEWAYS_OVERBOUGHT", "SIDEWAYS_OVERSOLD"]:
-                            for regime in config_data.get("regimes", []):
-                                if regime.get("id") == regime_id:
-                                    self._update_regime_threshold(regime, threshold_name, param_value)
-                                    logger.debug(f"Updated {regime_id}.{threshold_name} = {param_value}")
-                                    break
-
-            # Convert params to v2.0 format for storage
-            converted_params = self._convert_params_to_v2_format(params)
-
-            # Add to optimization_results with applied=True
-            metrics = selected_result.get("metrics", {})
+            # Step 3: Build v2.0 config structure
             trial_number = selected_result.get("trial_number", rank)
+            metrics = selected_result.get("metrics", {})
+            timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            max_trials = getattr(self, "_regime_setup_max_trials", None)
-            max_trials_value = max_trials.value() if max_trials else 150
-
-            result_entry = {
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "score": float(score),
-                "rank": rank,
-                "params": converted_params,
-                "metrics": metrics,
-                "trial_number": trial_number,
-                "optimization_config": {
-                    "mode": "QUICK",
-                    "max_trials": max_trials_value,
-                    "symbol": symbol,
-                    "timeframe": timeframe
+            config_data = {
+                "schema_version": "2.0.0",
+                "metadata": {
+                    "author": "OrderPilot-AI",
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "tags": [symbol, timeframe, "regime", "optimization"],
+                    "notes": (
+                        f"Rank #{rank} optimization result applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
+                        f"Score: {score:.2f}. Trial: {trial_number}"
+                    ),
+                    "trading_style": "Daytrading",  # Default, can be customized
+                    "description": f"Optimized regime configuration for {symbol} {timeframe} with {len(indicators)} indicators and {len(regimes)} regimes."
                 },
-                "applied": True
+                "optimization_results": [
+                    {
+                        "timestamp": timestamp,
+                        "score": float(score),
+                        "trial_number": trial_number,
+                        "applied": True,
+                        "indicators": indicators,
+                        "regimes": regimes
+                    }
+                ],
+                "entry_params": {
+                    "min_score": 70,
+                    "require_regime_match": True,
+                    "max_signals_per_regime": 5
+                },
+                "evaluation_params": {
+                    "lookback_periods": 200,
+                    "min_regime_duration": 3,
+                    "score_weights": {
+                        "regime_distribution": 0.3,
+                        "regime_stability": 0.3,
+                        "indicator_quality": 0.4
+                    }
+                }
             }
 
-            # Add to optimization_results (insert at beginning)
-            if "optimization_results" not in config_data:
-                config_data["optimization_results"] = []
-            config_data["optimization_results"].insert(0, result_entry)
-            config_data["optimization_results"] = config_data["optimization_results"][:10]
-
-            # Update metadata
-            config_data["metadata"]["updated_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-            config_data["metadata"]["notes"] = (
-                f"Rank #{rank} optimization result applied on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC. "
-                f"Score: {score:.2f}. Trial: {trial_number}"
-            )
-
-            # Step 4: Save to new file with Rank in filename
+            # Step 4: Save to new file with validation
+            project_root = Path(__file__).parent.parent.parent.parent.parent
             export_dir = project_root / "03_JSON" / "Entry_Analyzer" / "Regime"
-            logger.info(f"Export directory: {export_dir}")
-            logger.info(f"Export directory exists: {export_dir.exists()}")
             export_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Export directory after mkdir: {export_dir.exists()}")
 
-            timestamp = datetime.utcnow().strftime("%y%m%d%H%M%S")
-            export_filename = f"{timestamp}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json"
+            timestamp_str = datetime.utcnow().strftime("%y%m%d%H%M%S")
+            export_filename = f"{timestamp_str}_regime_optimization_results_{symbol}_{timeframe}_Rank{rank}.json"
             export_path = export_dir / export_filename
-            logger.info(f"Attempting to save to: {export_path}")
 
-            with open(export_path, 'w', encoding='utf-8') as f:
-                json.dump(config_data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Saving v2.0 config to: {export_path}")
 
-            logger.info(f"Successfully saved regime config (Rank #{rank}) to: {export_path}")
-            logger.info(f"File exists after save: {export_path.exists()}")
+            # Use RegimeConfigLoaderV2 for validation and save
+            loader = RegimeConfigLoaderV2()
+            loader.save_config(config_data, export_path, indent=2, validate=True)
+
+            logger.info(f"Successfully saved v2.0 regime config (Rank #{rank}) to: {export_path}")
 
             # Step 5: Clear both tables
             if hasattr(self, "_detected_regimes_table"):
@@ -1243,7 +1203,7 @@ class RegimeOptimizationMixin:
             QMessageBox.information(
                 self,
                 "Success",
-                f"Successfully saved and loaded regime config!\n\n"
+                f"Successfully saved and loaded v2.0 regime config!\n\n"
                 f"File: {export_filename}\n\n"
                 f"Rank: #{rank}\n"
                 f"Score: {score:.2f}\n\n"
@@ -1391,3 +1351,179 @@ class RegimeOptimizationMixin:
                     left = cond.get("left", {})
                     if left.get("indicator_id") == "rsi" and cond.get("op") == "lt":
                         cond["right"]["value"] = int(threshold_value)
+
+    def _build_indicators_from_params(self, params: dict) -> list[dict]:
+        """Build v2.0 indicators[] structure from flattened params.
+
+        Converts params like {"adx.period": 14, "rsi.period": 12} to:
+        [
+            {
+                "name": "ADX1",
+                "type": "ADX",
+                "params": [{"name": "period", "value": 14, "range": {...}}]
+            },
+            ...
+        ]
+
+        Args:
+            params: Flattened params dict from optimization result
+
+        Returns:
+            List of indicator dicts in v2.0 format
+        """
+        indicators_map = {}
+
+        # Known indicator mappings (old ID -> new name/type)
+        indicator_info = {
+            "adx": {"name": "ADX1", "type": "ADX"},
+            "rsi": {"name": "RSI1", "type": "RSI"},
+            "bb": {"name": "BB1", "type": "BB"},
+            "sma_fast": {"name": "SMA_FAST", "type": "SMA"},
+            "sma_slow": {"name": "SMA_SLOW", "type": "SMA"},
+            "macd_12_26_9": {"name": "MACD1", "type": "MACD"},
+        }
+
+        # Default parameter ranges for common indicators
+        param_ranges = {
+            "period": {"min": 5, "max": 50, "step": 1},
+            "std_dev": {"min": 1.5, "max": 3.0, "step": 0.1},
+            "fast": {"min": 8, "max": 20, "step": 1},
+            "slow": {"min": 20, "max": 40, "step": 1},
+            "signal": {"min": 5, "max": 15, "step": 1},
+            "width_percentile": {"min": 50, "max": 95, "step": 5},
+        }
+
+        # Parse params and group by indicator
+        for param_key, param_value in params.items():
+            if "." not in param_key:
+                continue
+
+            parts = param_key.split(".", 1)
+            if len(parts) != 2:
+                continue
+
+            indicator_id, param_name = parts
+
+            # Skip regime thresholds
+            if indicator_id.isupper():  # BULL, BEAR, SIDEWAYS, etc.
+                continue
+
+            # Get indicator info
+            if indicator_id not in indicator_info:
+                logger.warning(f"Unknown indicator ID: {indicator_id}, skipping")
+                continue
+
+            info = indicator_info[indicator_id]
+
+            # Initialize indicator entry if not exists
+            if indicator_id not in indicators_map:
+                indicators_map[indicator_id] = {
+                    "name": info["name"],
+                    "type": info["type"],
+                    "params": []
+                }
+
+            # Add parameter
+            param_entry = {
+                "name": param_name,
+                "value": int(param_value) if isinstance(param_value, (int, float)) and param_value == int(param_value) else float(param_value)
+            }
+
+            # Add range if known
+            if param_name in param_ranges:
+                param_entry["range"] = param_ranges[param_name]
+
+            indicators_map[indicator_id]["params"].append(param_entry)
+
+        # Convert to list and sort by indicator name
+        indicators = list(indicators_map.values())
+        indicators.sort(key=lambda x: x["name"])
+
+        logger.info(f"Built {len(indicators)} indicators from params")
+        return indicators
+
+    def _build_regimes_from_params(self, params: dict) -> list[dict]:
+        """Build v2.0 regimes[] structure from regime threshold params.
+
+        Converts params like {"BULL.adx_threshold": 25, "SIDEWAYS.rsi_low": 40} to:
+        [
+            {
+                "id": "BULL",
+                "name": "Strong Bullish Trend",
+                "thresholds": [{"name": "adx_threshold", "value": 25, "range": {...}}],
+                "priority": 90,
+                "scope": "entry"
+            },
+            ...
+        ]
+
+        Args:
+            params: Flattened params dict from optimization result
+
+        Returns:
+            List of regime dicts in v2.0 format
+        """
+        regimes_map = {}
+
+        # Known regime info
+        regime_info = {
+            "BULL": {"name": "Strong Bullish Trend", "priority": 90, "scope": "entry"},
+            "BEAR": {"name": "Strong Bearish Trend", "priority": 90, "scope": "entry"},
+            "SIDEWAYS": {"name": "Sideways Range", "priority": 70, "scope": "entry"},
+            "SIDEWAYS_OVERBOUGHT": {"name": "Sideways Overbought", "priority": 60, "scope": "entry"},
+            "SIDEWAYS_OVERSOLD": {"name": "Sideways Oversold", "priority": 60, "scope": "entry"},
+        }
+
+        # Default threshold ranges
+        threshold_ranges = {
+            "adx_threshold": {"min": 15, "max": 35, "step": 1},
+            "rsi_low": {"min": 30, "max": 45, "step": 1},
+            "rsi_high": {"min": 55, "max": 70, "step": 1},
+            "rsi_overbought": {"min": 65, "max": 80, "step": 1},
+            "rsi_oversold": {"min": 20, "max": 35, "step": 1},
+        }
+
+        # Parse params and group by regime
+        for param_key, param_value in params.items():
+            if "." not in param_key:
+                continue
+
+            parts = param_key.split(".", 1)
+            if len(parts) != 2:
+                continue
+
+            regime_id, threshold_name = parts
+
+            # Only process regime thresholds
+            if regime_id not in regime_info:
+                continue
+
+            # Initialize regime entry if not exists
+            if regime_id not in regimes_map:
+                info = regime_info[regime_id]
+                regimes_map[regime_id] = {
+                    "id": regime_id,
+                    "name": info["name"],
+                    "thresholds": [],
+                    "priority": info["priority"],
+                    "scope": info["scope"]
+                }
+
+            # Add threshold
+            threshold_entry = {
+                "name": threshold_name,
+                "value": float(param_value)
+            }
+
+            # Add range if known
+            if threshold_name in threshold_ranges:
+                threshold_entry["range"] = threshold_ranges[threshold_name]
+
+            regimes_map[regime_id]["thresholds"].append(threshold_entry)
+
+        # Convert to list and sort by priority (descending)
+        regimes = list(regimes_map.values())
+        regimes.sort(key=lambda x: x["priority"], reverse=True)
+
+        logger.info(f"Built {len(regimes)} regimes from params")
+        return regimes

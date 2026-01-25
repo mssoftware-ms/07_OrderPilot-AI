@@ -4,7 +4,10 @@
   "title": "Optimized Regime Configuration v2.0",
   "description": "Generic regime configuration with optimized parameters only. Supports any indicator with up to 10 parameters. No backward compatibility with v1.0.",
   "type": "object",
-  "required": ["schema_version", "optimization_results"],
+  "required": [
+    "schema_version",
+    "optimization_results"
+  ],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -34,6 +37,14 @@
         },
         "notes": {
           "type": "string"
+        },
+        "trading_style": {
+          "type": "string",
+          "description": "Trading approach (e.g., Daytrading, Swing Trading, Scalping, Position Trading)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Free text description of strategy purpose and market conditions"
         }
       }
     },
@@ -43,7 +54,13 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["timestamp", "score", "trial_number", "applied", "indicators"],
+        "required": [
+          "timestamp",
+          "score",
+          "trial_number",
+          "applied",
+          "indicators"
+        ],
         "properties": {
           "timestamp": {
             "type": "string",
@@ -71,7 +88,11 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["name", "type", "params"],
+              "required": [
+                "name",
+                "type",
+                "params"
+              ],
               "properties": {
                 "name": {
                   "type": "string",
@@ -80,7 +101,20 @@
                 },
                 "type": {
                   "type": "string",
-                  "enum": ["ADX", "RSI", "BB", "SMA", "EMA", "MACD", "ATR", "STOCH", "CCI", "SUPERTREND", "VWAP", "OBV"],
+                  "enum": [
+                    "ADX",
+                    "RSI",
+                    "BB",
+                    "SMA",
+                    "EMA",
+                    "MACD",
+                    "ATR",
+                    "STOCH",
+                    "CCI",
+                    "SUPERTREND",
+                    "VWAP",
+                    "OBV"
+                  ],
                   "description": "Indicator type"
                 },
                 "params": {
@@ -90,24 +124,26 @@
                   "maxItems": 10,
                   "items": {
                     "type": "object",
-                    "required": ["name", "value"],
+                    "required": [
+                      "name",
+                      "value"
+                    ],
                     "properties": {
                       "name": {
                         "type": "string",
                         "description": "Parameter name (e.g., 'period', 'std_dev', 'multiplier')"
                       },
                       "value": {
-                        "oneOf": [
-                          {"type": "number"},
-                          {"type": "integer"},
-                          {"type": "boolean"}
-                        ],
-                        "description": "Optimized parameter value"
+                        "description": "Optimized parameter value (number, integer, or boolean)"
                       },
                       "range": {
                         "type": "object",
                         "description": "Optimization range for this parameter",
-                        "required": ["min", "max", "step"],
+                        "required": [
+                          "min",
+                          "max",
+                          "step"
+                        ],
                         "properties": {
                           "min": {
                             "type": "number",
@@ -135,7 +171,12 @@
             "description": "List of regime definitions with optimized thresholds",
             "items": {
               "type": "object",
-              "required": ["id", "name", "priority", "scope"],
+              "required": [
+                "id",
+                "name",
+                "priority",
+                "scope"
+              ],
               "properties": {
                 "id": {
                   "type": "string",
@@ -151,7 +192,10 @@
                   "description": "List of regime thresholds (generic structure like indicator params)",
                   "items": {
                     "type": "object",
-                    "required": ["name", "value"],
+                    "required": [
+                      "name",
+                      "value"
+                    ],
                     "properties": {
                       "name": {
                         "type": "string",
@@ -164,7 +208,11 @@
                       "range": {
                         "type": "object",
                         "description": "Optimization range for this threshold",
-                        "required": ["min", "max", "step"],
+                        "required": [
+                          "min",
+                          "max",
+                          "step"
+                        ],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -189,7 +237,11 @@
                 },
                 "scope": {
                   "type": "string",
-                  "enum": ["entry", "exit", "in_trade"],
+                  "enum": [
+                    "entry",
+                    "exit",
+                    "in_trade"
+                  ],
                   "description": "Regime scope"
                 }
               }

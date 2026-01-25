@@ -232,13 +232,19 @@ class BacktestConfigMixin:
         self._load_regime_config(Path(file_path))
 
     def _load_regime_config(self, config_path: Path, show_error: bool = True) -> None:
-        """Load regime config and update UI state."""
-        from src.core.tradingbot.config.loader import ConfigLoader, ConfigLoadError
+        """Load regime config and update UI state.
 
-        loader = ConfigLoader()
+        Supports both v1.0 (Trading Bot format) and v2.0 (Entry Analyzer format).
+        """
+        from src.core.tradingbot.config.regime_loader_v2 import (
+            RegimeConfigLoaderV2,
+            RegimeConfigLoadError,
+        )
+
+        loader = RegimeConfigLoaderV2()
         try:
             config = loader.load_config(config_path)
-        except ConfigLoadError as e:
+        except RegimeConfigLoadError as e:
             logger.error(f"Failed to load regime config: {e}")
             if show_error:
                 QMessageBox.critical(
@@ -251,9 +257,9 @@ class BacktestConfigMixin:
 
         # Build path display with optimization score if available
         path_text = str(config_path)
-        if hasattr(config, 'optimization_results') and config.optimization_results:
-            applied = [r for r in config.optimization_results if r.get('applied', False)]
-            result = applied[-1] if applied else config.optimization_results[0]
+        if "optimization_results" in config and config["optimization_results"]:
+            applied = [r for r in config["optimization_results"] if r.get('applied', False)]
+            result = applied[-1] if applied else config["optimization_results"][0]
             score = result.get('score', 0)
             path_text = f"{config_path.name}  |  Score: {score:.1f}"
 
@@ -261,121 +267,88 @@ class BacktestConfigMixin:
         self._regime_config_path_label.setStyleSheet("color: #10b981;")
         self._populate_regime_config_table(config)
 
-    def _populate_regime_config_table(self, config) -> None:
+    def _populate_regime_config_table(self, config: dict) -> None:
         """Populate the regime config table with indicators and regimes.
+
+        Supports v2.0 format with optimization_results[].indicators[] and regimes[].
 
         Enhanced table with 6 columns:
         - Type: "Indicator" or "Regime"
-        - ID: Unique identifier
-        - Name/Indicator: Display name or indicator type
+        - ID: Unique identifier (indicator name or regime id)
+        - Name/Indicator: Indicator type or regime name
         - Priority: Regime priority (empty for indicators)
-        - Parameters: Indicator parameters (empty for regimes)
-        - Conditions: Regime conditions (empty for indicators)
+        - Parameters: Indicator/Regime parameters
+        - Thresholds: Regime thresholds (empty for indicators)
         """
         from PyQt6.QtCore import Qt
         from PyQt6.QtWidgets import QTableWidgetItem
 
-        def format_params(params: dict) -> tuple[str, str]:
-            """Format indicator parameters."""
+        def format_params_v2(params: list[dict]) -> tuple[str, str]:
+            """Format v2.0 indicator parameters (array format)."""
             if not params:
                 return "", ""
-            # Create readable format: "period: 14, std_dev: 2.0"
-            parts = [f"{k}: {v}" for k, v in params.items()]
+            # params is array of {name, value, range}
+            parts = []
+            for param in params:
+                name = param.get("name", "?")
+                value = param.get("value", "?")
+                parts.append(f"{name}: {value}")
+
             text = ", ".join(parts)
             display = text if len(text) <= 80 else f"{text[:77]}..."
             return display, text
 
-        def format_conditions(conditions: dict) -> tuple[str, str]:
-            """Format regime conditions in readable form."""
-            if not conditions:
+        def format_thresholds_v2(thresholds: list[dict]) -> tuple[str, str]:
+            """Format v2.0 regime thresholds (array format)."""
+            if not thresholds:
                 return "", ""
+            # thresholds is array of {name, value, range}
+            parts = []
+            for threshold in thresholds:
+                name = threshold.get("name", "?")
+                value = threshold.get("value", "?")
+                parts.append(f"{name}: {value}")
 
-            # Extract condition logic
-            text_parts = []
-
-            if "all" in conditions:
-                for cond in conditions["all"]:
-                    left = cond.get("left", {})
-                    op = cond.get("op", "")
-                    right = cond.get("right", {})
-
-                    # Format: "indicator.field op value"
-                    ind_id = left.get("indicator_id", "?")
-                    field = left.get("field", "value")
-
-                    if op == "gt":
-                        op_str = ">"
-                    elif op == "lt":
-                        op_str = "<"
-                    elif op == "eq":
-                        op_str = "=="
-                    elif op == "between":
-                        min_val = right.get("min", "?")
-                        max_val = right.get("max", "?")
-                        text_parts.append(f"{ind_id}.{field} in [{min_val}, {max_val}]")
-                        continue
-                    else:
-                        op_str = op
-
-                    right_val = right.get("value", "?")
-                    text_parts.append(f"{ind_id}.{field} {op_str} {right_val}")
-
-            elif "any" in conditions:
-                text_parts.append("OR: " + ", ".join([str(c) for c in conditions["any"]]))
-
-            text = " AND ".join(text_parts)
-            full_text = json.dumps(conditions, ensure_ascii=True, separators=(",", ":"))
+            text = ", ".join(parts)
             display = text if len(text) <= 120 else f"{text[:117]}..."
-
-            return display, full_text
+            return display, text
 
         # Disable sorting while populating
         self._regime_config_table.setSortingEnabled(False)
         self._regime_config_table.setRowCount(0)
 
-        # Extract optimized params from optimization_results (if available)
-        optimized_params = {}
-        if hasattr(config, 'optimization_results') and config.optimization_results:
+        # Get applied result from optimization_results (v2.0 format)
+        indicators = []
+        regimes = []
+
+        if "optimization_results" in config and config["optimization_results"]:
             # Find the latest applied result, or use the first one
-            applied = [r for r in config.optimization_results if r.get('applied', False)]
-            result = applied[-1] if applied else config.optimization_results[0]
-            optimized_params = result.get('params', {})
+            applied = [r for r in config["optimization_results"] if r.get('applied', False)]
+            result = applied[-1] if applied else config["optimization_results"][0]
 
-        def get_optimized_indicator_params(indicator_id: str, base_params: dict) -> dict:
-            """Apply optimized params over base params."""
-            merged = dict(base_params)
-            # Look for params like "adx14.period" -> applies to indicator "adx14"
-            for key, value in optimized_params.items():
-                if key.startswith(f"{indicator_id}."):
-                    param_name = key.split(".", 1)[1]
-                    merged[param_name] = value
-            return merged
+            indicators = result.get('indicators', [])
+            regimes = result.get('regimes', [])
 
-        # Indicators
-        for indicator in config.indicators:
+        # Populate indicators
+        for indicator in indicators:
             row = self._regime_config_table.rowCount()
             self._regime_config_table.insertRow(row)
 
-            # Apply optimized params if available
-            effective_params = get_optimized_indicator_params(indicator.id, indicator.params)
-            params_display, params_full = format_params(effective_params)
-
-            # Mark as optimized if params differ from base
-            if effective_params != indicator.params:
-                params_display = f"⚡ {params_display}"
+            # Get params and format
+            params = indicator.get('params', [])
+            params_display, params_full = format_params_v2(params)
 
             # Type
             type_item = QTableWidgetItem("Indicator")
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_config_table.setItem(row, 0, type_item)
 
-            # ID
-            self._regime_config_table.setItem(row, 1, QTableWidgetItem(indicator.id))
+            # ID (name in v2.0)
+            indicator_name = indicator.get('name', '?')
+            self._regime_config_table.setItem(row, 1, QTableWidgetItem(indicator_name))
 
             # Indicator Type
-            indicator_type = (
-                indicator.type.value if hasattr(indicator.type, "value") else str(indicator.type)
-            )
+            indicator_type = indicator.get('type', '?')
             self._regime_config_table.setItem(row, 2, QTableWidgetItem(indicator_type))
 
             # Priority (empty for indicators)
@@ -388,16 +361,17 @@ class BacktestConfigMixin:
             params_item.setToolTip(params_full)
             self._regime_config_table.setItem(row, 4, params_item)
 
-            # Conditions (empty for indicators)
+            # Thresholds (empty for indicators)
             self._regime_config_table.setItem(row, 5, QTableWidgetItem(""))
 
-        # Regimes
-        for regime in config.regimes:
+        # Populate regimes
+        for regime in regimes:
             row = self._regime_config_table.rowCount()
             self._regime_config_table.insertRow(row)
 
-            conditions = regime.conditions.model_dump()
-            cond_display, cond_full = format_conditions(conditions)
+            # Get thresholds and format
+            thresholds = regime.get('thresholds', [])
+            thresh_display, thresh_full = format_thresholds_v2(thresholds)
 
             # Type
             type_item = QTableWidgetItem("Regime")
@@ -405,34 +379,38 @@ class BacktestConfigMixin:
             self._regime_config_table.setItem(row, 0, type_item)
 
             # ID
-            id_item = QTableWidgetItem(regime.id)
+            regime_id = regime.get('id', '?')
+            id_item = QTableWidgetItem(regime_id)
             # Color code regime IDs
-            if "BULL" in regime.id:
+            if "BULL" in regime_id.upper():
                 id_item.setForeground(Qt.GlobalColor.darkGreen)
-            elif "BEAR" in regime.id:
+            elif "BEAR" in regime_id.upper():
                 id_item.setForeground(Qt.GlobalColor.darkRed)
-            elif "SIDEWAYS" in regime.id:
+            elif "SIDEWAYS" in regime_id.upper() or "CHOP" in regime_id.upper():
                 id_item.setForeground(Qt.GlobalColor.darkYellow)
             self._regime_config_table.setItem(row, 1, id_item)
 
             # Name
-            self._regime_config_table.setItem(row, 2, QTableWidgetItem(regime.name))
+            regime_name = regime.get('name', '?')
+            self._regime_config_table.setItem(row, 2, QTableWidgetItem(regime_name))
 
             # Priority
-            priority_item = QTableWidgetItem(str(regime.priority))
+            priority = regime.get('priority', 0)
+            priority_item = QTableWidgetItem(str(priority))
             priority_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._regime_config_table.setItem(row, 3, priority_item)
 
             # Parameters (empty for regimes)
             self._regime_config_table.setItem(row, 4, QTableWidgetItem(""))
 
-            # Conditions
-            cond_item = QTableWidgetItem(cond_display)
-            cond_item.setToolTip(cond_full)
-            self._regime_config_table.setItem(row, 5, cond_item)
+            # Thresholds (v2.0 uses thresholds instead of conditions)
+            thresh_item = QTableWidgetItem(thresh_display)
+            thresh_item.setToolTip(thresh_full)
+            self._regime_config_table.setItem(row, 5, thresh_item)
 
         # Re-enable sorting
         self._regime_config_table.setSortingEnabled(True)
+        self._regime_config_table.resizeColumnsToContents()
 
     def _on_analyze_visible_range_clicked(self) -> None:
         """Analyze visible chart range for regime detection (Issue #21).
@@ -632,7 +610,19 @@ class BacktestConfigMixin:
                 "Regime config is not loaded. Please load a regime config using 'Load Regime Config' button first."
             )
 
-        logger.info(f"Using regime config with {len(config.indicators)} indicators and {len(config.regimes)} regimes")
+        # Extract indicators and regimes from v2.0 config
+        indicators = []
+        regimes = []
+
+        if "optimization_results" in config and config["optimization_results"]:
+            # Find the latest applied result, or use the first one
+            applied = [r for r in config["optimization_results"] if r.get('applied', False)]
+            result = applied[-1] if applied else config["optimization_results"][0]
+
+            indicators = result.get('indicators', [])
+            regimes = result.get('regimes', [])
+
+        logger.info(f"Using regime config with {len(indicators)} indicators and {len(regimes)} regimes")
 
         # Build DataFrame once
         df = pd.DataFrame(self._candles)
@@ -649,17 +639,56 @@ class BacktestConfigMixin:
         # Pre-calculate indicator results for full range
         engine = RegimeEngineJSON()
         indicator_results = {}
-        for ind_def in config.indicators:
+        for ind_def in indicators:
+            # Convert v2.0 params array to dict format
+            params_dict = {}
+            for param in ind_def.get('params', []):
+                params_dict[param['name']] = param['value']
+
             ind_config = IndicatorConfig(
-                indicator_type=IndicatorType(ind_def.type.lower()),
-                params=ind_def.params,
+                indicator_type=IndicatorType(ind_def['type'].lower()),
+                params=params_dict,
                 use_talib=False,
                 cache_results=True,
             )
             result = engine.indicator_engine.calculate(df, ind_config)
-            indicator_results[ind_def.id] = result.values
+            indicator_results[ind_def['name']] = result.values
 
-        detector = RegimeDetector(config.regimes)
+        # Convert v2.0 regimes to Pydantic models for RegimeDetector
+        from src.core.tradingbot.config.models import RegimeConfig, RegimeThreshold
+
+        regime_configs = []
+        for regime in regimes:
+            # Convert v2.0 thresholds array to dict format
+            thresholds_dict = {}
+            for threshold in regime.get('thresholds', []):
+                thresholds_dict[threshold['name']] = threshold['value']
+
+            # Build conditions from thresholds
+            conditions = []
+            for name, value in thresholds_dict.items():
+                # Map threshold names to condition expressions
+                if name == 'adx_min':
+                    conditions.append(f"STRENGTH_ADX.value >= {value}")
+                elif name == 'adx_max':
+                    conditions.append(f"STRENGTH_ADX.value < {value}")
+                elif name == 'rsi_min':
+                    conditions.append(f"MOMENTUM_RSI.value >= {value}")
+                elif name == 'rsi_max':
+                    conditions.append(f"MOMENTUM_RSI.value < {value}")
+                # Add more mappings as needed
+
+            regime_config = RegimeConfig(
+                id=regime['id'],
+                name=regime['name'],
+                conditions=conditions,
+                priority=regime.get('priority', 50),
+                scope=regime.get('scope', 'entry'),
+                tags=regime.get('tags', [])
+            )
+            regime_configs.append(regime_config)
+
+        detector = RegimeDetector(regime_configs)
 
         def _safe_value(value) -> float:
             if pd.isna(value):

@@ -226,22 +226,47 @@ class RegimeSetupMixin:
         """Extract optimized params from optimization_results if available.
 
         Args:
-            config: TradingBotConfig object
+            config: Config dict (v2.0 format) or legacy Pydantic object
 
         Returns:
-            Dict with optimized params (e.g. {"adx14.period": 10, "rsi14.period": 13})
+            Dict with optimized params (e.g. {"adx.period": 10, "rsi.period": 13})
         """
         optimized_params = {}
 
+        # Handle v2.0 dict format
+        if isinstance(config, dict):
+            opt_results = config.get("optimization_results", [])
+            if not opt_results:
+                return optimized_params
+
+            # Find the latest applied result (or newest if none applied)
+            applied = [r for r in opt_results if r.get("applied", False)]
+            if applied:
+                result = applied[-1]  # Newest applied
+            else:
+                result = opt_results[0]  # First result
+
+            # v2.0 format: Convert params array to flat dict
+            # indicators[].params[] = [{name, value, range}] -> {"indicator.param": value}
+            for indicator in result.get("indicators", []):
+                indicator_name = indicator.get("name", "")
+                for param in indicator.get("params", []):
+                    param_name = param.get("name", "")
+                    param_value = param.get("value")
+                    if indicator_name and param_name and param_value is not None:
+                        optimized_params[f"{indicator_name}.{param_name}"] = param_value
+
+            return optimized_params
+
+        # Handle legacy Pydantic format (backward compatibility)
         if not hasattr(config, "optimization_results") or not config.optimization_results:
             return optimized_params
 
-        # Find the latest applied result (or newest if none applied)
         applied = [r for r in config.optimization_results if r.get("applied", False)]
         if applied:
-            result = applied[-1]  # Newest applied
+            result = applied[-1]
         else:
-            result = config.optimization_results[0]  # First result
+            result = config.optimization_results[0]
 
         return result.get("params", {})
 
@@ -265,8 +290,8 @@ class RegimeSetupMixin:
             # Try to load default config
             config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
             if config_path.exists():
-                from src.core.tradingbot.config.loader import ConfigLoader
-                loader = ConfigLoader()
+                from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
+                loader = RegimeConfigLoaderV2()
                 try:
                     self._regime_config = loader.load_config(config_path)
                 except Exception as e:
@@ -281,6 +306,59 @@ class RegimeSetupMixin:
         # Get optimized params from optimization_results (if any)
         optimized_params = self._get_optimized_params_from_config(config)
 
+        # Handle v2.0 dict format
+        if isinstance(config, dict):
+            # Get indicators from first optimization result
+            opt_results = config.get("optimization_results", [])
+            if not opt_results:
+                logger.warning("No optimization_results in v2.0 config")
+                return
+
+            # Get applied result (or first result)
+            applied = [r for r in opt_results if r.get("applied", False)]
+            result = applied[-1] if applied else opt_results[0]
+            indicators = result.get("indicators", [])
+
+            # Populate table with indicators
+            for indicator in indicators:
+                row = self._regime_setup_indicators_table.rowCount()
+                self._regime_setup_indicators_table.insertRow(row)
+
+                # Indicator ID
+                indicator_name = indicator.get("name", "")
+                id_item = QTableWidgetItem(indicator_name)
+                id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_setup_indicators_table.setItem(row, 0, id_item)
+
+                # Indicator Type
+                indicator_type = indicator.get("type", "")
+                type_item = QTableWidgetItem(indicator_type)
+                type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._regime_setup_indicators_table.setItem(row, 1, type_item)
+
+                # Current Parameters - v2.0 format has params array
+                params_array = indicator.get("params", [])
+                effective_params = {p["name"]: p["value"] for p in params_array}
+
+                # Format params string with ⚡ (all v2.0 params are optimized)
+                params_str = ", ".join([f"{k}: {v}" for k, v in effective_params.items()])
+                params_str = f"⚡ {params_str}"
+
+                params_item = QTableWidgetItem(params_str)
+                params_item.setToolTip(
+                    f"Optimized params from v2.0 config:\n"
+                    f"{json.dumps(effective_params, indent=2)}"
+                )
+                params_item.setForeground(QColor("#22c55e"))  # Green for optimized
+                self._regime_setup_indicators_table.setItem(row, 2, params_item)
+
+            logger.info(
+                f"Populated indicators table with {len(indicators)} indicators (v2.0 format, "
+                f"{len(optimized_params)} optimized params)"
+            )
+            return
+
+        # Legacy Pydantic format (backward compatibility)
         # Populate table with indicators
         for indicator in config.indicators:
             row = self._regime_setup_indicators_table.rowCount()
@@ -356,29 +434,36 @@ class RegimeSetupMixin:
 
         config = self._regime_config
 
-        # Check schema version to determine data source
-        schema_version = getattr(config, "schema_version", "1.0.0")
-
-        # 1. Populate Indicator Parameters Table (WIDE FORMAT)
-        if schema_version.startswith("2."):
-            # v2.0: Read from optimization_results[].indicators[]
-            if not hasattr(config, "optimization_results") or not config.optimization_results:
+        # Determine format: v2.0 dict or legacy Pydantic
+        if isinstance(config, dict):
+            # v2.0 format
+            schema_version = config.get("schema_version", "2.0.0")
+            opt_results = config.get("optimization_results", [])
+            if not opt_results:
                 logger.warning("No optimization_results in v2.0 config")
                 return
 
             # Get the applied result (or first result)
-            applied = [r for r in config.optimization_results if r.get("applied", False)]
-            if applied:
-                result = applied[-1]
-            else:
-                result = config.optimization_results[0]
+            applied = [r for r in opt_results if r.get("applied", False)]
+            result = applied[-1] if applied else opt_results[0]
 
             indicators_data = result.get("indicators", [])
         else:
-            # v1.0: Read from indicators[] (backward compatibility)
-            indicators_data = config.indicators
-            # Need to convert v1.0 format to v2.0-like structure
-            indicators_data = self._convert_v1_to_v2_format(indicators_data, config)
+            # Legacy Pydantic format
+            schema_version = getattr(config, "schema_version", "1.0.0")
+
+            if schema_version.startswith("2."):
+                # Legacy v2.0 Pydantic format
+                if not hasattr(config, "optimization_results") or not config.optimization_results:
+                    logger.warning("No optimization_results in v2.0 config")
+                    return
+
+                applied = [r for r in config.optimization_results if r.get("applied", False)]
+                result = applied[-1] if applied else config.optimization_results[0]
+                indicators_data = result.get("indicators", [])
+            else:
+                # v1.0: Convert to v2.0-like structure
+                indicators_data = self._convert_v1_to_v2_format(config.indicators, config)
 
         # Populate one row per indicator (wide format)
         for indicator in indicators_data:
@@ -454,13 +539,15 @@ class RegimeSetupMixin:
                     self._regime_setup_params_table.setItem(row, base_col + offset, empty_item)
 
         # 2. Populate Regime Thresholds Table
-        if schema_version.startswith("2."):
-            # v2.0: Read regimes from optimization_results
+        if isinstance(config, dict):
+            # v2.0 dict format: regimes from optimization_results
+            regimes_data = result.get("regimes", [])
+        elif schema_version.startswith("2."):
+            # Legacy v2.0 Pydantic format
             regimes_data = result.get("regimes", [])
         else:
-            # v1.0: Read from regimes[]
-            regimes_data = config.regimes
-            regimes_data = self._convert_v1_regimes_to_v2_format(regimes_data)
+            # v1.0: Convert to v2.0-like structure
+            regimes_data = self._convert_v1_regimes_to_v2_format(config.regimes)
 
         for regime in regimes_data:
             # Check if regime has thresholds
@@ -717,9 +804,9 @@ class RegimeSetupMixin:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Load config using ConfigLoader
-            from src.core.tradingbot.config.loader import ConfigLoader
-            loader = ConfigLoader()
+            # Load config using RegimeConfigLoaderV2
+            from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
+            loader = RegimeConfigLoaderV2()
             self._regime_config = loader.load_config(Path(file_path))
 
             # Reload all tables
@@ -731,11 +818,22 @@ class RegimeSetupMixin:
             if max_trials_meta and hasattr(self, "_regime_setup_max_trials"):
                 self._regime_setup_max_trials.setValue(max_trials_meta)
 
+            # Count indicators based on format
+            if isinstance(self._regime_config, dict):
+                opt_results = self._regime_config.get("optimization_results", [])
+                num_indicators = 0
+                if opt_results:
+                    applied = [r for r in opt_results if r.get("applied", False)]
+                    result = applied[-1] if applied else opt_results[0]
+                    num_indicators = len(result.get("indicators", []))
+            else:
+                num_indicators = len(self._regime_config.indicators)
+
             QMessageBox.information(
                 self,
                 "Import Successful",
                 f"Successfully imported regime configuration from:\n{file_path}\n\n"
-                f"Loaded {len(self._regime_config.indicators)} indicators with optimization ranges."
+                f"Loaded {num_indicators} indicators with optimization ranges."
             )
 
             logger.info(f"Imported regime config from {file_path}")

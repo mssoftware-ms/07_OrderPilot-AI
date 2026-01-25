@@ -284,11 +284,66 @@ Jedes Element in `thresholds[]` **MUSS** folgende Felder haben:
 | `updated_at` | string (ISO 8601) | Letzte Änderung | `"2026-01-24T20:33:23Z"` |
 | `tags` | array[string] | Kategorisierung | `["regime", "btc", "5m"]` |
 | `notes` | string | Freitext-Notizen | `"Best config for BTC 5m"` |
+| `trading_style` | string (optional) | Trading-Ansatz | `"Daytrading"`, `"Swing Trading"`, `"Scalping"` |
+| `description` | string (optional) | Freitext-Beschreibung der Strategie | `"Trend-following für Seitwärtsmärkte"` |
+
+### Trading Style Optionen:
+
+| Trading Style | Typische Haltedauer | Beschreibung |
+|---------------|---------------------|--------------|
+| `"Daytrading"` | Stunden (intraday) | Positionen werden am selben Tag geschlossen |
+| `"Scalping"` | Sekunden bis Minuten | Sehr kurze Trades, viele Positionen |
+| `"Swing Trading"` | Tage bis Wochen | Mittel- bis langfristige Trend-Trades |
+| `"Position Trading"` | Wochen bis Monate | Langfristige strategische Positionen |
 
 ### Verwendung:
 - **GUI**: Wird in Tooltips und Info-Dialogen angezeigt
 - **Export**: Automatisch ausgefüllt beim Export
 - **Import**: Wird gelesen, aber nicht zwingend validiert
+- **Filtering**: `trading_style` kann zur Filterung von Strategien verwendet werden
+- **Documentation**: `description` hilft bei der Dokumentation komplexer Strategien
+
+### Beispiele für trading_style und description:
+
+#### 1. Daytrading Setup
+```json
+"metadata": {
+  "author": "TraderJoe",
+  "tags": ["daytrading", "btc", "5m"],
+  "trading_style": "Daytrading",
+  "description": "Momentum-basierter Daytrading-Ansatz für BTC mit schnellen Ein- und Ausstiegen. Verwendet RSI und MACD für Entry-Timing."
+}
+```
+
+#### 2. Swing Trading Setup
+```json
+"metadata": {
+  "author": "SwingMaster",
+  "tags": ["swing", "trend-following", "1h"],
+  "trading_style": "Swing Trading",
+  "description": "Trend-following Strategie für 1h Timeframe. Fokus auf starke Trends mit ADX >25. Entry bei Pullbacks zu EMA21."
+}
+```
+
+#### 3. Scalping Setup
+```json
+"metadata": {
+  "author": "ScalpBot",
+  "tags": ["scalping", "high-frequency", "1m"],
+  "trading_style": "Scalping",
+  "description": "Hochfrequenz-Scalping auf 1-Minuten-Chart. Nutzt Bollinger Bands Squeeze und Volume-Spikes für schnelle Trades (TP: 0.5% / SL: 0.3%)."
+}
+```
+
+#### 4. Position Trading Setup
+```json
+"metadata": {
+  "author": "LongTermInvestor",
+  "tags": ["position", "weekly", "long-term"],
+  "trading_style": "Position Trading",
+  "description": "Langfristige Positions-Strategie basierend auf wöchentlichen Charts. Entry bei etablierten Trends mit mehrfacher Bestätigung (ADX, MACD, Supertrend)."
+}
+```
 
 ---
 
