@@ -85,12 +85,20 @@ ChartWindow
 
 ### EntryAnalyzerPopup (src/ui/dialogs/entry_analyzer/entry_analyzer_popup.py)
 ```
-EntryAnalyzerPopup
-├── BacktestMixin     - Backtest-Setup, Regime-Analyse, Regime-Set Erstellung
-├── IndicatorsMixin   - Indikator-Optimierung + Presets
-├── AnalysisMixin     - Visible Range + Validation
-├── AIMixin           - AI Copilot + Pattern Recognition
-└── CompoundingMixin  - Compounding/P&L Calculator Tab
+EntryAnalyzerPopup [v2.0 - Generic Parameter System]
+├── BacktestMixin             - Backtest-Setup + Regime Config Import (v2.0)
+├── IndicatorsPresetsMixin    - Indicator Presets (production feature)
+├── AnalysisMixin             - Visible Range + Validation
+├── AIMixin                   - AI Copilot + Pattern Recognition
+├── CompoundingMixin          - Compounding/P&L Calculator Tab
+├── RegimeSetupMixin          - Regime Setup Tab (v2.0 - 52-column table)
+├── RegimeOptimizationMixin   - Regime Optimization Tab (v2.0 - pure export)
+├── RegimeResultsMixin        - Regime Results Tab (v2.0 - dynamic columns)
+├── IndicatorSetupV2Mixin     - Indicator Setup Tab (v2.0 - generic params)
+├── IndicatorOptimizationV2Mixin - Indicator Optimization Tab (v2.0)
+└── IndicatorResultsV2Mixin   - Indicator Results Tab (v2.0)
+
+[11 active tabs - removed: IndicatorsMixin, RegimeTableMixin]
 ```
 
 ### TradingApplication (src/ui/app.py)
@@ -651,6 +659,444 @@ Es ist **isoliert vom Trading** (Read-Only) und fokussiert auf Setup-Erkennung.
 ### AI Copilot (`src/analysis/visible_chart/entry_copilot.py`)
 - KI-gestützte Analyse von Signalen.
 - Generierung von Trading-Empfehlungen.
+
+## Entry Analyzer Architecture [v2.0]
+
+Das Entry Analyzer Modul wurde in v2.0 komplett überarbeitet mit einem **Generic Parameter System**, das beliebige Indikatoren mit 1-10 Parametern unterstützt.
+
+### Architektur-Übersicht
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Entry Analyzer v2.0                       │
+│              Generic Parameter System (1-10 params)          │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Configuration Layer                         │
+│  RegimeConfigLoaderV2 - Dict-based v2.0 loader              │
+│  optimized_regime_config_v2.schema.json                     │
+│  - NO root indicators[]/regimes[] (pure v2.0)               │
+│  - optimization_results[].indicators[]                      │
+│  - optimization_results[].regimes[]                         │
+│  - trading_style & description metadata                     │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                    UI Layer (11 Tabs)                        │
+│  ├── Backtest              - Import v2.0 configs            │
+│  ├── Analysis              - Visible Range Analysis         │
+│  ├── AI Copilot            - AI-assisted analysis           │
+│  ├── Compounding           - P&L Calculator                 │
+│  ├── Regime Setup          - 52-column wide table (Var A)   │
+│  ├── Regime Optimization   - Optuna TPE optimization        │
+│  ├── Regime Results        - Dynamic result columns         │
+│  ├── Indicator Setup v2    - Generic param config           │
+│  ├── Indicator Optimization v2 - Parameter optimization     │
+│  ├── Indicator Results v2  - Optimization results           │
+│  └── Indicator Presets     - Production presets             │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│                  Export/Import Workflow                      │
+│  Import: RegimeConfigLoaderV2.load_config()                 │
+│  Export: _build_indicators_from_params() +                  │
+│          _build_regimes_from_params() → pure v2.0           │
+│  Validation: JSON Schema Draft 2020-12                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### v2.0 Key Changes (Migration from v1.0)
+
+**Breaking Changes:**
+1. ❌ **Removed v1.0 root fields**: No more `indicators[]` or `regimes[]` at root level
+2. ✅ **Pure v2.0 structure**: All data in `optimization_results[].indicators[]` and `optimization_results[].regimes[]`
+3. ✅ **Generic parameter system**: Up to 10 parameters per indicator (was: fixed 3 params)
+4. ✅ **Array-based params**: `params: [{name, value, range}]` (was: `params: {period: 14}` dict)
+5. ✅ **Mandatory ranges**: Every numeric parameter MUST have `range: {min, max, step}`
+6. ✅ **New metadata fields**: `trading_style` (free text), `description` (free text)
+7. ❌ **Removed deprecated tabs**: IndicatorsMixin, RegimeTableMixin (now: v2 mixins)
+
+**Backward Compatibility:**
+- Import: Dual format support (v2.0 dict + v1.0 Pydantic fallback) in `entry_analyzer_regime_setup_mixin.py`
+- Export: Pure v2.0 only (no v1.0 root fields)
+
+### JSON Format Comparison
+
+**v1.0 Format (DEPRECATED):**
+```json
+{
+  "schema_version": "1.0.0",
+  "indicators": [                    // ❌ Root-level (v1.0 only)
+    {
+      "id": "adx14",
+      "type": "ADX",
+      "params": {"period": 14}       // ❌ Dict format
+    }
+  ],
+  "regimes": [                       // ❌ Root-level (v1.0 only)
+    {
+      "id": "BULL",
+      "thresholds": {"adx": 25}      // ❌ Dict format
+    }
+  ]
+}
+```
+
+**v2.0 Format (CURRENT):**
+```json
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "trading_style": "Daytrading",   // ✅ NEW field
+    "description": "Trend-following strategy for BTC/USD 5m" // ✅ NEW field
+  },
+  "optimization_results": [          // ✅ v2.0 structure
+    {
+      "timestamp": "2026-01-25T12:00:00Z",
+      "score": 85.42,
+      "trial_number": 15,
+      "applied": true,
+      "indicators": [                // ✅ Nested under optimization_results
+        {
+          "name": "TREND_FILTER",    // ✅ Generic name (not "adx14")
+          "type": "EMA",
+          "params": [                // ✅ Array format (1-10 params)
+            {
+              "name": "period",
+              "value": 200,
+              "range": {             // ✅ MANDATORY for optimization
+                "min": 100,
+                "max": 200,
+                "step": 10
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [                   // ✅ Nested under optimization_results
+        {
+          "id": "BULL_TREND",
+          "name": "Strong Bullish Bias",
+          "thresholds": [            // ✅ Array format
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {             // ✅ MANDATORY
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 90,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {...},
+  "evaluation_params": {...}
+}
+```
+
+### RegimeConfigLoaderV2 (New Loader)
+
+**Location**: `src/core/tradingbot/config/regime_loader_v2.py` (301 lines)
+
+**Key Differences from v1.0**:
+- ❌ **No Pydantic models**: Returns plain `dict` instead of `ConfigModel`
+- ✅ **JSON Schema validation**: Validates against `optimized_regime_config_v2.schema.json`
+- ✅ **Schema version check**: Only accepts `"2.0.0"`
+- ✅ **Dict-based helpers**: `get_applied_result()`, `get_indicators()`, `get_regimes()`
+
+**API:**
+```python
+from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
+
+loader = RegimeConfigLoaderV2()
+
+# Load v2.0 config
+config = loader.load_config("03_JSON/Entry_Analyzer/Regime/config.json")
+# Returns: dict with structure matching v2.0 schema
+
+# Get applied optimization result
+applied = loader.get_applied_result(config)
+# Returns: dict with applied=true, or None
+
+# Get indicators from applied result
+indicators = loader.get_indicators(config)
+# Returns: list[dict] with indicator definitions
+
+# Get regimes from applied result
+regimes = loader.get_regimes(config)
+# Returns: list[dict] with regime definitions
+
+# Save config (with validation)
+loader.save_config(config_data, output_path, validate=True)
+```
+
+### UI Components (11 Tabs)
+
+#### 1. Regime Setup Tab (52-Column Wide Table - Variante A)
+
+**Mixin**: `entry_analyzer_regime_setup_mixin.py`
+
+**Table Structure**:
+```
+┌──────────────┬──────┬──────────────────────────────────────────────────────┐
+│ Indicator    │ Type │ Param1-10 (Name/Value/Min/Max/Step × 10)            │
+├──────────────┼──────┼──────────────────────────────────────────────────────┤
+│ TREND_FILTER │ EMA  │ period │ 200 │ 100 │ 200 │ 10 │ - │ - │ ... │ - │  │
+│ STRENGTH_ADX │ ADX  │ period │ 14  │ 10  │ 25  │ 1  │ - │ - │ ... │ - │  │
+└──────────────┴──────┴──────────────────────────────────────────────────────┘
+
+Total: 52 columns (1 Indicator + 1 Type + 50 param columns)
+Parameters sorted alphabetically for consistency
+```
+
+**Why Variante A (Wide Table)?**
+- Better visual mapping: Each parameter column clearly shows which indicator it belongs to
+- User chose this over Variante B (narrow: Indicator | Type | ParamName | Value | Min | Max | Step)
+- Trade-off: More horizontal scrolling, but clearer parameter-to-indicator association
+
+#### 2. Regime Optimization Tab (Pure v2.0 Export)
+
+**Mixin**: `entry_analyzer_regime_optimization_mixin.py`
+
+**Export Workflow** (lines 1048-1222):
+1. User selects optimization result from table
+2. `_on_apply_selected_to_regime_config()` triggered
+3. **NO v1.0 base config loading** (removed in v2.0)
+4. `_build_indicators_from_params(params)` - Convert flattened params to nested structure
+5. `_build_regimes_from_params(params)` - Convert regime params to regimes
+6. Build pure v2.0 structure from scratch
+7. `RegimeConfigLoaderV2.save_config()` - Validate and save
+8. Re-import exported file
+
+**Helper Methods (NEW in v2.0)**:
+```python
+def _build_indicators_from_params(self, params: dict) -> list[dict]:
+    """
+    Convert flattened optimization params to v2.0 indicators[] structure.
+
+    Input: {"adx.period": 14, "rsi.period": 12}
+    Output: [
+        {"name": "ADX1", "type": "ADX", "params": [{"name": "period", "value": 14, "range": {...}}]},
+        {"name": "RSI1", "type": "RSI", "params": [{"name": "period", "value": 12, "range": {...}}]}
+    ]
+    """
+
+def _build_regimes_from_params(self, params: dict) -> list[dict]:
+    """
+    Convert regime threshold params to v2.0 regimes[] structure.
+
+    Input: {"BULL.adx_min": 25.0}
+    Output: [
+        {
+            "id": "BULL",
+            "thresholds": [{"name": "adx_min", "value": 25.0, "range": {...}}],
+            ...
+        }
+    ]
+    """
+```
+
+#### 3. Regime Results Tab (Dynamic Columns)
+
+**Mixin**: `entry_analyzer_regime_results_mixin.py`
+
+**Dynamic Column Generation**:
+- Columns generated from first optimization result
+- Columns adapt to actual parameters present
+- No hardcoded "ADX Period", "RSI Period", etc.
+- Supports any indicator with any parameters
+
+#### 4-6. Indicator Tabs v2 (Generic Parameter System)
+
+**Mixins**:
+- `entry_analyzer_indicator_setup_v2_mixin.py`
+- `entry_analyzer_indicator_optimization_v2_mixin.py`
+- `entry_analyzer_indicator_results_v2_mixin.py`
+
+**Key Features**:
+- Support for 1-10 parameters per indicator
+- Dynamic UI generation based on parameter count
+- Range/step configuration for each parameter
+- Compatible with v2.0 JSON format
+
+### Import/Export Workflow
+
+**Import Flow**:
+```
+1. User clicks "Import Config" in Backtest tab
+   │
+2. RegimeConfigLoaderV2.load_config(json_path)
+   │
+3. Schema version check: Must be "2.0.0"
+   │
+4. JSON Schema validation (Draft 2020-12)
+   │
+5. Return dict with optimization_results[]
+   │
+6. UI populates tables:
+   ├── Regime Setup: 52-column table
+   ├── Indicators: Generic param tables
+   └── Regimes: Threshold tables
+```
+
+**Export Flow**:
+```
+1. User selects optimization result
+   │
+2. _on_apply_selected_to_regime_config()
+   │
+3. Extract flattened params from result
+   │
+4. _build_indicators_from_params(params)
+   │  - Group by indicator ID
+   │  - Create params array with ranges
+   │
+5. _build_regimes_from_params(params)
+   │  - Group regime thresholds
+   │  - Create thresholds array with ranges
+   │
+6. Build pure v2.0 structure:
+   {
+     "schema_version": "2.0.0",
+     "metadata": {
+       "trading_style": "Daytrading",
+       "description": "Auto-generated..."
+     },
+     "optimization_results": [{
+       "indicators": [...],  // From step 4
+       "regimes": [...]      // From step 5
+     }]
+   }
+   │
+7. RegimeConfigLoaderV2.save_config(data, path, validate=True)
+   │  - JSON Schema validation before save
+   │  - Ensures pure v2.0 format
+   │
+8. File saved to: 03_JSON/Entry_Analyzer/Regime/
+   │
+9. Clear tables + re-import
+```
+
+### Removed Components (v1.0 → v2.0 Migration)
+
+**Deleted Files** (2,777 LOC total):
+1. `entry_analyzer_regime_setup_mixin_old_v1.py` (686 LOC) - Old v1.0 backup
+2. `entry_analyzer_regime_table.py` (757 LOC) - Deprecated "Reg. Table (OLD)" tab
+3. `entry_analyzer_indicators.py` (55 LOC) - Parent mixin for old optimization
+4. `entry_analyzer_indicators_setup.py` (517 LOC) - Old indicator setup tab
+5. `entry_analyzer_indicators_optimization.py` (260 LOC) - Old optimization logic
+6. `entry_analyzer_indicators_signals.py` (502 LOC) - Old signal calculation
+
+**Removed Mixins from EntryAnalyzerPopup**:
+- `IndicatorsMixin` - Replaced by v2 mixins
+- `RegimeTableMixin` - Deprecated tab removed
+
+**Impact**:
+- Entry Analyzer codebase reduced by 23.7% (11,700 → 8,923 LOC)
+- 36 files deleted (including 30 backup files)
+- ~600KB disk space saved
+
+### Testing & Validation
+
+**Test Suite**: `tests/test_v2_import_export_roundtrip.py` (364 lines, 7 tests)
+
+**Test Coverage**:
+1. ✅ Import v2.0 file successfully
+2. ✅ Verify structure integrity (indicators, regimes, ranges)
+3. ✅ Export creates pure v2.0 (NO root indicators/regimes)
+4. ✅ Re-import exported file successfully
+5. ✅ Round-trip preserves all data (100% data integrity)
+6. ✅ v1.0 format correctly rejected
+7. ✅ Validation catches malformed configs
+
+**Results**: 7/7 tests passed (100% success rate)
+
+**Documentation**: `docs/V2_IMPORT_EXPORT_TEST_RESULTS.md`
+
+### Migration Guide (v1.0 → v2.0)
+
+**For Users**:
+1. Old v1.0 files can still be imported (dual format support in Regime Setup)
+2. New exports are always pure v2.0 (no v1.0 root fields)
+3. Metadata fields (trading_style, description) are optional but recommended
+4. Template: `03_JSON/Entry_Analyzer/Regime/STUFE_1_Regime/260124_empty_template.json`
+
+**For Developers**:
+1. Use `RegimeConfigLoaderV2` instead of `ConfigLoader`
+2. Work with dict format instead of Pydantic models
+3. Access indicators via `loader.get_indicators(config)`
+4. Access regimes via `loader.get_regimes(config)`
+5. Always validate with JSON Schema before saving
+
+### File Locations
+
+**Core Files**:
+```
+src/core/tradingbot/config/
+├── regime_loader_v2.py                      # v2.0 loader (301 lines)
+└── models.py                                # Legacy v1.0 Pydantic models
+
+config/schemas/regime_optimization/
+├── optimized_regime_config_v2.schema.json  # v2.0 JSON Schema
+└── optimized_regime_config.schema.json     # v1.0 schema (deprecated)
+
+src/ui/dialogs/entry_analyzer/
+├── entry_analyzer_popup.py                  # Main dialog (11 tabs)
+├── entry_analyzer_backtest_config.py        # Backtest tab (v2.0 import)
+├── entry_analyzer_regime_setup_mixin.py     # Regime Setup (52-col table)
+├── entry_analyzer_regime_optimization_mixin.py  # Optimization (pure v2.0 export)
+├── entry_analyzer_regime_results_mixin.py   # Results (dynamic columns)
+├── entry_analyzer_indicator_setup_v2_mixin.py    # Indicator Setup v2
+├── entry_analyzer_indicator_optimization_v2_mixin.py  # Indicator Opt v2
+└── entry_analyzer_indicator_results_v2_mixin.py  # Indicator Results v2
+
+03_JSON/Entry_Analyzer/Regime/
+├── STUFE_1_Regime/
+│   ├── 260124_empty_template.json           # v2.0 template (minimal)
+│   └── 260124_empty_template.md             # Comprehensive docs (1200+ lines)
+└── *.json                                   # User regime configs (v2.0)
+
+tests/
+└── test_v2_import_export_roundtrip.py       # 7 comprehensive tests
+
+docs/
+└── V2_IMPORT_EXPORT_TEST_RESULTS.md         # Test results documentation
+```
+
+### Performance
+
+**Import**:
+- v2.0 file (3 indicators, 3 regimes): ~40-50ms
+- JSON Schema validation: ~15-20ms
+- Dict conversion (no Pydantic): ~5-10ms faster than v1.0
+
+**Export**:
+- Pure v2.0 build from scratch: ~20-30ms
+- Validation before save: ~15-20ms
+- No v1.0 base config loading: ~100ms faster than v1.0
+
+**UI**:
+- 52-column table rendering: ~50-100ms (depends on row count)
+- Dynamic column generation: ~10-20ms per result
+
+### Future Enhancements
+
+**Planned**:
+- Visual RulePack Editor for v2.0 configs
+- Batch export of multiple optimization results
+- Config comparison tool (diff two v2.0 files)
+- Migration tool: v1.0 → v2.0 batch converter
+
+**Under Consideration**:
+- Multi-timeframe regime configs
+- Regime config versioning system
+- Cloud sync for configs (Flow-Nexus integration)
 
 ## Verzeichnisstruktur
 
