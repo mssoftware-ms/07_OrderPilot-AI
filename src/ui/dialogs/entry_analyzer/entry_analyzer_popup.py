@@ -275,27 +275,22 @@ class EntryAnalyzerPopup(
         self._tabs.addTab(indicator_results_v2_tab, get_icon("assessment"), "6. Indicator Results")
         # self._tabs.setTabEnabled(6, False)  # Always enabled (user request)
 
-        # Tab 7: Pattern Recognition (AIMixin)
-        pattern_tab = QWidget()
-        self._setup_pattern_recognition_tab(pattern_tab)
-        self._tabs.addTab(pattern_tab, get_icon("search"), "Pattern Recognition")
-
-        # Tab 8: Analysis (AnalysisMixin)
+        # Tab 7: Analysis (AnalysisMixin)
         analysis_tab = QWidget()
         self._setup_analysis_tab(analysis_tab)
         self._tabs.addTab(analysis_tab, get_icon("analytics"), "Visible Range")
 
-        # Tab 9: AI Copilot (AIMixin)
+        # Tab 8: AI Copilot (AIMixin)
         ai_tab = QWidget()
         self._setup_ai_tab(ai_tab)
         self._tabs.addTab(ai_tab, get_icon("smart_toy"), "AI Copilot")
 
-        # Tab 10: Validation (AnalysisMixin)
+        # Tab 9: Validation (AnalysisMixin)
         validation_tab = QWidget()
         self._setup_validation_tab(validation_tab)
         self._tabs.addTab(validation_tab, get_icon("check_circle"), "Validation")
 
-        # Tab 11: Compounding / P&L Calculator (CompoundingMixin)
+        # Tab 10: Compounding / P&L Calculator (CompoundingMixin)
         compounding_tab = QWidget()
         self._setup_compounding_tab(compounding_tab)
         self._tabs.addTab(compounding_tab, get_icon("trending_up"), "P&L Calculator")
