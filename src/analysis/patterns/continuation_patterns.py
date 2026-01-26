@@ -69,6 +69,7 @@ class TriangleDetector(PatternDetector):
 class FlagParams:
     max_channel_slope: float = 2.0  # allow steeper pullback slope pragmatisch
     min_length: int = 3
+    max_retrace: float = 1.0
 
 
 class FlagDetector(PatternDetector):
@@ -91,8 +92,7 @@ class FlagDetector(PatternDetector):
             if move > 0 and pull < 0 or move < 0 and pull > 0:
                 slope = pull / max(1, (p3.idx - p2.idx))
                 retrace = abs(pull) / max(abs(move), 1e-9)
-                # pragmatic: only require retrace < 1 (not full reversal)
-                if retrace <= 1.0:
+                if retrace <= self.params.max_retrace:
                     score = self.score_raw(move, pull, slope)
                     patterns.append(Pattern("Flag", [p1, p2, p3], score, {"slope": slope, "retrace": retrace}))
         return patterns

@@ -18,6 +18,7 @@ from .entry_signal_engine import (
     EntryEvent,
     calculate_features,
     detect_regime,
+    detect_regime_v2,
     generate_entries,
     debug_summary,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "EntryEvent",
     "calculate_features",
     "detect_regime",
+    "detect_regime_v2",
     "generate_entries",
     "debug_summary",
     "load_optim_params_from_json",

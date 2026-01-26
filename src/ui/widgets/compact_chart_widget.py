@@ -26,9 +26,12 @@ from src.ui.icons import get_icon
 try:
     from lightweight_charts.widgets import QtChart
     LIGHTWEIGHT_CHARTS_AVAILABLE = True
-except ImportError:
+except Exception as exc:  # noqa: BLE001 - broad on purpose for CI environments
     LIGHTWEIGHT_CHARTS_AVAILABLE = False
-    logging.warning("lightweight-charts not installed. Compact chart will not be available.")
+    logging.warning(
+        "lightweight-charts unavailable (%s). Compact chart will not be available.",
+        exc,
+    )
 
 if TYPE_CHECKING:
     from src.ui.widgets.chart_window import ChartWindow

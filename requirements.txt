@@ -32,6 +32,7 @@ pydantic-settings==2.11.0
 pydantic_settings==2.11.0
 PyQt6==6.10.0
 PyQt6-WebEngine>=6.7.0
+PyQt6-QScintilla>=6.1.0
 pyqtgraph==0.13.7
 python-json-logger==4.0.0
 python_json_logger==4.0.0

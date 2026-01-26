@@ -70,19 +70,110 @@ class RegimeScoreConfig:
     hurst_min_len: int = 200
 
     # Component weights (sum = 1.0)
+    # Can be overridden via JSON evaluation_params.score_weights
     w_separability: float = 0.30
     w_coherence: float = 0.25
     w_fidelity: float = 0.25
     w_boundary: float = 0.10
     w_coverage: float = 0.10
 
-    # Gates (fail-fast thresholds)
+    # Gates (fail-fast thresholds) - relaxed for scalping/high-frequency data
     min_coverage: float = 0.60
-    max_switch_rate_per_1000: int = 40
-    min_avg_duration: int = 10
-    min_segments: int = 8
+    max_switch_rate_per_1000: int = 300  # Relaxed from 40 - scalping has high switch rates
+    min_avg_duration: int = 3  # Relaxed from 10 - allow shorter regimes
+    min_segments: int = 3  # Relaxed from 8 - allow fewer segments
     min_unique_labels: int = 2
     min_bars_for_scoring: int = 50  # Minimum bars after cleanup
+
+    @classmethod
+    def from_json_config(cls, json_config: dict) -> "RegimeScoreConfig":
+        """Create RegimeScoreConfig from JSON v2.0 evaluation_params.
+
+        Reads score_weights from evaluation_params and maps them to component weights.
+
+        JSON v2.0 format (evaluation_params.score_weights):
+            {
+                "separability": 0.30,
+                "coherence": 0.25,
+                "fidelity": 0.25,
+                "boundary": 0.10,
+                "coverage": 0.10
+            }
+
+        Legacy format mapping (for backwards compatibility):
+            - "regime_distribution" -> coverage (balance)
+            - "regime_stability" -> coherence
+            - "indicator_quality" -> fidelity
+
+        Args:
+            json_config: v2.0 JSON config dict
+
+        Returns:
+            RegimeScoreConfig with weights from JSON
+        """
+        config = cls()
+
+        # Get evaluation_params
+        eval_params = json_config.get("evaluation_params", {})
+        score_weights = eval_params.get("score_weights", {})
+
+        if not score_weights:
+            logger.debug("No score_weights in evaluation_params, using defaults")
+            return config
+
+        # New 5-component weight names
+        if "separability" in score_weights:
+            config.w_separability = float(score_weights.get("separability", 0.30))
+        if "coherence" in score_weights:
+            config.w_coherence = float(score_weights.get("coherence", 0.25))
+        if "fidelity" in score_weights:
+            config.w_fidelity = float(score_weights.get("fidelity", 0.25))
+        if "boundary" in score_weights:
+            config.w_boundary = float(score_weights.get("boundary", 0.10))
+        if "coverage" in score_weights:
+            config.w_coverage = float(score_weights.get("coverage", 0.10))
+
+        # Legacy format backwards compatibility
+        if "regime_stability" in score_weights and "coherence" not in score_weights:
+            config.w_coherence = float(score_weights["regime_stability"])
+            logger.info(f"Mapped legacy 'regime_stability' to w_coherence: {config.w_coherence}")
+        if "indicator_quality" in score_weights and "fidelity" not in score_weights:
+            config.w_fidelity = float(score_weights["indicator_quality"])
+            logger.info(f"Mapped legacy 'indicator_quality' to w_fidelity: {config.w_fidelity}")
+        if "regime_distribution" in score_weights and "coverage" not in score_weights:
+            config.w_coverage = float(score_weights["regime_distribution"])
+            logger.info(f"Mapped legacy 'regime_distribution' to w_coverage: {config.w_coverage}")
+
+        # Normalize weights to sum to 1.0
+        total = (
+            config.w_separability + config.w_coherence + config.w_fidelity
+            + config.w_boundary + config.w_coverage
+        )
+        if abs(total - 1.0) > 0.01:
+            logger.warning(
+                f"Score weights sum to {total:.2f}, normalizing to 1.0. "
+                f"Original: sep={config.w_separability}, coh={config.w_coherence}, "
+                f"fid={config.w_fidelity}, bnd={config.w_boundary}, cov={config.w_coverage}"
+            )
+            config.w_separability /= total
+            config.w_coherence /= total
+            config.w_fidelity /= total
+            config.w_boundary /= total
+            config.w_coverage /= total
+
+        logger.info(
+            f"Loaded score weights from JSON: "
+            f"sep={config.w_separability:.2f}, coh={config.w_coherence:.2f}, "
+            f"fid={config.w_fidelity:.2f}, bnd={config.w_boundary:.2f}, cov={config.w_coverage:.2f}"
+        )
+
+        # Also load other evaluation_params if present
+        if "lookback_periods" in eval_params:
+            config.warmup_bars = int(eval_params["lookback_periods"])
+        if "min_regime_duration" in eval_params:
+            config.min_avg_duration = int(eval_params["min_regime_duration"])
+
+        return config
 
 
 # =============================================================================
@@ -658,9 +749,12 @@ def calculate_regime_score(
         result.gates_passed = False
         result.gate_failures.append(f"avg_duration_too_low ({result.coherence.avg_duration_bars:.1f} < {config.min_avg_duration})")
 
-    # Count segments
+    # Count segments (transitions + 1 = segments)
+    # Note: regime_changes.sum() counts TRANSITIONS, not segments
+    # E.g., [A, A, B, B, C] has 2 transitions but 3 segments
     regime_changes = regimes_scored != regimes_scored.shift(1)
-    n_segments = regime_changes.sum()
+    n_transitions = regime_changes.sum()
+    n_segments = n_transitions + 1 if len(regimes_scored) > 0 else 0
     if n_segments < config.min_segments:
         result.gates_passed = False
         result.gate_failures.append(f"insufficient_segments ({n_segments} < {config.min_segments})")

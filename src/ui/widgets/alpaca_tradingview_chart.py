@@ -210,7 +210,11 @@ class AlpacaTradingViewChart(
         return candles
 
     def _update_regime_from_data(self) -> None:
-        """Detect and display the latest regime based on chart data."""
+        """Detect and display the latest regime based on chart data.
+
+        Uses detect_regime_v2 with JSON config if available,
+        otherwise falls back to hardcoded detection.
+        """
         try:
             candles = self._get_regime_candles()
             if not candles:
@@ -227,12 +231,21 @@ class AlpacaTradingViewChart(
                 OptimParams,
                 calculate_features,
                 detect_regime,
+                detect_regime_v2,
             )
 
             params = OptimParams()
             features = calculate_features(candles, params)
-            regime = detect_regime(features, params)
-            regime_str = regime.value if hasattr(regime, "value") else str(regime)
+
+            # Try v2 detection with JSON config (dynamic thresholds)
+            regime_config = self._get_regime_config_for_badge()
+            if regime_config is not None:
+                regime_str = detect_regime_v2(features, regime_config)
+                logger.debug("detect_regime_v2 returned: %s", regime_str)
+            else:
+                # Fallback to legacy detection
+                regime = detect_regime(features, params)
+                regime_str = regime.value if hasattr(regime, "value") else str(regime)
 
             if hasattr(self, "update_regime_badge"):
                 self.update_regime_badge(regime_str)
@@ -240,6 +253,39 @@ class AlpacaTradingViewChart(
             logger.error(f"Failed to update regime from data: {exc}", exc_info=True)
             if hasattr(self, "update_regime_badge"):
                 self.update_regime_badge("UNKNOWN")
+
+    def _get_regime_config_for_badge(self) -> dict | None:
+        """Get regime config from JSON for badge display.
+
+        Checks _current_json_config_path from EntryAnalyzerMixin if available.
+
+        Returns:
+            Regime config dict or None.
+        """
+        import json
+        from pathlib import Path
+
+        # Check if we have a JSON config path from Entry Analyzer
+        config_path = getattr(self, "_current_json_config_path", None)
+        if config_path:
+            try:
+                path = Path(config_path)
+                if path.exists():
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+            except Exception as e:
+                logger.debug("Failed to load regime config for badge: %s", e)
+
+        # Try default path
+        default_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
+        if default_path.exists():
+            try:
+                with open(default_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+        return None
 
     def _setup_streaming(self):
         """Connect market data event bus signals to chart slots."""

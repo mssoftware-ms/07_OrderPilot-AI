@@ -3,9 +3,9 @@
   "metadata": {
     "author": "OrderPilot-AI",
     "created_at": "2026-01-24T00:00:00Z",
-    "updated_at": "2026-01-25T16:30:00Z",
+    "updated_at": "2026-01-26T12:00:00Z",
     "tags": ["defaults", "hardcoded", "entry-analyzer", "regime", "adx-di-based", "momentum-confirmation", "exhaustion-detection"],
-    "notes": "ADX/DI-based Regime Detection with 9-level granularity including RSI momentum confirmation and exhaustion detection: STRONG_TF > STRONG_BULL/BEAR (RSI confirmed) > TF > BULL/BEAR_EXHAUSTION (reversal warning) > BULL/BEAR > SIDEWAYS",
+    "notes": "ADX/DI-based Regime Detection with 9-level granularity including RSI momentum confirmation and exhaustion detection: STRONG_TF > STRONG_BULL/BEAR (RSI confirmed) > TF > BULL/BEAR_EXHAUSTION (reversal warning) > BULL/BEAR > SIDEWAYS. Unterstützt auch Custom-Indikatoren: CHANDELIER, ADX_LEAF_WEST.",
     "trading_style": "Daytrading"
   },
   "optimization_results": [
@@ -259,10 +259,19 @@
     "cluster_window_bars": 6
   },
   "evaluation_params": {
+    "lookback_periods": 200,
+    "min_regime_duration": 3,
     "eval_horizon_bars": 40,
     "eval_tp_atr": 1.0,
     "eval_sl_atr": 0.8,
     "min_trades_gate": 8,
-    "target_trades_soft": 30
+    "target_trades_soft": 30,
+    "score_weights": {
+      "separability": 0.30,
+      "coherence": 0.25,
+      "fidelity": 0.25,
+      "boundary": 0.10,
+      "coverage": 0.10
+    }
   }
 }

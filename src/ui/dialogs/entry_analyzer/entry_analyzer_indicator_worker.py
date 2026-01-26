@@ -84,20 +84,33 @@ class IndicatorOptimizationWorkerV2(QThread):
         param_ranges: Dict[str, Dict[str, dict]],
         candles: List[Dict],
         max_trials: int,
-    ) -> List[Dict]:
+    ) -> tuple[List[Dict], int]:
+        """Run optimization and return results plus total attempted."""
         results = []
         current = 0
 
+        # Precompute combos per indicator to know total
+        combos_per_indicator = []
         for indicator in indicators:
-            if self._stop_requested:
-                break
             ranges = param_ranges.get(indicator, {})
             if not ranges:
+                combos_per_indicator.append((indicator, []))
+                continue
+            combos = self._generate_param_combinations(ranges, max_trials=max_trials)
+            combos_per_indicator.append((indicator, combos))
+
+        total_possible = min(
+            sum(len(c) for _, c in combos_per_indicator),
+            max_trials,
+        )
+
+        for indicator, combos in combos_per_indicator:
+            if self._stop_requested:
+                break
+            if not combos:
                 logger.warning("No ranges for indicator %s", indicator)
                 continue
 
-            combos = self._generate_param_combinations(ranges, max_trials=max_trials)
-            total_for_indicator = min(len(combos), max_trials - current)
             best_score = 0.0
 
             for params in combos:
@@ -114,14 +127,14 @@ class IndicatorOptimizationWorkerV2(QThread):
                 results.append(result)
                 best_score = max(best_score, result["score"])
 
-                if current % 10 == 0 or current == max_trials:
-                    self.progress.emit(signal_type, current, max_trials, best_score)
+                if current % 10 == 0 or current == total_possible or current == max_trials:
+                    self.progress.emit(signal_type, current, total_possible, best_score)
 
             if current >= max_trials:
                 break
 
-        logger.info("%s: completed %s tests", signal_type, len(results))
-        return results
+        logger.info("%s: completed %s tests (total planned %s)", signal_type, len(results), total_possible)
+        return results, total_possible
 
     # ------------------------------------------------------------------ Helpers
     def _generate_param_combinations(self, ranges: Dict[str, dict], max_trials: int) -> List[Dict]:

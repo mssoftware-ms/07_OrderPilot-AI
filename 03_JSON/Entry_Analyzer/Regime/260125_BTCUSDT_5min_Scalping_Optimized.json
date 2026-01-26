@@ -3,7 +3,7 @@
   "metadata": {
     "author": "OrderPilot-AI",
     "created_at": "2026-01-25T17:00:00Z",
-    "updated_at": "2026-01-25T17:00:00Z",
+    "updated_at": "2026-01-26T12:00:00Z",
     "tags": [
       "btcusdt",
       "5min",
@@ -373,6 +373,8 @@
   },
   "evaluation_params": {
     "description": "Evaluations-Parameter für Backtesting",
+    "lookback_periods": 200,
+    "min_regime_duration": 3,
     "eval_horizon_bars": 24,
     "eval_horizon_bars_notes": "24 Bars = 2 Stunden Evaluationsfenster (Scalping: kürzer)",
     "eval_tp_atr": 1.0,
@@ -382,7 +384,19 @@
     "min_trades_gate": 15,
     "min_trades_gate_notes": "Minimum 15 Trades für statistische Signifikanz",
     "target_trades_soft": 50,
-    "target_trades_soft_notes": "Ziel: 50 Trades für robuste Analyse"
+    "target_trades_soft_notes": "Ziel: 50 Trades für robuste Analyse",
+    "score_weights": {
+      "separability": 0.30,
+      "separability_notes": "Cluster-Trennbarkeit: Wie gut sind die Regimes voneinander getrennt?",
+      "coherence": 0.25,
+      "coherence_notes": "Zeitliche Kohärenz: Wie stabil sind die Regimes über die Zeit?",
+      "fidelity": 0.25,
+      "fidelity_notes": "Regime-Treue: Verhält sich das Regime wie erwartet? (Hurst-Exponent)",
+      "boundary": 0.10,
+      "boundary_notes": "Grenzstärke: Wie klar sind die Übergänge zwischen Regimes?",
+      "coverage": 0.10,
+      "coverage_notes": "Abdeckung & Balance: Wie gleichmäßig sind die Regimes verteilt?"
+    }
   },
   "risk_management": {
     "description": "Risikomanagement-Parameter basierend auf ATR-Recherche",

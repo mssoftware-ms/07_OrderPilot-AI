@@ -2,7 +2,7 @@
   "schema_version": "2.0.0",
   "metadata": {
     "author": "OrderPilot-AI",
-    "created_at": "2026-01-25T07:55:45Z",
+    "created_at": "2026-01-25T23:02:04Z",
     "updated_at": "2026-01-26T12:00:00Z",
     "tags": [
       "BTCUSDT",
@@ -10,14 +10,14 @@
       "regime",
       "optimization"
     ],
-    "notes": "Rank #1 optimization result applied on 2026-01-25 07:55:45 UTC. Score: 59.00. Trial: 1",
+    "notes": "Rank #1 optimization result applied on 2026-01-25 23:02:04 UTC. Score: 38.00. Trial: 1",
     "trading_style": "Daytrading",
     "description": "Optimized regime configuration for BTCUSDT 5m with 3 indicators and 3 regimes."
   },
   "optimization_results": [
     {
-      "timestamp": "2026-01-25T07:55:45Z",
-      "score": 59.0,
+      "timestamp": "2026-01-25T23:02:04Z",
+      "score": 38.0,
       "trial_number": 1,
       "applied": true,
       "indicators": [
@@ -27,7 +27,7 @@
           "params": [
             {
               "name": "period",
-              "value": 20,
+              "value": 6,
               "range": {
                 "min": 5,
                 "max": 50,
@@ -36,7 +36,7 @@
             },
             {
               "name": "strong_bear",
-              "value": 48,
+              "value": 55,
               "range": {
                 "min": 30,
                 "max": 50,
@@ -45,7 +45,7 @@
             },
             {
               "name": "strong_bull",
-              "value": 65,
+              "value": 50.5,
               "range": {
                 "min": 50,
                 "max": 70,
@@ -60,7 +60,7 @@
           "params": [
             {
               "name": "period",
-              "value": 17,
+              "value": 5,
               "range": {
                 "min": 5,
                 "max": 50,
@@ -69,7 +69,7 @@
             },
             {
               "name": "trending_threshold",
-              "value": 30,
+              "value": 18.33,
               "range": {
                 "min": 20,
                 "max": 40,
@@ -78,7 +78,7 @@
             },
             {
               "name": "weak_threshold",
-              "value": 18,
+              "value": 17,
               "range": {
                 "min": 15,
                 "max": 25,
@@ -87,7 +87,7 @@
             },
             {
               "name": "di_diff_threshold",
-              "value": 6,
+              "value": 8,
               "range": {
                 "min": 3,
                 "max": 15,
@@ -102,7 +102,7 @@
           "params": [
             {
               "name": "period",
-              "value": 20,
+              "value": 10,
               "range": {
                 "min": 5,
                 "max": 50,
@@ -111,7 +111,7 @@
             },
             {
               "name": "extreme_move_pct",
-              "value": 4.2,
+              "value": 2.5,
               "range": {
                 "min": 2.0,
                 "max": 5.0,
@@ -120,7 +120,7 @@
             },
             {
               "name": "strong_move_pct",
-              "value": 2.1,
+              "value": 1.8,
               "range": {
                 "min": 0.5,
                 "max": 3.0,
@@ -137,7 +137,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 30.0,
+              "value": 18.3,
               "range": {
                 "min": 15,
                 "max": 40,
@@ -146,7 +146,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 6.0,
+              "value": 8.0,
               "range": {
                 "min": 3,
                 "max": 15,
@@ -155,7 +155,7 @@
             },
             {
               "name": "rsi_strong_bull",
-              "value": 65.0,
+              "value": 50.5,
               "range": {
                 "min": 50,
                 "max": 70,
@@ -164,7 +164,7 @@
             },
             {
               "name": "extreme_move_pct",
-              "value": 4.2,
+              "value": 2.5,
               "range": {
                 "min": 2.0,
                 "max": 5.0,
@@ -181,7 +181,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 30.0,
+              "value": 18.3,
               "range": {
                 "min": 15,
                 "max": 40,
@@ -190,7 +190,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 6.0,
+              "value": 8.0,
               "range": {
                 "min": 3,
                 "max": 15,
@@ -199,7 +199,7 @@
             },
             {
               "name": "rsi_strong_bear",
-              "value": 48.0,
+              "value": 55.0,
               "range": {
                 "min": 30,
                 "max": 50,
@@ -208,7 +208,7 @@
             },
             {
               "name": "extreme_move_pct",
-              "value": 4.2,
+              "value": 2.5,
               "range": {
                 "min": 2.0,
                 "max": 5.0,
@@ -225,7 +225,7 @@
           "thresholds": [
             {
               "name": "adx_max",
-              "value": 18.0,
+              "value": 17.0,
               "range": {
                 "min": 15,
                 "max": 30,

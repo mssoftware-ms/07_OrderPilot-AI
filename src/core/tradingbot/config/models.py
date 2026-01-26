@@ -134,6 +134,12 @@ class IndicatorRef(BaseModel):
     field: str = Field(..., description="Output field (e.g., 'value', 'signal', 'histogram')")
 
 
+class ConditionLeft(IndicatorRef):
+    """Backward-compatible left operand wrapper used by older tests/configs."""
+
+    pass
+
+
 class ConstantValue(BaseModel):
     """Constant numeric value.
 
@@ -159,6 +165,39 @@ class BetweenRange(BaseModel):
         if "min" in info.data and v <= info.data["min"]:
             raise ValueError(f"max ({v}) must be greater than min ({info.data['min']})")
         return v
+
+
+class ConditionRight(BaseModel):
+    """Backward-compatible right operand wrapper.
+
+    Supports either:
+    - constant value (value)
+    - between range (min/max)
+    - indicator reference (indicator_id/field)
+    """
+
+    indicator_id: str | None = None
+    field: str | None = None
+    value: float | None = None
+    min: float | None = None
+    max: float | None = None
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> "ConditionRight":
+        """Ensure one operand mode is provided."""
+        indicator_mode = self.indicator_id is not None and self.field is not None
+        value_mode = self.value is not None
+        range_mode = self.min is not None and self.max is not None
+
+        if sum([indicator_mode, value_mode, range_mode]) != 1:
+            raise ValueError(
+                "ConditionRight requires exactly one of: "
+                "(indicator_id & field), value, or (min & max)"
+            )
+
+        if range_mode and self.max <= self.min:
+            raise ValueError("max must be greater than min for range mode")
+        return self
 
 
 class Condition(BaseModel):
@@ -188,9 +227,9 @@ class Condition(BaseModel):
         }
     """
     # Operator-based condition (legacy, optional if CEL is used)
-    left: IndicatorRef | ConstantValue | None = Field(None, description="Left operand")
+    left: IndicatorRef | ConstantValue | ConditionLeft | None = Field(None, description="Left operand")
     op: ConditionOperator | None = Field(None, description="Comparison operator")
-    right: IndicatorRef | ConstantValue | BetweenRange | None = Field(None, description="Right operand")
+    right: IndicatorRef | ConstantValue | BetweenRange | ConditionRight | None = Field(None, description="Right operand")
 
     # CEL expression-based condition (new, optional if operator is used)
     cel_expression: str | None = Field(
@@ -228,6 +267,23 @@ class Condition(BaseModel):
         op = info.data.get("op")
         if not STRICT_CONDITION_VALIDATION.get():
             return v
+
+        # Backward-compatible wrapper
+        if isinstance(v, ConditionRight):
+            indicator_mode = v.indicator_id is not None and v.field is not None
+            range_mode = v.min is not None and v.max is not None
+            value_mode = v.value is not None
+
+            if op == ConditionOperator.BETWEEN:
+                if not range_mode:
+                    raise ValueError("'between' operator requires min/max on ConditionRight")
+            else:
+                if range_mode:
+                    raise ValueError("Between range can only be used with 'between' operator")
+                if not (value_mode or indicator_mode):
+                    raise ValueError("Right operand must be value or indicator for non-between operators")
+            return v
+
         if op == ConditionOperator.BETWEEN and not isinstance(v, BetweenRange):
             raise ValueError("'between' operator requires BetweenRange as right operand")
         if op != ConditionOperator.BETWEEN and isinstance(v, BetweenRange):
@@ -264,6 +320,13 @@ class ConditionGroup(BaseModel):
     """
     all: list[Union[Condition, "ConditionGroup"]] | None = Field(None, description="All conditions must be true (AND)")
     any: list[Union[Condition, "ConditionGroup"]] | None = Field(None, description="At least one condition must be true (OR)")
+
+    # Allow dict-style access for backward compatibility with tests/legacy code
+    def __getitem__(self, item: str):
+        return getattr(self, item)
+
+    def __setitem__(self, key: str, value):
+        return setattr(self, key, value)
 
     @model_validator(mode="after")
     def validate_group(self) -> "ConditionGroup":
@@ -554,3 +617,12 @@ class TradingBotConfig(BaseModel):
             duplicates = [id for id in ids if ids.count(id) > 1]
             raise ValueError(f"Duplicate strategy set IDs: {duplicates}")
         return v
+
+
+# ==================== Aliases for backward compatibility ====================
+
+# Tests and legacy code import these shorter names
+Indicator = IndicatorDefinition
+Regime = RegimeDefinition
+Strategy = StrategyDefinition
+StrategyRisk = RiskSettings

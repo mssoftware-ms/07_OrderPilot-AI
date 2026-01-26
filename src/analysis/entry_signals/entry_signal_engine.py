@@ -275,12 +275,24 @@ def _bollinger(
 
 
 def _adx(highs: list[float], lows: list[float], closes: list[float], period: int) -> list[float]:
-    """Average Directional Index."""
+    """Average Directional Index (returns only ADX for backward compatibility)."""
+    adx_vals, _, _ = _adx_full(highs, lows, closes, period)
+    return adx_vals
+
+
+def _adx_full(
+    highs: list[float], lows: list[float], closes: list[float], period: int
+) -> tuple[list[float], list[float], list[float]]:
+    """Average Directional Index with DI+ and DI-.
+
+    Returns:
+        Tuple of (ADX, DI+, DI-) arrays.
+    """
     n = len(closes)
     if n < 2:
-        return [0.0] * n
+        return [0.0] * n, [0.0] * n, [0.0] * n
     if period <= 1:
-        return [0.0] * n
+        return [0.0] * n, [0.0] * n, [0.0] * n
 
     plus_dm = [0.0] * n
     minus_dm = [0.0] * n
@@ -314,12 +326,17 @@ def _adx(highs: list[float], lows: list[float], closes: list[float], period: int
     m_s = wilder_smooth(minus_dm)
 
     adx_vals = [0.0] * n
+    di_plus = [0.0] * n
+    di_minus = [0.0] * n
     dx = [0.0] * n
+
     for i in range(n):
         if tr_s[i] <= 1e-12:
             continue
         pdi = 100.0 * (p_s[i] / tr_s[i])
         mdi = 100.0 * (m_s[i] / tr_s[i])
+        di_plus[i] = pdi
+        di_minus[i] = mdi
         denom = pdi + mdi
         if denom <= 1e-12:
             continue
@@ -336,7 +353,8 @@ def _adx(highs: list[float], lows: list[float], closes: list[float], period: int
     else:
         # Fallback: simple smoothing
         adx_vals = _sma(dx, max(2, period))
-    return adx_vals
+
+    return adx_vals, di_plus, di_minus
 
 
 def _wick_ratios(candles: list[dict[str, Any]]) -> tuple[list[float], list[float]]:
@@ -402,7 +420,7 @@ def calculate_features(candles: list[dict[str, Any]], params: OptimParams) -> di
     atr = _atr(highs, lows, closes, max(2, params.atr_period))
     rsi = _rsi(closes, max(2, params.rsi_period))
     bb_mid, bb_up, bb_lo, bb_width, bbp = _bollinger(closes, max(2, params.bb_period), params.bb_std)
-    adx = _adx(highs, lows, closes, max(2, params.adx_period))
+    adx, di_plus, di_minus = _adx_full(highs, lows, closes, max(2, params.adx_period))
     vol_sma = _sma(vols, max(2, params.bb_period))
     up_wick, lo_wick = _wick_ratios(candles)
     piv_h, piv_l = _pivots(highs, lows, lookback=max(2, int(params.bb_period / 2)))
@@ -434,6 +452,8 @@ def calculate_features(candles: list[dict[str, Any]], params: OptimParams) -> di
         "bb_width": bb_width,
         "bb_percent": bbp,
         "adx": adx,
+        "di_plus": di_plus,
+        "di_minus": di_minus,
         "vol_sma": vol_sma,
         "up_wick": up_wick,
         "lo_wick": lo_wick,
@@ -492,6 +512,228 @@ def detect_regime(features: dict[str, list[float]], params: OptimParams) -> Regi
         return RegimeType.TREND_DOWN
 
     return RegimeType.RANGE
+
+
+def detect_regime_v2(
+    features: dict[str, list[float]],
+    regime_config: dict | list,
+) -> str:
+    """Detect market regime dynamically from JSON config.
+
+    Evaluates regimes sorted by priority (descending).
+    Returns the first regime where ALL thresholds match.
+
+    Threshold naming patterns (dynamic, case-insensitive):
+    - `*_min` → feature value >= threshold (minimum required)
+    - `*_max` → feature value <= threshold (maximum allowed)
+    - `adx_*` → uses ADX value
+    - `di_diff_*` → uses abs(DI+ - DI-)
+    - `rsi_*` → uses RSI value
+    - `*_bull` suffix → for bullish regimes (DI+ > DI-)
+    - `*_bear` suffix → for bearish regimes (DI- > DI+)
+
+    Args:
+        features: Calculated features dict (must include adx, di_plus, di_minus, rsi).
+        regime_config: Either a list of regime dicts OR a full v2.0 config dict.
+
+    Returns:
+        Matched regime ID (e.g., "STRONG_TF", "BULL", "SIDEWAYS") or "UNKNOWN".
+    """
+    if not features:
+        return "UNKNOWN"
+
+    # Extract regimes from config
+    regimes = _extract_regimes_from_config(regime_config)
+    if not regimes:
+        return "UNKNOWN"
+
+    # Sort by priority (descending - highest first)
+    regimes_sorted = sorted(regimes, key=lambda r: r.get("priority", 0), reverse=True)
+
+    # Get current feature values (last index)
+    i = len(features.get("closes", [])) - 1
+    if i < 0:
+        return "UNKNOWN"
+
+    adx = features.get("adx", [0.0])
+    di_plus = features.get("di_plus", [0.0])
+    di_minus = features.get("di_minus", [0.0])
+    rsi = features.get("rsi", [50.0])
+
+    current_adx = adx[i] if i < len(adx) else 0.0
+    current_di_plus = di_plus[i] if i < len(di_plus) else 0.0
+    current_di_minus = di_minus[i] if i < len(di_minus) else 0.0
+    current_rsi = rsi[i] if i < len(rsi) else 50.0
+    current_di_diff = abs(current_di_plus - current_di_minus)
+
+    # Build feature lookup for dynamic threshold evaluation
+    feature_values = {
+        "adx": current_adx,
+        "di_plus": current_di_plus,
+        "di_minus": current_di_minus,
+        "di_diff": current_di_diff,
+        "rsi": current_rsi,
+    }
+
+    # Evaluate each regime
+    for regime in regimes_sorted:
+        regime_id = regime.get("id", "")
+        thresholds = regime.get("thresholds", [])
+
+        if not thresholds:
+            # Regime without thresholds - skip (or could be fallback)
+            continue
+
+        # Check if this is a bullish or bearish regime (for DI direction check)
+        is_bull_regime = _is_bullish_regime(regime_id)
+        is_bear_regime = _is_bearish_regime(regime_id)
+
+        # For directional regimes, check DI direction first
+        if is_bull_regime and current_di_plus <= current_di_minus:
+            continue  # Skip bullish regime if DI- > DI+
+        if is_bear_regime and current_di_minus <= current_di_plus:
+            continue  # Skip bearish regime if DI+ > DI-
+
+        # Evaluate all thresholds
+        all_match = True
+        for threshold in thresholds:
+            threshold_name = threshold.get("name", "").lower()
+            threshold_value = threshold.get("value", 0)
+
+            if not _evaluate_threshold(threshold_name, threshold_value, feature_values):
+                all_match = False
+                break
+
+        if all_match:
+            return regime_id
+
+    # No regime matched - return fallback
+    return "SIDEWAYS"
+
+
+def _extract_regimes_from_config(config: dict | list) -> list[dict]:
+    """Extract regimes list from config (supports multiple formats).
+
+    Args:
+        config: Either a list of regimes OR a full v2.0 config dict.
+
+    Returns:
+        List of regime dicts with id, thresholds, priority.
+    """
+    # Already a list of regimes
+    if isinstance(config, list):
+        return config
+
+    # v2.0 format: optimization_results[].regimes[]
+    if isinstance(config, dict):
+        opt_results = config.get("optimization_results", [])
+        if opt_results:
+            # Get applied result (or first)
+            applied = [r for r in opt_results if r.get("applied", False)]
+            result = applied[-1] if applied else opt_results[0]
+            return result.get("regimes", [])
+
+        # Direct regimes key
+        return config.get("regimes", [])
+
+    return []
+
+
+def _is_bullish_regime(regime_id: str) -> bool:
+    """Check if regime is bullish based on ID (dynamic pattern matching)."""
+    id_lower = regime_id.lower()
+    # Bullish patterns: contains 'bull' but not 'bear'
+    if "bull" in id_lower and "bear" not in id_lower:
+        return True
+    # Also: 'long', 'up', 'aufwärts' (German)
+    if any(pat in id_lower for pat in ["long", "_up", "aufwaerts", "aufwärts"]):
+        return True
+    return False
+
+
+def _is_bearish_regime(regime_id: str) -> bool:
+    """Check if regime is bearish based on ID (dynamic pattern matching)."""
+    id_lower = regime_id.lower()
+    # Bearish patterns: contains 'bear' but not 'bull'
+    if "bear" in id_lower and "bull" not in id_lower:
+        return True
+    # Also: 'short', 'down', 'abwärts' (German)
+    if any(pat in id_lower for pat in ["short", "_down", "abwaerts", "abwärts"]):
+        return True
+    return False
+
+
+def _evaluate_threshold(
+    threshold_name: str,
+    threshold_value: float,
+    feature_values: dict[str, float],
+) -> bool:
+    """Evaluate a single threshold dynamically based on naming pattern.
+
+    Naming conventions:
+    - `adx_min` → ADX >= value
+    - `adx_max` → ADX <= value
+    - `di_diff_min` → DI diff >= value
+    - `rsi_confirm_bull` → RSI > value (for bullish confirmation)
+    - `rsi_confirm_bear` → RSI < value (for bearish confirmation)
+    - `rsi_exhaustion_max` → RSI < value (bull exhaustion = RSI dropping)
+    - `rsi_exhaustion_min` → RSI > value (bear exhaustion = RSI rising)
+    - `rsi_oversold` → RSI <= value
+    - `rsi_overbought` → RSI >= value
+
+    Args:
+        threshold_name: Name of threshold (e.g., "adx_min").
+        threshold_value: Threshold value from JSON.
+        feature_values: Current feature values dict.
+
+    Returns:
+        True if threshold condition is met.
+    """
+    name = threshold_name.lower()
+
+    # Determine which feature to use
+    if "adx" in name:
+        feature_val = feature_values.get("adx", 0.0)
+    elif "di_diff" in name or "didiff" in name:
+        feature_val = feature_values.get("di_diff", 0.0)
+    elif "di_plus" in name:
+        feature_val = feature_values.get("di_plus", 0.0)
+    elif "di_minus" in name:
+        feature_val = feature_values.get("di_minus", 0.0)
+    elif "rsi" in name:
+        feature_val = feature_values.get("rsi", 50.0)
+    else:
+        # Unknown feature - default to passing
+        return True
+
+    # Determine comparison operator based on suffix/pattern
+    # RSI special cases (semantic meaning)
+    if "rsi" in name:
+        if "confirm_bull" in name or "bull" in name:
+            # Bullish confirmation: RSI should be HIGH (> threshold)
+            return feature_val > threshold_value
+        if "confirm_bear" in name or "bear" in name:
+            # Bearish confirmation: RSI should be LOW (< threshold)
+            return feature_val < threshold_value
+        if "exhaustion_max" in name:
+            # Bull exhaustion: RSI is dropping (< threshold = exhausted)
+            return feature_val < threshold_value
+        if "exhaustion_min" in name:
+            # Bear exhaustion: RSI is rising (> threshold = exhausted)
+            return feature_val > threshold_value
+        if "oversold" in name:
+            return feature_val <= threshold_value
+        if "overbought" in name:
+            return feature_val >= threshold_value
+
+    # Generic _min / _max suffix
+    if name.endswith("_min") or "_min_" in name:
+        return feature_val >= threshold_value
+    if name.endswith("_max") or "_max_" in name:
+        return feature_val <= threshold_value
+
+    # Default: treat as minimum (>=)
+    return feature_val >= threshold_value
 
 
 # Entry generation (entire visible window)

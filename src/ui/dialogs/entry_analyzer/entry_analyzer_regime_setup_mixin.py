@@ -54,7 +54,6 @@ class RegimeSetupMixin:
         _regime_setup_params_table: Dynamic table with min/max spinboxes
         _regime_setup_thresholds_table: Dynamic table for regime thresholds
         _regime_setup_param_ranges: Dict storing {param_key: (min_spin, max_spin)}
-        _regime_setup_max_trials: SpinBox for trial count
     """
 
     # Type hints for parent class attributes
@@ -62,7 +61,6 @@ class RegimeSetupMixin:
     _regime_setup_params_table: QTableWidget
     _regime_setup_thresholds_table: QTableWidget
     _regime_setup_param_ranges: dict[str, tuple[QSpinBox | QDoubleSpinBox, QSpinBox | QDoubleSpinBox]]
-    _regime_setup_max_trials: QSpinBox
     _regime_setup_apply_btn: QPushButton
     _regime_config: object | None
 
@@ -154,46 +152,51 @@ class RegimeSetupMixin:
         thresholds_group = QGroupBox("Regime Threshold Optimization Ranges")
         thresholds_layout = QVBoxLayout()
 
-        thresholds_info = QLabel("Set Min/Max ranges for regime detection thresholds.")
+        thresholds_info = QLabel("Set Min/Max ranges for regime detection thresholds. One row per regime, up to 10 thresholds.")
         thresholds_info.setStyleSheet("color: #888; font-style: italic;")
         thresholds_layout.addWidget(thresholds_info)
 
         self._regime_setup_thresholds_table = QTableWidget()
-        self._regime_setup_thresholds_table.setColumnCount(5)
-        self._regime_setup_thresholds_table.setHorizontalHeaderLabels([
-            "Regime", "Threshold", "Min", "Max", "Step"
-        ])
+        # Wide table format: Regime (1) + Priority (1) + [Name, Value, Min, Max, Step] × 10 (50) = 52 columns
+        self._regime_setup_thresholds_table.setColumnCount(52)
+
+        # Generate column headers dynamically
+        thresh_headers = ["Regime", "Priority"]
+        for i in range(1, 11):  # 10 threshold slots
+            thresh_headers.extend([
+                f"Thresh{i} Name",
+                f"Thresh{i} Value",
+                f"Thresh{i} Min",
+                f"Thresh{i} Max",
+                f"Thresh{i} Step"
+            ])
+        self._regime_setup_thresholds_table.setHorizontalHeaderLabels(thresh_headers)
+
+        # Configure column resize modes
         header = self._regime_setup_thresholds_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Regime
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Priority
+        # All threshold columns: interactive (user can resize)
+        for col in range(2, 52):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+
         self._regime_setup_thresholds_table.setAlternatingRowColors(True)
 
         thresholds_layout.addWidget(self._regime_setup_thresholds_table)
         thresholds_group.setLayout(thresholds_layout)
         layout.addWidget(thresholds_group, stretch=1)
 
-        # Max Trials Counter
-        counter_layout = QHBoxLayout()
-        counter_layout.addWidget(QLabel("Max Trials:"))
-        self._regime_setup_max_trials = QSpinBox()
-        self._regime_setup_max_trials.setRange(10, 9999)  # Increased upper limit to 9999 (unbegrenzt)
-        self._regime_setup_max_trials.setValue(150)
-        self._regime_setup_max_trials.setSingleStep(10)
-        self._regime_setup_max_trials.setToolTip("Maximum number of optimization trials (10-9999, unbegrenzt)")
-        self._regime_setup_max_trials.setMinimumWidth(150)  # Make input field 2x wider
-        counter_layout.addWidget(self._regime_setup_max_trials)
-
-        warning_label = QLabel("⚠️ More trials = better results, but slower")
-        warning_label.setStyleSheet("color: #f59e0b;")
-        counter_layout.addWidget(warning_label)
-        counter_layout.addStretch()
-        layout.addLayout(counter_layout)
-
         # Action Buttons
         button_layout = QHBoxLayout()
+
+        # Load from Regime Tab Button (uses JSON loaded in Regime tab)
+        self._regime_setup_load_from_regime_btn = QPushButton(get_icon("sync"), "Load Regime JSON")
+        self._regime_setup_load_from_regime_btn.setToolTip(
+            "Load the JSON config that's currently loaded in the 'Regime' tab.\n"
+            "This synchronizes the Regime Setup with the Regime tab."
+        )
+        self._regime_setup_load_from_regime_btn.clicked.connect(self._on_load_from_regime_tab)
+        button_layout.addWidget(self._regime_setup_load_from_regime_btn)
 
         # Import Button
         self._regime_setup_import_btn = QPushButton(get_icon("folder_open"), "Import Config (JSON)")
@@ -287,17 +290,29 @@ class RegimeSetupMixin:
 
         # Get regime config from parent (loaded in Regime tab)
         if not hasattr(self, "_regime_config") or self._regime_config is None:
-            # Try to load default config
             config_path = Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
-            if config_path.exists():
-                from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
-                loader = RegimeConfigLoaderV2()
+            repo_root = Path(__file__).resolve().parents[3]
+            template = repo_root / "03_JSON/Entry_Analyzer/Regime/JSON Template/v2_schema_reference.json"
+
+            candidates = [config_path, repo_root / config_path, template]
+            loaded = False
+            for p in candidates:
                 try:
-                    self._regime_config = loader.load_config(config_path)
+                    if not p.exists():
+                        continue
+                    from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
+                    loader = RegimeConfigLoaderV2()
+                    self._regime_config = loader.load_config(p)
+                    loaded = True
+                    break
+                except OSError as exc:
+                    logger.warning("Cannot access regime config %s: %s", p, exc)
+                    continue
                 except Exception as e:
                     logger.warning(f"Could not load regime config for indicators table: {e}")
-                    return
-            else:
+                    continue
+
+            if not loaded:
                 logger.warning("No regime config loaded, indicators table empty")
                 return
 
@@ -538,7 +553,7 @@ class RegimeSetupMixin:
                     empty_item.setBackground(QColor("#f0f0f0"))  # Light gray background
                     self._regime_setup_params_table.setItem(row, base_col + offset, empty_item)
 
-        # 2. Populate Regime Thresholds Table
+        # 2. Populate Regime Thresholds Table (Wide Format - one row per regime)
         if isinstance(config, dict):
             # v2.0 dict format: regimes from optimization_results
             regimes_data = result.get("regimes", [])
@@ -552,66 +567,92 @@ class RegimeSetupMixin:
         for regime in regimes_data:
             # Check if regime has thresholds
             thresholds = regime.get("thresholds", []) if isinstance(regime, dict) else []
-            if not thresholds:
-                logger.debug(f"Regime {regime.get('id', 'UNKNOWN')} has no thresholds, skipping")
-                continue
+            regime_id = regime.get("id") if isinstance(regime, dict) else regime.id
+            regime_priority = regime.get("priority", 50) if isinstance(regime, dict) else 50
 
-            # Create row for each threshold
-            for threshold in thresholds:
-                row = self._regime_setup_thresholds_table.rowCount()
-                self._regime_setup_thresholds_table.insertRow(row)
+            # Create one row per regime
+            row = self._regime_setup_thresholds_table.rowCount()
+            self._regime_setup_thresholds_table.insertRow(row)
 
-                regime_id = regime.get("id") if isinstance(regime, dict) else regime.id
+            # Column 0: Regime ID
+            regime_item = QTableWidgetItem(regime_id)
+            regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Color code based on regime type
+            if "BULL" in regime_id.upper():
+                regime_item.setForeground(Qt.GlobalColor.darkGreen)
+            elif "BEAR" in regime_id.upper():
+                regime_item.setForeground(Qt.GlobalColor.darkRed)
+            elif "SIDEWAYS" in regime_id.upper():
+                regime_item.setForeground(Qt.GlobalColor.darkYellow)
+            elif "TF" in regime_id.upper() or "STRONG" in regime_id.upper():
+                regime_item.setForeground(QColor("#8b5cf6"))  # Purple for strong trends
+            self._regime_setup_thresholds_table.setItem(row, 0, regime_item)
 
-                # Regime ID
-                regime_item = QTableWidgetItem(regime_id)
-                regime_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                # Color code
-                if "BULL" in regime_id:
-                    regime_item.setForeground(Qt.GlobalColor.darkGreen)
-                elif "BEAR" in regime_id:
-                    regime_item.setForeground(Qt.GlobalColor.darkRed)
-                elif "SIDEWAYS" in regime_id:
-                    regime_item.setForeground(Qt.GlobalColor.darkYellow)
-                self._regime_setup_thresholds_table.setItem(row, 0, regime_item)
+            # Column 1: Priority
+            priority_item = QTableWidgetItem(str(regime_priority))
+            priority_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            priority_item.setForeground(Qt.GlobalColor.gray)
+            self._regime_setup_thresholds_table.setItem(row, 1, priority_item)
+
+            # Populate threshold columns (up to 10 thresholds)
+            thresholds_list = thresholds[:10]  # Limit to 10 thresholds
+            for thresh_idx, threshold in enumerate(thresholds_list):
+                base_col = 2 + (thresh_idx * 5)  # 5 columns per threshold
 
                 threshold_name = threshold.get("name", "")
                 threshold_value = threshold.get("value", 0)
                 threshold_range = threshold.get("range", {})
 
-                # Threshold Name
-                threshold_item = QTableWidgetItem(threshold_name)
-                threshold_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._regime_setup_thresholds_table.setItem(row, 1, threshold_item)
+                # Column base+0: Threshold Name
+                name_item = QTableWidgetItem(threshold_name)
+                name_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                name_item.setToolTip(f"Threshold: {threshold_name}")
+                self._regime_setup_thresholds_table.setItem(row, base_col, name_item)
+
+                # Column base+1: Current Value (read-only)
+                value_item = QTableWidgetItem(f"⚡ {threshold_value}")
+                value_item.setForeground(QColor("#22c55e"))  # Green for optimized
+                value_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                value_item.setToolTip(f"Current value from JSON: {threshold_value}")
+                self._regime_setup_thresholds_table.setItem(row, base_col + 1, value_item)
 
                 # Min/Max/Step from range
-                min_val = threshold_range.get("min", threshold_value * 0.5)
-                max_val = threshold_range.get("max", threshold_value * 1.5)
+                min_val = threshold_range.get("min", threshold_value * 0.5 if threshold_value else 0)
+                max_val = threshold_range.get("max", threshold_value * 1.5 if threshold_value else 100)
                 step_val = threshold_range.get("step", 1)
 
-                # Min SpinBox
+                # Column base+2: Min SpinBox
                 min_spin = self._create_spinbox(min_val, max_val, step_val)
                 min_spin.setValue(min_val)
-                self._regime_setup_thresholds_table.setCellWidget(row, 2, min_spin)
+                self._regime_setup_thresholds_table.setCellWidget(row, base_col + 2, min_spin)
 
-                # Max SpinBox
+                # Column base+3: Max SpinBox
                 max_spin = self._create_spinbox(min_val, max_val, step_val)
                 max_spin.setValue(max_val)
-                self._regime_setup_thresholds_table.setCellWidget(row, 3, max_spin)
+                self._regime_setup_thresholds_table.setCellWidget(row, base_col + 3, max_spin)
 
-                # Step
+                # Column base+4: Step
                 step_item = QTableWidgetItem(str(step_val))
                 step_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 step_item.setForeground(Qt.GlobalColor.gray)
-                self._regime_setup_thresholds_table.setItem(row, 4, step_item)
+                self._regime_setup_thresholds_table.setItem(row, base_col + 4, step_item)
 
-                # Store reference
+                # Store reference for this threshold
                 threshold_key = f"{regime_id}.{threshold_name}"
                 self._regime_setup_param_ranges[threshold_key] = (min_spin, max_spin)
 
+            # Fill remaining threshold slots with empty cells (if <10 thresholds)
+            for empty_idx in range(len(thresholds_list), 10):
+                base_col = 2 + (empty_idx * 5)
+                for offset in range(5):
+                    empty_item = QTableWidgetItem("")
+                    empty_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Disable empty cells
+                    empty_item.setBackground(QColor("#f0f0f0"))  # Light gray background
+                    self._regime_setup_thresholds_table.setItem(row, base_col + offset, empty_item)
+
         logger.info(
-            f"Populated {self._regime_setup_params_table.rowCount()} indicators (v2.0 wide format) and "
-            f"{self._regime_setup_thresholds_table.rowCount()} regime thresholds"
+            f"Populated {self._regime_setup_params_table.rowCount()} indicators and "
+            f"{self._regime_setup_thresholds_table.rowCount()} regimes (wide format with thresholds)"
         )
 
     def _create_spinbox(self, min_val: float, max_val: float, step: float) -> QSpinBox | QDoubleSpinBox:
@@ -786,6 +827,92 @@ class RegimeSetupMixin:
         return config
 
     @pyqtSlot()
+    def _on_load_from_regime_tab(self) -> None:
+        """Load the JSON config that's currently loaded in the Regime tab.
+
+        This synchronizes the Regime Setup tab with the Regime tab by loading
+        the same JSON configuration file.
+        """
+        # Check if a JSON config is loaded in the Regime tab
+        # Try multiple attribute names for compatibility
+        config_path = getattr(self, "_regime_config_path", None)
+        if config_path is None:
+            config_path = getattr(self, "_current_json_config_path", None)
+
+        if not config_path:
+            QMessageBox.warning(
+                self,
+                "No Regime Config Loaded",
+                "No JSON configuration is currently loaded in the 'Regime' tab.\n\n"
+                "Please load a regime JSON file in the 'Regime' tab first, "
+                "then click this button to synchronize."
+            )
+            return
+
+        try:
+            config_path = Path(config_path)
+            if not config_path.exists():
+                QMessageBox.warning(
+                    self,
+                    "Config File Not Found",
+                    f"The previously loaded config file no longer exists:\n{config_path}\n\n"
+                    "Please load a valid JSON file in the 'Regime' tab."
+                )
+                return
+
+            # Load JSON file
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Load config using RegimeConfigLoaderV2
+            from src.core.tradingbot.config.regime_loader_v2 import RegimeConfigLoaderV2
+            loader = RegimeConfigLoaderV2()
+            self._regime_config = loader.load_config(config_path)
+
+            # Reload all tables
+            self._populate_regime_setup_indicators_table()
+            self._populate_regime_setup_tables()
+
+            # Update max_trials if present
+            max_trials_meta = data.get("metadata", {}).get("max_trials")
+            if max_trials_meta and hasattr(self, "_regime_opt_max_trials"):
+                self._regime_opt_max_trials.setValue(max_trials_meta)
+
+            # Count indicators based on format
+            if isinstance(self._regime_config, dict):
+                opt_results = self._regime_config.get("optimization_results", [])
+                num_indicators = 0
+                num_regimes = 0
+                if opt_results:
+                    applied = [r for r in opt_results if r.get("applied", False)]
+                    result = applied[-1] if applied else opt_results[0]
+                    num_indicators = len(result.get("indicators", []))
+                    num_regimes = len(result.get("regimes", []))
+            else:
+                num_indicators = len(getattr(self._regime_config, "indicators", []))
+                num_regimes = len(getattr(self._regime_config, "regimes", []))
+
+            QMessageBox.information(
+                self,
+                "Regime Config Loaded",
+                f"Successfully loaded regime configuration from Regime tab:\n\n"
+                f"File: {config_path.name}\n"
+                f"Indicators: {num_indicators}\n"
+                f"Regimes: {num_regimes}\n\n"
+                "The Regime Setup tables have been synchronized."
+            )
+
+            logger.info(f"Loaded regime config from Regime tab: {config_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to load regime config from Regime tab: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Load Failed",
+                f"Failed to load regime configuration:\n\n{str(e)}"
+            )
+
+    @pyqtSlot()
     def _on_regime_setup_import(self) -> None:
         """Import regime configuration with parameter ranges from JSON file."""
         # Path: src/ui/dialogs/entry_analyzer/this_file.py -> 5x parent = project root
@@ -815,8 +942,8 @@ class RegimeSetupMixin:
 
             # Update max_trials if present
             max_trials_meta = data.get("metadata", {}).get("max_trials")
-            if max_trials_meta and hasattr(self, "_regime_setup_max_trials"):
-                self._regime_setup_max_trials.setValue(max_trials_meta)
+            if max_trials_meta and hasattr(self, "_regime_opt_max_trials"):
+                self._regime_opt_max_trials.setValue(max_trials_meta)
 
             # Count indicators based on format
             if isinstance(self._regime_config, dict):

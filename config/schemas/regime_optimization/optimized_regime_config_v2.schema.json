@@ -99,6 +99,16 @@
                   "pattern": "^[A-Z0-9_]+$",
                   "description": "Unique indicator name (e.g., 'RSI1', 'ADX1', 'BB1')"
                 },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description of the indicator's purpose"
+                },
+                "weight": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Optional weight for combined signals (0-1)"
+                },
                 "type": {
                   "type": "string",
                   "enum": [
@@ -113,9 +123,13 @@
                     "CCI",
                     "SUPERTREND",
                     "VWAP",
-                    "OBV"
+                    "OBV",
+                    "CHANDELIER",
+                    "CKSP",
+                    "CHANDELIER_STOP",
+                    "ADX_LEAF_WEST"
                   ],
-                  "description": "Indicator type"
+                  "description": "Indicator type (standard or custom)"
                 },
                 "params": {
                   "type": "array",
@@ -135,6 +149,10 @@
                       },
                       "value": {
                         "description": "Optimized parameter value (number, integer, or boolean)"
+                      },
+                      "notes": {
+                        "type": "string",
+                        "description": "Optional notes about the parameter"
                       },
                       "range": {
                         "type": "object",
@@ -187,6 +205,23 @@
                   "type": "string",
                   "description": "Human-readable regime name"
                 },
+                "description": {
+                  "type": "string",
+                  "description": "Optional description of the regime"
+                },
+                "color": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$",
+                  "description": "Optional HEX color code for UI display"
+                },
+                "trading_bias": {
+                  "type": "string",
+                  "description": "Optional trading bias (e.g., bullish, bearish, neutral)"
+                },
+                "recommended_action": {
+                  "type": "string",
+                  "description": "Optional recommended trading action"
+                },
                 "thresholds": {
                   "type": "array",
                   "description": "List of regime thresholds (generic structure like indicator params)",
@@ -204,6 +239,10 @@
                       "value": {
                         "type": "number",
                         "description": "Optimized threshold value"
+                      },
+                      "notes": {
+                        "type": "string",
+                        "description": "Optional notes about the threshold"
                       },
                       "range": {
                         "type": "object",

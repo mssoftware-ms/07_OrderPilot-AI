@@ -80,6 +80,7 @@ class VisibleChartAnalyzer:
             Path(json_config_path) if json_config_path else None
         )
         self._cached_optim_params: Any = None  # Cache loaded params
+        self._cached_regime_config: dict | None = None  # Cache regime config for v2 detection
 
     def _get_optim_params(self) -> Any:
         """Get OptimParams from JSON config or use defaults.
@@ -124,7 +125,30 @@ class VisibleChartAnalyzer:
         """
         self._json_config_path = Path(json_path) if json_path else None
         self._cached_optim_params = None  # Clear cache
+        self._cached_regime_config = None  # Clear regime config cache
         logger.info("JSON config path updated: %s", self._json_config_path)
+
+    def _get_regime_config(self) -> dict | None:
+        """Get regime config from JSON for v2 detection.
+
+        Returns:
+            Regime config dict or None if not available.
+        """
+        if self._cached_regime_config is not None:
+            return self._cached_regime_config
+
+        if self._json_config_path is None or not self._json_config_path.exists():
+            return None
+
+        try:
+            import json
+            with open(self._json_config_path, "r", encoding="utf-8") as f:
+                self._cached_regime_config = json.load(f)
+            logger.debug("Loaded regime config from %s", self._json_config_path)
+            return self._cached_regime_config
+        except Exception as e:
+            logger.warning("Failed to load regime config: %s", e)
+            return None
 
     def analyze(
         self,
@@ -467,7 +491,8 @@ class VisibleChartAnalyzer:
     def _detect_regime(self, features: dict[str, list[float]]) -> RegimeType:
         """Detect market regime from features.
 
-        Uses robust ADX/BB/ATR-based detection from entry_signal_engine.
+        Uses dynamic JSON-based detection (v2) if config is available,
+        otherwise falls back to hardcoded detection.
 
         Args:
             features: Calculated features.
@@ -475,15 +500,27 @@ class VisibleChartAnalyzer:
         Returns:
             Detected regime type.
         """
+        if not features or "closes" not in features:
+            return RegimeType.NO_TRADE
+
+        # Try v2 detection with JSON config (dynamic thresholds)
+        regime_config = self._get_regime_config()
+        if regime_config is not None:
+            from src.analysis.entry_signals.entry_signal_engine import (
+                detect_regime_v2,
+            )
+
+            regime_id = detect_regime_v2(features, regime_config)
+            logger.debug("detect_regime_v2 returned: %s", regime_id)
+
+            # Convert string to RegimeType enum
+            return RegimeType.from_string(regime_id)
+
+        # Fallback to legacy detection (hardcoded thresholds)
         from src.analysis.entry_signals.entry_signal_engine import (
             detect_regime,
         )
 
-        if not features or "closes" not in features:
-            return RegimeType.NO_TRADE
-
-        # Use params from JSON config or defaults
-        # The engine's RegimeType enum values are now compatible (lowercase)
         params = self._get_optim_params()
         return detect_regime(features, params)
 

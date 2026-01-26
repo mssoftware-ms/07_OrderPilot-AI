@@ -60,7 +60,8 @@ class RegimeOptimizationThread(QThread):
         config_template_path: str,
         param_grid: Dict[str, List[Any]],
         scope: str = "entry",
-        max_trials: int = 150
+        max_trials: int = 150,
+        json_config: Dict[str, Any] | None = None
     ):
         """Initialize regime optimization thread.
 
@@ -74,6 +75,9 @@ class RegimeOptimizationThread(QThread):
                 }
             scope: Regime scope ("entry", "exit", "in_trade")
             max_trials: Maximum number of optimization trials
+            json_config: Optional v2.0 JSON config for per-regime threshold evaluation.
+                If provided, uses JSON-based regime classification with per-regime
+                thresholds instead of simplified 3-regime global threshold model.
         """
         super().__init__()
         self.df = df.copy()
@@ -81,6 +85,7 @@ class RegimeOptimizationThread(QThread):
         self.param_grid = param_grid
         self.scope = scope
         self.max_trials = max_trials
+        self.json_config = json_config
         self._stop_requested = False
 
         # Calculate total combinations (for progress bar)
@@ -122,12 +127,21 @@ class RegimeOptimizationThread(QThread):
                 n_jobs=1,  # Single-threaded for Qt compatibility
             )
 
-            # Create optimizer
+            # Create optimizer with optional JSON config for per-regime thresholds
             optimizer = RegimeOptimizer(
                 data=self.df.copy(),
                 param_ranges=param_ranges,
-                config=config
+                config=config,
+                json_config=self.json_config
             )
+
+            if self.json_config:
+                logger.info(
+                    f"Using JSON-based regime evaluation with v2.0 config "
+                    f"(regimes from optimization_results)"
+                )
+            else:
+                logger.info("Using legacy 3-regime model with global thresholds")
 
             # Create results manager
             results_manager = RegimeResultsManager()

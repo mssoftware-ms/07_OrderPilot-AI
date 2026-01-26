@@ -118,6 +118,7 @@ class EntryAnalyzerPopup(
     # Issue #28: analyze_requested now includes json_config_path for regime parameters
     analyze_requested = pyqtSignal(str)  # json_config_path (or empty string for defaults)
     draw_entries_requested = pyqtSignal(list)
+    draw_patterns_requested = pyqtSignal(list)
     clear_entries_requested = pyqtSignal()
     draw_regime_lines_requested = pyqtSignal(list)  # Issue #21: Signal for regime lines
 

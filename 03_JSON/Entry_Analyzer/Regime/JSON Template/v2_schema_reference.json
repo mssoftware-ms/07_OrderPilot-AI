@@ -1,7 +1,7 @@
 {
   "_schema_documentation": {
     "version": "2.0.0",
-    "last_updated": "2026-01-25",
+    "last_updated": "2026-01-26T12:00:00Z",
     "description": "Regime Config v2.0 Schema-Referenz für OrderPilot-AI Entry Analyzer",
     "warning": "DIESE DATEI IST SCHREIBGESCHÜTZT - NUR ALS REFERENZ VERWENDEN!",
 
@@ -11,7 +11,23 @@
         "metadata (PFLICHT)",
         "optimization_results (PFLICHT, min. 1 Eintrag)",
         "entry_params (OPTIONAL)",
-        "evaluation_params (OPTIONAL)"
+        "evaluation_params (OPTIONAL, enthält score_weights)"
+      ]
+    },
+
+    "score_weights_overview": {
+      "description": "5-Komponenten RegimeScore-System zur Bewertung der Regime-Erkennungsqualität",
+      "components": {
+        "separability": "30% - Cluster-Trennbarkeit (Silhouette, Calinski-Harabasz, Davies-Bouldin)",
+        "coherence": "25% - Zeitliche Kohärenz (Switch-Rate, Avg Duration, Markov Self-Transition)",
+        "fidelity": "25% - Regime-Treue (Hurst-Exponent: Trend > 0.5, Range < 0.5)",
+        "boundary": "10% - Grenzstärke (Mahalanobis-Distanz bei Regime-Wechseln)",
+        "coverage": "10% - Abdeckung & Balance (Regime-Verteilung, Balance-Penalty)"
+      },
+      "rules": [
+        "Summe aller Gewichtungen MUSS 1.0 ergeben",
+        "Bei Summe != 1.0 erfolgt automatische Normalisierung",
+        "Backwards-Compatibility: Alte Namen werden automatisch gemappt"
       ]
     },
 
@@ -66,8 +82,25 @@
           "type": {
             "type": "string",
             "required": true,
-            "enum": ["EMA", "SMA", "ADX", "RSI", "ATR", "BB", "MACD", "STOCH"],
-            "description": "Technischer Indikator-Typ"
+            "enum": ["EMA", "SMA", "ADX", "RSI", "ATR", "BB", "MACD", "STOCH", "CCI", "SUPERTREND", "VWAP", "OBV", "CHANDELIER", "CKSP", "ADX_LEAF_WEST"],
+            "description": "Technischer Indikator-Typ (inkl. Custom-Indikatoren)",
+            "custom_indicators": {
+              "CHANDELIER": {
+                "description": "Chandelier Stop (pipCharlie) - ATR-basierter Trailing Stop",
+                "params": ["lookback", "atr_period", "multiplier"],
+                "outputs": ["direction", "color_change", "long_stop", "short_stop"]
+              },
+              "CKSP": {
+                "description": "Chande Kroll Stop (Alias für CHANDELIER)",
+                "params": ["lookback", "atr_period", "multiplier"],
+                "outputs": ["direction", "color_change", "long_stop", "short_stop"]
+              },
+              "ADX_LEAF_WEST": {
+                "description": "ADX/DMI Variante mit separaten ADX/DMI Perioden für schnellere Signale",
+                "params": ["adx_length", "dmi_length"],
+                "outputs": ["adx", "plus_di", "minus_di", "di_diff"]
+              }
+            }
           },
           "params": {
             "type": "array",
@@ -165,13 +198,32 @@
       "evaluation_params": {
         "type": "object",
         "required": false,
-        "description": "Optimizer/Backtest Evaluations-Parameter",
+        "description": "Optimizer/Backtest Evaluations-Parameter inkl. 5-Komponenten Score-Gewichtungen",
         "fields": {
+          "lookback_periods": {"type": "integer", "default": 200, "description": "Anzahl Bars für Lookback"},
+          "min_regime_duration": {"type": "integer", "default": 3, "description": "Mindest-Dauer eines Regimes in Bars"},
           "eval_horizon_bars": {"type": "integer", "default": 40},
           "eval_tp_atr": {"type": "number", "default": 1.0},
           "eval_sl_atr": {"type": "number", "default": 0.8},
           "min_trades_gate": {"type": "integer", "default": 8},
-          "target_trades_soft": {"type": "integer", "default": 30}
+          "target_trades_soft": {"type": "integer", "default": 30},
+          "score_weights": {
+            "type": "object",
+            "required": false,
+            "description": "5-Komponenten Score-Gewichtungen (Summe muss 1.0 ergeben)",
+            "fields": {
+              "separability": {"type": "number", "default": 0.30, "min": 0, "max": 1, "description": "Cluster-Trennbarkeit: Wie gut sind Regimes voneinander getrennt? (Silhouette, CH, DB)"},
+              "coherence": {"type": "number", "default": 0.25, "min": 0, "max": 1, "description": "Zeitliche Kohärenz: Wie stabil sind Regimes über Zeit? (Switch-Rate, Avg Duration, Markov)"},
+              "fidelity": {"type": "number", "default": 0.25, "min": 0, "max": 1, "description": "Regime-Treue: Verhält sich Regime wie erwartet? (Hurst > 0.5 für Trend, < 0.5 für Range)"},
+              "boundary": {"type": "number", "default": 0.10, "min": 0, "max": 1, "description": "Grenzstärke: Wie klar sind Übergänge zwischen Regimes? (Mahalanobis-Distanz)"},
+              "coverage": {"type": "number", "default": 0.10, "min": 0, "max": 1, "description": "Abdeckung & Balance: Wie gleichmäßig sind Regimes verteilt? (Balance-Penalty)"}
+            },
+            "backwards_compatibility": {
+              "regime_distribution": "-> coverage",
+              "regime_stability": "-> coherence",
+              "indicator_quality": "-> fidelity"
+            }
+          }
         }
       }
     },
@@ -192,14 +244,24 @@
 
     "threshold_naming_convention": {
       "_min_suffix": "Wert muss >= threshold sein (z.B. adx_min=25 → ADX >= 25)",
-      "_max_suffix": "Wert muss <= threshold sein (z.B. adx_max=20 → ADX <= 20)",
+      "_max_suffix": "Wert muss < threshold sein (z.B. adx_max=20 → ADX < 20)",
+      "_above_suffix": "Wert muss > threshold sein (z.B. ema_above=50 → EMA > 50)",
+      "_below_suffix": "Wert muss < threshold sein (z.B. adx_below=35 → ADX < 35)",
+      "_direction_eq_suffix": "Richtung muss gleich sein (z.B. chandelier_direction_eq=1 → Bullish)",
+      "_color_change_suffix": "Farbwechsel erkannt (z.B. chandelier_color_change=1 → Wechsel)",
       "common_thresholds": {
         "adx_min": "ADX Minimum für Trendstärke",
         "adx_max": "ADX Maximum für Seitwärts-Erkennung",
+        "adx_below": "ADX unter Schwellenwert (für Entry-Timing)",
         "rsi_min": "RSI Minimum (Bullish-Bias)",
         "rsi_max": "RSI Maximum (Bearish-Bias)",
         "atr_pct_min": "ATR% Minimum für Volatilität",
-        "bb_width_max": "BB-Width Maximum für Squeeze"
+        "bb_width_max": "BB-Width Maximum für Squeeze",
+        "di_diff_min": "DI+ - DI- Minimum Differenz für Richtung"
+      },
+      "chandelier_thresholds": {
+        "chandelier_direction_eq": "Richtung: 1=bullish (grün), -1=bearish (rot)",
+        "chandelier_color_change": "Farbwechsel: 1=Entry-Trigger, 0=kein Wechsel"
       }
     },
 
@@ -402,11 +464,20 @@
       "cluster_window_bars": 6
     },
     "evaluation_params": {
+      "lookback_periods": 200,
+      "min_regime_duration": 3,
       "eval_horizon_bars": 40,
       "eval_tp_atr": 1.0,
       "eval_sl_atr": 0.8,
       "min_trades_gate": 8,
-      "target_trades_soft": 30
+      "target_trades_soft": 30,
+      "score_weights": {
+        "separability": 0.30,
+        "coherence": 0.25,
+        "fidelity": 0.25,
+        "boundary": 0.10,
+        "coverage": 0.10
+      }
     }
   }
 }

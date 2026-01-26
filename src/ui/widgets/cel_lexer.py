@@ -2,10 +2,37 @@
 CEL Expression Language Lexer for QScintilla.
 
 Custom lexer for Google CEL (Common Expression Language) syntax highlighting.
+Provides a lightweight fallback when QScintilla is not available, so tests can
+import the lexer even in headless CI environments.
 """
 
-from PyQt6.Qsci import QsciLexerCustom, QsciScintilla
 from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtWidgets import QPlainTextEdit
+
+try:
+    from PyQt6.Qsci import QsciLexerCustom, QsciScintilla
+    QSCI_AVAILABLE = True
+except ImportError:
+    QSCI_AVAILABLE = False
+
+    class QsciLexerCustom:
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def startStyling(self, *_):
+            return None
+
+        def setStyling(self, *_):
+            return None
+
+        def editor(self):
+            return None
+
+    class QsciScintilla(QPlainTextEdit):
+        """Minimal stub with QPlainTextEdit backing."""
+
+        def text(self) -> str:
+            return self.toPlainText()
 
 
 class CelLexer(QsciLexerCustom):

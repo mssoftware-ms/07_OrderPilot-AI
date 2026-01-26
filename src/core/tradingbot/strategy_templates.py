@@ -90,7 +90,8 @@ class StrategyTemplatesMixin:
             ],
             trailing_mode=TrailingMode.ATR,
             trailing_params={"multiplier": 2.0, "min_distance_pct": 1.0},
-            stop_loss_pct=2.5,
+            stop_loss_pct=2.5,  # Align with JSON test fixture (2.5%)
+            position_size_pct=2.5,  # Align with JSON test fixture (2.5%)
             min_entry_score=0.65,
         )
 

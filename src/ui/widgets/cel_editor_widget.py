@@ -18,7 +18,71 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.Qsci import QsciScintilla, QsciAPIs
+from PyQt6.QtWidgets import QPlainTextEdit
+
+try:
+    from PyQt6.Qsci import QsciScintilla, QsciAPIs
+    QSCI_AVAILABLE = True
+except ImportError:
+    QSCI_AVAILABLE = False
+
+    class QsciAPIs:
+        def __init__(self, *_):
+            pass
+
+        def add(self, *_):
+            return None
+
+        def prepare(self):
+            return None
+
+    class QsciScintilla(QPlainTextEdit):
+        """Lightweight fallback to keep editor usable without QScintilla."""
+
+        class MarginType:
+            NumberMargin = 0
+            SymbolMargin = 1
+
+        class FoldStyle:
+            BoxedTreeFoldStyle = 0
+
+        class MarkerSymbol:
+            Circle = 0
+
+        class AutoCompletionSource:
+            AcsAPIs = 0
+
+        class BraceMatch:
+            SloppyBraceMatch = 0
+
+        def text(self) -> str:
+            return self.toPlainText()
+
+        # Stubs for QScintilla API used in configuration
+        def setLexer(self, *_): pass
+        def setMarginType(self, *_): pass
+        def setMarginWidth(self, *_): pass
+        def setMarginsForegroundColor(self, *_): pass
+        def setMarginsBackgroundColor(self, *_): pass
+        def setFolding(self, *_): pass
+        def setAutoCompletionSource(self, *_): pass
+        def setAutoCompletionThreshold(self, *_): pass
+        def setAutoCompletionCaseSensitivity(self, *_): pass
+        def setAutoCompletionReplaceWord(self, *_): pass
+        def setBraceMatching(self, *_): pass
+        def setMatchedBraceBackgroundColor(self, *_): pass
+        def setMatchedBraceForegroundColor(self, *_): pass
+        def markerDefine(self, *_): return 0
+        def setMarkerBackgroundColor(self, *_): pass
+        def setIndentationsUseTabs(self, *_): pass
+        def setTabWidth(self, *_): pass
+        def setIndentationGuides(self, *_): pass
+        def setAutoIndent(self, *_): pass
+        def setPaper(self, *_): pass
+        def setCaretForegroundColor(self, *_): pass
+        def setCaretLineVisible(self, *_): pass
+        def setCaretLineBackgroundColor(self, *_): pass
+        def setSelectionBackgroundColor(self, *_): pass
 
 from .cel_lexer import CelLexer
 
@@ -124,6 +188,12 @@ class CelEditorWidget(QWidget):
         # Font
         font = QFont("Consolas", 10)
         self.editor.setFont(font)
+        if not QSCI_AVAILABLE:
+            # Plain text fallback
+            self.error_marker = 0
+            self.lexer = None
+            return
+
         self.editor.setMarginsFont(font)
 
         # Lexer (syntax highlighting)
@@ -175,6 +245,9 @@ class CelEditorWidget(QWidget):
 
     def _load_autocomplete_data(self):
         """Load autocomplete data from CEL functions."""
+        if not QSCI_AVAILABLE:
+            self.api = None
+            return
         self.api = QsciAPIs(self.lexer)
 
         # Math functions

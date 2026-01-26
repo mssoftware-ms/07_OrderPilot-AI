@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -55,6 +56,7 @@ class RegimeOptimizationMixin:
     # Type hints for parent class attributes
     _regime_opt_start_btn: QPushButton
     _regime_opt_stop_btn: QPushButton
+    _regime_opt_max_trials: QSpinBox
     _regime_opt_progress_bar: QProgressBar
     _regime_opt_status_label: QLabel
     _regime_opt_eta_label: QLabel
@@ -134,6 +136,17 @@ class RegimeOptimizationMixin:
         self._regime_opt_stop_btn.setEnabled(False)
         self._regime_opt_stop_btn.clicked.connect(self._on_regime_opt_stop)
         control_layout.addWidget(self._regime_opt_stop_btn)
+
+        # Max Trials SpinBox
+        control_layout.addSpacing(20)
+        control_layout.addWidget(QLabel("Max Trials:"))
+        self._regime_opt_max_trials = QSpinBox()
+        self._regime_opt_max_trials.setRange(10, 9999)
+        self._regime_opt_max_trials.setValue(150)
+        self._regime_opt_max_trials.setSingleStep(10)
+        self._regime_opt_max_trials.setToolTip("Maximum number of optimization trials (10-9999)")
+        self._regime_opt_max_trials.setMinimumWidth(100)
+        control_layout.addWidget(self._regime_opt_max_trials)
 
         control_layout.addStretch()
         layout.addLayout(control_layout)
@@ -335,11 +348,31 @@ class RegimeOptimizationMixin:
         )
 
         # Get max_trials from UI
-        max_trials = getattr(self, "_regime_setup_max_trials", None)
+        max_trials = getattr(self, "_regime_opt_max_trials", None)
         if max_trials:
             max_trials_value = max_trials.value()
         else:
             max_trials_value = 150  # Default fallback
+
+        # Get JSON config for per-regime threshold evaluation
+        # This enables JSON-based regime classification with per-regime thresholds
+        # instead of the simplified 3-regime global threshold model
+        json_config = None
+        if hasattr(self, "_regime_config") and self._regime_config:
+            # Convert Pydantic model to dict if needed
+            if hasattr(self._regime_config, "model_dump"):
+                json_config = self._regime_config.model_dump()
+            elif hasattr(self._regime_config, "dict"):
+                json_config = self._regime_config.dict()
+            elif isinstance(self._regime_config, dict):
+                json_config = self._regime_config
+            else:
+                logger.warning(
+                    "Could not convert _regime_config to dict, using legacy mode"
+                )
+
+            if json_config:
+                logger.info("Using JSON-based regime evaluation with per-regime thresholds")
 
         # Create and start optimization thread
         self._regime_opt_thread = RegimeOptimizationThread(
@@ -347,7 +380,8 @@ class RegimeOptimizationMixin:
             config_template_path=config_template_path,
             param_grid=param_grid,
             scope="entry",
-            max_trials=max_trials_value
+            max_trials=max_trials_value,
+            json_config=json_config
         )
 
         # Connect signals
@@ -747,7 +781,7 @@ class RegimeOptimizationMixin:
                 param_ranges = self._regime_setup_config.copy()
 
             # Get max_trials
-            max_trials = getattr(self, "_regime_setup_max_trials", None)
+            max_trials = getattr(self, "_regime_opt_max_trials", None)
             max_trials_value = max_trials.value() if max_trials else 150
 
             # Issue #28: Get entry_params and evaluation_params from config if available
@@ -1049,29 +1083,53 @@ class RegimeOptimizationMixin:
                 f"rsi={current_params.rsi_period}"
             )
 
+            # Get JSON config for per-regime threshold evaluation
+            json_config_dict = None
+            if isinstance(config, dict):
+                json_config_dict = config
+            elif hasattr(config, "model_dump"):
+                json_config_dict = config.model_dump()
+            elif hasattr(config, "dict"):
+                json_config_dict = config.dict()
+
             # Create optimizer to classify regimes (we need the regimes Series)
             optimizer = RegimeOptimizer(
                 data=df,
                 param_ranges=param_ranges,
+                json_config=json_config_dict
             )
 
             # Calculate indicators and classify regimes
-            indicators = optimizer._calculate_indicators(current_params)
-            regimes = optimizer._classify_regimes(current_params, indicators)
+            # Use JSON mode if config has optimization_results with regimes
+            if json_config_dict and "optimization_results" in json_config_dict:
+                logger.info("Using JSON-based regime classification for current score")
+                indicators = optimizer._calculate_json_indicators(current_params)
+                regimes = optimizer._classify_regimes_json(current_params, indicators)
+            else:
+                logger.info("Using legacy regime classification for current score")
+                indicators = optimizer._calculate_indicators(current_params)
+                regimes = optimizer._classify_regimes(current_params, indicators)
             
             # Convert regimes to Series for new scoring
             regimes_series = pd.Series(regimes, index=df.index)
             
             # Use new 5-component RegimeScore
             from src.core.scoring import calculate_regime_score, RegimeScoreConfig
-            
+
+            data_len = len(df)
             score_config = RegimeScoreConfig(
-                warmup_bars=200,
+                warmup_bars=min(200, max(50, data_len // 10)),
                 max_feature_lookback=max(
                     current_params.adx_period,
                     current_params.rsi_period,
                     current_params.atr_period,
                 ),
+                # Relaxed gates for scalping/high-frequency data
+                min_segments=max(3, data_len // 200),
+                min_avg_duration=2,
+                max_switch_rate_per_1000=500,  # High switch rates are normal for scalping
+                min_unique_labels=2,
+                min_bars_for_scoring=max(30, data_len // 10),
             )
             score_result = calculate_regime_score(
                 data=df,
@@ -1210,7 +1268,7 @@ class RegimeOptimizationMixin:
                 "trial_number": trial_number,
                 "optimization_config": {
                     "mode": "QUICK",
-                    "max_trials": getattr(self, "_regime_setup_max_trials", None).value() if hasattr(self, "_regime_setup_max_trials") else 150,
+                    "max_trials": getattr(self, "_regime_opt_max_trials", None).value() if hasattr(self, "_regime_opt_max_trials") else 150,
                     "symbol": getattr(self, "_current_symbol", "UNKNOWN"),
                     "timeframe": getattr(self, "_current_timeframe", "5m")
                 },
@@ -1386,9 +1444,11 @@ class RegimeOptimizationMixin:
                     "lookback_periods": 200,
                     "min_regime_duration": 3,
                     "score_weights": {
-                        "regime_distribution": 0.3,
-                        "regime_stability": 0.3,
-                        "indicator_quality": 0.4
+                        "separability": 0.30,
+                        "coherence": 0.25,
+                        "fidelity": 0.25,
+                        "boundary": 0.10,
+                        "coverage": 0.10
                     }
                 }
             }

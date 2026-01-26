@@ -22,26 +22,109 @@ class EntrySide(str, Enum):
 class RegimeType(str, Enum):
     """Market regime classification.
 
-    Unified naming convention (v2.0):
-    - BULL: Bullish trend (was TREND_UP)
-    - BEAR: Bearish trend (was TREND_DOWN)
-    - SIDEWAYS: Range/neutral market (was RANGE)
+    9-Level Regime Hierarchy (JSON v2.0):
+    Priority 100: STRONG_TF - Extreme trend (ADX > 40, DI diff > 20)
+    Priority 95:  STRONG_BULL - Strong uptrend with RSI confirmation
+    Priority 94:  STRONG_BEAR - Strong downtrend with RSI confirmation
+    Priority 85:  TF - Trend Following (ADX > 25)
+    Priority 82:  BULL_EXHAUSTION - Uptrend exhaustion warning
+    Priority 81:  BEAR_EXHAUSTION - Downtrend exhaustion warning
+    Priority 80:  BULL - Uptrend (DI+ > DI-)
+    Priority 79:  BEAR - Downtrend (DI- > DI+)
+    Priority 50:  SIDEWAYS - Range/neutral market
+
+    Additional states:
     - HIGH_VOL: High volatility
     - SQUEEZE: Low volatility compression
     - NO_TRADE: Avoid trading
+    - UNKNOWN: Regime not determined
     """
 
+    # 9-Level Regime Hierarchy (from JSON v2.0)
+    STRONG_TF = "STRONG_TF"
+    STRONG_BULL = "STRONG_BULL"
+    STRONG_BEAR = "STRONG_BEAR"
+    TF = "TF"
+    BULL_EXHAUSTION = "BULL_EXHAUSTION"
+    BEAR_EXHAUSTION = "BEAR_EXHAUSTION"
     BULL = "BULL"
     BEAR = "BEAR"
     SIDEWAYS = "SIDEWAYS"
+
+    # Additional states
     HIGH_VOL = "HIGH_VOL"
     SQUEEZE = "SQUEEZE"
     NO_TRADE = "NO_TRADE"
+    UNKNOWN = "UNKNOWN"
 
     # Legacy aliases for backwards compatibility
     TREND_UP = "BULL"
     TREND_DOWN = "BEAR"
     RANGE = "SIDEWAYS"
+
+    @classmethod
+    def from_string(cls, regime_id: str) -> "RegimeType":
+        """Convert string regime ID to RegimeType enum.
+
+        Handles dynamic regime names by pattern matching.
+
+        Args:
+            regime_id: Regime ID string (e.g., "STRONG_TF", "BULL", "MY_BULL_REGIME")
+
+        Returns:
+            Matching RegimeType enum value.
+        """
+        if not regime_id:
+            return cls.UNKNOWN
+
+        # Direct match first
+        regime_upper = regime_id.upper()
+        try:
+            return cls(regime_upper)
+        except ValueError:
+            pass
+
+        # Pattern matching for dynamic names
+        id_lower = regime_id.lower()
+
+        # Strong trend patterns
+        if "strong" in id_lower and "tf" in id_lower:
+            return cls.STRONG_TF
+        if "strong" in id_lower and "bull" in id_lower:
+            return cls.STRONG_BULL
+        if "strong" in id_lower and "bear" in id_lower:
+            return cls.STRONG_BEAR
+
+        # Exhaustion patterns
+        if "exhaust" in id_lower and "bull" in id_lower:
+            return cls.BULL_EXHAUSTION
+        if "exhaust" in id_lower and "bear" in id_lower:
+            return cls.BEAR_EXHAUSTION
+
+        # Trend following
+        if id_lower in ("tf", "trend_following", "trend"):
+            return cls.TF
+
+        # Basic directional
+        if "bull" in id_lower or "long" in id_lower or "up" in id_lower:
+            return cls.BULL
+        if "bear" in id_lower or "short" in id_lower or "down" in id_lower:
+            return cls.BEAR
+
+        # Sideways / Range
+        if any(pat in id_lower for pat in ["sideways", "range", "neutral", "flat"]):
+            return cls.SIDEWAYS
+
+        # High volatility
+        if "vol" in id_lower and "high" in id_lower:
+            return cls.HIGH_VOL
+
+        # Squeeze
+        if "squeeze" in id_lower or "compress" in id_lower:
+            return cls.SQUEEZE
+
+        # Fallback
+        return cls.UNKNOWN
 
 
 @dataclass

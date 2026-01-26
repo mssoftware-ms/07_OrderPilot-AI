@@ -257,9 +257,10 @@ class IndicatorOptimizationV2Mixin:
     ) -> None:
         if signal_type in self._ind_v2_signal_progress:
             progress_bar = self._ind_v2_signal_progress[signal_type]
-            progress_bar.setMaximum(total)
+            if progress_bar.maximum() != total:
+                progress_bar.setMaximum(total)
             progress_bar.setValue(current)
-            progress_bar.setFormat(f"%p% - Best: {best_score:.1f}")
+            progress_bar.setFormat(f"%p% ({current}/{total}) - Best: {best_score:.1f}")
 
     def _on_indicator_v2_result(self, signal_type: str, result: dict) -> None:
         if signal_type not in self._ind_v2_optimization_results:

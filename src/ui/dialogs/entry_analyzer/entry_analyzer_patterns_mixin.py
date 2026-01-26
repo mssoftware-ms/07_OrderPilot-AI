@@ -23,8 +23,9 @@ from PyQt6.QtWidgets import (
 
 from src.analysis.patterns.pivot_engine import detect_pivots_percent, Pivot
 from src.analysis.patterns.reversal_patterns import HeadAndShouldersDetector, DoubleTopBottomDetector
-from src.analysis.patterns.continuation_patterns import TriangleDetector, FlagDetector
+from src.analysis.patterns.continuation_patterns import TriangleDetector, FlagDetector, TriangleParams, FlagParams
 from src.analysis.patterns.smart_money import detect_order_blocks, detect_fvg
+from src.analysis.patterns.pattern_visualizer import pattern_to_lines, pattern_to_boxes
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,27 @@ class PatternDetectionMixin:
         run_btn = QPushButton("Detect Patterns")
         run_btn.clicked.connect(self._on_run_patterns)
         ctrl.addWidget(run_btn)
+        self._draw_btn = QPushButton("Draw on Chart")
+        self._draw_btn.clicked.connect(self._on_draw_patterns)
+        ctrl.addWidget(self._draw_btn)
+
+        ctrl.addWidget(QLabel("Triangle slope tol"))
+        self._tri_slope = QComboBox()
+        self._tri_slope.addItems(["1.0", "2.0", "5.0"])
+        self._tri_slope.setCurrentText("5.0")
+        ctrl.addWidget(self._tri_slope)
+
+        ctrl.addWidget(QLabel("Flag retrace max"))
+        self._flag_retrace = QComboBox()
+        self._flag_retrace.addItems(["0.5", "0.8", "1.0"])
+        self._flag_retrace.setCurrentText("1.0")
+        ctrl.addWidget(self._flag_retrace)
+
+        ctrl.addWidget(QLabel("OB lookback"))
+        self._ob_lookback = QComboBox()
+        self._ob_lookback.addItems(["3", "5", "10"])
+        self._ob_lookback.setCurrentText("5")
+        ctrl.addWidget(self._ob_lookback)
         ctrl.addStretch()
         layout.addLayout(ctrl)
 
@@ -65,11 +87,15 @@ class PatternDetectionMixin:
         threshold = float(self._pat_threshold.currentText())
         pivots = detect_pivots_percent(df["close"], threshold_pct=threshold)
 
+        tri_tol = float(self._tri_slope.currentText())
+        flag_retrace = float(self._flag_retrace.currentText())
+        ob_lookback = int(self._ob_lookback.currentText())
+
         detectors = [
             HeadAndShouldersDetector(),
             DoubleTopBottomDetector(),
-            TriangleDetector(),
-            FlagDetector(),
+            TriangleDetector(params=TriangleParams(max_slope_diff=tri_tol)),
+            FlagDetector(params=FlagParams(max_retrace=flag_retrace)),
         ]
         patterns = []
         for det in detectors:
@@ -81,7 +107,7 @@ class PatternDetectionMixin:
 
         # Smart money patterns (use OHLC df)
         try:
-            patterns.extend(detect_order_blocks(df))
+            patterns.extend(detect_order_blocks(df, lookback=ob_lookback))
             patterns.extend(detect_fvg(df))
         except Exception as e:
             logger.warning("SMC detection failed: %s", e)
@@ -96,6 +122,24 @@ class PatternDetectionMixin:
             info = ", ".join(f"{k}={v}" for k, v in meta.items())
             self._pat_table.setItem(row, 2, QTableWidgetItem(info))
             self._pat_table.setItem(row, 3, QTableWidgetItem("Pivot" if isinstance(p.pivots, list) else "SMC"))
+
+        self._patterns_last = patterns
+
+    def _on_draw_patterns(self) -> None:
+        """Request chart overlay via signal if available."""
+        if not getattr(self, "_patterns_last", None):
+            return
+        try:
+            patterns = self._patterns_last
+            overlays = []
+            for p in patterns:
+                lines = pattern_to_lines(p)
+                boxes = pattern_to_boxes(p)
+                overlays.append({"pattern": p.name, "lines": lines, "boxes": boxes})
+            if hasattr(self, "draw_patterns_requested"):
+                self.draw_patterns_requested.emit(overlays)  # type: ignore
+        except Exception as e:
+            logger.warning("Pattern draw failed: %s", e)
 
     def _get_current_df(self) -> pd.DataFrame | None:
         candles = getattr(self, "_candles", None) or []

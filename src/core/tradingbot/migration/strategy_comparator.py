@@ -329,6 +329,33 @@ class StrategyComparator:
             )
 
         # Compare value
+        # Between operator
+        if json_cond.op == "between":
+            json_min = None
+            json_max = None
+            right = json_cond.right
+            if hasattr(right, "min") and right.min is not None:
+                json_min = right.min
+            if hasattr(right, "max") and right.max is not None:
+                json_max = right.max
+            if hasattr(right, "value") and right.value is not None:
+                # Some JSONs may store upper bound in value
+                json_max = json_max or right.value
+
+            hardcoded_min = hardcoded_cond.min_value
+            hardcoded_max = hardcoded_cond.max_value
+
+            if json_min != hardcoded_min or json_max != hardcoded_max:
+                return ConditionDiff(
+                    field=field,
+                    index=index,
+                    json_condition=self._format_json_condition(json_cond),
+                    hardcoded_condition=f"{hardcoded_cond.indicator} between {hardcoded_min}-{hardcoded_max}",
+                    difference_type="different_threshold",
+                    severity="major",
+                )
+            return None
+
         if hasattr(json_cond.right, "value") and json_cond.right.value is not None:
             json_value = json_cond.right.value
             hardcoded_value = hardcoded_cond.value
@@ -363,14 +390,22 @@ class StrategyComparator:
         """
         diffs = []
 
+        def _risk_value(key: str, default: float) -> float:
+            if json_risk is None:
+                return default
+            if isinstance(json_risk, dict):
+                return float(json_risk.get(key, default) or default)
+            return float(getattr(json_risk, key, default) or default)
+
         # Position size
-        json_pos_size = json_risk.position_size or 0.02
+        json_pos_size = _risk_value("position_size", 0.02)
         if abs(json_pos_size - hardcoded_analysis.position_size) > 0.001:
             pct_diff = (
                 abs(json_pos_size - hardcoded_analysis.position_size)
                 / hardcoded_analysis.position_size
                 * 100
             )
+            pct_diff = round(pct_diff, 4)
             diffs.append(
                 ParameterDiff(
                     parameter_name="position_size",
@@ -381,13 +416,14 @@ class StrategyComparator:
             )
 
         # Stop loss
-        json_stop_loss = json_risk.stop_loss or 0.02
+        json_stop_loss = _risk_value("stop_loss", 0.02)
         if abs(json_stop_loss - hardcoded_analysis.stop_loss) > 0.001:
             pct_diff = (
                 abs(json_stop_loss - hardcoded_analysis.stop_loss)
                 / hardcoded_analysis.stop_loss
                 * 100
             )
+            pct_diff = round(pct_diff, 4)
             diffs.append(
                 ParameterDiff(
                     parameter_name="stop_loss",
@@ -398,13 +434,14 @@ class StrategyComparator:
             )
 
         # Take profit
-        json_take_profit = json_risk.take_profit or 0.06
+        json_take_profit = _risk_value("take_profit", 0.06)
         if abs(json_take_profit - hardcoded_analysis.take_profit) > 0.001:
             pct_diff = (
                 abs(json_take_profit - hardcoded_analysis.take_profit)
                 / hardcoded_analysis.take_profit
                 * 100
             )
+            pct_diff = round(pct_diff, 4)
             diffs.append(
                 ParameterDiff(
                     parameter_name="take_profit",

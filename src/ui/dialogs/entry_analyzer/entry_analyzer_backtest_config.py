@@ -208,15 +208,52 @@ class BacktestConfigMixin:
         """Default JSON config path for Entry Analyzer regime detection."""
         return Path("03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json")
 
+    def _resolve_readable_regime_config(self) -> Path:
+        """Find a readable regime config within the repo; no copies into 03_JSON."""
+
+        rel = self._default_regime_config_path()  # 03_JSON/Entry_Analyzer/Regime/entry_analyzer_regime.json
+        repo_root = Path(__file__).resolve().parents[3]
+        template = repo_root / "03_JSON/Entry_Analyzer/Regime/JSON Template/v2_schema_reference.json"
+        candidates = [rel, repo_root / rel, template]
+
+        for p in candidates:
+            try:
+                if p.exists():
+                    # Quick readability probe
+                    with p.open("r", encoding="utf-8") as f:
+                        _ = f.read(1)
+                    return p
+            except OSError as exc:
+                logger.warning("Cannot open regime config %s: %s", p, exc)
+                continue
+
+        # Last resort: create a temporary minimal config (outside 03_JSON)
+        import tempfile
+
+        tmp = Path(tempfile.gettempdir()) / "entry_analyzer_regime_tmp.json"
+        try:
+            tmp.write_text(
+                '{"schema_version":"2.0","indicators":[],"regimes":[],"strategies":[]}',
+                encoding="utf-8",
+            )
+            logger.info("Using temporary minimal regime config at %s", tmp)
+        except OSError as exc:
+            logger.error("Failed to create temporary regime config: %s", exc)
+        return tmp
+
     def _load_default_regime_config(self) -> None:
         """Load the default regime config from the Entry Analyzer directory."""
-        default_path = self._default_regime_config_path()
-        default_path.parent.mkdir(parents=True, exist_ok=True)
-        if default_path.exists():
-            self._load_regime_config(default_path, show_error=False)
-        else:
-            self._regime_config_path_label.setText(str(default_path))
-            self._regime_config_path_label.setStyleSheet("color: #f59e0b;")
+        resolved_path = self._resolve_readable_regime_config()
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._load_regime_config(resolved_path, show_error=False)
+            return
+        except OSError as exc:
+            logger.error("Cannot open resolved regime config %s: %s", resolved_path, exc)
+
+        # If still failing, show path in orange
+        self._regime_config_path_label.setText(str(resolved_path))
+        self._regime_config_path_label.setStyleSheet("color: #f59e0b;")
 
     def _on_load_regime_config_clicked(self) -> None:
         """Load regime config from JSON file and populate table."""
