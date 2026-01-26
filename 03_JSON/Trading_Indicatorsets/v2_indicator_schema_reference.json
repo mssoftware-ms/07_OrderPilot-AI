@@ -2,40 +2,46 @@
   "schema_version": "2.0.0",
   "metadata": {
     "author": "OrderPilot-AI",
-    "created_at": "2026-01-25T00:00:00Z",
-    "updated_at": "2026-01-25T00:00:00Z",
-    "tags": ["BTCUSDT", "1m", "indicator-set"],
-    "trading_style": "Scalping",
-    "notes": "Template reference only"
+    "created_at": "2026-01-26T00:00:00Z",
+    "updated_at": "2026-01-26T00:00:00Z",
+    "description": "Reference document for indicator_sets schema validation (tests)",
+    "symbol": "BTCUSDT",
+    "timeframe": "5m"
   },
   "indicators": [
     {
-      "name": "TREND_SUPERTREND_FAST",
-      "type": "SUPERTREND",
-      "params": [
-        {"name": "atr_period", "value": 10, "range": {"min": 7, "max": 20, "step": 1}},
-        {"name": "multiplier", "value": 2.0, "range": {"min": 1.5, "max": 3.5, "step": 0.1}}
-      ]
-    },
-    {
-      "name": "MOMENTUM_RSI",
+      "name": "RSI_ENTRY_LONG",
       "type": "RSI",
+      "timeframe": "5m",
       "params": [
-        {"name": "period", "value": 14, "range": {"min": 9, "max": 30, "step": 1}}
+        {
+          "name": "period",
+          "value": 14,
+          "range": { "min": 10, "max": 20, "step": 2 }
+        },
+        {
+          "name": "oversold",
+          "value": 35,
+          "range": { "min": 25, "max": 45, "step": 5 }
+        },
+        {
+          "name": "overbought",
+          "value": 65,
+          "range": { "min": 55, "max": 75, "step": 5 }
+        }
       ]
     },
     {
-      "name": "TREND_EMA_FAST",
+      "name": "EMA_TREND",
       "type": "EMA",
+      "timeframe": "5m",
       "params": [
-        {"name": "period", "value": 9, "range": {"min": 5, "max": 30, "step": 1}}
+        {
+          "name": "period",
+          "value": 50,
+          "range": { "min": 20, "max": 80, "step": 10 }
+        }
       ]
     }
-  ],
-  "backtest": {
-    "source": "historical",
-    "symbol": "BTCUSDT",
-    "timeframe": "1m",
-    "bars_used": 50000
-  }
+  ]
 }

@@ -84,12 +84,6 @@ class IndicatorSetupV2Mixin:
         params_group = QGroupBox("Indicator Parameter Optimization Ranges")
         params_layout = QVBoxLayout(params_group)
 
-        info = QLabel(
-            "Spalten-Layout wie Regime-Setup: Indicator/Type + (Param Name, Value, Min, Max, Step) × 10."
-        )
-        info.setStyleSheet("color: #888; font-style: italic;")
-        params_layout.addWidget(info)
-
         self._ind_v2_params_table = QTableWidget()
         self._ind_v2_params_table.setColumnCount(52)
         headers = ["Indicator", "Type"]

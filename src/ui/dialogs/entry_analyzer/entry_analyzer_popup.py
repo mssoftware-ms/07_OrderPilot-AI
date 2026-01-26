@@ -229,12 +229,15 @@ class EntryAnalyzerPopup(
         Original: entry_analyzer_popup.py:233-283
         """
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Header with status
-        header = self._create_header()
-        layout.addWidget(header)
+        # Initialize header labels (used by mixins, but not displayed)
+        self._regime_label = QLabel("Regime: --")
+        self._signal_count_label = QLabel("Signals: 0 LONG / 0 SHORT")
+        self._signal_rate_label = QLabel("Rate: 0/h")
 
-        # Tab widget for different views
+        # Tab widget for different views (no header - more space for tables)
         # Issue #12: Updated all tabs to use Material Design icons
         self._tabs = QTabWidget()
 

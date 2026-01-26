@@ -1,0 +1,355 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-26T02:35:46Z",
+    "updated_at": "2026-01-26T10:30:00Z",
+    "tags": [
+      "BTCUSDT",
+      "5m",
+      "regime",
+      "optimization",
+      "6-regime"
+    ],
+    "notes": "6-Regime configuration: STRONG_BULL, BULL, STRONG_BEAR, BEAR, SIDEWAYS, STRONG_SIDEWAYS. No ADX gaps.",
+    "trading_style": "Daytrading",
+    "description": "Optimized regime configuration for BTCUSDT 5m with 3 indicators and 6 regimes (no threshold gaps)."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-26T10:30:00Z",
+      "score": 0.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 7,
+                "max": 21,
+                "step": 1
+              }
+            },
+            {
+              "name": "strong_bear",
+              "value": 40,
+              "range": {
+                "min": 30,
+                "max": 45,
+                "step": 1
+              }
+            },
+            {
+              "name": "strong_bull",
+              "value": 60,
+              "range": {
+                "min": 55,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "strong_trend_threshold",
+              "value": 30,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "trend_threshold",
+              "value": 20,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "weak_threshold",
+              "value": 15,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_strong",
+              "value": 10,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_threshold",
+              "value": 5,
+              "range": {
+                "min": 2,
+                "max": 10,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 14,
+              "range": {
+                "min": 7,
+                "max": 21,
+                "step": 1
+              }
+            },
+            {
+              "name": "extreme_move_pct",
+              "value": 3.0,
+              "range": {
+                "min": 2.0,
+                "max": 5.0,
+                "step": 0.5
+              }
+            },
+            {
+              "name": "strong_move_pct",
+              "value": 1.5,
+              "range": {
+                "min": 0.5,
+                "max": 2.5,
+                "step": 0.1
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "STRONG_BULL",
+          "name": "Starker Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 30.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 10.0,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_strong_bull",
+              "value": 60.0,
+              "range": {
+                "min": 55,
+                "max": 70,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 100,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BEAR",
+          "name": "Starker Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 30.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 10.0,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_strong_bear",
+              "value": 40.0,
+              "range": {
+                "min": 30,
+                "max": 45,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 95,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Bullischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "adx_max",
+              "value": 30.0,
+              "range": {
+                "min": 25,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 5.0,
+              "range": {
+                "min": 2,
+                "max": 10,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Bärischer Trend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "adx_max",
+              "value": 30.0,
+              "range": {
+                "min": 25,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 5.0,
+              "range": {
+                "min": 2,
+                "max": 10,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 75,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwärts / Range",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 15.0,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "adx_max",
+              "value": 20.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 50,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_SIDEWAYS",
+          "name": "Starke Seitwärts / Enge Range",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 15.0,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 40,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "min_score": 70,
+    "require_regime_match": true,
+    "max_signals_per_regime": 5
+  },
+  "evaluation_params": {
+    "lookback_periods": 200,
+    "min_regime_duration": 3,
+    "score_weights": {
+      "separability": 0.3,
+      "coherence": 0.25,
+      "fidelity": 0.25,
+      "boundary": 0.1,
+      "coverage": 0.1
+    }
+  }
+}

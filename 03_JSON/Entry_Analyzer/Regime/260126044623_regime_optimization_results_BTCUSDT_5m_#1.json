@@ -2,36 +2,22 @@
   "schema_version": "2.0.0",
   "metadata": {
     "author": "OrderPilot-AI",
-    "created_at": "2026-01-25T17:00:00Z",
-    "updated_at": "2026-01-26T12:00:00Z",
+    "created_at": "2026-01-26T04:46:23Z",
+    "updated_at": "2026-01-26T04:46:23Z",
     "tags": [
-      "btcusdt",
-      "5min",
-      "scalping",
-      "daytrading",
-      "crypto",
-      "optimized",
-      "adx-di-based",
-      "momentum-confirmation",
-      "exhaustion-detection"
+      "BTCUSDT",
+      "5m",
+      "regime",
+      "optimization"
     ],
-    "notes": "Optimierte ADX/DI-basierte Regime-Erkennung für BTCUSDT 5-Minuten Scalping/Daytrading. Parameter basierend auf Web-Recherche 2025: Kürzere Perioden (ADX 5, RSI 7, ATR 7) für schnellere Signale, angepasste Thresholds für Crypto-Volatilität. 9-Level Hierarchie mit RSI-Momentum-Bestätigung und Exhaustion-Erkennung.",
-    "trading_style": "Scalping / Daytrading",
-    "symbol": "BTCUSDT",
-    "timeframe": "5m",
-    "sources": [
-      "https://eplanetbrokers.com/en-US/training/best-rsi-settings-for-5-minute-charts",
-      "https://atrindicator.com/atr-settings-5-minute-chart/",
-      "https://tradingstrategyguides.com/best-adx-strategy/",
-      "https://stockpathshala.com/how-to-use-adx-for-intraday-trading/",
-      "https://phemex.com/academy/how-to-trade-crypto-using-dmi-adx",
-      "https://www.mindmathmoney.com/articles/atr-indicator-trading-strategy"
-    ]
+    "notes": "Rank #1 optimization result applied on 2026-01-26 04:46:23 UTC. Score: 39.00. Trial: 1",
+    "trading_style": "Daytrading",
+    "description": "Optimized regime configuration for BTCUSDT 5m with 3 indicators and 9 regimes."
   },
   "optimization_results": [
     {
-      "timestamp": "2026-01-25T17:00:00Z",
-      "score": 0.0,
+      "timestamp": "2026-01-26T04:46:23Z",
+      "score": 39.0,
       "trial_number": 1,
       "applied": true,
       "indicators": [
@@ -43,7 +29,7 @@
           "params": [
             {
               "name": "period",
-              "value": 5,
+              "value": 10,
               "range": {
                 "min": 3,
                 "max": 10,
@@ -53,7 +39,7 @@
             },
             {
               "name": "di_diff_threshold",
-              "value": 5.0,
+              "value": 6,
               "range": {
                 "min": 3,
                 "max": 12,
@@ -71,7 +57,7 @@
           "params": [
             {
               "name": "period",
-              "value": 7,
+              "value": 9,
               "range": {
                 "min": 5,
                 "max": 10,
@@ -81,7 +67,7 @@
             },
             {
               "name": "overbought",
-              "value": 75.0,
+              "value": 75,
               "range": {
                 "min": 70,
                 "max": 85,
@@ -91,7 +77,7 @@
             },
             {
               "name": "oversold",
-              "value": 25.0,
+              "value": 15,
               "range": {
                 "min": 15,
                 "max": 30,
@@ -109,7 +95,7 @@
           "params": [
             {
               "name": "period",
-              "value": 7,
+              "value": 8,
               "range": {
                 "min": 5,
                 "max": 14,
@@ -119,7 +105,7 @@
             },
             {
               "name": "strong_move_pct",
-              "value": 1.5,
+              "value": 1.7,
               "range": {
                 "min": 1.0,
                 "max": 2.5,
@@ -129,7 +115,7 @@
             },
             {
               "name": "extreme_move_pct",
-              "value": 2.5,
+              "value": 3,
               "range": {
                 "min": 2.0,
                 "max": 4.0,
@@ -148,7 +134,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 35.0,
+              "value": 45.0,
               "range": {
                 "min": 30,
                 "max": 45,
@@ -158,7 +144,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 15.0,
+              "value": 24.0,
               "range": {
                 "min": 10,
                 "max": 25,
@@ -180,7 +166,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 35,
+              "value": 25.0,
               "range": {
                 "min": 22,
                 "max": 35,
@@ -190,7 +176,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 8.0,
+              "value": 5.0,
               "range": {
                 "min": 5,
                 "max": 15,
@@ -200,7 +186,7 @@
             },
             {
               "name": "rsi_confirm_bull",
-              "value": 55.0,
+              "value": 50.0,
               "range": {
                 "min": 50,
                 "max": 65,
@@ -222,7 +208,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 30,
+              "value": 27.0,
               "range": {
                 "min": 22,
                 "max": 35,
@@ -232,7 +218,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 8.0,
+              "value": 10.0,
               "range": {
                 "min": 5,
                 "max": 15,
@@ -242,7 +228,7 @@
             },
             {
               "name": "rsi_confirm_bear",
-              "value": 45.0,
+              "value": 36.0,
               "range": {
                 "min": 35,
                 "max": 50,
@@ -264,7 +250,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 22.0,
+              "value": 27.0,
               "range": {
                 "min": 18,
                 "max": 30,
@@ -274,7 +260,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 6.0,
+              "value": 5.0,
               "range": {
                 "min": 4,
                 "max": 12,
@@ -296,7 +282,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 18.0,
+              "value": 15.0,
               "range": {
                 "min": 15,
                 "max": 25,
@@ -306,7 +292,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 3.0,
+              "value": 6.0,
               "range": {
                 "min": 2,
                 "max": 8,
@@ -316,7 +302,7 @@
             },
             {
               "name": "rsi_exhaustion_max",
-              "value": 40.0,
+              "value": 37.0,
               "range": {
                 "min": 35,
                 "max": 45,
@@ -338,7 +324,7 @@
           "thresholds": [
             {
               "name": "adx_min",
-              "value": 18.0,
+              "value": 24.0,
               "range": {
                 "min": 15,
                 "max": 25,
@@ -348,7 +334,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 3.0,
+              "value": 5.0,
               "range": {
                 "min": 2,
                 "max": 8,
@@ -358,7 +344,7 @@
             },
             {
               "name": "rsi_exhaustion_min",
-              "value": 60.0,
+              "value": 58.0,
               "range": {
                 "min": 55,
                 "max": 65,
@@ -390,7 +376,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 3.0,
+              "value": 7.0,
               "range": {
                 "min": 2,
                 "max": 8,
@@ -422,7 +408,7 @@
             },
             {
               "name": "di_diff_min",
-              "value": 3.0,
+              "value": 6.0,
               "range": {
                 "min": 2,
                 "max": 8,
@@ -444,7 +430,7 @@
           "thresholds": [
             {
               "name": "adx_max",
-              "value": 18.0,
+              "value": 15.0,
               "range": {
                 "min": 15,
                 "max": 22,
@@ -463,119 +449,19 @@
     }
   ],
   "entry_params": {
-    "description": "Entry-Parameter optimiert für BTCUSDT 5-Min Scalping",
-    "pullback_atr": 0.5,
-    "pullback_atr_notes": "0.5x ATR Pullback für schnelle Entries (Scalping: enger als Swing)",
-    "pullback_rsi": 45.0,
-    "pullback_rsi_notes": "RSI-Level für Pullback-Entries",
-    "wick_reject": 0.6,
-    "wick_reject_notes": "60% Wick-Rejection für Candle-Pattern Erkennung",
-    "bb_entry": 0.1,
-    "bb_entry_notes": "10% BB-Band für Mean-Reversion Entries",
-    "rsi_oversold": 25.0,
-    "rsi_oversold_notes": "Crypto-Scalping: 25 (schärfer als Standard 30)",
-    "rsi_overbought": 75.0,
-    "rsi_overbought_notes": "Crypto-Scalping: 75 (schärfer als Standard 70)",
-    "vol_spike_factor": 1.5,
-    "vol_spike_factor_notes": "1.5x Volumen-Spike für Bestätigung",
-    "breakout_atr": 0.3,
-    "breakout_atr_notes": "0.3x ATR über Level für Breakout-Bestätigung",
-    "min_confidence": 0.6,
-    "min_confidence_notes": "Minimum 60% Konfidenz für Entry",
-    "cooldown_bars": 5,
-    "cooldown_bars_notes": "5 Bars (25 Min) Cooldown zwischen Signals (Scalping: kürzer)",
-    "cluster_window_bars": 3,
-    "cluster_window_bars_notes": "3 Bars (15 Min) für Signal-Clustering"
+    "min_score": 70,
+    "require_regime_match": true,
+    "max_signals_per_regime": 5
   },
   "evaluation_params": {
-    "description": "Evaluations-Parameter für Backtesting",
     "lookback_periods": 200,
     "min_regime_duration": 3,
-    "eval_horizon_bars": 24,
-    "eval_horizon_bars_notes": "24 Bars = 2 Stunden Evaluationsfenster (Scalping: kürzer)",
-    "eval_tp_atr": 1.0,
-    "eval_tp_atr_notes": "1.0x ATR Take-Profit (konservativ für Scalping)",
-    "eval_sl_atr": 0.8,
-    "eval_sl_atr_notes": "0.8x ATR Stop-Loss (enger RR für Scalping)",
-    "min_trades_gate": 15,
-    "min_trades_gate_notes": "Minimum 15 Trades für statistische Signifikanz",
-    "target_trades_soft": 50,
-    "target_trades_soft_notes": "Ziel: 50 Trades für robuste Analyse",
     "score_weights": {
       "separability": 0.3,
-      "separability_notes": "Cluster-Trennbarkeit: Wie gut sind die Regimes voneinander getrennt?",
       "coherence": 0.25,
-      "coherence_notes": "Zeitliche Kohärenz: Wie stabil sind die Regimes über die Zeit?",
       "fidelity": 0.25,
-      "fidelity_notes": "Regime-Treue: Verhält sich das Regime wie erwartet? (Hurst-Exponent)",
       "boundary": 0.1,
-      "boundary_notes": "Grenzstärke: Wie klar sind die Übergänge zwischen Regimes?",
-      "coverage": 0.1,
-      "coverage_notes": "Abdeckung & Balance: Wie gleichmäßig sind die Regimes verteilt?"
+      "coverage": 0.1
     }
-  },
-  "risk_management": {
-    "description": "Risikomanagement-Parameter basierend auf ATR-Recherche",
-    "stop_loss_atr_multiplier": 1.0,
-    "stop_loss_notes": "1.0x ATR für Scalping (eng). Erhöhen auf 1.5x für mehr Spielraum.",
-    "take_profit_atr_multiplier": 1.5,
-    "take_profit_notes": "1.5x ATR TP für 1:1.5 RR Ratio",
-    "trailing_stop_atr_multiplier": 0.5,
-    "trailing_stop_notes": "Trail um 0.5x ATR nach Erreichen von 1x ATR Profit",
-    "max_position_risk_pct": 1.0,
-    "max_position_notes": "Max 1% Kontorisiko pro Trade",
-    "max_daily_loss_pct": 3.0,
-    "max_daily_loss_notes": "Max 3% täglicher Verlust (Stop Trading)"
-  },
-  "indicator_weights": {
-    "description": "Gewichtung der Indikatoren für kombinierte Signale",
-    "adx_trend_strength": 0.4,
-    "adx_notes": "40% Gewichtung - Primärer Trend-Filter",
-    "rsi_momentum": 0.35,
-    "rsi_notes": "35% Gewichtung - Momentum-Bestätigung und Erschöpfung",
-    "atr_volatility": 0.25,
-    "atr_notes": "25% Gewichtung - Volatilitäts-Anpassung für SL/TP"
-  },
-  "time_filters": {
-    "description": "Zeit-Filter für optimale Trading-Sessions (UTC)",
-    "active_sessions": [
-      {
-        "name": "Asian Session (Tokyo/Sydney)",
-        "start": "00:00",
-        "end": "08:00",
-        "volatility": "low-medium",
-        "recommended": false,
-        "notes": "Niedrigere Volatilität, mehr Ranging"
-      },
-      {
-        "name": "London Session",
-        "start": "08:00",
-        "end": "16:00",
-        "volatility": "high",
-        "recommended": true,
-        "notes": "Hohe Volatilität, gute Trends"
-      },
-      {
-        "name": "New York Session",
-        "start": "13:00",
-        "end": "21:00",
-        "volatility": "very-high",
-        "recommended": true,
-        "notes": "Höchste Volatilität, besonders 13:00-17:00 UTC (Overlap)"
-      },
-      {
-        "name": "Late US / Early Asia",
-        "start": "21:00",
-        "end": "00:00",
-        "volatility": "low",
-        "recommended": false,
-        "notes": "Niedrige Volatilität, Konsolidierung"
-      }
-    ],
-    "avoid_times": [
-      "Sonntag 00:00-06:00 UTC (Low Liquidity)",
-      "Major News Events (FOMC, CPI, NFP)",
-      "Bitcoin Options/Futures Expiry (letzter Freitag des Monats)"
-    ]
   }
 }

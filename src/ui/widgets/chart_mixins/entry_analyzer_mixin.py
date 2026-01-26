@@ -287,90 +287,104 @@ class EntryAnalyzerMixin:
         Args:
             regimes: List of regime period dicts with 'regime' key
         """
-        if not self._regime_filter_menu:
-            return
-
-        # Extract unique regime IDs from data
-        detected_regime_ids = set()
-        for regime_data in regimes:
-            regime_id = regime_data.get('regime', 'UNKNOWN')
-            detected_regime_ids.add(regime_id)
-
-        # Get currently selected items to preserve selection
-        currently_selected = self.get_selected_items()
+        print(f"[ENTRY_ANALYZER] _update_regime_filter_from_data called with {len(regimes)} items", flush=True)
         
-        # Check if "All" was checked (if all individual items were checked or the list was empty/default)
-        all_was_checked = True
-        # Since get_selected_items only returns IDs, we can infer "All" state or check action directly if needed.
-        # Simple heuristic: preserve individual checks.
-
-        # Clear and repopulate
-        self._regime_filter_menu.clear()
-
-        # Add "All" action
-        all_action = QAction(f"Alle ({len(detected_regime_ids)})", self._regime_filter_menu)
-        all_action.setCheckable(True)
-        all_action.setData("__header__")
-        all_action.triggered.connect(self._on_regime_filter_action_triggered)
-        self._regime_filter_menu.addAction(all_action)
-
-        self._regime_filter_menu.addSeparator()
-
-        # Regime display mapping
-        regime_display = {
-            "STRONG_TF": "🟣 STRONG_TF",
-            "STRONG_BULL": "🟢 STRONG_BULL",
-            "STRONG_BEAR": "🔴 STRONG_BEAR",
-            "TF": "💜 TF",
-            "BULL_EXHAUSTION": "⚠️ BULL_EXHAUST",
-            "BEAR_EXHAUSTION": "⚠️ BEAR_EXHAUST",
-            "BULL": "🟢 BULL",
-            "BEAR": "🔴 BEAR",
-            "SIDEWAYS": "🟡 SIDEWAYS",
-            "UNKNOWN": "❓ UNKNOWN",
-        }
-
-        all_checked_count = 0
-
-        # Add detected regimes
-        for regime_id in sorted(detected_regime_ids):
-            display_name = regime_display.get(regime_id, f"📊 {regime_id}")
-            action = QAction(display_name, self._regime_filter_menu)
-            action.setCheckable(True)
-            action.setData(regime_id)
+        # Ensure menu exists and is attached
+        if not self._regime_filter_menu:
+            if self._regime_filter_button:
+                self._regime_filter_menu = self._regime_filter_button.menu()
             
-            # Preserve selection: Default to checked if new, or keep previous state
-            # If the list was empty/default before, we assume checked.
-            # Using logic: if list was not empty, check if it was in it.
-            # If currently_selected is empty, it might mean nothing selected OR default state not tracked well.
-            # Let's default to True.
-            is_checked = True
-            if currently_selected:
-                 # If we had selections, use them. If it's a new ID not in previous, default to True?
-                 # Or if previous selection existed, only select if it was there.
-                 # Better: if we had data before, respect it.
-                 pass # For now always True on update to show what's found, unless we want strict persistence.
-                 # To strictly preserve:
-                 # is_checked = regime_id in currently_selected
-            
-            # Actually, _update_regime_filter_from_data is called on new analysis.
-            # We usually want to show everything newly found.
-            # But if user unchecked something, they might want it to stay unchecked?
-            # Reverting to "Checked by default" for now as per previous behavior implementation logic
-            # or actually, previous implementation: is_checked = regime_id in currently_selected if currently_selected else True
-            is_checked = regime_id in currently_selected if currently_selected else True
-            
-            action.setChecked(is_checked)
-            if is_checked:
-                all_checked_count += 1
+            if not self._regime_filter_menu:
+                print("[ENTRY_ANALYZER] _regime_filter_menu is None and could not be recovered!", flush=True)
+                return
+
+        try:
+            # Extract unique regime IDs from data
+            detected_regime_ids = set()
+            for i, regime_data in enumerate(regimes):
+                try:
+                    # Handle both dict and object (just in case)
+                    if isinstance(regime_data, dict):
+                        regime_id = regime_data.get('regime', 'UNKNOWN')
+                    else:
+                        regime_id = getattr(regime_data, 'regime', 'UNKNOWN')
+                        
+                    detected_regime_ids.add(regime_id)
+                except Exception as e:
+                    print(f"[ENTRY_ANALYZER] Error extracting ID from item {i}: {e}", flush=True)
+                    continue
+
+            print(f"[ENTRY_ANALYZER] Detected unique IDs: {detected_regime_ids}", flush=True)
+
+            # Get currently selected items to preserve selection
+            # If menu was empty or invalid, this might return empty list.
+            currently_selected = []
+            try:
+                currently_selected = self.get_selected_items()
+            except Exception:
+                pass # Ignore error getting selection from old menu state
+
+            # Clear and repopulate
+            self._regime_filter_menu.clear()
+
+            # Add "All" action
+            all_action = QAction(f"Alle ({len(detected_regime_ids)})", self._regime_filter_menu)
+            all_action.setCheckable(True)
+            all_action.setData("__header__")
+            all_action.triggered.connect(self._on_regime_filter_action_triggered)
+            self._regime_filter_menu.addAction(all_action)
+
+            self._regime_filter_menu.addSeparator()
+
+            # Regime display mapping
+            regime_display = {
+                "STRONG_TF": "🟣 STRONG_TF",
+                "STRONG_BULL": "🟢 STRONG_BULL",
+                "STRONG_BEAR": "🔴 STRONG_BEAR",
+                "TF": "💜 TF",
+                "BULL_EXHAUSTION": "⚠️ BULL_EXHAUST",
+                "BEAR_EXHAUSTION": "⚠️ BEAR_EXHAUST",
+                "BULL": "🟢 BULL",
+                "BEAR": "🔴 BEAR",
+                "SIDEWAYS": "🟡 SIDEWAYS",
+                "UNKNOWN": "❓ UNKNOWN",
+            }
+
+            all_checked_count = 0
+
+            # Add detected regimes
+            for regime_id in sorted(detected_regime_ids):
+                display_name = regime_display.get(regime_id, f"📊 {regime_id}")
+                action = QAction(display_name, self._regime_filter_menu)
+                action.setCheckable(True)
+                action.setData(regime_id)
                 
-            action.triggered.connect(self._on_regime_filter_action_triggered)
-            self._regime_filter_menu.addAction(action)
+                # Preserve selection logic:
+                # 1. If we had a previous selection (menu was populated), check if this ID was in it.
+                # 2. If menu was empty/default (initial load), default to Checked.
+                # 3. If new ID appears that wasn't in previous selection, default to Checked? 
+                #    Let's default to Checked to show new data.
+                
+                is_checked = True
+                if currently_selected:
+                    is_checked = regime_id in currently_selected
+                
+                action.setChecked(is_checked)
+                if is_checked:
+                    all_checked_count += 1
+                    
+                action.triggered.connect(self._on_regime_filter_action_triggered)
+                self._regime_filter_menu.addAction(action)
 
-        # Update "All" state
-        all_action.setChecked(all_checked_count == len(detected_regime_ids) and len(detected_regime_ids) > 0)
+            # Update "All" state
+            all_checked = (all_checked_count == len(detected_regime_ids)) and (len(detected_regime_ids) > 0)
+            all_action.setChecked(all_checked)
 
-        logger.info(f"Regime filter updated with {len(detected_regime_ids)} detected regimes")
+            logger.info(f"Regime filter updated with {len(detected_regime_ids)} detected regimes")
+            
+        except Exception as e:
+            logger.error(f"Critical error updating regime filter: {e}", exc_info=True)
+            print(f"[ENTRY_ANALYZER] Critical error in _update_regime_filter_from_data: {e}", flush=True)
 
     def _on_regime_filter_action_triggered(self, checked: bool) -> None:
         """Handle menu action trigger."""
@@ -1001,9 +1015,14 @@ class EntryAnalyzerMixin:
 
         # Phase 4: Store regime data for filtering
         self._current_regime_data = regimes.copy() if regimes else []
+        print(f"[ENTRY_ANALYZER] _draw_regime_lines called with {len(regimes)} items", flush=True)
 
         # Update filter dropdown with detected regimes
-        self._update_regime_filter_from_data(regimes)
+        try:
+            self._update_regime_filter_from_data(regimes)
+        except Exception as e:
+            logger.error(f"Failed to update regime filter menu: {e}", exc_info=True)
+            print(f"[ENTRY_ANALYZER] ERROR updating filter menu: {e}", flush=True)
 
         # Apply current filter (if filter exists, use its selection; otherwise show all)
         if self._regime_filter_menu:
@@ -1011,8 +1030,13 @@ class EntryAnalyzerMixin:
             if selected:
                 filtered_regimes = [r for r in regimes if r.get('regime', 'UNKNOWN') in selected]
             else:
-                filtered_regimes = regimes  # Show all if nothing selected
+                # If menu exists but nothing selected, show NOTHING (user unchecked all)
+                # However, _update_regime_filter_from_data sets defaults to Checked.
+                # So if selected is empty here, it means explicit uncheck.
+                print("[ENTRY_ANALYZER] Filter active but selection empty -> Drawing NOTHING", flush=True)
+                filtered_regimes = [] 
         else:
+            print("[ENTRY_ANALYZER] No filter menu -> Drawing ALL", flush=True)
             filtered_regimes = regimes  # No filter widget, show all
 
         # Draw the filtered regimes

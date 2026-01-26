@@ -1,7 +1,6 @@
-"""Entry Analyzer - Indicator Optimization Worker V2 (Indicators only).
+"""Indicator Optimization Worker V2 (Indicators only).
 
-Runs optimization for indicator parameter ranges (Entry/Exit Long/Short) without Regime dependency.
-Deterministic scoring (kein Random) auf Basis von Candle-Statistiken.
+Optimiert Parameter-Ranges je Signaltyp, deterministisch und ohne Regime-Abhängigkeit.
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ class IndicatorOptimizationWorkerV2(QThread):
 
     progress = pyqtSignal(str, int, int, float)  # signal_type, current, total, best_score
     result_ready = pyqtSignal(str, dict)  # signal_type, result
+    best_set_ready = pyqtSignal(str, list)  # signal_type, list of best per indicator
     finished = pyqtSignal(dict)  # all_results per signal type
     error = pyqtSignal(str)
 
@@ -38,7 +38,8 @@ class IndicatorOptimizationWorkerV2(QThread):
             indicators = self.config["indicators"]
             param_ranges = self.config["param_ranges"]
             candles = self.config["candles"]
-            max_trials = int(self.config.get("max_trials", 150))
+            max_trials_raw = int(self.config.get("max_trials", 150))
+            max_trials = max_trials_raw if max_trials_raw > 0 else 0  # 0 = unlimited
 
             if not candles:
                 self.error.emit("No candles provided for optimization")
@@ -51,24 +52,40 @@ class IndicatorOptimizationWorkerV2(QThread):
                 max_trials,
             )
 
+            mode_best = bool(self.config.get("mode_best_per_indicator", False))
+
             all_results = {}
             for signal_type in signal_types:
                 if self._stop_requested:
                     logger.info("Optimization stopped by user")
                     break
 
-                results = self._optimize_signal_type(
+                results, total_possible = self._optimize_signal_type(
                     signal_type=signal_type,
                     indicators=indicators,
                     param_ranges=param_ranges,
                     candles=candles,
                     max_trials=max_trials,
+                    mode_best_per_indicator=mode_best,
+                    return_total=True,
                 )
                 all_results[signal_type] = results
 
                 if results:
                     best = max(results, key=lambda r: r.get("score", 0.0))
                     self.result_ready.emit(signal_type, best)
+
+                # Best-per-indicator Set
+                best_set: dict[str, dict] = {}
+                for res in results:
+                    ind_name = res.get("indicator")
+                    if not ind_name:
+                        continue
+                    prev = best_set.get(ind_name)
+                    if prev is None or res.get("score", 0.0) > prev.get("score", 0.0):
+                        best_set[ind_name] = res
+                if best_set:
+                    self.best_set_ready.emit(signal_type, list(best_set.values()))
 
             self.finished.emit(all_results)
 
@@ -84,8 +101,10 @@ class IndicatorOptimizationWorkerV2(QThread):
         param_ranges: Dict[str, Dict[str, dict]],
         candles: List[Dict],
         max_trials: int,
-    ) -> tuple[List[Dict], int]:
-        """Run optimization and return results plus total attempted."""
+        mode_best_per_indicator: bool = False,
+        return_total: bool = False,
+    ) -> List[Dict] | tuple[List[Dict], int]:
+        """Run optimization and return results (and optionally total attempted)."""
         results = []
         current = 0
 
@@ -99,12 +118,12 @@ class IndicatorOptimizationWorkerV2(QThread):
             combos = self._generate_param_combinations(ranges, max_trials=max_trials)
             combos_per_indicator.append((indicator, combos))
 
-        total_possible = min(
-            sum(len(c) for _, c in combos_per_indicator),
-            max_trials,
-        )
+        total_combos = sum(len(c) for _, c in combos_per_indicator)
+        total_planned = min(total_combos, max_trials) if max_trials else total_combos
+        total_possible = total_planned if total_planned > 0 else total_combos
 
-        for indicator, combos in combos_per_indicator:
+        num_inds = max(1, len(indicators))
+        for idx, (indicator, combos) in enumerate(combos_per_indicator):
             if self._stop_requested:
                 break
             if not combos:
@@ -113,8 +132,23 @@ class IndicatorOptimizationWorkerV2(QThread):
 
             best_score = 0.0
 
+            # Allocation strategy
+            if mode_best_per_indicator:
+                # Fair share budget per indicator; last one bekommt den Rest
+                if max_trials:
+                    remaining = max_trials - current
+                    share = (remaining + (num_inds - idx) - 1) // (num_inds - idx)
+                    max_for_indicator = min(len(combos), share)
+                else:
+                    max_for_indicator = len(combos)
+            else:
+                max_for_indicator = len(combos) if not max_trials else max_trials - current
+                max_for_indicator = max(0, max_for_indicator)
+
             for params in combos:
-                if self._stop_requested or current >= max_trials:
+                if self._stop_requested:
+                    break
+                if max_trials and current >= max_trials:
                     break
 
                 current += 1
@@ -127,14 +161,30 @@ class IndicatorOptimizationWorkerV2(QThread):
                 results.append(result)
                 best_score = max(best_score, result["score"])
 
-                if current % 10 == 0 or current == total_possible or current == max_trials:
+                if (
+                    current % 10 == 0
+                    or current == total_possible
+                    or (max_trials and current == max_trials)
+                ):
                     self.progress.emit(signal_type, current, total_possible, best_score)
 
-            if current >= max_trials:
+                if mode_best_per_indicator and max_for_indicator and (
+                    (current % max_for_indicator == 0) or (max_trials and current >= max_trials)
+                ):
+                    break
+
+            if max_trials and current >= max_trials:
                 break
 
-        logger.info("%s: completed %s tests (total planned %s)", signal_type, len(results), total_possible)
-        return results, total_possible
+        logger.info(
+            "%s: completed %s tests (total planned %s)",
+            signal_type,
+            len(results),
+            total_possible,
+        )
+        if return_total:
+            return results, total_possible
+        return results
 
     # ------------------------------------------------------------------ Helpers
     def _generate_param_combinations(self, ranges: Dict[str, dict], max_trials: int) -> List[Dict]:

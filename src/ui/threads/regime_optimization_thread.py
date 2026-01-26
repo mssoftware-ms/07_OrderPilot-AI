@@ -166,10 +166,15 @@ class RegimeOptimizationThread(QThread):
             optimization_results = optimizer.optimize(callbacks=[on_trial_complete])
 
             # Add all results to RegimeResultsManager
+            # For JSON mode, merge json_params into params for display
             for result in optimization_results:
+                params_dict = result.params.model_dump()
+                # Merge JSON params (e.g., "DIRECTION_CHANDELIER.lookback") for dynamic columns
+                if result.json_params:
+                    params_dict.update(result.json_params)
                 results_manager.add_result(
                     score=result.score,
-                    params=result.params.model_dump(),
+                    params=params_dict,
                     metrics=result.metrics.model_dump(),
                     timestamp=result.timestamp.isoformat()
                 )

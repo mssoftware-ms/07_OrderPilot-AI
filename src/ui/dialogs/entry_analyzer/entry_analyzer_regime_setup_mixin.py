@@ -22,12 +22,12 @@ from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.ui.icons import get_icon
+from src.ui.widgets.collapsible_section import CollapsibleSection, AccordionWidget
 
 if TYPE_CHECKING:
     pass
@@ -65,126 +66,79 @@ class RegimeSetupMixin:
     _regime_config: object | None
 
     def _setup_regime_setup_tab(self, tab: QWidget) -> None:
-        """Setup dynamic Regime Setup tab.
+        """Setup dynamic Regime Setup tab with accordion-style collapsible sections.
 
         Reads optimization_ranges from JSON and generates UI automatically.
         """
         layout = QVBoxLayout(tab)
-
-        # Header
-        header = QLabel("Regime Setup (Dynamic)")
-        header.setStyleSheet("font-size: 14pt; font-weight: bold;")
-        layout.addWidget(header)
-
-        description = QLabel(
-            "Configure optimization ranges for ALL indicators and regime thresholds. "
-            "The UI is dynamically generated from your JSON configuration."
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #888; padding: 5px;")
-        layout.addWidget(description)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
 
         # Initialize state
         self._regime_setup_param_ranges = {}
 
-        # Current Regime Indicators Table (Read-only reference)
-        current_indicators_group = QGroupBox("Current Regime Indicators (from JSON)")
-        current_indicators_layout = QVBoxLayout()
+        # Create accordion container
+        self._regime_setup_accordion = AccordionWidget()
 
+        # Section 1: Current Regime Indicators (collapsed by default)
+        indicators_section = CollapsibleSection("Current Regime Indicators", expanded=False, icon="analytics")
         self._regime_setup_indicators_table = QTableWidget()
         self._regime_setup_indicators_table.setColumnCount(3)
         self._regime_setup_indicators_table.setHorizontalHeaderLabels([
             "Indicator ID", "Type", "Current Parameters"
         ])
-        header = self._regime_setup_indicators_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        ind_header = self._regime_setup_indicators_table.horizontalHeader()
+        ind_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        ind_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        ind_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self._regime_setup_indicators_table.setAlternatingRowColors(True)
         self._regime_setup_indicators_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._regime_setup_indicators_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._regime_setup_indicators_table.setMaximumHeight(150)
+        self._regime_setup_indicators_table.setMinimumHeight(120)
+        indicators_section.set_content(self._regime_setup_indicators_table)
+        self._regime_setup_accordion.add_section(indicators_section)
 
-        current_indicators_layout.addWidget(self._regime_setup_indicators_table)
-        current_indicators_group.setLayout(current_indicators_layout)
-        layout.addWidget(current_indicators_group)
-
-        # Indicator Parameters Optimization Ranges (Dynamic!)
-        params_group = QGroupBox("Indicator Parameter Optimization Ranges")
-        params_layout = QVBoxLayout()
-
-        params_info = QLabel("Set Min/Max ranges for each indicator parameter. UI is generated from JSON.")
-        params_info.setStyleSheet("color: #888; font-style: italic;")
-        params_layout.addWidget(params_info)
-
+        # Section 2: Indicator Parameter Optimization Ranges (expanded by default)
+        params_section = CollapsibleSection("Indicator Parameter Ranges", expanded=True, icon="tune")
         self._regime_setup_params_table = QTableWidget()
-        # Wide table format (Variante A): 52 columns for up to 10 parameters per indicator
-        # Structure: Indicator (1) + Type (1) + [Name, Value, Min, Max, Step] × 10 (50) = 52 columns
         self._regime_setup_params_table.setColumnCount(52)
 
-        # Generate column headers dynamically
         headers = ["Indicator", "Type"]
-        for i in range(1, 11):  # 10 parameter slots
-            headers.extend([
-                f"Param{i} Name",
-                f"Param{i} Value",
-                f"Param{i} Min",
-                f"Param{i} Max",
-                f"Param{i} Step"
-            ])
+        for i in range(1, 11):
+            headers.extend([f"P{i} Name", f"P{i} Val", f"P{i} Min", f"P{i} Max", f"P{i} Step"])
         self._regime_setup_params_table.setHorizontalHeaderLabels(headers)
 
-        # Configure column resize modes
-        header = self._regime_setup_params_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Indicator
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Type
-        # All parameter columns: interactive (user can resize)
+        params_header = self._regime_setup_params_table.horizontalHeader()
+        params_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        params_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         for col in range(2, 52):
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-
+            params_header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         self._regime_setup_params_table.setAlternatingRowColors(True)
+        self._regime_setup_params_table.setMinimumHeight(150)
+        params_section.set_content(self._regime_setup_params_table)
+        self._regime_setup_accordion.add_section(params_section)
 
-        params_layout.addWidget(self._regime_setup_params_table)
-        params_group.setLayout(params_layout)
-        layout.addWidget(params_group, stretch=2)
-
-        # Regime Threshold Optimization Ranges (Dynamic!)
-        thresholds_group = QGroupBox("Regime Threshold Optimization Ranges")
-        thresholds_layout = QVBoxLayout()
-
-        thresholds_info = QLabel("Set Min/Max ranges for regime detection thresholds. One row per regime, up to 10 thresholds.")
-        thresholds_info.setStyleSheet("color: #888; font-style: italic;")
-        thresholds_layout.addWidget(thresholds_info)
-
+        # Section 3: Regime Threshold Optimization Ranges (collapsed by default)
+        thresholds_section = CollapsibleSection("Regime Threshold Ranges", expanded=False, icon="settings")
         self._regime_setup_thresholds_table = QTableWidget()
-        # Wide table format: Regime (1) + Priority (1) + [Name, Value, Min, Max, Step] × 10 (50) = 52 columns
         self._regime_setup_thresholds_table.setColumnCount(52)
 
-        # Generate column headers dynamically
         thresh_headers = ["Regime", "Priority"]
-        for i in range(1, 11):  # 10 threshold slots
-            thresh_headers.extend([
-                f"Thresh{i} Name",
-                f"Thresh{i} Value",
-                f"Thresh{i} Min",
-                f"Thresh{i} Max",
-                f"Thresh{i} Step"
-            ])
+        for i in range(1, 11):
+            thresh_headers.extend([f"T{i} Name", f"T{i} Val", f"T{i} Min", f"T{i} Max", f"T{i} Step"])
         self._regime_setup_thresholds_table.setHorizontalHeaderLabels(thresh_headers)
 
-        # Configure column resize modes
-        header = self._regime_setup_thresholds_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Regime
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Priority
-        # All threshold columns: interactive (user can resize)
+        thresh_header = self._regime_setup_thresholds_table.horizontalHeader()
+        thresh_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        thresh_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         for col in range(2, 52):
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-
+            thresh_header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         self._regime_setup_thresholds_table.setAlternatingRowColors(True)
+        self._regime_setup_thresholds_table.setMinimumHeight(150)
+        thresholds_section.set_content(self._regime_setup_thresholds_table)
+        self._regime_setup_accordion.add_section(thresholds_section)
 
-        thresholds_layout.addWidget(self._regime_setup_thresholds_table)
-        thresholds_group.setLayout(thresholds_layout)
-        layout.addWidget(thresholds_group, stretch=1)
+        layout.addWidget(self._regime_setup_accordion, stretch=1)
 
         # Action Buttons
         button_layout = QHBoxLayout()

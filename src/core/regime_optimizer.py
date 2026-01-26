@@ -319,6 +319,8 @@ class OptimizationResult(BaseModel):
     params: RegimeParams
     metrics: RegimeMetrics
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    # JSON params for JSON mode (e.g., "DIRECTION_CHANDELIER.lookback": 22)
+    json_params: dict[str, float | int] = Field(default_factory=dict)
 
     model_config = ConfigDict(frozen=False)
 
@@ -326,12 +328,14 @@ class OptimizationResult(BaseModel):
 class RegimePeriod(BaseModel):
     """Regime period for bar index tracking."""
 
-    regime: RegimeType
+    regime: str  # Regime ID (e.g., "BULL", "BULL_ENTRY", "SIDEWAYS")
     start_idx: int = Field(ge=0)
     end_idx: int = Field(ge=0)
     start_timestamp: datetime | None = None
     end_timestamp: datetime | None = None
     bars: int = Field(ge=1)
+    # Base regime type for color coding (inferred from regime ID)
+    base_type: str | None = None  # "BULL", "BEAR", or "SIDEWAYS"
 
     @field_validator("bars")
     @classmethod
@@ -1287,21 +1291,24 @@ class RegimeOptimizer:
             ind_name = self._indicator_type_map[base_upper]
             return f"{ind_name}{suffix}" if suffix else ind_name
 
-        # Check common aliases
-        aliases = {
-            'ADX': ['ADX', 'ADX_LEAF_WEST'],
-            'RSI': ['RSI'],
-            'ATR': ['ATR'],
-            'CHANDELIER': ['CHANDELIER', 'CKSP', 'CHANDELIER_STOP'],
-            'BB': ['BB', 'BOLLINGER'],
-            'SMA': ['SMA'],
-            'EMA': ['EMA'],
-        }
+        # Check common aliases - find any alias that exists in the type map
+        alias_groups = [
+            ['ADX', 'ADX_LEAF_WEST'],  # ADX-family indicators
+            ['RSI'],
+            ['ATR'],
+            ['CHANDELIER', 'CKSP', 'CHANDELIER_STOP'],  # Chandelier-family indicators
+            ['BB', 'BOLLINGER'],
+            ['SMA'],
+            ['EMA'],
+        ]
 
-        for canonical, alias_list in aliases.items():
-            if base_upper in alias_list and canonical in self._indicator_type_map:
-                ind_name = self._indicator_type_map[canonical]
-                return f"{ind_name}{suffix}" if suffix else ind_name
+        for alias_list in alias_groups:
+            if base_upper in alias_list:
+                # Find any alias from this group that exists in the type map
+                for alias in alias_list:
+                    if alias in self._indicator_type_map:
+                        ind_name = self._indicator_type_map[alias]
+                        return f"{ind_name}{suffix}" if suffix else ind_name
 
         # Fallback: return base name with suffix
         return f"{base_upper}{suffix}" if suffix else base_upper
@@ -1627,12 +1634,22 @@ class RegimeOptimizer:
         Returns:
             List of regime periods
         """
+        def infer_base_type(regime_id: str) -> str:
+            """Infer base regime type from regime ID for color coding."""
+            regime_upper = regime_id.upper()
+            if 'BULL' in regime_upper:
+                return 'BULL'
+            elif 'BEAR' in regime_upper:
+                return 'BEAR'
+            else:
+                return 'SIDEWAYS'
+
         periods = []
 
         if len(regimes) == 0:
             return periods
 
-        current_regime = regimes.iloc[0]
+        current_regime = str(regimes.iloc[0])
         start_idx = 0
 
         for i in range(1, len(regimes)):
@@ -1649,7 +1666,8 @@ class RegimeOptimizer:
 
                 periods.append(
                     RegimePeriod(
-                        regime=RegimeType(current_regime),
+                        regime=current_regime,
+                        base_type=infer_base_type(current_regime),
                         start_idx=start_idx,
                         end_idx=end_idx,
                         start_timestamp=start_ts,
@@ -1659,7 +1677,7 @@ class RegimeOptimizer:
                 )
 
                 # Start new regime
-                current_regime = regimes.iloc[i]
+                current_regime = str(regimes.iloc[i])
                 start_idx = i
 
         # Add final regime
@@ -1672,7 +1690,8 @@ class RegimeOptimizer:
 
         periods.append(
             RegimePeriod(
-                regime=RegimeType(current_regime),
+                regime=current_regime,
+                base_type=infer_base_type(current_regime),
                 start_idx=start_idx,
                 end_idx=end_idx,
                 start_timestamp=start_ts,
@@ -1973,6 +1992,13 @@ class RegimeOptimizer:
             })
             metrics = RegimeMetrics(**metrics_dict)
 
+            # Extract JSON params from trial (keys with '.' like "DIRECTION_CHANDELIER.lookback")
+            json_params = {}
+            if self.json_config is not None:
+                for key, value in trial.params.items():
+                    if '.' in key:  # JSON param format: "INDICATOR.param" or "REGIME.threshold"
+                        json_params[key] = value
+
             results.append(
                 OptimizationResult(
                     rank=rank,
@@ -1980,6 +2006,7 @@ class RegimeOptimizer:
                     params=params,
                     metrics=metrics,
                     timestamp=trial.datetime_complete or datetime.utcnow(),
+                    json_params=json_params,
                 )
             )
 
@@ -2015,7 +2042,7 @@ class RegimeOptimizer:
                 {
                     "rank": r.rank,
                     "score": r.score,
-                    "params": r.params.model_dump(),
+                    "params": {**r.params.model_dump(), **r.json_params},  # Merge JSON params
                     "metrics": r.metrics.model_dump(),
                     "timestamp": r.timestamp.isoformat(),
                 }

@@ -2,33 +2,12 @@
   "schema_version": "1.0.0",
   "indicators": [
     {
-      "id": "sma20",
-      "type": "SMA",
-      "params": {
-        "period": 20
-      }
-    },
-    {
-      "id": "adx14",
-      "type": "ADX",
-      "params": {
-        "period": 14
-      }
-    },
-    {
       "id": "macd12_26_9",
       "type": "MACD",
       "params": {
         "fast": 12,
         "slow": 26,
         "signal": 9
-      }
-    },
-    {
-      "id": "rsi14",
-      "type": "RSI",
-      "params": {
-        "period": 14
       }
     }
   ],
@@ -43,7 +22,7 @@
               "indicator_id": "sma20",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
               "value": 1.0
             }
@@ -63,7 +42,7 @@
               "indicator_id": "macd12_26_9",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
               "value": 1.0
             }
@@ -96,7 +75,7 @@
               "indicator_id": "sma20",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
               "value": 1.0
             }
@@ -116,7 +95,7 @@
               "indicator_id": "macd12_26_9",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
               "value": 1.0
             }
@@ -153,13 +132,13 @@
             },
             "op": "lt",
             "right": {
-              "value": 20
+              "value": 20.0
             }
           }
         ]
       },
       "risk": {
-        "position_size": 0.02,
+        "position_size": 0.025,
         "stop_loss": 0.025,
         "take_profit": 0.06
       }

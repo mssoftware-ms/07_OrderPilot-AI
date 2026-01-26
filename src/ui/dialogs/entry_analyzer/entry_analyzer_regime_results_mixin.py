@@ -82,14 +82,6 @@ class RegimeResultsMixin:
         header_layout.addWidget(help_btn)
         layout.addLayout(header_layout)
 
-        description = QLabel(
-            "View all optimization results sorted by score. "
-            "Select a result, export it, and apply to continue to Indicator Optimization (Stage 2)."
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #888; padding: 5px;")
-        layout.addWidget(description)
-
         # Selection Info
         self._regime_results_selected_label = QLabel("No result selected. Click a row to select.")
         self._regime_results_selected_label.setStyleSheet("font-weight: bold; padding: 5px;")
@@ -170,11 +162,9 @@ class RegimeResultsMixin:
         params_dict = first_result.get("params", {})
         param_names = sorted(params_dict.keys())  # Sort for consistent order
 
-        # Score component columns (5-component RegimeScore)
-        score_components = ["Sep", "Coh", "Fid", "Bnd", "Cov"]
-
-        # Build column headers: Rank, Total, Sep, Coh, Fid, Bnd, Cov, Selected, [Params], Regimes, Avg Duration, Switches
-        headers = ["Rank", "Total"] + score_components + ["Selected"] + param_names + ["Regimes", "Avg Duration", "Switches"]
+        # Build column headers: Rank, Total, Selected, [Params], Regimes, Avg Duration, Switches
+        # Note: Score components (Sep, Coh, Fid, Bnd, Cov) removed - legacy scoring system
+        headers = ["Rank", "Total", "Selected"] + param_names + ["Regimes", "Avg Duration", "Switches"]
 
         # Update table structure
         self._regime_results_table.setColumnCount(len(headers))
@@ -226,18 +216,6 @@ class RegimeResultsMixin:
                 score_item.setForeground(Qt.GlobalColor.darkRed)
             self._regime_results_table.setItem(row, col, score_item)
             col += 1
-
-            # Score Components (5 columns): Sep, Coh, Fid, Bnd, Cov
-            component_keys = ["separability", "coherence", "fidelity", "boundary", "coverage_score"]
-            for comp_key in component_keys:
-                comp_value = metrics.get(comp_key, 0.0) if isinstance(metrics, dict) else 0.0
-                # Convert 0-1 to 0-100 for display
-                comp_pct = comp_value * 100
-                comp_item = QTableWidgetItem(f"{comp_pct:.0f}")
-                comp_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                comp_item.setToolTip(f"{comp_key}: {comp_value:.3f}")
-                self._regime_results_table.setItem(row, col, comp_item)
-                col += 1
 
             # Selected (checkbox-like indicator)
             selected_item = QTableWidgetItem("")
