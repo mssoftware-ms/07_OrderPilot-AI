@@ -1,9 +1,29 @@
 # 🚀 IMPLEMENTIERUNGSPLAN - Fehlende CEL Editor Features
 
 **Datum:** 2026-01-21
+**Aktualisiert:** 2026-01-27
 **CEL Editor Status:** ✅ Läuft (4,125 LOC, 5.3% der Codebasis)
 **Fehlende Features:** 20 (40% der Planung)
 **Geschätzte Gesamtzeit:** 55-80 Stunden (7-10 Arbeitstage)
+
+---
+
+## ⚠️ WICHTIG: Vollständiger Umsetzungsplan verfügbar
+
+**Dieser Plan fokussiert sich nur auf CEL Editor UI-Features.**
+
+Für die **100% Fertigstellung des gesamten CEL Systems** (inkl. CEL Engine Funktionen, Dokumentation, Tests) siehe:
+📄 **`3_Umsetzungsplan_CEL_System_100_Prozent.md`**
+
+Der vollständige Plan umfasst:
+- **Phase 0:** Dokumentations-Audit (8-10h)
+- **Phase 1:** CEL Engine - 20 fehlende Core-Funktionen (20-25h)
+- **Phase 2:** CEL Editor - UI Features (18-22h) ← *Dieser Plan*
+- **Phase 3:** Advanced Features (12-15h)
+- **Phase 4:** Testing & Validation (10-12h)
+- **Phase 5:** Dokumentation & Finalisierung (6-8h)
+
+**Gesamt:** 74-92 Stunden (9-12 Arbeitstage)
 
 ---
 
