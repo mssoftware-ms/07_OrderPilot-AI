@@ -461,6 +461,7 @@
                 <a href="#bot-quickstart" class="nav-link active">⚡ Quickstart</a>
                 <a href="#bot-config" class="nav-link">⚙️ Konfiguration</a>
                 <a href="#bot-json-strategies" class="nav-link">📄 JSON Strategien</a>
+                <a href="#bot-json-entry" class="nav-link">🚀 JSON Entry System</a>
                 <a href="#bot-cel-rules" class="nav-link">🧠 CEL Rules Engine</a>
                 <a href="#bot-regime-detection" class="nav-link">🎯 Regime Erkennung</a>
                 <a href="#bot-execution" class="nav-link">▶️ Bot Ausführung</a>
@@ -741,6 +742,282 @@
                         <h4>Deployen</h4>
                         <p>Speichere in <code>03_JSON/Trading_Bot/</code> und verwende im Bot</p>
                     </div>
+                </div>
+            </section>
+
+            <!-- Bot JSON Entry System -->
+            <section id="bot-json-entry" class="section">
+                <h2>🚀 JSON Entry System</h2>
+
+                <div class="alert alert-info">
+                    <strong>💡 Neu:</strong> Steuere Entry-Logik via CEL Expressions aus JSON-Dateien – ohne Code-Änderungen!
+                </div>
+
+                <h3>Was ist das JSON Entry System?</h3>
+                <p>Das JSON Entry System ermöglicht es, die Entry-Entscheidungen des Trading Bots via <strong>CEL (Common Expression Language)</strong> aus JSON-Dateien zu steuern. Du kannst komplexe Entry-Bedingungen definieren, ohne Python-Code zu ändern.</p>
+
+                <div class="card">
+                    <div class="card-title">Hauptmerkmale</div>
+                    <ul>
+                        <li>✅ <strong>CEL-basierte Entry:</strong> Entry-Entscheidungen via CEL Expression aus JSON</li>
+                        <li>✅ <strong>Zwei JSON-Quellen:</strong> Regime JSON (erforderlich) + optionale Indicator JSON</li>
+                        <li>✅ <strong>Parallel zum Standard:</strong> Neuer Button "Start Bot (JSON Entry)" neben "Start Bot"</li>
+                        <li>✅ <strong>SL/TP aus UI:</strong> Stop Loss / Take Profit bleiben in UI-Eingabefeldern</li>
+                        <li>✅ <strong>70+ CEL Functions:</strong> Umfangreiche Trading-Funktionsbibliothek</li>
+                    </ul>
+                </div>
+
+                <h3>🚀 Quick Start</h3>
+                <div class="step-container">
+                    <div class="step">
+                        <h4>1. Regime JSON erstellen</h4>
+                        <p>Erstelle eine JSON-Datei mit <code>entry_expression</code> Feld:</p>
+                        <pre><code>{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "RSI ADX Scalping",
+    "description": "RSI oversold + strong trend"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14
+    }
+  },
+  "regimes": {
+    "EXTREME_BULL": {
+      "rsi_min": 60,
+      "adx_min": 30
+    }
+  },
+  "entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0"
+}</code></pre>
+                        <p><strong>Speicherort:</strong> <code>03_JSON/Entry_Analyzer/Regime/</code></p>
+                    </div>
+
+                    <div class="step">
+                        <h4>2. Bot starten</h4>
+                        <ol>
+                            <li>Öffne Trading Bot Tab</li>
+                            <li>Klicke <strong>"▶ Start Bot (JSON Entry)"</strong></li>
+                            <li>Wähle Regime JSON aus</li>
+                            <li>Optional: Wähle Indicator JSON aus</li>
+                            <li>Prüfe Entry Expression im Log</li>
+                            <li>SL/TP/Trailing Stop in UI-Feldern einstellen</li>
+                            <li>Bot läuft!</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <h3>📊 CEL Entry Expression</h3>
+                <p>Die <code>entry_expression</code> ist eine CEL Expression, die bestimmt, wann ein Entry-Signal generiert wird.</p>
+
+                <h4>Verfügbare Variablen</h4>
+                <div class="card">
+                    <div class="card-title">Price Data</div>
+                    <code>close, open, high, low, volume</code>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Momentum Indicators</div>
+                    <code>rsi, macd, macd_signal, macd_hist, stoch_k, stoch_d, cci, mfi</code>
+                    <br><br>
+                    <strong>Nested Access:</strong> <code>rsi14.value, adx14.value, macd_obj.histogram</code>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Trend Indicators</div>
+                    <code>sma_20, sma_50, ema_12, ema_26, adx</code>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Volatility & Volume</div>
+                    <code>atr, bb_pct, bb_width, bb_upper, bb_middle, bb_lower, chop, volume_ratio</code>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Regime</div>
+                    <code>regime</code> // "BULL", "BEAR", "NEUTRAL", etc.<br>
+                    <code>regime_obj.confidence, regime_obj.strength, regime_obj.volatility</code>
+                </div>
+
+                <h4>Expression Beispiele</h4>
+                <div class="example">
+                    <h5>Simple RSI Oversold</h5>
+                    <pre><code>"entry_expression": "rsi < 30"</code></pre>
+                    <p>Entry Signal wenn RSI unter 30 (oversold)</p>
+                </div>
+
+                <div class="example">
+                    <h5>RSI + ADX Strong Trend</h5>
+                    <pre><code>"entry_expression": "rsi < 35 && adx > 25"</code></pre>
+                    <p>Entry nur wenn RSI oversold UND starker Trend</p>
+                </div>
+
+                <div class="example">
+                    <h5>Multi-Indicator mit Regime Filter</h5>
+                    <pre><code>"entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0 && (regime == 'EXTREME_BULL' || regime == 'BULL')"</code></pre>
+                    <p>Entry nur wenn ALLE Bedingungen erfüllt UND in bullischem Regime</p>
+                </div>
+
+                <div class="example">
+                    <h5>Bollinger Band Reversal</h5>
+                    <pre><code>"entry_expression": "bb_pct < 0.2 && rsi < 30 && adx > 20"</code></pre>
+                    <p>Entry bei unterer Bollinger Band + oversold + trend</p>
+                </div>
+
+                <h3>⚙️ Standard vs. JSON Entry</h3>
+                <table style="width: 100%; margin-top: 1rem;">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>Standard Entry</th>
+                            <th>JSON Entry</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Button</strong></td>
+                            <td>"Start Bot"</td>
+                            <td>"Start Bot (JSON Entry)"</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Entry Logic</strong></td>
+                            <td>EntryScoreEngine<br>(7 gewichtete Komponenten)</td>
+                            <td>JsonEntryScorer<br>(CEL Expression)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Configuration</strong></td>
+                            <td>Hardcoded im Code</td>
+                            <td>JSON-Dateien (änderbar)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SL/TP/Trailing</strong></td>
+                            <td>UI-Felder</td>
+                            <td>UI-Felder (identisch)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Flexibilität</strong></td>
+                            <td>Mittel</td>
+                            <td>Hoch (CEL anpassbar)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>🎯 Best Practices</h3>
+                <div class="card">
+                    <div class="card-title">1. Start Simple</div>
+                    <p>Beginne mit einfachen Expressions:</p>
+                    <pre><code>rsi < 30</code></pre>
+                    <p>Dann erweitern:</p>
+                    <pre><code>rsi < 30 && adx > 20</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">2. Use Regime Filters</div>
+                    <p>Vermeide Trades in ungünstigen Regimes:</p>
+                    <pre><code>(regime == 'EXTREME_BULL' || regime == 'BULL') && rsi < 35</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">3. Combine Multiple Indicators</div>
+                    <p>Nutze Confluence für bessere Signals:</p>
+                    <pre><code>rsi < 35 && macd_hist > 0 && bb_pct < 0.3 && adx > 25</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">4. Test Incrementally</div>
+                    <p>Teste jede neue Bedingung einzeln:</p>
+                    <ol>
+                        <li><code>rsi < 35</code> → OK?</li>
+                        <li><code>rsi < 35 && adx > 25</code> → OK?</li>
+                        <li><code>rsi < 35 && adx > 25 && macd_hist > 0</code> → OK?</li>
+                    </ol>
+                </div>
+
+                <h3>🔍 Debugging & Log-Meldungen</h3>
+                <div class="example">
+                    <h5>Beim Start</h5>
+                    <pre><code>✅ Regime JSON: 260128_example_json_entry.json
+✅ Indicator JSON: my_indicators.json
+📝 Entry Expression: rsi < 35 && adx > 25 && macd_hist > 0...
+✅ JSON Entry Scorer bereit
+   Compiled Expression: True</code></pre>
+                </div>
+
+                <div class="example">
+                    <h5>Bei Entry Signal</h5>
+                    <pre><code>JSON Entry [long]: True (score=1.00, reasons=['JSON_CEL_ENTRY', 'RSI_OVERSOLD', 'STRONG_TREND'])</code></pre>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Reason Codes</div>
+                    <p>Der JsonEntryScorer generiert automatisch Reason Codes:</p>
+                    <ul>
+                        <li><code>JSON_CEL_ENTRY</code> - Base reason (immer enthalten)</li>
+                        <li><code>RSI_OVERSOLD</code> - RSI < 30</li>
+                        <li><code>RSI_OVERBOUGHT</code> - RSI > 70</li>
+                        <li><code>MACD_BULLISH</code> - MACD histogram > 0</li>
+                        <li><code>MACD_BEARISH</code> - MACD histogram < 0</li>
+                        <li><code>STRONG_TREND</code> - ADX > 25</li>
+                        <li><code>WEAK_TREND</code> - ADX < 20</li>
+                        <li><code>TREND_REGIME</code> - Regime enthält "TREND"</li>
+                        <li><code>RANGE_REGIME</code> - Regime enthält "RANGE"</li>
+                        <li><code>BB_LOWER_BAND</code> - BB % < 0.2</li>
+                        <li><code>BB_UPPER_BAND</code> - BB % > 0.8</li>
+                        <li><code>PRICE_ABOVE_SMA20</code> - Close > SMA20</li>
+                        <li><code>PRICE_BELOW_SMA20</code> - Close < SMA20</li>
+                    </ul>
+                </div>
+
+                <h3>🚨 Troubleshooting</h3>
+                <div class="card">
+                    <div class="card-title">Problem: "CEL Expression compilation failed"</div>
+                    <p><strong>Ursache:</strong> Ungültige CEL Syntax in <code>entry_expression</code></p>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Prüfe Expression auf Syntax-Fehler</li>
+                        <li>Validiere Variablennamen (z.B. <code>rsi</code> statt <code>RSI</code>)</li>
+                        <li>Teste Expression einzeln</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Problem: "No Entry Signal" trotz erfüllter Bedingungen</div>
+                    <p><strong>Ursache:</strong> Context-Werte stimmen nicht mit Expression überein</p>
+                    <p><strong>Lösung:</strong></p>
+                    <ol>
+                        <li>Aktiviere Debug-Logging</li>
+                        <li>Prüfe Context-Werte im Log</li>
+                        <li>Teste mit einfacherer Expression (z.B. <code>true</code>)</li>
+                    </ol>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Problem: Warnings über ungenutzte Indicators</div>
+                    <p><strong>Ursache:</strong> Indicators definiert, aber nicht in Expression verwendet</p>
+                    <p><strong>Lösung:</strong></p>
+                    <ul>
+                        <li>Entferne ungenutzte Indicators aus JSON</li>
+                        <li>Oder ignoriere Warning (kein Fehler, nur Hinweis)</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Vollständige Dokumentation</h3>
+                <p>Für detaillierte Informationen siehe:</p>
+                <ul>
+                    <li><strong>User Guide:</strong> <code>docs/260128_JSON_Entry_System_README.md</code></li>
+                    <li><strong>Integration Tests:</strong> <code>docs/260128_JSON_Entry_Integration_Tests.md</code></li>
+                    <li><strong>Beispiel JSON:</strong> <code>03_JSON/Entry_Analyzer/Regime/260128_example_json_entry.json</code></li>
+                    <li><strong>CEL Functions:</strong> <code>04_Knowledgbase/CEL_Befehle_Liste_v2.md</code> (70+ Funktionen)</li>
+                </ul>
+
+                <div class="alert alert-info">
+                    <strong>💡 Tipp:</strong> Erstelle verschiedene JSON-Dateien für verschiedene Strategien (Scalping, Swing Trading, Breakout) und wechsle einfach zwischen ihnen!
                 </div>
             </section>
 

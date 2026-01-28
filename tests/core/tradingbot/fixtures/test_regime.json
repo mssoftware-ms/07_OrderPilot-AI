@@ -1,0 +1,40 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "Test RSI MACD Strategy",
+    "author": "Unit Test",
+    "created": "2026-01-28",
+    "description": "Test regime for unit tests"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14,
+      "strong_trend": 25
+    }
+  },
+  "regimes": {
+    "EXTREME_BULL": {
+      "rsi_min": 60,
+      "adx_min": 30,
+      "macd_histogram": "positive"
+    },
+    "TREND_UP": {
+      "rsi_min": 50,
+      "adx_min": 20,
+      "macd_histogram": "positive"
+    },
+    "NEUTRAL": {
+      "rsi_min": 40,
+      "rsi_max": 60,
+      "adx_max": 20
+    }
+  },
+  "entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0"
+}

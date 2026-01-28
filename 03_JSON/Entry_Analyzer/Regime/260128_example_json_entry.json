@@ -1,0 +1,88 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "RSI ADX MACD Scalping Strategy",
+    "author": "OrderPilot-AI Team",
+    "created": "2026-01-28",
+    "updated": "2026-01-28",
+    "description": "JSON Entry System Example - RSI Oversold + Strong Trend + MACD Bullish",
+    "tags": ["json-entry", "scalping", "rsi", "adx", "macd"],
+    "trading_style": "Scalping",
+    "timeframe": "5m",
+    "asset": "BTCUSDT"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30,
+      "description": "14-period RSI for momentum"
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14,
+      "strong_trend": 25,
+      "weak_trend": 20,
+      "description": "ADX for trend strength"
+    },
+    "macd": {
+      "type": "MACD",
+      "fast": 12,
+      "slow": 26,
+      "signal": 9,
+      "description": "MACD for trend momentum"
+    },
+    "bb": {
+      "type": "BOLLINGER_BANDS",
+      "period": 20,
+      "std_dev": 2.0,
+      "description": "Bollinger Bands for volatility"
+    }
+  },
+  "regimes": {
+    "EXTREME_BULL": {
+      "rsi_min": 60,
+      "adx_min": 30,
+      "macd_histogram": "positive",
+      "description": "Very strong bullish conditions"
+    },
+    "TREND_UP": {
+      "rsi_min": 50,
+      "adx_min": 20,
+      "macd_histogram": "positive",
+      "description": "Bullish trend conditions"
+    },
+    "NEUTRAL": {
+      "rsi_min": 40,
+      "rsi_max": 60,
+      "adx_max": 20,
+      "description": "Sideways/ranging market"
+    },
+    "TREND_DOWN": {
+      "rsi_max": 50,
+      "adx_min": 20,
+      "macd_histogram": "negative",
+      "description": "Bearish trend conditions"
+    },
+    "EXTREME_BEAR": {
+      "rsi_max": 40,
+      "adx_min": 30,
+      "macd_histogram": "negative",
+      "description": "Very strong bearish conditions"
+    }
+  },
+  "entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0 && (regime == 'EXTREME_BULL' || regime == 'TREND_UP')",
+  "entry_conditions_explained": {
+    "rsi_oversold": "RSI < 35 indicates oversold conditions (potential bounce)",
+    "strong_trend": "ADX > 25 indicates strong trending market (not choppy)",
+    "macd_bullish": "MACD histogram > 0 confirms bullish momentum",
+    "regime_filter": "Only enter in bullish regimes (EXTREME_BULL or TREND_UP)"
+  },
+  "risk_management": {
+    "note": "SL/TP/Trailing Stop werden aus UI-Eingabefeldern verwendet, nicht aus JSON",
+    "recommended_sl_pct": 2.0,
+    "recommended_tp_pct": 4.0,
+    "recommended_trailing_enabled": true
+  }
+}

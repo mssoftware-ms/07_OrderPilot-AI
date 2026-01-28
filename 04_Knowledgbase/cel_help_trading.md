@@ -311,7 +311,87 @@ bot.trailing_stop_enabled == true
 
 ---
 
-## 11) Weitere Dokumentation
+## 11) JSON Entry System (Alternative zum CEL Editor)
+
+### Was ist das JSON Entry System?
+
+Neben dem CEL Editor (mit 5 Tabs: No Entry, Entry, Exit, Before Exit, Update Stop) gibt es nun ein **vereinfachtes JSON Entry System**, das sich **nur auf Entry-Logik** fokussiert.
+
+**Hauptunterschiede:**
+
+| Feature | CEL Editor (dieser Guide) | JSON Entry System |
+|---------|---------------------------|-------------------|
+| **Komplexität** | Hoch (5 Tabs, volle Pipeline) | Niedrig (nur Entry) |
+| **Entry Logik** | CEL Rules via UI Editor | CEL Expression in JSON |
+| **Exit/Stop** | CEL Rules via UI Editor | Aus UI-Feldern (SL/TP) |
+| **Use Case** | Vollständige Strategy-Engine | Entry-Prototyping, A/B Tests |
+| **Button** | "Start Bot" | "Start Bot (JSON Entry)" |
+
+### Wann JSON Entry System nutzen?
+
+✅ **Nutze JSON Entry wenn:**
+- Du nur Entry-Bedingungen testen willst
+- Du SL/TP/Trailing manuell aus UI-Feldern nutzt
+- Du schnell verschiedene Entry-Expressions ausprobieren willst
+- Du einfache CEL Expressions bevorzugst
+
+✅ **Nutze CEL Editor wenn:**
+- Du vollständige Kontrolle über Entry/Exit/Stop brauchst
+- Du komplexe Multi-Stage-Strategien entwickelst
+- Du No Entry Filter, Before Exit, Update Stop nutzt
+- Du alle 5 Trading-Phasen in CEL steuern willst
+
+### JSON Entry Expression Beispiel
+
+**Regime JSON:**
+```json
+{
+  "schema_version": "2.0.0",
+  "indicators": {
+    "rsi14": {"type": "RSI", "period": 14},
+    "adx14": {"type": "ADX", "period": 14}
+  },
+  "entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0"
+}
+```
+
+**Verfügbare Variablen (ähnlich wie chart.* / bot.*):**
+```cel
+// Price
+close, open, high, low, volume
+
+// Indicators
+rsi, adx, macd, macd_hist, sma_20, ema_12, bb_pct, atr
+
+// Regime
+regime  // "BULL", "BEAR", "NEUTRAL"
+
+// Side
+side  // "long" or "short"
+```
+
+**Simple Entry Expression:**
+```cel
+// RSI oversold + strong trend
+rsi < 35 && adx > 25
+```
+
+**Complex Entry Expression:**
+```cel
+// Multi-indicator confluence
+rsi < 35 && adx > 25 && macd_hist > 0 && (regime == 'BULL' || regime == 'EXTREME_BULL')
+```
+
+### Vollständige JSON Entry Dokumentation
+
+Siehe für Details:
+- **Complete Guide:** `04_Knowledgbase/JSON_Entry_System_Complete_Guide.md`
+- **User Guide:** `docs/260128_JSON_Entry_System_README.md`
+- **Help UI:** `Help/index.html#bot-json-entry`
+
+---
+
+## 12) Weitere Dokumentation
 
 Für umfassende Dokumentation zu neuen Features siehe:
 

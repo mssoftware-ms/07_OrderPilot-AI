@@ -1,0 +1,406 @@
+"""JSON Entry Scorer - CEL-basierte Entry Evaluation.
+
+Evaluiert CEL-Expressions aus Regime + Indicator JSON für Entry-Entscheidungen.
+Ersetzt EntryScoreEngine für JSON-basierte Entry-Logik.
+
+Author: Claude Code
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.core.tradingbot.cel_engine import CELEngine
+    from .json_entry_loader import JsonEntryConfig
+    from .models import FeatureVector, RegimeState
+
+logger = logging.getLogger(__name__)
+
+
+class JsonEntryScorer:
+    """Evaluiert Entry via CEL Expression aus JSON.
+
+    Ersetzt EntryScoreEngine für JSON-basierte Entry-Logik.
+    Verwendet beide JSON-Dateien (Regime + Indicator) für Context-Building.
+
+    Der Scorer:
+    1. Compiled CEL Expression einmalig beim Init
+    2. Baut CEL Context aus FeatureVector + RegimeState
+    3. Evaluiert Expression (True/False)
+    4. Generiert Reason Codes für Entry-Signale
+
+    Attributes:
+        config: JsonEntryConfig mit Entry Expression und Indicators
+        cel: CEL Engine für Expression Evaluation
+        _compiled_expr: Compiled CEL Program (cached für Performance)
+
+    Example:
+        >>> scorer = JsonEntryScorer(json_config, cel_engine)
+        >>> should_enter, score, reasons = scorer.should_enter_long(features, regime)
+        >>> if should_enter:
+        ...     print(f"LONG Entry: score={score}, reasons={reasons}")
+    """
+
+    def __init__(
+        self,
+        json_config: "JsonEntryConfig",
+        cel_engine: "CELEngine",
+    ):
+        """Initialize JSON Entry Scorer.
+
+        Args:
+            json_config: Combined Regime + Indicator JSON config
+            cel_engine: CEL evaluation engine
+
+        Raises:
+            RuntimeError: Wenn CEL Expression nicht compiliert werden kann
+        """
+        self.config = json_config
+        self.cel = cel_engine
+        self._compiled_expr = None
+
+        # Compile CEL expression einmal (Performance)
+        self._compile_expression()
+
+    def _compile_expression(self) -> None:
+        """Compile CEL Expression und cache für Performance.
+
+        Raises:
+            RuntimeError: Wenn Compilation fehlschlägt
+        """
+        try:
+            # CEL compile() method gibt compiled program zurück
+            self._compiled_expr = self.cel.compile(self.config.entry_expression)
+            logger.info(
+                f"CEL expression compiled successfully: "
+                f"{self.config.entry_expression[:80]}..."
+            )
+        except Exception as e:
+            logger.error(
+                f"CEL compilation failed for expression: "
+                f"{self.config.entry_expression[:50]}...\n"
+                f"Error: {e}"
+            )
+            # Raise runtime error - Bot kann nicht mit ungültiger Expression starten
+            raise RuntimeError(
+                f"CEL Expression compilation failed: {e}\n"
+                f"Expression: {self.config.entry_expression[:100]}..."
+            ) from e
+
+    def should_enter_long(
+        self,
+        features: "FeatureVector",
+        regime: "RegimeState",
+    ) -> tuple[bool, float, list[str]]:
+        """Prüfe Long Entry via CEL Expression.
+
+        Args:
+            features: Current feature vector (indicators, price data)
+            regime: Current market regime
+
+        Returns:
+            Tuple of:
+                - should_enter: True wenn Entry Signal, False sonst
+                - score: Confidence Score (1.0 wenn true, 0.0 wenn false)
+                - reason_codes: Liste von Reason-Codes (z.B. ["JSON_CEL_ENTRY", "RSI_OVERSOLD"])
+
+        Example:
+            >>> should_enter, score, reasons = scorer.should_enter_long(features, regime)
+            >>> if should_enter:
+            ...     print(f"LONG Entry: {reasons}")
+        """
+        return self._evaluate_entry("long", features, regime)
+
+    def should_enter_short(
+        self,
+        features: "FeatureVector",
+        regime: "RegimeState",
+    ) -> tuple[bool, float, list[str]]:
+        """Prüfe Short Entry via CEL Expression.
+
+        Args:
+            features: Current feature vector (indicators, price data)
+            regime: Current market regime
+
+        Returns:
+            Tuple of:
+                - should_enter: True wenn Entry Signal, False sonst
+                - score: Confidence Score (1.0 wenn true, 0.0 wenn false)
+                - reason_codes: Liste von Reason-Codes
+
+        Example:
+            >>> should_enter, score, reasons = scorer.should_enter_short(features, regime)
+            >>> if should_enter:
+            ...     print(f"SHORT Entry: {reasons}")
+        """
+        return self._evaluate_entry("short", features, regime)
+
+    def _evaluate_entry(
+        self,
+        side: str,
+        features: "FeatureVector",
+        regime: "RegimeState",
+    ) -> tuple[bool, float, list[str]]:
+        """Evaluiere CEL Expression für Entry.
+
+        Baut Context aus Features + Regime und evaluiert Expression.
+
+        Args:
+            side: "long" oder "short"
+            features: Feature vector
+            regime: Regime state
+
+        Returns:
+            Tuple (should_enter, score, reason_codes)
+        """
+        if not self._compiled_expr:
+            logger.warning("CEL expression not compiled - returning False")
+            return False, 0.0, ["CEL_COMPILATION_FAILED"]
+
+        try:
+            # 1. Build CEL context from features + regime
+            context = self._build_context(side, features, regime)
+
+            # 2. Evaluate CEL expression using compiled program
+            # CEL evaluate_compiled() gibt result zurück (bool, int, str, etc.)
+            result = self.cel.evaluate_compiled(self._compiled_expr, context)
+
+            # 3. Convert result to boolean
+            should_enter = bool(result)
+
+            # 4. Generate score and reasons
+            score = 1.0 if should_enter else 0.0
+            reasons = self._generate_reasons(should_enter, side, context)
+
+            logger.debug(
+                f"JSON Entry [{side}]: {should_enter} "
+                f"(score={score:.2f}, reasons={reasons})"
+            )
+
+            return should_enter, score, reasons
+
+        except Exception as e:
+            logger.error(
+                f"JSON Entry evaluation failed: {e}\n"
+                f"Side: {side}, Expression: {self.config.entry_expression[:50]}...",
+                exc_info=True,
+            )
+            return False, 0.0, ["CEL_EVALUATION_ERROR"]
+
+    def _build_context(
+        self,
+        side: str,
+        features: "FeatureVector",
+        regime: "RegimeState",
+    ) -> dict[str, Any]:
+        """Baut CEL Context aus Features + Regime.
+
+        Context-Struktur:
+        {
+            "side": "long" | "short",
+            "close": 49500.0,
+            "sma_20": 49000.0,
+            "rsi": 28.5,
+            "rsi14": {"value": 28.5},  # Nested für Kompatibilität mit CEL Docs
+            "adx": 32.0,
+            "macd": -0.5,
+            "macd_hist": -0.2,
+            "bb_pct": 0.35,
+            "volume_ratio": 1.2,
+            "regime": "TREND_UP",
+            "regime_obj": {"regime": "TREND_UP", "strength": 0.8}
+        }
+
+        Args:
+            side: "long" oder "short"
+            features: Feature vector mit allen Indicators
+            regime: Regime state
+
+        Returns:
+            Dict mit CEL Context
+        """
+        # Helper: Safe get mit fallback auf None
+        def get_safe(value: Any, default: Any = None) -> Any:
+            return value if value is not None else default
+
+        context = {
+            # Meta
+            "side": side,
+
+            # Price (flat)
+            "close": features.close,
+            "open": get_safe(features.open, features.close),
+            "high": get_safe(features.high, features.close),
+            "low": get_safe(features.low, features.close),
+            "volume": get_safe(features.volume, 0.0),
+
+            # Trend Indicators (flat)
+            "sma_20": get_safe(features.sma_20),
+            "sma_50": get_safe(features.sma_50),
+            "ema_12": get_safe(features.ema_12),
+            "ema_26": get_safe(features.ema_26),
+
+            # Momentum Indicators (flat)
+            "rsi": get_safe(features.rsi_14, 50.0),  # Fallback auf neutral
+            "macd": get_safe(features.macd, 0.0),
+            "macd_signal": get_safe(features.macd_signal, 0.0),
+            "macd_hist": get_safe(features.macd_hist, 0.0),
+            "stoch_k": get_safe(features.stoch_k),
+            "stoch_d": get_safe(features.stoch_d),
+            "cci": get_safe(features.cci),
+            "mfi": get_safe(features.mfi),
+
+            # Momentum Indicators (nested für Kompatibilität mit CEL Docs)
+            "rsi14": {"value": get_safe(features.rsi_14, 50.0)},
+            "adx14": {"value": get_safe(features.adx, 0.0)},
+            "macd_obj": {
+                "value": get_safe(features.macd, 0.0),
+                "signal": get_safe(features.macd_signal, 0.0),
+                "histogram": get_safe(features.macd_hist, 0.0),
+            },
+
+            # Trend Strength (flat)
+            "adx": get_safe(features.adx, 0.0),
+
+            # Volatility (flat)
+            "atr": get_safe(features.atr_14, 0.0),
+            "bb_pct": get_safe(features.bb_pct, 0.5),
+            "bb_width": get_safe(features.bb_width, 0.0),
+            "bb_upper": get_safe(features.bb_upper),
+            "bb_middle": get_safe(features.bb_middle),
+            "bb_lower": get_safe(features.bb_lower),
+            "chop": get_safe(features.chop, 50.0),
+
+            # Volume (flat)
+            "volume_ratio": get_safe(features.volume_ratio, 1.0),
+
+            # Regime (flat + nested)
+            "regime": regime.regime.value,  # "TREND_UP", "RANGE", "TREND_DOWN", etc.
+            "regime_obj": {
+                "regime": regime.regime.value,
+                "confidence": regime.regime_confidence,
+                "strength": getattr(regime, "regime_strength", 0.0),
+                "volatility": regime.volatility.value,
+            },
+
+            # Volatility (flat aus Regime)
+            "volatility": regime.volatility.value,
+        }
+
+        return context
+
+    def _generate_reasons(
+        self, should_enter: bool, side: str, context: dict
+    ) -> list[str]:
+        """Generiere Reason-Codes basierend auf Context.
+
+        Analysiert Context-Werte und generiert aussagekräftige Reason-Codes.
+
+        Args:
+            should_enter: Entry-Entscheidung
+            side: "long" oder "short"
+            context: CEL Context
+
+        Returns:
+            Liste von Reason-Codes (z.B. ["JSON_CEL_ENTRY", "RSI_OVERSOLD"])
+
+        Reason Codes:
+            - JSON_CEL_ENTRY: Base reason für JSON-basierte Entry
+            - RSI_OVERSOLD / RSI_OVERBOUGHT: RSI extreme
+            - MACD_BULLISH / MACD_BEARISH: MACD Histogram
+            - STRONG_TREND: ADX > 25
+            - TREND_REGIME / RANGE_REGIME: Regime-basiert
+            - BB_REVERSAL: Bollinger Band extreme
+        """
+        if not should_enter:
+            return []
+
+        reasons = ["JSON_CEL_ENTRY"]  # Base reason
+
+        # RSI-basierte Reasons
+        rsi = context.get("rsi", 50)
+        if rsi < 30:
+            reasons.append("RSI_OVERSOLD")
+        elif rsi > 70:
+            reasons.append("RSI_OVERBOUGHT")
+
+        # MACD-basierte Reasons
+        macd_hist = context.get("macd_hist", 0)
+        if macd_hist > 0:
+            reasons.append("MACD_BULLISH")
+        elif macd_hist < 0:
+            reasons.append("MACD_BEARISH")
+
+        # ADX-basierte Reasons (Trend Strength)
+        adx = context.get("adx", 0)
+        if adx > 25:
+            reasons.append("STRONG_TREND")
+        elif adx < 20:
+            reasons.append("WEAK_TREND")
+
+        # Regime-basierte Reasons
+        regime = context.get("regime", "")
+        if "TREND" in regime:
+            reasons.append("TREND_REGIME")
+        elif "RANGE" in regime or "RANGING" in regime:
+            reasons.append("RANGE_REGIME")
+
+        # Bollinger Band Reasons
+        bb_pct = context.get("bb_pct")
+        if bb_pct is not None:
+            if bb_pct < 0.2:
+                reasons.append("BB_LOWER_BAND")
+            elif bb_pct > 0.8:
+                reasons.append("BB_UPPER_BAND")
+
+        # Side-spezifische Reasons
+        if side == "long":
+            # Long-spezifische Checks
+            close = context.get("close", 0)
+            sma_20 = context.get("sma_20")
+            if sma_20 and close > sma_20:
+                reasons.append("PRICE_ABOVE_SMA20")
+        elif side == "short":
+            # Short-spezifische Checks
+            close = context.get("close", 0)
+            sma_20 = context.get("sma_20")
+            if sma_20 and close < sma_20:
+                reasons.append("PRICE_BELOW_SMA20")
+
+        return reasons
+
+    def get_expression_summary(self) -> str:
+        """Gibt kurze Zusammenfassung der Expression zurück.
+
+        Returns:
+            String mit Expression (gekürzt auf 100 Zeichen)
+
+        Example:
+            >>> print(scorer.get_expression_summary())
+            'rsi < 35 && adx > 25 && macd_hist > 0...'
+        """
+        expr = self.config.entry_expression
+        if len(expr) > 100:
+            return expr[:97] + "..."
+        return expr
+
+    def __str__(self) -> str:
+        """String representation für Logging."""
+        return (
+            f"JsonEntryScorer("
+            f"expression='{self.get_expression_summary()}', "
+            f"compiled={self._compiled_expr is not None}"
+            f")"
+        )
+
+    def __repr__(self) -> str:
+        """Detailed representation für Debugging."""
+        return (
+            f"JsonEntryScorer(\n"
+            f"  config={self.config},\n"
+            f"  compiled_expression={self._compiled_expr is not None}\n"
+            f")"
+        )

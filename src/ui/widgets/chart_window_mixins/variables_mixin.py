@@ -230,32 +230,74 @@ class VariablesMixin:
         """
         Get BotConfig instance for current chart.
 
-        Returns:
-            BotConfig instance or None if not available
+        Searches multiple locations:
+        1. trading_bot_panel.bot_config
+        2. bottom_panel.bot_config
+        3. _bitunix_panel.bot_config
+        4. Dock widgets with bot_config
+        5. _trading_bot_window.panel_content.bot_config
 
-        Override this method in ChartWindow to provide the actual BotConfig.
-        Default implementation attempts to get from bot panel or returns None.
+        Returns:
+            BotConfig instance or None if not found
         """
         try:
-            # Try to get from bot panel
-            if hasattr(self, 'bottom_panel'):
-                bot_panel = self.bottom_panel
-                if hasattr(bot_panel, 'bot_config'):
-                    return bot_panel.bot_config
+            # 1. Try trading_bot_panel (main bot panel)
+            if hasattr(self, 'trading_bot_panel') and self.trading_bot_panel:
+                panel = self.trading_bot_panel
+                if hasattr(panel, 'bot_config'):
+                    logger.debug("Found BotConfig in trading_bot_panel")
+                    return panel.bot_config
+                if hasattr(panel, 'config'):
+                    logger.debug("Found BotConfig as 'config' in trading_bot_panel")
+                    return panel.config
 
-            # Try to get from trading bot window
-            if hasattr(self, '_trading_bot_window'):
+            # 2. Try bottom_panel.bot_config
+            if hasattr(self, 'bottom_panel') and self.bottom_panel:
+                if hasattr(self.bottom_panel, 'bot_config'):
+                    logger.debug("Found BotConfig in bottom_panel")
+                    return self.bottom_panel.bot_config
+                if hasattr(self.bottom_panel, 'config'):
+                    logger.debug("Found BotConfig as 'config' in bottom_panel")
+                    return self.bottom_panel.config
+
+            # 3. Try BitunixTradingPanel
+            if hasattr(self, '_bitunix_panel') and self._bitunix_panel:
+                if hasattr(self._bitunix_panel, 'bot_config'):
+                    logger.debug("Found BotConfig in _bitunix_panel")
+                    return self._bitunix_panel.bot_config
+                if hasattr(self._bitunix_panel, 'config'):
+                    logger.debug("Found BotConfig in _bitunix_panel.config")
+                    return self._bitunix_panel.config
+
+            # 4. Try dock widgets
+            from PyQt6.QtWidgets import QDockWidget
+            for dock in self.findChildren(QDockWidget):
+                widget = dock.widget()
+                if widget:
+                    if hasattr(widget, 'bot_config'):
+                        logger.debug(f"Found BotConfig in dock widget: {widget.__class__.__name__}")
+                        return widget.bot_config
+                    if hasattr(widget, 'config'):
+                        logger.debug(f"Found BotConfig as 'config' in dock widget: {widget.__class__.__name__}")
+                        return widget.config
+
+            # 5. Try trading bot window
+            if hasattr(self, '_trading_bot_window') and self._trading_bot_window:
                 bot_window = self._trading_bot_window
                 if hasattr(bot_window, 'panel_content'):
                     panel = bot_window.panel_content
                     if hasattr(panel, 'bot_config'):
+                        logger.debug("Found BotConfig in _trading_bot_window.panel_content")
                         return panel.bot_config
+                    if hasattr(panel, 'config'):
+                        logger.debug("Found BotConfig in _trading_bot_window.panel_content.config")
+                        return panel.config
 
-            logger.debug("BotConfig not available")
+            logger.debug("BotConfig not available in any known location")
             return None
 
         except Exception as e:
-            logger.error(f"Failed to get BotConfig: {e}")
+            logger.error(f"Failed to get BotConfig: {e}", exc_info=True)
             return None
 
     def _get_project_vars_path(self: ChartWindow) -> Optional[str | Path]:
@@ -300,11 +342,39 @@ class VariablesMixin:
             Dictionary of indicator values or None
 
         Override this method in ChartWindow to provide actual indicator values.
-        Default implementation returns None.
+        Default implementation attempts to extract from chart_widget.
         """
-        # TODO: Implement indicator retrieval from chart
-        # This should extract current indicator values from the chart widget
-        return None
+        try:
+            if not hasattr(self, 'chart_widget') or self.chart_widget is None:
+                logger.debug("Chart widget not available for indicators")
+                return None
+
+            indicators = {}
+
+            # Extract indicators from chart_widget
+            if hasattr(self.chart_widget, 'indicators'):
+                for name, indicator in self.chart_widget.indicators.items():
+                    # Get last value from indicator
+                    if hasattr(indicator, 'values') and len(indicator.values) > 0:
+                        indicators[name] = indicator.values[-1]
+                    elif hasattr(indicator, 'data') and not indicator.data.empty:
+                        indicators[name] = indicator.data.iloc[-1]
+                    elif isinstance(indicator, (int, float, str)):
+                        indicators[name] = indicator
+
+            # Also check for indicator_manager if available
+            if hasattr(self.chart_widget, 'indicator_manager'):
+                manager = self.chart_widget.indicator_manager
+                if hasattr(manager, 'get_all_values'):
+                    managed_indicators = manager.get_all_values()
+                    indicators.update(managed_indicators)
+
+            logger.debug(f"Retrieved {len(indicators)} indicators: {list(indicators.keys())}")
+            return indicators if indicators else None
+
+        except Exception as e:
+            logger.error(f"Failed to get current indicators: {e}", exc_info=True)
+            return None
 
     def _get_current_regime(self: ChartWindow) -> Optional[dict]:
         """
@@ -314,11 +384,47 @@ class VariablesMixin:
             Dictionary of regime values or None
 
         Override this method in ChartWindow to provide actual regime state.
-        Default implementation returns None.
+        Default implementation attempts to extract from regime detector.
         """
-        # TODO: Implement regime state retrieval
-        # This should extract current regime state (bullish/bearish/etc)
-        return None
+        try:
+            regime_data = {}
+
+            # Check for regime detector in chart window attributes
+            if hasattr(self, '_regime_detector') and self._regime_detector:
+                detector = self._regime_detector
+                regime_data['current'] = getattr(detector, 'current_regime', None)
+                regime_data['strength'] = getattr(detector, 'strength', None)
+                regime_data['confidence'] = getattr(detector, 'confidence', None)
+                regime_data['is_bullish'] = getattr(detector, 'is_bullish', None)
+                regime_data['is_bearish'] = getattr(detector, 'is_bearish', None)
+                logger.debug(f"Retrieved regime from _regime_detector: {regime_data.get('current')}")
+                return regime_data
+
+            # Check for regime in bottom panel
+            if hasattr(self, 'bottom_panel') and self.bottom_panel:
+                panel = self.bottom_panel
+                if hasattr(panel, 'regime_state'):
+                    regime_state = panel.regime_state
+                    if isinstance(regime_state, dict):
+                        return regime_state
+                    elif hasattr(regime_state, '__dict__'):
+                        return vars(regime_state)
+
+            # Check for regime in trading bot panel
+            if hasattr(self, 'trading_bot_panel') and self.trading_bot_panel:
+                panel = self.trading_bot_panel
+                if hasattr(panel, 'current_regime'):
+                    current = panel.current_regime
+                    regime_data['current'] = current
+                    logger.debug(f"Retrieved regime from trading_bot_panel: {current}")
+                    return regime_data
+
+            logger.debug("Regime detector not available")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get current regime: {e}", exc_info=True)
+            return None
 
     def cleanup_variables(self: ChartWindow) -> None:
         """

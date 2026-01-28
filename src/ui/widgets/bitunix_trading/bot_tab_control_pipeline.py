@@ -18,6 +18,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.core.trading_bot import MarketContext
 
+# Import für JSON Entry Integration
+from src.core.trading_bot.entry_score_engine import EntryScoreResult
+from src.core.trading_bot.entry_score_types import ScoreDirection, ScoreQuality
+from src.core.tradingbot.models import TradeSide
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,9 +78,22 @@ class BotTabControlPipeline:
 
             # 3. EntryScore berechnen
             if self.parent.parent._entry_score_engine:
-                entry_result = self.parent.parent._entry_score_engine.calculate(context)
-                self.parent.parent._last_entry_score = entry_result
-                logger.debug(f"Entry Score: {entry_result.final_score:.3f} ({entry_result.quality.value})")
+                # PRÜFE: Ist JSON Entry Scorer aktiv?
+                if self.parent._control._json_entry_scorer:
+                    # === JSON ENTRY FLOW (NEU) ===
+                    logger.debug("Using JSON Entry Scorer (CEL-based)")
+                    entry_result = self._evaluate_json_entry(context, symbol, timeframe)
+                    self.parent.parent._last_entry_score = entry_result
+                    logger.debug(
+                        f"JSON Entry Score: {entry_result.final_score:.3f} "
+                        f"({entry_result.direction.value}, {entry_result.quality.value})"
+                    )
+                else:
+                    # === STANDARD ENTRY FLOW ===
+                    logger.debug("Using standard EntryScoreEngine")
+                    entry_result = self.parent.parent._entry_score_engine.calculate(context)
+                    self.parent.parent._last_entry_score = entry_result
+                    logger.debug(f"Entry Score: {entry_result.final_score:.3f} ({entry_result.quality.value})")
 
             # 4. LLM Validation (Quick→Deep)
             if self.parent.parent._llm_validation and self.parent.parent._last_entry_score:
@@ -199,3 +217,92 @@ class BotTabControlPipeline:
         except Exception as e:
             logger.exception(f"Failed to check for new bar: {e}")
             return False  # Skip pipeline on error
+
+    def _evaluate_json_entry(
+        self,
+        context: "MarketContext",
+        symbol: str,
+        timeframe: str,
+    ) -> EntryScoreResult:
+        """Evaluiert JSON Entry via CEL Expression (NEU).
+
+        Verwendet JsonEntryScorer statt EntryScoreEngine für JSON-basierte Entry-Logik.
+
+        Args:
+            context: MarketContext mit features und regime
+            symbol: Trading Symbol
+            timeframe: Timeframe
+
+        Returns:
+            EntryScoreResult kompatibel mit Pipeline
+        """
+        json_scorer = self.parent._control._json_entry_scorer
+
+        # 1. Evaluiere Long Entry
+        should_enter_long, score_long, reasons_long = json_scorer.should_enter_long(
+            features=context.features,
+            regime=context.regime.regime_state,
+        )
+
+        # 2. Evaluiere Short Entry
+        should_enter_short, score_short, reasons_short = json_scorer.should_enter_short(
+            features=context.features,
+            regime=context.regime.regime_state,
+        )
+
+        # 3. Bestimme Direction basierend auf Signals
+        if should_enter_long and should_enter_short:
+            # Beide Signale → Wähle das mit höherem Score
+            if score_long >= score_short:
+                direction = ScoreDirection.LONG
+                final_score = score_long
+                reason_codes = reasons_long
+            else:
+                direction = ScoreDirection.SHORT
+                final_score = score_short
+                reason_codes = reasons_short
+        elif should_enter_long:
+            # Nur Long Signal
+            direction = ScoreDirection.LONG
+            final_score = score_long
+            reason_codes = reasons_long
+        elif should_enter_short:
+            # Nur Short Signal
+            direction = ScoreDirection.SHORT
+            final_score = score_short
+            reason_codes = reasons_short
+        else:
+            # Kein Signal
+            direction = ScoreDirection.NEUTRAL
+            final_score = 0.0
+            reason_codes = ["NO_ENTRY_SIGNAL"]
+
+        # 4. Bestimme Quality basierend auf Score
+        if final_score >= 0.80:
+            quality = ScoreQuality.EXCELLENT
+        elif final_score >= 0.65:
+            quality = ScoreQuality.GOOD
+        elif final_score >= 0.50:
+            quality = ScoreQuality.FAIR
+        else:
+            quality = ScoreQuality.POOR
+
+        # 5. Erstelle EntryScoreResult (kompatibel mit Pipeline)
+        entry_result = EntryScoreResult(
+            raw_score=final_score,
+            final_score=final_score,
+            direction=direction,
+            quality=quality,
+            components=[],  # Keine Component-Breakdown bei JSON Entry
+            gate_result=None,  # Keine Gates bei JSON Entry
+            symbol=symbol,
+            timeframe=timeframe,
+            current_price=context.current_price,
+            regime=context.regime.regime_state.regime.value,
+        )
+
+        # 6. Log Reason Codes (für Debugging)
+        if reason_codes:
+            logger.debug(f"JSON Entry Reasons: {', '.join(reason_codes)}")
+
+        return entry_result

@@ -21,8 +21,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 import json
+import logging
 from pathlib import Path
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from .theme import (
     get_qss_stylesheet, STATUS_SUCCESS, ACCENT_CYAN, TEXT_PRIMARY,
@@ -1639,13 +1642,99 @@ class CelEditorWindow(QMainWindow):
     def _on_show_variables(self):
         """Open Variables Reference Dialog (Variable System Integration)."""
         try:
-            # Lazy import to avoid circular imports
             from ...dialogs.variables.variable_reference_dialog import VariableReferenceDialog
 
-            # Create and show dialog
-            dialog = VariableReferenceDialog(parent=self)
+            # Initialize data sources
+            chart_window = None
+            bot_config = None
+            project_vars_path = None
+            indicators = None
+            regime = None
+
+            # Strategy 1: Search parent hierarchy for ChartWindow
+            parent = self.parent()
+            while parent:
+                if parent.__class__.__name__ == "ChartWindow":
+                    chart_window = parent
+
+                    # Extract additional data from ChartWindow
+                    if hasattr(parent, '_get_bot_config'):
+                        try:
+                            bot_config = parent._get_bot_config()
+                        except Exception as e:
+                            logger.debug(f"Could not get bot_config: {e}")
+
+                    if hasattr(parent, '_get_project_vars_path'):
+                        try:
+                            project_vars_path = parent._get_project_vars_path()
+                        except Exception as e:
+                            logger.debug(f"Could not get project_vars_path: {e}")
+
+                    if hasattr(parent, '_get_current_indicators'):
+                        try:
+                            indicators = parent._get_current_indicators()
+                        except Exception as e:
+                            logger.debug(f"Could not get indicators: {e}")
+
+                    if hasattr(parent, '_get_current_regime'):
+                        try:
+                            regime = parent._get_current_regime()
+                        except Exception as e:
+                            logger.debug(f"Could not get regime: {e}")
+
+                    break
+
+                parent = parent.parent() if hasattr(parent, 'parent') else None
+
+            # Strategy 2: Fallback - Search for .cel_variables.json in common locations
+            if not project_vars_path:
+                search_paths = [
+                    Path.cwd() / ".cel_variables.json",
+                    Path(__file__).parent.parent.parent.parent.parent / ".cel_variables.json",
+                    Path.home() / ".orderpilot" / ".cel_variables.json",
+                ]
+
+                for path in search_paths:
+                    if path.exists():
+                        project_vars_path = str(path)
+                        logger.info(f"Found project variables at: {project_vars_path}")
+                        break
+
+            # Validation: Check if we have ANY real data sources
+            # NO DEMO CONTENT ALLOWED - show error if no real values available
+            if not chart_window and not project_vars_path:
+                logger.warning("No real data sources available for Variable Reference Dialog")
+                QMessageBox.critical(
+                    self,
+                    "Keine Datenquellen verfügbar",
+                    "Es sind keine realen Variablenwerte verfügbar.\n\n"
+                    "Bitte öffnen Sie ein Chart-Fenster mit aktivem Trading oder erstellen Sie eine .cel_variables.json Datei im Projekt-Root.\n\n"
+                    "Pfad: .cel_variables.json"
+                )
+                return
+
+            # Log what we found
+            logger.info(f"Opening Variable Reference Dialog with real data sources:")
+            logger.info(f"  chart_window: {chart_window is not None}")
+            logger.info(f"  bot_config: {bot_config is not None}")
+            logger.info(f"  project_vars_path: {project_vars_path}")
+            logger.info(f"  indicators: {indicators is not None}")
+            logger.info(f"  regime: {regime is not None}")
+
+            # Create and show dialog with available real sources ONLY
+            dialog = VariableReferenceDialog(
+                chart_window=chart_window,
+                bot_config=bot_config,
+                project_vars_path=project_vars_path,
+                indicators=indicators,
+                regime=regime,
+                enable_live_updates=False,  # Disable live updates in CEL Editor context
+                parent=self
+            )
             dialog.exec()
+
         except Exception as e:
+            logger.error(f"Failed to open Variables Reference Dialog: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Variables Error",
