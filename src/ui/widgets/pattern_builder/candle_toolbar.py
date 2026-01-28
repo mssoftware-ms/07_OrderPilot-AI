@@ -9,11 +9,11 @@ from PyQt6.QtWidgets import QToolBar, QPushButton, QButtonGroup, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 
-from ui.windows.cel_editor.theme import (
+from src.ui.windows.cel_editor.theme import (
     CANDLE_BULLISH_BODY, CANDLE_BEARISH_BODY, CANDLE_DOJI_BODY,
     ACCENT_TEAL, TEXT_PRIMARY
 )
-from ui.windows.cel_editor.icons import cel_icons
+from src.ui.windows.cel_editor.icons import cel_icons
 
 
 class CandleToolbar(QToolBar):

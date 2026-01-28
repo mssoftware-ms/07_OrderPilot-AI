@@ -11,14 +11,17 @@ Provides a code editor for Google CEL expressions with:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
+import logging
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QMessageBox, QToolBar
 )
 from PyQt6.QtGui import QFont, QColor
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtWidgets import QPlainTextEdit
+
+logger = logging.getLogger(__name__)
 
 try:
     from PyQt6.Qsci import QsciScintilla, QsciAPIs
@@ -86,6 +89,15 @@ except ImportError:
 
 from .cel_lexer import CelLexer
 
+# Import CEL Validator
+try:
+    from ...core.tradingbot.cel.cel_validator import CelValidator, ValidationSeverity
+    VALIDATOR_AVAILABLE = True
+except ImportError:
+    VALIDATOR_AVAILABLE = False
+    CelValidator = None
+    ValidationSeverity = None
+
 if TYPE_CHECKING:
     pass
 
@@ -101,6 +113,19 @@ class CelEditorWidget(QWidget):
         super().__init__(parent)
 
         self.workflow_type = workflow_type
+
+        # Initialize CEL Validator
+        self.validator = CelValidator() if VALIDATOR_AVAILABLE else None
+
+        # Validation timer for debouncing (500ms)
+        self.validation_timer = QTimer()
+        self.validation_timer.setSingleShot(True)
+        self.validation_timer.timeout.connect(self._perform_validation)
+
+        # Variables autocomplete handler (Phase 3.3)
+        self.variables_autocomplete = None
+        self._init_variables_autocomplete()
+
         self._setup_ui()
         self._load_autocomplete_data()
 
@@ -166,6 +191,12 @@ class CelEditorWidget(QWidget):
         self.clear_btn.setToolTip("Clear editor")
         self.clear_btn.clicked.connect(self._on_clear_clicked)
         toolbar.addWidget(self.clear_btn)
+
+        # Variables button (Phase 3.3: Variables Autocomplete)
+        self.variables_btn = QPushButton("📋 Variables")
+        self.variables_btn.setToolTip("Show available variables (Ctrl+Space)\nManage variables (Ctrl+Shift+M)")
+        self.variables_btn.clicked.connect(self._on_variables_clicked)
+        toolbar.addWidget(self.variables_btn)
 
         header_layout.addWidget(toolbar)
         layout.addLayout(header_layout)
@@ -252,24 +283,28 @@ class CelEditorWidget(QWidget):
 
         # Math functions
         math_funcs = [
-            'abs(value)', 'min(a, b)', 'max(a, b)', 'round(value)',
-            'floor(value)', 'ceil(value)', 'pow(x, y)', 'sqrt(value)',
-            'log(value)', 'log10(value)', 'sin(x)', 'cos(x)', 'tan(x)',
+            'abs(value)', 'min(a, b)', 'max(a, b)', 'round(value, decimals)',
+            'floor(value)', 'ceil(value)', 'pow(x, y)', 'sqrt(value)', 'exp(value)',
             'sum(...)', 'avg(...)', 'average(...)'
         ]
 
         # Trading functions
         trading_funcs = [
-            'is_trade_open()', 'is_long()', 'is_short()',
-            'is_bullish_signal()', 'is_bearish_signal()',
-            'in_regime(regime)', 'stop_hit_long()', 'stop_hit_short()',
-            'tp_hit()', 'price_above_ema(period)', 'price_below_ema(period)',
-            'price_above_level(level)', 'price_below_level(level)',
-            'isnull(value)', 'isnotnull(value)', 'nz(value, default)',
-            'coalesce(...)', 'clamp(value, min, max)',
+            'is_trade_open(trade)', 'is_long(trade)', 'is_short(trade)',
+            'is_bullish_signal(strategy)', 'is_bearish_signal(strategy)',
+            "in_regime(regime, 'R1')", 'stop_hit_long(trade, price)', 'stop_hit_short(trade, price)',
+            'tp_hit(trade, price)', 'price_above_ema(price, ema)', 'price_below_ema(price, ema)',
+            'price_above_level(price, level)', 'price_below_level(price, level)',
+            'isnull(value)', 'nz(value, default)', 'coalesce(...)', 'clamp(value, min, max)',
             'pct_change(old, new)', 'pct_from_level(price, level)',
-            'level_at_pct(entry, pct, side)', 'retracement(from, to, pct)',
-            'extension(from, to, pct)'
+            "level_at_pct(entry, pct, 'long')", 'retracement(from, to, pct)',
+            'extension(from, to, pct)', 'pctl(series, percentile)', 'crossover(series1, series2)',
+            'highest(series, period)', 'lowest(series, period)', 'sma(series, period)',
+            'pin_bar_bullish()', 'pin_bar_bearish()', 'inside_bar()', 'inverted_hammer()',
+            'bull_flag()', 'bear_flag()', 'cup_and_handle()', 'double_bottom()', 'double_top()',
+            'ascending_triangle()', 'descending_triangle()', 'breakout_above()', 'breakdown_below()',
+            'false_breakout()', 'break_of_structure()', 'liquidity_swept()', 'fvg_exists()',
+            'order_block_retest()', 'harmonic_pattern_detected()'
         ]
 
         # Array/Collection functions
@@ -277,7 +312,7 @@ class CelEditorWidget(QWidget):
             'size(array)', 'length(array)', 'has(array, element)',
             'all(array, condition)', 'any(array, condition)',
             'map(array, expr)', 'filter(array, condition)',
-            'first(array)', 'last(array)', 'contains(array, element)',
+            'first(array)', 'last(array)',
             'indexOf(array, element)', 'distinct(array)', 'sort(array)',
             'reverse(array)', 'slice(array, start, end)'
         ]
@@ -358,6 +393,32 @@ class CelEditorWidget(QWidget):
                      type_funcs + string_funcs + indicators + variables + keywords):
             self.api.add(func)
 
+        # Phase 3.3: Load project variables if autocomplete handler is available
+        if self.variables_autocomplete:
+            try:
+                chart_window = self._get_chart_window()
+                bot_config = self._get_bot_config(chart_window)
+                project_vars_path = self._get_project_vars_path(chart_window)
+                indicators_dict = self._get_current_indicators(chart_window)
+                regime_dict = self._get_current_regime(chart_window)
+
+                # Set API for variables autocomplete
+                self.variables_autocomplete.api = self.api
+
+                # Load and add variables
+                self.variables_autocomplete.load_all_variables(
+                    chart_window=chart_window,
+                    bot_config=bot_config,
+                    project_vars_path=project_vars_path,
+                    indicators=indicators_dict,
+                    regime=regime_dict,
+                )
+                self.variables_autocomplete.add_to_autocomplete()
+
+                logger.debug("Project variables added to autocomplete")
+            except Exception as e:
+                logger.warning(f"Failed to load project variables for autocomplete: {e}")
+
         # Prepare autocomplete
         self.api.prepare()
 
@@ -370,6 +431,10 @@ class CelEditorWidget(QWidget):
         line_count = self.editor.lines()
         self.status_label.setText(f"Lines: {line_count}")
 
+        # Trigger debounced validation (500ms delay)
+        if self.validator and QSCI_AVAILABLE:
+            self.validation_timer.start(500)
+
     def _on_generate_clicked(self):
         """Generate CEL code with AI."""
         # Emit signal to parent (Pattern Integration Widget)
@@ -377,15 +442,52 @@ class CelEditorWidget(QWidget):
         self.ai_generation_requested.emit(self.workflow_type)
 
     def _on_validate_clicked(self):
-        """Validate CEL expression."""
+        """Validate CEL expression - explicit validation via button."""
         code = self.editor.text().strip()
 
         if not code:
             QMessageBox.warning(self, "Validation", "Editor is empty")
             return
 
-        # Emit validation request signal
-        self.validation_requested.emit(code)
+        if not self.validator:
+            QMessageBox.warning(
+                self, "Validation",
+                "Validator not available. Install required packages."
+            )
+            return
+
+        # Perform immediate validation
+        errors = self.validator.validate(code)
+
+        if not errors:
+            QMessageBox.information(
+                self, "Validation",
+                "✅ Expression is valid!"
+            )
+            self.status_label.setText("✅ Valid")
+            self.status_label.setStyleSheet("color: green; font-size: 10px; font-weight: bold;")
+        else:
+            error_count = len([e for e in errors if e.severity == ValidationSeverity.ERROR])
+            warning_count = len([e for e in errors if e.severity == ValidationSeverity.WARNING])
+
+            error_msg = f"Found {error_count} error(s)"
+            if warning_count > 0:
+                error_msg += f" and {warning_count} warning(s)"
+            error_msg += ":\n\n"
+
+            for error in errors[:10]:  # Show first 10 errors
+                severity_icon = "❌" if error.severity == ValidationSeverity.ERROR else "⚠️"
+                error_msg += f"{severity_icon} Line {error.line}, Col {error.column}: {error.message}\n"
+
+            if len(errors) > 10:
+                error_msg += f"\n... and {len(errors) - 10} more errors"
+
+            QMessageBox.warning(self, "Validation Errors", error_msg)
+            self.status_label.setText(f"❌ {error_count} error(s)")
+            self.status_label.setStyleSheet("color: red; font-size: 10px; font-weight: bold;")
+
+        # Display errors visually in editor
+        self._display_validation_errors(errors)
 
     def _on_format_clicked(self):
         """Format CEL code (basic formatting)."""
@@ -421,6 +523,129 @@ class CelEditorWidget(QWidget):
             if reply == QMessageBox.StandardButton.Yes:
                 self.editor.clear()
 
+    def _init_variables_autocomplete(self):
+        """Initialize variables autocomplete handler (Phase 3.3)."""
+        try:
+            from .cel_editor_variables_autocomplete import CelEditorVariablesAutocomplete
+
+            self.variables_autocomplete = CelEditorVariablesAutocomplete()
+            logger.info("Variables autocomplete initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize variables autocomplete: {e}")
+            self.variables_autocomplete = None
+
+    def _on_variables_clicked(self):
+        """Show Variable Reference Dialog (Phase 3.3)."""
+        try:
+            from src.ui.dialogs.variables import VariableReferenceDialog
+
+            # Try to get parent ChartWindow
+            chart_window = self._get_chart_window()
+
+            # Get data sources
+            bot_config = self._get_bot_config(chart_window)
+            project_vars_path = self._get_project_vars_path(chart_window)
+            indicators = self._get_current_indicators(chart_window)
+            regime = self._get_current_regime(chart_window)
+
+            # Create and show dialog
+            dialog = VariableReferenceDialog(
+                chart_window=chart_window,
+                bot_config=bot_config,
+                project_vars_path=project_vars_path,
+                indicators=indicators,
+                regime=regime,
+                enable_live_updates=False,
+                parent=self
+            )
+
+            dialog.show()
+            logger.info("Variable Reference Dialog opened from CEL Editor")
+
+        except Exception as e:
+            logger.error(f"Failed to show Variable Reference Dialog: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Variable Reference",
+                f"Failed to open Variable Reference:\n{str(e)}"
+            )
+
+    def refresh_variables_autocomplete(
+        self,
+        chart_window: Optional[any] = None,
+        bot_config: Optional[any] = None,
+        project_vars_path: Optional[str] = None,
+        indicators: Optional[dict] = None,
+        regime: Optional[dict] = None,
+    ):
+        """
+        Refresh variables autocomplete with updated data (Phase 3.3).
+
+        Call this method when variables change to update autocomplete suggestions.
+
+        Args:
+            chart_window: ChartWindow instance
+            bot_config: BotConfig instance
+            project_vars_path: Path to .cel_variables.json
+            indicators: Dictionary of indicator values
+            regime: Dictionary of regime values
+        """
+        if self.variables_autocomplete is None:
+            logger.warning("Variables autocomplete not initialized")
+            return
+
+        if self.api is None:
+            logger.warning("QsciAPIs not available")
+            return
+
+        try:
+            # Refresh autocomplete
+            count = self.variables_autocomplete.refresh_autocomplete(
+                chart_window=chart_window,
+                bot_config=bot_config,
+                project_vars_path=project_vars_path,
+                indicators=indicators,
+                regime=regime,
+            )
+
+            logger.info(f"Autocomplete refreshed with {count} variables")
+
+        except Exception as e:
+            logger.error(f"Failed to refresh variables autocomplete: {e}")
+
+    def _get_chart_window(self):
+        """Get parent ChartWindow if available."""
+        parent = self.parent()
+        while parent:
+            if parent.__class__.__name__ == "ChartWindow":
+                return parent
+            parent = parent.parent()
+        return None
+
+    def _get_bot_config(self, chart_window):
+        """Get BotConfig from ChartWindow."""
+        if chart_window and hasattr(chart_window, "_get_bot_config"):
+            return chart_window._get_bot_config()
+        return None
+
+    def _get_project_vars_path(self, chart_window):
+        """Get project vars path from ChartWindow."""
+        if chart_window and hasattr(chart_window, "_get_project_vars_path"):
+            return chart_window._get_project_vars_path()
+        return None
+
+    def _get_current_indicators(self, chart_window):
+        """Get current indicators from ChartWindow."""
+        if chart_window and hasattr(chart_window, "_get_current_indicators"):
+            return chart_window._get_current_indicators()
+        return None
+
+    def _get_current_regime(self, chart_window):
+        """Get current regime from ChartWindow."""
+        if chart_window and hasattr(chart_window, "_get_current_regime"):
+            return chart_window._get_current_regime()
+        return None
+
     def set_code(self, code: str):
         """Set code in editor."""
         self.editor.setText(code)
@@ -444,3 +669,81 @@ class CelEditorWidget(QWidget):
     def insert_text(self, text: str):
         """Insert text at current cursor position."""
         self.editor.insert(text)
+
+    def _perform_validation(self):
+        """Perform live validation (triggered by timer)."""
+        if not self.validator or not QSCI_AVAILABLE:
+            return
+
+        code = self.editor.text().strip()
+
+        if not code:
+            # Clear errors if editor is empty
+            self.clear_error_markers()
+            if hasattr(self.editor, 'clearAnnotations'):
+                self.editor.clearAnnotations()
+            self.status_label.setText("Ready")
+            self.status_label.setStyleSheet("color: gray; font-size: 10px;")
+            return
+
+        # Validate expression
+        errors = self.validator.validate(code)
+
+        # Display errors visually
+        self._display_validation_errors(errors)
+
+        # Update status label
+        if not errors:
+            self.status_label.setText("✅ Valid")
+            self.status_label.setStyleSheet("color: green; font-size: 10px;")
+        else:
+            error_count = len([e for e in errors if e.severity == ValidationSeverity.ERROR])
+            warning_count = len([e for e in errors if e.severity == ValidationSeverity.WARNING])
+
+            if error_count > 0:
+                self.status_label.setText(f"❌ {error_count} error(s)")
+                self.status_label.setStyleSheet("color: red; font-size: 10px; font-weight: bold;")
+            else:
+                self.status_label.setText(f"⚠️ {warning_count} warning(s)")
+                self.status_label.setStyleSheet("color: orange; font-size: 10px; font-weight: bold;")
+
+    def _display_validation_errors(self, errors: list):
+        """Display validation errors visually in editor.
+
+        Args:
+            errors: List of ValidationError objects
+        """
+        if not QSCI_AVAILABLE:
+            return
+
+        # Clear previous error markers
+        self.clear_error_markers()
+
+        # Clear previous annotations
+        if hasattr(self.editor, 'clearAnnotations'):
+            self.editor.clearAnnotations()
+
+        # Add error markers and annotations
+        for error in errors:
+            # QScintilla uses 0-indexed lines
+            line_num = error.line - 1
+
+            # Add marker to margin
+            if error.severity == ValidationSeverity.ERROR:
+                self.add_error_marker(line_num)
+
+            # Add annotation (tooltip-like message)
+            if hasattr(self.editor, 'annotate'):
+                severity_icon = {
+                    ValidationSeverity.ERROR: "❌",
+                    ValidationSeverity.WARNING: "⚠️",
+                    ValidationSeverity.INFO: "ℹ️"
+                }.get(error.severity, "•")
+
+                annotation_msg = f"{severity_icon} {error.message}"
+                self.editor.annotate(line_num, annotation_msg, 2)  # Style 2 = error style
+
+        # Set annotation display style (if supported)
+        if hasattr(self.editor, 'setAnnotationDisplay'):
+            from PyQt6.Qsci import QsciScintilla
+            self.editor.setAnnotationDisplay(QsciScintilla.AnnotationDisplay.AnnotationBoxed)

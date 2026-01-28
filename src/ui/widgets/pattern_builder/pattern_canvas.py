@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
 from PyQt6.QtCore import Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QPen, QColor, QPainter, QWheelEvent, QUndoStack, QUndoCommand, QMouseEvent, QCursor
 
-from ui.windows.cel_editor.theme import (
+from src.ui.windows.cel_editor.theme import (
     BACKGROUND_PRIMARY, GRID_MAJOR, GRID_MINOR
 )
 from .candle_item import CandleItem

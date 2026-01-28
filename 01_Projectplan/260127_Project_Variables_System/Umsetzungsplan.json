@@ -1,0 +1,622 @@
+{
+  "project": {
+    "name": "CEL Project Variables System",
+    "version": "1.0",
+    "created": "2026-01-28",
+    "status": "planning",
+    "description": "Flexible, projektspezifisches Variablen-System für CEL Editor mit Chart-Daten, Bot-Config und User-Variablen"
+  },
+  "goals": {
+    "primary": [
+      "Chart-Daten (OHLCV, Timestamp) in CEL verfügbar machen",
+      "Bot-Konfiguration (Leverage, SL/TP, Entry Weights) in CEL verfügbar machen",
+      "Projektspezifische User-Variablen (.cel_variables.json)",
+      "Variable Manager UI im CEL Editor",
+      "Autocomplete für alle Variablen im Code Editor"
+    ],
+    "secondary": [
+      "Variable Dependency Graph (welche Rules nutzen welche Variablen)",
+      "Import/Export von Variablen-Sets",
+      "Variable Validation (Typ-Checks, Range-Checks)",
+      "Variable Inspector (Live-Werte während Evaluation)"
+    ]
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Core Architecture & JSON Schema",
+      "duration_estimate": "4-6h",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "1.1",
+          "name": "JSON Schema für .cel_variables.json",
+          "priority": "high",
+          "estimated_time": "1h",
+          "description": "JSON Schema Definition mit Pydantic Models",
+          "deliverables": [
+            "src/core/tradingbot/cel/variable_models.py - Pydantic Models",
+            "schema/cel_variables.schema.json - JSON Schema für Validation",
+            "examples/.cel_variables.example.json - Beispiel-Datei"
+          ],
+          "code_structure": {
+            "models": [
+              "ProjectVariable (name, type, value, description, category)",
+              "VariableType (Enum: float, int, string, bool, array, dict)",
+              "VariableCategory (Enum: entry, exit, risk, time, custom)",
+              "ProjectVariables (version, project_name, variables: dict)"
+            ]
+          },
+          "tests": [
+            "test_variable_models.py - Pydantic validation tests"
+          ]
+        },
+        {
+          "id": "1.2",
+          "name": "Variable Storage & Persistence",
+          "priority": "high",
+          "estimated_time": "2h",
+          "description": "Laden/Speichern von .cel_variables.json mit Caching",
+          "deliverables": [
+            "src/core/tradingbot/cel/variable_storage.py - VariableStorage Klasse"
+          ],
+          "code_structure": {
+            "class": "VariableStorage",
+            "methods": [
+              "load(project_path: Path) -> ProjectVariables",
+              "save(project_path: Path, variables: ProjectVariables)",
+              "get(key: str) -> ProjectVariable | None",
+              "set(key: str, variable: ProjectVariable)",
+              "delete(key: str)",
+              "list() -> list[ProjectVariable]",
+              "search(query: str, category: str) -> list[ProjectVariable]",
+              "validate() -> list[ValidationError]"
+            ],
+            "caching": "LRU Cache mit 64 Einträgen für schnelle Lookups",
+            "file_watching": "QFileSystemWatcher für Auto-Reload bei Änderungen"
+          },
+          "tests": [
+            "test_variable_storage.py - Load/Save/Get/Set/Delete Tests"
+          ]
+        },
+        {
+          "id": "1.3",
+          "name": "Chart Data Provider",
+          "priority": "high",
+          "estimated_time": "2h",
+          "description": "Chart-Daten als CEL-Variablen verfügbar machen",
+          "deliverables": [
+            "src/core/tradingbot/cel/providers/chart_data_provider.py"
+          ],
+          "code_structure": {
+            "class": "ChartDataProvider",
+            "methods": [
+              "get_context(chart_window: ChartWindow) -> dict",
+              "_get_latest_candle(chart_window) -> dict",
+              "_get_timeframe(chart_window) -> str",
+              "_get_symbol(chart_window) -> str"
+            ],
+            "context_keys": [
+              "chart.price (float) - Close des letzten Candles",
+              "chart.open (float) - Open des letzten Candles",
+              "chart.high (float) - High des letzten Candles",
+              "chart.low (float) - Low des letzten Candles",
+              "chart.volume (float) - Volume des letzten Candles",
+              "chart.timestamp (int) - Unix timestamp",
+              "chart.timeframe (str) - z.B. '1h', '15m'",
+              "chart.symbol (str) - z.B. 'BTCUSDT'"
+            ]
+          },
+          "integration_point": "ChartWindow - Zugriff auf lightweight-charts data",
+          "tests": [
+            "test_chart_data_provider.py - Mock ChartWindow Tests"
+          ]
+        },
+        {
+          "id": "1.4",
+          "name": "Bot Config Provider",
+          "priority": "high",
+          "estimated_time": "1.5h",
+          "description": "Bot-Konfiguration als CEL-Variablen verfügbar machen",
+          "deliverables": [
+            "src/core/tradingbot/cel/providers/bot_config_provider.py"
+          ],
+          "code_structure": {
+            "class": "BotConfigProvider",
+            "methods": [
+              "get_context(bot_config: BotConfig) -> dict",
+              "_get_trading_params(config) -> dict",
+              "_get_risk_params(config) -> dict",
+              "_get_entry_weights(config) -> dict",
+              "_get_llm_params(config) -> dict"
+            ],
+            "context_keys": [
+              "bot.symbol (str)",
+              "bot.leverage (int)",
+              "bot.paper_mode (bool)",
+              "bot.risk_per_trade_pct (float)",
+              "bot.max_daily_loss_pct (float)",
+              "bot.sl_atr_multiplier (float)",
+              "bot.tp_atr_multiplier (float)",
+              "bot.trailing_enabled (bool)",
+              "bot.trailing_activation_pct (float)",
+              "bot.trailing_offset_pct (float)",
+              "bot.entry.* (Entry Score Weights)",
+              "bot.llm.* (LLM Validation Settings)"
+            ]
+          },
+          "integration_point": "BotConfig dataclass (src/core/trading_bot/bot_config.py)",
+          "tests": [
+            "test_bot_config_provider.py - BotConfig to context mapping"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "CEL Engine Integration",
+      "duration_estimate": "3-4h",
+      "status": "pending",
+      "depends_on": ["phase_1"],
+      "tasks": [
+        {
+          "id": "2.1",
+          "name": "Context Builder & Resolver",
+          "priority": "high",
+          "estimated_time": "2h",
+          "description": "Merged alle Variable-Sources zu einem CEL Context",
+          "deliverables": [
+            "src/core/tradingbot/cel/context_builder.py"
+          ],
+          "code_structure": {
+            "class": "CELContextBuilder",
+            "methods": [
+              "build(chart: ChartWindow, bot: BotConfig, project_vars: ProjectVariables, indicators: dict, regime: dict) -> dict",
+              "_merge_contexts(contexts: list[dict]) -> dict",
+              "_resolve_conflicts(key: str, sources: list) -> Any",
+              "_validate_context(context: dict) -> list[ValidationError]"
+            ],
+            "merge_strategy": {
+              "priority": "1. project.* (highest), 2. chart.*, 3. bot.*, 4. indicators.*, 5. regime.*",
+              "conflict_resolution": "Namespace-basiert (kein Konflikt durch Prefixes)",
+              "validation": "Type-Checks für alle Werte"
+            }
+          },
+          "tests": [
+            "test_context_builder.py - Multi-source merge tests"
+          ]
+        },
+        {
+          "id": "2.2",
+          "name": "CEL Engine Context Integration",
+          "priority": "high",
+          "estimated_time": "1.5h",
+          "description": "CELEngine.evaluate() mit ContextBuilder erweitern",
+          "deliverables": [
+            "src/core/tradingbot/cel_engine.py (MODIFIED)"
+          ],
+          "modifications": {
+            "new_method": "evaluate_with_sources(expression, chart, bot, project_vars, indicators, regime)",
+            "changes": [
+              "evaluate() behält alte Signatur für Backward-Compatibility",
+              "evaluate_with_sources() nutzt ContextBuilder",
+              "Caching berücksichtigt alle Context-Sources (cache_key = hash(expression + sources))"
+            ]
+          },
+          "backward_compatibility": "✅ Alte evaluate(expr, context) funktioniert weiterhin",
+          "tests": [
+            "test_cel_engine_variables.py - Context integration tests"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Variable Manager UI",
+      "duration_estimate": "6-8h",
+      "status": "pending",
+      "depends_on": ["phase_1", "phase_2"],
+      "tasks": [
+        {
+          "id": "3.1",
+          "name": "Variable Manager Dialog",
+          "priority": "medium",
+          "estimated_time": "3h",
+          "description": "UI für Verwaltung von Projekt-Variablen",
+          "deliverables": [
+            "src/ui/dialogs/variable_manager_dialog.py"
+          ],
+          "code_structure": {
+            "class": "VariableManagerDialog (QDialog)",
+            "components": [
+              "QTableWidget - Liste aller Variablen (Name, Typ, Wert, Kategorie, Beschreibung)",
+              "QLineEdit - Suche/Filter",
+              "QComboBox - Kategorie-Filter",
+              "QPushButton - Add/Edit/Delete/Import/Export",
+              "Variable Editor Panel (rechts) - Name, Type, Value, Description, Category"
+            ],
+            "features": [
+              "Live-Suche mit Highlighting",
+              "Double-Click zum Bearbeiten",
+              "Context Menu (Copy, Paste, Duplicate, Delete)",
+              "Drag & Drop zum CEL Editor (Insert Variable)",
+              "Keyboard Shortcuts (Ctrl+N = New, Del = Delete, Ctrl+D = Duplicate)"
+            ]
+          },
+          "ui_mockup": "01_Projectplan/260128_Project_Variables_System/ui_mockup_variable_manager.png",
+          "tests": [
+            "Manual UI Test - Variable CRUD Operations"
+          ]
+        },
+        {
+          "id": "3.2",
+          "name": "Variable Editor Widget",
+          "priority": "medium",
+          "estimated_time": "2h",
+          "description": "Inline-Editor für Variable Details",
+          "deliverables": [
+            "src/ui/widgets/variable_editor_widget.py"
+          ],
+          "code_structure": {
+            "class": "VariableEditorWidget (QWidget)",
+            "fields": [
+              "QLineEdit - Variable Name (alphanumeric + underscore, validation)",
+              "QComboBox - Type Selection (float, int, string, bool, array)",
+              "Type-Specific Input:",
+              "  - QDoubleSpinBox for float",
+              "  - QSpinBox for int",
+              "  - QLineEdit for string",
+              "  - QCheckBox for bool",
+              "  - QPlainTextEdit (JSON) for array",
+              "QLineEdit - Category (Autocomplete mit bestehenden Kategorien)",
+              "QTextEdit - Description (Multi-line)",
+              "QPushButton - Save/Cancel"
+            ],
+            "validation": [
+              "Name: ^[a-z_][a-z0-9_]*$ (snake_case)",
+              "Type: Valid VariableType Enum",
+              "Value: Type-specific validation (float range, int range, JSON syntax)",
+              "Real-time Feedback (Red border on invalid input)"
+            ]
+          },
+          "tests": [
+            "Manual UI Test - Input Validation"
+          ]
+        },
+        {
+          "id": "3.3",
+          "name": "CEL Editor Integration",
+          "priority": "medium",
+          "estimated_time": "2h",
+          "description": "Variable Manager in CEL Editor einbinden",
+          "deliverables": [
+            "src/ui/windows/cel_editor/main_window.py (MODIFIED)"
+          ],
+          "modifications": {
+            "menu": [
+              "Tools Menu → Variable Manager (Ctrl+Shift+V)"
+            ],
+            "sidebar": [
+              "Variable Inspector Panel (Dockable Widget)",
+              "Zeigt: Verfügbare Variablen nach Namespace",
+              "Collapsible Tree: chart.*, bot.*, project.*, indicators.*, regime.*"
+            ],
+            "statusbar": [
+              "Variable Count: 'Variables: 12 project, 8 chart, 15 bot'"
+            ],
+            "signals": [
+              "variable_added → Update Autocomplete",
+              "variable_changed → Re-validate CEL Code",
+              "variable_deleted → Check Dependencies"
+            ]
+          },
+          "tests": [
+            "Manual UI Test - Variable Manager Integration"
+          ]
+        },
+        {
+          "id": "3.4",
+          "name": "Autocomplete für Variablen",
+          "priority": "high",
+          "estimated_time": "1.5h",
+          "description": "QScintilla Autocomplete mit allen verfügbaren Variablen",
+          "deliverables": [
+            "src/ui/widgets/cel_editor_widget.py (MODIFIED)"
+          ],
+          "modifications": {
+            "autocomplete_list_extension": [
+              "Lade Variablen aus VariableStorage",
+              "Format: 'project.my_var' mit Type-Info 'project.my_var [float]'",
+              "Auto-Update bei Variable-Änderungen",
+              "Namespace-basierte Gruppierung"
+            ],
+            "completion_trigger": [
+              "Nach 'project.' → Zeige alle project.*",
+              "Nach 'chart.' → Zeige alle chart.*",
+              "Nach 'bot.' → Zeige alle bot.*",
+              "Fuzzy-Matching für schnelle Suche"
+            ]
+          },
+          "tests": [
+            "Manual UI Test - Autocomplete Functionality"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Advanced Features",
+      "duration_estimate": "4-6h",
+      "status": "pending",
+      "depends_on": ["phase_3"],
+      "priority": "low",
+      "tasks": [
+        {
+          "id": "4.1",
+          "name": "Variable Dependency Graph",
+          "priority": "low",
+          "estimated_time": "2h",
+          "description": "Visualisiere welche Rules welche Variablen nutzen",
+          "deliverables": [
+            "src/core/tradingbot/cel/variable_dependency.py"
+          ],
+          "code_structure": {
+            "class": "VariableDependencyAnalyzer",
+            "methods": [
+              "analyze(cel_code: str) -> list[str] - Extrahiere verwendete Variablen",
+              "find_usages(variable_name: str) -> list[RuleLocation]",
+              "get_dependency_graph() -> dict[str, list[str]]",
+              "can_delete(variable_name: str) -> tuple[bool, list[str]]"
+            ],
+            "use_cases": [
+              "Vor Variable löschen: Warnung 'Variable wird in 3 Rules verwendet'",
+              "Variable Inspector: Zeige Usages pro Variable",
+              "Dependency Graph Visualization (optional)"
+            ]
+          },
+          "tests": [
+            "test_variable_dependency.py - Usage detection tests"
+          ]
+        },
+        {
+          "id": "4.2",
+          "name": "Import/Export Variable-Sets",
+          "priority": "low",
+          "estimated_time": "1.5h",
+          "description": "Export von Variablen-Sets für Sharing/Backup",
+          "deliverables": [
+            "VariableStorage.export_set(variables: list[str], file: Path)",
+            "VariableStorage.import_set(file: Path, merge_strategy: str)"
+          ],
+          "features": [
+            "Export ausgewählter Variablen als JSON",
+            "Import mit Merge-Optionen (Overwrite, Skip, Rename)",
+            "Template-Sets (z.B. 'BTC Scalping Variables', 'Swing Trading Variables')"
+          ],
+          "tests": [
+            "test_variable_import_export.py - Round-trip tests"
+          ]
+        },
+        {
+          "id": "4.3",
+          "name": "Variable Inspector (Live-Werte)",
+          "priority": "low",
+          "estimated_time": "2h",
+          "description": "Zeige Live-Werte aller Variablen während Evaluation",
+          "deliverables": [
+            "src/ui/widgets/variable_inspector_widget.py"
+          ],
+          "code_structure": {
+            "class": "VariableInspectorWidget (QDockWidget)",
+            "components": [
+              "QTreeWidget - Namespace-Tree (chart, bot, project, indicators, regime)",
+              "Live Update: Verbinde mit CEL Engine Evaluation Events",
+              "Show: Variable Name, Current Value, Type, Last Updated"
+            ],
+            "features": [
+              "Real-time Updates während Bot läuft",
+              "Highlight geänderte Werte (Farb-Fade-Animation)",
+              "Copy Value to Clipboard",
+              "Set Watchpoints (Alert bei Wert-Änderung)"
+            ]
+          },
+          "tests": [
+            "Manual UI Test - Live Value Updates"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Testing & Documentation",
+      "duration_estimate": "3-4h",
+      "status": "pending",
+      "depends_on": ["phase_3"],
+      "tasks": [
+        {
+          "id": "5.1",
+          "name": "Unit Tests für Core",
+          "priority": "high",
+          "estimated_time": "2h",
+          "description": "Umfassende Tests für Variable System",
+          "deliverables": [
+            "tests/unit/test_variable_models.py (~200 LOC)",
+            "tests/unit/test_variable_storage.py (~250 LOC)",
+            "tests/unit/test_chart_data_provider.py (~150 LOC)",
+            "tests/unit/test_bot_config_provider.py (~150 LOC)",
+            "tests/unit/test_context_builder.py (~200 LOC)",
+            "tests/unit/test_cel_engine_variables.py (~150 LOC)"
+          ],
+          "coverage_target": ">85%",
+          "tests": [
+            "Pydantic Model Validation",
+            "JSON Load/Save Round-Trip",
+            "Provider Context Generation",
+            "Context Merge & Conflict Resolution",
+            "CEL Evaluation mit Multi-Source Context"
+          ]
+        },
+        {
+          "id": "5.2",
+          "name": "Integration Tests",
+          "priority": "medium",
+          "estimated_time": "1h",
+          "description": "End-to-End Tests für Variable Workflows",
+          "deliverables": [
+            "tests/integration/test_variable_workflows.py (~200 LOC)"
+          ],
+          "test_scenarios": [
+            "Workflow 1: Variable erstellen → In CEL verwenden → Evaluieren → Ergebnis prüfen",
+            "Workflow 2: Chart Data → CEL Context → Evaluation → Chart.price verfügbar",
+            "Workflow 3: Bot Config ändern → Context Update → CEL Re-Evaluation",
+            "Workflow 4: Variable löschen → Dependency Check → Warnung anzeigen",
+            "Workflow 5: Import Variable-Set → Merge → Alle Variablen verfügbar"
+          ]
+        },
+        {
+          "id": "5.3",
+          "name": "Help Documentation Update",
+          "priority": "medium",
+          "estimated_time": "1h",
+          "description": "Help-Datei mit tatsächlicher Implementation aktualisieren",
+          "deliverables": [
+            "help/CEL_Variables_Guide.md (UPDATE - Status zu 'Implemented')",
+            "help/Variable_Manager_Guide.md (NEU - UI Screenshots + Workflows)",
+            "04_Knowledgbase/CEL_Variables_Architecture.md (NEU - Technical Deep-Dive)"
+          ],
+          "content": [
+            "Update 'Status: In Entwicklung' zu 'Status: Implemented'",
+            "Add Screenshots von Variable Manager UI",
+            "Add Real-World Examples mit tatsächlichen Werten",
+            "Add Troubleshooting Section",
+            "Add Performance Benchmarks"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_structure": {
+    "new_files": [
+      "src/core/tradingbot/cel/variable_models.py",
+      "src/core/tradingbot/cel/variable_storage.py",
+      "src/core/tradingbot/cel/providers/__init__.py",
+      "src/core/tradingbot/cel/providers/chart_data_provider.py",
+      "src/core/tradingbot/cel/providers/bot_config_provider.py",
+      "src/core/tradingbot/cel/context_builder.py",
+      "src/core/tradingbot/cel/variable_dependency.py",
+      "src/ui/dialogs/variable_manager_dialog.py",
+      "src/ui/widgets/variable_editor_widget.py",
+      "src/ui/widgets/variable_inspector_widget.py",
+      "schema/cel_variables.schema.json",
+      "examples/.cel_variables.example.json",
+      "tests/unit/test_variable_models.py",
+      "tests/unit/test_variable_storage.py",
+      "tests/unit/test_chart_data_provider.py",
+      "tests/unit/test_bot_config_provider.py",
+      "tests/unit/test_context_builder.py",
+      "tests/unit/test_cel_engine_variables.py",
+      "tests/unit/test_variable_dependency.py",
+      "tests/integration/test_variable_workflows.py",
+      "help/CEL_Variables_Guide.md",
+      "help/Variable_Manager_Guide.md",
+      "04_Knowledgbase/CEL_Variables_Architecture.md"
+    ],
+    "modified_files": [
+      "src/core/tradingbot/cel_engine.py",
+      "src/ui/windows/cel_editor/main_window.py",
+      "src/ui/widgets/cel_editor_widget.py"
+    ],
+    "config_files": [
+      ".cel_variables.json (per-project, NOT committed to Git)",
+      ".cel_variables.example.json (template, committed to Git)"
+    ]
+  },
+  "dependencies": {
+    "python_packages": [
+      "pydantic>=2.0 (already installed)",
+      "watchdog>=3.0 (NEW - for file watching)"
+    ],
+    "existing_code": [
+      "src/core/tradingbot/cel_engine.py - Extend evaluate()",
+      "src/core/trading_bot/bot_config.py - BotConfig dataclass",
+      "src/ui/widgets/chart_window.py - ChartWindow interface",
+      "src/ui/widgets/cel_editor_widget.py - QScintilla editor"
+    ]
+  },
+  "estimated_timeline": {
+    "phase_1": "4-6h (Core Architecture)",
+    "phase_2": "3-4h (CEL Integration)",
+    "phase_3": "6-8h (UI Development)",
+    "phase_4": "4-6h (Advanced Features) - OPTIONAL",
+    "phase_5": "3-4h (Testing & Docs)",
+    "total_minimum": "16-22h (without Phase 4)",
+    "total_maximum": "20-28h (with Phase 4)",
+    "recommended": "Start with Phase 1-3 (MVP), Add Phase 4 later based on user feedback"
+  },
+  "risks": {
+    "high": [
+      {
+        "risk": "Chart Data Access",
+        "description": "ChartWindow API könnte nicht direkt Candle-Daten exportieren",
+        "mitigation": "Fallback: Verwende ChartDataHelper oder ChartBridge für Datenzugriff",
+        "probability": "medium",
+        "impact": "medium"
+      }
+    ],
+    "medium": [
+      {
+        "risk": "Performance bei vielen Variablen",
+        "description": ">100 Projekt-Variablen könnten Autocomplete verlangsamen",
+        "mitigation": "Lazy-Loading, Virtual List, Indexing mit Caching",
+        "probability": "low",
+        "impact": "medium"
+      }
+    ],
+    "low": [
+      {
+        "risk": "Namespace-Kollisionen",
+        "description": "User erstellt Variable 'chart' die mit chart.* kollidiert",
+        "mitigation": "Reserved Keywords Validation, Prefix-Check bei Variable Creation",
+        "probability": "low",
+        "impact": "low"
+      }
+    ]
+  },
+  "success_criteria": {
+    "phase_1": [
+      "✅ .cel_variables.json kann geladen/gespeichert werden",
+      "✅ Variablen mit allen Typen (float, int, string, bool, array) funktionieren",
+      "✅ Chart-Daten (chart.price, etc.) sind in CEL verfügbar",
+      "✅ Bot-Config (bot.leverage, etc.) ist in CEL verfügbar"
+    ],
+    "phase_2": [
+      "✅ CEL Engine evaluiert Expressions mit allen Variablen-Sources",
+      "✅ Context-Merge funktioniert ohne Konflikte",
+      "✅ Backward Compatibility: Alte evaluate() API funktioniert"
+    ],
+    "phase_3": [
+      "✅ Variable Manager UI zeigt alle Variablen an",
+      "✅ CRUD-Operationen (Create, Read, Update, Delete) funktionieren",
+      "✅ Autocomplete zeigt alle project.* Variablen",
+      "✅ Validation verhindert ungültige Variablen-Namen/Werte"
+    ],
+    "phase_5": [
+      "✅ >85% Code Coverage für Core-Module",
+      "✅ Integration Tests für alle Workflows passed",
+      "✅ Help Documentation vollständig und aktuell"
+    ]
+  },
+  "next_steps": {
+    "immediate": [
+      "1. Review dieses Plans mit User",
+      "2. Fragen klären (z.B. ChartWindow API für Candle-Daten)",
+      "3. Start Phase 1.1: JSON Schema Design"
+    ],
+    "before_start": [
+      "Prüfe ChartWindow Interface für Datenzugriff",
+      "Prüfe BotConfig Struktur (Entry Weights, LLM Settings)",
+      "Erstelle UI Mockup für Variable Manager",
+      "Diskutiere Namespace-Konvention (chart.*, bot.*, project.*)"
+    ]
+  }
+}

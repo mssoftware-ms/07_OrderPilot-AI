@@ -179,6 +179,28 @@ class BotTabUIMixin:
         self.start_btn.clicked.connect(self._on_start_clicked)
         layout.addWidget(self.start_btn)
 
+        # JSON Entry Button (NEU)
+        self.start_btn_json = QPushButton("▶ Start Bot (JSON Entry)")
+        self.start_btn_json.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #1976D2; }
+            QPushButton:disabled { background-color: #333; color: #666; }
+        """)
+        self.start_btn_json.setToolTip(
+            "Startet Bot mit JSON-basierter Entry-Logik\n"
+            "Nutzt CEL Expression aus Regime + Indicator JSON\n"
+            "SL/TP/Trailing Stop aus UI-Feldern"
+        )
+        self.start_btn_json.clicked.connect(self._control.on_start_json_clicked)
+        layout.addWidget(self.start_btn_json)
+
         self.stop_btn = QPushButton("⏹ Stop Bot")
         self.stop_btn.setStyleSheet("""
             QPushButton {

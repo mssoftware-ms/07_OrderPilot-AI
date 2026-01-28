@@ -11,6 +11,7 @@ from .ko_finder_mixin import KOFinderMixin
 from .strategy_simulator_mixin import StrategySimulatorMixin
 from .levels_context_mixin import LevelsContextMixin
 from .cel_editor_mixin import CelEditorMixin
+from .variables_mixin import VariablesMixin
 
 __all__ = [
     "PanelsMixin",
@@ -21,4 +22,5 @@ __all__ = [
     "StrategySimulatorMixin",
     "LevelsContextMixin",
     "CelEditorMixin",
+    "VariablesMixin",
 ]

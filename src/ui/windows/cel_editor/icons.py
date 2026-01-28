@@ -259,6 +259,16 @@ class CelEditorIcons:
     def ai_suggest(self) -> QIcon:
         return self._get_icon('action', 'tips_and_updates')
 
+    # Variable System icons
+    @property
+    def variables(self) -> QIcon:
+        return self._get_icon('editor', 'data_object')
+
+    # Regime Editor icon
+    @property
+    def regime(self) -> QIcon:
+        return self._get_icon('action', 'tune')
+
     # Settings icons
     @property
     def settings(self) -> QIcon:

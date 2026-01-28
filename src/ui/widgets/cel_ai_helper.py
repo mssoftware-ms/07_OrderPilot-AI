@@ -41,7 +41,7 @@ class CelAIHelper:
 
     def __init__(self):
         """Initialisiere AI-Helper mit aktuellen Settings."""
-        self.settings = QSettings("OrderPilot-AI", "OrderPilot-AI")
+        self.settings = QSettings("OrderPilot", "TradingApp")
         self._load_ai_settings()
         self._openai_client: Optional[AsyncOpenAI] = None
         self._anthropic_client: Optional[anthropic.AsyncAnthropic] = None
@@ -95,12 +95,152 @@ class CelAIHelper:
         model_id = re.sub(r'\s*\(.*?\)\s*', '', display_text).strip()
         return model_id
 
+    def _get_available_variables_list(self) -> str:
+        """Erstelle Liste aller verfügbaren Variablen für AI Prompt.
+
+        Diese Liste basiert auf:
+        - ChartDataProvider (chart.*)
+        - BotConfigProvider (bot.*)
+        - ProjectVariables (project.* - aus .cel_variables.json)
+
+        Returns:
+            Formatierte Liste mit Variablen-Kategorien
+        """
+        return """
+AVAILABLE VARIABLES (organized by namespace):
+
+1. BOT VARIABLES (bot.*):
+   Trading Configuration:
+   - bot.symbol: Trading symbol (e.g., "BTCUSDT")
+   - bot.leverage: Trading leverage (e.g., 10)
+   - bot.paper_mode: Is paper trading? (always True)
+
+   Risk Management:
+   - bot.risk_per_trade_pct: Risk per trade in % (e.g., 2.0)
+   - bot.max_daily_loss_pct: Max daily loss in % (e.g., 10.0)
+   - bot.max_position_size_btc: Max position size in BTC
+
+   Stop Loss & Take Profit:
+   - bot.sl_atr_multiplier: Stop Loss ATR multiplier (e.g., 2.0)
+   - bot.tp_atr_multiplier: Take Profit ATR multiplier (e.g., 3.0)
+   - bot.trailing_stop_enabled: Trailing stop enabled (true/false)
+   - bot.trailing_stop_atr_mult: Trailing stop ATR multiplier
+   - bot.trailing_stop_activation_pct: Trailing stop activation % (e.g., 2.0)
+
+   Signal Generation:
+   - bot.min_confluence_score: Minimum confluence score (e.g., 3)
+   - bot.require_regime_alignment: Require regime alignment (true/false)
+
+   Timing:
+   - bot.analysis_interval_sec: Analysis interval in seconds
+   - bot.position_check_interval_ms: Position check interval in ms
+   - bot.macro_update_interval_min: Macro update interval in minutes
+   - bot.trend_update_interval_min: Trend update interval in minutes
+
+   Session Management:
+   - bot.session.enabled: Session management enabled (true/false)
+   - bot.session.start_utc: Session start time (UTC, e.g., "08:00")
+   - bot.session.end_utc: Session end time (UTC, e.g., "16:00")
+   - bot.session.close_at_end: Close positions at session end (true/false)
+
+   AI Configuration:
+   - bot.ai.enabled: AI validation enabled (true/false)
+   - bot.ai.confidence_threshold: AI confidence threshold (0-100)
+   - bot.ai.min_confluence_for_ai: Min confluence to trigger AI (e.g., 3)
+   - bot.ai.fallback_to_technical: Fallback to technical analysis (true/false)
+
+2. CHART VARIABLES (chart.*):
+   Current Candle (OHLCV):
+   - chart.price: Current close price (USD)
+   - chart.open: Current open price (USD)
+   - chart.high: Current high price (USD)
+   - chart.low: Current low price (USD)
+   - chart.volume: Current volume (BTC)
+
+   Chart Info:
+   - chart.symbol: Trading symbol (e.g., "BTCUSDT")
+   - chart.timeframe: Chart timeframe (e.g., "1h", "4h", "1d")
+   - chart.candle_count: Number of loaded candles (int)
+
+   Candle Analysis:
+   - chart.range: High-Low range (USD)
+   - chart.body: Absolute candle body size (USD)
+   - chart.is_bullish: Is current candle bullish? (bool)
+   - chart.is_bearish: Is current candle bearish? (bool)
+   - chart.upper_wick: Upper wick size (USD)
+   - chart.lower_wick: Lower wick size (USD)
+
+   Previous Candle:
+   - chart.prev_close: Previous candle close (USD)
+   - chart.prev_high: Previous candle high (USD)
+   - chart.prev_low: Previous candle low (USD)
+   - chart.change: Price change from previous candle (USD)
+   - chart.change_pct: Price change percentage (%)
+
+3. MARKET VARIABLES (current candle):
+   Price & Volume:
+   - close: Current close price
+   - open: Current open price
+   - high: Current high price
+   - low: Current low price
+   - volume: Current volume
+
+   Volatility & Regime:
+   - atrp: ATR in percent (volatility measure)
+   - regime: Current market regime (string, e.g., "R0", "R1", "R2", "R3", "R4")
+   - direction: Trend direction (UP/DOWN/NONE)
+   - squeeze_on: Bollinger squeeze active (bool)
+
+4. TRADE VARIABLES (trade.*):
+   Position Info:
+   - trade.entry_price: Entry price
+   - trade.current_price: Current market price
+   - trade.stop_price: Current stop loss price
+   - trade.side: Trade side (long/short)
+   - trade.leverage: Trade leverage
+
+   Performance:
+   - trade.pnl_pct: Profit/Loss in %
+   - trade.pnl_usdt: Profit/Loss in USDT
+   - trade.fees_pct: Fees in %
+
+   Duration:
+   - trade.bars_in_trade: Bars since entry
+
+5. CONFIG VARIABLES (cfg.*):
+   Trading Rules:
+   - cfg.min_volume_pctl: Minimum volume percentile (e.g., 20.0)
+   - cfg.min_atrp_pct: Minimum ATR % (e.g., 0.5)
+   - cfg.max_atrp_pct: Maximum ATR % (e.g., 5.0)
+   - cfg.max_leverage: Maximum allowed leverage (e.g., 10)
+   - cfg.max_fees_pct: Maximum fee % (e.g., 0.2)
+   - cfg.no_trade_regimes: Array of blocked regimes (e.g., ["R0", "R4"])
+
+6. PROJECT VARIABLES (project.*):
+   Custom Variables from .cel_variables.json:
+   - project.*: User-defined variables with custom values
+   - Define in Variables UI to create project-specific constants
+   - Example: project.entry_min_price, project.max_drawdown_pct
+
+IMPORTANT NOTES:
+- Use chart.* for current market data (OHLCV)
+- Use bot.* for bot configuration and risk management
+- Use trade.* for active position information
+- Use cfg.* for strategy-level configuration
+- Use project.* for custom project-specific constants
+- All percentages are in decimal form (e.g., 2.0 = 2%)
+- Use null-safe operators when accessing potentially missing values
+"""
+
     def get_current_provider_config(self) -> Dict[str, Any]:
         """Hole aktuelle Provider-Konfiguration.
 
         Returns:
             Dict mit provider, model, api_key
         """
+        # Reload settings on each call to honor latest user selection
+        self._load_ai_settings()
+
         if not self.ai_enabled:
             logger.warning("AI features disabled in settings")
             return {
@@ -198,6 +338,52 @@ class CelAIHelper:
             logger.error(f"CEL generation failed: {e}")
             return None
 
+    async def explain_cel_code(
+        self,
+        cel_code: str,
+        context: Optional[str] = None
+    ) -> Optional[str]:
+        """Explain a CEL expression with AI.
+
+        Args:
+            cel_code: CEL expression to explain
+            context: Optional additional context
+
+        Returns:
+            Explanation text or None on error
+        """
+        config = self.get_current_provider_config()
+
+        if not config["enabled"]:
+            logger.error("AI features disabled, cannot explain CEL code")
+            return None
+
+        if not config["api_key"]:
+            logger.error(f"API key missing for {config['provider']}")
+            return None
+
+        prompt = self._build_cel_explain_prompt(cel_code, context)
+        system_message = (
+            "You are a CEL (Common Expression Language) assistant for trading strategies. "
+            "Explain the expression in plain language, highlight key conditions, and "
+            "mention potential pitfalls (e.g., missing guard conditions). "
+            "Be concise and structured."
+        )
+
+        try:
+            if config["provider"] == "anthropic":
+                return await self._generate_with_anthropic(prompt, config, system_message)
+            elif config["provider"] == "openai":
+                return await self._generate_with_openai(prompt, config, system_message)
+            elif config["provider"] == "gemini":
+                return await self._generate_with_gemini(prompt, config, system_message)
+            else:
+                logger.error(f"Unknown provider: {config['provider']}")
+                return None
+        except Exception as e:
+            logger.error(f"CEL explanation failed: {e}")
+            return None
+
     def _build_cel_generation_prompt(
         self,
         workflow_type: str,
@@ -220,7 +406,8 @@ class CelAIHelper:
             "entry": "ENTRY CONDITIONS: When to enter a trade (buy/sell signal)",
             "exit": "EXIT CONDITIONS: When to close an open trade (take profit or stop loss)",
             "before_exit": "BEFORE EXIT LOGIC: Actions before closing (e.g., partial close, warnings)",
-            "update_stop": "STOP UPDATE LOGIC: When to move trailing stop loss"
+            "update_stop": "STOP UPDATE LOGIC: When to move trailing stop loss",
+            "no_entry": "NO ENTRY FILTER: Conditions that prevent trade entries (blackout periods, high volatility, news events, bad market conditions)"
         }
 
         prompt = f"""You are a CEL (Common Expression Language) code generator for trading strategies.
@@ -230,6 +417,8 @@ TASK: Generate a CEL expression for a {workflow_type.upper()} workflow.
 WORKFLOW TYPE: {workflow_descriptions.get(workflow_type, workflow_type)}
 PATTERN: {pattern_name}
 STRATEGY: {strategy_description}
+
+{self._get_available_variables_list()}
 
 AVAILABLE CEL FUNCTIONS AND SYNTAX:
 
@@ -249,35 +438,69 @@ AVAILABLE CEL FUNCTIONS AND SYNTAX:
    - CHOP: chop14.value
 
 2. TRADING FUNCTIONS:
-   - is_trade_open(): Check if trade is currently open
-   - is_long(): Check if current trade is LONG
-   - is_short(): Check if current trade is SHORT
-   - stop_hit_long(): Check if long stop loss was hit
-   - stop_hit_short(): Check if short stop loss was hit
-   - tp_hit(): Check if take profit was hit
-   - price_above_ema(period): Check if price > EMA
-   - price_below_ema(period): Check if price < EMA
+   - is_trade_open(trade): Check if trade is currently open
+   - is_long(trade): Check if current trade is LONG
+   - is_short(trade): Check if current trade is SHORT
+   - is_bullish_signal(strategy): Bullish bias check
+   - is_bearish_signal(strategy): Bearish bias check
+   - in_regime(regime, 'R1'): Regime match
+   - stop_hit_long(trade, current_price): Long stop loss hit
+   - stop_hit_short(trade, current_price): Short stop loss hit
+   - tp_hit(trade, current_price): Take profit hit
+   - price_above_ema(price, ema_value): Price > EMA
+   - price_below_ema(price, ema_value): Price < EMA
+   - price_above_level(price, level): Price > level
+   - price_below_level(price, level): Price < level
+   - pct_change(old, new): Percent change
+   - pct_from_level(price, level): Percent distance to level
+   - level_at_pct(entry, pct, side): Level at percent
+   - retracement(from, to, pct): Retracement level
+   - extension(from, to, pct): Extension level
+   - pctl(series, percentile): Series percentile
+   - crossover(series1, series2): Cross-over
+   - highest(series, period): Highest over period
+   - lowest(series, period): Lowest over period
+   - sma(series, period): Simple moving average
+   - pin_bar_bullish(), pin_bar_bearish(), inside_bar(), inverted_hammer()
+   - bull_flag(), bear_flag(), cup_and_handle(), double_bottom(), double_top()
+   - ascending_triangle(), descending_triangle()
+   - breakout_above(), breakdown_below(), false_breakout(), break_of_structure()
+   - liquidity_swept(), fvg_exists(), order_block_retest(), harmonic_pattern_detected()
 
 3. MATH FUNCTIONS:
    - abs(value): Absolute value
    - min(a, b): Minimum of two values
    - max(a, b): Maximum of two values
-   - round(value): Round to nearest integer
+   - round(value, decimals): Round to decimals
+   - floor(value): Round down
+   - ceil(value): Round up
    - sqrt(value): Square root
    - pow(x, y): x to the power of y
+   - exp(value): e^x
 
 4. TYPE/NULL FUNCTIONS:
+   - type(value): Type name
+   - string(value): Convert to string
+   - int(value): Convert to int
+   - double(value): Convert to float
+   - bool(value): Convert to bool
    - isnull(value): Check if null
-   - isnotnull(value): Check if not null
    - nz(value, default): Replace null with default
    - coalesce(a, b, c): First non-null value
    - clamp(value, min, max): Constrain value to range
 
 5. ARRAY FUNCTIONS:
    - has(array, element): Array contains element
-   - size(array): Array length
-   - all(array, condition): All elements match
-   - any(array, condition): Any element matches
+   - size(array) / length(array): Array length
+   - all(array, condition): All elements match (truthy list)
+   - any(array, condition): Any element matches (truthy list)
+   - map(array, expr): Transform array (limited)
+   - filter(array, condition): Filter array (limited)
+   - first(array), last(array): First/last element
+   - indexOf(array, element): Index of element
+   - slice(array, start, end): Slice array
+   - distinct(array), sort(array), reverse(array)
+   - sum(array), avg(array), average(array)
 
 6. LOGIC OPERATORS:
    - Comparison: ==, !=, <, >, <=, >=
@@ -322,14 +545,20 @@ rsi14.value > 50 && ema34.value > ema89.value && macd_12_26_9.value > macd_12_26
 Entry (Mean Reversion):
 rsi14.value < 30 && close < bb_20_2.lower && volume_ratio_20.value > 1.5
 
+Entry (Regime-based):
+!is_trade_open(trade) && (regime == 'EXTREME_BULL' || regime == 'EXTREME_BEAR')
+
+No Entry (Volatility Filter):
+atrp > cfg.max_atrp_pct || has(cfg.no_trade_regimes, regime)
+
 Exit (Take Profit):
 rsi14.value > 70 || trade.pnl_pct > 3.0
 
 Exit (Stop Loss):
-stop_hit_long() || stop_hit_short()
+stop_hit_long(trade, close) || stop_hit_short(trade, close)
 
 Before Exit (Partial Close):
-trade.pnl_pct > 2.0 && is_trade_open()
+trade.pnl_pct > 2.0 && is_trade_open(trade)
 
 Update Stop (Breakeven):
 trade.pnl_pct > 1.0
@@ -337,13 +566,24 @@ trade.pnl_pct > 1.0
 Update Stop (Trailing):
 trade.pnl_pct > 2.0 && ema34.value > ema89.value
 
-REQUIREMENTS:
-1. Return ONLY the CEL expression, NO explanation or markdown
-2. Use correct syntax (&&, ||, !, ==, etc.)
-3. Use available indicators and functions ONLY
-4. Make expression specific to the pattern and workflow type
-5. Consider strategy description and best practices
-6. Keep expression readable (use line breaks if complex)
+CRITICAL REQUIREMENTS:
+1. Return ONLY a single CEL boolean expression - NO JSON objects, NO dictionaries
+2. DO NOT return: {{ 'enter': ..., 'side': ..., 'stop_price': ... }} - This is WRONG
+3. DO return: regime == 'EXTREME_BULL' || regime == 'EXTREME_BEAR' - This is CORRECT
+4. Use correct CEL syntax (&&, ||, !, ==, etc.) - NOT Python/JSON syntax
+5. Use available indicators and functions ONLY
+6. Make expression specific to the pattern and workflow type
+7. Keep expression readable (use line breaks if complex, but still a single expression)
+
+WRONG EXAMPLES (DO NOT DO THIS):
+❌ {{ 'enter': regime == 'EXTREME_BULL', 'side': 'long' }}
+❌ return {{ enter: true, side: 'long' }}
+❌ {{ enter: ..., stop_price: ... }}
+
+CORRECT EXAMPLES (DO THIS):
+✅ regime == 'EXTREME_BULL' || regime == 'EXTREME_BEAR'
+✅ !is_trade_open(trade) && rsi14.value > 50
+✅ (regime == 'EXTREME_BULL' || regime == 'EXTREME_BEAR') && !has(cfg.no_trade_regimes, regime)
 
 GENERATE CEL EXPRESSION NOW:"""
 
@@ -352,10 +592,22 @@ GENERATE CEL EXPRESSION NOW:"""
 
         return prompt
 
+    def _build_cel_explain_prompt(self, cel_code: str, context: Optional[str]) -> str:
+        """Build prompt for explaining CEL code."""
+        prompt = (
+            "Explain the following CEL expression used in a trading strategy. "
+            "Use short bullet points and clarify what each clause does.\n\n"
+            f"CEL EXPRESSION:\n{cel_code.strip()}"
+        )
+        if context:
+            prompt += f"\n\nADDITIONAL CONTEXT: {context}"
+        return prompt
+
     async def _generate_with_anthropic(
         self,
         prompt: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        system_message: Optional[str] = None
     ) -> Optional[str]:
         """Generiere CEL Code mit Anthropic Claude.
 
@@ -385,10 +637,14 @@ GENERATE CEL EXPRESSION NOW:"""
             response = await self._anthropic_client.messages.create(
                 model=model,
                 max_tokens=4096,
-                system=(
+                system=system_message
+                or (
                     "You are a CEL (Common Expression Language) code generator "
                     "specialized in trading strategy expressions. "
-                    "Return ONLY valid CEL code, no explanations or markdown formatting."
+                    "Return ONLY a single CEL boolean expression, no explanations, no markdown, "
+                    "and absolutely NO JSON objects or dictionaries. "
+                    "DO NOT return structures like { 'enter': ..., 'side': ... }. "
+                    "Return ONLY the expression itself."
                 ),
                 messages=[
                     {
@@ -423,7 +679,8 @@ GENERATE CEL EXPRESSION NOW:"""
     async def _generate_with_openai(
         self,
         prompt: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        system_message: Optional[str] = None
     ) -> Optional[str]:
         """Generiere CEL Code mit OpenAI GPT-5.2.
 
@@ -460,6 +717,15 @@ GENERATE CEL EXPRESSION NOW:"""
             )
 
             # API-Call mit GPT-5.2
+            system_message = system_message or (
+                "You are a CEL (Common Expression Language) code generator "
+                "specialized in trading strategy expressions. "
+                "Return ONLY a single CEL boolean expression, no explanations, no markdown, "
+                "and absolutely NO JSON objects or dictionaries. "
+                "DO NOT return structures like { 'enter': ..., 'side': ... }. "
+                "Return ONLY the expression itself."
+            )
+
             if model.startswith("gpt-5"):
                 # GPT-5.x: reasoning_effort
                 response = await self._openai_client.chat.completions.create(
@@ -467,9 +733,7 @@ GENERATE CEL EXPRESSION NOW:"""
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a CEL (Common Expression Language) code generator "
-                                     "specialized in trading strategy expressions. "
-                                     "Return ONLY valid CEL code, no explanations."
+                            "content": system_message
                         },
                         {
                             "role": "user",
@@ -491,9 +755,7 @@ GENERATE CEL EXPRESSION NOW:"""
                     messages=[
                         {
                             "role": "system",
-                            "content": "You are a CEL (Common Expression Language) code generator "
-                                     "specialized in trading strategy expressions. "
-                                     "Return ONLY valid CEL code, no explanations."
+                            "content": system_message
                         },
                         {
                             "role": "user",
@@ -530,7 +792,8 @@ GENERATE CEL EXPRESSION NOW:"""
     async def _generate_with_gemini(
         self,
         prompt: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        system_message: Optional[str] = None
     ) -> Optional[str]:
         """Generiere CEL Code mit Google Gemini.
 
@@ -556,10 +819,14 @@ GENERATE CEL EXPRESSION NOW:"""
             # Erstelle Model-Instanz
             gemini_model = genai.GenerativeModel(
                 model_name=model,
-                system_instruction=(
+                system_instruction=system_message
+                or (
                     "You are a CEL (Common Expression Language) code generator "
                     "specialized in trading strategy expressions. "
-                    "Return ONLY valid CEL code, no explanations or markdown formatting."
+                    "Return ONLY a single CEL boolean expression, no explanations, no markdown, "
+                    "and absolutely NO JSON objects or dictionaries. "
+                    "DO NOT return structures like { 'enter': ..., 'side': ... }. "
+                    "Return ONLY the expression itself."
                 )
             )
 

@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsLineItem, QGraphicsItemG
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QPen, QBrush, QColor, QLinearGradient, QPainter
 
-from ui.windows.cel_editor.theme import (
+from src.ui.windows.cel_editor.theme import (
     CANDLE_BULLISH_BODY, CANDLE_BULLISH_BORDER,
     CANDLE_BEARISH_BODY, CANDLE_BEARISH_BORDER,
     CANDLE_DOJI_BODY, CANDLE_DOJI_BORDER,

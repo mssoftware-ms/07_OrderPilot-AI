@@ -31,12 +31,13 @@ from .theme import (
 from ...themes import ThemeManager
 from .icons import cel_icons
 from ...app_icon import set_window_icon  # Issue #29: App icon
-from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
-from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
-from ...widgets.pattern_builder.properties_panel import PropertiesPanel
-from ...widgets.pattern_builder.pattern_to_cel import PatternToCelTranslator
-from ...widgets.pattern_builder.pattern_library import PatternLibrary
-from ...widgets.cel_strategy_editor_widget import CelStrategyEditorWidget
+# Pattern builder imports moved to methods to avoid circular import
+from src.core.tradingbot.cel.models import RulePack, Rule, RulePackMetadata
+from ...widgets.cel_strategy_editor_widget import CelStrategyEditorWidget, CelCommandReference
+from ...widgets.regime_editor_widget import RegimeEditorWidget
+from ...widgets.cel_rulepack_panel import CelRulePackPanel
+from ...widgets.cel_ai_assistant_panel import CelAIAssistantPanel
+from ...widgets.cel_function_palette import CelFunctionPalette
 
 
 class CelEditorWindow(QMainWindow):
@@ -72,7 +73,18 @@ class CelEditorWindow(QMainWindow):
         self.current_view_mode = "pattern"  # pattern, code, chart, split
         self.current_file: Path | None = None  # Current strategy file
         self.modified = False  # Track unsaved changes
+
+        # Lazy import to avoid circular import
+        from ...widgets.pattern_builder.pattern_to_cel import PatternToCelTranslator
         self.translator = PatternToCelTranslator()  # Pattern → CEL translator
+
+        # RulePack state
+        self.current_rulepack: RulePack | None = None  # Loaded RulePack
+        self.current_rulepack_file: Path | None = None  # RulePack file path
+        self.rulepack_mode = False  # True if RulePack is loaded (vs Strategy)
+        self.selected_rule: Rule | None = None  # Currently selected rule for editing
+        self.selected_pack_type: str | None = None
+        self._rulepack_editor_loading = False
 
         # Window setup
         self._setup_window()
@@ -123,15 +135,48 @@ class CelEditorWindow(QMainWindow):
         self.setCorner(Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea)
 
     def _apply_theme(self):
-        """Apply OrderPilot-AI global dark theme (Dark Orange)."""
+        """Apply OrderPilot-AI global dark theme (Dark Orange) + compact overrides."""
         # Use global ThemeManager to match ChartWindow and Main App
         theme_manager = ThemeManager()
-        self.setStyleSheet(theme_manager.get_theme("Dark Orange"))
-        
+        base_stylesheet = theme_manager.get_theme("Dark Orange")
+
+        # Add compact design overrides for CEL Editor
+        compact_overrides = """
+        /* Compact Toolbar */
+        QToolBar {
+            spacing: 3px;
+            padding: 2px 5px;
+        }
+
+        /* Compact Buttons */
+        QPushButton {
+            padding: 3px 8px;
+            min-height: 24px;
+            max-height: 28px;
+        }
+
+        /* Compact Toolbar Buttons */
+        QToolButton {
+            padding: 3px;
+            min-height: 24px;
+            max-height: 28px;
+            min-width: 24px;
+        }
+
+        /* Compact Tabs */
+        QTabBar::tab {
+            padding: 6px 15px;
+            min-height: 20px;
+            max-height: 32px;
+        }
+        """
+
+        self.setStyleSheet(base_stylesheet + compact_overrides)
+
         # Additional specialized styles for the CEL Editor
         self.central_tabs.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #32363E; top: -1px; }
-            QTabBar::tab { height: 32px; min-width: 120px; font-weight: bold; }
+            QTabBar::tab { height: 28px; min-width: 100px; font-weight: bold; }
         """)
 
     def _create_menu_bar(self):
@@ -160,6 +205,38 @@ class CelEditorWindow(QMainWindow):
         self.action_save_as.setShortcut(QKeySequence.StandardKey.SaveAs)
         self.action_save_as.setStatusTip("Save strategy with new name")
         file_menu.addAction(self.action_save_as)
+
+        file_menu.addSeparator()
+
+        # RulePack Actions
+        self.action_open_rulepack = QAction(cel_icons.open_file, "Open &RulePack...", self)
+        self.action_open_rulepack.setShortcut("Ctrl+Shift+O")
+        self.action_open_rulepack.setStatusTip("Open CEL RulePack JSON file")
+        file_menu.addAction(self.action_open_rulepack)
+
+        self.action_save_rulepack = QAction(cel_icons.save, "Save Rule&Pack", self)
+        self.action_save_rulepack.setShortcut("Ctrl+Shift+S")
+        self.action_save_rulepack.setStatusTip("Save current RulePack")
+        self.action_save_rulepack.setEnabled(False)  # Enabled when RulePack loaded
+        file_menu.addAction(self.action_save_rulepack)
+
+        self.action_save_rulepack_as = QAction("Save RulePack &As...", self)
+        self.action_save_rulepack_as.setStatusTip("Save RulePack with new name")
+        self.action_save_rulepack_as.setEnabled(False)
+        file_menu.addAction(self.action_save_rulepack_as)
+
+        file_menu.addSeparator()
+
+        # Generic JSON Editor Actions
+        self.action_open_regime = QAction(cel_icons.open_file, "Edit &JSON File...", self)
+        self.action_open_regime.setShortcut("Ctrl+Shift+J")
+        self.action_open_regime.setStatusTip("Open any JSON file in the JSON Editor")
+        file_menu.addAction(self.action_open_regime)
+
+        self.action_save_regime = QAction(cel_icons.save, "Save &JSON", self)
+        self.action_save_regime.setStatusTip("Save current JSON file")
+        self.action_save_regime.setEnabled(False)
+        file_menu.addAction(self.action_save_regime)
 
         file_menu.addSeparator()
 
@@ -192,6 +269,14 @@ class CelEditorWindow(QMainWindow):
         self.action_clear = QAction(cel_icons.clear_all, "&Clear All", self)
         self.action_clear.setStatusTip("Clear all candles from pattern")
         edit_menu.addAction(self.action_clear)
+
+        edit_menu.addSeparator()
+
+        # Variable System action
+        self.action_variables = QAction(cel_icons.variables, "&Variables Reference", self)
+        self.action_variables.setShortcut("Ctrl+Shift+V")
+        self.action_variables.setStatusTip("Open Variables Reference Dialog")
+        edit_menu.addAction(self.action_variables)
 
         # View Menu
         view_menu = menubar.addMenu("&View")
@@ -242,21 +327,21 @@ class CelEditorWindow(QMainWindow):
 
     def _create_toolbar(self):
         """Create main toolbar with common actions matching ChartWindow style."""
-        # 1. Action Row
+        # 1. Action Row (Compact design like ChartWindow)
         self.action_toolbar = QToolBar("Actions")
         self.action_toolbar.setObjectName("ActionToolbar")
         self.action_toolbar.setMovable(False)
-        self.action_toolbar.setIconSize(QSize(20, 20))
+        self.action_toolbar.setIconSize(QSize(18, 18))  # Reduced from 20x20 for compactness
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.action_toolbar)
 
-        # Brand Label (matching ChartWindow style)
-        brand_label = QLabel("  CEL EDITOR  ")
+        # Brand Label (Compact design like ChartWindow)
+        brand_label = QLabel(" CEL EDITOR ")
         brand_label.setStyleSheet("""
-            color: #F29F05; 
-            font-weight: bold; 
-            font-family: 'Consolas', monospace; 
-            font-size: 15px; 
-            padding: 0 15px;
+            color: #F29F05;
+            font-weight: bold;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            padding: 0 10px;
             border-right: 1px solid #32363E;
         """)
         self.action_toolbar.addWidget(brand_label)
@@ -290,6 +375,12 @@ class CelEditorWindow(QMainWindow):
         self.action_toolbar.addAction(self.action_undo)
         self.action_toolbar.addAction(self.action_redo)
 
+        self.action_toolbar.addSeparator()
+
+        # Variables button (Variable System Integration)
+        btn_variables = self._make_premium_button(self.action_variables)
+        self.action_toolbar.addWidget(btn_variables)
+
         # Spacer to push AI button to the right
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -299,7 +390,7 @@ class CelEditorWindow(QMainWindow):
         self.ai_btn = QPushButton(cel_icons.ai_generate, "  Pattern → CEL  ")
         self.ai_btn.setProperty("class", "primary")
         self.ai_btn.setToolTip("Generate CEL code from visual pattern")
-        self.ai_btn.setFixedHeight(32)
+        self.ai_btn.setFixedHeight(28)  # Reduced from 32 for compactness
         self.ai_btn.clicked.connect(self._on_ai_generate)
         self.action_toolbar.addWidget(self.ai_btn)
 
@@ -307,7 +398,7 @@ class CelEditorWindow(QMainWindow):
         """Create a QPushButton for toolbar that matches ChartWindow style."""
         btn = QPushButton(action.icon(), f" {action.text().replace('&', '')}")
         btn.setProperty("class", "primary" if is_primary else "toolbar-button")
-        btn.setFixedHeight(32)
+        btn.setFixedHeight(28)  # Reduced from 32 for compactness
         btn.setToolTip(action.statusTip())
         btn.clicked.connect(action.trigger)
         return btn
@@ -320,6 +411,8 @@ class CelEditorWindow(QMainWindow):
         - Add/Remove/Clear action buttons
         - Active candle type tracking
         """
+        # Lazy import to avoid circular import
+        from ...widgets.pattern_builder.candle_toolbar import CandleToolbar
         self.candle_toolbar = CandleToolbar(self)
         self.candle_toolbar.setObjectName("CandleToolbar")
 
@@ -333,16 +426,34 @@ class CelEditorWindow(QMainWindow):
         - Left Dock (280px): Pattern Library & Templates
         - Right Dock (320px): Properties Panel & AI Assistant
         """
-        # LEFT DOCK: Pattern Library & Templates
+        # LEFT DOCK: Pattern Library & RulePack Editor
         self.left_dock = QDockWidget("Pattern Library & Templates", self)
         self.left_dock.setObjectName("LeftDock")
         self.left_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea)
         self.left_dock.setMinimumWidth(280)
 
+        # Tabs: Pattern Library (Strategy) + RulePack Editor
+        self.left_tabs = QTabWidget()
+        self.left_tabs.setDocumentMode(True)
+
         # Pattern Library widget with templates
+        # Lazy import to avoid circular import
+        from ...widgets.pattern_builder.pattern_library import PatternLibrary
         self.pattern_library = PatternLibrary(self)
         self.pattern_library.pattern_selected.connect(self._on_library_pattern_selected)
-        self.left_dock.setWidget(self.pattern_library)
+
+        # RulePack editor panel (Phase 2.5.2)
+        self.rulepack_panel = CelRulePackPanel(self)
+        self.rulepack_panel.rule_selected.connect(self._on_rulepack_rule_selected)
+        self.rulepack_panel.rule_updated.connect(self._on_rulepack_rule_updated)
+        self.rulepack_panel.rule_order_changed.connect(self._on_rulepack_rule_order_changed)
+
+        self.left_tabs.addTab(self.pattern_library, "Library")
+        self.left_tabs.addTab(self.rulepack_panel, "RulePack")
+        self.left_tabs.setCurrentWidget(self.pattern_library)
+        self.left_tabs.setTabEnabled(1, False)
+
+        self.left_dock.setWidget(self.left_tabs)
 
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.left_dock)
 
@@ -352,23 +463,53 @@ class CelEditorWindow(QMainWindow):
         self.right_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         self.right_dock.setMinimumWidth(320)
 
-        # Properties Panel (Phase 2.6) + AI Assistant (Phase 5)
+        # Properties Panel (Phase 2.6) + AI Assistant (Phase 3.3)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Properties Panel
-        self.properties_panel = PropertiesPanel(self)
-        right_layout.addWidget(self.properties_panel)
+        right_tabs = QTabWidget()
+        right_tabs.setDocumentMode(True)
 
-        # AI Assistant Placeholder (Phase 5)
-        ai_placeholder = QLabel("AI Assistant\n(Phase 5)")
-        ai_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ai_placeholder.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px;")
-        right_layout.addWidget(ai_placeholder)
+        # Properties Panel
+        # Lazy import to avoid circular import
+        from ...widgets.pattern_builder.properties_panel import PropertiesPanel
+        self.properties_panel = PropertiesPanel(self)
+        right_tabs.addTab(self.properties_panel, "Properties")
+
+        # AI Assistant Panel
+        self.ai_panel = CelAIAssistantPanel(self)
+        self.ai_panel.code_ready.connect(self._on_ai_code_ready)
+        self.ai_panel.status_changed.connect(self._on_ai_status_changed)
+        right_tabs.addTab(self.ai_panel, "AI Assistant")
+
+        right_layout.addWidget(right_tabs)
 
         self.right_dock.setWidget(right_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_dock)
+
+        # FUNCTIONS DOCK: Command Reference + Function Palette
+        # This is the ONLY instance of these tabs (duplicate removed from cel_strategy_editor_widget.py)
+        self.functions_dock = QDockWidget("CEL Functions", self)
+        self.functions_dock.setObjectName("FunctionsDock")
+        self.functions_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.functions_dock.setMinimumWidth(300)
+
+        functions_tabs = QTabWidget()
+        functions_tabs.setDocumentMode(True)
+        self.functions_command_reference = CelCommandReference(self)
+        self.functions_palette = CelFunctionPalette(self)
+        self.functions_command_reference.command_selected.connect(self._on_functions_insert)
+        self.functions_palette.function_selected.connect(self._on_functions_insert)
+
+        # Three tabs as required: Command Reference, Function Palette, AI Assistant (in strategy editor)
+        functions_tabs.addTab(self.functions_command_reference, "📚 Commands")
+        functions_tabs.addTab(self.functions_palette, "🔧 Functions")
+
+        self.functions_dock.setWidget(functions_tabs)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.functions_dock)
 
     def _create_central_widget(self):
         """Create central widget with Tabs for different view modes.
@@ -379,6 +520,9 @@ class CelEditorWindow(QMainWindow):
         2: Chart View (Reference)
         3: Split View (Visual + Script side-by-side)
         """
+        # Lazy import to avoid circular import
+        from ...widgets.pattern_builder.pattern_canvas import PatternBuilderCanvas
+
         self.central_tabs = QTabWidget()
         self.central_tabs.setDocumentMode(True)  # Clean tab style
         self.setCentralWidget(self.central_tabs)
@@ -415,6 +559,10 @@ class CelEditorWindow(QMainWindow):
         self.split_view.setSizes([600, 600])
         
         self.central_tabs.addTab(self.split_view, cel_icons.view_split, "Split View")
+
+        # 5. JSON Editor View (Generic JSON editing)
+        self.regime_editor = RegimeEditorWidget(self)
+        self.central_tabs.addTab(self.regime_editor, cel_icons.regime, "JSON Editor")
 
         # Connect canvas signals
         self.pattern_canvas.pattern_changed.connect(self._on_pattern_changed)
@@ -466,13 +614,23 @@ class CelEditorWindow(QMainWindow):
         self.action_open.triggered.connect(self._on_open_strategy)
         self.action_save.triggered.connect(self._on_save_strategy)
         self.action_save_as.triggered.connect(self._on_save_as_strategy)
+        self.action_open_rulepack.triggered.connect(self._on_open_rulepack)
+        self.action_save_rulepack.triggered.connect(self._on_save_rulepack)
+        self.action_save_rulepack_as.triggered.connect(self._on_save_rulepack_as)
         self.action_export_json.triggered.connect(self._on_export_json)
         self.action_close.triggered.connect(self.close)
+
+        # Regime JSON actions
+        self.action_open_regime.triggered.connect(self._on_open_regime)
+        self.action_save_regime.triggered.connect(self._on_save_regime)
+        self.regime_editor.config_modified.connect(self._on_regime_modified)
+        self.regime_editor.config_saved.connect(self._on_regime_saved)
 
         # Edit actions
         self.action_undo.triggered.connect(self._on_undo)
         self.action_redo.triggered.connect(self._on_redo)
         self.action_clear.triggered.connect(self._on_clear_pattern)
+        self.action_variables.triggered.connect(self._on_show_variables)
 
         # View actions
         self.action_view_pattern.triggered.connect(lambda: self._switch_view_mode("pattern"))
@@ -493,6 +651,11 @@ class CelEditorWindow(QMainWindow):
 
         # Connect Code Editor changes to update status bar
         self.code_editor.strategy_changed.connect(self._on_code_strategy_changed)
+        for workflow_type, editor in self.code_editor.cel_editors.items():
+            editor.code_changed.connect(
+                lambda code, wf=workflow_type: self._on_editor_code_changed(wf, code)
+            )
+            editor.ai_generation_requested.connect(self._on_ai_generation_requested)
 
         # Candle Toolbar signals (Phase 2.5)
         self.candle_toolbar.candle_add_requested.connect(self._on_toolbar_add_candle)
@@ -561,6 +724,143 @@ class CelEditorWindow(QMainWindow):
             f"  {counts['entry']} Entry  |  {counts['exit']} Exit  |  {counts['risk']} Risk  |  {counts['stop']} Stop  "
         )
 
+    def _on_editor_code_changed(self, workflow_type: str, code: str) -> None:
+        """Update selected RulePack rule when editor changes."""
+        if not self.rulepack_mode:
+            return
+        if self._rulepack_editor_loading:
+            return
+        if not self.current_rulepack or not self.selected_rule or not self.selected_pack_type:
+            return
+
+        pack_mapping = {
+            "entry": "entry",
+            "exit": "exit",
+            "update_stop": "update_stop",
+            "no_trade": "before_exit",
+            "risk": "before_exit",
+        }
+        if pack_mapping.get(self.selected_pack_type) != workflow_type:
+            return
+
+        self.rulepack_panel.set_rule_expression(self.selected_pack_type, self.selected_rule.id, code)
+        self.modified = True
+
+    def _on_rulepack_rule_selected(self, pack_type: str, rule_id: str) -> None:
+        """Load selected RulePack rule into editor."""
+        if not self.current_rulepack:
+            return
+        rule = None
+        pack = self.current_rulepack.get_pack(pack_type)
+        if pack:
+            for item in pack.rules:
+                if item.id == rule_id:
+                    rule = item
+                    break
+        if not rule:
+            return
+
+        self.selected_rule = rule
+        self.selected_pack_type = pack_type
+
+        pack_mapping = {
+            "entry": "entry",
+            "exit": "exit",
+            "update_stop": "update_stop",
+            "no_trade": "before_exit",
+            "risk": "before_exit",
+        }
+        workflow_type = pack_mapping.get(pack_type, "entry")
+        editor = self.code_editor.cel_editors.get(workflow_type)
+        if not editor:
+            return
+
+        self._rulepack_editor_loading = True
+        try:
+            editor.set_code(rule.expression or "")
+            for idx in range(self.code_editor.workflow_tabs.count()):
+                tab_name = self.code_editor.workflow_tabs.tabText(idx).lower().replace(" ", "_")
+                if tab_name == workflow_type:
+                    self.code_editor.workflow_tabs.setCurrentIndex(idx)
+                    break
+        finally:
+            self._rulepack_editor_loading = False
+
+    def _on_rulepack_rule_updated(self, pack_type: str, rule_id: str) -> None:
+        """Handle RulePack metadata updates."""
+        self.modified = True
+        self._update_rule_counts_from_rulepack()
+
+    def _on_rulepack_rule_order_changed(self, pack_type: str) -> None:
+        """Handle RulePack rule ordering updates."""
+        self.modified = True
+
+    def _on_ai_generation_requested(self, workflow_type: str) -> None:
+        """Open AI assistant on Generate tab for the given workflow."""
+        if hasattr(self, "ai_panel"):
+            self.ai_panel.set_workflow(workflow_type)
+            self.ai_panel.tabs.setCurrentIndex(0)
+
+    def _on_ai_code_ready(self, workflow_type: str, code: str) -> None:
+        """Insert AI generated code into the appropriate editor."""
+        editor = self.code_editor.cel_editors.get(workflow_type)
+        if not editor:
+            return
+        editor.set_code(code)
+
+    def _on_ai_status_changed(self, status: str) -> None:
+        """Update AI status label in status bar."""
+        if hasattr(self, "ai_status_label"):
+            self.ai_status_label.setText(f"🤖 {status}")
+
+    def _on_functions_insert(self, name: str, code: str) -> None:
+        """Insert code from Functions dock into active editor."""
+        if not hasattr(self, "code_editor"):
+            return
+        current_index = self.code_editor.workflow_tabs.currentIndex()
+        tab_name = self.code_editor.workflow_tabs.tabText(current_index).lower().replace(" ", "_")
+        editor = self.code_editor.cel_editors.get(tab_name)
+        if editor:
+            editor.insert_text(code)
+
+    def _set_rulepack_mode(self, enabled: bool) -> None:
+        """Switch UI between Strategy and RulePack editing."""
+        self.rulepack_mode = enabled
+        if enabled:
+            self.left_dock.setWindowTitle("RulePack Editor")
+            self.left_tabs.setTabEnabled(1, True)
+            self.left_tabs.setCurrentWidget(self.rulepack_panel)
+            self.action_save_rulepack.setEnabled(True)
+            self.action_save_rulepack_as.setEnabled(True)
+        else:
+            self.left_dock.setWindowTitle("Pattern Library & Templates")
+            self.left_tabs.setCurrentWidget(self.pattern_library)
+            self.left_tabs.setTabEnabled(1, False)
+            self.action_save_rulepack.setEnabled(False)
+            self.action_save_rulepack_as.setEnabled(False)
+            self.selected_rule = None
+            self.selected_pack_type = None
+
+    def _update_rule_counts_from_rulepack(self) -> None:
+        """Update status bar rule counts based on RulePack."""
+        if not self.current_rulepack:
+            return
+        counts = {"entry": 0, "exit": 0, "risk": 0, "stop": 0}
+        for pack in self.current_rulepack.packs:
+            enabled_count = len([r for r in pack.rules if r.enabled])
+            if pack.pack_type == "entry":
+                counts["entry"] += enabled_count
+            elif pack.pack_type == "exit":
+                counts["exit"] += enabled_count
+            elif pack.pack_type == "update_stop":
+                counts["stop"] += enabled_count
+            elif pack.pack_type in ("risk", "no_trade"):
+                counts["risk"] += enabled_count
+
+        self.rule_counts_label.setText(
+            f"  {counts['entry']} Entry  |  {counts['exit']} Exit  |  {counts['risk']} Risk  |  {counts['stop']} Stop  "
+        )
+
     def _on_new_strategy(self):
         """Create new strategy."""
         # Check for unsaved changes
@@ -580,6 +880,11 @@ class CelEditorWindow(QMainWindow):
         # Clear all CEL editors
         for workflow, editor in self.code_editor.cel_editors.items():
             editor.set_code("")
+
+        # Exit RulePack mode if active
+        self.current_rulepack = None
+        self.current_rulepack_file = None
+        self._set_rulepack_mode(False)
 
         # Reset state
         self.current_file = None
@@ -640,6 +945,9 @@ class CelEditorWindow(QMainWindow):
             self.modified = False
             self.strategy_name = data.get("name", self.current_file.stem)
             self.setWindowTitle(f"CEL Editor - {self.strategy_name}")
+            self.current_rulepack = None
+            self.current_rulepack_file = None
+            self._set_rulepack_mode(False)
 
             self.statusBar().showMessage(
                 f"Loaded strategy: {self.current_file.name}", 3000
@@ -776,6 +1084,240 @@ class CelEditorWindow(QMainWindow):
                 self, "Export Error",
                 f"Failed to export RulePack:\n{str(e)}"
             )
+
+    def _on_open_rulepack(self):
+        """Open CEL RulePack JSON file."""
+        # Check for unsaved changes
+        if self.modified:
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "You have unsaved changes. Open RulePack anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
+        # Show file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open CEL RulePack",
+            "03_JSON/Trading_Bot",
+            "JSON Files (*.json);;All Files (*)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            # Load JSON
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Detect file type
+            if "rules_version" in data:
+                # RulePack format
+                self._load_rulepack(data, Path(file_path))
+            elif "version" in data and "pattern" in data:
+                # Strategy format - offer to convert
+                reply = QMessageBox.question(
+                    self, "Strategy File Detected",
+                    "This appears to be a Strategy file, not a RulePack.\n\n"
+                    "Do you want to open it as a Strategy instead?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._on_open_strategy()  # Recursively call strategy loader
+                return
+            else:
+                QMessageBox.warning(
+                    self, "Unknown Format",
+                    "File format not recognized.\n\n"
+                    "Expected 'rules_version' field for RulePack or 'pattern' field for Strategy."
+                )
+                return
+
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(
+                self, "JSON Error",
+                f"Failed to parse JSON file:\n{str(e)}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Load Error",
+                f"Failed to load RulePack:\n{str(e)}"
+            )
+
+    def _load_rulepack(self, data: dict, file_path: Path):
+        """Internal method to load RulePack data.
+
+        Args:
+            data: RulePack JSON data
+            file_path: Path to RulePack file
+        """
+        try:
+            # Parse with Pydantic
+            rulepack = RulePack(**data)
+
+            # Clear current state
+            self._clear_all_editors()
+
+            # Load RulePack into RulePack panel
+            self.rulepack_panel.load_rulepack(rulepack)
+
+            # Update state
+            self.current_rulepack = rulepack
+            self.current_rulepack_file = file_path
+            self._set_rulepack_mode(True)
+            self.modified = False
+            self.strategy_name = rulepack.metadata.name if rulepack.metadata and rulepack.metadata.name else file_path.stem
+            self.setWindowTitle(f"CEL Editor - RulePack: {self.strategy_name}")
+
+            # Switch to code view
+            self._switch_view_mode("code")
+
+            self._update_rule_counts_from_rulepack()
+
+            self.statusBar().showMessage(
+                f"Loaded RulePack: {file_path.name}", 5000
+            )
+
+            QMessageBox.information(
+                self, "RulePack Loaded",
+                f"Loaded {len(rulepack.packs)} pack(s) from {file_path.name}.\n\n"
+                f"Select rules in the RulePack panel to edit."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Parse Error",
+                f"Failed to parse RulePack:\n{str(e)}\n\n"
+                f"Ensure the file matches the RulePack schema."
+            )
+
+    def _on_save_rulepack(self):
+        """Save current RulePack to file."""
+        if self.current_rulepack_file:
+            self._save_rulepack_to_file(self.current_rulepack_file)
+        else:
+            self._on_save_rulepack_as()
+
+    def _on_save_rulepack_as(self):
+        """Save RulePack with new file name."""
+        # Show file dialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save CEL RulePack",
+            f"03_JSON/Trading_Bot/{self.strategy_name}_rulepack.json",
+            "JSON Files (*.json);;All Files (*)"
+        )
+
+        if not file_path:
+            return
+
+        # Ensure .json extension
+        file_path = Path(file_path)
+        if file_path.suffix != ".json":
+            file_path = file_path.with_suffix(".json")
+
+        self._save_rulepack_to_file(file_path)
+
+    def _save_rulepack_to_file(self, file_path: Path):
+        """Internal method to save RulePack to specific file.
+
+        Args:
+            file_path: Path to save file
+        """
+        if not self.current_rulepack:
+            QMessageBox.warning(
+                self, "No RulePack",
+                "No RulePack loaded. Please open a RulePack first."
+            )
+            return
+
+        try:
+            # Update metadata
+            if self.current_rulepack.metadata:
+                self.current_rulepack.metadata.updated_at = datetime.now()
+            else:
+                self.current_rulepack.metadata = RulePackMetadata(
+                    name=self.strategy_name,
+                    updated_at=datetime.now()
+                )
+
+            # Convert to dict and save
+            rulepack_dict = self.current_rulepack.model_dump(mode='json')
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(rulepack_dict, f, indent=2, ensure_ascii=False)
+
+            # Update state
+            self.current_rulepack_file = file_path
+            self.modified = False
+            self.strategy_name = file_path.stem
+            self.setWindowTitle(f"CEL Editor - RulePack: {self.strategy_name}")
+
+            self.statusBar().showMessage(
+                f"Saved RulePack: {file_path.name}", 3000
+            )
+
+            QMessageBox.information(
+                self, "Save Successful",
+                f"RulePack saved to:\n{file_path}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Save Error",
+                f"Failed to save RulePack:\n{str(e)}"
+            )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Regime JSON Methods (Entry Analyzer format)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _on_open_regime(self):
+        """Open any JSON file in JSON Editor tab."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open JSON File",
+            "",  # Start from current directory
+            "JSON Files (*.json);;All Files (*)"
+        )
+
+        if file_path:
+            # Load into Regime Editor
+            self.regime_editor.load_config(file_path)
+
+            # Switch to Regime Editor tab
+            regime_tab_index = self.central_tabs.indexOf(self.regime_editor)
+            self.central_tabs.setCurrentIndex(regime_tab_index)
+
+            # Enable save action
+            self.action_save_regime.setEnabled(True)
+
+            self.statusBar().showMessage(f"Loaded Regime: {Path(file_path).name}", 3000)
+
+    def _on_save_regime(self):
+        """Save current Regime JSON."""
+        if self.regime_editor.current_file_path:
+            self.regime_editor._on_save_file()
+        else:
+            self.regime_editor._on_save_file_as()
+
+    def _on_regime_modified(self):
+        """Handle Regime config modification."""
+        self.action_save_regime.setEnabled(True)
+        self.modified = True
+
+    def _on_regime_saved(self, file_path: str):
+        """Handle Regime config saved."""
+        self.statusBar().showMessage(f"Saved Regime: {Path(file_path).name}", 3000)
+
+    def _clear_all_editors(self):
+        """Clear all workflow editors."""
+        for editor in self.code_editor.cel_editors.values():
+            editor.set_code("")
 
     def _on_undo(self):
         """Undo last action."""
@@ -1092,6 +1634,22 @@ class CelEditorWindow(QMainWindow):
                 self,
                 "Load Error",
                 f"Failed to load pattern from library:\n{str(e)}"
+            )
+
+    def _on_show_variables(self):
+        """Open Variables Reference Dialog (Variable System Integration)."""
+        try:
+            # Lazy import to avoid circular imports
+            from ...dialogs.variables.variable_reference_dialog import VariableReferenceDialog
+
+            # Create and show dialog
+            dialog = VariableReferenceDialog(parent=self)
+            dialog.exec()
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Variables Error",
+                f"Failed to open Variables Reference Dialog:\n{str(e)}"
             )
 
     def _on_show_help(self):

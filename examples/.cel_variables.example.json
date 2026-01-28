@@ -1,0 +1,213 @@
+{
+  "$schema": "../schema/cel_variables.schema.json",
+  "version": "1.0",
+  "project_name": "BTC Scalping Strategy",
+  "description": "Example project variables for BTC scalping on 1h timeframe",
+  "created": "2026-01-28T10:00:00Z",
+  "updated": "2026-01-28T15:30:00Z",
+  "variables": {
+    "entry_min_price": {
+      "type": "float",
+      "value": 90000.0,
+      "description": "Minimum BTC price for entry signals (avoid trading below this level)",
+      "category": "Entry Rules",
+      "unit": "USD",
+      "tags": ["price", "entry", "threshold"]
+    },
+    "entry_max_price": {
+      "type": "float",
+      "value": 110000.0,
+      "description": "Maximum BTC price for entry signals (avoid FOMO trades above this)",
+      "category": "Entry Rules",
+      "unit": "USD",
+      "tags": ["price", "entry", "threshold"]
+    },
+    "entry_min_atrp": {
+      "type": "float",
+      "value": 0.5,
+      "description": "Minimum ATRP (ATR%) for volatile market confirmation",
+      "category": "Entry Rules",
+      "unit": "percent",
+      "tags": ["volatility", "entry", "atrp"]
+    },
+    "entry_min_volume": {
+      "type": "float",
+      "value": 100.0,
+      "description": "Minimum volume (BTC) for valid entry signal",
+      "category": "Entry Rules",
+      "unit": "BTC",
+      "tags": ["volume", "entry", "liquidity"]
+    },
+    "exit_tp_multiplier": {
+      "type": "float",
+      "value": 2.0,
+      "description": "Take Profit as multiple of ATR (e.g. 2.0 = 2x ATR)",
+      "category": "Exit Rules",
+      "unit": "multiplier",
+      "tags": ["exit", "tp", "atr"]
+    },
+    "exit_sl_multiplier": {
+      "type": "float",
+      "value": 1.5,
+      "description": "Stop Loss as multiple of ATR (e.g. 1.5 = 1.5x ATR)",
+      "category": "Exit Rules",
+      "unit": "multiplier",
+      "tags": ["exit", "sl", "atr"]
+    },
+    "exit_trailing_activation": {
+      "type": "float",
+      "value": 50.0,
+      "description": "Activate trailing stop when profit reaches X% of TP",
+      "category": "Exit Rules",
+      "unit": "percent",
+      "tags": ["exit", "trailing", "activation"]
+    },
+    "risk_max_leverage": {
+      "type": "int",
+      "value": 15,
+      "description": "Maximum allowed leverage for any trade",
+      "category": "Risk Management",
+      "unit": "x",
+      "tags": ["risk", "leverage", "limit"]
+    },
+    "risk_max_position_btc": {
+      "type": "float",
+      "value": 0.1,
+      "description": "Maximum position size in BTC (absolute limit)",
+      "category": "Risk Management",
+      "unit": "BTC",
+      "tags": ["risk", "position", "size"]
+    },
+    "risk_max_daily_loss_usd": {
+      "type": "float",
+      "value": 1000.0,
+      "description": "Maximum daily loss in USD before stopping trading",
+      "category": "Risk Management",
+      "unit": "USD",
+      "tags": ["risk", "loss", "daily"]
+    },
+    "time_session_start": {
+      "type": "string",
+      "value": "08:00",
+      "description": "Trading session start time (UTC)",
+      "category": "Time Filters",
+      "unit": "HH:MM",
+      "tags": ["time", "session", "start"]
+    },
+    "time_session_end": {
+      "type": "string",
+      "value": "22:00",
+      "description": "Trading session end time (UTC) - London/NY overlap",
+      "category": "Time Filters",
+      "unit": "HH:MM",
+      "tags": ["time", "session", "end"]
+    },
+    "time_weekend_trading": {
+      "type": "bool",
+      "value": true,
+      "description": "Allow trading on weekends (crypto markets 24/7)",
+      "category": "Time Filters",
+      "tags": ["time", "weekend", "crypto"]
+    },
+    "direction_allow_shorts": {
+      "type": "bool",
+      "value": false,
+      "description": "Allow short positions (false = long-only strategy)",
+      "category": "Direction",
+      "tags": ["direction", "short", "long"]
+    },
+    "direction_prefer_trend": {
+      "type": "string",
+      "value": "long",
+      "description": "Preferred trend direction ('long', 'short', 'both')",
+      "category": "Direction",
+      "enum": ["long", "short", "both"],
+      "tags": ["direction", "trend", "bias"]
+    },
+    "regime_allowed_ids": {
+      "type": "array",
+      "value": ["R1", "R2", "R3"],
+      "description": "Allowed regime IDs for trading (bullish/neutral only)",
+      "category": "Regime",
+      "tags": ["regime", "filter", "whitelist"]
+    },
+    "regime_forbidden_ids": {
+      "type": "array",
+      "value": ["R5"],
+      "description": "Forbidden regime IDs (no trading in strong bear)",
+      "category": "Regime",
+      "tags": ["regime", "filter", "blacklist"]
+    },
+    "indicator_ema_fast_period": {
+      "type": "int",
+      "value": 9,
+      "description": "Fast EMA period for trend detection",
+      "category": "Indicators",
+      "unit": "periods",
+      "tags": ["indicator", "ema", "fast"]
+    },
+    "indicator_ema_slow_period": {
+      "type": "int",
+      "value": 21,
+      "description": "Slow EMA period for trend confirmation",
+      "category": "Indicators",
+      "unit": "periods",
+      "tags": ["indicator", "ema", "slow"]
+    },
+    "indicator_rsi_oversold": {
+      "type": "float",
+      "value": 30.0,
+      "description": "RSI oversold threshold for contrarian entries",
+      "category": "Indicators",
+      "unit": "value",
+      "tags": ["indicator", "rsi", "oversold"]
+    },
+    "indicator_rsi_overbought": {
+      "type": "float",
+      "value": 70.0,
+      "description": "RSI overbought threshold for contrarian exits",
+      "category": "Indicators",
+      "unit": "value",
+      "tags": ["indicator", "rsi", "overbought"]
+    },
+    "custom_min_confluence": {
+      "type": "int",
+      "value": 4,
+      "description": "Minimum confluence score for valid entry signal",
+      "category": "Custom",
+      "unit": "count",
+      "tags": ["confluence", "score", "threshold"]
+    },
+    "custom_ai_confidence_threshold": {
+      "type": "int",
+      "value": 75,
+      "description": "Minimum AI confidence (0-100) for trade validation",
+      "category": "Custom",
+      "unit": "percent",
+      "tags": ["ai", "confidence", "threshold"]
+    },
+    "custom_debug_mode": {
+      "type": "bool",
+      "value": false,
+      "description": "Enable debug logging for CEL evaluation",
+      "category": "Custom",
+      "tags": ["debug", "logging", "development"]
+    }
+  },
+  "metadata": {
+    "author": "OrderPilot-AI User",
+    "strategy_type": "scalping",
+    "timeframe": "1h",
+    "asset": "BTC/USDT",
+    "exchange": "Alpaca",
+    "risk_profile": "moderate",
+    "backtest_results": {
+      "period": "2025-01-01 to 2025-12-31",
+      "total_trades": 245,
+      "win_rate": 0.62,
+      "profit_factor": 1.85,
+      "max_drawdown": 0.12
+    },
+    "notes": "This is an example configuration. Adjust values based on your risk tolerance and backtesting results."
+  }
+}

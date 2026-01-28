@@ -2,7 +2,7 @@
 
 Provides:
 - JSON strategy file load/save operations
-- 4 workflow CEL editors (Entry, Exit, Before Exit, Update Stop)
+- 5 workflow CEL editors (Entry, No Entry, Exit, Before Exit, Update Stop)
 - Integrated CEL command reference browser
 - Function palette with quick insert
 - Dark theme conformant design
@@ -26,8 +26,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from src.ui.widgets.cel_editor_widget import CelEditorWidget
-from src.ui.widgets.cel_function_palette import CelFunctionPalette
 from src.ui.widgets.cel_validator import CelValidator
+# Note: CelFunctionPalette import removed - now handled in main_window.py
 
 
 class CelCommandReference(QWidget):
@@ -84,22 +84,18 @@ class CelCommandReference(QWidget):
 
     def _load_cel_commands(self):
         """Load CEL commands from CEL_Befehle_Liste_v2.md."""
-        # Categories based on CEL_Befehle_Liste_v2.md structure
+        # Categories based on actual CEL engine functions (src/core/tradingbot/cel_engine.py)
         categories = {
             "Mathematical Functions": [
                 ("abs(x)", "Absolute value", "abs(value)"),
                 ("min(a, b)", "Minimum of two values", "min(a, b)"),
                 ("max(a, b)", "Maximum of two values", "max(a, b)"),
-                ("round(x)", "Round to nearest integer", "round(value)"),
+                ("round(x, decimals)", "Round to decimals", "round(value, 2)"),
                 ("floor(x)", "Round down", "floor(value)"),
                 ("ceil(x)", "Round up", "ceil(value)"),
                 ("pow(x, y)", "x to power of y", "pow(base, exponent)"),
                 ("sqrt(x)", "Square root", "sqrt(value)"),
-                ("log(x)", "Natural logarithm", "log(value)"),
-                ("log10(x)", "Base-10 logarithm", "log10(value)"),
-                ("sin(x)", "Sine", "sin(angle)"),
-                ("cos(x)", "Cosine", "cos(angle)"),
-                ("tan(x)", "Tangent", "tan(angle)"),
+                ("exp(x)", "Exponential (e^x)", "exp(value)"),
             ],
             "Logical & Comparison": [
                 ("==", "Equal to", "a == b"),
@@ -125,39 +121,59 @@ class CelCommandReference(QWidget):
                 ("endsWith(s, suffix)", "String ends with", "endsWith(text, suffix)"),
                 ("toLowerCase(s)", "Convert to lowercase", "toLowerCase(text)"),
                 ("toUpperCase(s)", "Convert to uppercase", "toUpperCase(text)"),
-                ("length(s)", "String length", "length(text)"),
                 ("substring(s, start, end)", "Extract substring", "substring(text, start, end)"),
                 ("split(s, delimiter)", "Split string", "split(text, delimiter)"),
+                ("join(parts, delimiter)", "Join list into string", "join(parts, ',')"),
             ],
             "Array & Collection Functions": [
                 ("size(array)", "Array length", "size(array)"),
                 ("has(array, element)", "Array contains element", "has(array, element)"),
                 ("all(array, condition)", "All elements match", "all(array, condition)"),
                 ("any(array, condition)", "Any element matches", "any(array, condition)"),
-                ("map(array, fn)", "Transform array", "map(array, function)"),
+                ("map(array, expr)", "Transform array", "map(array, expr)"),
                 ("filter(array, condition)", "Filter array", "filter(array, condition)"),
                 ("first(array)", "First element", "first(array)"),
                 ("last(array)", "Last element", "last(array)"),
                 ("sum(array)", "Sum of elements", "sum(array)"),
                 ("avg(array)", "Average of elements", "avg(array)"),
+                ("indexOf(array, element)", "Index of element", "indexOf(array, element)"),
+                ("slice(array, start, end)", "Slice array", "slice(array, 0, 3)"),
                 ("distinct(array)", "Unique elements", "distinct(array)"),
                 ("sort(array)", "Sort array", "sort(array)"),
                 ("reverse(array)", "Reverse array", "reverse(array)"),
             ],
-            "Trading Functions": [
+            "Null Handling": [
                 ("isnull(x)", "Check if null", "isnull(value)"),
-                ("isnotnull(x)", "Check if not null", "isnotnull(value)"),
                 ("nz(value, default)", "Replace null", "nz(value, 0)"),
                 ("coalesce(a, b, c)", "First non-null value", "coalesce(a, b, c)"),
+            ],
+            "Trading/Rule Functions": [
                 ("clamp(value, min, max)", "Constrain to range", "clamp(value, 0, 100)"),
-                ("is_trade_open()", "Trade currently open", "is_trade_open()"),
-                ("is_long()", "Current trade is LONG", "is_long()"),
-                ("is_short()", "Current trade is SHORT", "is_short()"),
-                ("stop_hit_long()", "Long stop loss hit", "stop_hit_long()"),
-                ("stop_hit_short()", "Short stop loss hit", "stop_hit_short()"),
-                ("tp_hit()", "Take profit hit", "tp_hit()"),
-                ("price_above_ema(period)", "Price > EMA", "price_above_ema(34)"),
-                ("price_below_ema(period)", "Price < EMA", "price_below_ema(34)"),
+                ("pct_change(old, new)", "Percent change", "pct_change(old, new)"),
+                ("pct_from_level(price, level)", "Percent distance to level", "pct_from_level(price, level)"),
+                ("level_at_pct(entry, pct, side)", "Level at percent", "level_at_pct(entry, 2.5, 'long')"),
+                ("retracement(from, to, pct)", "Retracement level", "retracement(from, to, 0.618)"),
+                ("extension(from, to, pct)", "Extension level", "extension(from, to, 1.618)"),
+                ("is_trade_open(trade)", "Trade currently open", "is_trade_open(trade)"),
+                ("is_long(trade)", "Current trade is LONG", "is_long(trade)"),
+                ("is_short(trade)", "Current trade is SHORT", "is_short(trade)"),
+                ("is_bullish_signal(strategy)", "Bullish strategy bias", "is_bullish_signal(strategy)"),
+                ("is_bearish_signal(strategy)", "Bearish strategy bias", "is_bearish_signal(strategy)"),
+                ("in_regime(regime, id)", "Regime match", "in_regime(regime, 'R1')"),
+                ("stop_hit_long(trade, price)", "Long stop loss hit", "stop_hit_long(trade, current_price)"),
+                ("stop_hit_short(trade, price)", "Short stop loss hit", "stop_hit_short(trade, current_price)"),
+                ("tp_hit(trade, price)", "Take profit hit", "tp_hit(trade, current_price)"),
+                ("price_above_ema(price, ema)", "Price > EMA", "price_above_ema(current_price, ema_value)"),
+                ("price_below_ema(price, ema)", "Price < EMA", "price_below_ema(current_price, ema_value)"),
+                ("price_above_level(price, level)", "Price > level", "price_above_level(current_price, level)"),
+                ("price_below_level(price, level)", "Price < level", "price_below_level(current_price, level)"),
+            ],
+            "Series Functions": [
+                ("pctl(series, percentile)", "Percentile of series", "pctl(series, 50)"),
+                ("crossover(series1, series2)", "Series cross-over", "crossover(fast, slow)"),
+                ("highest(series, period)", "Highest over period", "highest(series, 20)"),
+                ("lowest(series, period)", "Lowest over period", "lowest(series, 20)"),
+                ("sma(series, period)", "Simple moving average", "sma(series, 20)"),
             ],
             "Technical Indicators": [
                 ("rsi14.value", "RSI (14-period)", "rsi14.value"),
@@ -183,24 +199,15 @@ class CelCommandReference(QWidget):
                 ("volume_ratio_20.value", "Volume ratio", "volume_ratio_20.value"),
                 ("chop14.value", "Choppiness Index", "chop14.value"),
             ],
-            "Pattern Recognition": [
-                ("hammer()", "Hammer pattern", "hammer()"),
-                ("doji()", "Doji pattern", "doji()"),
-                ("engulfing_bullish()", "Bullish Engulfing", "engulfing_bullish()"),
-                ("engulfing_bearish()", "Bearish Engulfing", "engulfing_bearish()"),
-                ("harami_bullish()", "Bullish Harami", "harami_bullish()"),
-                ("harami_bearish()", "Bearish Harami", "harami_bearish()"),
-                ("morning_star()", "Morning Star", "morning_star()"),
-                ("evening_star()", "Evening Star", "evening_star()"),
-            ],
             "Time Functions": [
                 ("now()", "Current timestamp", "now()"),
-                ("timestamp()", "Bar timestamp", "timestamp()"),
-                ("bar_age()", "Bars since entry", "bar_age()"),
-                ("bars_since(condition)", "Bars since condition", "bars_since(condition)"),
-                ("is_time_in_range(start, end)", "Time in range", "is_time_in_range('09:30', '16:00')"),
-                ("is_new_day()", "New trading day", "is_new_day()"),
-                ("is_new_hour()", "New hour started", "is_new_hour()"),
+                ("timestamp(value)", "Convert to timestamp", "timestamp(value)"),
+                ("bar_age(bar_time)", "Age in seconds", "bar_age(bar_time)"),
+                ("bars_since(trade, current_bar)", "Bars since entry", "bars_since(trade, current_bar)"),
+                ("is_new_day(prev, curr)", "New trading day", "is_new_day(prev_time, curr_time)"),
+                ("is_new_hour(prev, curr)", "New hour started", "is_new_hour(prev_time, curr_time)"),
+                ("is_new_week(prev, curr)", "New week started", "is_new_week(prev_time, curr_time)"),
+                ("is_new_month(prev, curr)", "New month started", "is_new_month(prev_time, curr_time)"),
             ],
             "Variables": [
                 ("trade.entry_price", "Entry price", "trade.entry_price"),
@@ -396,9 +403,10 @@ class CelStrategyEditorWidget(QWidget):
         # Workflow tabs
         self.workflow_tabs = QTabWidget()
         
-        # Create 4 workflow editors
+        # Create 5 workflow editors
         self.cel_editors = {}
         workflow_types = [
+            ("No Entry", "no_entry"),
             ("Entry", "entry"),
             ("Exit", "exit"),
             ("Before Exit", "before_exit"),
@@ -414,23 +422,24 @@ class CelStrategyEditorWidget(QWidget):
         return panel
 
     def _create_right_panel(self) -> QWidget:
-        """Create right panel with reference and palette."""
+        """Create right panel with AI Assistant integration.
+
+        Note: Command Reference and Function Palette are now in the main window's
+        CEL Functions dock widget to avoid duplication.
+        """
         panel = QWidget()
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Tab widget for reference and palette (saves space)
+        # Tab widget for AI Assistant (third tab as per requirement)
         right_tabs = QTabWidget()
         right_tabs.setDocumentMode(True)
 
-        # Tab 1: CEL Command Reference
-        self.command_reference = CelCommandReference(self)
-        right_tabs.addTab(self.command_reference, "📚 Command Reference")
-
-        # Tab 2: Function Palette
-        self.function_palette = CelFunctionPalette(self)
-        right_tabs.addTab(self.function_palette, "🔧 Function Palette")
+        # Tab 3: AI im JSON Editor (AI Assistant in JSON Editor)
+        from .cel_ai_assistant_panel import CelAIAssistantPanel
+        self.ai_assistant = CelAIAssistantPanel(self)
+        right_tabs.addTab(self.ai_assistant, "🤖 AI Assistant")
 
         layout.addWidget(right_tabs)
 
@@ -447,11 +456,8 @@ class CelStrategyEditorWidget(QWidget):
         # Strategy name
         self.strategy_name.textChanged.connect(self._on_strategy_name_changed)
 
-        # Command reference
-        self.command_reference.command_selected.connect(self._on_command_selected)
-
-        # Function palette
-        self.function_palette.function_selected.connect(self._on_function_selected)
+        # Note: Command reference and function palette signals are now connected in main_window.py
+        # to avoid duplication (see main_window.py _on_functions_insert method)
 
         # Editor changes
         for editor in self.cel_editors.values():
@@ -574,15 +580,8 @@ class CelStrategyEditorWidget(QWidget):
         """Mark as modified when code changes."""
         self.modified = True
 
-    def _on_command_selected(self, name: str, code: str):
-        """Insert command from reference."""
-        current_editor = self.cel_editors[self.workflow_tabs.tabText(self.workflow_tabs.currentIndex()).lower().replace(' ', '_')]
-        current_editor.insert_text(code)
-
-    def _on_function_selected(self, name: str, code: str):
-        """Insert function from palette."""
-        current_editor = self.cel_editors[self.workflow_tabs.tabText(self.workflow_tabs.currentIndex()).lower().replace(' ', '_')]
-        current_editor.insert_text(code)
+    # Note: _on_command_selected and _on_function_selected methods removed
+    # These are now handled in main_window.py via _on_functions_insert to avoid duplication
 
     def _on_validation_requested(self, code: str):
         """Validate CEL code and show errors.

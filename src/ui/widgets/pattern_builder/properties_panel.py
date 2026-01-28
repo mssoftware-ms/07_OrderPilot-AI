@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from .candle_item import CandleItem
-from ui.windows.cel_editor.theme import TEXT_PRIMARY, ACCENT_TEAL
+from src.ui.windows.cel_editor.theme import TEXT_PRIMARY, ACCENT_TEAL
 
 
 class PropertiesPanel(QWidget):

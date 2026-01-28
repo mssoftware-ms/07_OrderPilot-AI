@@ -35,6 +35,14 @@ except ImportError:
             return self.toPlainText()
 
 
+try:
+    from src.core.tradingbot.cel.cel_validator import CelValidator as CoreCelValidator
+    CORE_FUNCTIONS = set(CoreCelValidator.BUILTIN_FUNCTIONS)
+except Exception:
+    CoreCelValidator = None
+    CORE_FUNCTIONS = set()
+
+
 class CelLexer(QsciLexerCustom):
     """Custom lexer for CEL expression language."""
 
@@ -74,32 +82,23 @@ class CelLexer(QsciLexerCustom):
         '?', ':'
     }
 
-    # Math functions
-    MATH_FUNCTIONS = {
-        'abs', 'min', 'max', 'round', 'floor', 'ceil',
-        'pow', 'sqrt', 'log', 'log10',
-        'sin', 'cos', 'tan', 'sum', 'avg', 'average'
-    }
-
-    # Trading functions
-    TRADING_FUNCTIONS = {
-        'is_trade_open', 'is_long', 'is_short',
-        'is_bullish_signal', 'is_bearish_signal',
-        'in_regime', 'stop_hit_long', 'stop_hit_short',
-        'tp_hit', 'price_above_ema', 'price_below_ema',
-        'price_above_level', 'price_below_level',
-        'isnull', 'isnotnull', 'nz', 'coalesce', 'clamp',
-        'pct_change', 'pct_from_level', 'level_at_pct',
-        'retracement', 'extension'
-    }
-
-    # Pattern functions (nice to have - not yet implemented)
-    PATTERN_FUNCTIONS = {
-        'pin_bar_bullish', 'pin_bar_bearish', 'inside_bar',
-        'inverted_hammer', 'bull_flag', 'bear_flag',
-        'cup_and_handle', 'double_bottom', 'double_top',
-        'order_block_retest', 'fvg_exists', 'liquidity_swept',
-        'breakout_above', 'false_breakout'
+    # Known functions (synced to core CEL validator if available)
+    ALL_FUNCTIONS = CORE_FUNCTIONS or {
+        'abs', 'min', 'max', 'clamp', 'round', 'floor', 'ceil', 'sqrt', 'pow', 'exp',
+        'type', 'string', 'int', 'double', 'bool', 'timestamp',
+        'contains', 'startsWith', 'endsWith', 'toLowerCase', 'toUpperCase',
+        'substring', 'split', 'join',
+        'size', 'length', 'has', 'all', 'any', 'map', 'filter',
+        'first', 'last', 'indexOf', 'slice', 'distinct', 'sort', 'reverse',
+        'sum', 'avg', 'average',
+        'isnull', 'nz', 'coalesce',
+        'pctl', 'crossover',
+        'pct_change', 'pct_from_level', 'level_at_pct', 'retracement', 'extension',
+        'is_trade_open', 'is_long', 'is_short', 'is_bullish_signal', 'is_bearish_signal', 'in_regime',
+        'stop_hit_long', 'stop_hit_short', 'tp_hit',
+        'price_above_ema', 'price_below_ema', 'price_above_level', 'price_below_level',
+        'highest', 'lowest', 'sma',
+        'now', 'timestamp', 'bar_age', 'bars_since', 'is_new_day', 'is_new_hour', 'is_new_week', 'is_new_month',
     }
 
     def __init__(self, parent=None):
@@ -264,7 +263,7 @@ class CelLexer(QsciLexerCustom):
                     if word in self.KEYWORDS or word in self.TRADING_KEYWORDS:
                         self.setStyling(word_len, self.KEYWORD)
                     # Functions
-                    elif word in self.MATH_FUNCTIONS or word in self.TRADING_FUNCTIONS or word in self.PATTERN_FUNCTIONS:
+                    elif word in self.ALL_FUNCTIONS:
                         self.setStyling(word_len, self.FUNCTION)
                     # Variables (trade., cfg.)
                     elif word in {'trade', 'cfg'}:

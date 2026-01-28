@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
 from PyQt6.QtGui import QDrag
 
-from ui.windows.cel_editor.theme import TEXT_PRIMARY, ACCENT_TEAL, BACKGROUND_PRIMARY
+from src.ui.windows.cel_editor.theme import TEXT_PRIMARY, ACCENT_TEAL, BACKGROUND_PRIMARY
 
 
 class PatternLibrary(QWidget):

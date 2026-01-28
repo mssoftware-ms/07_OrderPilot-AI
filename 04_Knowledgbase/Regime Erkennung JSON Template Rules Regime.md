@@ -257,7 +257,10 @@ Das RegimeScore-System bewertet die Qualität der Regime-Erkennung anhand von 5 
 
 ## Regime-Hierarchie (9-Level)
 
-Die Regimes werden nach **Priority** (absteigend) ausgewertet. Höhere Priority = wird zuerst geprüft.
+Die Regimes werden nach **Priority** (absteigend) **sortiert**. Höhere Priority = höhere Relevanz.
+
+⚠️ **KORREKTUR (2026-01-27):** Priority bestimmt **NICHT** die Evaluierungs-Reihenfolge!
+**Alle Regimes werden immer evaluiert.** Priority dient nur zur Sortierung aktiver Regimes.
 
 | Priority | Regime ID | Name | Beschreibung |
 |----------|-----------|------|--------------|
@@ -273,13 +276,44 @@ Die Regimes werden nach **Priority** (absteigend) ausgewertet. Höhere Priority 
 
 ### Auswertungslogik
 
+⚠️ **WICHTIG: Multi-Regime System** - Mehrere Regimes können **gleichzeitig aktiv** sein!
+
+```python
+# Tatsächliche Implementierung (src/core/tradingbot/config/detector.py)
+# ALLE Regimes werden evaluiert (kein Early-Exit!)
+
+active_regimes = []
+
+1. Für JEDES Regime in der Config:
+   a. Prüfe ALLE Thresholds des Regimes
+   b. Wenn ALLE Thresholds erfüllt → Füge zu active_regimes hinzu
+   # KEIN STOP! Weiter mit nächstem Regime
+
+2. Sortiere active_regimes nach Priority (absteigend)
+
+3. Return ALLE aktiven Regimes als Liste
+
+# Beispiel: Mehrere Regimes gleichzeitig aktiv
+# Input: ADX=32, DI+>DI-, RSI=58
+# Output: [
+#   ActiveRegime(id='STRONG_BULL', priority=95),  # RSI > 55
+#   ActiveRegime(id='TF', priority=85),           # ADX > 25
+#   ActiveRegime(id='BULL', priority=80)          # DI+ > DI-
+# ]
 ```
-1. Sortiere Regimes nach Priority (absteigend)
-2. Für jedes Regime:
-   a. Prüfe ALLE Thresholds
-   b. Wenn alle erfüllt → Regime aktiv, STOP
-3. Fallback: SIDEWAYS (niedrigste Priority)
-```
+
+**WICHTIG - Unterschiede zu Early-Exit Pattern:**
+- ❌ **KEIN** Early-Exit / STOP bei erstem Match
+- ✅ **ALLE** Regimes werden immer evaluiert
+- ✅ **Mehrere** Regimes können gleichzeitig aktiv sein
+- ✅ Priority bestimmt nur die **Sortierung**, nicht die Evaluierung
+- ✅ Downstream-Consumer (Router, Executor) entscheiden, welches Regime verwendet wird
+
+**Design-Rationale:**
+Das Multi-Regime System erlaubt:
+- Gleichzeitige Trend-Stärke + Richtungs-Signale (z.B. STRONG_BULL + TF + BULL)
+- Warnsignale parallel zu Haupt-Regime (z.B. BULL_EXHAUSTION + BULL)
+- Flexible Strategie-Auswahl durch Router basierend auf ALLEN aktiven Regimes
 
 ---
 

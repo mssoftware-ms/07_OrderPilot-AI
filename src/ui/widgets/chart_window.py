@@ -37,6 +37,7 @@ from .chart_window_mixins import (
     StrategySimulatorMixin,
     LevelsContextMixin,
     CelEditorMixin,
+    VariablesMixin,
 )
 from src.chart_chat import ChartChatMixin
 from src.ui.app_icon import set_window_icon  # Issue #29: App icon
@@ -46,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChartWindow(
+    VariablesMixin,
     CelEditorMixin,
     BotPanelsMixin,
     KOFinderMixin,
@@ -119,6 +121,10 @@ class ChartWindow(
         self._setup.connect_dock_signals()
         self._setup_event_subscriptions()
         self._setup.setup_chat()
+
+        # Setup Variables integration (Phase 3.1 & 3.2)
+        self.setup_variables_integration()
+
         if splash:
             splash.set_progress(70, "Lade Strategie-Module...")
         self._setup.setup_bitunix_trading()

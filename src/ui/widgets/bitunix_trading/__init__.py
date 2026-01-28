@@ -6,7 +6,7 @@ Includes manual trading, automatic bot trading, and backtesting tabs.
 
 from .bitunix_trading_widget import BitunixTradingWidget
 from .bitunix_trading_mixin import BitunixTradingMixin
-from .bot_tab import BotTab
+from .bot_tab_main import BotTab
 from .backtest_tab import BacktestTab
 
 __all__ = ["BitunixTradingWidget", "BitunixTradingMixin", "BotTab", "BacktestTab"]

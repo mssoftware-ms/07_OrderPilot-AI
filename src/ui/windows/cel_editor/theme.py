@@ -190,28 +190,51 @@ def get_qss_stylesheet() -> str:
         border-bottom: 2px solid {ACCENT_TEAL};
     }}
 
-    /* Toolbar */
+    /* Toolbar (Compact design) */
     QToolBar {{
         background: {TOOLBAR_BG};
         border: none;
-        spacing: 5px;
-        padding: 5px;
+        spacing: 3px;
+        padding: 2px 5px;
     }}
 
     QToolBar::separator {{
         background: {TOOLBAR_SEPARATOR};
         width: 1px;
-        margin: 5px;
+        margin: 3px;
     }}
 
-    /* Buttons */
+    /* Toolbar Buttons (Compact) */
+    QToolButton {{
+        background-color: {BACKGROUND_SECONDARY};
+        color: {TEXT_PRIMARY};
+        border: 1px solid {BORDER};
+        border-radius: 3px;
+        padding: 3px;
+        min-height: 24px;
+        max-height: 28px;
+        min-width: 24px;
+    }}
+
+    QToolButton:hover {{
+        background-color: {HOVER};
+        border-color: {BORDER_LIGHT};
+    }}
+
+    QToolButton:pressed {{
+        background-color: {BACKGROUND_PRIMARY};
+    }}
+
+    /* Buttons (Compact design) */
     QPushButton {{
         background-color: {BACKGROUND_SECONDARY};
         color: {TEXT_PRIMARY};
         border: 1px solid {BORDER};
         border-radius: 3px;
-        padding: 5px 10px;
+        padding: 3px 8px;
         font-weight: normal;
+        min-height: 24px;
+        max-height: 28px;
     }}
 
     QPushButton:hover {{
@@ -263,11 +286,13 @@ def get_qss_stylesheet() -> str:
     QTabBar::tab {{
         background: {BACKGROUND_PRIMARY};
         color: {TEXT_SECONDARY};
-        padding: 10px 20px;
+        padding: 6px 15px;
         margin: 2px;
         border: 1px solid {BORDER};
         border-bottom: none;
         border-radius: 5px 5px 0 0;
+        min-height: 20px;
+        max-height: 32px;
     }}
 
     QTabBar::tab:selected {{
