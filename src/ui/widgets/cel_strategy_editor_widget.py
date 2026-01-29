@@ -27,6 +27,7 @@ from PyQt6.QtGui import QFont
 
 from src.ui.widgets.cel_editor_widget import CelEditorWidget
 from src.ui.widgets.cel_validator import CelValidator
+from src.ui.widgets.regime_entry_expression_editor import RegimeEntryExpressionEditor
 # Note: CelFunctionPalette import removed - now handled in main_window.py
 
 
@@ -418,6 +419,14 @@ class CelStrategyEditorWidget(QWidget):
             self.cel_editors[workflow_type] = editor
             self.workflow_tabs.addTab(editor, label)
 
+        # === NEW: Regime Entry Expression Editor Tab ===
+        self.regime_entry_editor = RegimeEntryExpressionEditor(self)
+        self.workflow_tabs.addTab(self.regime_entry_editor, "📊 Regime Entry")
+
+        # Connect signals from regime editor
+        self.regime_entry_editor.expression_generated.connect(self._on_regime_expression_generated)
+        self.regime_entry_editor.json_saved.connect(self._on_regime_json_saved)
+
         layout.addWidget(self.workflow_tabs)
         return panel
 
@@ -631,4 +640,37 @@ class CelStrategyEditorWidget(QWidget):
         QMessageBox.warning(
             self, "❌ Validation Errors",
             f"Found {len(errors)} issue(s) in CEL code:\n\n{error_msg}"
+        )
+
+    # === Regime Entry Expression Editor Handlers ===
+
+    def _on_regime_expression_generated(self, expression: str):
+        """Handler: Regime Expression wurde generiert.
+
+        Wird aufgerufen wenn im Regime Entry Editor eine Expression generiert wurde.
+        Könnte verwendet werden um die Expression automatisch in den Entry Editor zu übernehmen.
+        """
+        logger.info(f"Regime Expression generated: {expression[:80]}...")
+
+        # Optional: Zeige Notification
+        # QMessageBox.information(
+        #     self,
+        #     "✅ Expression Generated",
+        #     f"Entry Expression wurde generiert:\n\n{expression[:100]}..."
+        # )
+
+    def _on_regime_json_saved(self, json_path: str):
+        """Handler: Regime JSON wurde gespeichert.
+
+        Wird aufgerufen wenn die JSON mit entry_expression gespeichert wurde.
+        """
+        logger.info(f"Regime JSON saved with entry_expression: {json_path}")
+
+        # Optional: Zeige Notification
+        QMessageBox.information(
+            self,
+            "✅ JSON Saved",
+            f"entry_expression wurde in JSON gespeichert:\n\n{Path(json_path).name}\n\n"
+            f"Die JSON kann jetzt im Trading Bot verwendet werden:\n"
+            f"Bot Tab → Start Bot (JSON Entry)"
         )

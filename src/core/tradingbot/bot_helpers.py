@@ -142,6 +142,12 @@ class BotHelpersMixin:
         Returns:
             Updated RegimeState
         """
+        # Store previous regime name (for JSON Entry last_closed_regime())
+        if hasattr(self, '_regime') and self._regime:
+            prev_regime_name = getattr(self._regime, 'regime_name', None)
+            if prev_regime_name:
+                self._prev_regime_name = prev_regime_name
+
         # Try JSON-based regime detection first
         if hasattr(self, '_json_catalog') and self._json_catalog:
             try:

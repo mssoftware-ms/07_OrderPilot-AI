@@ -87,7 +87,7 @@ class RegimeEditorWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
 
-        # Tabs: JSON Editor | AI Editor
+        # Tabs: JSON Editor | AI Editor | Regime Entry
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         layout.addWidget(self.tabs, 1)
@@ -99,6 +99,10 @@ class RegimeEditorWidget(QWidget):
         # AI Editor tab (Entry/Exit/Before Exit/Update Stop)
         ai_tab = self._create_ai_tab()
         self.tabs.addTab(ai_tab, "AI Editor")
+
+        # Regime Entry tab (NEW: Entry Expression Generator)
+        regime_entry_tab = self._create_regime_entry_tab()
+        self.tabs.addTab(regime_entry_tab, "📊 Regime Entry")
 
     def _create_json_tab(self) -> QWidget:
         """Create JSON Editor tab content."""
@@ -187,6 +191,29 @@ class RegimeEditorWidget(QWidget):
         self.ai_strategy_editor.workflow_tabs.currentChanged.connect(
             self._on_ai_tab_workflow_changed
         )
+
+        return tab
+
+    def _create_regime_entry_tab(self) -> QWidget:
+        """Create Regime Entry Expression Editor tab (NEW).
+
+        Provides visual editor for creating entry_expression in Regime JSON files.
+        Uses RegimeEntryExpressionEditor for regime selection and CEL generation.
+        """
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        from src.ui.widgets.regime_entry_expression_editor import RegimeEntryExpressionEditor
+
+        # Create Regime Entry Expression Editor
+        self.regime_entry_editor = RegimeEntryExpressionEditor(self)
+
+        # Connect signals
+        self.regime_entry_editor.expression_generated.connect(self._on_regime_expression_generated)
+        self.regime_entry_editor.json_saved.connect(self._on_regime_json_saved)
+
+        layout.addWidget(self.regime_entry_editor, 1)
 
         return tab
 
@@ -335,6 +362,14 @@ class RegimeEditorWidget(QWidget):
 
             # Update status
             self._update_status()
+
+            # === NEW: Load in Regime Entry Editor if it's a Regime JSON ===
+            if self._is_regime_json(self.current_config):
+                try:
+                    self.regime_entry_editor.load_json_path(str(file_path))
+                    logger.info(f"Loaded Regime JSON in Entry Editor: {file_path.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to load in Regime Entry Editor: {e}")
 
             logger.info(f"Loaded JSON: {file_path}")
 
@@ -719,6 +754,72 @@ class RegimeEditorWidget(QWidget):
     def has_unsaved_changes(self) -> bool:
         """Check if there are unsaved changes."""
         return self.is_modified
+
+    def _is_regime_json(self, config: dict) -> bool:
+        """Prüft ob die geladene JSON eine Regime JSON ist.
+
+        Returns:
+            True wenn es eine Regime JSON mit optimization_results ist
+        """
+        try:
+            # Prüfe Schema-Version 2.x
+            if not config.get("schema_version", "").startswith("2."):
+                return False
+
+            # Prüfe ob optimization_results existiert
+            opt_results = config.get("optimization_results", [])
+            if not opt_results or not isinstance(opt_results, list):
+                return False
+
+            # Prüfe ob regimes existiert
+            first_result = opt_results[0]
+            regimes = first_result.get("regimes", [])
+            if not regimes or not isinstance(regimes, list):
+                return False
+
+            # Es ist eine valide Regime JSON
+            return True
+
+        except (KeyError, IndexError, TypeError):
+            return False
+
+    # === Regime Entry Expression Editor Handlers ===
+
+    def _on_regime_expression_generated(self, expression: str):
+        """Handler: Regime Entry Expression wurde generiert.
+
+        Wird aufgerufen wenn im Regime Entry Editor eine Expression generiert wurde.
+        """
+        logger.info(f"Regime Entry Expression generated: {expression[:80]}...")
+
+        # Optional: Status-Update
+        if hasattr(self, 'status_label'):
+            self.status_label.setText(f"Expression generated ({len(expression)} chars)")
+
+    def _on_regime_json_saved(self, json_path: str):
+        """Handler: Regime JSON wurde mit entry_expression gespeichert.
+
+        Wird aufgerufen wenn die JSON mit entry_expression gespeichert wurde.
+        """
+        logger.info(f"Regime JSON saved with entry_expression: {json_path}")
+
+        # Aktualisiere File-Label wenn es die aktuell geladene Datei ist
+        if self.current_file_path and str(self.current_file_path) == json_path:
+            self.is_modified = False
+            self.file_label.setText(f"File: {Path(json_path).name} ✅")
+
+        # Status-Update
+        if hasattr(self, 'status_label'):
+            self.status_label.setText(f"✅ Saved: {Path(json_path).name}")
+
+        # Optional: Zeige Notification
+        QMessageBox.information(
+            self,
+            "✅ JSON Saved",
+            f"entry_expression wurde in JSON gespeichert:\n\n{Path(json_path).name}\n\n"
+            f"Die JSON kann jetzt im Trading Bot verwendet werden:\n"
+            f"Bot Tab → Start Bot (JSON Entry)"
+        )
 
 
 # Import for QInputDialog (used in _on_add_item)

@@ -9,6 +9,7 @@ Contains methods for handling UI events and managing bot settings:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
@@ -199,6 +200,93 @@ class BotEventHandlersMixin:
 
         except Exception as e:
             logger.error(f"Failed to show strategy change notification: {e}", exc_info=True)
+
+    def _on_bot_start_json_clicked(self) -> None:
+        """Handle bot start (JSON Entry) button click - loads Regime JSON with entry_expression.
+
+        NEUER HANDLER für JSON-basierte Entry Logik:
+        1. File Picker für Regime JSON (mit entry_expression)
+        2. Lädt JSON und validiert entry_expression
+        3. Startet Bot mit JSON Entry Scorer
+        4. Nach Entry: Normale Bot-Logik (Tabelle füllen, SL/TP, etc.)
+        """
+        logger.info("Bot start (JSON Entry) requested")
+
+        # File Picker für Regime JSON
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+        json_file, _ = QFileDialog.getOpenFileName(
+            self,
+            "Regime JSON mit entry_expression auswählen",
+            "03_JSON/Entry_Analyzer/Regime/",
+            "JSON Files (*.json)"
+        )
+
+        if not json_file:
+            logger.info("JSON Entry bot start cancelled - no file selected")
+            return
+
+        logger.info(f"Loading Regime JSON: {json_file}")
+
+        try:
+            # Lade und validiere JSON
+            from src.core.tradingbot.json_entry_loader import JsonEntryConfig
+
+            config = JsonEntryConfig.from_files(regime_json_path=json_file)
+
+            # Validiere dass entry_expression vorhanden ist
+            if not config.entry_expression or config.entry_expression.strip() == "":
+                QMessageBox.critical(
+                    self,
+                    "❌ Keine Entry Expression",
+                    f"Die JSON-Datei enthält keine 'entry_expression'!\n\n"
+                    f"Datei: {json_file}\n\n"
+                    f"Bitte füge zuerst eine entry_expression hinzu.\n"
+                    f"Nutze dazu:\n"
+                    f"• Entry Analyzer → CEL Editor\n"
+                    f"• Oder: Python Script add_entry_expression.py"
+                )
+                return
+
+            # Zeige Info welche Expression geladen wurde
+            QMessageBox.information(
+                self,
+                "✅ JSON geladen",
+                f"Regime JSON erfolgreich geladen!\n\n"
+                f"Datei: {Path(json_file).name}\n"
+                f"Regimes: {len(config.regime_thresholds)}\n"
+                f"Indicators: {len(config.indicators)}\n\n"
+                f"Entry Expression (erste 100 Zeichen):\n"
+                f"{config.entry_expression[:100]}...\n\n"
+                f"Bot wird jetzt gestartet mit JSON Entry Logik."
+            )
+
+            # Starte Bot mit JSON Entry Config
+            logger.info(f"Starting bot with JSON Entry config: {config.regime_json_path}")
+            logger.info(f"Entry expression: {config.entry_expression[:80]}...")
+            
+            # Store config for bot initialization
+            self._json_entry_config = config
+            
+            # Start bot with JSON Entry mode
+            self._start_bot_with_json_entry(config)
+
+        except FileNotFoundError as e:
+            QMessageBox.critical(
+                self,
+                "❌ Datei nicht gefunden",
+                f"Regime JSON konnte nicht geladen werden:\n\n{e}"
+            )
+            logger.error(f"JSON file not found: {e}")
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "❌ Fehler beim Laden",
+                f"Fehler beim Laden der Regime JSON:\n\n{e}\n\n"
+                f"Prüfe ob das JSON-Format korrekt ist."
+            )
+            logger.exception(f"Failed to load JSON Entry config: {e}")
 
     def _on_bot_stop_clicked(self) -> None:
         """Handle bot stop button click."""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from PyQt6.QtCore import QTimer
 
@@ -311,3 +312,96 @@ class BotCallbacksLifecycleMixin:
         self._save_bot_settings(symbol)
 
         logger.info(f"Bot started with JSON strategy for {symbol} ({ki_mode.value} mode)")
+
+    def _start_bot_with_json_entry(self, json_entry_config) -> None:
+        """Start bot with JSON Entry config (Regime-based CEL entry_expression).
+        
+        Flow:
+        1. Normaler Bot-Start (wie _start_bot_with_json_config)
+        2. ABER: JsonEntryScorer statt normalem Entry System
+        3. Nach jeder Candle:
+           - Regime-Analyse triggern (via Entry Analyzer)
+           - CEL Expression evaluieren
+           - Bei Entry-Signal: _on_bot_signal aufrufen (ab hier normale Logik)
+        
+        Args:
+            json_entry_config: JsonEntryConfig mit entry_expression
+        """
+        from src.core.tradingbot import (
+            BotConfig,
+            FullBotConfig,
+            KIMode,
+            MarketType,
+            RiskConfig,
+            TrailingMode,
+        )
+        
+        logger.info(f"Starting bot with JSON Entry mode...")
+        logger.info(f"Regime JSON: {json_entry_config.regime_json_path}")
+        logger.info(f"Entry expression: {json_entry_config.entry_expression[:100]}...")
+        
+        symbol = self._resolve_bot_symbol()
+        ki_mode = KIMode(self.ki_mode_combo.currentText().lower())
+        trailing_mode = TrailingMode(self.trailing_mode_combo.currentText().lower())
+        market_type = MarketType.CRYPTO if '/' in symbol else MarketType.NASDAQ
+        
+        # Create base config
+        config = FullBotConfig.create_default(symbol, market_type)
+        self._apply_bot_ui_config(config, ki_mode, trailing_mode)
+        
+        # Create bot controller mit JSON Entry mode
+        from src.core.tradingbot.bot_controller import BotController
+        
+        self._bot_controller = BotController(
+            config,
+            on_signal=self._on_bot_signal,
+            on_decision=self._on_bot_decision,
+            on_order=self._on_bot_order,
+            on_log=self._on_bot_log,
+            on_trading_blocked=self._on_trading_blocked,
+            on_macd_signal=self._on_macd_signal,
+        )
+        
+        # Set JSON Entry config
+        if hasattr(self._bot_controller, 'set_json_entry_config'):
+            self._bot_controller.set_json_entry_config(json_entry_config)
+            logger.info(f"JSON Entry config loaded")
+        else:
+            logger.warning("BotController.set_json_entry_config not available - manual setup needed")
+            # Store config for manual processing
+            self._bot_controller._json_entry_config = json_entry_config
+        
+        # Update bot log UI status
+        if hasattr(self, '_set_bot_run_status_label'):
+            self._set_bot_run_status_label(True)
+        
+        # Register state change callback
+        self._bot_controller._state_machine._on_transition = lambda t: (
+            self._on_bot_state_change(t.from_state.value, t.to_state.value)
+        )
+        
+        # Warmup from chart
+        self._warmup_bot_from_chart()
+        
+        # Start the bot
+        self._bot_controller.start()
+        self._update_bot_status("RUNNING (JSON Entry)", "#2196F3")
+        
+        # Start update timer (evaluiert nach jeder Candle)
+        self._ensure_bot_update_timer()
+        
+        # Save settings
+        self._save_bot_settings(symbol)
+        
+        logger.info(f"Bot started with JSON Entry for {symbol}")
+        logger.info(f"  Regimes: {len(json_entry_config.regime_thresholds)}")
+        logger.info(f"  Indicators: {len(json_entry_config.indicators)}")
+        logger.info(f"  Mode: {ki_mode.value}")
+        
+        self._add_ki_log_entry(
+            "BOT", 
+            f"Bot gestartet (JSON Entry Mode)\n"
+            f"  JSON: {Path(json_entry_config.regime_json_path).name}\n"
+            f"  Regimes: {len(json_entry_config.regime_thresholds)}\n"
+            f"  Expression: {json_entry_config.entry_expression[:80]}..."
+        )

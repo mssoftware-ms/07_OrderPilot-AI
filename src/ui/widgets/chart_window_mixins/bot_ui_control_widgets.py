@@ -67,6 +67,20 @@ class BotUIControlWidgets:
         self.parent.bot_start_btn.clicked.connect(self.parent._on_bot_start_clicked)
         control_layout.addWidget(self.parent.bot_start_btn)
 
+        # JSON Entry Button (NEU - für Regime-basierte Entry Expressions)
+        self.parent.bot_start_json_btn = QPushButton("Start Bot (JSON)")
+        self.parent.bot_start_json_btn.setStyleSheet(
+            "background-color: #2196F3; color: white; font-weight: bold; "
+            "padding: 8px 16px;"
+        )
+        self.parent.bot_start_json_btn.setToolTip(
+            "Startet Bot mit JSON-basierter Entry-Logik\n"
+            "Lädt Regime JSON mit CEL entry_expression\n"
+            "Nach Entry: Gleiche Logik wie 'Start Bot' (Tabelle füllen, etc.)"
+        )
+        self.parent.bot_start_json_btn.clicked.connect(self.parent._on_bot_start_json_clicked)
+        control_layout.addWidget(self.parent.bot_start_json_btn)
+
         self.parent.bot_stop_btn = QPushButton("Stop Bot")
         self.parent.bot_stop_btn.setStyleSheet(
             "background-color: #ef5350; color: white; font-weight: bold; "

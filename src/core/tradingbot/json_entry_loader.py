@@ -132,7 +132,38 @@ class JsonEntryConfig:
             )
 
         # 3. Kombiniere Indicators (Indicator JSON hat Vorrang)
+        # Unterstützt beide Formate:
+        # - Direkt: {"indicators": {...}} (Dict)
+        # - Entry Analyzer: {"optimization_results": [{"indicators": [...]}]} (List)
         regime_indicators = regime_data.get("indicators", {})
+        
+        if not regime_indicators and "optimization_results" in regime_data:
+            # Fallback: Lade aus optimization_results[0].indicators
+            opt_results = regime_data.get("optimization_results", [])
+            if opt_results and len(opt_results) > 0:
+                regime_indicators_raw = opt_results[0].get("indicators", [])
+                
+                # Konvertiere Liste → Dict (name als Key)
+                if isinstance(regime_indicators_raw, list):
+                    regime_indicators = {
+                        ind.get("name", f"indicator_{i}"): ind
+                        for i, ind in enumerate(regime_indicators_raw)
+                    }
+                    logger.info(
+                        f"Indicators aus optimization_results[0] geladen: "
+                        f"{len(regime_indicators)} indicators"
+                    )
+                else:
+                    # Falls es schon ein Dict ist
+                    regime_indicators = regime_indicators_raw
+        
+        # Konvertiere indicators auch falls es eine Liste ist
+        if isinstance(indicators, list):
+            indicators = {
+                ind.get("name", f"indicator_{i}"): ind
+                for i, ind in enumerate(indicators)
+            }
+        
         combined_indicators = {**regime_indicators, **indicators}
 
         if len(indicators) > 0:
@@ -153,7 +184,30 @@ class JsonEntryConfig:
             entry_expr = "true"
 
         # 5. Extrahiere Regime Thresholds
+        # Unterstützt beide Formate:
+        # - Direkt: {"regimes": {...}} (Dict)
+        # - Entry Analyzer: {"optimization_results": [{"regimes": [...]}]} (List)
         regime_thresholds = regime_data.get("regimes", {})
+        
+        if not regime_thresholds and "optimization_results" in regime_data:
+            # Fallback: Lade aus optimization_results[0].regimes
+            opt_results = regime_data.get("optimization_results", [])
+            if opt_results and len(opt_results) > 0:
+                regime_thresholds_raw = opt_results[0].get("regimes", [])
+                
+                # Konvertiere Liste → Dict (id als Key)
+                if isinstance(regime_thresholds_raw, list):
+                    regime_thresholds = {
+                        regime.get("id", f"regime_{i}"): regime
+                        for i, regime in enumerate(regime_thresholds_raw)
+                    }
+                    logger.info(
+                        f"Regimes aus optimization_results[0] geladen: "
+                        f"{len(regime_thresholds)} regimes (Entry Analyzer Format)"
+                    )
+                else:
+                    # Falls es schon ein Dict ist
+                    regime_thresholds = regime_thresholds_raw
 
         # 6. Extrahiere Metadata (optional)
         metadata = regime_data.get("metadata", {})

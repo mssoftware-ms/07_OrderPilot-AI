@@ -47,6 +47,12 @@ class BotStateHandlersFlat:
         # Reset block tracking when trading is possible again
         self._reset_trade_blocked()
 
+        # ===== JSON ENTRY MODE CHECK =====
+        # If JSON Entry Mode is active, use JsonEntryScorer instead of normal scoring
+        if self.parent._json_entry_mode and self.parent._json_entry_scorer:
+            return await self._process_json_entry(features)
+
+        # ===== NORMAL ENTRY MODE (default) =====
         # Calculate entry score
         long_score = self.parent._calculate_entry_score(features, TradeSide.LONG)
         short_score = self.parent._calculate_entry_score(features, TradeSide.SHORT)
@@ -397,3 +403,139 @@ class BotStateHandlersFlat:
         if short_valid:
             return TradeSide.SHORT, short_score
         return None, 0.0
+
+    async def _process_json_entry(self, features: FeatureVector) -> BotDecision | None:
+        """Process JSON Entry Mode - evaluate CEL entry_expression.
+
+        Called when JSON Entry Mode is active. Uses JsonEntryScorer to evaluate
+        the CEL entry_expression from Regime JSON instead of normal scoring.
+
+        Args:
+            features: Current feature vector
+
+        Returns:
+            BotDecision or None
+        """
+        logger.info("JSON Entry Mode: Evaluating CEL entry_expression...")
+
+        # Get current regime state
+        regime_state = self.parent._regime
+
+        # Get previous regime (for last_closed_regime() function)
+        prev_regime = getattr(self.parent, '_prev_regime_name', None)
+
+        # Evaluate Long Entry
+        should_enter_long, long_score, long_reasons = self.parent._json_entry_scorer.should_enter_long(
+            features=features,
+            regime=regime_state,
+            chart_window=None,  # Bot has no chart window
+            prev_regime=prev_regime
+        )
+
+        # Evaluate Short Entry
+        should_enter_short, short_score, short_reasons = self.parent._json_entry_scorer.should_enter_short(
+            features=features,
+            regime=regime_state,
+            chart_window=None,
+            prev_regime=prev_regime
+        )
+
+        # Log evaluation results
+        self.parent._log_activity(
+            "JSON_ENTRY",
+            f"CEL Evaluation | Long: {should_enter_long} (Score: {long_score:.2f}) | "
+            f"Short: {should_enter_short} (Score: {short_score:.2f})"
+        )
+
+        logger.info(
+            f"JSON Entry CEL evaluation: "
+            f"Long={should_enter_long} ({long_score:.2f}), "
+            f"Short={should_enter_short} ({short_score:.2f})"
+        )
+
+        # Determine entry side
+        side = None
+        score = 0.0
+        reasons = []
+
+        if should_enter_long and should_enter_short:
+            # Both signals - take the stronger one
+            if long_score >= short_score:
+                side = TradeSide.LONG
+                score = long_score
+                reasons = long_reasons
+                logger.info("JSON Entry: LONG signal (stronger than Short)")
+            else:
+                side = TradeSide.SHORT
+                score = short_score
+                reasons = short_reasons
+                logger.info("JSON Entry: SHORT signal (stronger than Long)")
+        elif should_enter_long:
+            side = TradeSide.LONG
+            score = long_score
+            reasons = long_reasons
+            logger.info("JSON Entry: LONG signal")
+        elif should_enter_short:
+            side = TradeSide.SHORT
+            score = short_score
+            reasons = short_reasons
+            logger.info("JSON Entry: SHORT signal")
+        else:
+            # No entry signal
+            logger.info("JSON Entry: No entry signal (CEL expression not satisfied)")
+            return self.parent._create_decision(
+                BotAction.NO_TRADE,
+                TradeSide.NONE,
+                features,
+                ["JSON_ENTRY_NO_MATCH"],
+                notes=f"CEL expression not satisfied"
+            )
+
+        # CEL RulePack Integration (optional - check risk/entry rules)
+        allowed, reason, summary = self.parent._evaluate_rules(
+            features,
+            pack_types=["risk", "entry"]
+        )
+
+        if not allowed:
+            self.parent._log_activity(
+                "BLOCKED",
+                f"JSON Entry blockiert durch RulePack: {reason}"
+            )
+            logger.info(f"JSON Entry blocked by RulePack: {reason}")
+            return self.parent._create_decision(
+                BotAction.NO_TRADE,
+                side,
+                features,
+                ["BLOCKED_BY_CEL_RULES"],
+                notes=f"RulePack block: {reason}"
+            )
+
+        # Create signal
+        signal = self.parent._create_signal(features, side, score)
+        self.parent._current_signal = signal
+
+        # Log reasons from CEL evaluation
+        reasons_str = ", ".join(reasons) if reasons else "CEL expression satisfied"
+
+        self.parent._log_activity(
+            "JSON_ENTRY",
+            f"{side.value.upper()} Signal generiert (JSON Entry) | "
+            f"Score: {score:.2f} | Entry: {signal.entry_price:.2f} | "
+            f"SL: {signal.stop_loss_price:.2f} | Reasons: {reasons_str}"
+        )
+
+        # Send signal to UI (triggers _on_bot_signal callback)
+        if self.parent._on_signal:
+            self.parent._on_signal(signal)
+
+        # Transition to SIGNAL state
+        self.parent._state_machine.on_signal(signal, confirmed=False)
+
+        return self.parent._create_decision(
+            BotAction.NO_TRADE,  # Signal detected, not entry yet
+            side,
+            features,
+            ["JSON_ENTRY_SIGNAL_DETECTED"],
+            notes=f"JSON Entry Signal {signal.id}: {side.value} score={score:.2f}, reasons={reasons_str}",
+        )

@@ -60,33 +60,42 @@ class JsonEntryScorer:
         """
         self.config = json_config
         self.cel = cel_engine
-        self._compiled_expr = None
 
-        # Compile CEL expression einmal (Performance)
-        self._compile_expression()
+        # Validate expression (do a test evaluation)
+        self._validate_expression()
 
-    def _compile_expression(self) -> None:
-        """Compile CEL Expression und cache für Performance.
+    def _validate_expression(self) -> None:
+        """Validate CEL expression with a dummy context.
 
         Raises:
-            RuntimeError: Wenn Compilation fehlschlägt
+            RuntimeError: If expression is invalid or can't be evaluated
         """
         try:
-            # CEL compile() method gibt compiled program zurück
-            self._compiled_expr = self.cel.compile(self.config.entry_expression)
+            # Create minimal test context
+            test_context = {
+                "side": "long",
+                "regime": "TEST",
+                "rsi": 50.0,
+                "adx": 25.0,
+                "macd_hist": 0.0,
+            }
+            
+            # Try to evaluate (will raise ValueError if syntax is invalid)
+            # We don't care about the result, just that it doesn't crash
+            self.cel.evaluate(self.config.entry_expression, test_context, default=False)
+            
             logger.info(
-                f"CEL expression compiled successfully: "
+                f"CEL expression validated successfully: "
                 f"{self.config.entry_expression[:80]}..."
             )
         except Exception as e:
             logger.error(
-                f"CEL compilation failed for expression: "
+                f"CEL validation failed for expression: "
                 f"{self.config.entry_expression[:50]}...\n"
                 f"Error: {e}"
             )
-            # Raise runtime error - Bot kann nicht mit ungültiger Expression starten
             raise RuntimeError(
-                f"CEL Expression compilation failed: {e}\n"
+                f"CEL Expression validation failed: {e}\n"
                 f"Expression: {self.config.entry_expression[:100]}..."
             ) from e
 
@@ -172,17 +181,13 @@ class JsonEntryScorer:
         Returns:
             Tuple (should_enter, score, reason_codes)
         """
-        if not self._compiled_expr:
-            logger.warning("CEL expression not compiled - returning False")
-            return False, 0.0, ["CEL_COMPILATION_FAILED"]
-
         try:
             # 1. Build CEL context from features + regime + chart + prev_regime
             context = self._build_context(side, features, regime, chart_window, prev_regime)
 
-            # 2. Evaluate CEL expression using compiled program
-            # CEL evaluate_compiled() gibt result zurück (bool, int, str, etc.)
-            result = self.cel.evaluate_compiled(self._compiled_expr, context)
+            # 2. Evaluate CEL expression
+            # CELEngine.evaluate() does internal caching for performance
+            result = self.cel.evaluate(self.config.entry_expression, context, default=False)
 
             # 3. Convert result to boolean
             should_enter = bool(result)

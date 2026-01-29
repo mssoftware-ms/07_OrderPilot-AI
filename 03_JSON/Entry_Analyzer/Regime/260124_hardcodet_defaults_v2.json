@@ -3,8 +3,17 @@
   "metadata": {
     "author": "OrderPilot-AI",
     "created_at": "2026-01-24T00:00:00Z",
-    "updated_at": "2026-01-26T12:00:00Z",
-    "tags": ["defaults", "hardcoded", "entry-analyzer", "regime", "adx-di-based", "momentum-confirmation", "exhaustion-detection"],
+    "updated_at": "2026-01-29T12:10:18.479452",
+    "tags": [
+      "defaults",
+      "hardcoded",
+      "entry-analyzer",
+      "regime",
+      "adx-di-based",
+      "momentum-confirmation",
+      "exhaustion-detection",
+      "cel-entry"
+    ],
     "notes": "ADX/DI-based Regime Detection with 9-level granularity including RSI momentum confirmation and exhaustion detection: STRONG_TF > STRONG_BULL/BEAR (RSI confirmed) > TF > BULL/BEAR_EXHAUSTION (reversal warning) > BULL/BEAR > SIDEWAYS. Unterstützt auch Custom-Indikatoren: CHANDELIER, ADX_LEAF_WEST.",
     "trading_style": "Daytrading"
   },
@@ -22,12 +31,20 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 10, "max": 25, "step": 1}
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_threshold",
               "value": 5.0,
-              "range": {"min": 3, "max": 15, "step": 1}
+              "range": {
+                "min": 3,
+                "max": 15,
+                "step": 1
+              }
             }
           ]
         },
@@ -38,7 +55,11 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 9, "max": 21, "step": 1}
+              "range": {
+                "min": 9,
+                "max": 21,
+                "step": 1
+              }
             }
           ]
         },
@@ -49,17 +70,29 @@
             {
               "name": "period",
               "value": 14,
-              "range": {"min": 10, "max": 20, "step": 1}
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
             },
             {
               "name": "strong_move_pct",
               "value": 1.5,
-              "range": {"min": 0.5, "max": 3.0, "step": 0.1}
+              "range": {
+                "min": 0.5,
+                "max": 3.0,
+                "step": 0.1
+              }
             },
             {
               "name": "extreme_move_pct",
               "value": 3.0,
-              "range": {"min": 2.0, "max": 5.0, "step": 0.5}
+              "range": {
+                "min": 2.0,
+                "max": 5.0,
+                "step": 0.5
+              }
             }
           ]
         }
@@ -72,12 +105,20 @@
             {
               "name": "adx_min",
               "value": 40.0,
-              "range": {"min": 35, "max": 50, "step": 1}
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 20.0,
-              "range": {"min": 15, "max": 30, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 30,
+                "step": 1
+              }
             }
           ],
           "priority": 100,
@@ -90,17 +131,29 @@
             {
               "name": "adx_min",
               "value": 30.0,
-              "range": {"min": 25, "max": 40, "step": 1}
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 12.0,
-              "range": {"min": 8, "max": 20, "step": 1}
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
             },
             {
               "name": "rsi_confirm_bull",
               "value": 55.0,
-              "range": {"min": 50, "max": 65, "step": 1}
+              "range": {
+                "min": 50,
+                "max": 65,
+                "step": 1
+              }
             }
           ],
           "priority": 95,
@@ -113,17 +166,29 @@
             {
               "name": "adx_min",
               "value": 30.0,
-              "range": {"min": 25, "max": 40, "step": 1}
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 12.0,
-              "range": {"min": 8, "max": 20, "step": 1}
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
             },
             {
               "name": "rsi_confirm_bear",
               "value": 45.0,
-              "range": {"min": 35, "max": 50, "step": 1}
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
             }
           ],
           "priority": 94,
@@ -136,12 +201,20 @@
             {
               "name": "adx_min",
               "value": 25.0,
-              "range": {"min": 20, "max": 35, "step": 1}
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 8.0,
-              "range": {"min": 5, "max": 15, "step": 1}
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
             }
           ],
           "priority": 85,
@@ -154,17 +227,29 @@
             {
               "name": "adx_min",
               "value": 20.0,
-              "range": {"min": 15, "max": 28, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 3.0,
-              "range": {"min": 2, "max": 8, "step": 1}
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
             },
             {
               "name": "rsi_exhaustion_max",
               "value": 40.0,
-              "range": {"min": 35, "max": 45, "step": 1}
+              "range": {
+                "min": 35,
+                "max": 45,
+                "step": 1
+              }
             }
           ],
           "priority": 82,
@@ -177,17 +262,29 @@
             {
               "name": "adx_min",
               "value": 20.0,
-              "range": {"min": 15, "max": 28, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 3.0,
-              "range": {"min": 2, "max": 8, "step": 1}
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
             },
             {
               "name": "rsi_exhaustion_min",
               "value": 60.0,
-              "range": {"min": 55, "max": 65, "step": 1}
+              "range": {
+                "min": 55,
+                "max": 65,
+                "step": 1
+              }
             }
           ],
           "priority": 81,
@@ -200,12 +297,20 @@
             {
               "name": "adx_min",
               "value": 20.0,
-              "range": {"min": 15, "max": 28, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 3.0,
-              "range": {"min": 2, "max": 8, "step": 1}
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
             }
           ],
           "priority": 80,
@@ -218,12 +323,20 @@
             {
               "name": "adx_min",
               "value": 20.0,
-              "range": {"min": 15, "max": 28, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
             },
             {
               "name": "di_diff_min",
               "value": 3.0,
-              "range": {"min": 2, "max": 8, "step": 1}
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
             }
           ],
           "priority": 79,
@@ -236,7 +349,11 @@
             {
               "name": "adx_max",
               "value": 20.0,
-              "range": {"min": 15, "max": 25, "step": 1}
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
             }
           ],
           "priority": 50,
@@ -267,11 +384,14 @@
     "min_trades_gate": 8,
     "target_trades_soft": 30,
     "score_weights": {
-      "separability": 0.30,
+      "separability": 0.3,
       "coherence": 0.25,
       "fidelity": 0.25,
-      "boundary": 0.10,
-      "coverage": 0.10
+      "boundary": 0.1,
+      "coverage": 0.1
     }
-  }
+  },
+  "entry_expression": "trigger_regime_analysis() && (\n  (side == 'long' && (\n    last_closed_regime() == 'STRONG_BULL'\n  ))\n  ||\n  (side == 'short' && (\n    last_closed_regime() == 'STRONG_BEAR'\n  ))\n)",
+  "_comment_entry_expression": "⚠️ WICHTIG: Die entry_expression wurde MANUELL im CEL-Editor hinzugefügt! Entry Analyzer generiert JSON OHNE entry_expression. Du musst sie selbst schreiben basierend auf den Regime-IDs aus regimes[].id",
+  "_comment_entry_expression_edited": "2026-01-29T12:10:18.479452"
 }
