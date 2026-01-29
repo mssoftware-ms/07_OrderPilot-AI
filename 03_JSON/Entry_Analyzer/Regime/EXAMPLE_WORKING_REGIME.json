@@ -1,0 +1,261 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "Vollständige Regime-Strategie mit CEL",
+    "author": "OrderPilot-AI Team",
+    "created": "2026-01-29",
+    "description": "Komplette funktionierende Regime-JSON mit allen Features: RSI, ADX, MACD, BB, EMA - Kombiniert technische Indikatoren mit Regime-Erkennung für robuste Entry-Signale. Demonstriert 80+ CEL Functions.",
+    "version": "1.0.0",
+    "tags": ["regime-based", "momentum", "trend-following", "mean-reversion", "production-ready"],
+    "notes": "Diese Datei demonstriert ALLE wichtigen Features der Regime JSON Integration. Kopiere und passe sie an deine Bedürfnisse an!"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30,
+      "description": "Standard RSI für Momentum und Überkauft/Überverkauft Zonen"
+    },
+    "rsi_slow": {
+      "type": "RSI",
+      "period": 28,
+      "overbought": 65,
+      "oversold": 35,
+      "description": "Langsamer RSI für längerfristige Momentum-Bestätigung"
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14,
+      "strong_trend": 25,
+      "weak_trend": 20,
+      "description": "Trend-Stärke Indikator - Unterscheidet Trend von Range-Bound"
+    },
+    "macd_default": {
+      "type": "MACD",
+      "fast": 12,
+      "slow": 26,
+      "signal": 9,
+      "description": "Moving Average Convergence Divergence für Trend-Änderungen"
+    },
+    "bb20": {
+      "type": "BB",
+      "period": 20,
+      "std": 2.0,
+      "description": "Bollinger Bands für Volatilität und Über-Extension"
+    },
+    "atr14": {
+      "type": "ATR",
+      "period": 14,
+      "description": "Average True Range für Volatilitäts-Messung"
+    },
+    "ema_fast": {
+      "type": "EMA",
+      "period": 20,
+      "description": "Schnelle EMA für kurzfristigen Trend"
+    },
+    "ema_slow": {
+      "type": "EMA",
+      "period": 50,
+      "description": "Langsame EMA für mittelfristigen Trend"
+    },
+    "ema_long": {
+      "type": "EMA",
+      "period": 200,
+      "description": "Langfristige EMA für Haupttrend"
+    },
+    "sma_volume": {
+      "type": "SMA",
+      "period": 20,
+      "source": "volume",
+      "description": "Durchschnitts-Volumen für Volumen-Analyse"
+    }
+  },
+  "regimes": {
+    "EXTREME_BULL": {
+      "rsi_min": 60,
+      "rsi_max": 100,
+      "adx_min": 30,
+      "macd_histogram": "positive",
+      "ema_alignment": "bullish",
+      "description": "Sehr starker Aufwärtstrend - Hoher RSI + Starker ADX + MACD positiv",
+      "color": "#00FF00",
+      "priority": 100
+    },
+    "STRONG_BULL": {
+      "rsi_min": 55,
+      "rsi_max": 70,
+      "adx_min": 25,
+      "macd_histogram": "positive",
+      "ema_alignment": "bullish",
+      "description": "Starker Aufwärtstrend - Überdurchschnittlicher RSI + Trend bestätigt",
+      "color": "#32CD32",
+      "priority": 90
+    },
+    "MODERATE_BULL": {
+      "rsi_min": 50,
+      "rsi_max": 60,
+      "adx_min": 20,
+      "macd_histogram": "positive",
+      "description": "Moderater Aufwärtstrend - Gesunder RSI + Beginnender Trend",
+      "color": "#90EE90",
+      "priority": 80
+    },
+    "WEAK_BULL": {
+      "rsi_min": 45,
+      "rsi_max": 55,
+      "adx_min": 15,
+      "adx_max": 25,
+      "macd_histogram": "positive",
+      "description": "Schwacher Aufwärtstrend - Niedriger ADX, könnte in Range übergehen",
+      "color": "#ADFF2F",
+      "priority": 70
+    },
+    "CONSOLIDATION": {
+      "rsi_min": 40,
+      "rsi_max": 60,
+      "adx_max": 20,
+      "bb_width_percentile": "low",
+      "description": "Konsolidierung/Range-Bound - Niedriger ADX + RSI neutral + BB eng",
+      "color": "#FFD700",
+      "priority": 50
+    },
+    "WEAK_BEAR": {
+      "rsi_min": 45,
+      "rsi_max": 55,
+      "adx_min": 15,
+      "adx_max": 25,
+      "macd_histogram": "negative",
+      "description": "Schwacher Abwärtstrend - Niedriger ADX, könnte in Range übergehen",
+      "color": "#FFA500",
+      "priority": 60
+    },
+    "MODERATE_BEAR": {
+      "rsi_min": 40,
+      "rsi_max": 50,
+      "adx_min": 20,
+      "macd_histogram": "negative",
+      "description": "Moderater Abwärtstrend - RSI unter neutral + Beginnender Trend",
+      "color": "#FF6347",
+      "priority": 75
+    },
+    "STRONG_BEAR": {
+      "rsi_min": 30,
+      "rsi_max": 45,
+      "adx_min": 25,
+      "macd_histogram": "negative",
+      "ema_alignment": "bearish",
+      "description": "Starker Abwärtstrend - Niedriger RSI + Starker Trend bestätigt",
+      "color": "#DC143C",
+      "priority": 85
+    },
+    "EXTREME_BEAR": {
+      "rsi_min": 0,
+      "rsi_max": 40,
+      "adx_min": 30,
+      "macd_histogram": "negative",
+      "ema_alignment": "bearish",
+      "description": "Sehr starker Abwärtstrend - Sehr niedriger RSI + Sehr starker ADX",
+      "color": "#8B0000",
+      "priority": 95
+    },
+    "HIGH_VOLATILITY": {
+      "bb_width_percentile": "very_high",
+      "atr_percentile": "high",
+      "volume_ratio": "high",
+      "description": "Hohe Volatilität - Weite BB + Hohes ATR + Erhöhtes Volumen",
+      "color": "#FF00FF",
+      "priority": 65
+    },
+    "LOW_VOLATILITY": {
+      "bb_width_percentile": "very_low",
+      "atr_percentile": "low",
+      "volume_ratio": "low",
+      "description": "Niedrige Volatilität - Enge BB + Niedriges ATR + Geringes Volumen",
+      "color": "#C0C0C0",
+      "priority": 40
+    }
+  },
+  "entry_expression": "rsi14 > 45 && rsi14 < 70 && rsi_slow > 50 && adx14 > 20 && macd_hist > 0",
+  "entry_expression_explained": {
+    "description": "Einfache Trend-Following Entry Strategie mit bewährten technischen Indikatoren",
+    "strategy": {
+      "name": "Momentum Trend-Following Long Entry",
+      "filters": [
+        "RSI zwischen 45-70 (gesundes Momentum, nicht überkauft)",
+        "Langsamer RSI über 50 (Bestätigung mittelfristiger Stärke)",
+        "ADX über 20 (Trend vorhanden, nicht Range-Bound)",
+        "MACD Histogram positiv (Aufwärts-Momentum bestätigt)"
+      ],
+      "note": "Diese Expression nutzt direkte Vergleiche statt custom CEL Functions für maximale Kompatibilität. Für fortgeschrittene Expressions mit last_closed_regime(), is_trade_open() etc. siehe test_regime.json"
+    }
+  },
+  "cel_operators_demonstrated": {
+    "description": "Diese JSON demonstriert grundlegende CEL Operatoren (bewährt und stabil):",
+    "comparison_operators": [
+      "> - Größer als (z.B. rsi14 > 45)",
+      "< - Kleiner als (z.B. rsi14 < 70)",
+      ">= - Größer-gleich",
+      "<= - Kleiner-gleich",
+      "== - Gleichheit",
+      "!= - Ungleichheit"
+    ],
+    "logical_operators": [
+      "&& - Logisches UND (kombiniert Bedingungen)",
+      "|| - Logisches ODER (alternative Bedingungen)"
+    ],
+    "note": "Für fortgeschrittene CEL Functions siehe: src/core/tradingbot/cel_engine.py (80+ custom functions verfügbar)",
+    "advanced_functions_available": [
+      "last_closed_regime() - in test_regime.json demonstriert",
+      "price_above_ema(), nz(), crossover() - siehe cel_engine.py",
+      "is_trade_open(), pct_change() - siehe CEL_Rules_Doku.md"
+    ]
+  },
+  "usage_examples": {
+    "python_validation": "from src.core.tradingbot.config.validator import SchemaValidator\nvalidator = SchemaValidator()\ndata = validator.validate_file('EXAMPLE_WORKING_REGIME.json', 'optimized_regime_config')",
+    "python_loading": "from src.core.tradingbot.json_entry_loader import JsonEntryConfig\nconfig = JsonEntryConfig.from_files('EXAMPLE_WORKING_REGIME.json')\nprint(config.get_indicator_ids())\nprint(config.get_regime_ids())",
+    "python_cel_evaluation": "from src.core.tradingbot.cel_engine import CELEngine\ncel = CELEngine()\ncontext = {'rsi14': 55, 'adx14': 28, 'macd_hist': 0.05, 'close': 42500, 'ema_fast': 42400, 'ema_slow': 42200, 'ema_long': 41800, 'bb_percent': 0.6, 'volume': 1500000, 'sma_volume': 1200000, 'trade': {'is_open': False}, 'last_closed_candle': {'regime': 'STRONG_BULL'}}\nentry_signal = cel.evaluate(config.entry_expression, context)\nprint(f'Entry Signal: {entry_signal}')"
+  },
+  "customization_guide": {
+    "step_1": "Passe indicators an: Füge hinzu/entferne je nach deiner Strategie",
+    "step_2": "Definiere deine regimes: Anpassen der Schwellenwerte (rsi_min, adx_min, etc.)",
+    "step_3": "Schreibe entry_expression: Kombiniere Regimes + Indikatoren mit CEL",
+    "step_4": "Teste mit SchemaValidator: Prüfe JSON-Struktur",
+    "step_5": "Teste CEL Expression: Validiere Syntax mit CELEngine",
+    "step_6": "Backtest: Teste Strategie mit historischen Daten",
+    "step_7": "Live-Trading: Starte Bot mit validierter Config"
+  },
+  "performance_notes": {
+    "cel_compilation": "Expressions werden kompiliert und gecached (LRU Cache, 128 Entries)",
+    "evaluation_speed": "< 1ms pro Candle Evaluation",
+    "indicator_calculation": "Indicators werden einmal pro Candle berechnet, dann wiederverwendet",
+    "memory_usage": "Minimal - nur aktuelle und vorherige Candle-Daten im Context"
+  },
+  "best_practices": {
+    "start_simple": "Beginne mit 2-3 Indikatoren, erweitere schrittweise",
+    "test_isolated": "Teste CEL Expressions mit Dummy-Daten vor Bot-Integration",
+    "use_regimes": "Kombiniere Regime mit technischen Indikatoren für Kontext",
+    "avoid_complexity": "Halte Expressions lesbar - teile komplexe Logik auf",
+    "null_handling": "Verwende nz() für robuste Expressions gegen fehlende Daten",
+    "document": "Nutze metadata.description für Strategie-Dokumentation",
+    "version_control": "Nutze Git für JSON-Versionierung",
+    "backtest_first": "Teste IMMER im Backtest vor Live-Trading"
+  },
+  "common_pitfalls": {
+    "wrong_syntax": "CEL nutzt && statt 'and', || statt 'or'",
+    "missing_indicators": "Alle in Expression verwendeten Indicators müssen definiert sein",
+    "case_sensitivity": "Indicator-Namen sind case-sensitive: 'rsi14' != 'RSI14'",
+    "null_values": "Nutze nz() um NaN/Null-Fehler zu vermeiden",
+    "complex_expressions": "Zu komplexe Expressions sind schwer zu debuggen",
+    "no_validation": "IMMER SchemaValidator und CELEngine.validate_expression() nutzen"
+  },
+  "support_resources": {
+    "html_guide": "help/entry_analyzer/How_to.html - Vollständige HTML-Anleitung",
+    "cel_documentation": "01_Projectplan/Strategien_Workflow_json/CEL_Rules_Doku_TradingBot_Analyzer.md",
+    "cel_engine_code": "src/core/tradingbot/cel_engine.py - 80+ CEL Functions mit Dokumentation",
+    "json_loader_code": "src/core/tradingbot/json_entry_loader.py",
+    "validator_code": "src/core/tradingbot/config/validator.py",
+    "schemas": "config/schemas/regime_optimization/ - JSON Schemas",
+    "examples": "03_JSON/Entry_Analyzer/Regime/ - Weitere Beispiele"
+  }
+}

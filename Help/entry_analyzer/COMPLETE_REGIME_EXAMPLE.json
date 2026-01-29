@@ -1,0 +1,660 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "Complete Regime Strategy Example with CEL",
+    "author": "OrderPilot-AI Team",
+    "created_at": "2026-01-29T12:00:00Z",
+    "updated_at": "2026-01-29T12:00:00Z",
+    "tags": [
+      "complete-example",
+      "regime-based",
+      "cel-entry",
+      "production-ready"
+    ],
+    "notes": "Vollständiges Beispiel einer Regime-JSON mit korrekt implementierter CEL entry_expression. Demonstriert den kompletten Workflow: Entry Analyzer → CEL-Editor → Trading Bot",
+    "trading_style": "Swing Trading",
+    "description": "Multi-Regime Strategie mit 9 Regimen für BTCUSDT 5m Timeframe. Nutzt ADX, RSI und ATR für robuste Regime-Erkennung. Entry basiert auf last_closed_regime() für saubere Candle-Close-Signale."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-29T12:00:00Z",
+      "score": 85.5,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 19,
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_threshold",
+              "value": 13,
+              "range": {
+                "min": 3,
+                "max": 15,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 18,
+              "range": {
+                "min": 9,
+                "max": 21,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 15,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "strong_move_pct",
+              "value": 1.7,
+              "range": {
+                "min": 0.5,
+                "max": 3.0,
+                "step": 0.1
+              }
+            },
+            {
+              "name": "extreme_move_pct",
+              "value": 2.5,
+              "range": {
+                "min": 2.0,
+                "max": 5.0,
+                "step": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "STRONG_TF",
+          "name": "Extremer Trend (Strong Trend Following)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 49.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 26.0,
+              "range": {
+                "min": 15,
+                "max": 30,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 100,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BULL",
+          "name": "Starker Aufwaertstrend (RSI bestaetigt)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 31.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 9.0,
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_confirm_bull",
+              "value": 51.0,
+              "range": {
+                "min": 50,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 95,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BEAR",
+          "name": "Starker Abwaertstrend (RSI bestaetigt)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 29.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 11.0,
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_confirm_bear",
+              "value": 44.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 94,
+          "scope": "entry"
+        },
+        {
+          "id": "TF",
+          "name": "Trend Following",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 32.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 14.0,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 85,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL_EXHAUSTION",
+          "name": "Aufwaertstrend Erschoepfung (Trendwende-Warnung)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 15.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 5.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_exhaustion_max",
+              "value": 42.0,
+              "range": {
+                "min": 35,
+                "max": 45,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 82,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR_EXHAUSTION",
+          "name": "Abwaertstrend Erschoepfung (Trendwende-Warnung)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 21.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 4.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_exhaustion_min",
+              "value": 62.0,
+              "range": {
+                "min": 55,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 81,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Aufwaertstrend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 7.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Abwaertstrend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 25.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 4.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 79,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwaerts / Range",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 24.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 50,
+          "scope": "entry"
+        }
+      ]
+    }
+  ],
+  "entry_params": {
+    "min_score": 70,
+    "require_regime_match": true,
+    "max_signals_per_regime": 5
+  },
+  "evaluation_params": {
+    "lookback_periods": 200,
+    "min_regime_duration": 3,
+    "score_weights": {
+      "separability": 0.3,
+      "coherence": 0.25,
+      "fidelity": 0.25,
+      "boundary": 0.1,
+      "coverage": 0.1
+    }
+  },
+  "_comment_entry_expression": "⚠️ WICHTIG: Die entry_expression wurde MANUELL im CEL-Editor hinzugefügt! Entry Analyzer generiert JSON OHNE entry_expression. Du musst sie selbst schreiben basierend auf den Regime-IDs aus regimes[].id",
+  "entry_expression": "trigger_regime_analysis() && ((side == 'long' && (last_closed_regime() == 'STRONG_BULL' || last_closed_regime() == 'STRONG_TF')) || (side == 'short' && last_closed_regime() == 'STRONG_BEAR'))",
+  "_comment_entry_expression_explained": "Erklärung der Entry Expression - Was macht sie?",
+  "entry_expression_explained": {
+    "description": "Multi-Regime Entry Strategie mit Candle-Close Validation",
+    "strategy_name": "Strong Regime Entry with Direction Filter",
+    "components": {
+      "trigger_regime_analysis": {
+        "description": "Triggert Regime-Update auf dem Chart (nur im Backtest)",
+        "purpose": "Stellt sicher, dass Regime-Daten aktuell sind vor Entry-Prüfung",
+        "returns": "true wenn erfolgreich, false wenn kein Chart verfügbar (Bot Tab)",
+        "note": "Im Bot Tab ohne Chart gibt diese Funktion false zurück - Entry basiert dann auf prev_regime Parameter"
+      },
+      "side_check": {
+        "description": "Prüft ob Long oder Short Entry geprüft wird",
+        "purpose": "Verhindert falsche Entry-Richtung (z.B. Short bei STRONG_BULL)",
+        "values": [
+          "side == 'long' → Prüfe Long Entry",
+          "side == 'short' → Prüfe Short Entry"
+        ]
+      },
+      "last_closed_regime": {
+        "description": "Gibt Regime der letzten geschlossenen Candle zurück",
+        "purpose": "Entry NUR bei Candle-Close, nicht während laufender Candle",
+        "regime_names": [
+          "STRONG_TF → Extremer Trend (höchste Priorität)",
+          "STRONG_BULL → Starker Aufwärtstrend",
+          "STRONG_BEAR → Starker Abwärtstrend",
+          "BULL → Aufwärtstrend",
+          "BEAR → Abwärtstrend",
+          "SIDEWAYS → Seitwärts/Range",
+          "TF → Trend Following",
+          "BULL_EXHAUSTION → Trend-Erschöpfung",
+          "BEAR_EXHAUSTION → Trend-Erschöpfung"
+        ],
+        "returns": "Regime-String (z.B. 'STRONG_BULL') oder 'UNKNOWN'",
+        "note": "Regime-Namen sind NICHT fest! Sie kommen aus regimes[].id in dieser JSON"
+      },
+      "long_conditions": {
+        "description": "Long Entry Bedingungen",
+        "conditions": [
+          "last_closed_regime() == 'STRONG_BULL' → Starker Aufwärtstrend mit RSI-Bestätigung",
+          "last_closed_regime() == 'STRONG_TF' → Extremer Trend (höchste Priorität)"
+        ],
+        "note": "Nutzt || (ODER) um mehrere Long-Trigger zu erlauben"
+      },
+      "short_conditions": {
+        "description": "Short Entry Bedingungen",
+        "conditions": [
+          "last_closed_regime() == 'STRONG_BEAR' → Starker Abwärtstrend mit RSI-Bestätigung"
+        ],
+        "note": "Kann erweitert werden mit weiteren Bear-Regimen"
+      }
+    },
+    "execution_flow": [
+      "1. trigger_regime_analysis() wird aufgerufen → Regime-Update",
+      "2. Wenn side == 'long': Prüfe ob last_closed_regime() STRONG_BULL oder STRONG_TF",
+      "3. Wenn side == 'short': Prüfe ob last_closed_regime() STRONG_BEAR",
+      "4. Wenn Bedingung erfüllt: Entry Signal = TRUE",
+      "5. Trading Bot öffnet Position (Stop-Loss/Take-Profit sind im Bot programmiert)"
+    ],
+    "customization_tips": [
+      "Füge weitere Regimen hinzu: || last_closed_regime() == 'TF' für Trend Following",
+      "Kombiniere mit Indikatoren: && rsi > 50 für zusätzliche Filter",
+      "Nutze Volatilitäts-Filter: && adx > 30 für starke Trends",
+      "Mean-Reversion: Entry bei BULL_EXHAUSTION/BEAR_EXHAUSTION mit umgekehrter Richtung"
+    ]
+  },
+  "_comment_alternative_expressions": "Alternative CEL Expressions für verschiedene Strategien",
+  "alternative_entry_expressions": {
+    "conservative": {
+      "expression": "trigger_regime_analysis() && side == 'long' && last_closed_regime() == 'STRONG_TF'",
+      "description": "Nur extremste Trends (STRONG_TF) für konservative Entry",
+      "pros": [
+        "Höchste Gewinnwahrscheinlichkeit",
+        "Minimale False Positives",
+        "Klare Trend-Bestätigung"
+      ],
+      "cons": [
+        "Weniger Trades",
+        "Verpasste Gelegenheiten in moderaten Trends"
+      ]
+    },
+    "moderate": {
+      "expression": "trigger_regime_analysis() && ((side == 'long' && (last_closed_regime() == 'STRONG_BULL' || last_closed_regime() == 'BULL')) || (side == 'short' && (last_closed_regime() == 'STRONG_BEAR' || last_closed_regime() == 'BEAR')))",
+      "description": "Moderate Strategie mit Normal + Strong Regimen",
+      "pros": [
+        "Balance zwischen Trades und Qualität",
+        "Fängt meiste Trends",
+        "Gute Risk/Reward"
+      ],
+      "cons": [
+        "Etwas mehr False Positives als Conservative"
+      ]
+    },
+    "aggressive": {
+      "expression": "trigger_regime_analysis() && ((side == 'long' && last_closed_regime() != 'BEAR' && last_closed_regime() != 'STRONG_BEAR' && last_closed_regime() != 'SIDEWAYS') || (side == 'short' && last_closed_regime() != 'BULL' && last_closed_regime() != 'STRONG_BULL' && last_closed_regime() != 'SIDEWAYS'))",
+      "description": "Aggressive Strategie - Alle Regimen außer Gegen-Trend und Range",
+      "pros": [
+        "Viele Trades",
+        "Früher Entry in Trends",
+        "Nutzt alle Trend-Phasen"
+      ],
+      "cons": [
+        "Mehr False Positives",
+        "Höheres Risiko",
+        "Braucht gutes Risk Management"
+      ]
+    },
+    "mean_reversion": {
+      "expression": "trigger_regime_analysis() && ((side == 'long' && last_closed_regime() == 'BEAR_EXHAUSTION') || (side == 'short' && last_closed_regime() == 'BULL_EXHAUSTION'))",
+      "description": "Mean-Reversion bei Trend-Erschöpfung (Umkehr-Strategie)",
+      "pros": [
+        "Fängt Trendwenden",
+        "Gute Entry-Preise",
+        "Niedrige Korrelation zu Trend-Following"
+      ],
+      "cons": [
+        "Höheres Risiko (Gegen-Trend)",
+        "Braucht schnellen Exit",
+        "Funktioniert nur in Ranging Markets gut"
+      ]
+    },
+    "indicator_enhanced": {
+      "expression": "trigger_regime_analysis() && ((side == 'long' && (last_closed_regime() == 'STRONG_BULL' || last_closed_regime() == 'STRONG_TF') && rsi > 50 && adx > 25) || (side == 'short' && last_closed_regime() == 'STRONG_BEAR' && rsi < 50 && adx > 25))",
+      "description": "Regime + Indicator Kombinationsstrategie",
+      "pros": [
+        "Doppelte Bestätigung (Regime + Indicators)",
+        "Höhere Gewinnrate",
+        "Robuster gegen False Signals"
+      ],
+      "cons": [
+        "Weniger Trades (mehr Filter)",
+        "Komplexere Expression"
+      ]
+    }
+  },
+  "_comment_cel_functions": "Verfügbare CEL Functions im Trading Bot",
+  "available_cel_functions": {
+    "regime_functions": {
+      "trigger_regime_analysis": {
+        "signature": "trigger_regime_analysis() -> bool",
+        "description": "Triggert Regime-Update auf Chart (nur im Backtest)",
+        "returns": "true wenn erfolgreich, false wenn kein Chart",
+        "example": "trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'"
+      },
+      "last_closed_regime": {
+        "signature": "last_closed_regime() -> string",
+        "description": "Gibt Regime der letzten geschlossenen Candle zurück",
+        "returns": "Regime-String (z.B. 'STRONG_BULL') oder 'UNKNOWN'",
+        "example": "last_closed_regime() == 'STRONG_BULL'"
+      },
+      "in_regime": {
+        "signature": "in_regime(regime_name: string) -> bool",
+        "description": "Prüft ob aktuelles Regime dem Namen entspricht",
+        "returns": "true wenn Regime übereinstimmt",
+        "example": "in_regime('STRONG_BULL')"
+      }
+    },
+    "trade_functions": {
+      "is_trade_open": {
+        "signature": "is_trade_open(trade: dict) -> bool",
+        "description": "Prüft ob Trade aktuell offen ist",
+        "returns": "true wenn Trade offen",
+        "example": "!is_trade_open(trade) && last_closed_regime() == 'STRONG_BULL'"
+      }
+    },
+    "price_functions": {
+      "price_above_ema": {
+        "signature": "price_above_ema(price: float, ema: float) -> bool",
+        "description": "Prüft ob Preis über EMA liegt",
+        "example": "price_above_ema(close, ema_50)"
+      },
+      "crossover": {
+        "signature": "crossover(a: float, b: float) -> bool",
+        "description": "Prüft ob a über b gekreuzt hat (vorher unter, jetzt über)",
+        "example": "crossover(ema_fast, ema_slow)"
+      },
+      "crossunder": {
+        "signature": "crossunder(a: float, b: float) -> bool",
+        "description": "Prüft ob a unter b gekreuzt hat",
+        "example": "crossunder(close, sma_20)"
+      }
+    },
+    "utility_functions": {
+      "nz": {
+        "signature": "nz(value: any, default: any) -> any",
+        "description": "Gibt default zurück wenn value null/NaN ist",
+        "example": "nz(rsi, 50) > 45"
+      },
+      "pct_change": {
+        "signature": "pct_change(current: float, previous: float) -> float",
+        "description": "Berechnet prozentuale Änderung",
+        "example": "pct_change(close, close_prev) > 0.5"
+      }
+    },
+    "note": "Vollständige Liste: src/core/tradingbot/cel_engine.py (80+ Functions)",
+    "documentation": "04_Knowledgbase/CEL_Functions_Reference_v3.md"
+  },
+  "_comment_testing": "Wie teste ich diese JSON?",
+  "testing_guide": {
+    "step_1_validate_json": {
+      "tool": "SchemaValidator",
+      "code": "from src.core.tradingbot.config.validator import SchemaValidator\nvalidator = SchemaValidator()\nresult = validator.validate_file('COMPLETE_REGIME_EXAMPLE.json', 'regime_optimization')\nprint('✅ JSON valid' if result else '❌ JSON invalid')"
+    },
+    "step_2_load_config": {
+      "tool": "JsonEntryConfig",
+      "code": "from src.core.tradingbot.json_entry_loader import JsonEntryConfig\nconfig = JsonEntryConfig.from_files('COMPLETE_REGIME_EXAMPLE.json')\nprint(f'Regimes: {config.get_regime_ids()}')\nprint(f'Expression: {config.entry_expression[:80]}...')"
+    },
+    "step_3_test_cel": {
+      "tool": "CELEngine",
+      "code": "from src.core.tradingbot.cel_engine import CELEngine\ncel = CELEngine()\n\n# Teste Long Entry bei STRONG_BULL\ncontext = {\n    'side': 'long',\n    'rsi': 55,\n    'adx': 32,\n    'chart_window': None,\n    'last_closed_candle': {'regime': 'STRONG_BULL'}\n}\n\nresult = cel.evaluate(config.entry_expression, context)\nprint(f'Long Entry Signal: {result}')  # Should be True\n\n# Teste Short Entry bei STRONG_BULL (sollte False sein)\ncontext['side'] = 'short'\nresult = cel.evaluate(config.entry_expression, context)\nprint(f'Short Entry Signal: {result}')  # Should be False"
+    },
+    "step_4_backtest": {
+      "description": "Teste mit Entry Analyzer Backtest",
+      "note": "Nutze diese JSON im Entry Analyzer für historische Daten-Tests"
+    }
+  },
+  "_comment_workflow": "Workflow: Entry Analyzer → CEL-Editor → Trading Bot",
+  "workflow": {
+    "phase_1_entry_analyzer": {
+      "description": "Entry Analyzer generiert JSON OHNE entry_expression",
+      "output": "JSON mit optimierten indicators und regimes",
+      "location": "03_JSON/Entry_Analyzer/Regime/<timestamp>_<symbol>_<timeframe>_#<rank>.json",
+      "note": "⚠️ KEINE entry_expression im Output!"
+    },
+    "phase_2_cel_editor": {
+      "description": "CEL-Editor: entry_expression MANUELL hinzufügen",
+      "action": "Schreibe entry_expression basierend auf regimes[].id",
+      "example": "trigger_regime_analysis() && side == 'long' && last_closed_regime() == 'STRONG_BULL'",
+      "note": "Regime-Namen aus regimes[].id (z.B. 'STRONG_BULL', 'STRONG_TF')"
+    },
+    "phase_3_trading_bot": {
+      "description": "Trading Bot lädt JSON und evaluiert CEL Expression",
+      "components": [
+        "JsonEntryScorer: Evaluiert entry_expression",
+        "CELEngine: Führt CEL Expression aus",
+        "Trading Bot: Entry via JSON, Exit/SL/TP im Bot Code"
+      ],
+      "note": "JSON kontrolliert NUR Entry! Exit ist im Bot programmiert."
+    }
+  },
+  "_comment_best_practices": "Best Practices für Production",
+  "best_practices": {
+    "entry_logic": [
+      "✅ Nutze last_closed_regime() für Candle-Close-Signale",
+      "✅ Nutze side Parameter für Long/Short Differenzierung",
+      "✅ Kombiniere mehrere Regimen mit || (ODER)",
+      "✅ Füge Indicator-Filter hinzu für Bestätigung"
+    ],
+    "regime_names": [
+      "✅ Regime-Namen aus regimes[].id verwenden",
+      "❌ Keine festen Namen wie 'EXTREME_BULL' (außer sie sind in JSON)",
+      "✅ Case-sensitive: 'STRONG_BULL' != 'strong_bull'"
+    ],
+    "cel_syntax": [
+      "✅ Nutze && für UND, || für ODER",
+      "❌ Nicht 'and' oder 'or' (Python-Syntax funktioniert nicht)",
+      "✅ Nutze () für Gruppierung komplexer Conditions"
+    ],
+    "testing": [
+      "✅ IMMER SchemaValidator vor Bot-Integration",
+      "✅ IMMER CEL Expression testen mit Dummy-Daten",
+      "✅ IMMER Backtest vor Live-Trading"
+    ],
+    "performance": [
+      "✅ Expressions werden kompiliert und gecached",
+      "✅ < 1ms Evaluation pro Candle",
+      "✅ Nutze einfache Expressions für bessere Performance"
+    ]
+  },
+  "_comment_support": "Hilfe und Dokumentation",
+  "support_resources": {
+    "workflow_correction": "Help/entry_analyzer/WORKFLOW_KORREKTUR.md → Korrigiert Fehler aus How_to.html",
+    "html_guide": "Help/entry_analyzer/How_to.html → Vollständige HTML-Anleitung",
+    "cel_documentation": "04_Knowledgbase/CEL_Functions_Reference_v3.md → Alle 80+ CEL Functions",
+    "cel_engine_code": "src/core/tradingbot/cel_engine.py → CEL Engine Implementierung",
+    "json_loader": "src/core/tradingbot/json_entry_loader.py → JSON Loader",
+    "json_scorer": "src/core/tradingbot/json_entry_scorer.py → Entry Scorer mit CEL",
+    "examples": "03_JSON/Entry_Analyzer/Regime/ → Weitere Beispiele"
+  }
+}

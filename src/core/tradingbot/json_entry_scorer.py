@@ -94,12 +94,16 @@ class JsonEntryScorer:
         self,
         features: "FeatureVector",
         regime: "RegimeState",
+        chart_window: Any | None = None,
+        prev_regime: str | None = None,
     ) -> tuple[bool, float, list[str]]:
         """Prüfe Long Entry via CEL Expression.
 
         Args:
             features: Current feature vector (indicators, price data)
             regime: Current market regime
+            chart_window: Chart window reference (für trigger_regime_analysis())
+            prev_regime: Previous/last closed regime (für last_closed_regime())
 
         Returns:
             Tuple of:
@@ -108,22 +112,28 @@ class JsonEntryScorer:
                 - reason_codes: Liste von Reason-Codes (z.B. ["JSON_CEL_ENTRY", "RSI_OVERSOLD"])
 
         Example:
-            >>> should_enter, score, reasons = scorer.should_enter_long(features, regime)
+            >>> should_enter, score, reasons = scorer.should_enter_long(
+            ...     features, regime, chart_window=chart, prev_regime="STRONG_BULL"
+            ... )
             >>> if should_enter:
             ...     print(f"LONG Entry: {reasons}")
         """
-        return self._evaluate_entry("long", features, regime)
+        return self._evaluate_entry("long", features, regime, chart_window, prev_regime)
 
     def should_enter_short(
         self,
         features: "FeatureVector",
         regime: "RegimeState",
+        chart_window: Any | None = None,
+        prev_regime: str | None = None,
     ) -> tuple[bool, float, list[str]]:
         """Prüfe Short Entry via CEL Expression.
 
         Args:
             features: Current feature vector (indicators, price data)
             regime: Current market regime
+            chart_window: Chart window reference (für trigger_regime_analysis())
+            prev_regime: Previous/last closed regime (für last_closed_regime())
 
         Returns:
             Tuple of:
@@ -132,17 +142,21 @@ class JsonEntryScorer:
                 - reason_codes: Liste von Reason-Codes
 
         Example:
-            >>> should_enter, score, reasons = scorer.should_enter_short(features, regime)
+            >>> should_enter, score, reasons = scorer.should_enter_short(
+            ...     features, regime, chart_window=chart, prev_regime="STRONG_BEAR"
+            ... )
             >>> if should_enter:
             ...     print(f"SHORT Entry: {reasons}")
         """
-        return self._evaluate_entry("short", features, regime)
+        return self._evaluate_entry("short", features, regime, chart_window, prev_regime)
 
     def _evaluate_entry(
         self,
         side: str,
         features: "FeatureVector",
         regime: "RegimeState",
+        chart_window: Any | None = None,
+        prev_regime: str | None = None,
     ) -> tuple[bool, float, list[str]]:
         """Evaluiere CEL Expression für Entry.
 
@@ -152,6 +166,8 @@ class JsonEntryScorer:
             side: "long" oder "short"
             features: Feature vector
             regime: Regime state
+            chart_window: Chart window reference (für trigger_regime_analysis())
+            prev_regime: Previous/last closed regime (für last_closed_regime())
 
         Returns:
             Tuple (should_enter, score, reason_codes)
@@ -161,8 +177,8 @@ class JsonEntryScorer:
             return False, 0.0, ["CEL_COMPILATION_FAILED"]
 
         try:
-            # 1. Build CEL context from features + regime
-            context = self._build_context(side, features, regime)
+            # 1. Build CEL context from features + regime + chart + prev_regime
+            context = self._build_context(side, features, regime, chart_window, prev_regime)
 
             # 2. Evaluate CEL expression using compiled program
             # CEL evaluate_compiled() gibt result zurück (bool, int, str, etc.)
@@ -195,8 +211,10 @@ class JsonEntryScorer:
         side: str,
         features: "FeatureVector",
         regime: "RegimeState",
+        chart_window: Any | None = None,
+        prev_regime: str | None = None,
     ) -> dict[str, Any]:
-        """Baut CEL Context aus Features + Regime.
+        """Baut CEL Context aus Features + Regime + Chart + Prev Regime.
 
         Context-Struktur:
         {
@@ -211,13 +229,17 @@ class JsonEntryScorer:
             "bb_pct": 0.35,
             "volume_ratio": 1.2,
             "regime": "TREND_UP",
-            "regime_obj": {"regime": "TREND_UP", "strength": 0.8}
+            "regime_obj": {"regime": "TREND_UP", "strength": 0.8},
+            "chart_window": <ChartWindow>,  # Für trigger_regime_analysis()
+            "last_closed_candle": {"regime": "STRONG_BULL"}  # Für last_closed_regime()
         }
 
         Args:
             side: "long" oder "short"
             features: Feature vector mit allen Indicators
             regime: Regime state
+            chart_window: Chart window reference (für trigger_regime_analysis())
+            prev_regime: Previous/last closed regime string (für last_closed_regime())
 
         Returns:
             Dict mit CEL Context
@@ -288,6 +310,14 @@ class JsonEntryScorer:
 
             # Volatility (flat aus Regime)
             "volatility": regime.volatility.value,
+
+            # Chart Window Reference (für CEL trigger_regime_analysis())
+            "chart_window": chart_window,
+
+            # Last Closed Candle mit Regime (für CEL last_closed_regime())
+            "last_closed_candle": (
+                {"regime": prev_regime} if prev_regime else None
+            ),
         }
 
         return context

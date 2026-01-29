@@ -1,8 +1,25 @@
 # Knowledge Base - OrderPilot-AI Trading System
 
-**Version:** 2.0
-**Last Updated:** 2026-01-28
-**Status:** ✅ Complete
+**Version:** 2.1
+**Last Updated:** 2026-01-29
+**Status:** ✅ Complete + Critical Updates
+
+---
+
+## 🚨 IMPORTANT: Critical Workflow Update (2026-01-29)
+
+**⚠️ READ THIS FIRST:** The JSON Entry workflow documentation has been corrected. Key changes:
+
+1. **Entry Analyzer does NOT generate `entry_expression`** - Must be added manually in CEL-Editor
+2. **Regime names are DYNAMIC** (from JSON `regimes[].id`), not fixed like "EXTREME_BULL"
+3. **New CEL functions**: `trigger_regime_analysis()` and `last_closed_regime()`
+4. **`side` parameter is REQUIRED** for Long/Short differentiation
+5. **JSON controls ONLY Entry** - Exit/SL/TP are in Bot code
+
+**📖 Updated Documentation:**
+- **Critical Update:** `JSON_ENTRY_WORKFLOW_UPDATE.md` ⭐ READ THIS FIRST
+- **Workflow Correction:** `../Help/entry_analyzer/WORKFLOW_KORREKTUR.md`
+- **Complete Example:** `../Help/entry_analyzer/COMPLETE_REGIME_EXAMPLE.json`
 
 ---
 
@@ -21,8 +38,9 @@
 
 | Document | Description | LOC/Pages | Status |
 |----------|-------------|-----------|--------|
+| **JSON_ENTRY_WORKFLOW_UPDATE.md** | ⭐ Critical workflow corrections (v2.0) | 600+ | ✅ NEW 2026-01-29 |
+| **JSON_Entry_System_Complete_Guide.md** | JSON Entry System technical guide (v1.0) | 1,000+ | ⚠️ See UPDATE |
 | **CEL_JSON_INTEGRATION.md** | CEL & JSON integration architecture | 650+ | ✅ |
-| **JSON_Entry_System_Complete_Guide.md** | ⭐ JSON Entry System technical guide | 1,000+ | ✅ NEW |
 
 ### Regime Detection & Strategy
 
@@ -67,44 +85,57 @@
 
 ## 🚀 New Features (v2.0)
 
-### JSON Entry System (2026-01-28)
+### JSON Entry System (Updated 2026-01-29)
 
-**Status:** ✅ Production Ready
+**Status:** ✅ Production Ready + Critical Updates
 
 **Overview:**
 The JSON Entry System enables CEL-based entry logic via JSON configuration files, parallel to the standard CEL Editor system.
 
+**🚨 CRITICAL UPDATE (2026-01-29):**
+- **Entry Analyzer generates JSON WITHOUT `entry_expression`**
+- **User must add `entry_expression` manually in CEL-Editor**
+- **Regime names are DYNAMIC** from JSON `regimes[].id` (not fixed)
+- **New CEL functions**: `trigger_regime_analysis()` and `last_closed_regime()`
+- **`side` parameter REQUIRED** for Long/Short differentiation
+- **JSON controls ONLY Entry** - Exit/SL/TP in Bot code
+
 **Key Features:**
 - ✅ CEL expressions in JSON (no code changes needed)
-- ✅ Dual JSON sources (Regime + Indicator)
-- ✅ Parallel execution (new "Start Bot (JSON Entry)" button)
-- ✅ 70+ CEL functions available
-- ✅ < 5ms evaluation per bar
-- ✅ 38/38 unit tests passed (100%)
+- ✅ 80+ CEL functions available (including new regime functions)
+- ✅ < 1ms evaluation per bar (compiled + cached)
+- ✅ Type-safe with Pydantic validation
+- ✅ Automatic reason code generation
 
-**Documentation:**
-- **Technical Guide:** `JSON_Entry_System_Complete_Guide.md` (1,000+ lines)
-- **User Guide:** `../docs/260128_JSON_Entry_System_README.md`
-- **Integration Tests:** `../docs/260128_JSON_Entry_Integration_Tests.md`
-- **Help UI:** `../Help/index.html#bot-json-entry`
+**Documentation (UPDATED):**
+- **⭐ WORKFLOW UPDATE:** `JSON_ENTRY_WORKFLOW_UPDATE.md` (600+ lines) ← READ THIS FIRST
+- **Workflow Correction:** `../Help/entry_analyzer/WORKFLOW_KORREKTUR.md`
+- **Complete Example:** `../Help/entry_analyzer/COMPLETE_REGIME_EXAMPLE.json`
+- **Technical Guide:** `JSON_Entry_System_Complete_Guide.md` (v1.0 - see UPDATE doc)
 
-**Example JSON:**
+**Corrected Example JSON:**
 ```json
 {
   "schema_version": "2.0.0",
-  "indicators": {
-    "rsi14": {"type": "RSI", "period": 14},
-    "adx14": {"type": "ADX", "period": 14}
-  },
-  "entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0"
+  "regimes": [
+    { "id": "STRONG_BULL", "name": "Strong Bull Trend", "thresholds": [...] },
+    { "id": "STRONG_BEAR", "name": "Strong Bear Trend", "thresholds": [...] }
+  ],
+  "entry_expression": "trigger_regime_analysis() && ((side == 'long' && last_closed_regime() == 'STRONG_BULL') || (side == 'short' && last_closed_regime() == 'STRONG_BEAR'))"
 }
 ```
 
+**Corrected Workflow:**
+1. **Entry Analyzer** → JSON (indicators + regimes, NO entry_expression)
+2. **CEL-Editor** → Add entry_expression manually using regime IDs
+3. **Trading Bot** → Load JSON + evaluate CEL (Entry only, Exit in Bot)
+
 **Use Cases:**
-- Entry strategy prototyping
-- A/B testing different entry conditions
-- Simple entry-focused strategies (SL/TP from UI)
-- Quick strategy iteration without code changes
+- Regime-based entry strategies
+- Multi-regime entry conditions
+- Candle-close entry signals
+- A/B testing entry conditions
+- Strategy iteration without code changes
 
 ---
 
@@ -150,9 +181,11 @@ The JSON Entry System enables CEL-based entry logic via JSON configuration files
 
 **New Features:**
 - No Entry Workflow (🚫 Entry Blocker)
-- Regime functions (`last_closed_regime()`, `trigger_regime_analysis()`)
+- **Regime functions** (`last_closed_regime()`, `trigger_regime_analysis()`) ⭐ UPDATED 2026-01-29
 - 69+ available variables
 - Enhanced trading context
+
+**⚠️ Important:** See `JSON_ENTRY_WORKFLOW_UPDATE.md` for corrected usage of regime functions with JSON Entry System.
 
 **Use When:** Learning about latest CEL features
 

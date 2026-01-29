@@ -1,0 +1,10 @@
+ich habe gerade folgendes problem, das ist eine tradingsoftware und im 'Entry Analyser' Regime Tab... erstelle ich ein Indikatorenset, welches Regimes im aktuellen chart erkennen soll und durch backtesting optimiert wird. die optimierte version speichere ich aber dann und mit dem CEL-Editor soll dann eine entry logik eingebaut werden:
+der cel teil ist dazu da, um in dem fall, wenn eine kerze
+abgeschlossen ist, die regime logik zu starten (gibt es eine funktion für) zu schauen ob ein regime vorhanden ist
+und in dem fall wenn eins vorhanden ist mit der beschriftung EXTREME_BULL dann entry long und bei regime
+EXTREM_SHORT einen short zu kaufen!! Und die json datei steuert ersteinmal nur den entry, der exit ist schon im bot
+programmiert! Bedeutet falls es anders programmiert sein sollte, dann sehr gewissenhaft ändern.
+Die erstellte json datei muss dann mit dem 'Trading Bot' kompatibel sein, der die cel anweisungen bis zum entry ausführen muss. Nun die Baustellen:
+
+Der CEL Editor kann die json datei noch nicht beschreiben um die cel logik immer an der gleichen stelle ein zu binden
+Die schon eigentlich programmierte Logik im 'Trading Bot' im Tab Bot->Button 'Start Bot (JSON)' sollte eigentlich schon programmiert sein, nur der Button fehlt. Der Button 'Start Bot' ist fest programmiert und hat mit der json themathik nichts zu tun und darf auch nicht verändert werden!

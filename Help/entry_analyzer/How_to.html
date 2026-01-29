@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrderPilot-AI: Regime JSON Integration - Vollständige Anleitung</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        nav {
+            background: #34495e;
+            padding: 15px 40px;
+            border-bottom: 3px solid #2c3e50;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        nav a:hover {
+            background: #2c3e50;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        section {
+            margin-bottom: 50px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            font-size: 2em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h3 {
+            color: #34495e;
+            font-size: 1.5em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        h4 {
+            color: #555;
+            font-size: 1.2em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-left: 5px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .error {
+            background: #f8d7da;
+            border-left: 5px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        code {
+            background: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+            color: #ecf0f1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #34495e;
+            color: white;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+            border-radius: 5px;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+
+        ul, ol {
+            margin-left: 30px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .badge-required {
+            background: #dc3545;
+            color: white;
+        }
+
+        .badge-optional {
+            background: #6c757d;
+            color: white;
+        }
+
+        .badge-new {
+            background: #28a745;
+            color: white;
+        }
+
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            margin-top: 40px;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+        }
+
+        .toc ul {
+            margin-left: 20px;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+            }
+
+            nav {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 OrderPilot-AI</h1>
+            <p>Regime JSON Integration - Vollständige Anleitung</p>
+        </header>
+
+        <nav>
+            <ul>
+                <li><a href="#overview">Überblick</a></li>
+                <li><a href="#structure">JSON Struktur</a></li>
+                <li><a href="#cel">CEL Programmierung</a></li>
+                <li><a href="#integration">Trading Bot Integration</a></li>
+                <li><a href="#examples">Beispiele</a></li>
+                <li><a href="#troubleshooting">Fehlerbehebung</a></li>
+            </ul>
+        </nav>
+
+        <div class="content">
+
+            <!-- SECTION: ÜBERBLICK -->
+            <section id="overview">
+                <h2>📋 Überblick</h2>
+
+                <div class="info">
+                    <strong>Was ist eine Regime JSON?</strong><br>
+                    Eine Regime JSON-Datei definiert Marktregime (z.B. BULL, BEAR, SIDEWAYS) und die Bedingungen,
+                    unter denen der Trading Bot in diese Regime eintritt oder aussteigt. Sie nutzt CEL
+                    (Common Expression Language) für flexible, sichere Regelauswertung.
+                </div>
+
+                <h3>Hauptkomponenten</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Komponente</th>
+                            <th>Beschreibung</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>schema_version</code></td>
+                            <td>Versionsangabe (aktuell: "2.0.0")</td>
+                            <td><span class="badge badge-required">REQUIRED</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>metadata</code></td>
+                            <td>Autoreninformationen, Beschreibung, Erstellungsdatum</td>
+                            <td><span class="badge badge-optional">OPTIONAL</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>indicators</code></td>
+                            <td>Technische Indikatoren (RSI, ADX, MACD, etc.)</td>
+                            <td><span class="badge badge-required">REQUIRED</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>regimes</code></td>
+                            <td>Regime-Definitionen mit Schwellenwerten</td>
+                            <td><span class="badge badge-required">REQUIRED</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>entry_expression</code></td>
+                            <td>CEL Expression für Entry-Logik</td>
+                            <td><span class="badge badge-required">REQUIRED</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Workflow: Von JSON zu Trading Bot</h3>
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>JSON Erstellen:</strong> Definiere Indikatoren, Regimes und Entry-Bedingungen
+                </div>
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>Validierung:</strong> <code>SchemaValidator</code> prüft JSON gegen Schema
+                </div>
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Laden:</strong> <code>JsonEntryLoader</code> lädt und kombiniert Config
+                </div>
+                <div class="step">
+                    <span class="step-number">4</span>
+                    <strong>Kompilierung:</strong> <code>CELEngine</code> kompiliert Entry Expression
+                </div>
+                <div class="step">
+                    <span class="step-number">5</span>
+                    <strong>Ausführung:</strong> Trading Bot evaluiert Expression bei jedem Candle
+                </div>
+            </section>
+
+            <!-- SECTION: JSON STRUKTUR -->
+            <section id="structure">
+                <h2>📐 JSON Struktur im Detail</h2>
+
+                <h3>1. Schema Version & Metadata</h3>
+                <pre><code>{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "BTCUSDT Regime Strategy",
+    "author": "Dein Name",
+    "created": "2026-01-29",
+    "description": "Regime-basierte Strategie für Bitcoin 5m"
+  },
+  ...
+}</code></pre>
+
+                <div class="warning">
+                    <strong>⚠️ Wichtig:</strong> <code>schema_version</code> muss "2.0.0" sein für aktuelle Trading Bot Version.
+                </div>
+
+                <h3>2. Indicators Definition</h3>
+                <p>Indikatoren sind die Bausteine deiner Regime-Erkennung. Der Trading Bot berechnet diese Werte automatisch.</p>
+
+                <h4>Unterstützte Indicator Types:</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Beschreibung</th>
+                            <th>Wichtige Parameter</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>RSI</code></td>
+                            <td>Relative Strength Index</td>
+                            <td><code>period</code> (Standard: 14)</td>
+                        </tr>
+                        <tr>
+                            <td><code>ADX</code></td>
+                            <td>Average Directional Index</td>
+                            <td><code>period</code> (Standard: 14)</td>
+                        </tr>
+                        <tr>
+                            <td><code>MACD</code></td>
+                            <td>Moving Average Convergence Divergence</td>
+                            <td><code>fast</code>, <code>slow</code>, <code>signal</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>BB</code></td>
+                            <td>Bollinger Bands</td>
+                            <td><code>period</code>, <code>std</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>ATR</code></td>
+                            <td>Average True Range</td>
+                            <td><code>period</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>SMA</code></td>
+                            <td>Simple Moving Average</td>
+                            <td><code>period</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>EMA</code></td>
+                            <td>Exponential Moving Average</td>
+                            <td><code>period</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Beispiel Indicators:</h4>
+                <pre><code>"indicators": {
+  "rsi14": {
+    "type": "RSI",
+    "period": 14,
+    "overbought": 70,
+    "oversold": 30
+  },
+  "adx14": {
+    "type": "ADX",
+    "period": 14,
+    "strong_trend": 25
+  },
+  "macd_default": {
+    "type": "MACD",
+    "fast": 12,
+    "slow": 26,
+    "signal": 9
+  },
+  "bb20": {
+    "type": "BB",
+    "period": 20,
+    "std": 2.0
+  }
+}</code></pre>
+
+                <h3>3. Regimes Definition</h3>
+                <p>Regimes definieren verschiedene Marktphasen. Der Trading Bot klassifiziert jeden Candle in ein Regime.</p>
+
+                <h4>Standard Regimes:</h4>
+                <pre><code>"regimes": {
+  "EXTREME_BULL": {
+    "rsi_min": 60,
+    "adx_min": 30,
+    "macd_histogram": "positive",
+    "description": "Sehr starker Aufwärtstrend"
+  },
+  "TREND_UP": {
+    "rsi_min": 50,
+    "adx_min": 20,
+    "macd_histogram": "positive",
+    "description": "Aufwärtstrend"
+  },
+  "NEUTRAL": {
+    "rsi_min": 40,
+    "rsi_max": 60,
+    "adx_max": 20,
+    "description": "Seitwärtsbewegung"
+  },
+  "TREND_DOWN": {
+    "rsi_max": 50,
+    "adx_min": 20,
+    "macd_histogram": "negative",
+    "description": "Abwärtstrend"
+  },
+  "EXTREME_BEAR": {
+    "rsi_max": 40,
+    "adx_min": 30,
+    "macd_histogram": "negative",
+    "description": "Sehr starker Abwärtstrend"
+  }
+}</code></pre>
+
+                <div class="info">
+                    <strong>💡 Tipp:</strong> Regime-Namen sind frei wählbar, sollten aber selbsterklärend sein.
+                    Der Trading Bot nutzt diese in der CEL Expression.
+                </div>
+
+                <h3>4. Entry Expression (CEL)</h3>
+                <p>Die Entry Expression bestimmt, wann der Bot einen Trade eröffnet. Sie wird bei jedem Candle evaluiert.</p>
+
+                <h4>Einfaches Beispiel:</h4>
+                <pre><code>"entry_expression": "rsi < 35 && adx > 25 && macd_hist > 0"</code></pre>
+
+                <h4>Fortgeschrittenes Beispiel mit Regime:</h4>
+                <pre><code>"entry_expression": "last_closed_regime() == 'TREND_UP' && rsi < 40 && adx > 20"</code></pre>
+
+                <div class="success">
+                    <strong>✅ Best Practice:</strong> Kombiniere Regime-Erkennung mit technischen Indikatoren
+                    für robuste Entry-Signale.
+                </div>
+            </section>
+
+            <!-- SECTION: CEL PROGRAMMIERUNG -->
+            <section id="cel">
+                <h2>⚙️ CEL (Common Expression Language) Programmierung</h2>
+
+                <div class="info">
+                    <strong>Was ist CEL?</strong><br>
+                    CEL ist eine sichere, nicht-Turing-vollständige Ausdruckssprache von Google.
+                    Sie verhindert Endlosschleifen und ist ideal für Trading-Regeln.
+                </div>
+
+                <h3>Verfügbare Operatoren</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Operator</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>&&</code></td>
+                            <td>Logisches UND</td>
+                            <td><code>rsi < 30 && adx > 25</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>||</code></td>
+                            <td>Logisches ODER</td>
+                            <td><code>rsi < 30 || rsi > 70</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>!</code></td>
+                            <td>Negation</td>
+                            <td><code>!is_trade_open(trade)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>==</code></td>
+                            <td>Gleichheit</td>
+                            <td><code>regime == 'BULL'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>!=</code></td>
+                            <td>Ungleichheit</td>
+                            <td><code>regime != 'NEUTRAL'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>&lt;</code>, <code>&lt;=</code></td>
+                            <td>Kleiner, Kleiner-gleich</td>
+                            <td><code>rsi < 30</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>&gt;</code>, <code>&gt;=</code></td>
+                            <td>Größer, Größer-gleich</td>
+                            <td><code>adx > 25</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code></td>
+                            <td>Arithmetik</td>
+                            <td><code>price * 1.02</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>CEL Custom Functions (80+ verfügbar!)</h3>
+
+                <h4>Regime Functions</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>last_closed_regime()</code></td>
+                            <td>Regime des letzten abgeschlossenen Candles</td>
+                            <td><code>last_closed_regime() == 'EXTREME_BULL'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>in_regime(regime_id)</code></td>
+                            <td>Prüft aktuelles Regime</td>
+                            <td><code>in_regime('TREND_UP')</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>trigger_regime_analysis()</code></td>
+                            <td>Triggert Regime-Analyse (für UI)</td>
+                            <td><code>trigger_regime_analysis() && ...</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Math & Statistical Functions</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>pctl(series, percentile, window)</code></td>
+                            <td>Perzentil-Berechnung</td>
+                            <td><code>pctl(prices, 95, 20)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>crossover(s1, s2)</code></td>
+                            <td>Crossover Detection</td>
+                            <td><code>crossover([sma_fast, prev_sma_fast], [sma_slow, prev_sma_slow])</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>clamp(value, min, max)</code></td>
+                            <td>Wert begrenzen</td>
+                            <td><code>clamp(rsi, 0, 100)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>pct_change(old, new)</code></td>
+                            <td>Prozentuale Änderung</td>
+                            <td><code>pct_change(prev_close, close)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>avg(array)</code></td>
+                            <td>Durchschnitt</td>
+                            <td><code>avg([close1, close2, close3])</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Price Functions</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>price_above_ema(price, ema)</code></td>
+                            <td>Preis über EMA?</td>
+                            <td><code>price_above_ema(close, ema_20)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>price_below_ema(price, ema)</code></td>
+                            <td>Preis unter EMA?</td>
+                            <td><code>price_below_ema(close, ema_50)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>highest(series, period)</code></td>
+                            <td>Höchster Wert</td>
+                            <td><code>highest(highs, 20)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>lowest(series, period)</code></td>
+                            <td>Niedrigster Wert</td>
+                            <td><code>lowest(lows, 20)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>sma(series, period)</code></td>
+                            <td>Simple Moving Average</td>
+                            <td><code>sma(closes, 20)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Status Functions</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>is_trade_open(trade)</code></td>
+                            <td>Ist Trade offen?</td>
+                            <td><code>!is_trade_open(trade)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>is_long(trade)</code></td>
+                            <td>Ist Long-Position?</td>
+                            <td><code>is_long(trade)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>is_short(trade)</code></td>
+                            <td>Ist Short-Position?</td>
+                            <td><code>is_short(trade)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>is_bullish_signal(strategy)</code></td>
+                            <td>Bullish Signal?</td>
+                            <td><code>is_bullish_signal(strategy)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>is_bearish_signal(strategy)</code></td>
+                            <td>Bearish Signal?</td>
+                            <td><code>is_bearish_signal(strategy)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Null Handling</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Beschreibung</th>
+                            <th>Beispiel</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>isnull(value)</code></td>
+                            <td>Ist Wert null/NaN?</td>
+                            <td><code>!isnull(rsi)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>nz(value, default)</code></td>
+                            <td>Null zu Default</td>
+                            <td><code>nz(macd_hist, 0)</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>coalesce(...args)</code></td>
+                            <td>Erster Nicht-Null-Wert</td>
+                            <td><code>coalesce(custom_rsi, rsi14, 50)</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="success">
+                    <strong>🎯 Vollständige Dokumentation:</strong><br>
+                    Alle 80+ CEL Functions sind in <code>src/core/tradingbot/cel_engine.py</code> dokumentiert.
+                    Siehe auch: <code>01_Projectplan/Strategien_Workflow_json/CEL_Rules_Doku_TradingBot_Analyzer.md</code>
+                </div>
+
+                <h3>CEL Expression Beispiele</h3>
+
+                <h4>1. Einfache RSI Oversold Entry:</h4>
+                <pre><code>"entry_expression": "rsi < 30 && adx > 20"</code></pre>
+
+                <h4>2. MACD Crossover mit Regime:</h4>
+                <pre><code>"entry_expression": "last_closed_regime() == 'TREND_UP' && macd_hist > 0 && crossover([macd, prev_macd], [signal, prev_signal])"</code></pre>
+
+                <h4>3. Bollinger Bands Breakout:</h4>
+                <pre><code>"entry_expression": "close > bb_upper && volume > avg_volume * 1.5 && adx > 25"</code></pre>
+
+                <h4>4. Multi-Regime Entry:</h4>
+                <pre><code>"entry_expression": "(last_closed_regime() == 'EXTREME_BULL' || last_closed_regime() == 'TREND_UP') && rsi < 50 && !is_trade_open(trade)"</code></pre>
+
+                <h4>5. Komplexe Entry mit mehreren Bedingungen:</h4>
+                <pre><code>"entry_expression": "!is_trade_open(trade) && (last_closed_regime() == 'TREND_UP' || last_closed_regime() == 'EXTREME_BULL') && rsi > 40 && rsi < 60 && adx > 20 && macd_hist > 0 && price_above_ema(close, ema_50) && volume > avg(volume_history) * 1.2"</code></pre>
+            </section>
+
+            <!-- SECTION: TRADING BOT INTEGRATION -->
+            <section id="integration">
+                <h2>🤖 Trading Bot Integration</h2>
+
+                <h3>Schritt 1: JSON Datei vorbereiten</h3>
+                <pre><code># Speichere deine Regime JSON in:
+03_JSON/Entry_Analyzer/Regime/meine_strategie.json</code></pre>
+
+                <h3>Schritt 2: JSON Validieren (Python)</h3>
+                <pre><code>from src.core.tradingbot.config.validator import SchemaValidator
+
+# Validierung durchführen
+validator = SchemaValidator()
+try:
+    data = validator.validate_file(
+        json_path="03_JSON/Entry_Analyzer/Regime/meine_strategie.json",
+        schema_name="optimized_regime_config"
+    )
+    print("✅ JSON ist gültig!")
+except ValidationError as e:
+    print(f"❌ Validierungsfehler: {e}")
+    print(f"   JSON Path: {e.json_path}")
+    print(f"   Schema Rule: {e.schema_rule}")</code></pre>
+
+                <h3>Schritt 3: Config laden</h3>
+                <pre><code>from src.core.tradingbot.json_entry_loader import JsonEntryConfig
+
+# JSON laden und kombinieren
+config = JsonEntryConfig.from_files(
+    regime_json_path="03_JSON/Entry_Analyzer/Regime/meine_strategie.json",
+    indicator_json_path=None  # Optional: separate Indicator JSON
+)
+
+# Validierung
+warnings = config.validate()
+if warnings:
+    for warning in warnings:
+        print(f"⚠️ {warning}")
+
+# Informationen anzeigen
+print(f"📊 Indicators: {config.get_indicator_ids()}")
+print(f"🎯 Regimes: {config.get_regime_ids()}")
+print(f"📝 Entry Expression: {config.entry_expression}")</code></pre>
+
+                <h3>Schritt 4: Im Trading Bot verwenden</h3>
+                <pre><code>from src.core.tradingbot.cel_engine import CELEngine
+
+# CEL Engine initialisieren
+cel_engine = CELEngine()
+
+# Entry Expression kompilieren und validieren
+is_valid, error = cel_engine.validate_expression(config.entry_expression)
+if not is_valid:
+    print(f"❌ CEL Expression ungültig: {error}")
+else:
+    print("✅ CEL Expression kompiliert erfolgreich!")
+
+# Context für Evaluation vorbereiten
+context = {
+    "rsi": 28.5,
+    "adx": 32.0,
+    "macd_hist": 0.05,
+    "close": 42500.0,
+    "ema_50": 42000.0,
+    "volume": 1500000,
+    "trade": {"is_open": False},
+    "regime": "TREND_UP",
+    "last_closed_candle": {"regime": "TREND_UP"}
+}
+
+# Entry Signal evaluieren
+entry_signal = cel_engine.evaluate(
+    expression=config.entry_expression,
+    context=context
+)
+
+print(f"🎲 Entry Signal: {entry_signal}")  # True oder False</code></pre>
+
+                <h3>Schritt 5: Bot Konfiguration</h3>
+                <div class="info">
+                    <strong>Trading Bot GUI:</strong><br>
+                    In der Trading Bot GUI kannst du die Regime JSON direkt auswählen:
+                    <ol>
+                        <li>Öffne Bot Settings Dialog</li>
+                        <li>Wähle Tab "JSON Entry Config"</li>
+                        <li>Klicke "Load Regime JSON" und wähle deine Datei</li>
+                        <li>Der Bot lädt automatisch Indicators und Entry Expression</li>
+                        <li>Starte den Bot mit "Start Trading"</li>
+                    </ol>
+                </div>
+
+                <h3>Performance & Caching</h3>
+                <div class="success">
+                    <strong>⚡ CEL Engine Performance:</strong><br>
+                    - Kompilierte Expressions werden gecached (LRU Cache)<br>
+                    - Evaluation dauert < 1ms pro Candle<br>
+                    - Cache kann bis zu 128 Expressions speichern<br>
+                    - Cache Info abrufen: <code>cel_engine.get_cache_info()</code>
+                </div>
+            </section>
+
+            <!-- SECTION: BEISPIELE -->
+            <section id="examples">
+                <h2>💡 Vollständige Beispiele</h2>
+
+                <h3>Beispiel 1: Einfache RSI/MACD Strategie</h3>
+                <pre><code>{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "Simple RSI MACD Entry",
+    "author": "Entry Designer",
+    "created": "2026-01-29",
+    "description": "Einfache Entry-Strategie mit RSI und MACD"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30
+    },
+    "macd_default": {
+      "type": "MACD",
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14,
+      "strong_trend": 25
+    }
+  },
+  "regimes": {
+    "EXTREME_BULL": {
+      "rsi_min": 60,
+      "adx_min": 30,
+      "macd_histogram": "positive"
+    },
+    "TREND_UP": {
+      "rsi_min": 50,
+      "adx_min": 20,
+      "macd_histogram": "positive"
+    },
+    "NEUTRAL": {
+      "rsi_min": 40,
+      "rsi_max": 60,
+      "adx_max": 20
+    },
+    "TREND_DOWN": {
+      "rsi_max": 50,
+      "adx_min": 20,
+      "macd_histogram": "negative"
+    },
+    "EXTREME_BEAR": {
+      "rsi_max": 40,
+      "adx_min": 30,
+      "macd_histogram": "negative"
+    }
+  },
+  "entry_expression": "last_closed_regime() == 'TREND_UP' && rsi < 40 && macd_hist > 0 && adx > 20"
+}</code></pre>
+
+                <h3>Beispiel 2: Multi-Timeframe Momentum Strategie</h3>
+                <pre><code>{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "Multi-TF Momentum Strategy",
+    "author": "Advanced Trader",
+    "created": "2026-01-29",
+    "description": "Kombiniert mehrere Timeframes für robuste Entries"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14,
+      "overbought": 70,
+      "oversold": 30
+    },
+    "rsi_slow": {
+      "type": "RSI",
+      "period": 28,
+      "overbought": 65,
+      "oversold": 35
+    },
+    "adx14": {
+      "type": "ADX",
+      "period": 14,
+      "strong_trend": 25
+    },
+    "bb20": {
+      "type": "BB",
+      "period": 20,
+      "std": 2.0
+    },
+    "atr14": {
+      "type": "ATR",
+      "period": 14
+    },
+    "ema_fast": {
+      "type": "EMA",
+      "period": 20
+    },
+    "ema_slow": {
+      "type": "EMA",
+      "period": 50
+    }
+  },
+  "regimes": {
+    "STRONG_BULL": {
+      "rsi_min": 55,
+      "adx_min": 25,
+      "ema_alignment": "bullish"
+    },
+    "WEAK_BULL": {
+      "rsi_min": 45,
+      "rsi_max": 55,
+      "adx_min": 15,
+      "ema_alignment": "bullish"
+    },
+    "CONSOLIDATION": {
+      "rsi_min": 40,
+      "rsi_max": 60,
+      "adx_max": 20
+    },
+    "WEAK_BEAR": {
+      "rsi_min": 45,
+      "rsi_max": 55,
+      "adx_min": 15,
+      "ema_alignment": "bearish"
+    },
+    "STRONG_BEAR": {
+      "rsi_max": 45,
+      "adx_min": 25,
+      "ema_alignment": "bearish"
+    }
+  },
+  "entry_expression": "!is_trade_open(trade) && (last_closed_regime() == 'STRONG_BULL' || last_closed_regime() == 'WEAK_BULL') && rsi14 > 45 && rsi14 < 65 && rsi_slow > 50 && adx14 > 20 && price_above_ema(close, ema_fast) && price_above_ema(ema_fast, ema_slow) && bb_percent > 0.3 && bb_percent < 0.8"
+}</code></pre>
+
+                <div class="success">
+                    <strong>✅ Weitere Beispiele:</strong><br>
+                    Siehe <code>03_JSON/Entry_Analyzer/Regime/</code> für produktionsreife Beispiele!
+                </div>
+            </section>
+
+            <!-- SECTION: TROUBLESHOOTING -->
+            <section id="troubleshooting">
+                <h2>🔧 Fehlerbehebung</h2>
+
+                <h3>Häufige Fehler</h3>
+
+                <h4>1. "Schema validation failed"</h4>
+                <div class="error">
+                    <strong>Fehler:</strong> JSON entspricht nicht dem Schema<br>
+                    <strong>Lösung:</strong>
+                    <ul>
+                        <li>Prüfe <code>schema_version</code> ist "2.0.0"</li>
+                        <li>Stelle sicher, dass alle <code>indicators</code> den <code>type</code> Parameter haben</li>
+                        <li>Prüfe, dass <code>entry_expression</code> vorhanden ist</li>
+                        <li>Verwende <code>SchemaValidator</code> für detaillierte Fehlermeldungen</li>
+                    </ul>
+                </div>
+
+                <h4>2. "CEL compilation failed"</h4>
+                <div class="error">
+                    <strong>Fehler:</strong> Entry Expression ist syntaktisch falsch<br>
+                    <strong>Lösung:</strong>
+                    <ul>
+                        <li>Prüfe Syntax: <code>&&</code> statt <code>and</code>, <code>||</code> statt <code>or</code></li>
+                        <li>Verwende <code>==</code> für Gleichheit (nicht <code>=</code>)</li>
+                        <li>Strings in einfachen Quotes: <code>'TREND_UP'</code></li>
+                        <li>Teste Expression isoliert: <code>cel_engine.validate_expression("rsi < 30")</code></li>
+                    </ul>
+                </div>
+
+                <h4>3. "Indicator not found in context"</h4>
+                <div class="error">
+                    <strong>Fehler:</strong> CEL Expression referenziert unbekannten Indicator<br>
+                    <strong>Lösung:</strong>
+                    <ul>
+                        <li>Prüfe, dass Indicator in <code>indicators</code> definiert ist</li>
+                        <li>Variable-Namen müssen exakt übereinstimmen (case-sensitive!)</li>
+                        <li>Beispiel: <code>"rsi14"</code> in JSON → <code>rsi14</code> in Expression</li>
+                    </ul>
+                </div>
+
+                <h4>4. "Entry signal never triggers"</h4>
+                <div class="warning">
+                    <strong>Problem:</strong> Entry Expression evaluiert immer zu False<br>
+                    <strong>Debugging:</strong>
+                    <ul>
+                        <li>Logge Context-Werte: <code>print(context)</code></li>
+                        <li>Teste Teilausdrücke einzeln:
+                            <pre><code># Teste einzelne Bedingungen
+print(cel_engine.evaluate("rsi < 40", context))
+print(cel_engine.evaluate("adx > 20", context))
+print(cel_engine.evaluate("last_closed_regime() == 'TREND_UP'", context))</code></pre>
+                        </li>
+                        <li>Prüfe Regime-Erkennung funktioniert korrekt</li>
+                        <li>Reduziere Entry-Bedingungen schrittweise</li>
+                    </ul>
+                </div>
+
+                <h4>5. "FileNotFoundError: JSON file not found"</h4>
+                <div class="error">
+                    <strong>Fehler:</strong> JSON-Datei nicht gefunden<br>
+                    <strong>Lösung:</strong>
+                    <ul>
+                        <li>Prüfe Working Directory: <code>import os; print(os.getcwd())</code></li>
+                        <li>Verwende absolute Pfade oder relative zum Projekt-Root</li>
+                        <li>Beispiel: <code>"03_JSON/Entry_Analyzer/Regime/meine_strategie.json"</code></li>
+                    </ul>
+                </div>
+
+                <h3>Debug-Tools</h3>
+
+                <h4>1. JSON Schema Validierung</h4>
+                <pre><code>from src.core.tradingbot.config.validator import SchemaValidator
+
+validator = SchemaValidator()
+schemas = validator.list_available_schemas()
+print(f"Verfügbare Schemas: {schemas}")
+
+try:
+    data = validator.validate_file("meine_strategie.json", "optimized_regime_config")
+    print("✅ Valid")
+except Exception as e:
+    print(f"❌ Error: {e}")</code></pre>
+
+                <h4>2. CEL Expression Tester</h4>
+                <pre><code>from src.core.tradingbot.cel_engine import CELEngine
+
+cel = CELEngine()
+
+# Syntax-Check
+is_valid, error = cel.validate_expression("rsi < 30 && adx > 20")
+print(f"Valid: {is_valid}, Error: {error}")
+
+# Evaluation mit Test-Context
+test_context = {
+    "rsi": 25.0,
+    "adx": 28.0,
+    "close": 42000.0,
+    "regime": "TREND_UP",
+    "last_closed_candle": {"regime": "TREND_UP"},
+    "trade": {"is_open": False}
+}
+
+result = cel.evaluate("rsi < 30 && adx > 20", test_context)
+print(f"Result: {result}")  # Should be True
+
+# Cache Info
+cache_info = cel.get_cache_info()
+print(f"Cache: {cache_info}")</code></pre>
+
+                <h4>3. Logging aktivieren</h4>
+                <pre><code>import logging
+
+# Setze Log-Level auf DEBUG für detaillierte Ausgaben
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Jetzt werden alle CEL, JSON Entry Loader und Validator Logs angezeigt
+</code></pre>
+
+                <h3>Best Practices</h3>
+                <div class="success">
+                    <strong>🎯 Tipps für robuste Regime JSONs:</strong>
+                    <ol>
+                        <li><strong>Starte einfach:</strong> Beginne mit 2-3 Indikatoren und erweitere schrittweise</li>
+                        <li><strong>Teste isoliert:</strong> Teste CEL Expressions mit Dummy-Daten vor Bot-Integration</li>
+                        <li><strong>Verwende Regime:</strong> Kombiniere Regime mit technischen Indikatoren für Kontext</li>
+                        <li><strong>Vermeide zu komplexe Expressions:</strong> Teile komplexe Logik auf mehrere Expressions auf</li>
+                        <li><strong>Nutze Null-Handling:</strong> Verwende <code>nz()</code> und <code>coalesce()</code> für robuste Expressions</li>
+                        <li><strong>Dokumentiere:</strong> Nutze <code>metadata.description</code> für Strategie-Beschreibung</li>
+                        <li><strong>Versionierung:</strong> Nutze Git für JSON-Versionierung</li>
+                        <li><strong>Backtesting:</strong> Teste Strategie im Backtest bevor Live-Trading</li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- QUICK REFERENCE -->
+            <section id="reference">
+                <h2>📚 Quick Reference</h2>
+
+                <h3>Minimale Regime JSON</h3>
+                <pre><code>{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "name": "My Strategy"
+  },
+  "indicators": {
+    "rsi14": {
+      "type": "RSI",
+      "period": 14
+    }
+  },
+  "regimes": {
+    "BULL": {"rsi_min": 50},
+    "BEAR": {"rsi_max": 50}
+  },
+  "entry_expression": "rsi14 < 30"
+}</code></pre>
+
+                <h3>Wichtige Dateipfade</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Datei</th>
+                            <th>Pfad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Regime JSON (Deine Configs)</td>
+                            <td><code>03_JSON/Entry_Analyzer/Regime/</code></td>
+                        </tr>
+                        <tr>
+                            <td>JSON Schemas</td>
+                            <td><code>config/schemas/regime_optimization/</code></td>
+                        </tr>
+                        <tr>
+                            <td>CEL Engine Code</td>
+                            <td><code>src/core/tradingbot/cel_engine.py</code></td>
+                        </tr>
+                        <tr>
+                            <td>JSON Entry Loader</td>
+                            <td><code>src/core/tradingbot/json_entry_loader.py</code></td>
+                        </tr>
+                        <tr>
+                            <td>Schema Validator</td>
+                            <td><code>src/core/tradingbot/config/validator.py</code></td>
+                        </tr>
+                        <tr>
+                            <td>CEL Dokumentation</td>
+                            <td><code>01_Projectplan/Strategien_Workflow_json/CEL_Rules_Doku_TradingBot_Analyzer.md</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Python Import Snippets</h3>
+                <pre><code># Validierung
+from src.core.tradingbot.config.validator import SchemaValidator
+
+# JSON Laden
+from src.core.tradingbot.json_entry_loader import JsonEntryConfig
+
+# CEL Engine
+from src.core.tradingbot.cel_engine import CELEngine
+
+# Alle Komponenten
+from src.core.tradingbot.config.validator import SchemaValidator
+from src.core.tradingbot.json_entry_loader import JsonEntryConfig
+from src.core.tradingbot.cel_engine import CELEngine</code></pre>
+            </section>
+
+        </div>
+
+        <footer>
+            <p>&copy; 2026 OrderPilot-AI | Erstellt mit Claude Code</p>
+            <p>Version 2.0.0 - Regime JSON Integration Guide</p>
+        </footer>
+    </div>
+</body>
+</html>

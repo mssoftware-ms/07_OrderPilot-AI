@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrderPilot-AI: Regime JSON Integration - KRITISCHES UPDATE</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header .subtitle {
+            font-size: 1.5em;
+            opacity: 0.9;
+            font-weight: bold;
+            color: #ffeb3b;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+
+        .alert {
+            background: #fff3cd;
+            border: 3px solid #ffc107;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 40px;
+        }
+
+        .alert h2 {
+            color: #856404;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+
+        .alert ul {
+            margin-left: 30px;
+        }
+
+        .alert li {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        section {
+            margin-bottom: 50px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            font-size: 2em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #dc3545;
+        }
+
+        h3 {
+            color: #34495e;
+            font-size: 1.5em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        h4 {
+            color: #555;
+            font-size: 1.2em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        pre code {
+            background: none;
+            color: #f8f8f2;
+            padding: 0;
+        }
+
+        .step {
+            background: #e8f5e9;
+            border-left: 5px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #4caf50;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+
+        .warning {
+            background: #ffebee;
+            border-left: 5px solid #f44336;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .success {
+            background: #e8f5e9;
+            border-left: 5px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .badge-wrong {
+            background: #dc3545;
+            color: white;
+        }
+
+        .badge-correct {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-new {
+            background: #ffc107;
+            color: #333;
+        }
+
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .comparison-box {
+            padding: 20px;
+            border-radius: 5px;
+        }
+
+        .comparison-wrong {
+            background: #ffebee;
+            border: 2px solid #f44336;
+        }
+
+        .comparison-correct {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+        }
+
+        .highlight {
+            background: #ffeb3b;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚨 KRITISCHES UPDATE</h1>
+            <p class="subtitle">Regime JSON Integration - Workflow-Korrekturen</p>
+            <p>Version 2.0 | Datum: 29.01.2026</p>
+        </header>
+
+        <div class="alert">
+            <h2>⚠️ Bitte zuerst lesen!</h2>
+            <p><strong>Dieses Dokument korrigiert kritische Fehler in How_to.html</strong></p>
+            <ul>
+                <li>❌ Entry Analyzer generiert <strong>KEINE</strong> <code>entry_expression</code></li>
+                <li>❌ Regime-Namen sind <strong>NICHT</strong> fest ("EXTREME_BULL" gibt es nicht)</li>
+                <li>✅ Regime-Namen kommen aus JSON <code>regimes[].id</code></li>
+                <li>✅ <code>entry_expression</code> muss <strong>manuell im CEL-Editor</strong> hinzugefügt werden</li>
+                <li>✅ Neue CEL-Funktionen: <code>trigger_regime_analysis()</code> und <code>last_closed_regime()</code></li>
+            </ul>
+        </div>
+
+        <div class="content">
+
+            <!-- KORRIGIERTER WORKFLOW -->
+            <section id="workflow">
+                <h2>✅ Korrigierter Workflow (3 Phasen)</h2>
+
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Entry Analyzer → JSON (OHNE entry_expression)</strong>
+                    <p style="margin-top: 10px;">Der Entry Analyzer optimiert nur Indikatoren + Regimes. Das Feld <code>entry_expression</code> wird <strong>NICHT</strong> generiert!</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>CEL-Editor → entry_expression MANUELL hinzufügen</strong>
+                    <p style="margin-top: 10px;">Du musst die <code>entry_expression</code> selbst schreiben, basierend auf den Regime-IDs aus <code>regimes[].id</code></p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Trading Bot → JSON laden + CEL evaluieren</strong>
+                    <p style="margin-top: 10px;">Der Bot lädt die JSON mit <code>entry_expression</code> und evaluiert die CEL Expression für Entry-Entscheidungen.</p>
+                </div>
+
+                <div class="info">
+                    <strong>Wichtig:</strong> JSON kontrolliert <strong>NUR Entry</strong>! Exit, Stop-Loss und Take-Profit sind im Bot Code programmiert.
+                </div>
+            </section>
+
+            <!-- REGIME-NAMEN KORREKTUR -->
+            <section id="regime-names">
+                <h2>❌ Fehler: Feste Regime-Namen</h2>
+
+                <div class="comparison">
+                    <div class="comparison-box comparison-wrong">
+                        <h3>❌ FALSCH (in How_to.html)</h3>
+                        <pre><code>{
+  "entry_expression": "regime == 'EXTREME_BULL'"
+}</code></pre>
+                        <p><strong>Problem:</strong> "EXTREME_BULL" existiert nicht in der JSON!</p>
+                    </div>
+
+                    <div class="comparison-box comparison-correct">
+                        <h3>✅ KORREKT</h3>
+                        <pre><code>{
+  "regimes": [
+    { "id": "STRONG_BULL", ... },
+    { "id": "STRONG_TF", ... }
+  ],
+  "entry_expression": "last_closed_regime() == 'STRONG_BULL'"
+}</code></pre>
+                        <p><strong>Lösung:</strong> Nutze Regime-Namen aus <code>regimes[].id</code></p>
+                    </div>
+                </div>
+
+                <div class="warning">
+                    <strong>⚠️ Wichtiger Hinweis:</strong> Regime-Namen sind <span class="highlight">DYNAMISCH</span>!
+                    <br>Jede JSON hat ihre eigenen Regime-IDs. Prüfe immer <code>regimes[].id</code> in deiner JSON.
+                </div>
+
+                <h3>Beispiel-Regime-Namen aus JSON</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Regime-ID (aus JSON)</th>
+                            <th>Beschreibung</th>
+                            <th>Verwendung in CEL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>STRONG_TF</code></td>
+                            <td>Extremer Trend (höchste Priorität)</td>
+                            <td><code>last_closed_regime() == 'STRONG_TF'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>STRONG_BULL</code></td>
+                            <td>Starker Aufwärtstrend</td>
+                            <td><code>last_closed_regime() == 'STRONG_BULL'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>STRONG_BEAR</code></td>
+                            <td>Starker Abwärtstrend</td>
+                            <td><code>last_closed_regime() == 'STRONG_BEAR'</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>SIDEWAYS</code></td>
+                            <td>Seitwärts / Range</td>
+                            <td><code>last_closed_regime() == 'SIDEWAYS'</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- NEUE CEL FUNKTIONEN -->
+            <section id="cel-functions">
+                <h2>✅ Neue CEL-Funktionen (v2.4)</h2>
+
+                <h3><code>trigger_regime_analysis()</code> - Regime-Update triggern</h3>
+                <div class="info">
+                    <p><strong>Signatur:</strong> <code>trigger_regime_analysis() -> bool</code></p>
+                    <p><strong>Was macht sie?</strong></p>
+                    <ul>
+                        <li>Triggert Regime-Update auf dem Chart (nur im Backtest)</li>
+                        <li>Stellt sicher, dass Regime-Daten aktuell sind</li>
+                        <li>Gibt <code>true</code> zurück wenn erfolgreich, <code>false</code> wenn kein Chart</li>
+                    </ul>
+                </div>
+
+                <h4>Verwendung:</h4>
+                <pre><code>// ✅ KORREKT: Trigger VOR Regime-Prüfung
+trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'
+
+// ❌ FALSCH: Kein Trigger - Regime könnte veraltet sein
+last_closed_regime() == 'STRONG_BULL'</code></pre>
+
+                <h3><code>last_closed_regime()</code> - Letztes geschlossenes Regime</h3>
+                <div class="info">
+                    <p><strong>Signatur:</strong> <code>last_closed_regime() -> string</code></p>
+                    <p><strong>Was gibt sie zurück?</strong></p>
+                    <ul>
+                        <li>Regime-String der <strong>letzten geschlossenen Candle</strong> (nicht current!)</li>
+                        <li>Regime-Namen aus <code>regimes[].id</code> (z.B. "STRONG_BULL")</li>
+                        <li><code>"UNKNOWN"</code> wenn keine Daten verfügbar</li>
+                    </ul>
+                </div>
+
+                <h4>Verwendung:</h4>
+                <pre><code>// ✅ KORREKT: Dynamische Regime-Namen aus JSON
+last_closed_regime() == 'STRONG_BULL'    // aus regimes[].id
+last_closed_regime() == 'STRONG_TF'      // aus regimes[].id
+
+// ❌ FALSCH: Feste Namen (nicht in JSON)
+last_closed_regime() == 'EXTREME_BULL'   // Existiert nicht!
+last_closed_regime() == 'EXTREME_BEAR'   // Existiert nicht!</code></pre>
+            </section>
+
+            <!-- SIDE PARAMETER -->
+            <section id="side-parameter">
+                <h2>✅ <code>side</code> Parameter - Long/Short Differenzierung</h2>
+
+                <div class="warning">
+                    <strong>❌ Fehler in How_to.html:</strong> Der <code>side</code> Parameter wurde nicht erwähnt!
+                </div>
+
+                <div class="info">
+                    <p><strong>Was ist <code>side</code>?</strong></p>
+                    <ul>
+                        <li>Variable im CEL Context</li>
+                        <li>Werte: <code>"long"</code> oder <code>"short"</code></li>
+                        <li>Unterscheidet Long-Entry-Prüfung von Short-Entry-Prüfung</li>
+                    </ul>
+                </div>
+
+                <h3>Warum wichtig?</h3>
+                <pre><code>// ❌ FALSCH: Entry für beide Richtungen
+last_closed_regime() == 'STRONG_BULL'
+
+// Problem: Entry würde auch für Short gelten!
+
+// ✅ KORREKT: Nur Long bei STRONG_BULL
+side == 'long' && last_closed_regime() == 'STRONG_BULL'
+
+// ✅ KORREKT: Nur Short bei STRONG_BEAR
+side == 'short' && last_closed_regime() == 'STRONG_BEAR'</code></pre>
+            </section>
+
+            <!-- VOLLSTÄNDIGE EXPRESSION BEISPIELE -->
+            <section id="examples">
+                <h2>📝 Vollständige Entry Expression Beispiele</h2>
+
+                <h3>Beispiel 1: Konservativ (Nur stärkste Trends)</h3>
+                <pre><code>trigger_regime_analysis() &&
+side == 'long' &&
+last_closed_regime() == 'STRONG_TF'</code></pre>
+                <div class="success">
+                    <strong>Entry-Bedingungen:</strong>
+                    <ul>
+                        <li>✅ Nur Long</li>
+                        <li>✅ Nur STRONG_TF Regime (extremster Trend)</li>
+                        <li>✅ Nach Candle-Close</li>
+                    </ul>
+                </div>
+
+                <h3>Beispiel 2: Moderat (Mehrere Strong Regimen)</h3>
+                <pre><code>trigger_regime_analysis() &&
+((side == 'long' && (last_closed_regime() == 'STRONG_BULL' || last_closed_regime() == 'STRONG_TF')) ||
+ (side == 'short' && last_closed_regime() == 'STRONG_BEAR'))</code></pre>
+                <div class="success">
+                    <strong>Entry-Bedingungen:</strong>
+                    <ul>
+                        <li>✅ Long: STRONG_BULL oder STRONG_TF</li>
+                        <li>✅ Short: STRONG_BEAR</li>
+                        <li>✅ Nach Candle-Close</li>
+                    </ul>
+                </div>
+
+                <h3>Beispiel 3: Mit Indikator-Bestätigung</h3>
+                <pre><code>trigger_regime_analysis() &&
+((side == 'long' && last_closed_regime() == 'STRONG_BULL' && rsi > 50 && adx > 25) ||
+ (side == 'short' && last_closed_regime() == 'STRONG_BEAR' && rsi < 50 && adx > 25))</code></pre>
+                <div class="success">
+                    <strong>Entry-Bedingungen:</strong>
+                    <ul>
+                        <li>✅ Long: STRONG_BULL + RSI > 50 + ADX > 25</li>
+                        <li>✅ Short: STRONG_BEAR + RSI < 50 + ADX > 25</li>
+                        <li>✅ Doppelte Bestätigung (Regime + Indikatoren)</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- HÄUFIGE FEHLER -->
+            <section id="common-mistakes">
+                <h2>🚨 Häufige Fehler & Lösungen</h2>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>❌ Fehler</th>
+                            <th>✅ Lösung</th>
+                            <th>Erklärung</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>regime == 'EXTREME_BULL'</code></td>
+                            <td><code>last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td>Regime-Namen aus JSON verwenden</td>
+                        </tr>
+                        <tr>
+                            <td><code>regime == 'STRONG_BULL'</code></td>
+                            <td><code>last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td>Letztes geschlossenes Regime, nicht current</td>
+                        </tr>
+                        <tr>
+                            <td><code>last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td><code>side == 'long' && last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td><code>side</code> Parameter für Richtung</td>
+                        </tr>
+                        <tr>
+                            <td><code>side == 'long' && last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td><code>trigger_regime_analysis() && side == 'long' && last_closed_regime() == 'STRONG_BULL'</code></td>
+                            <td>Regime-Update triggern</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- RESSOURCEN -->
+            <section id="resources">
+                <h2>📚 Weitere Ressourcen</h2>
+
+                <h3>Korrigierte Dokumentation</h3>
+                <ul>
+                    <li><strong>WORKFLOW_KORREKTUR.md</strong> - Detaillierte Workflow-Korrekturen (Markdown)</li>
+                    <li><strong>COMPLETE_REGIME_EXAMPLE.json</strong> - Vollständiges Beispiel mit CEL Expression</li>
+                    <li><strong>JSON_ENTRY_WORKFLOW_UPDATE.md</strong> - Technisches Update (Knowledgebase)</li>
+                </ul>
+
+                <h3>Code-Dateien (Aktualisiert)</h3>
+                <ul>
+                    <li><code>src/core/tradingbot/json_entry_scorer.py</code> - Entry Scorer mit chart_window + prev_regime</li>
+                    <li><code>src/core/tradingbot/cel_engine.py</code> - CEL Engine mit trigger_regime_analysis() + last_closed_regime()</li>
+                    <li><code>src/ui/widgets/bitunix_trading/bot_tab_control_pipeline.py</code> - Pipeline mit neuen Parametern</li>
+                </ul>
+
+                <h3>Knowledgebase</h3>
+                <ul>
+                    <li><strong>04_Knowledgbase/JSON_ENTRY_WORKFLOW_UPDATE.md</strong> - Komplettes technisches Update</li>
+                    <li><strong>04_Knowledgbase/CEL_Functions_Reference_v3.md</strong> - Alle 80+ CEL Funktionen</li>
+                    <li><strong>04_Knowledgbase/README.md</strong> - Übersicht (aktualisiert)</li>
+                </ul>
+            </section>
+
+        </div>
+
+        <footer>
+            <p><strong>OrderPilot-AI Trading System</strong></p>
+            <p>Version 2.0 - Workflow-Korrekturen | Erstellt: 29.01.2026</p>
+            <p>⚠️ Diese Korrekturen überschreiben fehlerhafte Informationen in How_to.html</p>
+        </footer>
+    </div>
+</body>
+</html>

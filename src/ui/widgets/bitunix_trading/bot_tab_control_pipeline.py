@@ -238,16 +238,24 @@ class BotTabControlPipeline:
         """
         json_scorer = self.parent._control._json_entry_scorer
 
+        # Get prev_regime from current regime state (für last_closed_regime() CEL function)
+        # Im Bot Tab gibt es kein chart_window, daher None
+        prev_regime = context.regime.regime_state.regime.value if context.regime else None
+
         # 1. Evaluiere Long Entry
         should_enter_long, score_long, reasons_long = json_scorer.should_enter_long(
             features=context.features,
             regime=context.regime.regime_state,
+            chart_window=None,  # Kein Chart im Bot Tab
+            prev_regime=prev_regime,
         )
 
         # 2. Evaluiere Short Entry
         should_enter_short, score_short, reasons_short = json_scorer.should_enter_short(
             features=context.features,
             regime=context.regime.regime_state,
+            chart_window=None,  # Kein Chart im Bot Tab
+            prev_regime=prev_regime,
         )
 
         # 3. Bestimme Direction basierend auf Signals
