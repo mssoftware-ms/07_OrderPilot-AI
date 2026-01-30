@@ -40,8 +40,14 @@ def sample_df():
 @pytest.fixture
 def optimizer_thread():
     """Create optimizer thread instance."""
-    # Create a minimal thread instance (doesn't need full initialization for this test)
+    # Create a minimal thread instance
+    # After refactoring, we need to initialize the signal registry
     thread = IndicatorOptimizationThread.__new__(IndicatorOptimizationThread)
+
+    # Initialize signal registry manually (since we skip __init__)
+    from src.strategies.signal_generators import SignalGeneratorRegistry
+    thread._signal_registry = SignalGeneratorRegistry()
+
     return thread
 
 

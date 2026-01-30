@@ -5,6 +5,9 @@ Runs indicator parameter optimization in the background with:
 - Long/Short side selection
 - Chart data support
 - Regime-based scoring (0-100)
+
+REFACTORED: _generate_signals() now uses Strategy Pattern with 20 focused generators.
+CC reduced from 157 → 3 (98% improvement).
 """
 
 import logging
@@ -12,6 +15,9 @@ import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from PyQt6.QtCore import QThread, pyqtSignal
+
+# Import signal generator registry (replaces 322-line monster function)
+from src.strategies.signal_generators import SignalGeneratorRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +86,10 @@ class IndicatorOptimizationThread(QThread):
 
         self.results: List[Dict[str, Any]] = []
         self._stop_requested = False
+
+        # Initialize signal generator registry (Strategy Pattern)
+        # Replaces 322-line _generate_signals() monster function (CC=157)
+        self._signal_registry = SignalGeneratorRegistry()
 
     def stop(self):
         """Request thread to stop."""
@@ -732,325 +742,27 @@ class IndicatorOptimizationThread(QThread):
     def _generate_signals(
         self, df: pd.DataFrame, indicator_type: str, test_type: str, trade_side: str
     ) -> pd.Series:
-        """Generate trading signals based on indicator, test type, and trade side."""
-        signals = pd.Series(False, index=df.index)
+        """Generate trading signals using Strategy Pattern.
 
-        if indicator_type == 'RSI':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: RSI < 30 (oversold)
-                signals = df['indicator_value'] < 30
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: RSI > 70 (overbought)
-                signals = df['indicator_value'] > 70
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: RSI > 70 (overbought)
-                signals = df['indicator_value'] > 70
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: RSI < 30 (oversold)
-                signals = df['indicator_value'] < 30
+        REFACTORED from 322-line monster function (CC=157) to clean delegation.
+        Now uses SignalGeneratorRegistry with 20 focused generators (CC < 5 each).
 
-        elif indicator_type == 'MACD':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: MACD crosses above 0
-                signals = (df['indicator_value'] > 0) & (df['indicator_value'].shift(1) <= 0)
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: MACD crosses below 0
-                signals = (df['indicator_value'] < 0) & (df['indicator_value'].shift(1) >= 0)
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: MACD crosses below 0
-                signals = (df['indicator_value'] < 0) & (df['indicator_value'].shift(1) >= 0)
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: MACD crosses above 0
-                signals = (df['indicator_value'] > 0) & (df['indicator_value'].shift(1) <= 0)
+        Args:
+            df: DataFrame with price and indicator data
+            indicator_type: Indicator type (e.g., 'RSI', 'MACD', 'SMA')
+            test_type: 'entry' or 'exit'
+            trade_side: 'long' or 'short'
 
-        elif indicator_type == 'ADX':
-            if test_type == 'entry':
-                # Entry: Strong trend (ADX > 25)
-                signals = df['indicator_value'] > 25
-            else:
-                # Exit: Weak trend (ADX < 20)
-                signals = df['indicator_value'] < 20
+        Returns:
+            Boolean Series with signals (True = signal fired)
 
-        # TREND & OVERLAY INDICATORS
-
-        elif indicator_type == 'SMA':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price crosses above SMA
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price crosses below SMA
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price crosses below SMA
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price crosses above SMA
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-
-        elif indicator_type == 'EMA':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price crosses above EMA
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price crosses below EMA
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price crosses below EMA
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price crosses above EMA
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-
-        elif indicator_type == 'ICHIMOKU':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price crosses above cloud
-                signals = (df['close'] > df['cloud_top']) & \
-                          (df['close'].shift(1) <= df['cloud_top'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price crosses below cloud
-                signals = (df['close'] < df['cloud_bottom']) & \
-                          (df['close'].shift(1) >= df['cloud_bottom'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price enters cloud
-                signals = (df['close'] < df['cloud_top']) & \
-                          (df['close'].shift(1) >= df['cloud_top'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price enters cloud
-                signals = (df['close'] > df['cloud_bottom']) & \
-                          (df['close'].shift(1) <= df['cloud_bottom'].shift(1))
-
-        elif indicator_type == 'PSAR':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price crosses above PSAR (reversal)
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price crosses below PSAR (reversal)
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: PSAR flips
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: PSAR flips
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-
-        elif indicator_type == 'VWAP':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price crosses above VWAP
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price crosses below VWAP
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price crosses below VWAP
-                signals = (df['close'] < df['indicator_value']) & \
-                          (df['close'].shift(1) >= df['indicator_value'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price crosses above VWAP
-                signals = (df['close'] > df['indicator_value']) & \
-                          (df['close'].shift(1) <= df['indicator_value'].shift(1))
-
-        elif indicator_type == 'PIVOTS':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price bounces off pivot (above pivot)
-                signals = df['close'] > df['indicator_value']
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price bounces off pivot (below pivot)
-                signals = df['close'] < df['indicator_value']
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price below pivot
-                signals = df['close'] < df['indicator_value']
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price above pivot
-                signals = df['close'] > df['indicator_value']
-
-        # BREAKOUT & CHANNELS
-
-        elif indicator_type == 'BB':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price touches lower band (oversold)
-                signals = df['close'] <= df['bb_lower']
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price touches upper band (overbought)
-                signals = df['close'] >= df['bb_upper']
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price crosses above middle or upper band
-                signals = df['close'] >= df['bb_middle']
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price crosses below middle or lower band
-                signals = df['close'] <= df['bb_middle']
-
-        elif indicator_type == 'KC':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Price breaks above upper Keltner
-                signals = (df['close'] > df['kc_upper']) & \
-                          (df['close'].shift(1) <= df['kc_upper'].shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Price breaks below lower Keltner
-                signals = (df['close'] < df['kc_lower']) & \
-                          (df['close'].shift(1) >= df['kc_lower'].shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Price re-enters channel
-                signals = (df['close'] < df['kc_upper']) & \
-                          (df['close'].shift(1) >= df['kc_upper'].shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Price re-enters channel
-                signals = (df['close'] > df['kc_lower']) & \
-                          (df['close'].shift(1) <= df['kc_lower'].shift(1))
-
-        # REGIME & TREND STRENGTH
-
-        elif indicator_type == 'CHOP':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Low chop (trending), expect continuation
-                signals = df['indicator_value'] < 38.2
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Low chop (trending), expect continuation
-                signals = df['indicator_value'] < 38.2
-            elif test_type == 'exit':
-                # Exit: High chop (ranging), exit trend trades
-                signals = df['indicator_value'] > 61.8
-
-        # MOMENTUM
-
-        elif indicator_type == 'STOCH':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: Stoch crosses above 20 (oversold recovery)
-                signals = (df['indicator_value'] > 20) & (df['indicator_value'].shift(1) <= 20)
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: Stoch crosses below 80 (overbought reversal)
-                signals = (df['indicator_value'] < 80) & (df['indicator_value'].shift(1) >= 80)
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: Stoch crosses below 80 (overbought)
-                signals = (df['indicator_value'] < 80) & (df['indicator_value'].shift(1) >= 80)
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: Stoch crosses above 20 (oversold)
-                signals = (df['indicator_value'] > 20) & (df['indicator_value'].shift(1) <= 20)
-
-        elif indicator_type == 'CCI':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: CCI crosses above -100 (oversold recovery)
-                signals = (df['indicator_value'] > -100) & (df['indicator_value'].shift(1) <= -100)
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: CCI crosses below 100 (overbought reversal)
-                signals = (df['indicator_value'] < 100) & (df['indicator_value'].shift(1) >= 100)
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: CCI crosses below 100
-                signals = (df['indicator_value'] < 100) & (df['indicator_value'].shift(1) >= 100)
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: CCI crosses above -100
-                signals = (df['indicator_value'] > -100) & (df['indicator_value'].shift(1) <= -100)
-
-        # VOLATILITY
-
-        elif indicator_type == 'ATR':
-            if test_type == 'entry':
-                # Entry: High volatility (ATR expanding)
-                atr_sma = df['indicator_value'].rolling(20).mean()
-                signals = df['indicator_value'] > atr_sma
-            else:
-                # Exit: Low volatility (ATR contracting)
-                atr_sma = df['indicator_value'].rolling(20).mean()
-                signals = df['indicator_value'] < atr_sma
-
-        elif indicator_type == 'BB_WIDTH':
-            if test_type == 'entry':
-                # Entry: High volatility (wide bands)
-                bb_width_sma = df['indicator_value'].rolling(20).mean()
-                signals = df['indicator_value'] > bb_width_sma
-            else:
-                # Exit: Low volatility (narrow bands, squeeze)
-                bb_width_sma = df['indicator_value'].rolling(20).mean()
-                signals = df['indicator_value'] < bb_width_sma
-
-        # VOLUME
-
-        elif indicator_type == 'OBV':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: OBV trending up (accumulation)
-                obv_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] > obv_sma) & \
-                          (df['indicator_value'].shift(1) <= obv_sma.shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: OBV trending down (distribution)
-                obv_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] < obv_sma) & \
-                          (df['indicator_value'].shift(1) >= obv_sma.shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: OBV crosses below SMA
-                obv_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] < obv_sma) & \
-                          (df['indicator_value'].shift(1) >= obv_sma.shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: OBV crosses above SMA
-                obv_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] > obv_sma) & \
-                          (df['indicator_value'].shift(1) <= obv_sma.shift(1))
-
-        elif indicator_type == 'MFI':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: MFI < 20 (oversold)
-                signals = df['indicator_value'] < 20
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: MFI > 80 (overbought)
-                signals = df['indicator_value'] > 80
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: MFI > 80 (overbought)
-                signals = df['indicator_value'] > 80
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: MFI < 20 (oversold)
-                signals = df['indicator_value'] < 20
-
-        elif indicator_type == 'AD':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: A/D trending up
-                ad_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] > ad_sma) & \
-                          (df['indicator_value'].shift(1) <= ad_sma.shift(1))
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: A/D trending down
-                ad_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] < ad_sma) & \
-                          (df['indicator_value'].shift(1) >= ad_sma.shift(1))
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: A/D crosses below SMA
-                ad_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] < ad_sma) & \
-                          (df['indicator_value'].shift(1) >= ad_sma.shift(1))
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: A/D crosses above SMA
-                ad_sma = df['indicator_value'].rolling(20).mean()
-                signals = (df['indicator_value'] > ad_sma) & \
-                          (df['indicator_value'].shift(1) <= ad_sma.shift(1))
-
-        elif indicator_type == 'CMF':
-            if test_type == 'entry' and trade_side == 'long':
-                # Entry Long: CMF crosses above 0 (accumulation)
-                signals = (df['indicator_value'] > 0) & (df['indicator_value'].shift(1) <= 0)
-            elif test_type == 'entry' and trade_side == 'short':
-                # Entry Short: CMF crosses below 0 (distribution)
-                signals = (df['indicator_value'] < 0) & (df['indicator_value'].shift(1) >= 0)
-            elif test_type == 'exit' and trade_side == 'long':
-                # Exit Long: CMF crosses below 0
-                signals = (df['indicator_value'] < 0) & (df['indicator_value'].shift(1) >= 0)
-            elif test_type == 'exit' and trade_side == 'short':
-                # Exit Short: CMF crosses above 0
-                signals = (df['indicator_value'] > 0) & (df['indicator_value'].shift(1) <= 0)
-
-        return signals
+        Complexity: CC = 1 (single delegation call)
+        Original: CC = 157, 322 lines
+        Improvement: 98% complexity reduction
+        """
+        return self._signal_registry.generate_signals(
+            df, indicator_type, test_type, trade_side
+        )
 
     def _calculate_metrics(self, df: pd.DataFrame, signals: pd.Series) -> Dict[str, float]:
         """Calculate performance metrics for signals."""

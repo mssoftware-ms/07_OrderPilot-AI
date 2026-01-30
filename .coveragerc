@@ -1,0 +1,62 @@
+# Coverage.py configuration for OrderPilot-AI
+
+[run]
+source = src
+omit =
+    */tests/*
+    */venv/*
+    */.venv/*
+    */__pycache__/*
+    */site-packages/*
+    # Exclude UI startup scripts (hard to test)
+    src/ui/main_window.py
+    # Exclude __main__ blocks
+    */__main__.py
+
+[report]
+# Fail if coverage below threshold
+fail_under = 70
+precision = 2
+show_missing = True
+skip_covered = False
+skip_empty = True
+
+exclude_lines =
+    # Standard exclusions
+    pragma: no cover
+    def __repr__
+    def __str__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Debug/logging
+    logger.debug
+    logger.trace
+
+    # Type checking
+    if typing.TYPE_CHECKING:
+
+    # Defensive programming
+    raise RuntimeError
+    except ImportError:
+
+    # Qt event handlers (hard to test)
+    def closeEvent
+    def keyPressEvent
+    def mousePressEvent
+
+[html]
+directory = htmlcov
+title = OrderPilot-AI Coverage Report
+
+[xml]
+output = coverage.xml
+
+[paths]
+source =
+    src/
+    */site-packages/
