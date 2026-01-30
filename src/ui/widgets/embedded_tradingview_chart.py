@@ -44,12 +44,14 @@ from .embedded_tradingview_chart_marking_mixin import EmbeddedTradingViewChartMa
 from .embedded_tradingview_chart_ui_mixin import EmbeddedTradingViewChartUIMixin
 from .embedded_tradingview_chart_view_mixin import EmbeddedTradingViewChartViewMixin
 from .chart_ai_markings_mixin import ChartAIMarkingsMixin
+from .chart_mixins.regime_display_mixin import RegimeDisplayMixin
 from .market_sessions_overlay import MarketSessionsOverlay
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddedTradingViewChart(
+    RegimeDisplayMixin,  # Regime detection and display (for CEL trigger_regime_analysis)
     EntryAnalyzerMixin,  # Entry Analyzer popup integration
     StrategyConceptMixin,  # Strategy Concept window integration (Phase 6)
     ChartAIMarkingsMixin,  # AI-driven markings (must be early for method override)
@@ -161,6 +163,9 @@ class EmbeddedTradingViewChart(
         # Regime display updates (Issue #13)
         self._last_regime_hash = ""
         self._setup_regime_updates()
+        
+        # Setup regime display (Badge + Timer from RegimeDisplayMixin)
+        self._setup_regime_display()
 
         # Initialize level zones (from LevelZonesMixin)
         self._setup_level_zones()
@@ -244,38 +249,8 @@ class EmbeddedTradingViewChart(
 
         return candles
 
-    def _update_regime_from_data(self) -> None:
-        """Detect and display the latest regime based on chart data."""
-        try:
-            candles = self._get_regime_candles()
-            if not candles:
-                if hasattr(self, "update_regime_badge"):
-                    self.update_regime_badge("UNKNOWN")
-                return
-
-            # Simple hash of last closes to avoid redundant calculations
-            close_hash = str(hash(tuple(c["close"] for c in candles[-5:])))
-            if close_hash == self._last_regime_hash:
-                return
-            self._last_regime_hash = close_hash
-
-            from src.analysis.entry_signals.entry_signal_engine import (
-                OptimParams,
-                calculate_features,
-                detect_regime,
-            )
-
-            params = OptimParams()
-            features = calculate_features(candles, params)
-            regime = detect_regime(features, params)
-            regime_str = regime.value if hasattr(regime, "value") else str(regime)
-
-            if hasattr(self, "update_regime_badge"):
-                self.update_regime_badge(regime_str)
-        except Exception as exc:
-            logger.error(f"Failed to update regime from data: {exc}", exc_info=True)
-            if hasattr(self, "update_regime_badge"):
-                self.update_regime_badge("UNKNOWN")
+    # NOTE: _update_regime_from_data is now provided by RegimeDisplayMixin
+    # Old implementation removed to avoid override conflict
 
     def _update_overlay_symbol(self, symbol: str):
         """Update overlay with symbol and daily reference price."""
@@ -533,6 +508,17 @@ class EmbeddedTradingViewChart(
         except Exception as exc:
             logger.error(f"_reload_volume_with_new_colors failed: {exc}")
 
+    def _add_regime_badge_to_toolbar(self) -> None:
+        """Add regime badge widget to toolbar (from RegimeDisplayMixin).
+        
+        NOTE: The old regime_button from ToolbarMixinRow2 already exists and works.
+        We skip adding the RegimeBadgeWidget to avoid conflicts.
+        The regime display functionality works via the existing button.
+        """
+        # Skip - the existing regime_button from ToolbarMixinRow2 already works
+        logger.debug("Skipping RegimeBadgeWidget - using existing regime_button from toolbar")
+        pass
+    
     def resizeEvent(self, event):
         """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""
         super().resizeEvent(event)

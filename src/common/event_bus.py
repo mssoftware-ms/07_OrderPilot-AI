@@ -208,7 +208,15 @@ class EventBus:
             # Store in history (deque handles size limit automatically with O(1) operations)
             self._event_history.append(event)
 
-            logger.debug(f"Event emitted: {event.type.value} from {event.source}")
+            # Only log non-streaming events to avoid spam
+            # (Streaming events like MARKET_TICK can generate 100+ logs/second)
+            quiet_event_types = {
+                EventType.MARKET_TICK,
+                EventType.MARKET_BAR,
+                EventType.MARKET_DATA_TICK,
+            }
+            if event.type not in quiet_event_types:
+                logger.debug(f"Event emitted: {event.type.value} from {event.source}")
         except Exception as e:
             logger.error(f"Error emitting event {event.type}: {e}")
 

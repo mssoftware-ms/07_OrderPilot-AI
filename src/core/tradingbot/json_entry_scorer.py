@@ -325,6 +325,15 @@ class JsonEntryScorer:
             ),
         }
 
+        # Debug: Log context chart_window
+        logger.info(f"Context built: chart_window={type(chart_window).__name__ if chart_window else 'None'}")
+        print(f"[JSON_SCORER] Context built, keys: {list(context.keys())}", flush=True)
+        print(f"[JSON_SCORER] chart_window in context: {'chart_window' in context}", flush=True)
+        if 'chart_window' in context and context['chart_window']:
+            print(f"[JSON_SCORER] chart_window type: {type(context['chart_window']).__name__}", flush=True)
+        else:
+            print(f"[JSON_SCORER] ❌ chart_window is None or missing!", flush=True)
+
         return context
 
     def _generate_reasons(

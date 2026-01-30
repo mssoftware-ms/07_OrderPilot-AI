@@ -258,6 +258,12 @@ class CELEngine:
         try:
             # Store last context for context-aware helper functions
             self._last_context = context or {}
+            
+            # Debug: Log context keys
+            print(f"[CEL] evaluate() called, context keys: {list(context.keys())}", flush=True)
+            print(f"[CEL] chart_window in context: {'chart_window' in context}", flush=True)
+            if 'chart_window' in context:
+                print(f"[CEL] chart_window type: {type(context['chart_window']).__name__}", flush=True)
 
             # Get compiled program (cached if enabled)
             program = self._get_program(expression)
@@ -2012,27 +2018,38 @@ class CELEngine:
         """
         try:
             ctx = self._last_context or {}
+            
+            # Debug: Log context
+            print(f"[CEL] trigger_regime_analysis: _last_context keys: {list(ctx.keys())}", flush=True)
+            print(f"[CEL] trigger_regime_analysis: chart_window in ctx: {'chart_window' in ctx}", flush=True)
 
             # Get chart window reference from context
             if 'chart_window' not in ctx:
-                logger.debug("trigger_regime_analysis: No chart_window in context")
+                logger.warning("❌ trigger_regime_analysis: No chart_window in context!")
+                print("[CEL] ❌ trigger_regime_analysis: No chart_window in context!", flush=True)
+                print(f"[CEL] ❌ Available keys: {list(ctx.keys())}", flush=True)
                 return False
 
             chart_window = ctx['chart_window']
+            print(f"[CEL] ✅ chart_window found: {type(chart_window).__name__}", flush=True)
 
             # Check if regime update is available (from RegimeDisplayMixin)
             if not hasattr(chart_window, 'trigger_regime_update'):
-                logger.warning("trigger_regime_analysis: Chart window has no trigger_regime_update method")
+                logger.warning("❌ trigger_regime_analysis: Chart window has no trigger_regime_update method")
+                print("[CEL] ❌ Chart window has no trigger_regime_update method", flush=True)
                 return False
 
             # Trigger regime analysis (with immediate execution, no debounce)
+            print("[CEL] 🔄 Triggering regime_update(debounce_ms=0)...", flush=True)
             chart_window.trigger_regime_update(debounce_ms=0)
 
-            logger.debug("Regime analysis triggered successfully")
+            logger.info("✅ Regime analysis triggered successfully")
+            print("[CEL] ✅ Regime analysis triggered successfully", flush=True)
             return True
 
         except Exception as e:
-            logger.error(f"Error triggering regime analysis: {e}")
+            logger.error(f"❌ Error triggering regime analysis: {e}", exc_info=True)
+            print(f"[CEL] ❌ Error: {e}", flush=True)
             return False
 
     def _func_last_closed_regime(self) -> str:

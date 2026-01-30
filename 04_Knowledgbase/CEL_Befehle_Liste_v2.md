@@ -664,7 +664,7 @@ Diese neuen Funktionen und Workflows sind **vollständig dokumentiert** in:
 | Function | Return | Beschreibung | Beispiel |
 |----------|--------|-------------|----------|
 | ✅ `last_closed_regime()` | `string` | Regime der letzten geschlossenen Kerze | `last_closed_regime() == 'EXTREME_BULL'` |
-| ✅ `trigger_regime_analysis()` | `bool` | Löst Regime-Analyse aus | `trigger_regime_analysis() && last_closed_regime() == 'BULL'` |
+| ✅ `trigger_regime_analysis()` | `bool` | Löst Regime-Erkennung aus + zeichnet Linien im Chart | `trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'` |
 
 **Verfügbare Variablen (69+):**
 - **bot.*** (27 Variablen) - Bot Configuration, Risk Management, SL/TP

@@ -81,6 +81,7 @@ class BotController(
         on_trading_blocked: Callable[[list[str]], None] | None = None,
         on_macd_signal: Callable[[str, float], None] | None = None,
         json_config_path: str | None = None,
+        chart_window: Any | None = None,
     ):
         """Initialize bot controller.
 
@@ -94,11 +95,13 @@ class BotController(
             on_trading_blocked: Callback when trading is blocked (list of reasons)
             on_macd_signal: Callback for MACD cross signals (signal_type, price) for chart markers
             json_config_path: Optional path to JSON strategy config (enables JSON-based regime/strategy detection)
+            chart_window: Optional chart window reference (enables regime visualization via trigger_regime_analysis())
         """
         self.config = config
         self.symbol = config.bot.symbol
         self.timeframe = config.bot.timeframe
         self._event_bus = event_bus
+        self._chart_window = chart_window
 
         # Callbacks
         self._on_signal = on_signal
@@ -1337,6 +1340,7 @@ class BotController(
         try:
             # 1. Calculate features
             features = await self._calculate_features(bar)
+            features.is_candle_close = True  # Mark as candle-close event for CEL evaluation
             self._last_features = features
 
             # Log feature summary (handle None values during warmup)

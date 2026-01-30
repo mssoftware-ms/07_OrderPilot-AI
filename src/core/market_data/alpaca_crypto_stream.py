@@ -114,7 +114,7 @@ class AlpacaCryptoStreamClient(StreamClient):
             self.metrics.status = StreamStatus.CONNECTED
             self.metrics.connected_at = datetime.utcnow()
 
-            print("✅ CRYPTO STREAM CONNECTED!")
+            logger.info("✅ Crypto stream connected")
             logger.info("Alpaca crypto stream connected")
 
             # Emit connection event
@@ -203,7 +203,7 @@ class AlpacaCryptoStreamClient(StreamClient):
                 # Run in thread to avoid blocking - stop_ws may be synchronous
                 await asyncio.to_thread(self._stop_stream_sync)
 
-            print("🔴 CRYPTO STREAM DISCONNECTED!")
+            logger.info("🔴 Crypto stream disconnected")
             logger.info("Alpaca crypto stream disconnected")
 
             # Emit disconnection event

@@ -97,12 +97,12 @@ class RegimeOptimizationMixin:
             "RegimeScore (0-100): Measures quality of regime detection"
         )
         current_score_layout.addWidget(self._regime_opt_current_score_label)
-        
+
         # Component details label (compact)
         self._regime_opt_components_label = QLabel("")
         self._regime_opt_components_label.setStyleSheet("color: #888; font-size: 9pt;")
         current_score_layout.addWidget(self._regime_opt_components_label)
-        
+
         current_score_layout.addStretch()
 
         refresh_score_btn = QPushButton(get_icon("refresh"), "Calculate Current Score")
@@ -757,16 +757,9 @@ class RegimeOptimizationMixin:
             max_trials = getattr(self, "_regime_opt_max_trials", None)
             max_trials_value = max_trials.value() if max_trials else 150
 
-            # Issue #28: Get entry_params and evaluation_params from config if available
-            entry_params = {}
-            evaluation_params = {}
-            if hasattr(self, "_regime_config") and self._regime_config:
-                if hasattr(self._regime_config, "entry_params") and self._regime_config.entry_params:
-                    entry_params = self._regime_config.entry_params
-                if hasattr(self._regime_config, "evaluation_params") and self._regime_config.evaluation_params:
-                    evaluation_params = self._regime_config.evaluation_params
-
             # Build export data
+            # NOTE: entry_params and evaluation_params are NOT included -
+            #       Only entry_expression is used for Trading Bot execution.
             export_data = {
                 "version": "2.0",
                 "meta": {
@@ -782,12 +775,6 @@ class RegimeOptimizationMixin:
                 "parameter_ranges": param_ranges,
                 "results": self._regime_opt_all_results,
             }
-
-            # Issue #28: Include entry_params and evaluation_params if present
-            if entry_params:
-                export_data["entry_params"] = entry_params
-            if evaluation_params:
-                export_data["evaluation_params"] = evaluation_params
 
             # Write to file
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -1082,10 +1069,10 @@ class RegimeOptimizationMixin:
                 logger.info("Using legacy regime classification for current score")
                 indicators = optimizer._calculate_indicators(current_params)
                 regimes = optimizer._classify_regimes(current_params, indicators)
-            
+
             # Convert regimes to Series for new scoring
             regimes_series = pd.Series(regimes, index=df.index)
-            
+
             # Use new 5-component RegimeScore
             from src.core.scoring import calculate_regime_score, RegimeScoreConfig
 
@@ -1109,12 +1096,12 @@ class RegimeOptimizationMixin:
                 regimes=regimes_series,
                 config=score_config,
             )
-            
+
             score = score_result.total_score
 
             # Update main score label
             self._regime_opt_current_score_label.setText(f"{score:.1f}")
-            
+
             # Color based on score and gate status
             if not score_result.gates_passed:
                 color = "#ef4444"  # Red for gate failure
@@ -1124,11 +1111,11 @@ class RegimeOptimizationMixin:
                 color = "#f59e0b"  # Orange for medium
             else:
                 color = "#ef4444"  # Red for poor
-                
+
             self._regime_opt_current_score_label.setStyleSheet(
                 f"font-weight: bold; font-size: 12pt; color: {color};"
             )
-            
+
             # Update components label with status
             if score_result.gates_passed:
                 self._regime_opt_components_label.setText("✓ Valid")
@@ -1397,23 +1384,9 @@ class RegimeOptimizationMixin:
                         "indicators": indicators,
                         "regimes": regimes
                     }
-                ],
-                "entry_params": {
-                    "min_score": 70,
-                    "require_regime_match": True,
-                    "max_signals_per_regime": 5
-                },
-                "evaluation_params": {
-                    "lookback_periods": 200,
-                    "min_regime_duration": 3,
-                    "score_weights": {
-                        "separability": 0.30,
-                        "coherence": 0.25,
-                        "fidelity": 0.25,
-                        "boundary": 0.10,
-                        "coverage": 0.10
-                    }
-                }
+                ]
+                # NOTE: entry_params and evaluation_params are NOT included -
+                #       Only entry_expression is used for Trading Bot execution.
             }
 
             # Step 4: Save to new file with validation

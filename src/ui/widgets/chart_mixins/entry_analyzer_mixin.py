@@ -1030,11 +1030,10 @@ class EntryAnalyzerMixin:
             if selected:
                 filtered_regimes = [r for r in regimes if r.get('regime', 'UNKNOWN') in selected]
             else:
-                # If menu exists but nothing selected, show NOTHING (user unchecked all)
-                # However, _update_regime_filter_from_data sets defaults to Checked.
-                # So if selected is empty here, it means explicit uncheck.
-                print("[ENTRY_ANALYZER] Filter active but selection empty -> Drawing NOTHING", flush=True)
-                filtered_regimes = [] 
+                # If menu exists but nothing selected, assume filter not initialized yet → show all
+                # This fixes the issue where regimes aren't drawn on first "Analyse visible Range"
+                print("[ENTRY_ANALYZER] Filter exists but selection empty -> Drawing ALL (filter not initialized)", flush=True)
+                filtered_regimes = regimes  # Show all when filter is empty
         else:
             print("[ENTRY_ANALYZER] No filter menu -> Drawing ALL", flush=True)
             filtered_regimes = regimes  # No filter widget, show all
@@ -1051,7 +1050,11 @@ class EntryAnalyzerMixin:
             regimes: Filtered list of regime PERIODS to draw
         """
         if not hasattr(self, "add_regime_line"):
+            print("[ENTRY_ANALYZER] ❌ ERROR: add_regime_line method NOT FOUND!", flush=True)
+            logger.error("Chart widget missing add_regime_line method - cannot draw regime lines")
             return
+        else:
+            print(f"[ENTRY_ANALYZER] ✅ add_regime_line method exists, drawing {len(regimes)} regimes", flush=True)
 
         # Color mapping: regime_type -> (start_color, end_color)
         # Issue #5: Each regime has unique, distinguishable color
@@ -1143,6 +1146,7 @@ class EntryAnalyzerMixin:
             self.clear_regime_lines()
 
         # Draw new regime lines (START only for each period)
+        print(f"[ENTRY_ANALYZER] Drawing {len(regimes)} regime lines...", flush=True)
         for i, regime_data in enumerate(regimes):
             start_timestamp = regime_data.get('start_timestamp', 0)
             regime = regime_data.get('regime', 'UNKNOWN')
@@ -1154,11 +1158,13 @@ class EntryAnalyzerMixin:
             start_color, end_color = get_regime_color(regime)
 
             logger.debug(f"Regime {i}: {regime} -> color: {start_color}")
+            print(f"[ENTRY_ANALYZER] Regime {i}: {regime} at timestamp {start_timestamp}, color: {start_color}", flush=True)
 
             # Create label (just regime name with score, no "START" prefix)
             regime_label = f"{regime.replace('_', ' ')} ({score:.1f})"
 
             # Add regime line to chart
+            print(f"[ENTRY_ANALYZER] Calling add_regime_line(id=regime_{i}, ts={start_timestamp}, name={regime}, label={regime_label}, color={start_color})", flush=True)
             self.add_regime_line(
                 line_id=f"regime_{i}",
                 timestamp=start_timestamp,
@@ -1166,6 +1172,7 @@ class EntryAnalyzerMixin:
                 label=regime_label,
                 color=start_color
             )
+            print(f"[ENTRY_ANALYZER] ✅ add_regime_line called for regime {i}", flush=True)
 
             # Add arrow markers at regime start (Issue: Regime arrows)
             # Get price at regime start timestamp

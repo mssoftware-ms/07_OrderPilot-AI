@@ -60,6 +60,12 @@ class ChartWindow(
     BitunixTradingMixin,
     QMainWindow
 ):
+    """Popup window for displaying a single chart.
+    
+    Note: RegimeDisplayMixin methods (trigger_regime_update, etc.) are available
+    via composition through the chart widget, not direct inheritance.
+    The chart_widget has RegimeDisplayMixin mixed in.
+    """
     """Popup window for displaying a single chart."""
 
     # Signals
@@ -329,8 +335,27 @@ class ChartWindow(
         """
         await self._lifecycle.load_chart(data_provider)
 
+    # === Delegation Methods for RegimeDisplayMixin ===
+    # These methods delegate to chart_widget which has RegimeDisplayMixin
+    
+    def trigger_regime_update(self, debounce_ms: int = 500) -> None:
+        """Delegate regime update trigger to chart widget.
+        
+        Called by CEL trigger_regime_analysis() function during JSON Entry evaluation.
+        """
+        if hasattr(self, 'chart_widget') and self.chart_widget:
+            if hasattr(self.chart_widget, 'trigger_regime_update'):
+                self.chart_widget.trigger_regime_update(debounce_ms)
+                print(f"[CHART_WINDOW] Delegated trigger_regime_update to chart_widget", flush=True)
+            else:
+                print(f"[CHART_WINDOW] ❌ chart_widget has no trigger_regime_update!", flush=True)
+        else:
+            print(f"[CHART_WINDOW] ❌ No chart_widget available!", flush=True)
+
 
 # Re-export für backward compatibility
+
+
 __all__ = [
     "ChartWindow",
     "ChartWindowSetup",

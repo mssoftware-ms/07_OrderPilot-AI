@@ -394,16 +394,9 @@ class RegimeResultsMixin:
         if not file_path:
             return
 
-        # Issue #28: Get entry_params and evaluation_params from config if available
-        entry_params = {}
-        evaluation_params = {}
-        if hasattr(self, "_regime_config") and self._regime_config:
-            if hasattr(self._regime_config, "entry_params") and self._regime_config.entry_params:
-                entry_params = self._regime_config.entry_params
-            if hasattr(self._regime_config, "evaluation_params") and self._regime_config.evaluation_params:
-                evaluation_params = self._regime_config.evaluation_params
-
         # Prepare export data
+        # NOTE: entry_params and evaluation_params are NOT included -
+        #       Only entry_expression is used for Trading Bot execution.
         export_data = {
             "schema_version": "1.0.0",
             "exported_at": datetime.utcnow().isoformat(),
@@ -420,12 +413,6 @@ class RegimeResultsMixin:
             "metrics": result.get("metrics", {}),
             "config": result.get("config", {}),
         }
-
-        # Issue #28: Include entry_params and evaluation_params if present
-        if entry_params:
-            export_data["entry_params"] = entry_params
-        if evaluation_params:
-            export_data["evaluation_params"] = evaluation_params
 
         # Save to file
         try:
@@ -465,14 +452,8 @@ class RegimeResultsMixin:
 
         export_path = export_dir / f"optimized_regime_{symbol}_{timeframe}.json"
 
-        # Issue #28: Reuse entry_params/evaluation_params from above or get fresh
-        if not entry_params and hasattr(self, "_regime_config") and self._regime_config:
-            if hasattr(self._regime_config, "entry_params") and self._regime_config.entry_params:
-                entry_params = self._regime_config.entry_params
-        if not evaluation_params and hasattr(self, "_regime_config") and self._regime_config:
-            if hasattr(self._regime_config, "evaluation_params") and self._regime_config.evaluation_params:
-                evaluation_params = self._regime_config.evaluation_params
-
+        # NOTE: entry_params and evaluation_params are NOT included -
+        #       Only entry_expression is used for Trading Bot execution.
         export_data = {
             "schema_version": "1.0.0",
             "exported_at": datetime.utcnow().isoformat(),
@@ -489,12 +470,6 @@ class RegimeResultsMixin:
             "metrics": result.get("metrics", {}),
             "config": result.get("config", {}),
         }
-
-        # Issue #28: Include entry_params and evaluation_params if present
-        if entry_params:
-            export_data["entry_params"] = entry_params
-        if evaluation_params:
-            export_data["evaluation_params"] = evaluation_params
 
         try:
             with open(export_path, "w") as f:

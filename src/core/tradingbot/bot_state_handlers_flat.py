@@ -410,12 +410,19 @@ class BotStateHandlersFlat:
         Called when JSON Entry Mode is active. Uses JsonEntryScorer to evaluate
         the CEL entry_expression from Regime JSON instead of normal scoring.
 
+        NOTE: Only evaluates on candle-close events, not on every tick.
+
         Args:
             features: Current feature vector
 
         Returns:
             BotDecision or None
         """
+        # IMPORTANT: Only evaluate CEL expression on candle-close events
+        # Skip tick-by-tick updates to avoid redundant evaluations
+        if not features.is_candle_close:
+            return None  # Not a candle-close event - skip CEL evaluation
+        
         logger.info("JSON Entry Mode: Evaluating CEL entry_expression...")
 
         # Get current regime state
@@ -424,11 +431,17 @@ class BotStateHandlersFlat:
         # Get previous regime (for last_closed_regime() function)
         prev_regime = getattr(self.parent, '_prev_regime_name', None)
 
+        # Get chart window reference (for trigger_regime_analysis() in CEL)
+        chart_window = getattr(self.parent, '_chart_window', None)
+        
+        logger.info(f"JSON Entry: chart_window = {type(chart_window).__name__ if chart_window else 'None'}")
+        print(f"[JSON_ENTRY] chart_window = {type(chart_window).__name__ if chart_window else 'None'}", flush=True)
+
         # Evaluate Long Entry
         should_enter_long, long_score, long_reasons = self.parent._json_entry_scorer.should_enter_long(
             features=features,
             regime=regime_state,
-            chart_window=None,  # Bot has no chart window
+            chart_window=chart_window,
             prev_regime=prev_regime
         )
 
@@ -436,7 +449,7 @@ class BotStateHandlersFlat:
         should_enter_short, short_score, short_reasons = self.parent._json_entry_scorer.should_enter_short(
             features=features,
             regime=regime_state,
-            chart_window=None,
+            chart_window=chart_window,
             prev_regime=prev_regime
         )
 

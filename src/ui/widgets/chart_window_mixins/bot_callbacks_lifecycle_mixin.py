@@ -39,6 +39,7 @@ class BotCallbacksLifecycleMixin:
             on_log=self._on_bot_log,
             on_trading_blocked=self._on_trading_blocked,
             on_macd_signal=self._on_macd_signal,
+            chart_window=self,
         )
 
         # Update bot log UI status (Issue #23)
@@ -278,6 +279,7 @@ class BotCallbacksLifecycleMixin:
             on_log=self._on_bot_log,
             on_trading_blocked=self._on_trading_blocked,
             on_macd_signal=self._on_macd_signal,
+            chart_window=self,
         )
 
         # Set JSON config on bot controller
@@ -360,6 +362,7 @@ class BotCallbacksLifecycleMixin:
             on_log=self._on_bot_log,
             on_trading_blocked=self._on_trading_blocked,
             on_macd_signal=self._on_macd_signal,
+            chart_window=self,
         )
         
         # Set JSON Entry config

@@ -291,13 +291,17 @@
     },
     "entry_params": {
       "type": "object",
-      "description": "Entry signal parameters for Analyze Visible Range",
+      "description": "DEPRECATED: Not used by Trading Bot. Only entry_expression (CEL) is evaluated.",
       "additionalProperties": true
     },
     "evaluation_params": {
       "type": "object",
-      "description": "Evaluation parameters for scoring and validation",
+      "description": "DEPRECATED: Not used by Trading Bot. Only entry_expression (CEL) is evaluated.",
       "additionalProperties": true
+    },
+    "entry_expression": {
+      "type": "string",
+      "description": "CEL expression for Trading Bot entry condition. This is the ONLY condition evaluated for trade execution."
     }
   }
 }

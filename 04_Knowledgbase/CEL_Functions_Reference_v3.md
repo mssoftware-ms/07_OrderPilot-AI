@@ -169,7 +169,7 @@
 | Function | Parameters | Returns | Description | Example |
 |----------|-----------|---------|-------------|---------|
 | ✅ `last_closed_regime()` | none | `str` | Regime of last closed candle | `last_closed_regime() == 'EXTREME_BULL'` |
-| ✅ `trigger_regime_analysis()` | none | `bool` | Trigger regime analysis on visible chart | `trigger_regime_analysis() && last_closed_regime() == 'TREND_UP'` |
+| ✅ `trigger_regime_analysis()` | none | `bool` | Trigger regime detection + auto-draw chart lines on regime change | `trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'` |
 
 **Regime Values:**
 - `'EXTREME_BULL'` - Extreme bullish conditions

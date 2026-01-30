@@ -381,6 +381,8 @@ class BotOverlayMixin:
             color: Line color (auto-selected if None)
             label: Optional label text
         """
+        print(f"[BOT_OVERLAY] add_regime_line called: id={line_id}, ts={timestamp}, regime={regime_name}, label={label}", flush=True)
+        
         # Convert timestamp to Unix timestamp
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
@@ -389,6 +391,8 @@ class BotOverlayMixin:
             ts = int(timestamp.timestamp())
         else:
             ts = timestamp
+        
+        print(f"[BOT_OVERLAY] Converted timestamp to: {ts}", flush=True)
 
         # Auto-select color based on regime name ONLY if not provided
         if color is None:
@@ -424,9 +428,10 @@ class BotOverlayMixin:
 
         # Add vertical line to chart
         # Note: Assuming chartAPI has addVerticalLine similar to addHorizontalLine
-        self._execute_js(
-            f"window.chartAPI?.addVerticalLine({ts}, '{color}', '{display_label}', 'solid', '{line_id}');"
-        )
+        js_code = f"window.chartAPI?.addVerticalLine({ts}, '{color}', '{display_label}', 'solid', '{line_id}');"
+        print(f"[BOT_OVERLAY] Executing JS: {js_code}", flush=True)
+        self._execute_js(js_code)
+        print(f"[BOT_OVERLAY] ✅ JS executed for regime line {line_id}", flush=True)
         logger.info(f"Added regime line: {line_id} at {ts} with color {color} ({display_label})")
 
     def clear_regime_lines(self) -> None:

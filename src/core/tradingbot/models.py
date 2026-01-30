@@ -201,6 +201,12 @@ class FeatureVector(BaseModel):
     volume_ratio: float | None = Field(None, ge=0, description="Volume vs avg volume ratio")
     volume_sma: float | None = Field(None, description="Volume moving average")
 
+    # Event source flag
+    is_candle_close: bool = Field(
+        default=False,
+        description="True if features from candle-close event (on_bar), False if from tick (on_tick)"
+    )
+
     @property
     def rsi(self) -> float | None:
         """Alias for 14-period RSI (compatibility)."""

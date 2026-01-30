@@ -1,1 +1,0 @@
-# Tradingbot tests package

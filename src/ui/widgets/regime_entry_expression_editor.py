@@ -28,6 +28,7 @@ from src.ui.widgets.entry_expression_generator import (
     EntryExpressionGenerator, StrategyTemplate
 )
 from src.ui.widgets.regime_json_writer import RegimeJsonWriter
+from src.ui.widgets.cel_function_palette import CelFunctionPalette
 
 logger = logging.getLogger(__name__)
 
@@ -204,12 +205,19 @@ class RegimeEntryExpressionEditor(QWidget):
         return widget
 
     def _create_preview_panel(self) -> QWidget:
-        """Erstellt Expression Preview Panel."""
+        """Erstellt Expression Preview Panel mit Function Palette."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # === Preview Group ===
+        # === Horizontal Splitter: Preview + Function Palette ===
+        h_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # === Left: Preview Group ===
+        preview_widget = QWidget()
+        preview_outer_layout = QVBoxLayout(preview_widget)
+        preview_outer_layout.setContentsMargins(0, 0, 0, 0)
+
         preview_group = QGroupBox("📝 Generated Expression Preview")
         preview_layout = QVBoxLayout(preview_group)
 
@@ -262,7 +270,7 @@ class RegimeEntryExpressionEditor(QWidget):
         self.preview_info_label.setWordWrap(True)
         preview_layout.addWidget(self.preview_info_label)
 
-        layout.addWidget(preview_group, 1)
+        preview_outer_layout.addWidget(preview_group, 1)
 
         # === Current Expression (if exists) ===
         current_group = QGroupBox("💾 Existing Expression in JSON")
@@ -275,7 +283,19 @@ class RegimeEntryExpressionEditor(QWidget):
         self.current_expression_label.setWordWrap(True)
         current_layout.addWidget(self.current_expression_label)
 
-        layout.addWidget(current_group)
+        preview_outer_layout.addWidget(current_group)
+
+        h_splitter.addWidget(preview_widget)
+
+        # === Right: CEL Function Palette ===
+        self._function_palette = CelFunctionPalette()
+        self._function_palette.function_selected.connect(self._on_function_selected)
+        h_splitter.addWidget(self._function_palette)
+
+        # Set splitter sizes (70% preview, 30% palette)
+        h_splitter.setSizes([700, 300])
+
+        layout.addWidget(h_splitter, 1)
 
         return widget
 
@@ -794,6 +814,15 @@ class RegimeEntryExpressionEditor(QWidget):
                 f"Long: {len(long_regimes)} | Short: {len(short_regimes)}"
             )
             self.preview_info_label.setStyleSheet("color: #4CAF50; font-size: 10px;")
+
+    def _on_function_selected(self, name: str, code_snippet: str):
+        """Handler: Funktion aus Palette wurde gewählt.
+        
+        Fügt die Funktion an Cursor-Position im Expression Preview ein.
+        """
+        cursor = self.expression_preview.textCursor()
+        cursor.insertText(code_snippet)
+        self.expression_preview.setFocus()
 
     # === Public API ===
 

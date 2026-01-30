@@ -113,10 +113,11 @@ class RegimeConfigLoaderV2:
                         "indicators": [...],
                         "regimes": [...]
                     }
-                ],
-                "entry_params": {...},
-                "evaluation_params": {...}
+                ]
             }
+
+            Note: entry_params and evaluation_params are deprecated.
+            Only entry_expression (CEL) is used for Trading Bot execution.
 
         Raises:
             RegimeConfigLoadError: If validation fails

@@ -155,8 +155,8 @@ class StreamingMixin:
 
     def _log_tick(self, price: float, volume: float) -> None:
         self.info_label.setText(f"Last: ${price:.2f}")
-        print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
-        # logger.info removed - print statement is sufficient
+        # Tick logging disabled (too verbose for console)
+        # print(f"📊 TICK: {self.current_symbol} @ ${price:.2f} vol={volume}")
 
         # Forward live price into Signals tab (Bitunix Trading API + tables)
         parent = self.parent()

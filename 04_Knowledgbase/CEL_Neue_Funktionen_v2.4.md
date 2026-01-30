@@ -181,45 +181,76 @@ last_closed_regime() == 'EXTREME_BULL' && !is_trade_open(trade) && rsi14.value >
 | **Return** | `bool` - `true` wenn erfolgreich, `false` bei Fehler |
 | **Status** | ✅ Implementiert |
 | **Code** | `src/core/tradingbot/cel_engine.py` (Zeile 1987-2036) |
+| **Update** | 2026-01-30 - Zeichnet jetzt automatisch Regime-Linien im Chart |
 
 **Beschreibung:**
-Löst Regime-Analyse auf dem sichtbaren Chart-Bereich aus. Diese Funktion:
-1. Lädt Regime JSON aus Entry Designer
-2. Führt Regime-Analyse auf sichtbaren Kerzen aus
-3. Updated Regime-Daten für alle sichtbaren Kerzen
-4. Gibt `true` zurück bei Erfolg
+Löst Regime-Erkennung aus und **zeichnet automatisch vertikale Linien im Chart bei Regime-Wechseln**.
+
+**Was diese Funktion macht:**
+1. Triggert `RegimeDisplayMixin._update_regime_from_data()`
+2. Erkennt aktuelles Regime basierend auf Chart-Daten (z.B. "STRONG_BULL", "SIDEWAYS")
+3. **NEU (2026-01-30):** Zeichnet **vertikale Linie im Chart** bei Regime-Wechsel
+4. Updated Regime-Badge in Toolbar
+5. Gibt `true` zurück bei Erfolg
+
+**Regime-Detektion:**
+- Nutzt `RegimeDetectorService` (nicht Entry Designer JSON!)
+- Analysiert ADX, RSI, DI+/DI- aus aktuellen Chart-Daten
+- Erkennt 9 Regime-Level: STRONG_TF, STRONG_BULL, STRONG_BEAR, TF, BULL_EXHAUSTION, BEAR_EXHAUSTION, BULL, BEAR, SIDEWAYS
+
+**Automatische Chart-Linien:**
+Bei Regime-Wechsel (z.B. SIDEWAYS → BULL):
+- ✅ Vertikale Linie wird gezeichnet
+- ✅ Farbe entsprechend Regime (BULL = grün, BEAR = rot, etc.)
+- ✅ Label mit Regime-Name
+- ✅ Linie bleibt persistent
 
 **Funktionsweise:**
 ```
-1. Chart Window Reference holen
-2. trigger_regime_update() aufrufen
-3. RegimeDetector analysiert Kerzen
-4. Regime-Badge wird aktualisiert
-5. Return true/false
+1. Chart Window Reference holen (aus CEL Context)
+2. chart_window.trigger_regime_update(debounce_ms=0) aufrufen
+3. RegimeDisplayMixin._update_regime_from_data() läuft
+4. Regime wird erkannt (z.B. "BULL")
+5. Bei Wechsel: add_regime_line() → JavaScript addVerticalLine()
+6. Return true/false
 ```
 
 **Context Requirements:**
-- `chart_window` - Reference zum Chart Window
-- `chart_window.trigger_regime_update()` - Methode muss verfügbar sein
+- `chart_window` - Reference zum Chart Window (automatisch im JSON Entry Context)
+- `chart_window.trigger_regime_update()` - Methode muss verfügbar sein (✅ seit 2026-01-30)
 
 **Verwendung:**
 ```cel
-// Führe Regime-Analyse VOR Entry-Prüfung aus
-trigger_regime_analysis() && last_closed_regime() == 'EXTREME_BULL'
+// Regime-Analyse + Entry bei STRONG_BULL
+trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'
 
-// Mit no_entry Filter
+// Exhaustion-Filter (keine Entries bei Reversal Warnings)
 trigger_regime_analysis() &&
-!has(cfg.no_trade_regimes, regime) &&
-(last_closed_regime() == 'EXTREME_BULL' || last_closed_regime() == 'EXTREME_BEAR')
+last_closed_regime() != 'BULL_EXHAUSTION' &&
+last_closed_regime() != 'BEAR_EXHAUSTION' &&
+(last_closed_regime() == 'BULL' || last_closed_regime() == 'STRONG_BULL')
 
-// Sicherstellen dass Regime-Daten aktuell sind
-trigger_regime_analysis() &&
-!is_trade_open(trade) &&
-last_closed_regime() == 'BULL' &&
-rsi14.value > 50
+// Mit Trade-Richtung
+trigger_regime_analysis() && (
+  (side == 'long' && last_closed_regime() == 'STRONG_BULL') ||
+  (side == 'short' && last_closed_regime() == 'STRONG_BEAR')
+)
 ```
 
-**Wichtig:** Diese Funktion sollte am Anfang der Entry-Logik aufgerufen werden, um sicherzustellen, dass Regime-Daten aktuell und verfügbar sind.
+**Log-Ausgabe (Beispiel):**
+```
+[REGIME] _update_regime_from_data called
+[REGIME] 🔄 Data changed, detecting regime...
+[REGIME] Current: BULL, Last: SIDEWAYS
+[REGIME] 🎨 Regime changed! Drawing line for BULL
+[BOT_OVERLAY] add_regime_line called: id=regime_BULL_1738281600, ts=1738281600
+[BOT_OVERLAY] ✅ JS executed for regime line regime_BULL_1738281600
+```
+
+**Wichtig:** 
+- Diese Funktion sollte am **Anfang** der Entry-Logik aufgerufen werden
+- Bei **5-Minuten-Kerzen** wechselt Regime nur alle 5 Minuten (beim Candle-Close)
+- Linien erscheinen **nur bei Wechsel**, nicht bei jedem Aufruf
 
 ---
 

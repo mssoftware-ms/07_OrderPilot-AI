@@ -116,8 +116,7 @@ class AlpacaStreamClient(StreamClient):
             self.metrics.status = StreamStatus.CONNECTED
             self.metrics.connected_at = datetime.utcnow()
 
-            print("✅ STOCK STREAM CONNECTED!")
-            logger.info("Alpaca stream connected")
+            logger.info("✅ Alpaca stream connected")
 
             # Emit connection event
             event_bus.emit(Event(
@@ -204,8 +203,7 @@ class AlpacaStreamClient(StreamClient):
                 # Run in thread to avoid blocking - stop_ws may be synchronous
                 await asyncio.to_thread(self._stop_stream_sync)
 
-            print("🔴 STOCK STREAM DISCONNECTED!")
-            logger.info("Alpaca stream disconnected")
+            logger.info("🔴 Alpaca stream disconnected")
 
             # Emit disconnection event
             event_bus.emit(Event(
@@ -396,7 +394,8 @@ class AlpacaStreamClient(StreamClient):
             quote: Alpaca quote object
         """
         try:
-            logger.debug(f"💬 Received quote: {quote.symbol} Bid: ${quote.bid_price} Ask: ${quote.ask_price}")
+            # Quote logging disabled (too verbose for live streams)
+            # logger.debug(f"💬 Received quote: {quote.symbol} Bid: ${quote.bid_price} Ask: ${quote.ask_price}")
             # Create tick with bid/ask
             tick = MarketTick(
                 symbol=quote.symbol,

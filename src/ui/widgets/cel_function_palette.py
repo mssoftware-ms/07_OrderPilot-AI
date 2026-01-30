@@ -148,6 +148,14 @@ class CelFunctionPalette(QWidget):
                 ("False Breakout", "false_breakout()", "False breakout detected"),
                 ("Break of Structure", "break_of_structure()", "BOS detected"),
             ],
+            "Regime Functions": [
+                ("Trigger Regime Analysis", "trigger_regime_analysis()", "Trigger regime detection on chart (updates regime badge & draws lines)"),
+                ("Last Closed Regime", "last_closed_regime()", "Get regime name from previous candle (e.g. 'STRONG_BULL')"),
+                ("Current Regime", "regime", "Current regime name string (e.g. 'STRONG_BULL')"),
+                ("Side Variable", "side", "Trade side: 'long' or 'short' - REQUIRED in entry_expression!"),
+                ("Side is Long", "side == 'long'", "Check if evaluating long entry"),
+                ("Side is Short", "side == 'short'", "Check if evaluating short entry"),
+            ],
             "SMC Functions": [
                 ("Liquidity Swept", "liquidity_swept()", "Liquidity sweep detected"),
                 ("FVG Exists", "fvg_exists()", "Fair Value Gap detected"),
