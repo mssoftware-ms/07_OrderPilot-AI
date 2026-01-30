@@ -242,6 +242,12 @@ class BotTabControlPipeline:
         # Get chart_window reference for CEL regime functions
         # This allows trigger_regime_analysis() and last_closed_regime() to work
         chart_window = self._get_active_chart_window(symbol)
+        if chart_window is None and hasattr(self.parent.parent, "chart_widget"):
+            # Fallback: use embedded chart_widget if available on the host ChartWindow
+            fallback = getattr(self.parent.parent, "chart_widget", None)
+            if fallback and hasattr(fallback, "trigger_regime_update"):
+                logger.debug("JSON Entry: using parent ChartWindow.chart_widget as chart_window fallback")
+                chart_window = fallback
 
         # Get prev_regime from BotController for new_regime_detected()
         # prev_regime is the regime BEFORE the current candle-close
@@ -364,6 +370,9 @@ class BotTabControlPipeline:
                     if chart_symbol and symbol.upper() in str(chart_symbol).upper():
                          if hasattr(window, "chart_widget"):
                              return window.chart_widget
+                         # If chart_widget missing but window can trigger regimes, use window directly
+                         if hasattr(window, "trigger_regime_update"):
+                             return window
 
                 # Also check direct chart widgets (if detached)
                 if hasattr(window, "current_symbol"):

@@ -196,10 +196,20 @@ class RegimeDisplayMixin:
             # Columns needed: timestamp, ema_20, ema_50, adx_14, atr_percent, rsi_14, close
             # We assume these exist. If not, we skip.
 
-            required_cols = {'ema_20', 'ema_50', 'adx_14', 'atr_percent', 'rsi_14', 'close'}
-            if not required_cols.issubset(df.columns):
-                print(f"[REGIME] ⚠️ Missing columns for backfill: {required_cols - set(df.columns)}", flush=True)
-                return
+            required_cols = {'timestamp', 'ema_20', 'ema_50', 'adx_14', 'atr_percent', 'rsi_14', 'close'}
+            missing_required = required_cols - set(df.columns)
+            if missing_required:
+                # Try to build timestamp from 'time' or datetime index
+                if 'timestamp' in missing_required:
+                    if 'time' in df.columns:
+                        df['timestamp'] = df['time']
+                        missing_required -= {'timestamp'}
+                    elif isinstance(df.index, pd.DatetimeIndex):
+                        df['timestamp'] = (df.index.astype('int64') // 10**9).astype(int)
+                        missing_required -= {'timestamp'}
+                if missing_required:
+                    print(f"[REGIME] ⚠️ Missing columns for backfill: {missing_required}", flush=True)
+                    return
 
             print(f"[REGIME] 🔙 Starting backfill analysis on {len(df)} rows...", flush=True)
 
@@ -287,6 +297,16 @@ class RegimeDisplayMixin:
         """
         required = ['ema_20', 'ema_50', 'adx_14', 'rsi_14', 'atr_percent']
         missing = [col for col in required if col not in df.columns]
+
+        # Ensure timestamp column exists for downstream drawing/backfill
+        if 'timestamp' not in df.columns:
+            if 'time' in df.columns:
+                df['timestamp'] = df['time']
+            elif isinstance(df.index, pd.DatetimeIndex):
+                df['timestamp'] = (df.index.astype('int64') // 10**9).astype(int)
+            else:
+                # Fallback to range index (seconds) to avoid zeros
+                df['timestamp'] = range(len(df))
 
         if not missing:
             return df
@@ -450,7 +470,12 @@ class RegimeDisplayMixin:
 
             print(f"[REGIME] DataFrame has {len(df)} rows", flush=True)
 
-            last_timestamp = df.iloc[-1]['timestamp'] if 'timestamp' in df.columns else df.index[-1]
+            if 'timestamp' in df.columns:
+                last_timestamp = df.iloc[-1]['timestamp']
+            elif 'time' in df.columns:
+                last_timestamp = df.iloc[-1]['time']
+            else:
+                last_timestamp = df.index[-1]
             print(f"[REGIME] Last timestamp (raw): {last_timestamp}", flush=True)
 
             # Safe timestamp conversion
@@ -465,7 +490,9 @@ class RegimeDisplayMixin:
                     return
 
             # Convert to seconds (not ms)
-            if ts_value > 1e10:
+            if ts_value > 1e12:  # nanoseconds
+                last_timestamp = int(ts_value / 1_000_000_000)
+            elif ts_value > 1e10:  # milliseconds
                 last_timestamp = int(ts_value / 1000)
             else:
                 last_timestamp = int(ts_value)

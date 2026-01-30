@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING
 from src.common.event_bus import Event, EventType, event_bus
 from src.core.market_data.types import AssetClass, DataRequest, DataSource, HistoricalBar, Timeframe
 from src.database import get_db_manager
+from sqlalchemy.exc import IntegrityError
+
 from src.database.models import MarketBar
 
 if TYPE_CHECKING:
@@ -269,9 +271,13 @@ class HistoryProviderFetching:
                     ))
 
                 if new_bars:
-                    session.bulk_save_objects(new_bars)
-                    session.commit()
-                    logger.debug(f"Stored {len(new_bars)} bars to database")
+                    try:
+                        session.bulk_save_objects(new_bars)
+                        session.commit()
+                        logger.debug(f"Stored {len(new_bars)} bars to database")
+                    except IntegrityError as e:
+                        session.rollback()
+                        logger.debug(f"Race condition in cache storage (ignored): {e}")
                 else:
                     logger.debug("All fetched bars already cached locally")
 
@@ -279,8 +285,8 @@ class HistoryProviderFetching:
             session.rollback()
             # If it's an integrity error/unique constraint, just log warning and move on
             if "UNIQUE constraint" in str(e) or "IntegrityError" in str(e) or "UniqueViolation" in str(e):
-                 logger.debug(f"Race condition in cache storage: {e}")
-                 return
+                logger.debug(f"Race condition in cache storage: {e}")
+                return
 
             logger.error(f"Failed to store bars to database: {e}")
 

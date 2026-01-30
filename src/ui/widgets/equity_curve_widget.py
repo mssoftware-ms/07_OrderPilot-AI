@@ -339,10 +339,23 @@ class EquityCurveWidget(QWidget):
                         updateSettings(settings);
                     }});
 
-                    // Load initial data if available
-                    const initialData = pyBridge.getData();
-                    if (initialData && initialData !== '{{}}') {{
-                        loadData(JSON.parse(initialData));
+                    // Load initial data if available (Qt slot may return value or Promise)
+                    const maybePromise = pyBridge.getData();
+                    if (maybePromise && typeof maybePromise.then === 'function') {{
+                        maybePromise
+                            .then(function(initialData) {{
+                                if (initialData && initialData !== '{{}}') {{
+                                    loadData(JSON.parse(initialData));
+                                }}
+                            }})
+                            .catch(function(err) {{
+                                console.error('Failed to load initial equity data', err);
+                            }});
+                    }} else {{
+                        const initialData = maybePromise;
+                        if (initialData && initialData !== '{{}}') {{
+                            loadData(JSON.parse(initialData));
+                        }}
                     }}
                 }}
 

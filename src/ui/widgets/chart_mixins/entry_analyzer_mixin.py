@@ -975,7 +975,7 @@ class EntryAnalyzerMixin:
         min_diff = float('inf')
 
         for candle in self._candles:
-            candle_time = candle.get('time', 0)
+            candle_time = candle.get('time', candle.get('timestamp', 0))
             diff = abs(candle_time - timestamp)
             if diff < min_diff:
                 min_diff = diff
@@ -1148,7 +1148,13 @@ class EntryAnalyzerMixin:
         # Draw new regime lines (START only for each period)
         print(f"[ENTRY_ANALYZER] Drawing {len(regimes)} regime lines...", flush=True)
         for i, regime_data in enumerate(regimes):
-            start_timestamp = regime_data.get('start_timestamp', 0)
+            raw_start_ts = regime_data.get('start_timestamp', 0)
+            # Normalize to seconds for lightweight-charts (handles ms inputs)
+            start_timestamp = int(raw_start_ts)
+            if start_timestamp > 1e12:
+                start_timestamp //= 1000
+            elif start_timestamp > 1e10:
+                start_timestamp = int(start_timestamp / 1000)
             regime = regime_data.get('regime', 'UNKNOWN')
             score = regime_data.get('score', 0)
             duration_bars = regime_data.get('duration_bars', 0)
@@ -1158,7 +1164,7 @@ class EntryAnalyzerMixin:
             start_color, end_color = get_regime_color(regime)
 
             logger.debug(f"Regime {i}: {regime} -> color: {start_color}")
-            print(f"[ENTRY_ANALYZER] Regime {i}: {regime} at timestamp {start_timestamp}, color: {start_color}", flush=True)
+            print(f"[ENTRY_ANALYZER] Regime {i}: {regime} at timestamp {start_timestamp} (raw={raw_start_ts}), color: {start_color}", flush=True)
 
             # Create label (just regime name with score, no "START" prefix)
             regime_label = f"{regime.replace('_', ' ')} ({score:.1f})"

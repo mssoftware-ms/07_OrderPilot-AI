@@ -2034,6 +2034,13 @@ class CELEngine:
             chart_window = ctx['chart_window']
             print(f"[CEL] ✅ chart_window found: {type(chart_window).__name__}", flush=True)
 
+            # Fallback: if ChartWindow wrapper was injected, unwrap to its chart_widget
+            if not hasattr(chart_window, 'trigger_regime_update') and hasattr(chart_window, 'chart_widget'):
+                inner = getattr(chart_window, 'chart_widget')
+                if hasattr(inner, 'trigger_regime_update'):
+                    print("[CEL] ℹ️ Unwrapped chart_window.chart_widget for regime update", flush=True)
+                    chart_window = inner
+
             # Check if regime update is available (from RegimeDisplayMixin)
             if not hasattr(chart_window, 'trigger_regime_update'):
                 logger.warning("❌ trigger_regime_analysis: Chart window has no trigger_regime_update method")
