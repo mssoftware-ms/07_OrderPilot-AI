@@ -607,18 +607,141 @@ class RegimeDisplayMixin:
         return last_regime
 
     def _compute_indicator_series(self, df: pd.DataFrame, indicators_def: list[dict]):
-        """
-        Compute pandas Series for all indicators defined in the optimizer JSON.
+        """Compute pandas Series for all indicators defined in the optimizer JSON."""
+        indicator_series: dict[str, dict[str, pd.Series]] = {}
 
-        Refactored to use shared ChartCalculatorAdapter for code reuse.
-        This eliminates ~136 lines of duplicate indicator calculation logic.
-        """
-        # Lazy-load adapter to avoid circular imports
-        if not hasattr(self, '_chart_calculator_adapter'):
-            from src.ui.widgets.chart_mixins.chart_calculator_adapter import ChartCalculatorAdapter
-            self._chart_calculator_adapter = ChartCalculatorAdapter()
+        for ind in indicators_def:
+            name = ind.get("name")
+            ind_type = (ind.get("type") or "").upper()
+            params = ind.get("params") or []
 
-        return self._chart_calculator_adapter.compute_indicator_series(df, indicators_def)
+            def _param(pname, default=None):
+                for p in params:
+                    if p.get("name") == pname:
+                        return p.get("value", default)
+                return default
+
+            if not name or not ind_type:
+                raise ValueError("Indicator definition missing name or type")
+
+            if ind_type == "ADX":
+                period = int(_param("period", 14))
+                adx_res = ta.adx(df["high"], df["low"], df["close"], length=period)
+                if adx_res is None or adx_res.empty:
+                    raise ValueError(f"Indicator {name} (ADX) produced no data")
+                adx_col = next((c for c in adx_res.columns if "ADX" in c.upper()), None)
+                dmp_col = next((c for c in adx_res.columns if "DMP" in c.upper()), None)
+                dmn_col = next((c for c in adx_res.columns if "DMN" in c.upper()), None)
+                adx_series = adx_res[adx_col] if adx_col else pd.Series([None]*len(df), index=df.index)
+                di_diff = None
+                if dmp_col and dmn_col:
+                    di_diff = (adx_res[dmp_col] - adx_res[dmn_col]).abs()
+                indicator_series[name] = {
+                    "adx": adx_series,
+                    "di_diff": di_diff if di_diff is not None else pd.Series([None]*len(df), index=df.index),
+                }
+
+            elif ind_type == "RSI":
+                period = int(_param("period", 14))
+                rsi_res = ta.rsi(df["close"], length=period)
+                if rsi_res is None or rsi_res.empty:
+                    raise ValueError(f"Indicator {name} (RSI) produced no data")
+                indicator_series[name] = {"rsi": rsi_res}
+
+            elif ind_type == "ATR":
+                period = int(_param("period", 14))
+                atr_res = ta.atr(df["high"], df["low"], df["close"], length=period)
+                if atr_res is None or atr_res.empty:
+                    raise ValueError(f"Indicator {name} (ATR) produced no data")
+                close_series = df["close"]
+                atr_pct = (atr_res / close_series) * 100
+                indicator_series[name] = {"atr": atr_res, "atr_percent": atr_pct}
+
+            elif ind_type == "EMA":
+                period = int(_param("period", 20))
+                ema_res = ta.ema(df["close"], length=period)
+                if ema_res is None or ema_res.empty:
+                    raise ValueError(f"Indicator {name} (EMA) produced no data")
+                indicator_series[name] = {"value": ema_res}
+
+            elif ind_type == "SMA":
+                period = int(_param("period", 20))
+                sma_res = ta.sma(df["close"], length=period)
+                if sma_res is None or sma_res.empty:
+                    raise ValueError(f"Indicator {name} (SMA) produced no data")
+                indicator_series[name] = {"value": sma_res}
+
+            elif ind_type == "MACD":
+                fast = int(_param("fast", 12))
+                slow = int(_param("slow", 26))
+                signal = int(_param("signal", 9))
+                macd_res = ta.macd(df["close"], fast=fast, slow=slow, signal=signal)
+                if macd_res is None or macd_res.empty:
+                    raise ValueError(f"Indicator {name} (MACD) produced no data")
+                macd_col = next((c for c in macd_res.columns if "MACD" in c.upper() and "SIGNAL" not in c.upper() and "HIST" not in c.upper()), None)
+                signal_col = next((c for c in macd_res.columns if "SIGNAL" in c.upper()), None)
+                hist_col = next((c for c in macd_res.columns if "HIST" in c.upper()), None)
+                indicator_series[name] = {
+                    "macd": macd_res[macd_col] if macd_col else pd.Series([None]*len(df), index=df.index),
+                    "signal": macd_res[signal_col] if signal_col else pd.Series([None]*len(df), index=df.index),
+                    "hist": macd_res[hist_col] if hist_col else pd.Series([None]*len(df), index=df.index),
+                }
+
+            elif ind_type == "BB":
+                length = int(_param("period", 20))
+                mult = float(_param("mult", 2.0))
+                bb_res = ta.bbands(df["close"], length=length, std=mult)
+                if bb_res is None or bb_res.empty:
+                    raise ValueError(f"Indicator {name} (BB) produced no data")
+                upper = next((c for c in bb_res.columns if "UPPER" in c.upper()), None)
+                lower = next((c for c in bb_res.columns if "LOWER" in c.upper()), None)
+                mid = next((c for c in bb_res.columns if "MID" in c.upper() or "MIDDLE" in c.upper()), None)
+                width = next((c for c in bb_res.columns if "WIDTH" in c.upper()), None)
+                indicator_series[name] = {
+                    "upper": bb_res[upper] if upper else pd.Series([None]*len(df), index=df.index),
+                    "lower": bb_res[lower] if lower else pd.Series([None]*len(df), index=df.index),
+                    "middle": bb_res[mid] if mid else pd.Series([None]*len(df), index=df.index),
+                    "width": bb_res[width] if width else pd.Series([None]*len(df), index=df.index),
+                }
+
+            elif ind_type == "STOCH":
+                k = int(_param("k", 14))
+                d = int(_param("d", 3))
+                stoch_res = ta.stoch(df["high"], df["low"], df["close"], k=k, d=d)
+                if stoch_res is None or stoch_res.empty:
+                    raise ValueError(f"Indicator {name} (STOCH) produced no data")
+                k_col = next((c for c in stoch_res.columns if "K" in c.upper()), None)
+                d_col = next((c for c in stoch_res.columns if "D" in c.upper()), None)
+                indicator_series[name] = {
+                    "k": stoch_res[k_col] if k_col else pd.Series([None]*len(df), index=df.index),
+                    "d": stoch_res[d_col] if d_col else pd.Series([None]*len(df), index=df.index),
+                }
+
+            elif ind_type == "MFI":
+                period = int(_param("period", 14))
+                mfi_res = ta.mfi(df["high"], df["low"], df["close"], df["volume"], length=period)
+                if mfi_res is None or mfi_res.empty:
+                    raise ValueError(f"Indicator {name} (MFI) produced no data")
+                indicator_series[name] = {"mfi": mfi_res}
+
+            elif ind_type == "CCI":
+                period = int(_param("period", 20))
+                cci_res = ta.cci(df["high"], df["low"], df["close"], length=period)
+                if cci_res is None or cci_res.empty:
+                    raise ValueError(f"Indicator {name} (CCI) produced no data")
+                indicator_series[name] = {"cci": cci_res}
+
+            elif ind_type == "CHOP":
+                length = int(_param("period", 14))
+                chop_res = ta.chop(df["high"], df["low"], df["close"], length=length)
+                if chop_res is None or chop_res.empty:
+                    raise ValueError(f"Indicator {name} (CHOP) produced no data")
+                indicator_series[name] = {"chop": chop_res}
+
+            else:
+                raise ValueError(f"Unsupported indicator type in optimizer JSON: {ind_type}")
+
+        return indicator_series
 
     def _show_regime_error_popup(self, message: str) -> None:
         """Show a blocking popup with regime error info."""
