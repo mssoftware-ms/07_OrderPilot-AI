@@ -11,11 +11,11 @@
 | Phase | Tasks | Erledigt | Fortschritt |
 |-------|-------|----------|-------------|
 | **Phase 1: Duplikate eliminieren** | 20 | 4 | 20% |
-| **Phase 2: Kritische Komplexität** | 10 | 5 | 50% |
+| **Phase 2: Kritische Komplexität** | 10 | 6 | 60% |
 | **Phase 3: File Splitting** | 14 | 0 | 0% |
 | **Phase 4: Mittlere Komplexität** | 15 | 0 | 0% |
 | **Phase 5: Strukturverbesserungen** | 10 | 0 | 0% |
-| **GESAMT** | **69** | **9** | **13.0%** |
+| **GESAMT** | **69** | **10** | **14.5%** |
 
 ---
 
@@ -262,11 +262,27 @@
 - [ ] **Assigned:** [AGENT]
 - [ ] **Status:** ⏳ PENDING
 
-#### ✅ Task 2.2.3: _generate_parameter_combinations() (CC=47)
-- [ ] **Datei:** `src/ui/threads/indicator_optimization_thread.py:329`
-- [ ] Parameter-Kombinationen mit itertools vereinfachen
-- [ ] **Assigned:** [AGENT]
-- [ ] **Status:** ⏳ PENDING
+#### ✅ Task 2.2.3: _generate_parameter_combinations() (CC=47 → 2) ✅ COMPLETED
+- [x] **Datei:** `src/ui/threads/indicator_optimization_thread.py:339`
+- [x] **Pattern:** Iterator Pattern mit itertools.product()
+- [x] **Refactored:** 2026-01-31 (~1.5h)
+- [x] **CC:** 47 → 2 (-95.7%)
+- [x] **LOC:** 153 → 35 (-77.1%)
+- [x] **Tests:** 14 baseline tests (all GREEN)
+- [x] **Changes:**
+  - Replaced 153 lines of nested loops with ParameterCombinationGenerator
+  - Uses itertools.product() for cartesian products
+  - Added IndicatorParameterFactory for special cases
+  - Supports int/float/categorical/derived parameters
+- [x] **Files:**
+  - Modified: `src/ui/threads/indicator_optimization_thread.py`
+  - New: `src/optimization/parameter_generator.py` (240 LOC, CC=2-7)
+  - New: `src/optimization/__init__.py`
+  - Tests: `tests/test_baseline_parameter_combinations.py` (14 tests)
+  - Docs: `docs/refactoring/task_2.2.3_parameter_combinations_refactoring.md`
+- [x] **Commit:** `b9368b7`
+- [x] **Assigned:** CODER-001 (Code Implementation Agent)
+- [x] **Status:** ✅ COMPLETED
 
 #### ✅ Task 2.2.4: generate_entries() (CC=42)
 - [ ] **Datei:** `src/analysis/entry_signals/entry_signal_engine.py:740`
