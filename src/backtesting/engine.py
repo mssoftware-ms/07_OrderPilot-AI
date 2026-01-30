@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from .schema_types import TradingBotConfig, Condition, ConditionGroup, RegimeDef, StrategyDef, RiskSettings
 from .data_loader import DataLoader
-from .errors import DataLoadError, ConfigurationError, IndicatorError, format_error_for_ui
+from .errors import DataLoadError, ConfigurationError, IndicatorError
 
 logger = logging.getLogger(__name__)
 

@@ -36,11 +36,6 @@ from ..chart_window_manager import ChartWindowManager
 from ..icons import set_icon_theme
 from ..themes import ThemeManager
 from ..widgets.alerts import AlertsWidget
-from ..widgets.dashboard import DashboardWidget
-from ..widgets.indicators import IndicatorsWidget
-from ..widgets.orders import OrdersWidget
-from ..widgets.performance_dashboard import PerformanceDashboard
-from ..widgets.positions import PositionsWidget
 from ..widgets.watchlist import WatchlistWidget
 
 from ..app_console_utils import _show_console_window

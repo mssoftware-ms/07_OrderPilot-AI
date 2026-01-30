@@ -140,6 +140,22 @@ class RegimeDisplayMixin:
                         if range_data and "from" in range_data and "to" in range_data:
                             start_ts = pd.to_datetime(int(range_data["from"]), unit="s")
                             end_ts = pd.to_datetime(int(range_data["to"]), unit="s")
+                            idx_tz = getattr(df.index, "tz", None)
+                            if idx_tz:
+                                if start_ts.tzinfo is None:
+                                    start_ts = start_ts.tz_localize(idx_tz)
+                                else:
+                                    start_ts = start_ts.tz_convert(idx_tz)
+                                if end_ts.tzinfo is None:
+                                    end_ts = end_ts.tz_localize(idx_tz)
+                                else:
+                                    end_ts = end_ts.tz_convert(idx_tz)
+                            else:
+                                # df index is tz-naive; drop tz if incoming is aware
+                                if start_ts.tzinfo is not None:
+                                    start_ts = start_ts.tz_convert(None)
+                                if end_ts.tzinfo is not None:
+                                    end_ts = end_ts.tz_convert(None)
                             df_slice = df[(df.index >= start_ts) & (df.index <= end_ts)]
                             if df_slice.empty:
                                 df_slice = df  # fallback to full data if slice empty

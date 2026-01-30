@@ -373,7 +373,7 @@ class ToolbarMixin:
             return True
         return False
 
-    def on_data_provider_changed(self, provider_name: str):
+    def on_data_provider_changed(self, _provider_name: str):
         """Handle data provider selection changes."""
         try:
             index = self.data_provider_combo.currentIndex()

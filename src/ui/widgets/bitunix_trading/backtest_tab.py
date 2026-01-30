@@ -672,68 +672,6 @@ class BacktestTab(
             return None
 
 
-            def backtest_signal_callback(candle, history_1m, mtf_data):
-                """Simplified signal callback for backtest."""
-                if history_1m is None or len(history_1m) < 50:
-                    return None
-
-                try:
-                    # Calculate indicators (IndicatorEngine caches automatically!)
-                    df = self._calculate_indicators(history_1m, indicator_engine)
-
-                    # Calculate entry score
-                    score_result = entry_engine.calculate(
-                        df,
-                        regime_result=None,  # Skip regime for speed
-                        symbol="BTCUSDT",
-                        timeframe="1m"
-                    )
-
-                    if not score_result or score_result.final_score < min_score_for_signal:
-                        return None
-
-                    # Get ATR for SL/TP
-                    atr = df['atr_14'].iloc[-1] if 'atr_14' in df.columns else (candle.close * 0.02)
-                    current_price = candle.close
-                    direction_str = score_result.direction.value if hasattr(score_result.direction, 'value') else str(score_result.direction)
-
-                    # Generate signal
-                    if direction_str == "LONG":
-                        return {
-                            "action": "buy",
-                            "stop_loss": current_price - (atr * sl_atr_mult),
-                            "take_profit": current_price + (atr * tp_atr_mult),
-                            "sl_distance": atr * sl_atr_mult,
-                            "leverage": 1,
-                            "reason": f"Score: {score_result.final_score:.2f}",
-                            "confidence": score_result.final_score,
-                            "atr": atr,
-                        }
-                    elif direction_str == "SHORT":
-                        return {
-                            "action": "sell",
-                            "stop_loss": current_price + (atr * sl_atr_mult),
-                            "take_profit": current_price - (atr * tp_atr_mult),
-                            "sl_distance": atr * sl_atr_mult,
-                            "leverage": 1,
-                            "reason": f"Score: {score_result.final_score:.2f}",
-                            "confidence": score_result.final_score,
-                            "atr": atr,
-                        }
-
-                except Exception as e:
-                    logger.warning(f"Signal generation error: {e}")
-
-                return None
-
-            logger.info("Signal callback created with simplified logic")
-            return backtest_signal_callback
-
-        except ImportError as e:
-            logger.warning(f"Could not create signal callback: {e}")
-            return None
-
-
     def _calculate_indicators(self, df, indicator_engine):
         """
         Calculate indicators with IndicatorEngine (uses internal cache).
@@ -805,5 +743,4 @@ class BacktestTab(
                 checkbox = checkbox_widget.findChild(QCheckBox)
                 if checkbox:
                     checkbox.setChecked(checked)
-
 

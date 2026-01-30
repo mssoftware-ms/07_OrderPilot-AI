@@ -250,7 +250,6 @@ class EmbeddedTradingViewChart(
 
                 # If we have a 'time' column (unix timestamp), find start of today
                 if 'time' in self.data.columns:
-                    import time as time_mod
                     from datetime import datetime, timezone
 
                     # Get start of today (UTC) - approximate since market hours vary
