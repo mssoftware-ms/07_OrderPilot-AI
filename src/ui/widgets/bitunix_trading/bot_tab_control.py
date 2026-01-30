@@ -201,6 +201,23 @@ class BotTabControl:
             if indicator_json:
                 self._log(f"✅ Indicator JSON: {Path(indicator_json).name}")
 
+            # Propagate regime JSON path to the active ChartWindow/chart_widget for regime display
+            try:
+                current = self.parent
+                chart_window = None
+                while current:
+                    if type(current).__name__ == "ChartWindow":
+                        chart_window = current
+                        break
+                    current = current.parent()
+                if chart_window:
+                    setattr(chart_window, "json_regime_config_path", regime_json)
+                    if hasattr(chart_window, "chart_widget"):
+                        setattr(chart_window.chart_widget, "json_regime_config_path", regime_json)
+                        self._log("📄 Regime JSON path propagated to chart for display")
+            except Exception as e:
+                logger.warning(f"Failed to propagate regime json path: {e}")
+
             # Zeige Entry Expression (gekürzt)
             expr_preview = self._json_entry_config.entry_expression
             if len(expr_preview) > 80:

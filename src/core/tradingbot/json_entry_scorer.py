@@ -316,8 +316,8 @@ class JsonEntryScorer:
             # Volatility (flat aus Regime)
             "volatility": regime.volatility.value,
 
-            # Chart Window Reference (für CEL trigger_regime_analysis())
-            "chart_window": chart_window,
+        # Chart Window Reference (für CEL trigger_regime_analysis())
+        "chart_window": chart_window,
 
             # Last Closed Candle mit Regime (für CEL last_closed_regime())
             "last_closed_candle": (
@@ -331,6 +331,14 @@ class JsonEntryScorer:
         print(f"[JSON_SCORER] chart_window in context: {'chart_window' in context}", flush=True)
         if 'chart_window' in context and context['chart_window']:
             print(f"[JSON_SCORER] chart_window type: {type(context['chart_window']).__name__}", flush=True)
+
+            # Propagate JSON regime config path to chart widget for regime display
+            try:
+                if hasattr(context['chart_window'], 'chart_widget'):
+                    setattr(context['chart_window'].chart_widget, 'json_regime_config_path', self.config.regime_json_path)
+                setattr(context['chart_window'], 'json_regime_config_path', self.config.regime_json_path)
+            except Exception:
+                pass
         else:
             print(f"[JSON_SCORER] ❌ chart_window is None or missing!", flush=True)
 

@@ -1,0 +1,362 @@
+{
+  "schema_version": "2.0.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-30T07:59:12Z",
+    "updated_at": "2026-01-30T07:59:12Z",
+    "tags": [
+      "BTCUSDT",
+      "5m",
+      "regime",
+      "optimization"
+    ],
+    "notes": "Rank #1 optimization result applied on 2026-01-30 07:59:12 UTC. Score: 54.00. Trial: 1",
+    "trading_style": "Daytrading",
+    "description": "Optimized regime configuration for BTCUSDT 5m with 3 indicators and 9 regimes."
+  },
+  "optimization_results": [
+    {
+      "timestamp": "2026-01-30T07:59:12Z",
+      "score": 54.0,
+      "trial_number": 1,
+      "applied": true,
+      "indicators": [
+        {
+          "name": "STRENGTH_ADX",
+          "type": "ADX",
+          "params": [
+            {
+              "name": "period",
+              "value": 18,
+              "range": {
+                "min": 10,
+                "max": 25,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_threshold",
+              "value": 12,
+              "range": {
+                "min": 3,
+                "max": 15,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "MOMENTUM_RSI",
+          "type": "RSI",
+          "params": [
+            {
+              "name": "period",
+              "value": 20,
+              "range": {
+                "min": 9,
+                "max": 21,
+                "step": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "VOLATILITY_ATR",
+          "type": "ATR",
+          "params": [
+            {
+              "name": "period",
+              "value": 16,
+              "range": {
+                "min": 10,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "strong_move_pct",
+              "value": 0.8,
+              "range": {
+                "min": 0.5,
+                "max": 3.0,
+                "step": 0.1
+              }
+            },
+            {
+              "name": "extreme_move_pct",
+              "value": 4,
+              "range": {
+                "min": 2.0,
+                "max": 5.0,
+                "step": 0.5
+              }
+            }
+          ]
+        }
+      ],
+      "regimes": [
+        {
+          "id": "STRONG_TF",
+          "name": "Extremer Trend (Strong Trend Following)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 46.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 16.0,
+              "range": {
+                "min": 15,
+                "max": 30,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 100,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BULL",
+          "name": "Starker Aufwaertstrend (RSI bestaetigt)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 35.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 10.0,
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_confirm_bull",
+              "value": 64.0,
+              "range": {
+                "min": 50,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 95,
+          "scope": "entry"
+        },
+        {
+          "id": "STRONG_BEAR",
+          "name": "Starker Abwaertstrend (RSI bestaetigt)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 33.0,
+              "range": {
+                "min": 25,
+                "max": 40,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 11.0,
+              "range": {
+                "min": 8,
+                "max": 20,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_confirm_bear",
+              "value": 40.0,
+              "range": {
+                "min": 35,
+                "max": 50,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 94,
+          "scope": "entry"
+        },
+        {
+          "id": "TF",
+          "name": "Trend Following",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 22.0,
+              "range": {
+                "min": 20,
+                "max": 35,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 14.0,
+              "range": {
+                "min": 5,
+                "max": 15,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 85,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL_EXHAUSTION",
+          "name": "Aufwaertstrend Erschoepfung (Trendwende-Warnung)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 27.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 7.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_exhaustion_max",
+              "value": 38.0,
+              "range": {
+                "min": 35,
+                "max": 45,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 82,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR_EXHAUSTION",
+          "name": "Abwaertstrend Erschoepfung (Trendwende-Warnung)",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 16.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 2.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            },
+            {
+              "name": "rsi_exhaustion_min",
+              "value": 59.0,
+              "range": {
+                "min": 55,
+                "max": 65,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 81,
+          "scope": "entry"
+        },
+        {
+          "id": "BULL",
+          "name": "Aufwaertstrend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 21.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 7.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 80,
+          "scope": "entry"
+        },
+        {
+          "id": "BEAR",
+          "name": "Abwaertstrend",
+          "thresholds": [
+            {
+              "name": "adx_min",
+              "value": 27.0,
+              "range": {
+                "min": 15,
+                "max": 28,
+                "step": 1
+              }
+            },
+            {
+              "name": "di_diff_min",
+              "value": 8.0,
+              "range": {
+                "min": 2,
+                "max": 8,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 79,
+          "scope": "entry"
+        },
+        {
+          "id": "SIDEWAYS",
+          "name": "Seitwaerts / Range",
+          "thresholds": [
+            {
+              "name": "adx_max",
+              "value": 15.0,
+              "range": {
+                "min": 15,
+                "max": 25,
+                "step": 1
+              }
+            }
+          ],
+          "priority": 50,
+          "scope": "entry"
+        }
+      ]
+    }
+  ]
+}

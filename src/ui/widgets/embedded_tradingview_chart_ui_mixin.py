@@ -124,6 +124,94 @@ class EmbeddedTradingViewChartUIMixin:
 
         self.web_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.web_view.customContextMenuRequested.connect(self._show_marking_context_menu)
+
+    def _export_chart_with_overlays(self) -> None:
+        """Export the current chart (incl. overlays) to a PNG via JS snapshot."""
+        try:
+            self._save_chart_png()
+        except Exception as e:
+            logger.error(f"Export failed: {e}", exc_info=True)
+
+    def _export_chart_as_json(self) -> None:
+        """Export current chart (candles + drawings) as JSON snapshot."""
+        try:
+            js = """
+            (() => {
+                if (!window.chartAPI || !window.chartAPI.exportJson) return null;
+                return window.chartAPI.exportJson();
+            })();
+            """
+
+            def _on_eval_finished(result):
+                if not result:
+                    logger.warning("Chart JSON export failed (no data)")
+                    return
+                try:
+                    from pathlib import Path
+                    import time as _time
+                    ts = _time.strftime("%Y%m%d_%H%M%S")
+                    export_dir = Path(".AI_Exchange/export")
+                    export_dir.mkdir(exist_ok=True)
+                    path = export_dir / f"chart_export_{ts}.json"
+                    path.write_text(result, encoding="utf-8")
+                    logger.info(f"Chart JSON export saved to {path}")
+                    self._notify_export_success(path, "JSON")
+                    # Also export PNG with same timestamp for pairing
+                    self._save_chart_png(ts=ts)
+                except Exception as e:
+                    logger.error(f"Failed to save chart JSON export: {e}", exc_info=True)
+
+            self.web_view.page().runJavaScript(js, _on_eval_finished)
+        except Exception as e:
+            logger.error(f"JSON export failed: {e}", exc_info=True)
+
+    def _save_chart_png(self, ts: str | None = None) -> None:
+        """Helper: capture chart PNG via JS and save to exports/ with optional timestamp."""
+        import time as _time
+
+        ts_used = ts or _time.strftime("%Y%m%d_%H%M%S")
+
+        js = """
+        (async () => {
+            if (!window.chartAPI || !window.chartAPI.exportPng) {
+                return null;
+            }
+            const dataUrl = await window.chartAPI.exportPng();
+            return dataUrl;
+        })();
+        """
+
+        def _on_png(result):
+            if not result:
+                logger.warning("Chart PNG export failed (no dataURL)")
+                return
+            try:
+                import base64
+                from pathlib import Path
+
+                header = "data:image/png;base64,"
+                b64 = result[len(header) :] if result.startswith(header) else result
+                png_bytes = base64.b64decode(b64)
+                export_dir = Path(".AI_Exchange/export")
+                export_dir.mkdir(exist_ok=True)
+                path = export_dir / f"chart_export_{ts_used}.png"
+                path.write_bytes(png_bytes)
+                logger.info(f"Chart export saved to {path}")
+                self._notify_export_success(path, "PNG")
+            except Exception as e:
+                logger.error(f"Failed to save chart export: {e}", exc_info=True)
+
+        self.web_view.page().runJavaScript(js, _on_png)
+
+    def _notify_export_success(self, path, kind: str) -> None:
+        """Show a small message after export completes."""
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.information(self, f"{kind} Export", f"Export gespeichert:\n{path}")
+        except Exception:
+            print(f"[EXPORT] {kind} saved to {path}", flush=True)
+
     def _show_marking_context_menu(self, pos):
         """Show context menu for chart markings."""
         from PyQt6.QtWidgets import QMenu, QInputDialog
@@ -148,6 +236,16 @@ class EmbeddedTradingViewChartUIMixin:
         # Indicators Toggle
         menu.addSeparator()
         self._add_indicators_toggle_menu(menu)
+
+        # Export menu
+        export_action = QAction("📤 Chart exportieren (PNG)", self)
+        export_action.triggered.connect(self._export_chart_with_overlays)
+        menu.addSeparator()
+        menu.addAction(export_action)
+
+        export_json_action = QAction("📄 Chart exportieren (JSON)", self)
+        export_json_action.triggered.connect(self._export_chart_as_json)
+        menu.addAction(export_json_action)
 
         self._add_clear_actions(menu)
 

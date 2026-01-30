@@ -223,8 +223,12 @@ class RegimeBadgeWidget(QFrame):
             self.set_regime("UNKNOWN")
             return
 
+        regime_label = getattr(result, "regime_name", None)
+        if not regime_label:
+            regime_label = result.regime.value if hasattr(result.regime, 'value') else str(result.regime)
+
         self.set_regime(
-            regime=result.regime.value if hasattr(result.regime, 'value') else str(result.regime),
+            regime=regime_label,
             adx=result.adx,
             gate_reason=result.gate_reason,
             allows_entry=result.allows_market_entry,

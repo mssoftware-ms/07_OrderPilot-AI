@@ -187,6 +187,50 @@ class ChartWindowLifecycle:
             except Exception as e:
                 logger.debug(f"Error cleaning up Trading Bot window: {e}")
 
+    def save_chart_state_snapshot(self) -> None:
+        """Save current chart state (like on close) without closing the window."""
+        try:
+            settings_key = self.parent._get_settings_key()
+
+            def on_range_received(visible_range):
+                try:
+                    if visible_range:
+                        self.parent.settings.setValue(f"{settings_key}/visibleRange", json.dumps(visible_range))
+                        logger.info(f"Saved visible range snapshot for {self.parent.symbol}")
+                except Exception as e:
+                    logger.error(f"Error saving visible range snapshot: {e}")
+
+            def on_complete_state_received(complete_state):
+                try:
+                    if complete_state and complete_state.get('version'):
+                        self.parent.settings.setValue(f"{settings_key}/chartState", json.dumps(complete_state))
+                        logger.info(f"Saved complete chart state snapshot for {self.parent.symbol}")
+                    else:
+                        # Fallback: at least save visible range
+                        self.parent.chart_widget.get_visible_range(on_range_received)
+                except Exception as e:
+                    logger.error(f"Error saving chart state snapshot: {e}")
+
+            def on_layout_received(layout):
+                try:
+                    if layout:
+                        layout_json = json.dumps(layout)
+                        self.parent.settings.setValue(f"{settings_key}/paneLayout", layout_json)
+                        logger.info(f"Saved pane layout snapshot for {self.parent.symbol}")
+                except Exception as e:
+                    logger.error(f"Error saving pane layout snapshot: {e}")
+
+                try:
+                    self.parent.chart_widget.get_chart_state(on_complete_state_received)
+                except Exception as e:
+                    logger.warning(f"Comprehensive state snapshot failed: {e}")
+                    self.parent.chart_widget.get_visible_range(on_range_received)
+
+            self.parent.chart_widget.get_pane_layout(on_layout_received)
+
+        except Exception as e:
+            logger.error(f"Failed to save chart state snapshot: {e}")
+
     def request_close_state(self, event: QCloseEvent) -> None:
         """Request chart state before closing."""
         logger.info(f"Requesting chart state before closing {self.parent.symbol}...")

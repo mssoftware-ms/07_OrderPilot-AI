@@ -182,6 +182,9 @@
 
         // Global reference to Python bridge (set up after QWebChannel connects)
         let pyBridge = null;
+        // Global chart handles so export helpers can access them
+        let chart = null;
+        let priceSeries = null;
 
         // Initialize QWebChannel for Python communication
         function initQtBridge() {
@@ -194,6 +197,30 @@
                 console.log('QWebChannel not available (running outside Qt?)');
             }
         }
+
+        // Ensure chartAPI object exists before adding helpers
+        window.chartAPI = window.chartAPI || {};
+
+        // Export helper: render current chart (with primitives) to PNG data URL
+        window.chartAPI.exportPng = async () => {
+            if (!priceSeries || !chart) return null;
+            // lightweight-charts v5: use takeScreenshot to include primitives
+            try {
+                const screenshot = chart.takeScreenshot();
+                return screenshot.toDataUrl(); // base64 PNG
+            } catch (err) {
+                console.error('takeScreenshot failed', err);
+                return null;
+            }
+        };
+
+        // Export helper: JSON snapshot (candles + drawings)
+        window.chartAPI.exportJson = () => {
+            const series = (priceSeries && priceSeries.data) ? (priceSeries.data() || []) : [];
+            const drawings = window.chartAPI.getDrawings ? window.chartAPI.getDrawings() : [];
+            const snapshot = { series, drawings };
+            return JSON.stringify(snapshot, null, 2);
+        };
 
         // Initialize bridge on load
         setTimeout(initQtBridge, 100);
@@ -210,7 +237,7 @@
                 const tzOffsetHours = getLocalTimezoneOffsetHours();
                 console.log('Local timezone offset: UTC+' + tzOffsetHours);
 
-                const chart = createChart(container, {
+                chart = createChart(container, {
                     layout: {
                         background: { type: 'solid', color: '#0a0a0a' },
                         textColor: '#d1d4dc',
@@ -361,7 +388,7 @@
                     } catch (e) { console.error(e); }
                 }
 
-                const priceSeries = chart.addSeries(CandlestickSeries, {
+                priceSeries = chart.addSeries(CandlestickSeries, {
                     upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350'
                 }, pricePaneApi.paneIndex());
 

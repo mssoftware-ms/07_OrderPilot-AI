@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+import json
+import tempfile
 from pathlib import Path
 
 import pandas as pd
+import pandas_ta as ta
 
 from src.core.indicators.engine import IndicatorEngine
 from src.core.indicators.types import IndicatorConfig, IndicatorType
@@ -79,7 +82,12 @@ class RegimeEngineJSON:
         Returns:
             RegimeState with regime and volatility classification
         """
-        # 1. Load JSON config
+        # 0. Peek raw JSON to detect Entry-Analyzer optimization format
+        raw = self._load_raw_json(config_path)
+        if raw and "optimization_results" in raw and "indicators" not in raw:
+            return self._classify_entry_optimizer(raw, data, scope=scope)
+
+        # 1. Load JSON config (strategy schema)
         config = self._load_config(config_path)
 
         # 2. Calculate indicators
@@ -164,6 +172,310 @@ class RegimeEngineJSON:
         )
 
         return config
+
+    def _load_raw_json(self, config_path: str | Path) -> dict | None:
+        """Load raw JSON without schema validation (used to detect optimizer format)."""
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    # --- Entry Analyzer optimization format (regime JSON v2) ---
+    def _classify_entry_optimizer(
+        self,
+        raw_config: dict,
+        data: pd.DataFrame,
+        scope: str = "entry",
+    ) -> RegimeState:
+        """
+        Handle Entry Analyzer optimization JSON directly (no strategy schema).
+
+        Expects structure:
+        {
+            "schema_version": "2.0.0",
+            "metadata": {...},
+            "optimization_results": [
+                {
+                    "applied": true,
+                    "indicators": [...],
+                    "regimes": [...]
+                }
+            ]
+        }
+        """
+        if "optimization_results" not in raw_config:
+            raise ValueError("optimizer JSON missing 'optimization_results'")
+
+        opt = next(
+            (o for o in raw_config["optimization_results"] if o.get("applied")),
+            raw_config["optimization_results"][0],
+        )
+
+        indicators_def = opt.get("indicators") or []
+        regimes_def = opt.get("regimes") or []
+
+        if not indicators_def or not regimes_def:
+            raise ValueError("optimizer JSON missing indicators/regimes")
+
+        indicator_values, type_index = self._calculate_opt_indicators(data, indicators_def)
+        active_regime = self._detect_opt_regime(indicator_values, regimes_def, type_index, scope=scope)
+
+        regime_id = active_regime["id"] if active_regime else "UNKNOWN"
+        state = RegimeState(
+            regime=RegimeType.UNKNOWN,
+            regime_confidence=1.0 if active_regime else 0.2,
+            regime_name=regime_id,
+            timestamp=datetime.utcnow(),
+            gate_reason="",
+            allows_market_entry=True,
+        )
+        return state
+
+    def _calculate_opt_indicators(
+        self,
+        data: pd.DataFrame,
+        indicators_def: list[dict],
+    ) -> tuple[dict[str, dict[str, float]], dict[str, str]]:
+        """
+        Calculate indicators for optimization-format JSON.
+
+        Returns:
+            indicator_values: {indicator_name: {field: value}}
+            type_index: {indicator_type: indicator_name}
+        """
+        indicator_values: dict[str, dict[str, float]] = {}
+        type_index: dict[str, str] = {}
+
+        computed = 0
+        for ind in indicators_def:
+            name = ind.get("name")
+            ind_type = (ind.get("type") or "").upper()
+            params = ind.get("params") or []
+
+            def _param(pname, default=None):
+                for p in params:
+                    if p.get("name") == pname:
+                        return p.get("value", default)
+                return default
+
+            if not name or not ind_type:
+                raise ValueError("Indicator definition missing name or type")
+
+            type_index.setdefault(ind_type, name)
+
+            try:
+                # Dynamische Berechnung je nach Typ; wenn ein Typ fehlt, wird er übersprungen.
+                if ind_type == "ADX":
+                    period = int(_param("period", 14))
+                    adx_res = ta.adx(data["high"], data["low"], data["close"], length=period)
+                    if adx_res is None or adx_res.empty:
+                        raise ValueError(f"Indicator {name} (ADX) produced no data")
+                    adx_col = next((c for c in adx_res.columns if "ADX" in c.upper()), None)
+                    dmp_col = next((c for c in adx_res.columns if "DMP" in c.upper()), None)
+                    dmn_col = next((c for c in adx_res.columns if "DMN" in c.upper()), None)
+                    adx_val = adx_res[adx_col].iloc[-1] if adx_col else None
+                    dmp_val = adx_res[dmp_col].iloc[-1] if dmp_col else None
+                    dmn_val = adx_res[dmn_col].iloc[-1] if dmn_col else None
+                    di_diff = None
+                    if dmp_val is not None and dmn_val is not None:
+                        di_diff = abs(float(dmp_val) - float(dmn_val))
+                    indicator_values[name] = {
+                        "adx": float(adx_val) if adx_val is not None else None,
+                        "di_diff": di_diff,
+                    }
+
+                elif ind_type == "RSI":
+                    period = int(_param("period", 14))
+                    rsi_res = ta.rsi(data["close"], length=period)
+                    if rsi_res is None or rsi_res.empty:
+                        raise ValueError(f"Indicator {name} (RSI) produced no data")
+                    rsi_val = rsi_res.iloc[-1]
+                    indicator_values[name] = {"rsi": float(rsi_val)}
+
+                elif ind_type == "ATR":
+                    period = int(_param("period", 14))
+                    atr_res = ta.atr(data["high"], data["low"], data["close"], length=period)
+                    if atr_res is None or atr_res.empty:
+                        raise ValueError(f"Indicator {name} (ATR) produced no data")
+                    atr_val = atr_res.iloc[-1]
+                    close_val = data["close"].iloc[-1]
+                    atr_pct = float(atr_val / close_val * 100) if close_val else None
+                    indicator_values[name] = {"atr": float(atr_val), "atr_percent": atr_pct}
+
+                elif ind_type == "EMA":
+                    period = int(_param("period", 20))
+                    ema_res = ta.ema(data["close"], length=period)
+                    if ema_res is None or ema_res.empty:
+                        raise ValueError(f"Indicator {name} (EMA) produced no data")
+                    indicator_values[name] = {"value": float(ema_res.iloc[-1])}
+
+                elif ind_type == "SMA":
+                    period = int(_param("period", 20))
+                    sma_res = ta.sma(data["close"], length=period)
+                    if sma_res is None or sma_res.empty:
+                        raise ValueError(f"Indicator {name} (SMA) produced no data")
+                    indicator_values[name] = {"value": float(sma_res.iloc[-1])}
+
+                elif ind_type == "MACD":
+                    fast = int(_param("fast", 12))
+                    slow = int(_param("slow", 26))
+                    signal = int(_param("signal", 9))
+                    macd_res = ta.macd(data["close"], fast=fast, slow=slow, signal=signal)
+                    if macd_res is None or macd_res.empty:
+                        raise ValueError(f"Indicator {name} (MACD) produced no data")
+                    macd_col = next((c for c in macd_res.columns if "MACD" in c.upper() and "SIGNAL" not in c.upper() and "HIST" not in c.upper()), None)
+                    signal_col = next((c for c in macd_res.columns if "SIGNAL" in c.upper()), None)
+                    hist_col = next((c for c in macd_res.columns if "HIST" in c.upper()), None)
+                    indicator_values[name] = {
+                        "macd": float(macd_res[macd_col].iloc[-1]) if macd_col else None,
+                        "signal": float(macd_res[signal_col].iloc[-1]) if signal_col else None,
+                        "hist": float(macd_res[hist_col].iloc[-1]) if hist_col else None,
+                    }
+
+                elif ind_type == "BB":
+                    length = int(_param("period", 20))
+                    mult = float(_param("mult", 2.0))
+                    bb_res = ta.bbands(data["close"], length=length, std=mult)
+                    if bb_res is None or bb_res.empty:
+                        raise ValueError(f"Indicator {name} (BB) produced no data")
+                    upper = next((c for c in bb_res.columns if "UPPER" in c.upper()), None)
+                    lower = next((c for c in bb_res.columns if "LOWER" in c.upper()), None)
+                    mid = next((c for c in bb_res.columns if "MID" in c.upper() or "MIDDLE" in c.upper()), None)
+                    width = next((c for c in bb_res.columns if "WIDTH" in c.upper()), None)
+                    indicator_values[name] = {
+                        "upper": float(bb_res[upper].iloc[-1]) if upper else None,
+                        "lower": float(bb_res[lower].iloc[-1]) if lower else None,
+                        "middle": float(bb_res[mid].iloc[-1]) if mid else None,
+                        "width": float(bb_res[width].iloc[-1]) if width else None,
+                    }
+
+                elif ind_type == "STOCH":
+                    k = int(_param("k", 14))
+                    d = int(_param("d", 3))
+                    stoch_res = ta.stoch(data["high"], data["low"], data["close"], k=k, d=d)
+                    if stoch_res is None or stoch_res.empty:
+                        raise ValueError(f"Indicator {name} (STOCH) produced no data")
+                    k_col = next((c for c in stoch_res.columns if "K" in c.upper()), None)
+                    d_col = next((c for c in stoch_res.columns if "D" in c.upper()), None)
+                    indicator_values[name] = {
+                        "k": float(stoch_res[k_col].iloc[-1]) if k_col else None,
+                        "d": float(stoch_res[d_col].iloc[-1]) if d_col else None,
+                    }
+
+                elif ind_type == "MFI":
+                    period = int(_param("period", 14))
+                    mfi_res = ta.mfi(data["high"], data["low"], data["close"], data["volume"], length=period)
+                    if mfi_res is None or mfi_res.empty:
+                        raise ValueError(f"Indicator {name} (MFI) produced no data")
+                    indicator_values[name] = {"mfi": float(mfi_res.iloc[-1])}
+
+                elif ind_type == "CCI":
+                    period = int(_param("period", 20))
+                    cci_res = ta.cci(data["high"], data["low"], data["close"], length=period)
+                    if cci_res is None or cci_res.empty:
+                        raise ValueError(f"Indicator {name} (CCI) produced no data")
+                    indicator_values[name] = {"cci": float(cci_res.iloc[-1])}
+
+                elif ind_type == "CHOP":
+                    length = int(_param("period", 14))
+                    chop_res = ta.chop(data["high"], data["low"], data["close"], length=length)
+                    if chop_res is None or chop_res.empty:
+                        raise ValueError(f"Indicator {name} (CHOP) produced no data")
+                    indicator_values[name] = {"chop": float(chop_res.iloc[-1])}
+
+                else:
+                    raise ValueError(f"Unsupported indicator type in optimizer JSON: {ind_type}")
+                computed += 1
+            except Exception as e:
+                logger.error(f"Failed to compute indicator {name} ({ind_type}): {e}")
+                raise
+
+        if computed != len(indicators_def):
+            raise ValueError(
+                f"Only {computed}/{len(indicators_def)} indicators computed. Check definitions."
+            )
+
+        return indicator_values, type_index
+
+    def _detect_opt_regime(
+        self,
+        indicator_values: dict[str, dict[str, float]],
+        regimes_def: list[dict],
+        type_index: dict[str, str],
+        scope: str = "entry",
+    ) -> dict | None:
+        """Evaluate regimes based on simple threshold rules from optimizer JSON."""
+
+        def _value_from_threshold(th_name: str):
+            """Resolve a threshold name to a current indicator value."""
+            base = th_name.split("_", 1)[0].lower()
+
+            # 1) Try direct field match across all indicators
+            for ind_vals in indicator_values.values():
+                if th_name in ind_vals:
+                    return ind_vals[th_name]
+                if base in ind_vals:
+                    return ind_vals[base]
+
+            # 2) Type-based fallback (common prefixes)
+            adx_id = type_index.get("ADX")
+            rsi_id = type_index.get("RSI")
+            atr_id = type_index.get("ATR")
+
+            if "adx" in th_name and adx_id:
+                return indicator_values.get(adx_id, {}).get("adx")
+            if "di_diff" in th_name and adx_id:
+                return indicator_values.get(adx_id, {}).get("di_diff")
+            if "rsi" in th_name and rsi_id:
+                return indicator_values.get(rsi_id, {}).get("rsi")
+            if "atr" in th_name and atr_id:
+                if "percent" in th_name:
+                    return indicator_values.get(atr_id, {}).get("atr_percent")
+                return indicator_values.get(atr_id, {}).get("atr")
+            return None
+
+        # Sort by priority (desc)
+        regimes_sorted = sorted(regimes_def, key=lambda r: r.get("priority", 0), reverse=True)
+
+        for regime in regimes_sorted:
+            if scope and regime.get("scope") not in (None, scope):
+                continue
+
+            thresholds = regime.get("thresholds", [])
+            active = True
+            for th in thresholds:
+                th_name = th.get("name", "")
+                th_value = th.get("value")
+                current = _value_from_threshold(th_name)
+                if current is None or th_value is None:
+                    raise ValueError(f"Missing value for threshold '{th_name}'")
+
+                if th_name.endswith("_min"):
+                    if current < th_value:
+                        active = False
+                        break
+                elif th_name.endswith("_max"):
+                    if current > th_value:
+                        active = False
+                        break
+                elif "confirm_bull" in th_name or "exhaustion_min" in th_name:
+                    if current < th_value:
+                        active = False
+                        break
+                elif "confirm_bear" in th_name or "exhaustion_max" in th_name:
+                    if current > th_value:
+                        active = False
+                        break
+                else:
+                    # Unknown threshold type -> treat as inactive but do not crash
+                    active = False
+                    break
+
+            if active:
+                return regime
+
+        return None
 
     def _calculate_indicators(
         self,
@@ -469,12 +781,20 @@ class RegimeEngineJSON:
             f"(regime_conf={regime_confidence:.2f}, vol_conf={volatility_confidence:.2f})"
         )
 
+        # Prefer the top active regime's id (stable) for labeling
+        regime_label = None
+        if active_regimes:
+            top = active_regimes[0]
+            # Use ID primarily (matches JSON), fallback to name
+            regime_label = top.id or top.name
+
         return RegimeState(
             timestamp=timestamp,
             regime=regime,
             volatility=volatility,
             regime_confidence=regime_confidence,
             volatility_confidence=volatility_confidence,
+            regime_name=regime_label,
             adx_value=indicator_values.get("adx14", {}).get("value"),
             atr_pct=self._calc_atr_pct_from_indicators(indicator_values),
             bb_width_pct=indicator_values.get("bb20", {}).get("width")

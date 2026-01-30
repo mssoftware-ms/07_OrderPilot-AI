@@ -564,4 +564,12 @@ class ToolbarMixinRow2:
         self.clear_zones_with_js()
         self.clear_lines_with_js()
         self.clear_all_drawings()
+        # Persist cleared state immediately (same as on close)
+        try:
+            chart_window = self.parent.window() if hasattr(self.parent, "window") else None
+            lifecycle = getattr(chart_window, "_lifecycle", None)
+            if lifecycle and hasattr(lifecycle, "save_chart_state_snapshot"):
+                lifecycle.save_chart_state_snapshot()
+        except Exception as e:
+            logger.warning(f"Failed to save chart state after clearing markings: {e}")
         logger.info("Cleared all chart markings")

@@ -302,6 +302,8 @@ class RegimeState(BaseModel):
     adx_value: float | None = Field(None, description="ADX value used")
     atr_pct: float | None = Field(None, description="ATR as % of price")
     bb_width_pct: float | None = Field(None, description="BB width as % of price")
+    gate_reason: str | None = Field("", description="Reason why entries are blocked (if any)")
+    allows_market_entry: bool = Field(True, description="Whether market entries are currently allowed")
 
     @model_validator(mode="after")
     def _populate_legacy_fields(self) -> "RegimeState":
@@ -319,6 +321,11 @@ class RegimeState(BaseModel):
         if self.last_updated is None:
             self.last_updated = self.timestamp
         return self
+
+    @property
+    def adx(self) -> float | None:
+        """Alias for ADX value (legacy consumers expect .adx)."""
+        return self.adx_value
 
     @computed_field
     @property
