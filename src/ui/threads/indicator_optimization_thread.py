@@ -493,200 +493,79 @@ class IndicatorOptimizationThread(QThread):
     def _calculate_indicator(
         self, df: pd.DataFrame, indicator_type: str, params: Dict[str, int]
     ) -> pd.DataFrame:
-        """Calculate indicator with given parameters."""
-        import pandas_ta as ta
+        """Calculate indicator using Factory Pattern.
 
-        result_df = df.copy()
+        REFACTORED from 197-line if-elif chain (CC=86) to clean delegation.
+        Now uses IndicatorCalculatorFactory with 20 focused calculators (CC < 5 each).
 
-        if indicator_type == 'RSI':
-            period = params.get('period', 14)
-            rsi = ta.rsi(df['close'], length=period)
-            result_df['indicator_value'] = rsi if rsi is not None else 50.0
+        Args:
+            df: DataFrame with OHLCV data
+            indicator_type: Indicator type (e.g., 'RSI', 'MACD', 'SMA')
+            params: Indicator parameters
 
-        elif indicator_type == 'MACD':
-            fast = params.get('fast', 12)
-            slow = params.get('slow', 26)
-            signal = params.get('signal', 9)
-            macd = ta.macd(df['close'], fast=fast, slow=slow, signal=signal)
-            if macd is not None and not macd.empty:
-                # MACD returns 3 columns: MACD line, signal, histogram
-                # Find MACD line column (excludes 'signal' and 'histogram' in name)
-                macd_cols = [c for c in macd.columns if 'MACD' in c and 'signal' not in c.lower() and 'histogram' not in c.lower()]
-                result_df['indicator_value'] = macd[macd_cols[0]] if macd_cols else 0
-                # Store signal line if available
-                signal_cols = [c for c in macd.columns if 'signal' in c.lower()]
-                if signal_cols:
-                    result_df['macd_signal'] = macd[signal_cols[0]]
-            else:
-                result_df['indicator_value'] = 0
+        Returns:
+            DataFrame with 'indicator_value' column (+ optional auxiliary columns)
 
-        elif indicator_type == 'ADX':
-            period = params.get('period', 14)
-            adx = ta.adx(df['high'], df['low'], df['close'], length=period)
-            if adx is not None and not adx.empty:
-                # Find ADX column (excludes DMP/DMN)
-                adx_cols = [c for c in adx.columns if 'ADX' in c and 'DMP' not in c and 'DMN' not in c]
-                result_df['indicator_value'] = adx[adx_cols[0]] if adx_cols else 25.0
-            else:
-                result_df['indicator_value'] = 25.0
+        Complexity: CC = 2 (initialization check + factory call)
+        Original: CC = 86, 197 lines
+        Improvement: 97.7% complexity reduction
+        """
+        # Lazy initialization of calculator factory (only once per thread)
+        if not hasattr(self, '_calculator_factory'):
+            self._init_calculator_factory()
 
-        elif indicator_type == 'SMA':
-            period = params.get('period', 20)
-            sma = ta.sma(df['close'], length=period)
-            result_df['indicator_value'] = sma if sma is not None else df['close']
+        # Delegate to factory
+        return self._calculator_factory.calculate(indicator_type, df, params)
 
-        elif indicator_type == 'EMA':
-            period = params.get('period', 20)
-            ema = ta.ema(df['close'], length=period)
-            result_df['indicator_value'] = ema if ema is not None else df['close']
+    def _init_calculator_factory(self):
+        """Initialize calculator factory with all calculators.
 
-        elif indicator_type == 'BB':
-            period = params.get('period', 20)
-            std = params.get('std', 2.0)
-            bbands = ta.bbands(df['close'], length=period, std=std)
-            if bbands is not None and not bbands.empty and len(bbands.columns) >= 3:
-                # Bollinger Bands returns 3 columns: Lower, Middle, Upper (order may vary)
-                # Use positional access: typically [0]=Lower, [1]=Middle, [2]=Upper
-                result_df['bb_lower'] = bbands.iloc[:, 0]
-                result_df['bb_middle'] = bbands.iloc[:, 1]
-                result_df['bb_upper'] = bbands.iloc[:, 2]
-                result_df['indicator_value'] = bbands.iloc[:, 1]  # Middle band
-            else:
-                result_df['bb_lower'] = df['close'] * 0.98
-                result_df['bb_middle'] = df['close']
-                result_df['bb_upper'] = df['close'] * 1.02
-                result_df['indicator_value'] = df['close']
+        Registers all 20 indicator calculators grouped by category:
+        - Momentum: RSI, MACD, STOCH, CCI
+        - Trend: SMA, EMA, ICHIMOKU, VWAP
+        - Volume: OBV, MFI, AD, CMF
+        - Volatility: ATR, BB, KC, BB_WIDTH, CHOP, PSAR
+        - Other: ADX, PIVOTS
 
-        elif indicator_type == 'ATR':
-            period = params.get('period', 14)
-            atr = ta.atr(df['high'], df['low'], df['close'], length=period)
-            result_df['indicator_value'] = atr if atr is not None else df['close'] * 0.02
+        Complexity: CC = 1 (simple registration loop)
+        """
+        from src.strategies.indicator_calculators.calculator_factory import IndicatorCalculatorFactory
+        from src.strategies.indicator_calculators.momentum import (
+            RSICalculator, MACDCalculator, StochasticCalculator, CCICalculator
+        )
+        from src.strategies.indicator_calculators.trend import (
+            SMACalculator, EMACalculator, IchimokuCalculator, VWAPCalculator
+        )
+        from src.strategies.indicator_calculators.volume import (
+            OBVCalculator, MFICalculator, ADCalculator, CMFCalculator
+        )
+        from src.strategies.indicator_calculators.volatility import (
+            ATRCalculator, BollingerCalculator, KeltnerCalculator,
+            BBWidthCalculator, ChopCalculator, PSARCalculator
+        )
+        from src.strategies.indicator_calculators.other import (
+            ADXCalculator, PivotsCalculator
+        )
 
-        # NEW INDICATORS
+        self._calculator_factory = IndicatorCalculatorFactory()
 
-        elif indicator_type == 'ICHIMOKU':
-            tenkan = params.get('tenkan', 9)
-            kijun = params.get('kijun', 26)
-            senkou = params.get('senkou', 52)
-            ichimoku_result = ta.ichimoku(df['high'], df['low'], df['close'],
-                                          tenkan=tenkan, kijun=kijun, senkou=senkou)
-            if ichimoku_result is not None and len(ichimoku_result) > 0:
-                ichimoku = ichimoku_result[0]  # First dataframe
-                if ichimoku is not None and not ichimoku.empty:
-                    # Find Senkou Span columns (ISA, ISB)
-                    isa_cols = [c for c in ichimoku.columns if 'ISA' in c or 'SPAN_A' in c.upper()]
-                    isb_cols = [c for c in ichimoku.columns if 'ISB' in c or 'SPAN_B' in c.upper()]
+        # Register all calculators (order doesn't matter - factory uses can_calculate())
+        for calc_class in [
+            # Momentum
+            RSICalculator, MACDCalculator, StochasticCalculator, CCICalculator,
+            # Trend
+            SMACalculator, EMACalculator, IchimokuCalculator, VWAPCalculator,
+            # Volume
+            OBVCalculator, MFICalculator, ADCalculator, CMFCalculator,
+            # Volatility
+            ATRCalculator, BollingerCalculator, KeltnerCalculator,
+            BBWidthCalculator, ChopCalculator, PSARCalculator,
+            # Other
+            ADXCalculator, PivotsCalculator
+        ]:
+            self._calculator_factory.register(calc_class())
 
-                    if isa_cols and isb_cols:
-                        result_df['indicator_value'] = ichimoku[isa_cols[0]]
-                        result_df['cloud_top'] = ichimoku[isa_cols[0]].combine(ichimoku[isb_cols[0]], max)
-                        result_df['cloud_bottom'] = ichimoku[isa_cols[0]].combine(ichimoku[isb_cols[0]], min)
-                    else:
-                        result_df['indicator_value'] = df['close']
-                else:
-                    result_df['indicator_value'] = df['close']
-            else:
-                result_df['indicator_value'] = df['close']
-
-        elif indicator_type == 'PSAR':
-            accel = params.get('accel', 0.02)
-            max_accel = params.get('max_accel', 0.2)
-            psar = ta.psar(df['high'], df['low'], af=accel, max_af=max_accel)
-            if psar is not None and not psar.empty:
-                # PSAR returns multiple columns (long/short), use first numeric column
-                numeric_cols = [c for c in psar.columns if psar[c].dtype in ['float64', 'float32']]
-                result_df['indicator_value'] = psar[numeric_cols[0]] if numeric_cols else df['close']
-            else:
-                result_df['indicator_value'] = df['close']
-
-        elif indicator_type == 'KC':
-            period = params.get('period', 20)
-            mult = params.get('mult', 2.0)
-            kc = ta.kc(df['high'], df['low'], df['close'], length=period, scalar=mult)
-            if kc is not None and not kc.empty and len(kc.columns) >= 3:
-                # KC returns lower, basis, upper (positional: 0, 1, 2)
-                result_df['kc_lower'] = kc.iloc[:, 0]
-                result_df['kc_middle'] = kc.iloc[:, 1]
-                result_df['kc_upper'] = kc.iloc[:, 2]
-                result_df['indicator_value'] = kc.iloc[:, 1]  # Middle line
-            else:
-                result_df['indicator_value'] = df['close']
-
-        elif indicator_type == 'VWAP':
-            vwap = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
-            result_df['indicator_value'] = vwap if vwap is not None else df['close']
-
-        elif indicator_type == 'PIVOTS':
-            pivot_type = params.get('type', 'standard')
-            # Simplified pivot calculation (using previous day H/L/C)
-            if pivot_type == 'standard':
-                pivot = (df['high'].shift(1) + df['low'].shift(1) + df['close'].shift(1)) / 3
-            elif pivot_type == 'fibonacci':
-                pivot = (df['high'].shift(1) + df['low'].shift(1) + df['close'].shift(1)) / 3
-            else:  # camarilla
-                pivot = df['close'].shift(1)
-            result_df['indicator_value'] = pivot
-
-        elif indicator_type == 'CHOP':
-            period = params.get('period', 14)
-            chop = ta.chop(df['high'], df['low'], df['close'], length=period)
-            result_df['indicator_value'] = chop if chop is not None else 50.0
-
-        elif indicator_type == 'STOCH':
-            k_period = params.get('k_period', 14)
-            d_period = params.get('d_period', 3)
-            stoch = ta.stoch(df['high'], df['low'], df['close'], k=k_period, d=d_period)
-            if stoch is not None and not stoch.empty:
-                # Stochastic returns %K and %D columns
-                k_cols = [c for c in stoch.columns if 'K' in c.upper() and 'D' not in c]
-                d_cols = [c for c in stoch.columns if 'D' in c.upper()]
-
-                if k_cols:
-                    result_df['indicator_value'] = stoch[k_cols[0]]
-                    if d_cols:
-                        result_df['stoch_d'] = stoch[d_cols[0]]
-                else:
-                    result_df['indicator_value'] = 50.0
-            else:
-                result_df['indicator_value'] = 50.0
-
-        elif indicator_type == 'CCI':
-            period = params.get('period', 20)
-            cci = ta.cci(df['high'], df['low'], df['close'], length=period)
-            result_df['indicator_value'] = cci if cci is not None else 0.0
-
-        elif indicator_type == 'BB_WIDTH':
-            period = params.get('period', 20)
-            std = params.get('std', 2.0)
-            bbands = ta.bbands(df['close'], length=period, std=std)
-            if bbands is not None and not bbands.empty and len(bbands.columns) >= 3:
-                # Positional access: [0]=Lower, [1]=Middle, [2]=Upper
-                bb_lower = bbands.iloc[:, 0]
-                bb_middle = bbands.iloc[:, 1]
-                bb_upper = bbands.iloc[:, 2]
-                result_df['indicator_value'] = (bb_upper - bb_lower) / bb_middle * 100
-            else:
-                result_df['indicator_value'] = 2.0  # Default BB width (2% = normal)
-
-        elif indicator_type == 'OBV':
-            obv = ta.obv(df['close'], df['volume'])
-            result_df['indicator_value'] = obv if obv is not None else df['volume'].cumsum()
-
-        elif indicator_type == 'MFI':
-            period = params.get('period', 14)
-            mfi = ta.mfi(df['high'], df['low'], df['close'], df['volume'], length=period)
-            result_df['indicator_value'] = mfi if mfi is not None else 50.0
-
-        elif indicator_type == 'AD':
-            ad = ta.ad(df['high'], df['low'], df['close'], df['volume'])
-            result_df['indicator_value'] = ad if ad is not None else 0.0
-
-        elif indicator_type == 'CMF':
-            period = params.get('period', 20)
-            cmf = ta.cmf(df['high'], df['low'], df['close'], df['volume'], length=period)
-            result_df['indicator_value'] = cmf if cmf is not None else 0.0
-
-        return result_df.dropna()
+        logger.info(f"Initialized calculator factory with {len(self._calculator_factory.calculators)} calculators")
 
     def _score_indicator(
         self, df: pd.DataFrame, indicator_type: str, params: Dict[str, int], regime: str
