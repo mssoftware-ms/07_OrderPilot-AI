@@ -182,6 +182,7 @@ class CELEngine:
             # Regime functions (Phase 1.7)
             'last_closed_regime': self._func_last_closed_regime,
             'trigger_regime_analysis': self._func_trigger_regime_analysis,
+            'new_regime_detected': self._func_new_regime_detected,
 
             # Pattern functions (Candlestick & Chart Patterns)
             'pin_bar_bullish': self._func_pin_bar_bullish,
@@ -258,7 +259,7 @@ class CELEngine:
         try:
             # Store last context for context-aware helper functions
             self._last_context = context or {}
-            
+
             # Debug: Log context keys
             print(f"[CEL] evaluate() called, context keys: {list(context.keys())}", flush=True)
             print(f"[CEL] chart_window in context: {'chart_window' in context}", flush=True)
@@ -2018,7 +2019,7 @@ class CELEngine:
         """
         try:
             ctx = self._last_context or {}
-            
+
             # Debug: Log context
             print(f"[CEL] trigger_regime_analysis: _last_context keys: {list(ctx.keys())}", flush=True)
             print(f"[CEL] trigger_regime_analysis: chart_window in ctx: {'chart_window' in ctx}", flush=True)
@@ -2039,9 +2040,10 @@ class CELEngine:
                 print("[CEL] ❌ Chart window has no trigger_regime_update method", flush=True)
                 return False
 
-            # Trigger regime analysis (with immediate execution, no debounce)
-            print("[CEL] 🔄 Triggering regime_update(debounce_ms=0)...", flush=True)
-            chart_window.trigger_regime_update(debounce_ms=0)
+            # Trigger regime analysis (with immediate execution, no debounce, force=True)
+            # force=True bypasses hash check to ensure detection always runs
+            print("[CEL] 🔄 Triggering regime_update(debounce_ms=0, force=True)...", flush=True)
+            chart_window.trigger_regime_update(debounce_ms=0, force=True)
 
             logger.info("✅ Regime analysis triggered successfully")
             print("[CEL] ✅ Regime analysis triggered successfully", flush=True)
@@ -2056,44 +2058,100 @@ class CELEngine:
         """Get regime of the last closed candle.
 
         Returns:
-            Regime string (e.g., 'EXTREME_BULL', 'BULL', 'NEUTRAL', 'BEAR', 'EXTREME_BEAR')
+            Regime string (e.g., 'STRONG_BULL', 'BULL', 'SIDEWAYS', 'BEAR', 'STRONG_BEAR')
             Returns 'UNKNOWN' if data is not available.
+
+        Priority order for reading regime:
+        1. chart_window._last_closed_regime (set by trigger_regime_analysis())
+        2. last_closed_candle.regime from context
+        3. chart_data[-2].regime from context
+        4. prev_regime from context
+        5. 'UNKNOWN' as fallback
 
         Example:
             >>> # In CEL expression:
-            >>> last_closed_regime() == 'EXTREME_BULL'
+            >>> trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'
             True
-            >>> last_closed_regime() == 'BEAR'
-            False
-
-        Note:
-            This function requires the context to have either:
-            - 'last_closed_candle' dict with 'regime' field, OR
-            - 'chart_data' list where index -2 is the last closed candle
         """
         ctx = self._last_context or {}
 
-        # Try to get from last_closed_candle object
+        # Priority 1: Read from ChartWindow (set by trigger_regime_analysis())
+        # This is the most up-to-date value after regime analysis runs
+        # Note: RegimeDisplayMixin stores this in _last_regime_name
+        if 'chart_window' in ctx:
+            chart_window = ctx['chart_window']
+            if hasattr(chart_window, '_last_regime_name'):
+                regime = getattr(chart_window, '_last_regime_name', None)
+                if regime and regime != 'UNKNOWN':
+                    logger.debug(f"last_closed_regime: Read '{regime}' from chart_window._last_regime_name")
+                    return str(regime)
+
+        # Priority 2: Try to get from last_closed_candle object
         if 'last_closed_candle' in ctx:
             candle = ctx['last_closed_candle']
             if isinstance(candle, dict) and 'regime' in candle:
-                return str(candle['regime'])
+                regime = candle['regime']
+                logger.debug(f"last_closed_regime: Read '{regime}' from last_closed_candle")
+                return str(regime)
 
-        # Fallback: try to get from chart_data history
+        # Priority 3: try to get from chart_data history
         if 'chart_data' in ctx:
             chart_data = ctx['chart_data']
             if isinstance(chart_data, list) and len(chart_data) >= 2:
                 # Last closed candle is at index -2 (current candle at -1)
                 last_closed = chart_data[-2]
                 if isinstance(last_closed, dict) and 'regime' in last_closed:
-                    return str(last_closed['regime'])
+                    regime = last_closed['regime']
+                    logger.debug(f"last_closed_regime: Read '{regime}' from chart_data[-2]")
+                    return str(regime)
 
-        # Fallback: check for prev_regime field
+        # Priority 4: check for prev_regime field
         if 'prev_regime' in ctx:
-            return str(ctx['prev_regime'])
+            regime = ctx['prev_regime']
+            logger.debug(f"last_closed_regime: Read '{regime}' from prev_regime")
+            return str(regime)
 
         # Default: unknown
+        logger.warning("last_closed_regime: No regime data found, returning 'UNKNOWN'")
         return 'UNKNOWN'
+
+    def _func_new_regime_detected(self) -> bool:
+        """Check if a new regime was detected on the last closed candle.
+
+        This function compares the previous regime with the current regime
+        to detect regime changes (transitions).
+
+        Returns:
+            True if regime changed compared to previous candle,
+            False if no change or data unavailable.
+
+        Example:
+            >>> # In CEL expression - only enter on regime change:
+            >>> trigger_regime_analysis() && new_regime_detected() && last_closed_regime() == 'STRONG_BULL'
+            True
+
+            >>> # Enter on any STRONG_BULL, even without regime change:
+            >>> trigger_regime_analysis() && last_closed_regime() == 'STRONG_BULL'
+            True
+        """
+        ctx = self._last_context or {}
+
+        # Get previous regime from context
+        prev_regime = ctx.get('prev_regime', 'UNKNOWN')
+
+        # Get current regime (uses the same priority logic)
+        current_regime = self._func_last_closed_regime()
+
+        # Detect change
+        if prev_regime == 'UNKNOWN' or current_regime == 'UNKNOWN':
+            # Can't detect change if either is unknown
+            return False
+
+        is_new = prev_regime != current_regime
+        if is_new:
+            logger.info(f"new_regime_detected: Regime changed from '{prev_regime}' to '{current_regime}'")
+
+        return is_new
 
     # ========================================================================
     # Pattern / Breakout / SMC Helpers

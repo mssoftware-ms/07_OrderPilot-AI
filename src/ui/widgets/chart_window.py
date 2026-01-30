@@ -61,7 +61,7 @@ class ChartWindow(
     QMainWindow
 ):
     """Popup window for displaying a single chart.
-    
+
     Note: RegimeDisplayMixin methods (trigger_regime_update, etc.) are available
     via composition through the chart widget, not direct inheritance.
     The chart_widget has RegimeDisplayMixin mixed in.
@@ -111,18 +111,18 @@ class ChartWindow(
         if splash:
             splash.set_progress(50, "Baue Dock-System...")
         self._setup.setup_dock()
-        
+
         # Phase 3 + 4: New docks for Workspace Manager pattern
         self._setup.setup_watchlist_dock()
         self._setup.setup_activity_log_dock()
-        
+
         self._load_window_state()
         self._setup.restore_after_state_load()
         self._setup.setup_shortcuts()
-        
+
         # Phase 5: Context Menu
         self._setup_context_menu()
-        
+
         self._update_toggle_button_text()
         self._setup.connect_dock_signals()
         self._setup_event_subscriptions()
@@ -146,44 +146,44 @@ class ChartWindow(
         # Finish splash and close with delay to ensure visibility
         if splash:
             splash.finish_and_close(1200)
-    
+
     def _setup_context_menu(self) -> None:
         """Setup context menu for ChartWindow (Phase 5: UI Refactoring).
-        
+
         Provides quick access to Settings, docks, and Workspace Manager
         without needing the main menu bar.
         """
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QAction, QKeySequence, QShortcut
-        
+
         # Enable context menu on the chart widget
         if hasattr(self, 'chart_widget') and self.chart_widget:
             self.chart_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             self.chart_widget.customContextMenuRequested.connect(self._show_context_menu)
-        
+
         # Keyboard shortcuts for quick access
         # Ctrl+, for Settings (common pattern)
         self._settings_shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
         self._settings_shortcut.activated.connect(self._open_settings)
-        
+
         # Ctrl+Shift+W for Workspace Manager
         self._workspace_shortcut = QShortcut(QKeySequence("Ctrl+Shift+W"), self)
         self._workspace_shortcut.activated.connect(self._show_workspace_manager)
-    
+
     def _show_context_menu(self, pos) -> None:
         """Show context menu at position."""
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QAction
-        
+
         menu = QMenu(self)
-        
+
         # Settings action
         settings_action = QAction("⚙️ Einstellungen (Ctrl+,)", self)
         settings_action.triggered.connect(self._open_settings)
         menu.addAction(settings_action)
-        
+
         menu.addSeparator()
-        
+
         # Toggle Watchlist
         watchlist_action = QAction("📋 Watchlist anzeigen", self)
         watchlist_action.setCheckable(True)
@@ -191,7 +191,7 @@ class ChartWindow(
             watchlist_action.setChecked(self._watchlist_dock.isVisible())
         watchlist_action.triggered.connect(lambda: self._setup.toggle_watchlist_dock())
         menu.addAction(watchlist_action)
-        
+
         # Toggle Activity Log
         activity_log_action = QAction("📜 Activity Log anzeigen", self)
         activity_log_action.setCheckable(True)
@@ -199,23 +199,23 @@ class ChartWindow(
             activity_log_action.setChecked(self._activity_log_dock.isVisible())
         activity_log_action.triggered.connect(lambda: self._setup.toggle_activity_log_dock())
         menu.addAction(activity_log_action)
-        
+
         menu.addSeparator()
-        
+
         # Show Workspace Manager
         workspace_action = QAction("🏠 Workspace Manager anzeigen (Ctrl+Shift+W)", self)
         workspace_action.triggered.connect(self._show_workspace_manager)
         menu.addAction(workspace_action)
-        
+
         # Close All Charts
         close_all_action = QAction("❌ Alle Charts schließen", self)
         close_all_action.triggered.connect(self._close_all_charts)
         menu.addAction(close_all_action)
-        
+
         # Show at cursor position
         if hasattr(self, 'chart_widget') and self.chart_widget:
             menu.exec(self.chart_widget.mapToGlobal(pos))
-    
+
     def _open_settings(self) -> None:
         """Open settings dialog (Issue #11)."""
         from PyQt6.QtWidgets import QMessageBox
@@ -247,7 +247,7 @@ class ChartWindow(
     def open_main_settings_dialog(self) -> None:
         """Open main settings dialog (Issue #19 - called from toolbar)."""
         self._open_settings()
-    
+
     def _show_workspace_manager(self) -> None:
         """Show and focus the Workspace Manager (main window)."""
         main_window = self._get_main_window()
@@ -257,7 +257,7 @@ class ChartWindow(
             main_window.activateWindow()
         else:
             logger.warning("Workspace Manager not found")
-    
+
     def _close_all_charts(self) -> None:
         """Close all chart windows."""
         main_window = self._get_main_window()
@@ -337,16 +337,16 @@ class ChartWindow(
 
     # === Delegation Methods for RegimeDisplayMixin ===
     # These methods delegate to chart_widget which has RegimeDisplayMixin
-    
-    def trigger_regime_update(self, debounce_ms: int = 500) -> None:
+
+    def trigger_regime_update(self, debounce_ms: int = 500, force: bool = False) -> None:
         """Delegate regime update trigger to chart widget.
-        
+
         Called by CEL trigger_regime_analysis() function during JSON Entry evaluation.
         """
         if hasattr(self, 'chart_widget') and self.chart_widget:
             if hasattr(self.chart_widget, 'trigger_regime_update'):
-                self.chart_widget.trigger_regime_update(debounce_ms)
-                print(f"[CHART_WINDOW] Delegated trigger_regime_update to chart_widget", flush=True)
+                self.chart_widget.trigger_regime_update(debounce_ms, force=force)
+                print(f"[CHART_WINDOW] Delegated trigger_regime_update to chart_widget (force={force})", flush=True)
             else:
                 print(f"[CHART_WINDOW] ❌ chart_widget has no trigger_regime_update!", flush=True)
         else:

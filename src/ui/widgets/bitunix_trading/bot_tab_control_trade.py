@@ -59,6 +59,10 @@ class BotTabControlTrade:
     def _validate_entry_conditions(self) -> bool:
         """Validate all entry conditions.
 
+        Supports two modes:
+        1. Standard mode: Requires trigger status = TRIGGERED
+        2. JSON Entry mode: CEL expression result (LONG/SHORT) is the trigger
+
         Returns:
             True if all conditions met, False otherwise.
         """
@@ -69,6 +73,26 @@ class BotTabControlTrade:
             logger.debug("Position already open - skipping entry")
             return False
 
+        # === JSON ENTRY MODE ===
+        # In JSON Entry mode, the CEL expression result IS the trigger
+        # If entry_score direction is LONG or SHORT, the CEL expression matched
+        if self._is_json_entry_mode_active():
+            # Check if CEL expression returned a valid direction (LONG/SHORT)
+            if not bot._last_entry_score:
+                logger.debug("JSON Entry: No entry score available")
+                return False
+
+            direction = bot._last_entry_score.direction.value
+            if direction not in ["long", "short"]:
+                logger.debug(f"JSON Entry: No entry signal (direction={direction})")
+                return False
+
+            logger.info(f"JSON Entry: CEL expression matched → {direction.upper()} signal")
+            # Skip trigger check and quality check for JSON mode
+            # The CEL expression already did all the filtering
+            return True
+
+        # === STANDARD MODE ===
         # Check if trigger active
         if not bot._last_trigger_result or bot._last_trigger_result.status.value != "triggered":
             logger.debug(
@@ -85,6 +109,18 @@ class BotTabControlTrade:
             return False
 
         return True
+
+    def _is_json_entry_mode_active(self) -> bool:
+        """Check if JSON Entry mode is active.
+
+        Returns:
+            True if JSON Entry mode is active, False otherwise.
+        """
+        # Check BotTabControl for JSON scorer
+        control = getattr(self.parent, '_control', None)
+        if control and hasattr(control, '_json_entry_scorer') and control._json_entry_scorer:
+            return True
+        return False
 
     def _is_entry_score_acceptable(self) -> bool:
         """Check if entry score meets minimum quality.
@@ -143,6 +179,10 @@ class BotTabControlTrade:
     ) -> dict | None:
         """Calculate all trade parameters (size, SL, TP, etc.).
 
+        Supports two modes:
+        1. Standard mode: Uses exit levels from TriggerExitEngine
+        2. JSON Entry mode: Uses ATR-based SL/TP calculation
+
         Returns:
             Dictionary with trade parameters or None if calculation failed.
         """
@@ -150,7 +190,7 @@ class BotTabControlTrade:
         direction = bot._last_entry_score.direction.value
         entry_price = context.current_price
 
-        # Get leverage
+        # Get leverage (default to 1.0 if not set)
         leverage = bot._last_leverage_result.final_leverage if bot._last_leverage_result else 1.0
 
         # Get risk settings
@@ -161,20 +201,47 @@ class BotTabControlTrade:
         account_balance = await bot._adapter.get_balance()
         risk_amount = account_balance * (risk_per_trade_pct / 100.0)
 
-        # Get exit levels
-        exit_levels = bot._last_trigger_result.exit_levels
-        if not exit_levels:
-            logger.error("No exit levels from TriggerExitEngine")
-            return None
+        # === GET SL/TP LEVELS ===
+        sl_price = None
+        tp_price = None
 
-        sl_price = exit_levels.stop_loss
-        tp_price = exit_levels.take_profit
+        # Try standard mode: exit levels from TriggerExitEngine
+        if bot._last_trigger_result and bot._last_trigger_result.exit_levels:
+            exit_levels = bot._last_trigger_result.exit_levels
+            sl_price = exit_levels.stop_loss
+            tp_price = exit_levels.take_profit
+            logger.debug(f"Using TriggerExitEngine SL/TP: SL={sl_price:.2f}, TP={tp_price:.2f}")
+
+        # Fallback for JSON Entry mode: ATR-based SL/TP
+        if sl_price is None or tp_price is None:
+            # Use ATR from MarketContext features for SL/TP calculation
+            atr = getattr(context.features, 'atr_14', None)
+            if atr is None:
+                atr = entry_price * 0.02  # Fallback: 2% of price as ATR
+                logger.warning(f"No ATR available, using 2% fallback: {atr:.2f}")
+
+            # SL = 2x ATR, TP = 3x ATR (1:1.5 Risk/Reward)
+            sl_multiplier = 2.0
+            tp_multiplier = 3.0
+
+            if direction == "long":
+                sl_price = entry_price - (atr * sl_multiplier)
+                tp_price = entry_price + (atr * tp_multiplier)
+            else:  # short
+                sl_price = entry_price + (atr * sl_multiplier)
+                tp_price = entry_price - (atr * tp_multiplier)
+
+            logger.info(f"JSON Entry ATR-based SL/TP: SL={sl_price:.2f}, TP={tp_price:.2f} (ATR={atr:.2f})")
+            self.parent._log(f"📊 ATR-based SL/TP: SL={sl_price:.2f} | TP={tp_price:.2f}")
 
         # Calculate SL distance
         if direction == "long":
             sl_distance_pct = abs((entry_price - sl_price) / entry_price)
         else:
             sl_distance_pct = abs((sl_price - entry_price) / entry_price)
+
+        # Ensure SL distance is reasonable (min 0.5%, max 10%)
+        sl_distance_pct = max(0.005, min(0.10, sl_distance_pct))
 
         # Calculate quantity
         quantity = (risk_amount / (entry_price * sl_distance_pct)) * leverage

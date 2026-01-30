@@ -422,7 +422,7 @@ class BotStateHandlersFlat:
         # Skip tick-by-tick updates to avoid redundant evaluations
         if not features.is_candle_close:
             return None  # Not a candle-close event - skip CEL evaluation
-        
+
         logger.info("JSON Entry Mode: Evaluating CEL entry_expression...")
 
         # Get current regime state
@@ -433,7 +433,7 @@ class BotStateHandlersFlat:
 
         # Get chart window reference (for trigger_regime_analysis() in CEL)
         chart_window = getattr(self.parent, '_chart_window', None)
-        
+
         logger.info(f"JSON Entry: chart_window = {type(chart_window).__name__ if chart_window else 'None'}")
         print(f"[JSON_ENTRY] chart_window = {type(chart_window).__name__ if chart_window else 'None'}", flush=True)
 
@@ -504,10 +504,11 @@ class BotStateHandlersFlat:
                 notes=f"CEL expression not satisfied"
             )
 
-        # CEL RulePack Integration (optional - check risk/entry rules)
+        # CEL RulePack Integration (optional - check risk rules only)
+        # Note: We exclude "entry" rules because we are using JSON Entry Mode
         allowed, reason, summary = self.parent._evaluate_rules(
             features,
-            pack_types=["risk", "entry"]
+            pack_types=["risk"]
         )
 
         if not allowed:

@@ -227,6 +227,7 @@ class BotTabControlPipeline:
         """Evaluiert JSON Entry via CEL Expression (NEU).
 
         Verwendet JsonEntryScorer statt EntryScoreEngine für JSON-basierte Entry-Logik.
+        Unterstützt trigger_regime_analysis() und last_closed_regime() über chart_window.
 
         Args:
             context: MarketContext mit features und regime
@@ -238,15 +239,26 @@ class BotTabControlPipeline:
         """
         json_scorer = self.parent._control._json_entry_scorer
 
-        # Get prev_regime from current regime state (für last_closed_regime() CEL function)
-        # Im Bot Tab gibt es kein chart_window, daher None
-        prev_regime = context.regime.regime_state.regime.value if context.regime else None
+        # Get chart_window reference for CEL regime functions
+        # This allows trigger_regime_analysis() and last_closed_regime() to work
+        chart_window = self._get_active_chart_window(symbol)
+
+        # Get prev_regime from BotController for new_regime_detected()
+        # prev_regime is the regime BEFORE the current candle-close
+        prev_regime = None
+        if hasattr(self.parent._control, '_prev_regime_name'):
+            prev_regime = self.parent._control._prev_regime_name
+        elif context.regime:
+            # Fallback: use current regime state (less accurate for detection)
+            prev_regime = context.regime.regime_state.regime.value
+
+        logger.debug(f"JSON Entry: chart_window={type(chart_window).__name__ if chart_window else 'None'}, prev_regime={prev_regime}")
 
         # 1. Evaluiere Long Entry
         should_enter_long, score_long, reasons_long = json_scorer.should_enter_long(
             features=context.features,
             regime=context.regime.regime_state,
-            chart_window=None,  # Kein Chart im Bot Tab
+            chart_window=chart_window,  # Pass chart_window for CEL functions
             prev_regime=prev_regime,
         )
 
@@ -254,7 +266,7 @@ class BotTabControlPipeline:
         should_enter_short, score_short, reasons_short = json_scorer.should_enter_short(
             features=context.features,
             regime=context.regime.regime_state,
-            chart_window=None,  # Kein Chart im Bot Tab
+            chart_window=chart_window,  # Pass chart_window for CEL functions
             prev_regime=prev_regime,
         )
 
@@ -314,3 +326,63 @@ class BotTabControlPipeline:
             logger.debug(f"JSON Entry Reasons: {', '.join(reason_codes)}")
 
         return entry_result
+
+    def _get_active_chart_window(self, symbol: str):
+        """Find active ChartWindow for the given symbol.
+
+        Traverses the Qt widget hierarchy to find a ChartWindow that:
+        1. Has the RegimeDisplayMixin (with _last_regime_name attribute)
+        2. Matches the trading symbol
+
+        This enables CEL functions like trigger_regime_analysis() and
+        last_closed_regime() to work with the visual chart regime detection.
+
+        Args:
+            symbol: Trading symbol to match (e.g. "BTCUSDT")
+
+        Returns:
+            ChartWindow instance or None if not found
+        """
+        try:
+            from PyQt6.QtWidgets import QApplication
+
+            # Find all top-level windows
+            for window in QApplication.topLevelWidgets():
+                # Check if window has chart window functionality
+                chart_window = self._find_chart_window_in_widget(window, symbol)
+                if chart_window:
+                    logger.debug(f"Found ChartWindow for {symbol}: {type(chart_window).__name__}")
+                    return chart_window
+
+            logger.debug(f"No ChartWindow found for {symbol}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Failed to find ChartWindow: {e}")
+            return None
+
+    def _find_chart_window_in_widget(self, widget, symbol: str):
+        """Recursively search for ChartWindow in widget tree.
+
+        Args:
+            widget: Qt widget to search in
+            symbol: Symbol to match
+
+        Returns:
+            ChartWindow or None
+        """
+        # Check if this widget is a ChartWindow with regime display
+        if hasattr(widget, '_last_regime_name') and hasattr(widget, 'trigger_regime_update'):
+            # Check if symbol matches (if widget has symbol attribute)
+            widget_symbol = getattr(widget, 'symbol', None) or getattr(widget, '_symbol', None)
+            if widget_symbol is None or symbol.upper() in str(widget_symbol).upper():
+                return widget
+
+        # Search children
+        if hasattr(widget, 'children'):
+            for child in widget.children():
+                result = self._find_chart_window_in_widget(child, symbol)
+                if result:
+                    return result
+
+        return None

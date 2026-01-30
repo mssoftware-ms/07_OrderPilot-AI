@@ -162,8 +162,9 @@ class EmbeddedTradingViewChart(
 
         # Regime display updates (Issue #13)
         self._last_regime_hash = ""
-        self._setup_regime_updates()
-        
+        # self._setup_regime_updates() # Removed (User Request)
+
+
         # Setup regime display (Badge + Timer from RegimeDisplayMixin)
         self._setup_regime_display()
 
@@ -178,7 +179,7 @@ class EmbeddedTradingViewChart(
         event_bus.subscribe(EventType.MARKET_BAR, self._on_market_bar_event)
         event_bus.subscribe(EventType.MARKET_TICK, self._on_market_tick_event)
         event_bus.subscribe(EventType.MARKET_DATA_TICK, self._on_market_tick_event)
-        
+
         # Initialize Market Sessions Overlay
         self.market_overlay = MarketSessionsOverlay(self)
         self.market_overlay.show()
@@ -188,26 +189,9 @@ class EmbeddedTradingViewChart(
 
         logger.info("EmbeddedTradingViewChart initialized")
 
-    def _setup_regime_updates(self) -> None:
-        """Connect regime updates to data load and candle close events."""
-        try:
-            if hasattr(self, "data_loaded"):
-                self.data_loaded.connect(self._update_regime_from_data)
-            if hasattr(self, "candle_closed"):
-                self.candle_closed.connect(self._on_candle_closed_for_regime)
-        except Exception as exc:
-            logger.warning(f"Failed to setup regime updates: {exc}")
 
-    def _on_candle_closed_for_regime(
-        self,
-        prev_open: float,
-        prev_high: float,
-        prev_low: float,
-        prev_close: float,
-        new_open: float,
-    ) -> None:
-        """Update regime after a candle closes."""
-        self._update_regime_from_data()
+    # _setup_regime_updates removed to prevent auto-analysis on startup (User Request)
+
 
     def _get_regime_candles(self, max_bars: int = 300) -> list[dict]:
         """Build candle list from current chart data for regime detection."""
@@ -263,17 +247,17 @@ class EmbeddedTradingViewChart(
                 # For now, using the first available data point's open as the reference "anchor"
                 # for the session if we assume data loaded covers the day.
                 # A better approach would be to fetch a separate 'quote' or 'daily bar'.
-                
+
                 # If we have a 'time' column (unix timestamp), find start of today
                 if 'time' in self.data.columns:
                     import time as time_mod
                     from datetime import datetime, timezone
-                    
+
                     # Get start of today (UTC) - approximate since market hours vary
                     # Using local system time for "today" might be misaligned with exchange
                     now = datetime.now(timezone.utc)
                     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-                    
+
                     # Find first bar >= start_of_day
                     today_data = self.data[self.data['time'] >= start_of_day]
                     if not today_data.empty:
@@ -283,27 +267,27 @@ class EmbeddedTradingViewChart(
                         ref_price = self.data['open'].iloc[0]
                 else:
                      ref_price = self.data['open'].iloc[0]
-                     
+
             except Exception as e:
                 logger.warning(f"Could not calc ref price: {e}")
-                
+
         self.market_overlay.set_symbol_info(symbol, ref_price)
 
     # Public helper to add a full-width price range (used by chat evaluation popup)
     def add_rect_range(self, low: float, high: float, label: str = "", color: str | None = None) -> None:
         """Draw a full-width rectangle between low/high prices.
-        
+
         Refactored to use ChartMarkingMixin for state tracking.
         """
         color = color or "rgba(13,110,253,0.18)"
         label = label or "Range"
-        
+
         # Calculate time range (wide range to simulate full width)
         import time
         now = int(time.time())
         start_time = now - 365 * 24 * 3600  # 1 year back
         end_time = now + 365 * 24 * 3600    # 1 year forward
-        
+
         # Try to use data range if available
         if self.data is not None and not self.data.empty and 'time' in self.data.columns:
             try:
@@ -346,7 +330,7 @@ class EmbeddedTradingViewChart(
                 self.web_view.page().runJavaScript(js)
             else:
                 logger.warning("add_zone not available")
-                
+
         except Exception as exc:
             logger.error("add_rect_range failed: %s", exc)
 
@@ -385,13 +369,13 @@ class EmbeddedTradingViewChart(
 
     def add_horizontal_line(self, price: float, label: str = "", color: str | None = None) -> None:
         """Draw a horizontal line at given price.
-        
+
         Refactored to use ChartMarkingMixin for state tracking.
         """
         color = color or "#0d6efd"
         import time
         line_id = f"line_{int(price)}_{int(time.time()*1000)}"
-        
+
         try:
             if hasattr(self, "add_line"):
                 self.add_line(
@@ -510,7 +494,7 @@ class EmbeddedTradingViewChart(
 
     def _add_regime_badge_to_toolbar(self) -> None:
         """Add regime badge widget to toolbar (from RegimeDisplayMixin).
-        
+
         NOTE: The old regime_button from ToolbarMixinRow2 already exists and works.
         We skip adding the RegimeBadgeWidget to avoid conflicts.
         The regime display functionality works via the existing button.
@@ -518,14 +502,14 @@ class EmbeddedTradingViewChart(
         # Skip - the existing regime_button from ToolbarMixinRow2 already works
         logger.debug("Skipping RegimeBadgeWidget - using existing regime_button from toolbar")
         pass
-    
+
     def resizeEvent(self, event):
         """Keep JS chart canvas in sync with Qt resize events (docks, chat, splitter)."""
         super().resizeEvent(event)
         try:
             # request_chart_resize is provided by EmbeddedTradingViewChartViewMixin
             self.request_chart_resize()
-            
+
             # Position market overlay
             if hasattr(self, 'market_overlay'):
                 if hasattr(self, 'web_view') and self.web_view:

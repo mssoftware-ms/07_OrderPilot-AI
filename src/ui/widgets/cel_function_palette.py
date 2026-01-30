@@ -151,6 +151,7 @@ class CelFunctionPalette(QWidget):
             "Regime Functions": [
                 ("Trigger Regime Analysis", "trigger_regime_analysis()", "Trigger regime detection on chart (updates regime badge & draws lines)"),
                 ("Last Closed Regime", "last_closed_regime()", "Get regime name from previous candle (e.g. 'STRONG_BULL')"),
+                ("New Regime Detected", "new_regime_detected()", "Check if regime changed on last candle-close (returns true/false)"),
                 ("Current Regime", "regime", "Current regime name string (e.g. 'STRONG_BULL')"),
                 ("Side Variable", "side", "Trade side: 'long' or 'short' - REQUIRED in entry_expression!"),
                 ("Side is Long", "side == 'long'", "Check if evaluating long entry"),

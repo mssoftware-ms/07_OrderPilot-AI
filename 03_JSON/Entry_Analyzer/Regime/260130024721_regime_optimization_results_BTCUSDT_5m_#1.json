@@ -360,23 +360,7 @@
       ]
     }
   ],
-  "entry_params": {
-    "min_score": 70,
-    "require_regime_match": true,
-    "max_signals_per_regime": 10
-  },
-  "evaluation_params": {
-    "lookback_periods": 200,
-    "min_regime_duration": 3,
-    "score_weights": {
-      "separability": 0.3,
-      "coherence": 0.25,
-      "fidelity": 0.25,
-      "boundary": 0.1,
-      "coverage": 0.1
-    }
-  },
-  "entry_expression": "trigger_regime_analysis() && (\n  (side == 'long' && (\n    last_closed_regime() == 'STRONG_BULL'\n  ))\n  ||\n  (side == 'short' && (\n    last_closed_regime() == 'STRONG_BEAR'\n  ))\n)",
-  "_comment_entry_expression": "⚠️ WICHTIG: Die entry_expression wurde MANUELL im CEL-Editor hinzugefügt! Entry Analyzer generiert JSON OHNE entry_expression. Du musst sie selbst schreiben basierend auf den Regime-IDs aus regimes[].id",
-  "_comment_entry_expression_edited": "2026-01-30T04:11:31.578228"
+  "entry_expression": "trigger_regime_analysis() && new_regime_detected() && (\n  (side == 'long' && last_closed_regime() == 'STRONG_BULL')\n  ||\n  (side == 'short' && last_closed_regime() == 'STRONG_BEAR')\n)",
+  "_comment_entry_expression": "CEL Entry Logic: 1) trigger_regime_analysis() - Regime-Erkennung auf Chart ausführen, 2) new_regime_detected() - nur bei Regime-WECHSEL, 3) last_closed_regime() - Regime der letzten geschlossenen Kerze prüfen",
+  "_comment_entry_expression_edited": "2026-01-30T05:40:00.000000"
 }

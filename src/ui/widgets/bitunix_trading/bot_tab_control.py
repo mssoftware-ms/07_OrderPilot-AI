@@ -282,9 +282,35 @@ class BotTabControl:
 
             self._log("✅ Bot gestoppt! Pipeline wurde angehalten.")
 
+            # Disable Regime Analysis
+            self._enable_regime_analysis(False)
+
         except Exception as e:
             self._log(f"❌ Fehler beim Stoppen: {e}")
             logger.exception("Bot stop failed")
+
+    def _enable_regime_analysis(self, enabled: bool) -> None:
+        """Enable/Disable regime analysis on parent chart window."""
+        try:
+            # Climb widget hierarchy to find ChartWindow
+            current = self.parent
+            chart_window = None
+            while current:
+                # Use class name string to avoid imports
+                if type(current).__name__ == "ChartWindow":
+                     chart_window = current
+                     break
+                current = current.parent()
+
+            if chart_window and hasattr(chart_window, 'set_regime_analysis_enabled'):
+                chart_window.set_regime_analysis_enabled(enabled)
+                status = "Aktiviert" if enabled else "Deaktiviert"
+                self._log(f"📊 Regime Analyse: {status}")
+            else:
+                # Silent fail (might not be in chart window)
+                pass
+        except Exception as e:
+            logger.error(f"Failed to toggle regime analysis: {e}")
 
     @qasync.asyncSlot()
     async def on_close_position_clicked(self) -> None:
