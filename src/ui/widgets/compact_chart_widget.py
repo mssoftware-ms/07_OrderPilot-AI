@@ -361,6 +361,20 @@ class CompactChartWidget(QWidget):
         resampled["time"] = (resampled[datetime_col].astype("int64") // 10**9).astype(int)
         return resampled[["time", "open", "high", "low", "close", "volume"]]
 
+    def _calculate_bar_spacing(self, num_bars: int) -> float:
+        """Calculate optimal bar spacing based on data count."""
+        if num_bars <= 0:
+            return 0.5
+
+        # Approximate chart width (minus axis/padding)
+        chart_width = self.width() - 50
+        if chart_width <= 0:
+            chart_width = 400
+
+        spacing = chart_width / num_bars
+        # Clamp spacing to reasonable limits (lightweight-charts constraints)
+        return max(0.1, min(spacing, 50.0))
+
     def update_symbol(self, symbol: str) -> None:
         """Update displayed symbol."""
         if hasattr(self, '_symbol_label') and self._symbol_label:
@@ -373,7 +387,7 @@ class CompactChartWidget(QWidget):
 
         if df is None or df.empty:
             return
-            
+
         self._last_raw_data = df
 
         try:
@@ -384,7 +398,7 @@ class CompactChartWidget(QWidget):
             self._chart.set(chart_df)
             spacing = self._calculate_bar_spacing(len(chart_df))
             self._chart.time_scale(right_offset=5, min_bar_spacing=spacing)
-            
+
             QtCore.QTimer.singleShot(100, self.fit_chart)
 
             if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:

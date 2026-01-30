@@ -276,6 +276,12 @@ class HistoryProviderFetching:
                     logger.debug("All fetched bars already cached locally")
 
         except Exception as e:
+            session.rollback()
+            # If it's an integrity error/unique constraint, just log warning and move on
+            if "UNIQUE constraint" in str(e) or "IntegrityError" in str(e) or "UniqueViolation" in str(e):
+                 logger.debug(f"Race condition in cache storage: {e}")
+                 return
+
             logger.error(f"Failed to store bars to database: {e}")
 
     async def get_latest_price(self, symbol: str) -> Decimal | None:

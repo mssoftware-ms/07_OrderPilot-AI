@@ -12,9 +12,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QTimer
+import pandas as pd
 
 if TYPE_CHECKING:
-    import pandas as pd
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,6 @@ class RegimeDisplayMixin:
 
         Args:
             force: If True, bypass hash check and always run detection.
-        """
         """
         print(f"[REGIME] _update_regime_from_data called (force={force})", flush=True)
 

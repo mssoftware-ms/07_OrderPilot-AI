@@ -331,28 +331,47 @@ class BotTabControlPipeline:
         """Find active ChartWindow for the given symbol.
 
         Traverses the Qt widget hierarchy to find a ChartWindow that:
-        1. Has the RegimeDisplayMixin (with _last_regime_name attribute)
+        1. Has the RegimeDisplayMixin (via chart_widget)
         2. Matches the trading symbol
-
-        This enables CEL functions like trigger_regime_analysis() and
-        last_closed_regime() to work with the visual chart regime detection.
 
         Args:
             symbol: Trading symbol to match (e.g. "BTCUSDT")
 
         Returns:
-            ChartWindow instance or None if not found
+            ChartWindow/Widget instance or None if not found
         """
         try:
             from PyQt6.QtWidgets import QApplication
 
-            # Find all top-level windows
+            # 1. Try parent traversal (fastest if embedded)
+            current = self.parent.parent
+            while current:
+                if type(current).__name__ == "ChartWindow":
+                    # Check symbol match
+                    chart_symbol = getattr(current, "symbol", "") or getattr(current, "current_symbol", "")
+                    if chart_symbol and symbol.upper() in str(chart_symbol).upper():
+                        if hasattr(current, "chart_widget"):
+                            return current.chart_widget
+                    break
+                # Qt parent traversal
+                current = current.parent() if hasattr(current, "parent") else None
+
+            # 2. Search all top-level windows
             for window in QApplication.topLevelWidgets():
-                # Check if window has chart window functionality
-                chart_window = self._find_chart_window_in_widget(window, symbol)
-                if chart_window:
-                    logger.debug(f"Found ChartWindow for {symbol}: {type(chart_window).__name__}")
-                    return chart_window
+                if type(window).__name__ == "ChartWindow":
+                    # Check symbol
+                    chart_symbol = getattr(window, "symbol", "") or getattr(window, "current_symbol", "")
+                    if chart_symbol and symbol.upper() in str(chart_symbol).upper():
+                         if hasattr(window, "chart_widget"):
+                             return window.chart_widget
+
+                # Also check direct chart widgets (if detached)
+                if hasattr(window, "current_symbol"):
+                     # Check if it is the chart widget itself
+                     curr_sym = getattr(window, "current_symbol", "")
+                     if curr_sym and symbol.upper() in str(curr_sym).upper():
+                         if hasattr(window, "_last_regime_name"):
+                             return window
 
             logger.debug(f"No ChartWindow found for {symbol}")
             return None
@@ -360,29 +379,3 @@ class BotTabControlPipeline:
         except Exception as e:
             logger.warning(f"Failed to find ChartWindow: {e}")
             return None
-
-    def _find_chart_window_in_widget(self, widget, symbol: str):
-        """Recursively search for ChartWindow in widget tree.
-
-        Args:
-            widget: Qt widget to search in
-            symbol: Symbol to match
-
-        Returns:
-            ChartWindow or None
-        """
-        # Check if this widget is a ChartWindow with regime display
-        if hasattr(widget, '_last_regime_name') and hasattr(widget, 'trigger_regime_update'):
-            # Check if symbol matches (if widget has symbol attribute)
-            widget_symbol = getattr(widget, 'symbol', None) or getattr(widget, '_symbol', None)
-            if widget_symbol is None or symbol.upper() in str(widget_symbol).upper():
-                return widget
-
-        # Search children
-        if hasattr(widget, 'children'):
-            for child in widget.children():
-                result = self._find_chart_window_in_widget(child, symbol)
-                if result:
-                    return result
-
-        return None

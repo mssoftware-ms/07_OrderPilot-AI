@@ -221,6 +221,10 @@ class ChartDataProvider:
         empty = self._get_empty_context()
         return sorted(empty.keys())
 
+    def get_available_variables(self) -> Dict[str, Dict[str, str]]:
+        """Alias for get_variable_info to match interface expectation."""
+        return self.get_variable_info()
+
     def get_variable_info(self) -> Dict[str, Dict[str, str]]:
         """
         Get metadata for all variables.
