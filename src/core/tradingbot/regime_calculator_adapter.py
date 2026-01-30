@@ -188,11 +188,16 @@ class RegimeCalculatorAdapter:
             return {"rsi": float(last_row.get("indicator_value", 0))}
 
         elif ind_type == "MACD":
-            # MACD calculator returns: macd, signal, histogram columns
+            # MACD calculator returns: indicator_value (macd line), macd_signal
+            # Note: histogram not stored separately in calculator
+            macd_val = float(last_row.get("indicator_value", 0))
+            signal_val = float(last_row.get("macd_signal", 0))
+            hist_val = macd_val - signal_val  # Calculate histogram
+
             return {
-                "macd": float(last_row.get("indicator_value", 0)),
-                "signal": float(last_row.get("signal", 0)),
-                "hist": float(last_row.get("histogram", 0)),
+                "macd": macd_val,
+                "signal": signal_val,
+                "hist": hist_val,
             }
 
         elif ind_type == "ADX":
@@ -219,19 +224,19 @@ class RegimeCalculatorAdapter:
             }
 
         elif ind_type in ("BB", "BOLLINGER"):
-            # Bollinger Bands calculator returns: upper, middle, lower, width columns
+            # Bollinger Bands calculator returns: bb_upper, bb_middle, bb_lower columns
             return {
-                "upper": float(last_row.get("upper", 0)) if last_row.get("upper") is not None else None,
-                "lower": float(last_row.get("lower", 0)) if last_row.get("lower") is not None else None,
-                "middle": float(last_row.get("middle", 0)) if last_row.get("middle") is not None else None,
-                "width": float(last_row.get("width", 0)) if last_row.get("width") is not None else None,
+                "upper": float(last_row.get("bb_upper", 0)) if last_row.get("bb_upper") is not None else None,
+                "lower": float(last_row.get("bb_lower", 0)) if last_row.get("bb_lower") is not None else None,
+                "middle": float(last_row.get("bb_middle", 0)) if last_row.get("bb_middle") is not None else None,
+                "width": float(last_row.get("bb_width", 0)) if last_row.get("bb_width") is not None else None,
             }
 
         elif ind_type in ("STOCH", "STOCHASTIC"):
-            # Stochastic calculator returns: k, d columns
+            # Stochastic calculator returns: indicator_value (%K), stoch_d (%D)
             return {
-                "k": float(last_row.get("k", 0)),
-                "d": float(last_row.get("d", 0)),
+                "k": float(last_row.get("indicator_value", 0)),
+                "d": float(last_row.get("stoch_d", 0)),
             }
 
         elif ind_type == "MFI":

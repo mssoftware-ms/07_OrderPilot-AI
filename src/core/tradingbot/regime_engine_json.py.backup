@@ -240,19 +240,10 @@ class RegimeEngineJSON:
         """
         Calculate indicators for optimization-format JSON.
 
-        Uses RegimeCalculatorAdapter for delegation to IndicatorCalculatorFactory.
-        This eliminates the massive if-elif chain (CC 84 -> 2).
-
         Returns:
             indicator_values: {indicator_name: {field: value}}
             type_index: {indicator_type: indicator_name}
         """
-        # Lazy-initialize adapter
-        if not hasattr(self, "_calculator_adapter"):
-            from src.core.tradingbot.regime_calculator_adapter import RegimeCalculatorAdapter
-
-            self._calculator_adapter = RegimeCalculatorAdapter()
-
         indicator_values: dict[str, dict[str, float]] = {}
         type_index: dict[str, str] = {}
 
@@ -262,16 +253,139 @@ class RegimeEngineJSON:
             ind_type = (ind.get("type") or "").upper()
             params = ind.get("params") or []
 
+            def _param(pname, default=None):
+                for p in params:
+                    if p.get("name") == pname:
+                        return p.get("value", default)
+                return default
+
             if not name or not ind_type:
                 raise ValueError("Indicator definition missing name or type")
 
             type_index.setdefault(ind_type, name)
 
             try:
-                # Delegate to RegimeCalculatorAdapter (eliminates 125-line if-elif chain!)
-                indicator_values[name] = self._calculator_adapter.calculate_indicator(
-                    data, ind_type, params
-                )
+                # Dynamische Berechnung je nach Typ; wenn ein Typ fehlt, wird er übersprungen.
+                if ind_type == "ADX":
+                    period = int(_param("period", 14))
+                    adx_res = ta.adx(data["high"], data["low"], data["close"], length=period)
+                    if adx_res is None or adx_res.empty:
+                        raise ValueError(f"Indicator {name} (ADX) produced no data")
+                    adx_col = next((c for c in adx_res.columns if "ADX" in c.upper()), None)
+                    dmp_col = next((c for c in adx_res.columns if "DMP" in c.upper()), None)
+                    dmn_col = next((c for c in adx_res.columns if "DMN" in c.upper()), None)
+                    adx_val = adx_res[adx_col].iloc[-1] if adx_col else None
+                    dmp_val = adx_res[dmp_col].iloc[-1] if dmp_col else None
+                    dmn_val = adx_res[dmn_col].iloc[-1] if dmn_col else None
+                    di_diff = None
+                    if dmp_val is not None and dmn_val is not None:
+                        di_diff = abs(float(dmp_val) - float(dmn_val))
+                    indicator_values[name] = {
+                        "adx": float(adx_val) if adx_val is not None else None,
+                        "di_diff": di_diff,
+                    }
+
+                elif ind_type == "RSI":
+                    period = int(_param("period", 14))
+                    rsi_res = ta.rsi(data["close"], length=period)
+                    if rsi_res is None or rsi_res.empty:
+                        raise ValueError(f"Indicator {name} (RSI) produced no data")
+                    rsi_val = rsi_res.iloc[-1]
+                    indicator_values[name] = {"rsi": float(rsi_val)}
+
+                elif ind_type == "ATR":
+                    period = int(_param("period", 14))
+                    atr_res = ta.atr(data["high"], data["low"], data["close"], length=period)
+                    if atr_res is None or atr_res.empty:
+                        raise ValueError(f"Indicator {name} (ATR) produced no data")
+                    atr_val = atr_res.iloc[-1]
+                    close_val = data["close"].iloc[-1]
+                    atr_pct = float(atr_val / close_val * 100) if close_val else None
+                    indicator_values[name] = {"atr": float(atr_val), "atr_percent": atr_pct}
+
+                elif ind_type == "EMA":
+                    period = int(_param("period", 20))
+                    ema_res = ta.ema(data["close"], length=period)
+                    if ema_res is None or ema_res.empty:
+                        raise ValueError(f"Indicator {name} (EMA) produced no data")
+                    indicator_values[name] = {"value": float(ema_res.iloc[-1])}
+
+                elif ind_type == "SMA":
+                    period = int(_param("period", 20))
+                    sma_res = ta.sma(data["close"], length=period)
+                    if sma_res is None or sma_res.empty:
+                        raise ValueError(f"Indicator {name} (SMA) produced no data")
+                    indicator_values[name] = {"value": float(sma_res.iloc[-1])}
+
+                elif ind_type == "MACD":
+                    fast = int(_param("fast", 12))
+                    slow = int(_param("slow", 26))
+                    signal = int(_param("signal", 9))
+                    macd_res = ta.macd(data["close"], fast=fast, slow=slow, signal=signal)
+                    if macd_res is None or macd_res.empty:
+                        raise ValueError(f"Indicator {name} (MACD) produced no data")
+                    macd_col = next((c for c in macd_res.columns if "MACD" in c.upper() and "SIGNAL" not in c.upper() and "HIST" not in c.upper()), None)
+                    signal_col = next((c for c in macd_res.columns if "SIGNAL" in c.upper()), None)
+                    hist_col = next((c for c in macd_res.columns if "HIST" in c.upper()), None)
+                    indicator_values[name] = {
+                        "macd": float(macd_res[macd_col].iloc[-1]) if macd_col else None,
+                        "signal": float(macd_res[signal_col].iloc[-1]) if signal_col else None,
+                        "hist": float(macd_res[hist_col].iloc[-1]) if hist_col else None,
+                    }
+
+                elif ind_type == "BB":
+                    length = int(_param("period", 20))
+                    mult = float(_param("mult", 2.0))
+                    bb_res = ta.bbands(data["close"], length=length, std=mult)
+                    if bb_res is None or bb_res.empty:
+                        raise ValueError(f"Indicator {name} (BB) produced no data")
+                    upper = next((c for c in bb_res.columns if "UPPER" in c.upper()), None)
+                    lower = next((c for c in bb_res.columns if "LOWER" in c.upper()), None)
+                    mid = next((c for c in bb_res.columns if "MID" in c.upper() or "MIDDLE" in c.upper()), None)
+                    width = next((c for c in bb_res.columns if "WIDTH" in c.upper()), None)
+                    indicator_values[name] = {
+                        "upper": float(bb_res[upper].iloc[-1]) if upper else None,
+                        "lower": float(bb_res[lower].iloc[-1]) if lower else None,
+                        "middle": float(bb_res[mid].iloc[-1]) if mid else None,
+                        "width": float(bb_res[width].iloc[-1]) if width else None,
+                    }
+
+                elif ind_type == "STOCH":
+                    k = int(_param("k", 14))
+                    d = int(_param("d", 3))
+                    stoch_res = ta.stoch(data["high"], data["low"], data["close"], k=k, d=d)
+                    if stoch_res is None or stoch_res.empty:
+                        raise ValueError(f"Indicator {name} (STOCH) produced no data")
+                    k_col = next((c for c in stoch_res.columns if "K" in c.upper()), None)
+                    d_col = next((c for c in stoch_res.columns if "D" in c.upper()), None)
+                    indicator_values[name] = {
+                        "k": float(stoch_res[k_col].iloc[-1]) if k_col else None,
+                        "d": float(stoch_res[d_col].iloc[-1]) if d_col else None,
+                    }
+
+                elif ind_type == "MFI":
+                    period = int(_param("period", 14))
+                    mfi_res = ta.mfi(data["high"], data["low"], data["close"], data["volume"], length=period)
+                    if mfi_res is None or mfi_res.empty:
+                        raise ValueError(f"Indicator {name} (MFI) produced no data")
+                    indicator_values[name] = {"mfi": float(mfi_res.iloc[-1])}
+
+                elif ind_type == "CCI":
+                    period = int(_param("period", 20))
+                    cci_res = ta.cci(data["high"], data["low"], data["close"], length=period)
+                    if cci_res is None or cci_res.empty:
+                        raise ValueError(f"Indicator {name} (CCI) produced no data")
+                    indicator_values[name] = {"cci": float(cci_res.iloc[-1])}
+
+                elif ind_type == "CHOP":
+                    length = int(_param("period", 14))
+                    chop_res = ta.chop(data["high"], data["low"], data["close"], length=length)
+                    if chop_res is None or chop_res.empty:
+                        raise ValueError(f"Indicator {name} (CHOP) produced no data")
+                    indicator_values[name] = {"chop": float(chop_res.iloc[-1])}
+
+                else:
+                    raise ValueError(f"Unsupported indicator type in optimizer JSON: {ind_type}")
                 computed += 1
             except Exception as e:
                 logger.error(f"Failed to compute indicator {name} ({ind_type}): {e}")
