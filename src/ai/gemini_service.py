@@ -1,7 +1,7 @@
 """Google Gemini Service for OrderPilot-AI Trading Application.
 
 Implements Gemini API integration with structured outputs,
-mirroring the OpenAI/Anthropic service structure for compatibility.
+inheriting from BaseAIService for code reuse and consistency.
 
 Supports:
 - gemini-2.0-flash-exp (Latest, experimental)
@@ -11,48 +11,30 @@ Supports:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import time
 from typing import Any, TypeVar
 
-import aiohttp
 from pydantic import BaseModel
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
-from src.common.logging_setup import log_ai_request
 from src.config.loader import AIConfig
 
-# Import shared models from OpenAI service
-from src.ai.openai_service import (
-    OrderAnalysis,
-    AlertTriageResult,
-    BacktestReview,
-    StrategyTradeAnalysis,
-    CostTracker,
-    CacheManager,
-    OpenAIError,  # Reuse as GeminiError
-    RateLimitError,
-    QuotaExceededError,
-    SchemaValidationError
-)
+# Import base class
+from .base_service import BaseAIService
+
+# Import shared models
+from .openai_models import SchemaValidationError
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
 
 
-class GeminiService:
-    """Main Gemini service for structured outputs.
+class GeminiService(BaseAIService):
+    """Google Gemini service implementation.
 
-    Mirrors OpenAIService/AnthropicService structure for drop-in compatibility.
+    Inherits common functionality from BaseAIService and provides
+    Gemini-specific implementations for abstract methods.
     """
 
     def __init__(
@@ -68,182 +50,35 @@ class GeminiService:
             api_key: Gemini API key
             telemetry_callback: Optional callback for telemetry
         """
-        self.config = config
-        self.api_key = api_key
-        self.telemetry_callback = telemetry_callback
+        # Initialize base class
+        super().__init__(config, api_key, telemetry_callback)
 
-        # Initialize components (shared with OpenAI/Anthropic)
-        self.cost_tracker = CostTracker(
-            monthly_budget=config.cost_limit_monthly,
-            warn_threshold=config.cost_limit_monthly * 0.8  # Warn at 80%
-        )
-        self.cache_manager = CacheManager(ttl_seconds=config.cache_ttl if hasattr(config, 'cache_ttl') else 3600)
-
-        # API settings for Gemini
+        # Gemini-specific settings
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
-
-        # Default model (can be overridden)
+        # Gemini uses API key in URL params, not headers
+        self.headers = {"Content-Type": "application/json"}
         self.default_model = "gemini-2.0-flash-exp"
 
-        # Session for connection pooling
-        self._session: aiohttp.ClientSession | None = None
-
-    async def __aenter__(self):
-        """Async context manager entry."""
-        await self.initialize()
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
-        """Async context manager exit."""
-        await self.close()
-
-    async def initialize(self) -> None:
-        """Initialize the service."""
-        if not self._session:
-            timeout = aiohttp.ClientTimeout(
-                total=self.config.timeouts.get("read_ms", 15000) / 1000,
-                connect=self.config.timeouts.get("connect_ms", 5000) / 1000
-            )
-            self._session = aiohttp.ClientSession(
-                headers={"Content-Type": "application/json"},
-                timeout=timeout
-            )
-
-    async def close(self) -> None:
-        """Close the service."""
-        if self._session:
-            await self._session.close()
-            self._session = None
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((aiohttp.ClientError, RateLimitError)),
-        before_sleep=before_sleep_log(logger, logging.WARNING)
-    )
-    async def structured_completion(
-        self,
-        prompt: str,
-        response_model: type[T],
-        model: str | None = None,
-        temperature: float = 0.2,
-        use_cache: bool = True,
-        context: dict[str, Any] | None = None
-    ) -> T:
-        """Get structured completion from Google Gemini.
-
-        Args:
-            prompt: The prompt to send
-            response_model: Pydantic model for response validation
-            model: Model to use (defaults to self.default_model)
-            temperature: Temperature for generation (0.0-1.0)
-            use_cache: Whether to use caching
-            context: Additional context for the request
-
-        Returns:
-            Validated response as Pydantic model instance
-
-        Raises:
-            RateLimitError: If rate limited by API
-            QuotaExceededError: If monthly budget exceeded
-            SchemaValidationError: If response doesn't match schema
-        """
-        # Check budget
-        if not self.cost_tracker.check_budget(estimated_cost=0.01):  # Estimate
-            raise QuotaExceededError("Monthly AI budget exceeded")
-
-        cache_key = self._build_cache_key(prompt, response_model, model, use_cache)
-        cached = self._try_cache_hit(cache_key, response_model)
-        if cached is not None:
-            return cached
-
-        # Build request
-        model_to_use = model or self.default_model
-
-        # Get JSON schema for structured output
-        request_body = self._build_request_body(prompt, response_model, temperature)
-
-        # Build URL with API key
-        url = f"{self.base_url}/models/{model_to_use}:generateContent?key={self.api_key}"
-
-        # Ensure session is initialized
-        if not self._session:
-            await self.initialize()
-
-        start_time = time.time()
-
-        try:
-            # Make API request
-            async with self._session.post(url, json=request_body) as response:
-
-                # Handle rate limiting
-                if response.status == 429:
-                    logger.warning("Gemini rate limit hit")
-                    raise RateLimitError("Rate limit exceeded")
-
-                # Handle errors
-                if response.status >= 400:
-                    error_text = await response.text()
-                    logger.error(f"Gemini API error ({response.status}): {error_text}")
-                    raise OpenAIError(f"API error {response.status}: {error_text}")
-
-                # Parse response
-                response_data = await response.json()
-
-                text_content = self._extract_text_content(response_data)
-                json_data = self._parse_json_response(text_content)
-                result = self._validate_response(response_model, json_data)
-
-                # Track costs
-                usage_metadata = response_data.get("usageMetadata", {})
-                input_tokens = usage_metadata.get("promptTokenCount", 0)
-                output_tokens = usage_metadata.get("candidatesTokenCount", 0)
-
-                cost = self._calculate_cost(model_to_use, input_tokens, output_tokens)
-                self.cost_tracker.add_cost(cost)
-
-                # Log request
-                elapsed_ms = (time.time() - start_time) * 1000
-                self._log_ai_request(model_to_use, input_tokens + output_tokens, cost, elapsed_ms)
-
-                # Cache result
-                if use_cache and cache_key:
-                    self.cache_manager.set(cache_key, result.model_dump())
-
-                return result
-
-        except aiohttp.ClientError as e:
-            logger.error(f"Gemini API connection error: {e}")
-            raise OpenAIError(f"Connection error: {e}")
-
-    def _build_cache_key(
-        self,
-        prompt: str,
-        response_model: type[T],
-        model: str | None,
-        use_cache: bool,
-    ) -> str | None:
-        if not use_cache:
-            return None
-        return hashlib.md5(
-            f"{prompt}:{response_model.__name__}:{model or self.default_model}".encode()
-        ).hexdigest()
-
-    def _try_cache_hit(self, cache_key: str | None, response_model: type[T]) -> T | None:
-        if not cache_key:
-            return None
-        cached = self.cache_manager.get(cache_key)
-        if cached:
-            logger.debug(f"Cache hit for {response_model.__name__}")
-            return response_model.model_validate(cached)
-        return None
+    # ==================== Abstract Method Implementations ====================
 
     def _build_request_body(
         self,
         prompt: str,
         response_model: type[T],
+        model: str,
         temperature: float,
     ) -> dict[str, Any]:
+        """Build Gemini-specific request body.
+
+        Args:
+            prompt: The prompt text
+            response_model: Pydantic model for response validation
+            model: Model name
+            temperature: Temperature for generation (0.0-1.0)
+
+        Returns:
+            Gemini API request dictionary
+        """
         schema = response_model.model_json_schema()
         schema_str = json.dumps(schema, indent=2)
         enhanced_prompt = f"""{prompt}
@@ -253,6 +88,7 @@ IMPORTANT: Respond with valid JSON matching this exact schema:
 {schema_str}
 
 Do not include any explanation, markdown formatting, or code blocks. Only output the raw JSON object."""
+
         return {
             "contents": [{"parts": [{"text": enhanced_prompt}]}],
             "generationConfig": {
@@ -263,8 +99,20 @@ Do not include any explanation, markdown formatting, or code blocks. Only output
         }
 
     def _extract_text_content(self, response_data: dict[str, Any]) -> str:
+        """Extract text content from Gemini response.
+
+        Args:
+            response_data: Raw JSON response from Gemini API
+
+        Returns:
+            Extracted text content
+
+        Raises:
+            SchemaValidationError: If content cannot be extracted
+        """
         candidates = response_data.get("candidates", [])
         if not candidates:
+            # Check for safety filter blocking
             if "promptFeedback" in response_data:
                 feedback = response_data["promptFeedback"]
                 block_reason = feedback.get("blockReason", "Unknown")
@@ -275,176 +123,66 @@ Do not include any explanation, markdown formatting, or code blocks. Only output
         parts = content.get("parts", [])
         if not parts:
             raise SchemaValidationError("No content parts in Gemini response")
+
         return parts[0].get("text", "")
 
-    def _parse_json_response(self, text_content: str) -> dict[str, Any]:
-        try:
-            if "```json" in text_content:
-                text_content = text_content.split("```json")[1].split("```")[0].strip()
-            elif "```" in text_content:
-                text_content = text_content.split("```")[1].split("```")[0].strip()
-            return json.loads(text_content)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini response as JSON: {e}")
-            logger.debug(f"Raw content: {text_content[:500]}")
-            raise SchemaValidationError(f"Invalid JSON in response: {e}")
+    def _extract_token_counts(self, response_data: dict[str, Any]) -> tuple[int, int]:
+        """Extract token counts from Gemini response.
 
-    def _validate_response(self, response_model: type[T], json_data: dict[str, Any]) -> T:
-        try:
-            return response_model.model_validate(json_data)
-        except Exception as e:
-            logger.error(f"Schema validation failed: {e}")
-            raise SchemaValidationError(f"Response doesn't match schema: {e}")
+        Args:
+            response_data: Raw API response
 
-    def _calculate_cost(self, model_to_use: str, input_tokens: int, output_tokens: int) -> float:
-        if "pro" in model_to_use:
-            return (input_tokens * 1.25 / 1_000_000) + (output_tokens * 5.0 / 1_000_000)
-        return (input_tokens * 0.10 / 1_000_000) + (output_tokens * 0.30 / 1_000_000)
+        Returns:
+            Tuple of (input_tokens, output_tokens)
+        """
+        usage_metadata = response_data.get("usageMetadata", {})
+        return (
+            usage_metadata.get("promptTokenCount", 0),
+            usage_metadata.get("candidatesTokenCount", 0)
+        )
 
-    def _log_ai_request(
+    def _calculate_cost(
         self,
         model: str,
-        tokens_used: int,
-        cost: float,
-        elapsed_ms: float,
-    ) -> None:
-        log_ai_request(
-            provider="Gemini",
-            model=model,
-            tokens_used=tokens_used,
-            cost_usd=cost,
-            latency_ms=elapsed_ms,
-            cache_hit=False,
-        )
-
-    # ==================== High-Level Task Methods ====================
-
-    async def analyze_order(self, order_data: dict[str, Any]) -> OrderAnalysis:
-        """Analyze an order for risk and approval.
+        input_tokens: int,
+        output_tokens: int
+    ) -> float:
+        """Calculate cost for Gemini API call.
 
         Args:
-            order_data: Order details
+            model: Model name
+            input_tokens: Number of input tokens
+            output_tokens: Number of output tokens
 
         Returns:
-            OrderAnalysis with approval recommendation
+            Cost in USD
+
+        Note:
+            Gemini pricing varies by model:
+            - Pro models: $1.25/1M input, $5.00/1M output
+            - Flash models: $0.10/1M input, $0.30/1M output
         """
-        prompt = f"""Analyze this trading order for risk and approval:
+        if "pro" in model.lower():
+            return (input_tokens * 1.25 / 1_000_000) + (output_tokens * 5.0 / 1_000_000)
+        # Flash model (default)
+        return (input_tokens * 0.10 / 1_000_000) + (output_tokens * 0.30 / 1_000_000)
 
-Order Details:
-{json.dumps(order_data, indent=2)}
-
-Provide a structured analysis."""
-
-        return await self.structured_completion(
-            prompt=prompt,
-            response_model=OrderAnalysis,
-            temperature=0.1
-        )
-
-    async def triage_alert(self, alert_data: dict[str, Any]) -> AlertTriageResult:
-        """Triage an alert to determine priority and actions.
-
-        Args:
-            alert_data: Alert details
+    def _get_provider_name(self) -> str:
+        """Get provider name for logging.
 
         Returns:
-            AlertTriageResult with priority and suggested actions
+            Provider name
         """
-        prompt = f"""Triage this trading alert:
+        return "Gemini"
 
-Alert Details:
-{json.dumps(alert_data, indent=2)}
+    def _get_endpoint(self) -> str:
+        """Get Gemini API endpoint URL.
 
-Provide structured triage analysis."""
-
-        return await self.structured_completion(
-            prompt=prompt,
-            response_model=AlertTriageResult,
-            temperature=0.2
-        )
-
-    async def review_backtest(self, backtest_data: dict[str, Any]) -> BacktestReview:
-        """Review backtest results and provide insights.
-
-        Args:
-            backtest_data: Backtest results and metrics
+        Gemini uses API key in URL params instead of headers.
 
         Returns:
-            BacktestReview with insights and recommendations
+            Full endpoint URL with API key
         """
-        prompt = f"""Review these backtest results:
-
-Backtest Data:
-{json.dumps(backtest_data, indent=2)}
-
-Provide structured review and insights."""
-
-        return await self.structured_completion(
-            prompt=prompt,
-            response_model=BacktestReview,
-            temperature=0.3
-        )
-
-    async def analyze_strategy_trades(
-        self,
-        strategy_name: str,
-        symbol: str,
-        trades: list[dict[str, Any]],
-        stats: dict[str, Any],
-        strategy_params: dict[str, Any]
-    ) -> StrategyTradeAnalysis:
-        """Analyze strategy trades and provide optimization suggestions.
-
-        Args:
-            strategy_name: Name of the strategy
-            symbol: Trading symbol
-            trades: List of trade details
-            stats: Strategy statistics
-            strategy_params: Current strategy parameters
-
-        Returns:
-            StrategyTradeAnalysis with insights and optimization suggestions
-        """
-        prompt = f"""Analyze these strategy trades and provide optimization suggestions:
-
-Strategy: {strategy_name}
-Symbol: {symbol}
-
-Current Parameters:
-{json.dumps(strategy_params, indent=2)}
-
-Statistics:
-{json.dumps(stats, indent=2)}
-
-Trades (showing first 20):
-{json.dumps(trades[:20], indent=2)}
-
-Please analyze the trading patterns and provide:
-1. Overall assessment of strategy performance
-2. Patterns in winning vs losing trades
-3. Specific parameter optimization suggestions
-4. An optimized version of the strategy parameters"""
-
-        return await self.structured_completion(
-            prompt=prompt,
-            response_model=StrategyTradeAnalysis,
-            temperature=0.3
-        )
-
-    # ==================== Utility Methods ====================
-
-    def get_cost_summary(self) -> dict[str, Any]:
-        """Get cost tracking summary.
-
-        Returns:
-            Dictionary with cost stats
-        """
-        return self.cost_tracker.get_summary()
-
-    def reset_costs(self) -> None:
-        """Reset cost tracking (e.g., at start of new month)."""
-        self.cost_tracker.reset()
-
-    def clear_cache(self) -> None:
-        """Clear the response cache."""
-        self.cache_manager.clear()
+        # Model is set in structured_completion, so we use default here
+        # The actual model will be used in the POST request
+        return f"{self.base_url}/models/{self.default_model}:generateContent?key={self.api_key}"
