@@ -71,7 +71,8 @@ class ParameterCombinationGenerator:
     def from_ui_format(
         cls,
         indicator_type: str,
-        ui_param_ranges: Dict[str, Dict[str, Any]]
+        ui_param_ranges: Dict[str, Dict[str, Any]],
+        derived_params: Optional[Dict[str, callable]] = None
     ) -> 'ParameterCombinationGenerator':
         """Create generator from UI parameter format.
 
@@ -82,6 +83,7 @@ class ParameterCombinationGenerator:
             indicator_type: Indicator name
             ui_param_ranges: UI format parameter ranges
                 Example: {'period': {'min': 10, 'max': 14, 'step': 2}}
+            derived_params: Optional dict of parameter derivation functions
 
         Returns:
             ParameterCombinationGenerator instance
@@ -115,7 +117,7 @@ class ParameterCombinationGenerator:
 
             expanded_ranges[param_name] = values
 
-        return cls(indicator_type, expanded_ranges)
+        return cls(indicator_type, expanded_ranges, derived_params)
 
     def generate(self) -> Iterator[Dict[str, Any]]:
         """Generate all parameter combinations using itertools.product.
