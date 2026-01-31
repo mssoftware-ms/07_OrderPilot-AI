@@ -6,10 +6,35 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QTableWidgetItem, QWidget
 
+from src.ui.widgets.column_updaters import (
+    ColumnUpdaterRegistry,
+    CurrentPriceUpdater,
+    FeesPercentUpdater,
+    FeesCurrencyUpdater,
+    InvestUpdater,
+    LiquidationUpdater,
+    PnLPercentUpdater,
+    PnLCurrencyUpdater,
+    QuantityUpdater,
+)
+
 logger = logging.getLogger(__name__)
 
 class BotDisplaySignalsMixin:
     """BotDisplaySignalsMixin extracted from BotDisplayManagerMixin."""
+
+    def _init_column_registry(self) -> None:
+        """Initialize column updater registry (lazy initialization)."""
+        self._column_registry = ColumnUpdaterRegistry()
+        self._column_registry.register(CurrentPriceUpdater())
+        self._column_registry.register(PnLPercentUpdater())
+        self._column_registry.register(PnLCurrencyUpdater())
+        self._column_registry.register(FeesPercentUpdater())
+        self._column_registry.register(FeesCurrencyUpdater())
+        self._column_registry.register(InvestUpdater())
+        self._column_registry.register(QuantityUpdater())
+        self._column_registry.register(LiquidationUpdater())
+
     def _make_non_editable(self, item: QTableWidgetItem) -> None:
         """Remove editable flag from a table item."""
         if item:
@@ -398,217 +423,171 @@ class BotDisplaySignalsMixin:
         trailing_price: float,
         tr_is_active: bool,
     ) -> None:
+        """Update status and P&L columns using Column Updater Pattern.
+
+        Delegates column updates to specialized updaters for clean separation of concerns.
+        """
+        # Initialize registry on first use
+        if not hasattr(self, '_column_registry'):
+            self._init_column_registry()
+
+        # Check if this signal should have P&L data
+        if not self._should_display_pnl(signal):
+            self._set_empty_columns(row)
+            return
+
+        # Build context with all calculated values
+        context = self._build_pnl_context(signal)
+
+        # Use updaters for columns 11-17, 24 (delegated updates)
+        for column in [11, 12, 13, 14, 15, 16, 17, 24]:
+            self._column_registry.update(
+                self.signals_table,
+                row,
+                column,
+                signal,
+                context
+            )
+
+        # Handle remaining columns directly (derivative, score, TR stop)
+        self._set_derivative_columns(row, signal, context["current_price"], context["leverage"])
+        self.signals_table.setItem(row, 22, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+        self._set_tr_stop_column(row, trailing_price, tr_is_active)
+
+    def _should_display_pnl(self, signal: dict) -> bool:
+        """Check if signal should display P&L data."""
         has_quantity = signal.get("quantity", 0) > 0
         has_invested = signal.get("invested", 0) > 0
         status = signal["status"]
         is_closed = status.startswith("CLOSED") or status in ("SL", "TR", "MACD", "RSI", "Sell")
         is_entered = status == "ENTERED" and signal.get("is_open") is not False
         has_derivative = signal.get("derivative") is not None
+        return has_quantity or has_invested or is_entered or is_closed or has_derivative
 
-        if has_quantity or has_invested or is_entered or is_closed or has_derivative:
-            current_price = signal.get("current_price", signal["price"])
-            entry_price = signal.get("price", 0)
-            invested = signal.get("invested", 0)
-            raw_quantity = signal.get("quantity", 0)
-            quantity = raw_quantity
-            side = signal.get("side", "long")
+    def _build_pnl_context(self, signal: dict) -> dict:
+        """Build context dictionary with all P&L calculations.
 
-            # Issue #1: Use static leverage stored on the signal
-            leverage = self._get_signal_leverage(signal)
+        Returns:
+            Context dict with all values needed for column updates
+        """
+        current_price = signal.get("current_price", signal["price"])
+        entry_price = signal.get("price", 0)
+        invested = signal.get("invested", 0)
+        side = signal.get("side", "long")
+        leverage = self._get_signal_leverage(signal)
 
-            # Issue #5: Trading fees % (Maker + Taker), leveraged for P&L adjustment
-            maker_fee = 0.02  # Default 0.02%
-            taker_fee = 0.06  # Default 0.06%
-            if hasattr(self, 'get_bitunix_fees'):
-                maker_fee, taker_fee = self.get_bitunix_fees()
-            fees_pct = maker_fee + taker_fee
-            fees_pct_leveraged = fees_pct * leverage
+        # Get fees
+        maker_fee, taker_fee = 0.02, 0.06
+        if hasattr(self, 'get_bitunix_fees'):
+            maker_fee, taker_fee = self.get_bitunix_fees()
+        fees_pct_leveraged = (maker_fee + taker_fee) * leverage
 
-            # Issue #4: Always derive display quantity from invested when available
-            # Quantity = (invested * leverage) / entry_price
-            if invested > 0 and entry_price > 0:
-                quantity = (invested * leverage) / entry_price
+        # Calculate quantity
+        quantity = signal.get("quantity", 0)
+        if invested > 0 and entry_price > 0:
+            quantity = (invested * leverage) / entry_price
 
-            # Calculate base P&L
-            if entry_price > 0 and current_price > 0:
-                if side.lower() == "long":
-                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                else:
-                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
+        # Calculate P&L
+        pnl_pct_raw, pnl_percent, pnl_usdt = self._calculate_pnl(
+            entry_price, current_price, invested, side, leverage, fees_pct_leveraged, signal
+        )
 
-                # Issue #1: Apply leverage to P&L %
-                pnl_percent = pnl_percent * leverage
+        # Calculate fees
+        position_size = invested * leverage
+        if position_size <= 0 and quantity > 0 and current_price > 0:
+            position_size = quantity * current_price * leverage
 
-                # Issue #5: Subtract leveraged Trading fees %
-                pnl_percent = pnl_percent - fees_pct_leveraged
+        entry_fee_euro = position_size * (taker_fee / 100) if position_size > 0 else 0
+        exit_fee_euro = position_size * (taker_fee / 100) if position_size > 0 else 0
+        fees_usdt = entry_fee_euro + exit_fee_euro
+        if fees_usdt > 0:
+            signal["fees_euro"] = fees_usdt
 
-                # Calculate P&L currency from adjusted percentage
-                pnl_currency = invested * (pnl_percent / 100) if invested > 0 else 0
+        # Calculate liquidation
+        mm_rate, mm_rate_default = self._resolve_maintenance_margin_rate(signal)
+        liquidation_price, margin_buffer = self._calculate_liquidation(
+            entry_price, invested, leverage, quantity, position_size, mm_rate, side
+        )
+
+        return {
+            "current_price": current_price,
+            "entry_price": entry_price,
+            "invested": invested,
+            "side": side,
+            "leverage": leverage,
+            "maker_fee": maker_fee,
+            "taker_fee": taker_fee,
+            "fees_pct_leveraged": fees_pct_leveraged,
+            "quantity": quantity,
+            "pnl_pct_raw": pnl_pct_raw,
+            "pnl_percent": pnl_percent,
+            "pnl_usdt": pnl_usdt,
+            "position_size": position_size,
+            "entry_fee_euro": entry_fee_euro,
+            "exit_fee_euro": exit_fee_euro,
+            "fees_usdt": fees_usdt,
+            "liquidation_price": liquidation_price,
+            "margin_buffer": margin_buffer,
+            "mm_rate": mm_rate,
+            "mm_rate_default": mm_rate_default,
+        }
+
+    def _calculate_pnl(
+        self,
+        entry_price: float,
+        current_price: float,
+        invested: float,
+        side: str,
+        leverage: float,
+        fees_pct_leveraged: float,
+        signal: dict,
+    ) -> tuple[float, float, float]:
+        """Calculate P&L values."""
+        if entry_price > 0 and current_price > 0:
+            if side.lower() == "long":
+                pnl_pct_raw = ((current_price - entry_price) / entry_price) * 100
             else:
-                pnl_currency = signal.get("pnl_currency", 0.0)
-                pnl_percent = signal.get("pnl_percent", 0.0)
+                pnl_pct_raw = ((entry_price - current_price) / entry_price) * 100
 
-            if is_closed:
-                exit_price = signal.get("exit_price", current_price)
-                current_item = QTableWidgetItem(f"{exit_price:.2f}")
-            else:
-                current_item = QTableWidgetItem(f"{current_price:.2f}")
-            self.signals_table.setItem(row, 11, current_item)
-            self._make_non_editable(current_item)
-
-            # Issue #1 FIX: Correct P&L calculations
-            # P&L % = ((Current - Entry) / Entry * 100) * Hebel (for Long)
-            # P&L USDT = invested * (P&L % / 100) - based on actual invested amount!
-            pnl_pct_raw = 0.0
-            if entry_price > 0 and current_price > 0:
-                if side.lower() == "long":
-                    pnl_pct_raw = ((current_price - entry_price) / entry_price) * 100
-                else:
-                    pnl_pct_raw = ((entry_price - current_price) / entry_price) * 100
-                pnl_percent = (pnl_pct_raw * leverage) - fees_pct_leveraged
-                # P&L USDT = invested amount * net percentage (after fees)
-                pnl_usdt = invested * (pnl_percent / 100) if invested > 0 else 0.0
-            else:
-                pnl_usdt = 0.0
-                pnl_percent = 0.0
-
-            # Issue #19: Column order - P&L % (12) first, then P&L USDT (13)
-            # P&L % column (12) with color
-            pnl_color = "#26a69a" if pnl_percent >= 0 else "#ef5350"
-            pct_sign = "+" if pnl_percent >= 0 else ""
-            pct_item = QTableWidgetItem(f"{pct_sign}{pnl_percent:.2f}%")
-            pct_item.setForeground(QColor(pnl_color))
-            pct_item.setToolTip(
-                f"P&L % (mit Hebel)\n"
-                f"Basis: {pnl_pct_raw:.2f}%\n"
-                f"× Hebel {leverage:.0f}x = {(pnl_pct_raw * leverage):.2f}%\n"
-                f"Trading Fees: ({maker_fee:.3f}% + {taker_fee:.3f}%) × {leverage:.0f}x = {fees_pct_leveraged:.3f}%\n"
-                f"Netto: {pnl_percent:.2f}%"
-            )
-            self.signals_table.setItem(row, 12, pct_item)
-            self._make_non_editable(pct_item)
-
-            # P&L USDT column (13) with color
-            pnl_usdt_color = "#26a69a" if pnl_usdt >= 0 else "#ef5350"
-            pnl_sign = "+" if pnl_usdt >= 0 else ""
-            pnl_item = QTableWidgetItem(f"{pnl_sign}{pnl_usdt:.2f}")
-            pnl_item.setForeground(QColor(pnl_usdt_color))
-            pnl_item.setToolTip(
-                f"P&L USDT (basiert auf Investment)\n"
-                f"Invested: {invested:.2f} USDT\n"
-                f"P&L %: {pnl_percent:.2f}%\n"
-                f"Berechnung: {invested:.2f} × ({pnl_percent:.2f}% / 100) = {pnl_usdt:.2f} USDT"
-            )
-            self.signals_table.setItem(row, 13, pnl_item)
-            self._make_non_editable(pnl_item)
-
-            # Issue #5: Trading fees % column (14)
-            fees_pct_item = QTableWidgetItem(f"{fees_pct:.3f}%")
-            fees_pct_item.setForeground(QColor("#ff9800"))
-            fees_pct_item.setToolTip(
-                "Trading fees % (Maker + Taker)\n"
-                f"Maker: {maker_fee:.3f}%\n"
-                f"Taker: {taker_fee:.3f}%\n"
-                f"Summe: {fees_pct:.3f}%\n"
-                f"× Hebel {leverage:.0f}x = {fees_pct_leveraged:.3f}% (P&L-Abzug)"
-            )
-            self.signals_table.setItem(row, 14, fees_pct_item)
-            self._make_non_editable(fees_pct_item)
-
-            # Issue #6 & Issue #4: Calculate and display BitUnix fees
-            # Fees are calculated on the leveraged position size (entry + exit taker)
-            fees_usdt = 0.0
-            position_size = invested * leverage
-            if position_size <= 0 and quantity > 0 and current_price > 0:
-                # Fallback: derive notional from quantity if invested is missing
-                position_size = quantity * current_price * leverage
-            entry_fee_euro = 0.0
-            exit_fee_euro = 0.0
-
-            if position_size > 0:
-                # Both Entry and Exit use Taker fee (market orders for immediate execution)
-                entry_fee_euro = position_size * (taker_fee / 100)
-                exit_fee_euro = position_size * (taker_fee / 100)  # Exit also Taker!
-                fees_usdt = entry_fee_euro + exit_fee_euro
-                signal["fees_euro"] = fees_usdt
-
-            # Trading fees (USDT) using BitUnix fee settings
-            trading_fees_item = QTableWidgetItem(f"{fees_usdt:.4f}")
-            trading_fees_item.setForeground(QColor("#ff9800"))  # Orange for fees
-            trading_fees_item.setToolTip(
-                "Trading fees (BitUnix Futures)\n"
-                f"Leverage-Notional: {position_size:.2f} USDT\n"
-                f"Entry (Taker {taker_fee:.3f}%): {entry_fee_euro:.4f} USDT\n"
-                f"Exit (Taker {taker_fee:.3f}%): {exit_fee_euro:.4f} USDT\n"
-                f"Round-trip total: {fees_usdt:.4f} USDT"
-            )
-            self.signals_table.setItem(row, 15, trading_fees_item)
-            self._make_non_editable(trading_fees_item)
-
-            # Issue #18: Invest USDT column (16) – shows capital * risk% = invested amount
-            invest_item = QTableWidgetItem(f"{invested:.2f}")
-            invest_item.setForeground(QColor("#2196f3"))  # Blue for investment
-            invest_item.setToolTip(
-                "Invest USDT (Kapital × Risk%)\n"
-                f"Eingesetztes Kapital: {invested:.2f} USDT\n"
-                f"Mit Hebel {leverage:.0f}x: {position_size:.2f} USDT Notional"
-            )
-            self.signals_table.setItem(row, 16, invest_item)
-            self._make_non_editable(invest_item)
-
-            # Stück / quantity column (17) - Issue #1 FIX: Show correct quantity
-            qty_item = QTableWidgetItem(f"{quantity:.6f}" if quantity > 0 else "-")
-            qty_item.setForeground(QColor("#cfd8dc"))
-            qty_item.setToolTip(
-                f"Stückzahl (Leveraged Position)\n"
-                f"Invested: {invested:.2f} USDT\n"
-                f"Hebel: {leverage:.0f}x\n"
-                f"Entry: {entry_price:.2f}\n"
-                f"Berechnung: ({invested:.2f} × {leverage:.0f}) / {entry_price:.2f} = {quantity:.6f}"
-            )
-            self.signals_table.setItem(row, 17, qty_item)
-
-            mm_rate, mm_rate_default = self._resolve_maintenance_margin_rate(signal)
-            liquidation_price = None
-            margin_buffer = None
-            if entry_price > 0 and invested > 0 and leverage > 0 and quantity > 0:
-                maintenance_margin = position_size * mm_rate
-                margin_buffer = invested - maintenance_margin
-                if margin_buffer > 0:
-                    price_distance = margin_buffer / quantity
-                    if side.lower() == "short":
-                        liquidation_price = entry_price + price_distance
-                    else:
-                        liquidation_price = entry_price - price_distance
-
-            if liquidation_price and liquidation_price > 0:
-                liq_item = QTableWidgetItem(f"{liquidation_price:.2f}")
-            else:
-                liq_item = QTableWidgetItem("-")
-            default_note = " (default)" if mm_rate_default else ""
-            buffer_text = f"{margin_buffer:.2f} USDT" if margin_buffer is not None else "N/A"
-            liq_item.setToolTip(
-                "Liquidation (approx.)\n"
-                f"Entry: {entry_price:.2f}\n"
-                f"Invested: {invested:.2f} USDT\n"
-                f"Leverage: {leverage:.0f}x\n"
-                f"MM rate: {mm_rate * 100:.2f}%{default_note}\n"
-                f"Notional: {position_size:.2f} USDT\n"
-                f"Quantity: {quantity:.6f}\n"
-                f"Margin buffer: {buffer_text}\n"
-                "Formula: Pliq = Entry +/- (Buffer / Q)\n"
-                "Note: Fees/Funding not included"
-            )
-            self.signals_table.setItem(row, 24, liq_item)
-            self._make_non_editable(liq_item)
-
-            # Issue #1: Pass leverage to derivative columns (shifted by new Trading fees column)
-            self._set_derivative_columns(row, signal, current_price, leverage)
-            self.signals_table.setItem(row, 22, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
-            self._set_tr_stop_column(row, trailing_price, tr_is_active)
+            pnl_percent = (pnl_pct_raw * leverage) - fees_pct_leveraged
+            pnl_usdt = invested * (pnl_percent / 100) if invested > 0 else 0.0
         else:
-            for col in range(11, 25):
-                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+            pnl_pct_raw = 0.0
+            pnl_percent = signal.get("pnl_percent", 0.0)
+            pnl_usdt = signal.get("pnl_currency", 0.0)
+
+        return pnl_pct_raw, pnl_percent, pnl_usdt
+
+    def _calculate_liquidation(
+        self,
+        entry_price: float,
+        invested: float,
+        leverage: float,
+        quantity: float,
+        position_size: float,
+        mm_rate: float,
+        side: str,
+    ) -> tuple[float | None, float | None]:
+        """Calculate liquidation price and margin buffer."""
+        liquidation_price = None
+        margin_buffer = None
+
+        if entry_price > 0 and invested > 0 and leverage > 0 and quantity > 0:
+            maintenance_margin = position_size * mm_rate
+            margin_buffer = invested - maintenance_margin
+            if margin_buffer > 0:
+                price_distance = margin_buffer / quantity
+                if side.lower() == "short":
+                    liquidation_price = entry_price + price_distance
+                else:
+                    liquidation_price = entry_price - price_distance
+
+        return liquidation_price, margin_buffer
+
+    def _set_empty_columns(self, row: int) -> None:
+        """Set empty columns for signals without P&L data."""
+        for col in range(11, 25):
+            self.signals_table.setItem(row, col, QTableWidgetItem("-"))
 
     def _set_derivative_columns(self, row: int, signal: dict, current_price: float, leverage: float = 1.0) -> None:
         """Set derivative and leverage columns.
