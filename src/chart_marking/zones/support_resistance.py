@@ -9,34 +9,36 @@ import logging
 from datetime import datetime
 from typing import Any, Callable, Optional
 
+from ..base_manager import BaseChartElementManager
 from ..models import Zone, ZoneType
 
 logger = logging.getLogger(__name__)
 
 
-class ZoneManager:
+class ZoneManager(BaseChartElementManager[Zone]):
     """Manages support/resistance zones on the chart.
 
-    This class handles the creation, storage, and removal of zones.
-    It delegates the actual chart rendering to a callback function
-    that communicates with the JavaScript zone manager.
+    Handles support, resistance, demand, and supply zones.
+    Inherits common CRUD operations from BaseChartElementManager.
     """
 
-    def __init__(self, on_update: Optional[Callable[[], None]] = None):
-        """Initialize the zone manager.
+    def _get_item_class(self) -> type[Zone]:
+        """Return Zone class for deserialization."""
+        return Zone
 
-        Args:
-            on_update: Callback to invoke when zones change (triggers chart update)
-        """
-        self._zones: dict[str, Zone] = {}
-        self._on_update = on_update
-        self._id_counter = 0
+    def _get_item_type_name(self) -> str:
+        """Return type name for logging."""
+        return "zone"
+
+    @property
+    def _zones(self) -> dict[str, Zone]:
+        """Backward compatibility alias for _items."""
+        return self._items
 
     def _generate_id(self, zone_type: ZoneType) -> str:
-        """Generate a unique zone ID."""
-        self._id_counter += 1
+        """Generate a unique zone ID based on zone type."""
         prefix = zone_type.value.lower()
-        return f"{prefix}_{int(datetime.now().timestamp() * 1000)}_{self._id_counter}"
+        return super()._generate_id(prefix)
 
     def _normalize_time(self, ts: int | datetime) -> int:
         """Convert timestamp to Unix seconds."""
@@ -95,14 +97,13 @@ class ZoneManager:
             is_active=True,
         )
 
-        self._zones[zone_id] = zone
+        self._items[zone_id] = zone
         logger.debug(
             f"Added zone: {zone_id} {zone_type.value} "
             f"({top_price:.2f}-{bottom_price:.2f})"
         )
 
-        if self._on_update:
-            self._on_update()
+        self._trigger_update()
 
         return zone_id
 
@@ -266,8 +267,7 @@ class ZoneManager:
 
         logger.debug(f"Updated zone: {zone_id}")
 
-        if self._on_update:
-            self._on_update()
+        self._trigger_update()
 
         return True
 
@@ -300,74 +300,15 @@ class ZoneManager:
         zone.is_active = is_active
         logger.debug(f"Zone {zone_id} active status: {is_active}")
 
-        if self._on_update:
-            self._on_update()
+        self._trigger_update()
 
         return True
 
-    def set_locked(self, zone_id: str, is_locked: bool) -> bool:
-        """Set zone lock status.
-
-        Args:
-            zone_id: Zone ID
-            is_locked: Whether zone is locked
-
-        Returns:
-            True if updated, False if not found
-        """
-        zone = self._zones.get(zone_id)
-        if not zone:
-            return False
-
-        zone.is_locked = is_locked
-        logger.debug(f"Zone {zone_id} locked={is_locked}")
-
-        # Note: No chart update needed as visual state unchanged (icon added in JS layer)
-        return True
-
-    def toggle_locked(self, zone_id: str) -> bool | None:
-        """Toggle zone lock status.
-
-        Args:
-            zone_id: Zone ID
-
-        Returns:
-            New lock state, or None if zone not found
-        """
-        zone = self._zones.get(zone_id)
-        if not zone:
-            return None
-
-        zone.is_locked = not zone.is_locked
-        logger.debug(f"Zone {zone_id} toggled to {'locked' if zone.is_locked else 'unlocked'}")
-        return zone.is_locked
-
-    def remove(self, zone_id: str) -> bool:
-        """Remove a zone.
-
-        Args:
-            zone_id: ID of zone to remove
-
-        Returns:
-            True if removed, False if not found
-        """
-        if zone_id in self._zones:
-            del self._zones[zone_id]
-            logger.debug(f"Removed zone: {zone_id}")
-
-            if self._on_update:
-                self._on_update()
-            return True
-        return False
-
-    def clear(self) -> None:
-        """Remove all zones."""
-        count = len(self._zones)
-        self._zones.clear()
-        logger.debug(f"Cleared {count} zones")
-
-        if self._on_update:
-            self._on_update()
+    # Inherited from BaseChartElementManager:
+    # - set_locked(zone_id, is_locked) -> bool
+    # - toggle_locked(zone_id) -> bool | None
+    # - remove(zone_id) -> bool
+    # - clear() -> None
 
     def clear_by_type(self, zone_type: ZoneType | str) -> int:
         """Remove all zones of a specific type.
@@ -381,23 +322,19 @@ class ZoneManager:
         if isinstance(zone_type, str):
             zone_type = ZoneType(zone_type.lower())
 
-        to_remove = [zid for zid, z in self._zones.items() if z.zone_type == zone_type]
+        to_remove = [zid for zid, z in self._items.items() if z.zone_type == zone_type]
         for zid in to_remove:
-            del self._zones[zid]
+            del self._items[zid]
 
-        if to_remove and self._on_update:
-            self._on_update()
+        if to_remove:
+            self._trigger_update()
 
         logger.debug(f"Cleared {len(to_remove)} {zone_type.value} zones")
         return len(to_remove)
 
-    def get(self, zone_id: str) -> Optional[Zone]:
-        """Get a zone by ID."""
-        return self._zones.get(zone_id)
-
-    def get_all(self) -> list[Zone]:
-        """Get all zones."""
-        return list(self._zones.values())
+    # Inherited from BaseChartElementManager:
+    # - get(zone_id) -> Optional[Zone]
+    # - get_all() -> list[Zone]
 
     def get_active(self) -> list[Zone]:
         """Get all active zones."""
@@ -443,29 +380,8 @@ class ZoneManager:
             })
         return zones
 
-    def to_state(self) -> list[dict[str, Any]]:
-        """Get state for persistence."""
-        return [z.to_dict() for z in self._zones.values()]
-
-    def restore_state(self, state: list[dict[str, Any]]) -> None:
-        """Restore state from persistence."""
-        self._zones.clear()
-        for data in state:
-            try:
-                zone = Zone.from_dict(data)
-                self._zones[zone.id] = zone
-            except Exception as e:
-                logger.warning(f"Failed to restore zone: {e}")
-
-        logger.debug(f"Restored {len(self._zones)} zones")
-
-        if self._on_update:
-            self._on_update()
-
-    def __len__(self) -> int:
-        """Return number of zones."""
-        return len(self._zones)
-
-    def __contains__(self, zone_id: str) -> bool:
-        """Check if zone exists."""
-        return zone_id in self._zones
+    # Inherited from BaseChartElementManager:
+    # - to_state() -> list[dict]
+    # - restore_state(state) -> None
+    # - __len__() -> int
+    # - __contains__(zone_id) -> bool

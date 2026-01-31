@@ -10,12 +10,12 @@
 
 | Phase | Tasks | Erledigt | Fortschritt |
 |-------|-------|----------|-------------|
-| **Phase 1: Duplikate eliminieren** | 20 | 4 | 20% |
+| **Phase 1: Duplikate eliminieren** | 20 | 6 | 30% |
 | **Phase 2: Kritische Komplexität** | 10 | 6 | 60% |
 | **Phase 3: File Splitting** | 14 | 0 | 0% |
 | **Phase 4: Mittlere Komplexität** | 15 | 0 | 0% |
 | **Phase 5: Strukturverbesserungen** | 10 | 0 | 0% |
-| **GESAMT** | **69** | **10** | **14.5%** |
+| **GESAMT** | **69** | **12** | **17.4%** |
 
 ---
 
@@ -75,29 +75,38 @@
 ### 1.2 Chart Marking Mixins (5 Tasks)
 
 #### ✅ Task 1.2.1: ChartMarkingBase Mixin erstellen
-- [ ] **Datei:** `src/chart_marking/mixin/chart_marking_base.py`
-- [ ] **Duplikat-Code:** Init-Block (Zeilen 23-28, 100% identisch in 5 Dateien)
-- [ ] **Betroffene Dateien:**
-  - [ ] chart_marking_entry_methods.py
-  - [ ] chart_marking_internal.py
-  - [ ] chart_marking_line_methods.py
-  - [ ] chart_marking_structure_methods.py
-  - [ ] chart_marking_zone_methods.py
-- [ ] **Assigned:** [AGENT]
-- [ ] **Status:** ⏳ PENDING
+- [x] **Datei:** `src/chart_marking/mixin/chart_marking_base.py`
+- [x] **Duplikat-Code:** Init-Block (Zeilen 23-28, 100% identisch in 5 Dateien)
+- [x] **Betroffene Dateien:**
+  - [x] chart_marking_entry_methods.py (refactored, -6 LOC)
+  - [x] chart_marking_internal.py (refactored, -6 LOC)
+  - [x] chart_marking_line_methods.py (refactored, -6 LOC)
+  - [x] chart_marking_structure_methods.py (refactored, -6 LOC)
+  - [x] chart_marking_zone_methods.py (refactored, -6 LOC)
+- [x] **Tests:** 13 tests created (100% pass)
+  - [x] test_chart_marking_base.py (6 tests)
+  - [x] test_chart_marking_mixins_baseline.py (7 tests)
+- [x] **Metrics:** 24 LOC eliminated (-80% duplicate code)
+- [x] **Assigned:** CODER-003
+- [x] **Status:** ✅ COMPLETED (Commit d80b05a)
 
-#### ✅ Task 1.2.2: Alle 5 Mixins refactoren
-- [ ] Erben von ChartMarkingBase
-- [ ] Duplizierte Init-Blöcke entfernen
-- [ ] Imports aktualisieren
+#### ⏳ Task 1.2.2: Entry Manager Refactoring (NEXT)
+- [ ] Extract duplicate code from entry managers
+- [ ] Create base entry manager class
+- [ ] Update all entry manager implementations
 - [ ] **Assigned:** [AGENT]
 - [ ] **Status:** ⏳ PENDING
 
 #### ✅ Task 1.2.3: Tests anpassen
-- [ ] Unit-Tests für ChartMarkingBase
-- [ ] Bestehende Tests aktualisieren
-- [ ] **Assigned:** [AGENT]
-- [ ] **Status:** ⏳ PENDING
+- [x] Integration tests for all mixins (42 tests created)
+- [x] E2E tests for chart marking (2 workflows)
+- [x] Edge case tests (6 scenarios)
+- [x] Test documentation (README.md)
+- [x] **Tests:** 55 total (100% pass)
+- [x] **Coverage:** 67.89% (exceeds 60% target)
+- [x] **Report:** `.AI_Exchange/tester001_task_1_2_3_report.md`
+- [x] **Assigned:** TESTER-001
+- [x] **Status:** ✅ COMPLETED (2026-01-31)
 
 #### ✅ Task 1.2.4: Integration Test
 - [ ] Alle Chart-Marking-Features testen

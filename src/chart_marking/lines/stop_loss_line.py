@@ -8,28 +8,33 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Optional
 
+from ..base_manager import BaseChartElementManager
 from ..constants import Colors
 from ..models import Direction, LineStyle, StopLossLine
 
 logger = logging.getLogger(__name__)
 
 
-class StopLossLineManager:
+class StopLossLineManager(BaseChartElementManager[StopLossLine]):
     """Manages stop-loss and price lines on the chart.
 
-    This class handles the creation, storage, and removal of horizontal
-    price lines including stop-loss, take-profit, and entry levels.
-    It supports risk percentage calculation and display.
+    Handles stop-loss, take-profit, entry, and trailing stop lines.
+    Supports risk percentage calculation and display.
+    Inherits common CRUD operations from BaseChartElementManager.
     """
 
-    def __init__(self, on_update: Optional[Callable[[], None]] = None):
-        """Initialize the stop-loss line manager.
+    def _get_item_class(self) -> type[StopLossLine]:
+        """Return StopLossLine class for deserialization."""
+        return StopLossLine
 
-        Args:
-            on_update: Callback to invoke when lines change (triggers chart update)
-        """
-        self._lines: dict[str, StopLossLine] = {}
-        self._on_update = on_update
+    def _get_item_type_name(self) -> str:
+        """Return type name for logging."""
+        return "SL line"
+
+    @property
+    def _lines(self) -> dict[str, StopLossLine]:
+        """Backward compatibility alias for _items."""
+        return self._items
 
     def add(
         self,
@@ -76,14 +81,13 @@ class StopLossLineManager:
             risk_percent=risk_percent,
         )
 
-        self._lines[line_id] = line
+        self._items[line_id] = line
         logger.debug(
             f"Added SL line: {line_id} @ {price:.2f} "
             f"(entry: {entry_price}, risk: {line.calculated_risk_pct}%)"
         )
 
-        if self._on_update:
-            self._on_update()
+        self._trigger_update()
 
         return line_id
 
@@ -222,11 +226,10 @@ class StopLossLineManager:
             risk_percent=None,  # Recalculate
         )
 
-        self._lines[line_id] = new_line
+        self._items[line_id] = new_line
         logger.debug(f"Updated SL line: {line_id} @ {new_line.price:.2f}")
 
-        if self._on_update:
-            self._on_update()
+        self._trigger_update()
 
         return True
 
@@ -242,75 +245,13 @@ class StopLossLineManager:
         """
         return self.update(line_id, price=new_price)
 
-    def remove(self, line_id: str) -> bool:
-        """Remove a line.
-
-        Args:
-            line_id: ID of line to remove
-
-        Returns:
-            True if removed, False if not found
-        """
-        if line_id in self._lines:
-            del self._lines[line_id]
-            logger.debug(f"Removed SL line: {line_id}")
-
-            if self._on_update:
-                self._on_update()
-            return True
-        return False
-
-    def clear(self) -> None:
-        """Remove all lines."""
-        count = len(self._lines)
-        self._lines.clear()
-        logger.debug(f"Cleared {count} SL lines")
-
-        if self._on_update:
-            self._on_update()
-
-    def set_locked(self, line_id: str, is_locked: bool) -> bool:
-        """Set stop-loss line lock status.
-
-        Args:
-            line_id: Line ID
-            is_locked: Whether line is locked
-
-        Returns:
-            True if updated, False if not found
-        """
-        line = self._lines.get(line_id)
-        if not line:
-            return False
-
-        line.is_locked = is_locked
-        logger.debug(f"SL line {line_id} locked={is_locked}")
-        return True
-
-    def toggle_locked(self, line_id: str) -> bool | None:
-        """Toggle stop-loss line lock status.
-
-        Args:
-            line_id: Line ID
-
-        Returns:
-            New lock state, or None if line not found
-        """
-        line = self._lines.get(line_id)
-        if not line:
-            return None
-
-        line.is_locked = not line.is_locked
-        logger.debug(f"SL line {line_id} toggled to {'locked' if line.is_locked else 'unlocked'}")
-        return line.is_locked
-
-    def get(self, line_id: str) -> Optional[StopLossLine]:
-        """Get a line by ID."""
-        return self._lines.get(line_id)
-
-    def get_all(self) -> list[StopLossLine]:
-        """Get all lines."""
-        return list(self._lines.values())
+    # Inherited from BaseChartElementManager:
+    # - remove(line_id) -> bool
+    # - clear() -> None
+    # - set_locked(line_id, is_locked) -> bool
+    # - toggle_locked(line_id) -> bool | None
+    # - get(line_id) -> Optional[StopLossLine]
+    # - get_all() -> list[StopLossLine]
 
     def get_chart_lines(self) -> list[dict[str, Any]]:
         """Get all lines in chart format for JavaScript."""
@@ -335,29 +276,8 @@ class StopLossLineManager:
             })
         return lines
 
-    def to_state(self) -> list[dict[str, Any]]:
-        """Get state for persistence."""
-        return [line.to_dict() for line in self._lines.values()]
-
-    def restore_state(self, state: list[dict[str, Any]]) -> None:
-        """Restore state from persistence."""
-        self._lines.clear()
-        for data in state:
-            try:
-                line = StopLossLine.from_dict(data)
-                self._lines[line.id] = line
-            except Exception as e:
-                logger.warning(f"Failed to restore SL line: {e}")
-
-        logger.debug(f"Restored {len(self._lines)} SL lines")
-
-        if self._on_update:
-            self._on_update()
-
-    def __len__(self) -> int:
-        """Return number of lines."""
-        return len(self._lines)
-
-    def __contains__(self, line_id: str) -> bool:
-        """Check if line exists."""
-        return line_id in self._lines
+    # Inherited from BaseChartElementManager:
+    # - to_state() -> list[dict]
+    # - restore_state(state) -> None
+    # - __len__() -> int
+    # - __contains__(line_id) -> bool
