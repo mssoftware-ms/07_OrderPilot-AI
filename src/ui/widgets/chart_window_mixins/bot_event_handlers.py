@@ -26,7 +26,18 @@ class BotEventHandlersMixin:
     # ==================== BUTTON EVENT HANDLERS ====================
 
     def _on_bot_start_clicked(self) -> None:
-        """Handle bot start button click - opens strategy selection dialog first."""
+        """Handle bot start button click.
+
+        If RegimeEngineJSON (Config) is selected in Daily Strategy tab,
+        skip the dialog and start bot directly with automatic regime detection.
+        Otherwise, open the strategy selection dialog.
+        """
+        # Check if JSON mode is selected in Daily Strategy tab (radio button ID 2)
+        if hasattr(self, 'analysis_method_group') and self.analysis_method_group.checkedId() == 2:
+            logger.info("Bot start requested - JSON mode selected, skipping dialog")
+            self._start_bot_with_json_auto()
+            return
+
         logger.info("Bot start requested - opening strategy selection dialog")
 
         # Open strategy selection dialog
@@ -44,6 +55,203 @@ class BotEventHandlersMixin:
             return
 
         # If accepted, strategy has been applied and bot will start via signal
+
+    def _start_bot_with_json_auto(self) -> None:
+        """Start bot with automatic JSON-based regime detection and strategy scoring.
+
+        Workflow:
+        1. Calculate features from chart data
+        2. Detect current market regime
+        3. Load ALL available JSON configs
+        4. Score each config against current regime
+        5. Select best matching config
+        6. Start bot with best config
+        """
+        from pathlib import Path
+        from PyQt6.QtWidgets import QMessageBox
+
+        try:
+            self._update_bot_status("ANALYZING", "#ffeb3b")
+
+            # Get chart widget data
+            chart_widget = getattr(self, 'chart_widget', None)
+            if not chart_widget or not hasattr(chart_widget, 'data') or chart_widget.data is None:
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error("No chart data available for regime detection")
+                QMessageBox.warning(
+                    self,
+                    "Keine Chart-Daten",
+                    "Bitte laden Sie zuerst Chart-Daten, bevor Sie den Bot starten."
+                )
+                return
+
+            df = chart_widget.data
+            if len(df) < 50:
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error("Not enough data for regime detection")
+                QMessageBox.warning(
+                    self,
+                    "Nicht genug Daten",
+                    "Es werden mindestens 50 Kerzen für die Regime-Erkennung benötigt."
+                )
+                return
+
+            # ========== Step 1: Calculate Features ==========
+            from src.core.tradingbot.feature_engine import FeatureEngine
+
+            symbol = getattr(chart_widget, 'current_symbol', 'UNKNOWN')
+            feature_engine = FeatureEngine()
+            features = feature_engine.calculate_features(df, symbol)
+
+            if not features:
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error("Feature calculation failed")
+                QMessageBox.warning(
+                    self,
+                    "Feature-Fehler",
+                    "Feature-Berechnung fehlgeschlagen. Nicht genug Daten?"
+                )
+                return
+
+            # ========== Step 2: Detect Regime ==========
+            from src.core.tradingbot.regime_engine import RegimeEngine
+
+            regime_engine = RegimeEngine()
+            current_regime = regime_engine.classify(features)
+
+            regime_str = current_regime.regime.value if hasattr(current_regime.regime, 'value') else str(current_regime.regime)
+            logger.info(f"Detected regime: {regime_str} (confidence: {current_regime.confidence:.1%})")
+
+            # Update Daily Strategy display
+            if hasattr(self, 'regime_label'):
+                self.regime_label.setText(regime_str)
+            if hasattr(self, '_set_daily_status'):
+                self._set_daily_status(f"Regime erkannt: {regime_str}")
+
+            # ========== Step 3: Find JSON Configs ==========
+            config_dir = Path("03_JSON/Trading_Bot")
+
+            if not config_dir.exists():
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error(f"Config directory not found: {config_dir}")
+                QMessageBox.warning(
+                    self,
+                    "Verzeichnis fehlt",
+                    f"Config-Verzeichnis nicht gefunden:\n{config_dir}"
+                )
+                return
+
+            # Only get JSON files directly in this directory (no subdirectories)
+            config_files = list(config_dir.glob("*.json"))
+
+            if not config_files:
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error("No JSON strategy configs found")
+                QMessageBox.warning(
+                    self,
+                    "Keine JSON-Configs",
+                    f"Keine JSON-Strategie-Dateien gefunden in:\n" +
+                    "\n".join(str(d) for d in config_dirs)
+                )
+                return
+
+            logger.info(f"Found {len(config_files)} JSON configs to evaluate")
+
+            # ========== Step 4: Score Each Config Against Current Regime ==========
+            from src.core.tradingbot.config.loader import ConfigLoader
+            from src.core.tradingbot.config.detector import RegimeDetector
+            from src.core.tradingbot.config.router import StrategyRouter
+            from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
+
+            best_config_path = None
+            best_matched_set = None
+            best_score = 0.0
+
+            calculator = IndicatorValueCalculator()
+            indicator_values = calculator.calculate_indicator_values(features)
+
+            for config_file in config_files:
+                try:
+                    loader = ConfigLoader()
+                    config = loader.load(str(config_file))
+
+                    if not config or not hasattr(config, 'regimes'):
+                        continue
+
+                    # Detect active regimes from this config
+                    detector = RegimeDetector(config.regimes)
+                    active_regimes = detector.detect_active_regimes(indicator_values, scope='entry')
+
+                    if not active_regimes:
+                        continue
+
+                    # Route to strategy set
+                    if hasattr(config, 'routing') and hasattr(config, 'strategy_sets'):
+                        router = StrategyRouter(config.routing, config.strategy_sets)
+                        matched_sets = router.route_regimes(active_regimes)
+
+                        if matched_sets:
+                            # Take best scoring match
+                            best_match = max(matched_sets, key=lambda m: m.match_score)
+
+                            if best_match.match_score > best_score:
+                                best_score = best_match.match_score
+                                best_config_path = str(config_file)
+                                best_matched_set = best_match
+
+                                logger.info(
+                                    f"Config '{config_file.name}' matched with score {best_score:.2f} "
+                                    f"→ Strategy: {best_match.name}"
+                                )
+
+                except Exception as e:
+                    logger.warning(f"Failed to evaluate config {config_file.name}: {e}")
+                    continue
+
+            # ========== Step 5: Check if Best Match Found ==========
+            if not best_config_path or not best_matched_set:
+                self._update_bot_status("ERROR", "#f44336")
+                logger.error(f"No strategy matched for regime: {regime_str}")
+                QMessageBox.warning(
+                    self,
+                    "Keine Strategie gefunden",
+                    f"Keine Strategie passt zum aktuellen Regime:\n{regime_str}\n\n"
+                    f"{len(config_files)} Configs wurden geprüft."
+                )
+                return
+
+            # ========== Step 6: Start Bot with Best Config ==========
+            logger.info(
+                f"Selected config: {Path(best_config_path).name} "
+                f"(Strategy: {best_matched_set.name}, Score: {best_score:.2f})"
+            )
+
+            if hasattr(self, '_set_daily_status'):
+                self._set_daily_status(
+                    f"Beste Strategie: {best_matched_set.name} (Score: {best_score:.2f})"
+                )
+
+            # Start bot with best JSON config
+            self._start_bot_with_json_config(best_config_path, best_matched_set)
+
+            # Update UI state
+            self.bot_start_btn.setEnabled(False)
+            self.bot_stop_btn.setEnabled(True)
+            self.bot_pause_btn.setEnabled(True)
+
+            if hasattr(self, '_update_signals_tab_bot_button'):
+                self._update_signals_tab_bot_button(running=True)
+
+            self._subscribe_to_regime_changes()
+
+        except Exception as e:
+            logger.error(f"Failed to start bot with JSON auto: {e}", exc_info=True)
+            self._update_bot_status("ERROR", "#f44336")
+            QMessageBox.critical(
+                self,
+                "Bot Start Fehler",
+                f"Fehler beim automatischen Bot-Start:\n{e}"
+            )
 
     def _on_strategy_selected(self, config_path: str, matched_strategy_set: Any) -> None:
         """Handle strategy selection from dialog - starts bot with selected strategy.
@@ -264,10 +472,10 @@ class BotEventHandlersMixin:
             # Starte Bot mit JSON Entry Config
             logger.info(f"Starting bot with JSON Entry config: {config.regime_json_path}")
             logger.info(f"Entry expression: {config.entry_expression[:80]}...")
-            
+
             # Store config for bot initialization
             self._json_entry_config = config
-            
+
             # Start bot with JSON Entry mode
             self._start_bot_with_json_entry(config)
 
