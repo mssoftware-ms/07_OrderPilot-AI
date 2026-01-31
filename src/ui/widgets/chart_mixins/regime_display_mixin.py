@@ -511,6 +511,23 @@ class RegimeDisplayMixin:
         # 2) Compute indicator series (full history)
         indicator_series = self._compute_indicator_series(df, indicators_def)
 
+        # Align all indicator series to the DataFrame index to avoid positional mismatches
+        for series_dict in indicator_series.values():
+            for key, series in list(series_dict.items()):
+                if isinstance(series, pd.Series):
+                    series_dict[key] = series.reindex(df.index)
+
+        def _safe_at(series: pd.Series | None, idx: int):
+            """Return value at idx or None if out of bounds/invalid."""
+            if series is None:
+                return None
+            if idx < 0 or idx >= len(series):
+                return None
+            try:
+                return series.iloc[idx]
+            except Exception:
+                return None
+
         # 3) Detect regime per bar (priority order)
         regimes_sorted = sorted(regimes_def, key=lambda r: r.get("priority", 0), reverse=True)
 
@@ -520,9 +537,9 @@ class RegimeDisplayMixin:
             # direct match in series
             for vals in indicator_series.values():
                 if th_name in vals and vals[th_name] is not None:
-                    return vals[th_name].iloc[idx]
+                    return _safe_at(vals[th_name], idx)
                 if base in vals and vals[base] is not None:
-                    return vals[base].iloc[idx]
+                    return _safe_at(vals[base], idx)
 
             # type-based fallback
             adx_key = next((k for k, v in indicator_series.items() if "adx" in k.lower()), None)
@@ -530,15 +547,15 @@ class RegimeDisplayMixin:
             atr_key = next((k for k, v in indicator_series.items() if "atr" in k.lower()), None)
 
             if "adx" in th_name and adx_key:
-                return indicator_series[adx_key].get("adx", pd.Series()).iloc[idx]
+                return _safe_at(indicator_series[adx_key].get("adx"), idx)
             if "di_diff" in th_name and adx_key:
-                return indicator_series[adx_key].get("di_diff", pd.Series()).iloc[idx]
+                return _safe_at(indicator_series[adx_key].get("di_diff"), idx)
             if "rsi" in th_name and rsi_key:
-                return indicator_series[rsi_key].get("rsi", pd.Series()).iloc[idx]
+                return _safe_at(indicator_series[rsi_key].get("rsi"), idx)
             if "atr" in th_name and atr_key:
                 if "percent" in th_name:
-                    return indicator_series[atr_key].get("atr_percent", pd.Series()).iloc[idx]
-                return indicator_series[atr_key].get("atr", pd.Series()).iloc[idx]
+                    return _safe_at(indicator_series[atr_key].get("atr_percent"), idx)
+                return _safe_at(indicator_series[atr_key].get("atr"), idx)
             return None
 
         def regime_at(idx: int):
