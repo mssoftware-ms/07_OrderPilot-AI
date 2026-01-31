@@ -1,117 +1,78 @@
-"""Bad Tick Detector - Detection and Cleaning Logic.
+"""Bitunix Bad Tick Detector - Provider-Specific Implementation.
 
-Handles bad tick detection using multiple methods:
-- Hampel Filter (Modified Z-score with MAD)
-- Z-Score Outlier Detection
-- Basic OHLC Consistency Checks
+Inherits from BaseBadTickDetector and only implements Bitunix-specific bar conversion.
 
-Module 2/4 of historical_data_manager.py split (Lines 415-682).
+Refactored: 2026-01-31 (CODER-006, Tasks 1.3.1+1.3.2)
+Reduction: 314 LOC → 70 LOC (-78%)
 """
 
 from __future__ import annotations
 
-import logging
+from datetime import datetime
+from decimal import Decimal
 
-import numpy as np
 import pandas as pd
 
+from .base_bad_tick_detector import BaseBadTickDetector
 from .bitunix_historical_data_config import FilterConfig, FilterStats
+from .types import HistoricalBar
 
-logger = logging.getLogger(__name__)
 
+class BadTickDetector(BaseBadTickDetector[FilterConfig, FilterStats, HistoricalBar]):
+    """Bitunix-specific bad tick detector.
 
-class BadTickDetector:
-    """Detects and cleans bad ticks using configurable methods.
-
-    Supports three detection methods:
-    - Hampel: Modified Z-score using Median Absolute Deviation (MAD)
-    - Z-score: Standard deviation-based outlier detection
-    - Basic: OHLC consistency and volume spike checks
+    Inherits all detection and cleaning logic from BaseBadTickDetector.
+    Only implements Bitunix-specific bar conversion logic with Decimal handling.
     """
 
-    def __init__(self, config: FilterConfig):
-        """
-        Initialize detector with configuration.
+    def _convert_bars_to_dataframe(self, bars: list[HistoricalBar]) -> pd.DataFrame:
+        """Convert Bitunix HistoricalBar objects to DataFrame.
 
         Args:
-            config: FilterConfig instance
-        """
-        self.config = config
-
-    async def filter_bad_ticks(
-        self, bars: list, symbol: str
-    ) -> tuple[list, FilterStats]:
-        """
-        Apply bad tick filtering to bars.
-
-        Args:
-            bars: List of Bar objects
-            symbol: Trading symbol for logging
+            bars: List of HistoricalBar objects
 
         Returns:
-            Tuple of (cleaned_bars, stats)
+            DataFrame with OHLCV columns
+
+        Note:
+            Explicit float conversion needed for Decimal compatibility.
         """
-        if not self.config.enabled or not bars:
-            return bars, FilterStats(total_bars=len(bars))
+        return pd.DataFrame(
+            [
+                {
+                    "timestamp": b.timestamp,
+                    "open": float(b.open),
+                    "high": float(b.high),
+                    "low": float(b.low),
+                    "close": float(b.close),
+                    "volume": float(b.volume),
+                }
+                for b in bars
+            ]
+        )
 
-        # Convert to DataFrame (convert Decimal to float for numpy compatibility)
-        df = pd.DataFrame([
-            {
-                "timestamp": b.timestamp,
-                "open": float(b.open),
-                "high": float(b.high),
-                "low": float(b.low),
-                "close": float(b.close),
-                "volume": float(b.volume),
-            }
-            for b in bars
-        ])
+    def _convert_dataframe_to_bars(
+        self, df: pd.DataFrame, original_bars: list[HistoricalBar], symbol: str
+    ) -> list[HistoricalBar]:
+        """Convert DataFrame back to Bitunix HistoricalBar objects.
 
-        original_len = len(df)
-        stats = FilterStats(total_bars=original_len)
+        Args:
+            df: DataFrame with OHLCV data
+            original_bars: Original bars (for metadata)
+            symbol: Trading symbol
 
-        # Detect bad ticks
-        bad_mask = self._detect_bad_ticks(df)
-        bad_count = bad_mask.sum()
-        stats.bad_ticks_found = int(bad_count)
+        Returns:
+            List of HistoricalBar objects
 
-        if bad_count == 0:
-            if self.config.log_stats:
-                logger.info(f"✅ {symbol}: No bad ticks found ({original_len} bars)")
-            return bars, stats
-
-        # Clean bad ticks
-        if self.config.cleaning_mode == "interpolate":
-            df = self._interpolate_bad_ticks(df, bad_mask)
-            stats.bad_ticks_interpolated = int(bad_count)
-        elif self.config.cleaning_mode == "forward_fill":
-            df = self._forward_fill_bad_ticks(df, bad_mask)
-            stats.bad_ticks_interpolated = int(bad_count)
-        elif self.config.cleaning_mode == "remove":
-            df = df[~bad_mask].copy()
-            stats.bad_ticks_removed = int(bad_count)
-        else:
-            logger.warning(f"Unknown cleaning_mode: {self.config.cleaning_mode}")
-            return bars, stats
-
-        stats.filtering_percentage = (bad_count / original_len * 100) if original_len > 0 else 0.0
-
-        if self.config.log_stats:
-            logger.info(
-                f"🧹 {symbol}: Filtered {bad_count}/{original_len} bars ({stats.filtering_percentage:.2f}%) "
-                f"using {self.config.method} method, mode={self.config.cleaning_mode}"
-            )
-
-        # Convert back to HistoricalBar objects
-        from src.core.market_data.types import HistoricalBar
-        from datetime import datetime
-        from decimal import Decimal
-
+        Note:
+            Converts back to Decimal for precision.
+        """
         cleaned_bars = []
         for _, row in df.iterrows():
             ts = row["timestamp"]
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
+
             cleaned_bars.append(
                 HistoricalBar(
                     timestamp=ts,
@@ -120,194 +81,42 @@ class BadTickDetector:
                     low=Decimal(str(row["low"])),
                     close=Decimal(str(row["close"])),
                     volume=int(row["volume"]),
-                    vwap=Decimal(str(bars[0].vwap)) if bars and bars[0].vwap else None,
-                    trades=bars[0].trades if bars and bars[0].trades else None,
-                    source="bitunix"
+                    vwap=Decimal(str(original_bars[0].vwap))
+                    if original_bars and original_bars[0].vwap
+                    else None,
+                    trades=original_bars[0].trades
+                    if original_bars and original_bars[0].trades
+                    else None,
+                    source="bitunix",
                 )
             )
 
-        return cleaned_bars, stats
+        return cleaned_bars
 
-    def _detect_bad_ticks(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Detect bad ticks using configured method.
-
-        Args:
-            df: DataFrame with OHLCV data
-
-        Returns:
-            Boolean mask (True = bad tick)
-        """
-        if self.config.method == "hampel":
-            return self._detect_hampel_outliers(df)
-        elif self.config.method == "zscore":
-            return self._detect_zscore_outliers(df)
-        elif self.config.method == "basic":
-            return self._detect_basic_outliers(df)
-        else:
-            logger.warning(f"Unknown detection method: {self.config.method}, using basic")
-            return self._detect_basic_outliers(df)
-
-    def _detect_hampel_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Hampel Filter: Modified Z-score using Median Absolute Deviation (MAD).
-
-        More robust than standard Z-score for financial data with fat tails.
+    def _create_filter_stats(
+        self,
+        total_bars: int = 0,
+        bad_ticks_found: int = 0,
+        bad_ticks_removed: int = 0,
+        bad_ticks_interpolated: int = 0,
+        filtering_percentage: float = 0.0,
+    ) -> FilterStats:
+        """Create Bitunix FilterStats object.
 
         Args:
-            df: DataFrame with OHLCV data
+            total_bars: Total bars processed
+            bad_ticks_found: Bad ticks detected
+            bad_ticks_removed: Bad ticks removed
+            bad_ticks_interpolated: Bad ticks interpolated
+            filtering_percentage: Filter percentage
 
         Returns:
-            Boolean mask (True = outlier)
+            Bitunix FilterStats instance
         """
-        bad_mask = pd.Series(False, index=df.index)
-
-        for col in ["close", "high", "low", "open"]:
-            if col not in df.columns:
-                continue
-
-            values = df[col].values
-            n = len(values)
-            window = self.config.hampel_window
-
-            # Rolling median and MAD
-            for i in range(window, n - window):
-                window_values = values[i - window : i + window + 1]
-                median = np.median(window_values)
-                mad = np.median(np.abs(window_values - median))
-
-                if mad == 0:
-                    continue
-
-                # Modified Z-score
-                modified_z_score = 0.6745 * (values[i] - median) / mad
-
-                if abs(modified_z_score) > self.config.hampel_threshold:
-                    bad_mask.iloc[i] = True
-
-        return bad_mask
-
-    def _detect_zscore_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Z-Score outlier detection (standard deviations from mean).
-
-        Args:
-            df: DataFrame with OHLCV data
-
-        Returns:
-            Boolean mask (True = outlier)
-        """
-        bad_mask = pd.Series(False, index=df.index)
-
-        for col in ["close", "high", "low", "open"]:
-            if col not in df.columns:
-                continue
-
-            values = df[col]
-            mean = values.mean()
-            std = values.std()
-
-            if std == 0:
-                continue
-
-            z_scores = np.abs((values - mean) / std)
-            bad_mask |= z_scores > self.config.zscore_threshold
-
-        return bad_mask
-
-    def _detect_basic_outliers(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Basic OHLC consistency checks and volume spikes.
-
-        Detects:
-        - OHLC relationship violations (high < low, close outside high/low)
-        - Extreme volume spikes
-        - Zero or negative prices
-
-        Args:
-            df: DataFrame with OHLCV data
-
-        Returns:
-            Boolean mask (True = bad tick)
-        """
-        bad_mask = pd.Series(False, index=df.index)
-
-        # OHLC consistency
-        if all(col in df.columns for col in ["open", "high", "low", "close"]):
-            bad_mask |= df["high"] < df["low"]
-            bad_mask |= df["close"] > df["high"]
-            bad_mask |= df["close"] < df["low"]
-            bad_mask |= df["open"] > df["high"]
-            bad_mask |= df["open"] < df["low"]
-
-        # Zero or negative prices
-        for col in ["open", "high", "low", "close"]:
-            if col in df.columns:
-                bad_mask |= df[col] <= 0
-
-        # Volume spikes
-        if "volume" in df.columns:
-            vol_median = df["volume"].rolling(window=20, min_periods=1).median()
-            bad_mask |= df["volume"] > (vol_median * self.config.volume_multiplier)
-            bad_mask |= df["volume"] < 0
-
-        return bad_mask
-
-    def _interpolate_bad_ticks(self, df: pd.DataFrame, bad_mask: pd.Series) -> pd.DataFrame:
-        """
-        Interpolate bad ticks using linear interpolation.
-
-        Args:
-            df: DataFrame with OHLCV data
-            bad_mask: Boolean mask of bad ticks
-
-        Returns:
-            DataFrame with interpolated values
-        """
-        df = df.copy()
-
-        for col in ["open", "high", "low", "close", "volume"]:
-            if col not in df.columns:
-                continue
-
-            # Set bad values to NaN
-            df.loc[bad_mask, col] = np.nan
-
-            # Interpolate
-            df[col] = df[col].interpolate(method="linear", limit_direction="both")
-
-            # Forward fill if interpolation fails
-            df[col] = df[col].ffill()
-
-            # Backward fill if still NaN
-            df[col] = df[col].bfill()
-
-        return df
-
-    def _forward_fill_bad_ticks(self, df: pd.DataFrame, bad_mask: pd.Series) -> pd.DataFrame:
-        """
-        Forward fill bad ticks with previous valid values.
-
-        Args:
-            df: DataFrame with OHLCV data
-            bad_mask: Boolean mask of bad ticks
-
-        Returns:
-            DataFrame with forward-filled values
-        """
-        df = df.copy()
-
-        for col in ["open", "high", "low", "close", "volume"]:
-            if col not in df.columns:
-                continue
-
-            # Set bad values to NaN
-            df.loc[bad_mask, col] = np.nan
-
-            # Forward fill
-            df[col] = df[col].ffill()
-
-            # Backward fill if still NaN
-            df[col] = df[col].bfill()
-
-        return df
+        return FilterStats(
+            total_bars=total_bars,
+            bad_ticks_found=bad_ticks_found,
+            bad_ticks_removed=bad_ticks_removed,
+            bad_ticks_interpolated=bad_ticks_interpolated,
+            filtering_percentage=filtering_percentage,
+        )
