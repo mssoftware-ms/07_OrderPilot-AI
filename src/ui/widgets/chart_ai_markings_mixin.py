@@ -80,7 +80,7 @@ class ChartAIMarkingsMixin:
         """
         # Determine zone type from label for correct categorization
         from src.chart_marking.models import ZoneType
-        
+
         z_type = ZoneType.SUPPORT
         l_lower = label.lower()
         if "resistance" in l_lower:
@@ -106,7 +106,7 @@ class ChartAIMarkingsMixin:
                 label=label,
                 color=fill_color
             )
-            
+
         logger.error("add_zone not found in parent class")
         return ""
 
@@ -189,29 +189,49 @@ class ChartAIMarkingsMixin:
     def add_long_entry(self, timestamp: int, price: float, label: str = "Long Entry") -> str:
         """Add a long entry marker (green arrow up)."""
         marker_id = f"ai_long_{int(timestamp)}_{int(price)}"
-        
+
+        # Deduplication check
+        if not hasattr(self, "_added_ai_markers"):
+            self._added_ai_markers = set()
+
+        if marker_id in self._added_ai_markers:
+            logger.debug(f"Skipping duplicate long entry marker: {marker_id}")
+            return marker_id # Return existing ID
+
         if hasattr(super(), "add_long_entry"):
-            return super().add_long_entry(
+            result = super().add_long_entry(
                 timestamp=timestamp,
                 price=price,
                 text=label,
                 marker_id=marker_id
             )
-            
+            self._added_ai_markers.add(marker_id)
+            return result
+
         logger.error("add_long_entry not found in parent class")
         return ""
 
     def add_short_entry(self, timestamp: int, price: float, label: str = "Short Entry") -> str:
         """Add a short entry marker (red arrow down)."""
         marker_id = f"ai_short_{int(timestamp)}_{int(price)}"
-        
+
+        # Deduplication check
+        if not hasattr(self, "_added_ai_markers"):
+            self._added_ai_markers = set()
+
+        if marker_id in self._added_ai_markers:
+            logger.debug(f"Skipping duplicate short entry marker: {marker_id}")
+            return marker_id # Return existing ID
+
         if hasattr(super(), "add_short_entry"):
-            return super().add_short_entry(
+            result = super().add_short_entry(
                 timestamp=timestamp,
                 price=price,
                 text=label,
                 marker_id=marker_id
             )
+            self._added_ai_markers.add(marker_id)
+            return result
 
         logger.error("add_short_entry not found in parent class")
         return ""

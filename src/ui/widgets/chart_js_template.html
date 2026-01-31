@@ -263,23 +263,22 @@
                     },
                     localization: {
                         locale: 'de-DE',
-                        // Timestamps are already shifted to local time in Python,
-                        // so we use UTC methods to display them directly without double conversion
-                        // Issue #30: Show date AND time in crosshair label
+                        // Issue #63: Display time in User's Local Time (Browser/System Time)
+                        // This matches the PC clock (e.g. CET/CEST) instead of UTC.
                         timeFormatter: (timestamp) => {
                             const date = new Date(timestamp * 1000);
-                            const day = String(date.getUTCDate()).padStart(2, '0');
-                            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-                            const year = date.getUTCFullYear();
-                            const hours = String(date.getUTCHours()).padStart(2, '0');
-                            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const year = date.getFullYear();
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
                             return `${day}.${month}.${year} ${hours}:${minutes}`;
                         },
                         dateFormatter: (timestamp) => {
                             const date = new Date(timestamp * 1000);
-                            const day = String(date.getUTCDate()).padStart(2, '0');
-                            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-                            const year = date.getUTCFullYear();
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const year = date.getFullYear();
                             return `${day}.${month}.${year}`;
                         },
                     },

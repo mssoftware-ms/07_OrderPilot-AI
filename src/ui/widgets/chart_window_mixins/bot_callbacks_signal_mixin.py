@@ -58,6 +58,18 @@ class BotCallbacksSignalMixin:
 
         # For confirmed signals, update existing candidate instead of adding new
         if signal_type == "confirmed":
+            # User Request: Use CURRENT LIVE PRICE at the moment of entry!
+            # The signal usually carries the close price of the previous candle, which is historical.
+            # We override this with the current live tick price if available.
+            live_price = self._get_current_price(from_bot=False)
+            if live_price > 0:
+                self._add_ki_log_entry(
+                    "PRICE",
+                    f"Entry-Preis angepasst: Signal={entry_price:.2f} -> Live={live_price:.2f}"
+                )
+                logger.info(f"Overriding signal price {entry_price} with live price {live_price}")
+                entry_price = live_price
+
             updated = self._update_candidate_to_confirmed(
                 side,
                 score,

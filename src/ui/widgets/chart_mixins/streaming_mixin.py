@@ -101,6 +101,7 @@ class StreamingMixin:
             self._log_tick(price, volume)
 
             ts = self._resolve_tick_timestamp(event, tick_data)
+
             current_tick_time, current_minute_start = self._resolve_tick_time(ts, tick_data)
 
             if not hasattr(self, '_current_candle_time'):
@@ -261,11 +262,11 @@ class StreamingMixin:
                     # Assuming standard sequential bars.
                     # Use _current_candle_time which was the START of the closed candle
                     # BEFORE it was updated to current_minute_start below.
-                    
+
                     # Wait, _current_candle_time is updated AFTER this block?
                     # No, self._current_candle_time holds the start of the candle being closed.
                     closed_candle_time = self._current_candle_time
-                    
+
                     closed_candle = {
                         'timestamp': closed_candle_time,
                         'open': prev_open,

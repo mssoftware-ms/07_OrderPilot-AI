@@ -367,10 +367,32 @@ class BotEventHandlersMixin:
 
             # Subscribe to regime_changed event
             event_bus.subscribe('regime_changed', self._on_regime_changed_notification)
-            logger.info("Subscribed to regime_changed events")
+            event_bus.subscribe('strategy_selected', self._on_strategy_selected_notification)
+            logger.info("Subscribed to regime_changed and strategy_selected events")
 
         except Exception as e:
-            logger.error(f"Failed to subscribe to regime changes: {e}", exc_info=True)
+            logger.error(f"Failed to subscribe to bot events: {e}", exc_info=True)
+
+    def _on_strategy_selected_notification(self, event_data: dict) -> None:
+        """Handle strategy_selected event."""
+        try:
+            strategy_name = event_data.get('selected_strategy', 'Unknown')
+            regime = event_data.get('regime', 'Unknown')
+            scores = event_data.get('scores', [])
+
+            # Update labels
+            if hasattr(self, 'active_strategy_label'):
+                self.active_strategy_label.setText(strategy_name)
+
+            if hasattr(self, 'regime_label'):
+                self.regime_label.setText(regime)
+
+            # Update scores table
+            if hasattr(self, '_update_strategy_scores_table'):
+                self._update_strategy_scores_table(scores)
+
+        except Exception as e:
+            logger.error(f"Error handling strategy selection notification: {e}")
 
     def _on_regime_changed_notification(self, event_data: dict) -> None:
         """Handle regime_changed event from BotController.
@@ -380,7 +402,6 @@ class BotEventHandlersMixin:
                 - old_strategy: Previous strategy name
                 - new_strategy: New strategy name
                 - new_regimes: Comma-separated regime names
-                - timestamp: Event timestamp
         """
         try:
             old_strategy = event_data.get('old_strategy', 'None')
@@ -398,6 +419,13 @@ class BotEventHandlersMixin:
                 regime_text = f"{new_regimes}"
                 self._regime_badge.set_regime(regime_text)
                 self._regime_badge.setToolTip(f"Current Strategy: {new_strategy}")
+
+            # Issue #UserRequest: Update Strategy Tab labels immediately
+            if hasattr(self, 'active_strategy_label'):
+                self.active_strategy_label.setText(new_strategy)
+
+            if hasattr(self, 'regime_label'):
+                self.regime_label.setText(new_regimes)
 
             # Show notification message in status bar or bot log
             notification_msg = (

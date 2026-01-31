@@ -273,10 +273,15 @@ class BotDisplaySignalsMixin:
         self.signals_table.setItem(row, 3, QTableWidgetItem(signal["side"]))
 
         # Issue #3: Entry price editable for active positions
-        entry_item = QTableWidgetItem(f"{signal['price']:.4f}")
-        if is_active:
-            entry_item.setFlags(entry_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            entry_item.setToolTip("Entry-Preis (editierbar für aktive Position)")
+        # User Request: Hide price for "PENDING" status. Only show for "ENTERED".
+        if signal.get("status") == "PENDING":
+             entry_item = QTableWidgetItem("-")
+             entry_item.setToolTip("Preis wird erst bei Entry (Status: ENTERED) festgelegt")
+        else:
+            entry_item = QTableWidgetItem(f"{signal['price']:.4f}")
+            if is_active:
+                entry_item.setFlags(entry_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                entry_item.setToolTip("Entry-Preis (editierbar für aktive Position)")
         self.signals_table.setItem(row, 4, entry_item)
 
     def _get_trailing_info(self, signal: dict, entry_price: float, trailing_price: float) -> tuple[float, bool]:

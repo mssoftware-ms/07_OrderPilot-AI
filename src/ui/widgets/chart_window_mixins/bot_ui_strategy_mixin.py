@@ -212,6 +212,36 @@ class BotUIStrategyMixin:
             logger.warning(f"Could not update daily analysis view: {e}")
             self._set_daily_status(f"Anzeige-Update fehlgeschlagen: {e}", error=True)
 
+    def _update_strategy_scores_table(self, scores: list[dict]) -> None:
+        """Update strategy scores table from event data."""
+        if not hasattr(self, "strategy_scores_table"):
+            return
+
+        try:
+            self.strategy_scores_table.setRowCount(0)
+            if not scores:
+                return
+
+            self.strategy_scores_table.setRowCount(len(scores))
+            for i, score_data in enumerate(scores):
+                # Columns: Strategy, Score, PF, WinRate, MaxDD
+                name = score_data.get('strategy', 'Unknown')
+                score_val = score_data.get('score', 0.0)
+                metrics = score_data.get('metrics', {})
+                pf = metrics.get('profit_factor', 0.0)
+                wr = metrics.get('win_rate', 0.0)
+                dd = metrics.get('max_drawdown', 0.0)
+
+                from PyQt6.QtWidgets import QTableWidgetItem
+
+                self.strategy_scores_table.setItem(i, 0, QTableWidgetItem(name))
+                self.strategy_scores_table.setItem(i, 1, QTableWidgetItem(f"{score_val:.2f}"))
+                self.strategy_scores_table.setItem(i, 2, QTableWidgetItem(f"{pf:.2f}"))
+                self.strategy_scores_table.setItem(i, 3, QTableWidgetItem(f"{wr:.0%}"))
+                self.strategy_scores_table.setItem(i, 4, QTableWidgetItem(f"{dd:.1%}"))
+        except Exception as e:
+            logger.warning(f"Failed to update strategy table: {e}")
+
     def _run_daily_strategy_workflow(self) -> None:
         """Run the daily strategy workflow based on selected analysis method.
 

@@ -291,13 +291,15 @@ class CompactChartWidget(QWidget):
             )
         else:
             try:
-                # Standard library may not have 'visible' param, so we push it out of view
-                chart.volume_config(scale_margin_top=1.0, scale_margin_bottom=0.0)
-            except:
-                pass
+                if hasattr(chart, "volume"):
+                    chart.volume(visible=False)
+                else:
+                    chart.volume_config(scale_margin_top=1.0, scale_margin_bottom=0.0)
+            except Exception:
+                logger.debug("Could not hide volume overlay", exc_info=True)
 
         chart.crosshair(mode='normal')
-        chart.time_scale(right_offset=5, min_bar_spacing=0.5, visible=True, time_visible=True)
+        chart.time_scale(right_offset=2, min_bar_spacing=0.5, visible=True, time_visible=True)
         chart.legend(visible=False, font_size=font_size)
 
     @staticmethod
@@ -426,11 +428,16 @@ class CompactChartWidget(QWidget):
             if chart_df is None or chart_df.empty:
                 return
 
-            self._chart.set(chart_df)
-            spacing = self._calculate_bar_spacing(len(chart_df))
-            self._chart.time_scale(right_offset=5, min_bar_spacing=spacing)
+            # Ensure chronological order for the widget
+            chart_df = chart_df.sort_values("time")
 
-            QtCore.QTimer.singleShot(100, self.fit_chart)
+            # Use explicit records to avoid dtype/index quirks inside QtChart
+            self._chart.set(chart_df.to_dict("records"))
+
+            # Let library handle spacing; just keep a small right offset so the last candle is visible
+            self._chart.time_scale(right_offset=2, min_bar_spacing=0.5, visible=True, time_visible=True)
+
+            QtCore.QTimer.singleShot(120, self.fit_chart)
 
             if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:
                 latest_price = chart_df.iloc[-1]['close']

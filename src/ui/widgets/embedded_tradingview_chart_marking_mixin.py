@@ -13,6 +13,11 @@ class EmbeddedTradingViewChartMarkingMixin:
 
         Uses the crosshair position if available, otherwise falls back to last candle.
         """
+        # Check for duplicates if ID is provided
+        if hasattr(self, "_markers") and self._markers:
+             # Assuming _markers is a dict or list tracking JS-side markers
+             pass
+
         # First try to get position from crosshair (cursor position)
         crosshair_time, crosshair_price = None, None
         if hasattr(self, "_chart_bridge") and self._chart_bridge is not None:

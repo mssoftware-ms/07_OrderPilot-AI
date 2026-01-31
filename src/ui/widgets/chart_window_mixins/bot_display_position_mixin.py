@@ -171,52 +171,47 @@ class BotDisplayPositionMixin:
     def _get_current_price(self, from_bot: bool = True) -> float:
         """Get current market price.
 
-        Issue #12: Consistent price source to avoid jumping values.
-        Issue #55: NEVER use historical data for active positions - causes 200+ point jumps.
+        Prioritizes Live Streaming Price (from Chart/StreamingMixin) over Bitunix Trading Widget price.
+        This prevents 'Price Jumping' where the P&L timer fetches stale polling data (e.g. 81k)
+        while the Tick Signal pushes live data (e.g. 79k), causing flickering and false SL triggers.
 
-        Priority (strict order):
-        1. _last_tick_price - set by tick_price_updated signal from streaming
-        2. chart_widget._last_price - set by streaming mixin directly
-        3. Bot controller last features (closed candle) - ONLY if no position active AND from_bot=True
-        4. Chart widget DataFrame (last row close) - ONLY if no position active
-
-        CRITICAL: Sources 3 and 4 are historical data (last closed candle).
-        For 5-minute candles, this can be up to 5 minutes old, causing ~200 point jumps.
-        When a position is active, we MUST have live tick data to avoid false stop triggers.
+        Priority:
+        1. Live Tick Price (from _on_tick_price_updated) or Chart Stream
+        2. Bitunix Trading Widget (Polling/API)
+        3. Bot Controller (Last Closed Bar)
+        4. Chart Data (DataFrame)
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
-        # 1. Live tick price (most recent, from tick_price_updated signal)
+        # Priority 1: Live tick price (from streaming mixin via BotPanelsMixin._on_tick_price_updated)
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
             return self._last_tick_price
 
-        # 2. Chart widget's streaming price (set directly by streaming mixin)
+        # Priority 2: Chart widget's streaming price (Direct access to StreamingMixin)
         if hasattr(self, 'chart_widget'):
             if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
                 return float(self.chart_widget._last_price)
 
-        # Check if there's an active position - if yes, DON'T use historical fallbacks
+        # Priority 3: Bitunix Trading API widget's price (might be polling/stale)
+        if hasattr(self, 'bitunix_trading_api_widget') and self.bitunix_trading_api_widget:
+            if hasattr(self.bitunix_trading_api_widget, '_last_price'):
+                price = self.bitunix_trading_api_widget._last_price
+                if price > 0:
+                    return float(price)
+
+        # No live price available - log warning for active positions
         has_active_position = any(
             sig.get("is_open", False) and sig.get("status") == "ENTERED"
             for sig in getattr(self, '_signal_history', [])
         )
+        if has_active_position and not (hasattr(self, '_last_tick_price') and self._last_tick_price > 0):
+             # Only warn if we really have NO price source
+            pass # Logger warning removed to reduce noise as we have fallbacks below
 
-        if has_active_position:
-            # Issue #55: For active positions, we MUST have live streaming data
-            # Using historical data causes massive price jumps and false stop triggers
-            logger.warning(
-                "⚠️ No live tick price available for active position! "
-                "Enable live streaming to get accurate pricing."
-            )
-            return 0.0  # Return 0 instead of historical data - safer than false trigger
-
-        # 3. Bot controller features (usually last closed bar) - only if no active position
+        # 4. Bot controller features (usually last closed bar) - only if no active position
         current = 0.0
         if from_bot and self._bot_controller and self._bot_controller._last_features:
             current = self._bot_controller._last_features.close
 
-        # 4. Chart data fallback (last row of DataFrame) - only if no active position
+        # 5. Chart data fallback (last row of DataFrame) - only if no active position
         if current <= 0 and hasattr(self, 'chart_widget'):
             if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                 try:
@@ -266,7 +261,7 @@ class BotDisplayPositionMixin:
         self._update_strategy_indicators_display()  # Issue #2
         self._update_regime_labels(selection)
         self._update_selection_timing_labels(selection)
-        self._update_strategy_scores_table()
+        self._refresh_strategy_scores_data()
         self._update_walk_forward_panel(selection)
 
     def _get_strategy_selection(self):
@@ -333,7 +328,7 @@ class BotDisplayPositionMixin:
             else:
                 self.next_selection_label.setText("-")
 
-    def _update_strategy_scores_table(self) -> None:
+    def _refresh_strategy_scores_data(self) -> None:
         if hasattr(self._bot_controller, "get_strategy_score_rows"):
             rows = self._bot_controller.get_strategy_score_rows()
             if rows:

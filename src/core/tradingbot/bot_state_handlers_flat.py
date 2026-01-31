@@ -138,12 +138,14 @@ class BotStateHandlersFlat:
         """
         now = datetime.utcnow()
 
-        # Check if new day or forced reselection
-        needs_selection = (
-            self.parent._active_strategy is None
-            or self.parent._last_strategy_selection_date is None
-            or now.date() > self.parent._last_strategy_selection_date.date()
-        )
+        # Check if selection is needed (Dynamic Mode: evaluate every bar)
+        # Note: User requested dynamic analysis per candle to react to market changes immediately.
+        # Previously restricted to once per day.
+        needs_selection = True
+
+        # Optimization: verify we have valid features before selecting
+        if not features or not features.close:
+            return
 
         if not needs_selection:
             return
@@ -186,6 +188,29 @@ class BotStateHandlersFlat:
                         f"Aktuelle Strategie: {self.parent._active_strategy.name} "
                         f"(wechselt mit Marktsituation)",
                     )
+
+                    # Issue #UI: Emit strategy scores for UI table
+                    if hasattr(self.parent, '_event_bus') and self.parent._event_bus:
+                        try:
+                            # Construct scores list for UI
+                            # Assuming result.candidates contains the list of evaluated strategies
+                            scores_data = []
+                            if hasattr(result, 'candidates'):
+                                for cand in result.candidates:
+                                    scores_data.append({
+                                        'strategy': cand.name,
+                                        'score': cand.score,
+                                        'metrics': cand.metrics  # e.g. PF, WinRate, DD
+                                    })
+
+                            self.parent._event_bus.emit('strategy_selected', {
+                                'selected_strategy': self.parent._active_strategy.name,
+                                'regime': self.parent._regime.regime.value if self.parent._regime else "Unknown",
+                                'scores': scores_data,
+                                'timestamp': now
+                            })
+                        except Exception as e:
+                            logger.warning(f"Failed to emit strategy_selected event: {e}")
 
         except Exception as e:
             self.parent._log_activity("ERROR", f"Bias/Strategie-Auswahl fehlgeschlagen: {e}")

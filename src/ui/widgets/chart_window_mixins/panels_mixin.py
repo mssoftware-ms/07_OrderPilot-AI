@@ -61,7 +61,7 @@ class PanelsMixin:
 
             # Tab 2: Daily Strategy Selection
             self.bot_strategy_tab = self._create_strategy_selection_tab()
-            self.panel_tabs.addTab(self.bot_strategy_tab, get_icon("optimize"), "Daily Strategy")
+            self.panel_tabs.addTab(self.bot_strategy_tab, get_icon("optimize"), "Strategy")
 
             # Tab 3: Signals & Trade Management
             self.bot_signals_tab = self._create_signals_tab()
