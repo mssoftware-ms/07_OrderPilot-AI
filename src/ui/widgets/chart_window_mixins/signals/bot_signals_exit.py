@@ -234,9 +234,11 @@ class BotSignalsExitMixin:
             if response and response.broker_order_id:
                 logger.info(f"Issue #11: Order placed successfully: {response.broker_order_id}")
 
-                # Update signal status
-                signal["status"] = "CLOSING"
+                # Update signal status - Issue #58: Add exit_reason for tracking
+                signal["status"] = "MA"  # Manual exit status
+                signal["exit_reason"] = "MANUAL"
                 signal["exit_order_id"] = response.broker_order_id
+                signal["is_open"] = False  # Mark as closed
                 if hasattr(self, '_save_signal_history'):
                     self._save_signal_history()
                 if hasattr(self, '_update_signals_table'):
@@ -367,6 +369,11 @@ class BotSignalsExitMixin:
             tra_pct = 0
             if trailing_price > 0 and current_price > 0:
                 tra_pct = abs((current_price - trailing_price) / current_price) * 100
+
+            # Note: Entry marker is NOT drawn here anymore (Issue #59)
+            # Entry markers are already drawn by _draw_chart_for_confirmed_signal in
+            # bot_callbacks_signal_mixin.py when the position status changes to ENTERED.
+            # This button only (re-)draws the price LINES, not the markers.
 
             # Draw Entry Line (blue)
             entry_label = f"Entry @ {entry_price:.2f}"

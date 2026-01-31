@@ -72,8 +72,15 @@ class DataLoadingSeries:
 
         self.parent.data = data
         if len(data) > 0 and 'close' in data.columns:
-            self.parent._last_price = float(data['close'].iloc[-1])
-            logger.debug(f"Set _last_price from data: {self.parent._last_price}")
+            # Only set _last_price if not already streaming (prevents overwriting live price)
+            # Issue: Setting _last_price from historical data was overwriting live stream prices
+            # causing the Current Position "Current" price to jump between old and new values
+            existing_price = getattr(self.parent, '_last_price', 0.0)
+            if existing_price <= 0:
+                self.parent._last_price = float(data['close'].iloc[-1])
+                logger.debug(f"Set _last_price from data (initial): {self.parent._last_price}")
+            else:
+                logger.debug(f"Keeping live _last_price: {existing_price} (data would set: {data['close'].iloc[-1]})")
         return data
 
     def _fill_one_second_gaps(self, data: "pd.DataFrame") -> "pd.DataFrame":

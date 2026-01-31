@@ -1,0 +1,1 @@
+"""Entry analyzer UI tests."""

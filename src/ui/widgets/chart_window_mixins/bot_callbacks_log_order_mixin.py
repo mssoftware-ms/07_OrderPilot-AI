@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+
 
 logger = logging.getLogger(__name__)
 

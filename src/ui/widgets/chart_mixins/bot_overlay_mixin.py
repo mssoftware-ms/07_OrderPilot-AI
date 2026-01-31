@@ -75,14 +75,19 @@ class BotOverlayMixin:
             text: Optional text to display
             score: Optional score value
         """
-        # Convert to Unix timestamp (UTC)
-        # Handle both timezone-aware and naive datetimes
+        # Convert to Unix timestamp and apply local timezone offset
+        # CRITICAL: Chart candles have local_offset applied (UTC + offset)
+        # Markers MUST use the same offset to align correctly with candles
+        # Issue #56: Without this offset, markers appear 1 hour off in CET timezone
+        local_offset = get_local_timezone_offset_seconds()
+
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
-            ts = int(timestamp.timestamp())
+            ts = int(timestamp.timestamp()) + local_offset
         else:
-            ts = timestamp
+            # Assume raw Unix timestamp is already in UTC, add offset
+            ts = timestamp + local_offset
 
         # Issue #13: Check for duplicate markers (same timestamp, type, and side)
         # This prevents markers from being drawn multiple times on chart refresh
@@ -382,17 +387,20 @@ class BotOverlayMixin:
             label: Optional label text
         """
         print(f"[BOT_OVERLAY] add_regime_line called: id={line_id}, ts={timestamp}, regime={regime_name}, label={label}", flush=True)
-        
-        # Convert timestamp to Unix timestamp
+
+        # Convert timestamp to Unix timestamp and apply local timezone offset
+        # Issue #56: Must match chart candle times which use UTC + local_offset
+        local_offset = get_local_timezone_offset_seconds()
+
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
                 from datetime import timezone
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
-            ts = int(timestamp.timestamp())
+            ts = int(timestamp.timestamp()) + local_offset
         else:
-            ts = timestamp
-        
-        print(f"[BOT_OVERLAY] Converted timestamp to: {ts}", flush=True)
+            ts = timestamp + local_offset
+
+        print(f"[BOT_OVERLAY] Converted timestamp to: {ts} (with offset: {local_offset})", flush=True)
 
         # Auto-select color based on regime name ONLY if not provided
         if color is None:
@@ -439,7 +447,7 @@ class BotOverlayMixin:
         # Use the prefix-based removal to catch all lines, even those not in state
         # (e.g. lines restored by chart persistence but not in python state)
         self._execute_js("window.chartAPI?.removeDrawingsByPrefix('regime_');")
-        
+
         # Also clear local state
         self._bot_overlay_state.regime_lines.clear()
         logger.debug("Cleared all regime lines")
@@ -689,11 +697,11 @@ class BotOverlayMixin:
                 timestamp = drawing.get('timestamp', 0)
                 color = drawing.get('color')
                 label = drawing.get('label', '')
-                
+
                 # Try to extract pure regime name from label "NAME (SCORE)"
                 # e.g. "STRONG TREND BULL (95.0)" -> "STRONG_TREND_BULL"
                 regime_name = label.split(' (')[0].replace(' ', '_')
-                
+
                 # Fallback if label is empty or different format
                 if not regime_name:
                     regime_name = "UNKNOWN"

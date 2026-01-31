@@ -1044,9 +1044,8 @@ class BotController(
             from src.core.tradingbot.config.router import StrategyRouter
             from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
 
-            # Calculate indicator values from features
-            calculator = IndicatorValueCalculator()
-            indicator_values = calculator.calculate(features)
+            # Calculate indicator values from features (classmethod)
+            indicator_values = IndicatorValueCalculator.calculate_indicator_values(features)
 
             # Detect current active regimes
             detector = RegimeDetector(self._config_regimes)
@@ -1068,11 +1067,14 @@ class BotController(
 
             # Route to new strategy set
             router = StrategyRouter(self._config_routing, self._config_strategy_sets)
-            matched_set = router.route(current_active_regimes)
+            matched_sets = router.route_regimes(current_active_regimes)
 
-            if matched_set:
+            if matched_sets:
+                # Use first matched set (highest priority)
+                matched_set = matched_sets[0]
+
                 # Check if strategy set has actually changed
-                if hasattr(self, '_matched_strategy_set'):
+                if hasattr(self, '_matched_strategy_set') and self._matched_strategy_set:
                     if matched_set.strategy_set.id == self._matched_strategy_set.strategy_set.id:
                         return False  # Same strategy set
 

@@ -1,217 +1,57 @@
-"""OrderPilot-AI Tradingbot Module.
+"""CEL Engine - Common Expression Language for trading rules.
 
-Provides automated trading capabilities with:
-- State machine-based operation
-- Rule-based and LLM-assisted decisions
-- Multiple trailing stop strategies
-- Daily strategy selection with walk-forward validation
-- Feature and regime engines for data pipeline
+This package provides a CEL (Common Expression Language) engine for evaluating
+trading rules and conditions with custom functions.
+
+Main Components:
+- CELEngine: Core expression evaluation engine
+- CELFunctions: Custom trading functions (90+ functions across 7 phases)
+- CELContextHelper: Helper for context value resolution
+- get_cel_engine(): Singleton factory for default engine instance
 
 Usage:
-    from src.core.tradingbot import BotController, FullBotConfig
+    >>> from src.core.tradingbot import CELEngine, get_cel_engine
+    >>>
+    >>> # Create engine instance
+    >>> engine = CELEngine()
+    >>> context = {"price": 100, "threshold": 95}
+    >>> result = engine.evaluate("price > threshold", context)
+    >>>
+    >>> # Or use singleton
+    >>> engine = get_cel_engine()
 
-    config = FullBotConfig.create_default("BTC/USD", MarketType.CRYPTO)
-    bot = BotController(config)
-    await bot.start()
+Backward Compatibility:
+    The original monolithic cel_engine.py has been split into:
+    - cel_engine_core.py: Main CELEngine class
+    - cel_engine_functions.py: All custom CEL functions
+    - cel_engine_utils.py: Helper utilities
+
+    All imports from the original module still work through this __init__.py
 """
 
+from .cel_engine_core import CELEngine
+from .cel_engine_utils import get_cel_engine, reset_cel_engine, CELContextHelper
+from .cel_engine_functions import CELFunctions
+# Issue #61: Export all config classes needed by UI
 from .config import (
     BotConfig,
     FullBotConfig,
     KIMode,
-    LLMPolicyConfig,
     MarketType,
     RiskConfig,
     TrailingMode,
-    TradingEnvironment,
 )
-from .feature_engine import FeatureEngine
-from .models import (
-    BotAction,
-    BotDecision,
-    DirectionalBias,
-    FeatureVector,
-    LLMBotResponse,
-    OrderIntent,
-    PositionState,
-    RegimeState,
-    RegimeType,
-    Signal,
-    SignalType,
-    StrategyProfile,
-    TradeSide,
-    TrailingState,
-    VolatilityLevel,
-)
-from .no_trade_filter import FilterReason, FilterResult, NoTradeFilter, TradingSession
-from .regime_engine import RegimeEngine
-from .state_machine import (
-    BotState,
-    BotStateMachine,
-    BotTrigger,
-    InvalidTransitionError,
-    StateMachineError,
-    StateTransition,
-)
-from .strategy_catalog import (
-    EntryRule,
-    ExitRule,
-    StrategyCatalog,
-    StrategyDefinition,
-    StrategyType,
-)
-from .strategy_evaluator import (
-    PerformanceMetrics,
-    RobustnessGate,
-    StrategyEvaluator,
-    TradeResult,
-    WalkForwardConfig,
-    WalkForwardResult,
-)
-from .strategy_selector import (
-    SelectionResult,
-    SelectionSnapshot,
-    StrategySelector,
-)
-from .entry_exit_engine import (
-    EntryExitEngine,
-    EntryScoreResult,
-    EntryScorer,
-    ExitReason,
-    ExitSignalChecker,
-    ExitSignalResult,
-    TrailingStopManager,
-    TrailingStopResult,
-)
-from .execution import (
-    ExecutionGuardrails,
-    OrderExecutor,
-    OrderResult,
-    OrderStatus,
-    OrderType,
-    PaperExecutor,
-    PositionSizeResult,
-    PositionSizer,
-    RiskLimits,
-    RiskManager,
-    RiskState,
-)
-from .llm_integration import (
-    LLMBudgetState,
-    LLMCallRecord,
-    LLMCallType,
-    LLMIntegration,
-    LLMPromptBuilder,
-    LLMResponseValidator,
-)
-# Backtest types from backtest_types.py
-from .backtest_types import (
-    BacktestConfig,
-    BacktestMode,
-    BacktestResult,
-    BacktestState,
-    BacktestTrade,
-)
-# Backtest simulator from backtest_simulator.py
-from .backtest_simulator import (
-    BacktestSimulator,
-    ReleaseGate,
-)
-# Backtest harness from backtest_harness.py
-from .backtest_harness import BacktestHarness
 
 __all__ = [
-    # Config
-    "BotConfig",
-    "FullBotConfig",
-    "KIMode",
-    "LLMPolicyConfig",
-    "MarketType",
-    "RiskConfig",
-    "TrailingMode",
-    "TradingEnvironment",
-    # Engines
-    "FeatureEngine",
-    "RegimeEngine",
-    # Filters
-    "FilterReason",
-    "FilterResult",
-    "NoTradeFilter",
-    "TradingSession",
-    # Models
-    "BotAction",
-    "BotDecision",
-    "FeatureVector",
-    "LLMBotResponse",
-    "OrderIntent",
-    "PositionState",
-    "RegimeState",
-    "RegimeType",
-    "Signal",
-    "SignalType",
-    "StrategyProfile",
-    "TradeSide",
-    "TrailingState",
-    "VolatilityLevel",
-    # State Machine
-    "BotState",
-    "BotStateMachine",
-    "BotTrigger",
-    "InvalidTransitionError",
-    "StateMachineError",
-    "StateTransition",
-    # Strategy Catalog
-    "EntryRule",
-    "ExitRule",
-    "StrategyCatalog",
-    "StrategyDefinition",
-    "StrategyType",
-    # Strategy Evaluator
-    "PerformanceMetrics",
-    "RobustnessGate",
-    "StrategyEvaluator",
-    "TradeResult",
-    "WalkForwardConfig",
-    "WalkForwardResult",
-    # Strategy Selector
-    "SelectionResult",
-    "SelectionSnapshot",
-    "StrategySelector",
-    # Entry/Exit Engine
-    "EntryExitEngine",
-    "EntryScoreResult",
-    "EntryScorer",
-    "ExitReason",
-    "ExitSignalChecker",
-    "ExitSignalResult",
-    "TrailingStopManager",
-    "TrailingStopResult",
-    # Execution Layer
-    "ExecutionGuardrails",
-    "OrderExecutor",
-    "OrderResult",
-    "OrderStatus",
-    "OrderType",
-    "PaperExecutor",
-    "PositionSizeResult",
-    "PositionSizer",
-    "RiskLimits",
-    "RiskManager",
-    "RiskState",
-    # LLM Integration
-    "LLMBudgetState",
-    "LLMCallRecord",
-    "LLMCallType",
-    "LLMIntegration",
-    "LLMPromptBuilder",
-    "LLMResponseValidator",
-    # Backtest & QA
-    "BacktestConfig",
-    "BacktestHarness",
-    "BacktestMode",
-    "BacktestResult",
-    "BacktestSimulator",
-    "BacktestState",
-    "BacktestTrade",
-    "ReleaseGate",
+    'CELEngine',
+    'CELFunctions',
+    'CELContextHelper',
+    'get_cel_engine',
+    'reset_cel_engine',
+    'BotConfig',
+    'FullBotConfig',
+    'KIMode',
+    'MarketType',
+    'RiskConfig',
+    'TrailingMode',
 ]

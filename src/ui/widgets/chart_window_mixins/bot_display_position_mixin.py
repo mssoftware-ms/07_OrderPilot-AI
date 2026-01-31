@@ -172,17 +172,21 @@ class BotDisplayPositionMixin:
         """Get current market price.
 
         Issue #12: Consistent price source to avoid jumping values.
+        Issue #55: NEVER use historical data for active positions - causes 200+ point jumps.
 
         Priority (strict order):
         1. _last_tick_price - set by tick_price_updated signal from streaming
         2. chart_widget._last_price - set by streaming mixin directly
-        3. Bot controller last features (closed candle) - only if from_bot=True
-        4. Chart widget DataFrame (last row close)
+        3. Bot controller last features (closed candle) - ONLY if no position active AND from_bot=True
+        4. Chart widget DataFrame (last row close) - ONLY if no position active
 
-        Note: Sources 1 and 2 are live streaming prices (updated on every tick).
-        Sources 3 and 4 are historical data (last closed candle).
-        Mixing these causes the "jumping" issue described in Issue #12.
+        CRITICAL: Sources 3 and 4 are historical data (last closed candle).
+        For 5-minute candles, this can be up to 5 minutes old, causing ~200 point jumps.
+        When a position is active, we MUST have live tick data to avoid false stop triggers.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # 1. Live tick price (most recent, from tick_price_updated signal)
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
             return self._last_tick_price
@@ -192,12 +196,27 @@ class BotDisplayPositionMixin:
             if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
                 return float(self.chart_widget._last_price)
 
-        # 3. Bot controller features (usually last closed bar)
+        # Check if there's an active position - if yes, DON'T use historical fallbacks
+        has_active_position = any(
+            sig.get("is_open", False) and sig.get("status") == "ENTERED"
+            for sig in getattr(self, '_signal_history', [])
+        )
+
+        if has_active_position:
+            # Issue #55: For active positions, we MUST have live streaming data
+            # Using historical data causes massive price jumps and false stop triggers
+            logger.warning(
+                "⚠️ No live tick price available for active position! "
+                "Enable live streaming to get accurate pricing."
+            )
+            return 0.0  # Return 0 instead of historical data - safer than false trigger
+
+        # 3. Bot controller features (usually last closed bar) - only if no active position
         current = 0.0
         if from_bot and self._bot_controller and self._bot_controller._last_features:
             current = self._bot_controller._last_features.close
 
-        # 4. Chart data fallback (last row of DataFrame)
+        # 4. Chart data fallback (last row of DataFrame) - only if no active position
         if current <= 0 and hasattr(self, 'chart_widget'):
             if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
                 try:

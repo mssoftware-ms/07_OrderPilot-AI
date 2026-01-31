@@ -188,7 +188,7 @@ class BotCallbacksSignalMixin:
                 sig["is_open"] = True
                 sig["label"] = f"E:{int(score * 100)}"
                 sig["entry_timestamp"] = entry_ts
-                sig["time"] = self._format_entry_time(entry_ts)
+                sig["time"] = datetime.now().strftime("%Y-%m-%d %H:%M")  # Issue #60: PC local time
                 sig["stop_price"] = signal_stop_price
                 sig["invested"] = invested
                 sig["initial_sl_pct"] = initial_sl_pct
@@ -223,7 +223,10 @@ class BotCallbacksSignalMixin:
         trailing_activation: float,
         signal_timestamp: int | None = None,
     ) -> None:
+        # Issue #60: Use current PC time for table display (local time)
+        # The entry_timestamp is kept separately for chart marker positioning
         entry_ts = signal_timestamp or int(datetime.now().timestamp())
+        table_time = datetime.now().strftime("%Y-%m-%d %H:%M")  # Always use PC's local time
         trailing_stop_price = 0.0
         if trailing_pct > 0:
             if side.lower() == "long":
@@ -232,7 +235,7 @@ class BotCallbacksSignalMixin:
                 trailing_stop_price = entry_price * (1 + trailing_pct / 100)
 
         self._signal_history.append({
-            "time": self._format_entry_time(entry_ts),
+            "time": table_time,  # Issue #60: Uses PC local time
             "type": signal_type,
             "side": side,
             "score": score,
@@ -587,9 +590,30 @@ class BotCallbacksSignalMixin:
                 return sig
         return None
 
-    def _get_current_price(self) -> float:
+    def _get_current_price(self, from_bot: bool = True) -> float:
+        """Get current price, optionally from bot controller or chart.
+
+        Args:
+            from_bot: If True, prefer bot controller price. If False, prefer chart price.
+        """
+        # Try bot controller first if requested
+        if from_bot and self._bot_controller and self._bot_controller._last_features:
+            return self._bot_controller._last_features.close
+
+        # Fallback to chart widget price
+        if hasattr(self, 'chart_widget'):
+            if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
+                return float(self.chart_widget._last_price)
+            if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
+                try:
+                    return float(self.chart_widget.data['close'].iloc[-1])
+                except Exception:
+                    pass
+
+        # Last resort: try bot controller even if from_bot=False
         if self._bot_controller and self._bot_controller._last_features:
             return self._bot_controller._last_features.close
+
         return 0.0
 
     def _calculate_tra_pct(self, new_stop: float) -> float:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QTableWidgetItem
 from .base_updater import BaseColumnUpdater
@@ -50,7 +51,7 @@ class PnLPercentUpdater(BaseColumnUpdater):
         )
 
         # Make non-editable
-        item.setFlags(item.flags() & ~0x00000002)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         table.setItem(row, column, item)
 
 
@@ -88,5 +89,5 @@ class PnLCurrencyUpdater(BaseColumnUpdater):
         )
 
         # Make non-editable
-        item.setFlags(item.flags() & ~0x00000002)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         table.setItem(row, column, item)

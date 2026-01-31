@@ -269,7 +269,7 @@ class CompactChartWidget(QWidget):
         """Apply shared chart styling with user-configured colors."""
         bullish_color, bearish_color = CompactChartWidget._get_candle_colors()
 
-        chart.layout(background_color='#1a1a2e', text_color='#ffffff')
+        chart.layout(background_color='#0f1624', text_color='#ffffff')
         chart.candle_style(
             up_color=bullish_color,
             down_color=bearish_color,
@@ -278,6 +278,9 @@ class CompactChartWidget(QWidget):
             wick_up_color=bullish_color,
             wick_down_color=bearish_color
         )
+
+        # Remove all built-in toolbars/overlays to match expected minimal UI
+        CompactChartWidget._disable_chart_ui(chart)
 
         if show_volume:
             chart.volume_config(
@@ -295,7 +298,35 @@ class CompactChartWidget(QWidget):
 
         chart.crosshair(mode='normal')
         chart.time_scale(right_offset=5, min_bar_spacing=0.5, visible=True, time_visible=True)
-        chart.legend(visible=True, font_size=font_size)
+        chart.legend(visible=False, font_size=font_size)
+
+    @staticmethod
+    def _disable_chart_ui(chart: QtChart) -> None:
+        """Hide lightweight-charts toolbars/branding without breaking older versions."""
+        try:
+            if hasattr(chart, "toolbox"):
+                chart.toolbox(visible=False)
+            if hasattr(chart, "toolbar"):
+                chart.toolbar(visible=False)
+            if hasattr(chart, "toolbar_visible"):
+                chart.toolbar_visible(False)
+        except Exception:
+            logger.debug("Could not hide chart toolbox/toolbar", exc_info=True)
+
+        # Also hide watermark/logo if available
+        try:
+            chart.watermark(visible=False)
+        except Exception:
+            pass
+
+        # Soft-disable grids to reduce visual noise (fails gracefully if unsupported)
+        try:
+            chart.grid(vert_enabled=False, horz_enabled=False)
+        except Exception:
+            try:
+                chart.grid(visible=False)
+            except Exception:
+                pass
 
     @staticmethod
     def _get_candle_colors() -> tuple[str, str]:
