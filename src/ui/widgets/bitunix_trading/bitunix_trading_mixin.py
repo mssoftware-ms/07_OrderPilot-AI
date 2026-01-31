@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from PyQt6.QtCore import Qt
 
 from src.core.market_data.types import AssetClass
+from src.ui.mixins.trading_mixin_base import TradingMixinBase
 
 if TYPE_CHECKING:
     from src.ui.widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class BitunixTradingMixin:
+class BitunixTradingMixin(TradingMixinBase):
     """Mixin that adds Bitunix trading functionality to a window.
 
     Usage:
@@ -218,20 +219,6 @@ class BitunixTradingMixin:
             logger.error(f"❌ Exception creating Bitunix adapter: {type(e).__name__}: {e}")
             logger.exception("Full traceback:")
             return None
-
-    def _get_parent_app(self) -> Any | None:
-        """Get the parent TradingApplication.
-
-        Returns:
-            TradingApplication instance or None
-        """
-        from PyQt6.QtWidgets import QApplication
-
-        app = QApplication.instance()
-        if app and hasattr(app, "main_window"):
-            return app.main_window
-
-        return None
 
     def _get_symbol_asset_class(self, symbol: str) -> AssetClass:
         """Determine asset class from symbol.

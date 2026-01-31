@@ -10,13 +10,15 @@ from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt
 
+from src.ui.mixins.trading_mixin_base import TradingMixinBase
+
 if TYPE_CHECKING:
     from src.ui.widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
 
 logger = logging.getLogger(__name__)
 
 
-class ChartChatMixin:
+class ChartChatMixin(TradingMixinBase):
     """Mixin that adds chart chat functionality to a window.
 
     Usage:
@@ -199,20 +201,6 @@ class ChartChatMixin:
             logger.error(f"❌ Exception creating AI service: {type(e).__name__}: {e}")
             logger.exception("Full traceback:")
             return None
-
-    def _get_parent_app(self) -> Any | None:
-        """Get the parent TradingApplication.
-
-        Returns:
-            TradingApplication instance or None
-        """
-        from PyQt6.QtWidgets import QApplication
-
-        app = QApplication.instance()
-        if app and hasattr(app, "main_window"):
-            return app.main_window
-
-        return None
 
     def _on_chart_symbol_changed(self) -> None:
         """Handle chart symbol change."""
