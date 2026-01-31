@@ -175,6 +175,18 @@ class BotSignalLogicMixin:
         else:
             stop_price = features.close * (1 + sl_pct / 100)
 
+        # Determine strategy_name with fallback chain:
+        # 1. Active strategy name (Standard mode)
+        # 2. JSON regime name (JSON Entry mode)
+        # 3. Regime type value (last resort)
+        strategy_name = None
+        if self._active_strategy:
+            strategy_name = self._active_strategy.name
+        elif hasattr(self._regime, 'regime_name') and self._regime.regime_name:
+            strategy_name = self._regime.regime_name
+        elif hasattr(self._regime, 'regime'):
+            strategy_name = f"Regime_{self._regime.regime.value}"
+
         return Signal(
             timestamp=features.timestamp,
             symbol=self.symbol,
@@ -184,7 +196,7 @@ class BotSignalLogicMixin:
             stop_loss_price=stop_price,
             stop_loss_pct=sl_pct,
             regime=self._regime.regime,
-            strategy_name=self._active_strategy.name if self._active_strategy else None,
+            strategy_name=strategy_name,
             reason_codes=self._get_signal_reasons(features, side)
         )
 

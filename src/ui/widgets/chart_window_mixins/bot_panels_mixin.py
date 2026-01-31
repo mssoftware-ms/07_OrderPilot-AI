@@ -159,9 +159,9 @@ class BotPanelsMixin(
         """
         if current_price <= 0:
             return
-            
+
         self._last_tick_price = current_price
-        
+
         selection_active = self._is_signals_selection_active()
         self._log_tick_if_needed(current_price)
 
@@ -263,8 +263,8 @@ class BotPanelsMixin(
         self, entry_price: float, current_price: float, invested: float, side: str
     ) -> tuple[float, float]:
         """Calculate P&L for current position without leverage."""
-        if entry_price > 0 and hasattr(self, '_calculate_pnl'):
-            return self._calculate_pnl(entry_price, current_price, invested, side)
+        if entry_price > 0 and hasattr(self, '_calculate_simple_pnl'):
+            return self._calculate_simple_pnl(entry_price, current_price, invested, side)
 
         # Fallback to manual calculation
         if side.lower() == "long":

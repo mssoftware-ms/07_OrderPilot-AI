@@ -84,7 +84,7 @@ class BotDisplayPositionMixin:
         current = self._get_live_current_price()
         if current > 0:
             self.position_current_label.setText(f"{current:.4f}")
-            pnl_pct, pnl_currency = self._calculate_pnl(position.entry_price, current, invested, side)
+            pnl_pct, pnl_currency = self._calculate_simple_pnl(position.entry_price, current, invested, side)
             self._set_pnl_display(pnl_pct, pnl_currency)
         else:
             self.position_current_label.setText("")
@@ -119,7 +119,7 @@ class BotDisplayPositionMixin:
             if entry_price > 0:
                 # Issue #10: _calculate_pnl returns raw P&L (without leverage)
                 # Store in raw fields, don't overwrite leveraged values in pnl_percent/pnl_currency
-                pnl_pct, pnl_currency = self._calculate_pnl(entry_price, current, invested, side)
+                pnl_pct, pnl_currency = self._calculate_simple_pnl(entry_price, current, invested, side)
                 open_signal["pnl_percent_raw"] = pnl_pct
                 open_signal["pnl_currency_raw"] = pnl_currency
                 self._set_pnl_display(pnl_pct, pnl_currency)
@@ -206,6 +206,7 @@ class BotDisplayPositionMixin:
                     pass
         return current
 
+<<<<<<< HEAD
     def _get_live_current_price(self) -> float:
         """Return live price only (no historical fallback)."""
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
@@ -218,6 +219,10 @@ class BotDisplayPositionMixin:
         return 0.0
 
     def _calculate_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
+=======
+    def _calculate_simple_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
+        """Simple PnL calculation for position display (without leverage/fees)."""
+>>>>>>> bd51450 (vor aufteilen livestream kaputt)
         if side == "LONG":
             pnl_pct = ((current - entry_price) / entry_price) * 100
         else:

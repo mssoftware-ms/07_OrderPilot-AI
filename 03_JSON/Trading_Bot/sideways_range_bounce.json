@@ -63,42 +63,13 @@
         "all": [
           {
             "left": {
-              "indicator_id": "bbands20_middle",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.05
-            }
-          },
-          {
-            "left": {
               "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "gt",
+            "op": "between",
             "right": {
-              "value": 30.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "stoch14_k",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 20.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "sma20",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.5
+              "min": 30.0,
+              "max": 70.0
             }
           },
           {
@@ -108,27 +79,7 @@
             },
             "op": "lt",
             "right": {
-              "value": 20.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.7
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "eq",
-            "right": {
-              "value": 1.0
+              "value": 25.0
             }
           }
         ]
@@ -145,42 +96,13 @@
         "all": [
           {
             "left": {
-              "indicator_id": "bbands20_middle",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.05
-            }
-          },
-          {
-            "left": {
               "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "gt",
+            "op": "between",
             "right": {
-              "value": 30.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "stoch14_k",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 20.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "sma20",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.5
+              "min": 30.0,
+              "max": 70.0
             }
           },
           {
@@ -190,41 +112,21 @@
             },
             "op": "lt",
             "right": {
-              "value": 20.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 0.7
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "eq",
-            "right": {
-              "value": 1.0
+              "value": 25.0
             }
           }
         ]
       },
       "exit": {
-        "all": [
+        "any": [
           {
             "left": {
-              "indicator_id": "bbands20_middle",
+              "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "lt",
+            "op": "gt",
             "right": {
-              "value": 0.0
+              "value": 70.0
             }
           },
           {
@@ -234,27 +136,7 @@
             },
             "op": "lt",
             "right": {
-              "value": 0.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "stoch14_k",
-              "field": "value"
-            },
-            "op": "lt",
-            "right": {
-              "value": 0.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "lt",
-            "right": {
-              "value": 0.0
+              "value": 30.0
             }
           }
         ]

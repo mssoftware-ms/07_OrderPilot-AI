@@ -796,7 +796,7 @@ class BotController(
             active_regimes = matched_strategy_set.active_regimes
 
             # Log initial strategy
-            strategy_names = ", ".join([s.id for s in strategy_set.strategies])
+            strategy_names = ", ".join([s.strategy_id for s in strategy_set.strategies])
             regime_names = ", ".join([r.name for r in active_regimes])
 
             logger.info(

@@ -33,32 +33,22 @@
         "all": [
           {
             "left": {
-              "indicator_id": "sma20",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 20.0
+              "value": 25.0
             }
           },
           {
             "left": {
-              "indicator_id": "macd12_26_9",
+              "indicator_id": "rsi14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 2.0
+              "value": 55.0
             }
           }
         ]
@@ -75,46 +65,46 @@
         "all": [
           {
             "left": {
-              "indicator_id": "sma20",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
+            "right": {
+              "value": 25.0
+            }
+          },
+          {
+            "left": {
+              "indicator_id": "rsi14",
+              "field": "value"
+            },
+            "op": "gt",
+            "right": {
+              "value": 55.0
+            }
+          }
+        ]
+      },
+      "exit": {
+        "any": [
+          {
+            "left": {
+              "indicator_id": "adx14",
+              "field": "value"
+            },
+            "op": "lt",
             "right": {
               "value": 20.0
             }
           },
           {
             "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 2.0
-            }
-          }
-        ]
-      },
-      "exit": {
-        "all": [
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
+              "indicator_id": "rsi14",
               "field": "value"
             },
             "op": "lt",
             "right": {
-              "value": 0.0
+              "value": 45.0
             }
           }
         ]

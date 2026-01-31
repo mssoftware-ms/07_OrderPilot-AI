@@ -42,42 +42,22 @@
         "all": [
           {
             "left": {
-              "indicator_id": "bbands20_width",
-              "field": "value"
+              "indicator_id": "bb20",
+              "field": "width"
             },
             "op": "gt",
             "right": {
-              "value": 0.03
+              "value": 0.0
             }
           },
           {
             "left": {
-              "indicator_id": "bbands20_middle",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.5
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "eq",
-            "right": {
-              "value": 1.0
+              "value": 20.0
             }
           }
         ]
@@ -94,66 +74,36 @@
         "all": [
           {
             "left": {
-              "indicator_id": "bbands20_width",
-              "field": "value"
+              "indicator_id": "bb20",
+              "field": "width"
             },
             "op": "gt",
             "right": {
-              "value": 0.03
+              "value": 0.0
             }
           },
           {
             "left": {
-              "indicator_id": "bbands20_middle",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "volume",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.5
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "eq",
-            "right": {
-              "value": 1.0
+              "value": 20.0
             }
           }
         ]
       },
       "exit": {
-        "all": [
+        "any": [
           {
             "left": {
-              "indicator_id": "bbands20_middle",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "lt",
             "right": {
-              "value": 0.9
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "lt",
-            "right": {
-              "value": 0.0
+              "value": 20.0
             }
           }
         ]

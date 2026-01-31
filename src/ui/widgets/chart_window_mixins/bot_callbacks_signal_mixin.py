@@ -300,6 +300,15 @@ class BotCallbacksSignalMixin:
                 self._fetch_derivative_for_signal(existing_candidate)
             return
 
+        # Get investment values from UI for preview calculations
+        capital = 10000.0
+        risk_pct = 10.0
+        if hasattr(self, 'bot_capital_spin'):
+            capital = self.bot_capital_spin.value()
+        if hasattr(self, 'risk_per_trade_spin'):
+            risk_pct = self.risk_per_trade_spin.value()
+        invested = capital * (risk_pct / 100)
+
         new_signal = {
             "time": datetime.now().strftime("%H:%M:%S"),
             "type": signal_type,
@@ -309,6 +318,7 @@ class BotCallbacksSignalMixin:
             "price": entry_price,
             "status": status,
             "quantity": 0.0,
+            "invested": invested,  # For P&L preview calculations
             "current_price": entry_price,
             "pnl_currency": 0.0,
             "pnl_percent": 0.0,

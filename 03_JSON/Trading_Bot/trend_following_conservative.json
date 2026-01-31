@@ -19,16 +19,6 @@
         "all": [
           {
             "left": {
-              "indicator_id": "sma20",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
               "indicator_id": "adx14",
               "field": "value"
             },
@@ -39,23 +29,13 @@
           },
           {
             "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
               "indicator_id": "rsi14",
               "field": "value"
             },
             "op": "between",
             "right": {
-              "min": 30.0,
-              "max": 70.0
+              "min": 40.0,
+              "max": 60.0
             }
           }
         ]
@@ -72,16 +52,6 @@
         "all": [
           {
             "left": {
-              "indicator_id": "sma20",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
               "indicator_id": "adx14",
               "field": "value"
             },
@@ -92,23 +62,13 @@
           },
           {
             "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
               "indicator_id": "rsi14",
               "field": "value"
             },
             "op": "between",
             "right": {
-              "min": 30.0,
-              "max": 70.0
+              "min": 40.0,
+              "max": 60.0
             }
           }
         ]

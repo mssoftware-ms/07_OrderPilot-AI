@@ -120,7 +120,8 @@ class BotEventHandlersMixin:
             current_regime = regime_engine.classify(features)
 
             regime_str = current_regime.regime.value if hasattr(current_regime.regime, 'value') else str(current_regime.regime)
-            logger.info(f"Detected regime: {regime_str} (confidence: {current_regime.confidence:.1%})")
+            confidence = getattr(current_regime, 'regime_confidence', 0.5)
+            logger.info(f"Detected regime: {regime_str} (confidence: {confidence:.1%})")
 
             # Update Daily Strategy display
             if hasattr(self, 'regime_label'):
@@ -163,19 +164,31 @@ class BotEventHandlersMixin:
             from src.core.tradingbot.config.router import StrategyRouter
             from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
 
-            best_config_path = None
-            best_matched_set = None
-            best_score = 0.0
+            # Track all evaluated configs with their results
+            evaluated_configs = []  # List of (config_path, strategy_name, score, matched_set)
+            errors = []  # Track evaluation errors
 
             calculator = IndicatorValueCalculator()
             indicator_values = calculator.calculate_indicator_values(features)
 
+            # Log key indicator values for debugging
+            key_indicators = ['rsi14', 'adx14', 'macd12_26_9', 'stoch14', 'bb20']
+            debug_values = []
+            for ind in key_indicators:
+                if ind in indicator_values:
+                    vals = indicator_values[ind]
+                    if isinstance(vals, dict):
+                        val_str = ", ".join(f"{k}={v:.2f}" for k, v in vals.items() if isinstance(v, (int, float)))
+                        debug_values.append(f"{ind}: {{{val_str}}}")
+            logger.info(f"Current indicator values: {'; '.join(debug_values)}")
+
             for config_file in config_files:
                 try:
                     loader = ConfigLoader()
-                    config = loader.load(str(config_file))
+                    config = loader.load_config(str(config_file))
 
                     if not config or not hasattr(config, 'regimes'):
+                        errors.append(f"{config_file.name}: Keine Regimes definiert")
                         continue
 
                     # Detect active regimes from this config
@@ -183,6 +196,7 @@ class BotEventHandlersMixin:
                     active_regimes = detector.detect_active_regimes(indicator_values, scope='entry')
 
                     if not active_regimes:
+                        errors.append(f"{config_file.name}: Kein passendes Regime erkannt")
                         continue
 
                     # Route to strategy set
@@ -191,34 +205,74 @@ class BotEventHandlersMixin:
                         matched_sets = router.route_regimes(active_regimes)
 
                         if matched_sets:
-                            # Take best scoring match
+                            # Take best scoring match from this config
                             best_match = max(matched_sets, key=lambda m: m.match_score)
-
-                            if best_match.match_score > best_score:
-                                best_score = best_match.match_score
-                                best_config_path = str(config_file)
-                                best_matched_set = best_match
-
-                                logger.info(
-                                    f"Config '{config_file.name}' matched with score {best_score:.2f} "
-                                    f"→ Strategy: {best_match.name}"
-                                )
+                            evaluated_configs.append((
+                                str(config_file),
+                                best_match.name,
+                                best_match.match_score,
+                                best_match
+                            ))
+                            logger.info(
+                                f"Config '{config_file.name}' → Strategy: {best_match.name} "
+                                f"(Score: {best_match.match_score:.2f})"
+                            )
+                        else:
+                            errors.append(f"{config_file.name}: Keine Strategie geroutet")
+                    else:
+                        errors.append(f"{config_file.name}: Kein Routing/Strategy-Sets")
 
                 except Exception as e:
+                    errors.append(f"{config_file.name}: {str(e)[:50]}")
                     logger.warning(f"Failed to evaluate config {config_file.name}: {e}")
                     continue
 
-            # ========== Step 5: Check if Best Match Found ==========
-            if not best_config_path or not best_matched_set:
+            # Log errors for debugging
+            if errors:
+                logger.warning(f"Config evaluation errors:\n" + "\n".join(errors))
+
+            # ========== Step 5: Select Best Strategy ==========
+            if not evaluated_configs:
                 self._update_bot_status("ERROR", "#f44336")
                 logger.error(f"No strategy matched for regime: {regime_str}")
+
+                error_details = "\n".join(errors[:5]) if errors else "Keine Details verfügbar"
                 QMessageBox.warning(
                     self,
                     "Keine Strategie gefunden",
                     f"Keine Strategie passt zum aktuellen Regime:\n{regime_str}\n\n"
-                    f"{len(config_files)} Configs wurden geprüft."
+                    f"{len(config_files)} Configs geprüft.\n\n"
+                    f"Fehler:\n{error_details}"
                 )
                 return
+
+            # Sort by score (highest first)
+            evaluated_configs.sort(key=lambda x: x[2], reverse=True)
+            best_config_path, best_strategy_name, best_score, best_matched_set = evaluated_configs[0]
+
+            # If score is low, ask user if they want to proceed
+            if best_score < 0.7:
+                # Build options list
+                options_text = "\n".join([
+                    f"  • {name}: {score:.1%}" for _, name, score, _ in evaluated_configs[:5]
+                ])
+
+                reply = QMessageBox.question(
+                    self,
+                    "Strategie mit niedrigem Score",
+                    f"Aktuelles Regime: {regime_str}\n\n"
+                    f"Beste Strategie: {best_strategy_name}\n"
+                    f"Score: {best_score:.1%}\n\n"
+                    f"Alle bewerteten Strategien:\n{options_text}\n\n"
+                    f"Mit bester Strategie fortfahren?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+
+                if reply != QMessageBox.StandardButton.Yes:
+                    self._update_bot_status("STOPPED", "#9e9e9e")
+                    logger.info("User cancelled low-score strategy")
+                    return
 
             # ========== Step 6: Start Bot with Best Config ==========
             logger.info(

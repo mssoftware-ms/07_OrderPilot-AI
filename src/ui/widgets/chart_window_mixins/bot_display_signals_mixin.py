@@ -431,38 +431,60 @@ class BotDisplaySignalsMixin:
         if not hasattr(self, '_column_registry'):
             self._init_column_registry()
 
-        # Check if this signal should have P&L data
-        if not self._should_display_pnl(signal):
-            self._set_empty_columns(row)
-            return
+        # Get leverage for display (used even without full P&L calculations)
+        leverage = self._get_signal_leverage(signal)
+        current_price = signal.get("current_price", signal.get("price", 0))
 
-        # Build context with all calculated values
-        context = self._build_pnl_context(signal)
+        # Check if this signal should have full P&L data
+        if self._should_display_pnl(signal):
+            # Build context with all calculated values
+            context = self._build_pnl_context(signal)
 
-        # Use updaters for columns 11-17, 24 (delegated updates)
-        for column in [11, 12, 13, 14, 15, 16, 17, 24]:
-            self._column_registry.update(
-                self.signals_table,
-                row,
-                column,
-                signal,
-                context
-            )
+            # Use updaters for columns 11-17, 24 (delegated updates)
+            for column in [11, 12, 13, 14, 15, 16, 17, 24]:
+                self._column_registry.update(
+                    self.signals_table,
+                    row,
+                    column,
+                    signal,
+                    context
+                )
 
-        # Handle remaining columns directly (derivative, score, TR stop)
-        self._set_derivative_columns(row, signal, context["current_price"], context["leverage"])
-        self.signals_table.setItem(row, 22, QTableWidgetItem(f"{signal['score'] * 100:.0f}"))
+            # Use context leverage for derivative columns
+            leverage = context.get("leverage", leverage)
+            current_price = context.get("current_price", current_price)
+        else:
+            # Set empty P&L columns only (11-17, 24) but NOT derivative/tr columns
+            for col in [11, 12, 13, 14, 15, 16, 17, 24]:
+                self.signals_table.setItem(row, col, QTableWidgetItem("-"))
+
+        # ALWAYS set these columns regardless of P&L status:
+        # - Derivative columns (18, 19, 20, 21)
+        # - Score (22)
+        # - TR Stop (23)
+        self._set_derivative_columns(row, signal, current_price, leverage)
+        self.signals_table.setItem(row, 22, QTableWidgetItem(f"{signal.get('score', 0) * 100:.0f}"))
         self._set_tr_stop_column(row, trailing_price, tr_is_active)
 
     def _should_display_pnl(self, signal: dict) -> bool:
         """Check if signal should display P&L data."""
         has_quantity = signal.get("quantity", 0) > 0
         has_invested = signal.get("invested", 0) > 0
-        status = signal["status"]
+        status = signal.get("status", "")
         is_closed = status.startswith("CLOSED") or status in ("SL", "TR", "MACD", "RSI", "Sell")
         is_entered = status == "ENTERED" and signal.get("is_open") is not False
         has_derivative = signal.get("derivative") is not None
-        return has_quantity or has_invested or is_entered or is_closed or has_derivative
+        result = has_quantity or has_invested or is_entered or is_closed or has_derivative
+
+        # Debug logging for calculation issues
+        if not result:
+            logger.debug(
+                f"_should_display_pnl=False: qty={signal.get('quantity', 0)}, "
+                f"invested={signal.get('invested', 0)}, status={status}, "
+                f"is_open={signal.get('is_open')}, deriv={has_derivative}"
+            )
+
+        return result
 
     def _build_pnl_context(self, signal: dict) -> dict:
         """Build context dictionary with all P&L calculations.

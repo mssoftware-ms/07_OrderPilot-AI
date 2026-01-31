@@ -27,21 +27,11 @@
           {
             "left": {
               "indicator_id": "macd12_26_9",
-              "field": "value"
+              "field": "histogram"
             },
             "op": "gt",
             "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
+              "value": 0.0
             }
           },
           {
@@ -69,21 +59,11 @@
           {
             "left": {
               "indicator_id": "macd12_26_9",
-              "field": "value"
+              "field": "histogram"
             },
             "op": "gt",
             "right": {
-              "value": 1.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "gt",
-            "right": {
-              "value": 1.0
+              "value": 0.0
             }
           },
           {
@@ -99,21 +79,11 @@
         ]
       },
       "exit": {
-        "all": [
+        "any": [
           {
             "left": {
               "indicator_id": "macd12_26_9",
-              "field": "value"
-            },
-            "op": "lt",
-            "right": {
-              "value": 0.0
-            }
-          },
-          {
-            "left": {
-              "indicator_id": "macd12_26_9",
-              "field": "value"
+              "field": "histogram"
             },
             "op": "lt",
             "right": {

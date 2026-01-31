@@ -410,6 +410,15 @@ class BotHelpersMixin:
         Returns:
             BotDecision
         """
+        # Determine strategy_name with fallback chain
+        strategy_name = None
+        if self._active_strategy:
+            strategy_name = self._active_strategy.name
+        elif hasattr(self._regime, 'regime_name') and self._regime.regime_name:
+            strategy_name = self._regime.regime_name
+        elif hasattr(self._regime, 'regime'):
+            strategy_name = f"Regime_{self._regime.regime.value}"
+
         return BotDecision(
             symbol=self.symbol,
             action=action,
@@ -417,7 +426,7 @@ class BotHelpersMixin:
             confidence=0.5,  # Would be set by LLM in FULL_KI mode
             features_hash=features.compute_hash(),
             regime=self._regime.regime,
-            strategy_name=self._active_strategy.name if self._active_strategy else None,
+            strategy_name=strategy_name,
             stop_price_before=stop_before,
             stop_price_after=stop_after,
             reason_codes=reason_codes,
@@ -470,6 +479,16 @@ class BotHelpersMixin:
 
         # Create position
         sl_price = self._current_signal.stop_loss_price
+
+        # Determine strategy_name with fallback chain
+        strategy_name = None
+        if self._active_strategy:
+            strategy_name = self._active_strategy.name
+        elif hasattr(self._regime, 'regime_name') and self._regime.regime_name:
+            strategy_name = self._regime.regime_name
+        elif hasattr(self._regime, 'regime'):
+            strategy_name = f"Regime_{self._regime.regime.value}"
+
         self._position = PositionState(
             symbol=self.symbol,
             side=self._current_signal.side,
@@ -486,7 +505,7 @@ class BotHelpersMixin:
                 trailing_distance=abs(fill_price - sl_price)
             ),
             signal_id=self._current_signal.id,
-            strategy_name=self._active_strategy.name if self._active_strategy else None
+            strategy_name=strategy_name
         )
 
         # Transition to MANAGE

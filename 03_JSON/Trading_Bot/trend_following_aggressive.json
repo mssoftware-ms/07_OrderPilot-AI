@@ -54,19 +54,19 @@
               "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
-              "value": 1.0
+              "value": 50.0
             }
           },
           {
             "left": {
-              "indicator_id": "volume",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 1.2
+              "value": 20.0
             }
           }
         ]
@@ -106,19 +106,19 @@
               "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "eq",
+            "op": "gt",
             "right": {
-              "value": 1.0
+              "value": 50.0
             }
           },
           {
             "left": {
-              "indicator_id": "volume",
+              "indicator_id": "adx14",
               "field": "value"
             },
             "op": "gt",
             "right": {
-              "value": 1.2
+              "value": 20.0
             }
           }
         ]
@@ -130,9 +130,9 @@
               "indicator_id": "rsi14",
               "field": "value"
             },
-            "op": "eq",
+            "op": "lt",
             "right": {
-              "value": 0.0
+              "value": 40.0
             }
           }
         ]

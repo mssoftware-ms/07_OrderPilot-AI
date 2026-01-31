@@ -62,10 +62,13 @@ class IndicatorValueCalculator:
         "adx14": "adx",
         "adx": "adx",
 
-        # MACD
+        # MACD - all common naming variants
         "macd": "macd",
         "macd_signal": "macd_signal",
         "macd_histogram": "macd_histogram",
+        "macd12_26_9": "macd",  # Alias: macd12_26_9 → macd
+        "macd_12_26_9": "macd",  # Alias
+        "macd_line": "macd",  # Alias
 
         # SMA
         "sma20": "sma_fast",
@@ -79,19 +82,31 @@ class IndicatorValueCalculator:
         "ema_fast": "ema_fast",
         "ema_slow": "ema_slow",
 
-        # Bollinger Bands
+        # Bollinger Bands - all common naming variants
         "bb_upper": "bb_upper",
         "bb_middle": "bb_middle",
         "bb_lower": "bb_lower",
         "bb_width": "bb_width",
+        "bbands20_upper": "bb_upper",  # Alias
+        "bbands20_middle": "bb_middle",  # Alias
+        "bbands20_lower": "bb_lower",  # Alias
+        "bbands20_width": "bb_width",  # Alias
+        "bbands_upper": "bb_upper",  # Alias
+        "bbands_middle": "bb_middle",  # Alias
+        "bbands_lower": "bb_lower",  # Alias
+        "bbands_width": "bb_width",  # Alias
 
         # ATR
         "atr14": "atr",
         "atr": "atr",
 
-        # Stochastic
+        # Stochastic - all common naming variants
         "stoch_k": "stoch_k",
         "stoch_d": "stoch_d",
+        "stoch14_k": "stoch_k",  # Alias
+        "stoch14_d": "stoch_d",  # Alias
+        "stochastic_k": "stoch_k",  # Alias
+        "stochastic_d": "stoch_d",  # Alias
 
         # CCI
         "cci20": "cci",
@@ -101,15 +116,33 @@ class IndicatorValueCalculator:
         "mfi14": "mfi",
         "mfi": "mfi",
 
-        # Volume
+        # Volume - including ratio (uses volume_sma if available)
         "volume": "volume",
         "volume_sma": "volume_sma",
+        "volume_ratio": "volume_ratio",  # Calculated field
 
         # Price
         "close": "close",
         "open": "open",
         "high": "high",
         "low": "low",
+
+        # Derived indicators - map to closest available
+        # These are calculated from other indicators in FeatureVector
+        "momentum_score": "rsi",  # Fallback: use RSI as momentum proxy
+        "price_strength": "adx",  # Fallback: use ADX as strength proxy
+
+        # Choppiness Index (range detection)
+        "chop": "adx",  # Fallback: use inverted ADX logic (low ADX = choppy)
+        "chop14": "adx",  # Alias: chop14 → adx
+        "choppiness": "adx",  # Alias
+
+        # Additional Bollinger Band aliases
+        "bb20": "bb_width",  # Alias: bb20 → bb_width (general BB reference)
+        "bb20_upper": "bb_upper",  # Alias
+        "bb20_middle": "bb_middle",  # Alias
+        "bb20_lower": "bb_lower",  # Alias
+        "bb20_width": "bb_width",  # Alias
     }
 
     @classmethod
@@ -141,6 +174,51 @@ class IndicatorValueCalculator:
                     logger.debug(
                         f"Skipping non-numeric value for {indicator_id}: {type(value)}"
                     )
+
+        # ========== Composite Indicators ==========
+        # Add composite indicators with multiple sub-fields
+
+        # Bollinger Bands composite: bb20, bbands20
+        for bb_alias in ["bb20", "bbands20", "bb", "bbands"]:
+            bb_upper = getattr(feature_vector, "bb_upper", None)
+            bb_middle = getattr(feature_vector, "bb_middle", None)
+            bb_lower = getattr(feature_vector, "bb_lower", None)
+            bb_width = getattr(feature_vector, "bb_width", None)
+
+            if bb_upper is not None or bb_middle is not None:
+                indicator_values[bb_alias] = {
+                    "value": float(bb_middle) if bb_middle else 0.0,
+                    "upper": float(bb_upper) if bb_upper else 0.0,
+                    "middle": float(bb_middle) if bb_middle else 0.0,
+                    "lower": float(bb_lower) if bb_lower else 0.0,
+                    "width": float(bb_width) if bb_width else 0.0,
+                }
+
+        # MACD composite: macd12_26_9
+        for macd_alias in ["macd12_26_9", "macd_12_26_9"]:
+            macd = getattr(feature_vector, "macd", None)
+            macd_signal = getattr(feature_vector, "macd_signal", None)
+            macd_histogram = getattr(feature_vector, "macd_histogram", None)
+
+            if macd is not None:
+                indicator_values[macd_alias] = {
+                    "value": float(macd),
+                    "line": float(macd),
+                    "signal": float(macd_signal) if macd_signal else 0.0,
+                    "histogram": float(macd_histogram) if macd_histogram else 0.0,
+                }
+
+        # Stochastic composite: stoch14
+        for stoch_alias in ["stoch14", "stochastic"]:
+            stoch_k = getattr(feature_vector, "stoch_k", None)
+            stoch_d = getattr(feature_vector, "stoch_d", None)
+
+            if stoch_k is not None:
+                indicator_values[stoch_alias] = {
+                    "value": float(stoch_k),
+                    "k": float(stoch_k),
+                    "d": float(stoch_d) if stoch_d else 0.0,
+                }
 
         logger.debug(
             f"Calculated {len(indicator_values)} indicator values from FeatureVector"
