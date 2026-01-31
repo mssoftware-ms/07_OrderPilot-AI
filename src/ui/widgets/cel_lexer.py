@@ -42,6 +42,17 @@ except Exception:
     CoreCelValidator = None
     CORE_FUNCTIONS = set()
 
+from src.ui.widgets.syntax_handlers import (
+    HandlerRegistry,
+    WhitespaceHandler,
+    CommentHandler,
+    StringHandler,
+    NumberHandler,
+    OperatorHandler,
+    IdentifierHandler,
+    DefaultHandler,
+)
+
 
 class CelLexer(QsciLexerCustom):
     """Custom lexer for CEL expression language."""
@@ -107,6 +118,9 @@ class CelLexer(QsciLexerCustom):
         # Set default font
         self.default_font = QFont("Consolas", 10)
 
+        # Initialize handler registry (lazy initialization)
+        self._handler_registry = None
+
     def description(self, style: int) -> str:
         """Return description for each style."""
         descriptions = {
@@ -152,11 +166,54 @@ class CelLexer(QsciLexerCustom):
 
         return font
 
+    def _init_handler_registry(self):
+        """
+        Initialize the handler registry with all token handlers.
+
+        Handlers are registered with their priorities for ordered matching.
+        """
+        registry = HandlerRegistry()
+
+        # Register handlers in any order (registry will sort by priority)
+        registry.register(WhitespaceHandler(self.DEFAULT))
+        registry.register(CommentHandler(self.COMMENT))
+        registry.register(StringHandler(self.STRING))
+        registry.register(NumberHandler(self.NUMBER))
+        registry.register(OperatorHandler(
+            self.OPERATOR,
+            {'==', '!=', '<=', '>=', '&&', '||'},
+            '<>=!+-*/%?:'
+        ))
+        registry.register(IdentifierHandler(
+            self.KEYWORDS,
+            self.TRADING_KEYWORDS,
+            self.ALL_FUNCTIONS,
+            {'trade', 'cfg'},
+            self.KEYWORD,
+            self.FUNCTION,
+            self.VARIABLE,
+            self.INDICATOR,
+            self.IDENTIFIER
+        ))
+        registry.register(DefaultHandler(self.DEFAULT))
+
+        self._handler_registry = registry
+
     def styleText(self, start: int, end: int):
-        """Perform syntax highlighting."""
+        """
+        Perform syntax highlighting using Token Handler Pattern.
+
+        Args:
+            start: Start position in text
+            end: End position in text
+        """
         editor = self.editor()
         if not editor:
             return
+
+        # Lazy initialize handler registry
+        if self._handler_registry is None:
+            self._init_handler_registry()
 
         # Get text to highlight
         text = editor.text()[start:end]
@@ -164,117 +221,15 @@ class CelLexer(QsciLexerCustom):
         # Initialize styling
         self.startStyling(start)
 
-        i = 0
-        while i < len(text):
-            # Skip whitespace
-            if text[i].isspace():
-                self.setStyling(1, self.DEFAULT)
-                i += 1
-                continue
+        # Process text using handlers
+        position = 0
+        while position < len(text):
+            match = self._handler_registry.try_match(text, position)
 
-            # Comments (// style)
-            if i < len(text) - 1 and text[i:i+2] == '//':
-                # Find end of line
-                end_comment = text.find('\n', i)
-                if end_comment == -1:
-                    end_comment = len(text)
-                comment_len = end_comment - i
-                self.setStyling(comment_len, self.COMMENT)
-                i += comment_len
-                continue
-
-            # Strings (double quotes)
-            if text[i] == '"':
-                j = i + 1
-                # Find closing quote
-                while j < len(text):
-                    if text[j] == '"' and text[j-1] != '\\':
-                        break
-                    j += 1
-                string_len = j - i + 1
-                self.setStyling(string_len, self.STRING)
-                i += string_len
-                continue
-
-            # Strings (single quotes)
-            if text[i] == "'":
-                j = i + 1
-                # Find closing quote
-                while j < len(text):
-                    if text[j] == "'" and text[j-1] != '\\':
-                        break
-                    j += 1
-                string_len = j - i + 1
-                self.setStyling(string_len, self.STRING)
-                i += string_len
-                continue
-
-            # Numbers
-            if text[i].isdigit() or (text[i] == '.' and i+1 < len(text) and text[i+1].isdigit()):
-                j = i + 1
-                has_dot = text[i] == '.'
-                while j < len(text):
-                    if text[j].isdigit():
-                        j += 1
-                    elif text[j] == '.' and not has_dot:
-                        has_dot = True
-                        j += 1
-                    else:
-                        break
-                num_len = j - i
-                self.setStyling(num_len, self.NUMBER)
-                i += num_len
-                continue
-
-            # Operators (multi-char)
-            for op in ['==', '!=', '<=', '>=', '&&', '||']:
-                if i < len(text) - 1 and text[i:i+2] == op:
-                    self.setStyling(2, self.OPERATOR)
-                    i += 2
-                    break
+            if match.matched:
+                self.setStyling(match.length, match.style)
+                position += match.length
             else:
-                # Operators (single-char)
-                if text[i] in '<>=!+-*/%?:':
-                    self.setStyling(1, self.OPERATOR)
-                    i += 1
-                    continue
-
-                # Identifiers, keywords, functions
-                if text[i].isalpha() or text[i] == '_':
-                    j = i + 1
-                    while j < len(text) and (text[j].isalnum() or text[j] in '_'):
-                        j += 1
-
-                    word = text[i:j]
-                    word_len = j - i
-
-                    # Check for indicator access (e.g., rsi14.value)
-                    if j < len(text) - 1 and text[j] == '.':
-                        # This is an indicator
-                        # Find end of property access
-                        k = j + 1
-                        while k < len(text) and (text[k].isalnum() or text[k] == '_'):
-                            k += 1
-                        self.setStyling(k - i, self.INDICATOR)
-                        i = k
-                        continue
-
-                    # Keywords
-                    if word in self.KEYWORDS or word in self.TRADING_KEYWORDS:
-                        self.setStyling(word_len, self.KEYWORD)
-                    # Functions
-                    elif word in self.ALL_FUNCTIONS:
-                        self.setStyling(word_len, self.FUNCTION)
-                    # Variables (trade., cfg.)
-                    elif word in {'trade', 'cfg'}:
-                        self.setStyling(word_len, self.VARIABLE)
-                    # Default identifier
-                    else:
-                        self.setStyling(word_len, self.IDENTIFIER)
-
-                    i += word_len
-                    continue
-
-                # Default (punctuation, etc.)
+                # Should never happen with DefaultHandler, but safety fallback
                 self.setStyling(1, self.DEFAULT)
-                i += 1
+                position += 1
