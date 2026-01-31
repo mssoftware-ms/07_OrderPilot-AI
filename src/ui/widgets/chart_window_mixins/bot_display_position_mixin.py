@@ -81,11 +81,14 @@ class BotDisplayPositionMixin:
             stop = trailing.current_stop_price
             self.position_stop_label.setText(f"{stop:.4f}")
 
-        current = self._get_current_price()
+        current = self._get_live_current_price()
         if current > 0:
             self.position_current_label.setText(f"{current:.4f}")
             pnl_pct, pnl_currency = self._calculate_pnl(position.entry_price, current, invested, side)
             self._set_pnl_display(pnl_pct, pnl_currency)
+        else:
+            self.position_current_label.setText("")
+            self.position_pnl_label.setText("-")
 
         self.position_bars_held_label.setText(str(position.bars_held))
         self._update_position_right_column()
@@ -109,7 +112,7 @@ class BotDisplayPositionMixin:
         stop_price = open_signal.get("trailing_stop_price", open_signal.get("stop_price", 0))
         self.position_stop_label.setText(f"{stop_price:.4f}" if stop_price > 0 else "-")
 
-        current = self._get_current_price(from_bot=False)
+        current = self._get_live_current_price()
         if current > 0:
             self.position_current_label.setText(f"{current:.4f}")
             open_signal["current_price"] = current
@@ -123,7 +126,7 @@ class BotDisplayPositionMixin:
             else:
                 self.position_pnl_label.setText("-")
         else:
-            self.position_current_label.setText("-")
+            self.position_current_label.setText("")
             self.position_pnl_label.setText("-")
 
         self.position_bars_held_label.setText("-")
@@ -138,7 +141,7 @@ class BotDisplayPositionMixin:
         self.position_size_label.setText("-")
         self.position_invested_label.setText("-")
         self.position_stop_label.setText("-")
-        self.position_current_label.setText("-")
+        self.position_current_label.setText("")
         self.position_pnl_label.setText("-")
         self.position_bars_held_label.setText("-")
         self._reset_position_right_column()
@@ -202,6 +205,17 @@ class BotDisplayPositionMixin:
                 except Exception:
                     pass
         return current
+
+    def _get_live_current_price(self) -> float:
+        """Return live price only (no historical fallback)."""
+        if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
+            return self._last_tick_price
+
+        if hasattr(self, 'chart_widget'):
+            if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
+                return float(self.chart_widget._last_price)
+
+        return 0.0
 
     def _calculate_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
         if side == "LONG":
@@ -339,9 +353,9 @@ class BotDisplayPositionMixin:
 
         self._set_signal_basic_fields(signal, entry_price, quantity, invested, stop_price)
 
-        current_price = self._resolve_signal_current_price(signal, entry_price)
+        current_price = self._get_live_current_price()
         if hasattr(self, "position_current_label"):
-            self.position_current_label.setText(f"{current_price:.4f}" if current_price > 0 else "-")
+            self.position_current_label.setText(f"{current_price:.4f}" if current_price > 0 else "")
 
         pnl_percent, pnl_currency = self._resolve_signal_pnl(
             signal, side_upper, entry_price, current_price, invested, quantity

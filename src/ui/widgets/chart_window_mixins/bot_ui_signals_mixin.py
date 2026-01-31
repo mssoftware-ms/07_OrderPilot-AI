@@ -311,7 +311,10 @@ class BotUISignalsMixin:
         """
         if hasattr(self, 'position_current_label'):
             try:
-                self.position_current_label.setText(f"{price:.2f}")
+                if price > 0:
+                    self.position_current_label.setText(f"{price:.2f}")
+                else:
+                    self.position_current_label.setText("")
             except Exception as e:
                 logger.debug(f"Failed to update current price in position widget: {e}")
 
