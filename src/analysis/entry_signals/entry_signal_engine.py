@@ -23,6 +23,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Lazy-initialized registry (singleton)
+_ENTRY_REGISTRY = None
+
 
 # Types
 class RegimeType(str, Enum):
@@ -736,6 +739,28 @@ def _evaluate_threshold(
     return feature_val >= threshold_value
 
 
+def _init_entry_registry():
+    """Initialize entry generator registry (singleton pattern)."""
+    global _ENTRY_REGISTRY
+    if _ENTRY_REGISTRY is None:
+        from .generators import (
+            EntryGeneratorRegistry,
+            HighVolGenerator,
+            RangeGenerator,
+            SqueezeGenerator,
+            TrendDownGenerator,
+            TrendUpGenerator,
+        )
+
+        _ENTRY_REGISTRY = EntryGeneratorRegistry()
+        _ENTRY_REGISTRY.register(TrendUpGenerator())
+        _ENTRY_REGISTRY.register(TrendDownGenerator())
+        _ENTRY_REGISTRY.register(RangeGenerator())
+        _ENTRY_REGISTRY.register(SqueezeGenerator())
+        _ENTRY_REGISTRY.register(HighVolGenerator())
+    return _ENTRY_REGISTRY
+
+
 # Entry generation (entire visible window)
 def generate_entries(
     candles: list[dict[str, Any]],
@@ -743,9 +768,9 @@ def generate_entries(
     regime: RegimeType,
     params: OptimParams,
 ) -> list[EntryEvent]:
-    """Generate entry signals for the entire visible range.
+    """Generate entry signals using Rule Type Pattern.
 
-    Uses regime-specific logic:
+    Delegates to specialized generators based on regime type:
     - TREND_UP/DOWN: Pullback entries with ATR-normalized distance
     - RANGE: Mean-reversion at BB extremes
     - SQUEEZE: Breakout confirmation with volume spike
@@ -763,149 +788,16 @@ def generate_entries(
     if not candles or not features:
         return []
 
-    closes = features["closes"]
-    atr = features["atr"]
-    rsi = features["rsi"]
-    bbp = features["bb_percent"]
-    bb_up = features["bb_up"]
-    bb_lo = features["bb_lo"]
-    bb_width = features["bb_width"]
-    vol = features["volume"]
-    vol_sma = features["vol_sma"]
-    dist = features["dist_ema_atr"]
-    up_w = features["up_wick"]
-    lo_w = features["lo_wick"]
-    piv_h = features["pivot_high"]
-    piv_l = features["pivot_low"]
-    adx = features["adx"]
+    # Initialize registry on first use
+    registry = _init_entry_registry()
 
-    n = len(candles)
-    warmup = min(50, max(20, int(max(params.ema_slow, params.bb_period, params.adx_period) * 0.6)))
-    warmup = min(warmup, n - 1)
+    # Generate raw entries using regime-specific generator
+    raw = registry.generate(candles, features, regime, params)
 
-    raw: list[EntryEvent] = []
-
-    for i in range(n):
-        if i < warmup:
-            continue
-
-        side: EntrySide | None = None
-        score = 0.0
-        reasons: list[str] = []
-
-        a = max(1e-12, atr[i])
-        d = dist[i]
-        r = rsi[i]
-        conf_vol = (vol[i] / max(1e-12, vol_sma[i])) if i < len(vol_sma) else 1.0
-        wick_long = lo_w[i]
-        wick_short = up_w[i]
-        is_piv_low = piv_l[i] > 0.5
-        is_piv_high = piv_h[i] > 0.5
-
-        # ---------------- Trend regimes: pullback entries ----------------
-        if regime == RegimeType.TREND_UP:
-            # Pullback = price below EMA_slow in ATR units, but not "free fall"
-            if d <= 0.0 and abs(d) <= params.pullback_atr * 2.2:
-                score += _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
-                reasons.append("trend_pullback_atr")
-
-                if r <= params.pullback_rsi:
-                    score += 0.18
-                    reasons.append("rsi_pullback")
-
-                if wick_long >= params.wick_reject or is_piv_low:
-                    score += 0.18
-                    reasons.append("rejection_or_pivot_low")
-
-                # Avoid entries when ADX collapsed (anti-flip)
-                if adx[i] < params.adx_trend * 0.75:
-                    score -= 0.15
-                    reasons.append("weak_trend_penalty")
-
-                side = EntrySide.LONG
-
-        elif regime == RegimeType.TREND_DOWN:
-            if d >= 0.0 and abs(d) <= params.pullback_atr * 2.2:
-                score += _clamp(abs(d) / max(1e-12, params.pullback_atr), 0.0, 1.0) * 0.55
-                reasons.append("trend_pullback_atr")
-
-                # In downtrend: RSI high-ish on pullback
-                if r >= (100.0 - params.pullback_rsi):
-                    score += 0.18
-                    reasons.append("rsi_pullback")
-
-                if wick_short >= params.wick_reject or is_piv_high:
-                    score += 0.18
-                    reasons.append("rejection_or_pivot_high")
-
-                if adx[i] < params.adx_trend * 0.75:
-                    score -= 0.15
-                    reasons.append("weak_trend_penalty")
-
-                side = EntrySide.SHORT
-
-        # ---------------- Range regime: mean reversion at BB extremes ----------------
-        elif regime == RegimeType.RANGE:
-            bbp_i = bbp[i]
-            if bbp_i <= params.bb_entry and r <= params.rsi_oversold:
-                score = 0.55
-                score += _clamp((params.bb_entry - bbp_i) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
-                if wick_long >= params.wick_reject or is_piv_low:
-                    score += 0.15
-                    reasons.append("rejection_or_pivot_low")
-                reasons += ["range_bb_oversold", "rsi_oversold"]
-                side = EntrySide.LONG
-
-            elif bbp_i >= (1.0 - params.bb_entry) and r >= params.rsi_overbought:
-                score = 0.55
-                score += _clamp((bbp_i - (1.0 - params.bb_entry)) / max(1e-12, params.bb_entry), 0.0, 1.0) * 0.25
-                if wick_short >= params.wick_reject or is_piv_high:
-                    score += 0.15
-                    reasons.append("rejection_or_pivot_high")
-                reasons += ["range_bb_overbought", "rsi_overbought"]
-                side = EntrySide.SHORT
-
-        # ---------------- Squeeze: breakout with minimal confirmation ----------------
-        elif regime == RegimeType.SQUEEZE:
-            # Require still narrow bands
-            if bb_width[i] <= params.squeeze_bb_width * 1.4:
-                # Breakout above upper band by x*ATR
-                if closes[i] > (bb_up[i] + params.breakout_atr * a) and conf_vol >= params.vol_spike_factor:
-                    score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
-                    reasons += ["squeeze_breakout_up", "vol_spike"]
-                    side = EntrySide.LONG
-                # Breakout below lower band
-                elif closes[i] < (bb_lo[i] - params.breakout_atr * a) and conf_vol >= params.vol_spike_factor:
-                    score = 0.62 + _clamp((conf_vol - params.vol_spike_factor) / 1.5, 0.0, 1.0) * 0.25
-                    reasons += ["squeeze_breakout_down", "vol_spike"]
-                    side = EntrySide.SHORT
-
-        # HIGH_VOL: usually reduce trading (or require stronger confirmation)
-        elif regime == RegimeType.HIGH_VOL:
-            # For MVP: allow only stronger extremes (avoid spam)
-            bbp_i = bbp[i]
-            if bbp_i <= (params.bb_entry * 0.75) and r <= (params.rsi_oversold - 3):
-                score = 0.62
-                reasons += ["high_vol_extreme_long"]
-                side = EntrySide.LONG
-            elif bbp_i >= (1.0 - params.bb_entry * 0.75) and r >= (params.rsi_overbought + 3):
-                score = 0.62
-                reasons += ["high_vol_extreme_short"]
-                side = EntrySide.SHORT
-
-        if side and score >= params.min_confidence:
-            raw.append(
-                EntryEvent(
-                    timestamp=candles[i].get("timestamp"),
-                    side=side,
-                    confidence=float(_clamp(score, 0.0, 1.0)),
-                    price=closes[i],
-                    reason_tags=reasons,
-                    regime=regime,
-                )
-            )
-
-    return _postprocess_entries(raw, cooldown_bars=params.cooldown_bars, cluster_window_bars=params.cluster_window_bars)
+    # Apply postprocessing (cooldown, clustering)
+    return _postprocess_entries(
+        raw, cooldown_bars=params.cooldown_bars, cluster_window_bars=params.cluster_window_bars
+    )
 
 
 def _postprocess_entries(entries: list[EntryEvent], cooldown_bars: int, cluster_window_bars: int) -> list[EntryEvent]:
