@@ -16,19 +16,13 @@ from datetime import datetime
 from typing import Optional
 
 from ..models import ZoneType
+from .chart_marking_base import ChartMarkingBase
 
 logger = logging.getLogger(__name__)
 
 
-class ChartMarkingZoneMethods:
+class ChartMarkingZoneMethods(ChartMarkingBase):
     """Helper für ChartMarkingMixin zone methods."""
-
-    def __init__(self, parent):
-        """
-        Args:
-            parent: ChartMarkingMixin Instanz
-        """
-        self.parent = parent
 
     def add_zone(
         self,

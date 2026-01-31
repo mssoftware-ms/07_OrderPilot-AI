@@ -15,17 +15,11 @@ from datetime import datetime
 from typing import Optional
 
 from ..models import Direction
+from .chart_marking_base import ChartMarkingBase
 
 
-class ChartMarkingEntryMethods:
+class ChartMarkingEntryMethods(ChartMarkingBase):
     """Helper für ChartMarkingMixin entry marker methods."""
-
-    def __init__(self, parent):
-        """
-        Args:
-            parent: ChartMarkingMixin Instanz
-        """
-        self.parent = parent
 
     def add_entry_marker(
         self,

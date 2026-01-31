@@ -15,17 +15,11 @@ from typing import Optional
 
 from ..constants import Colors
 from ..models import Direction, LineStyle
+from .chart_marking_base import ChartMarkingBase
 
 
-class ChartMarkingLineMethods:
+class ChartMarkingLineMethods(ChartMarkingBase):
     """Helper für ChartMarkingMixin stop-loss line methods."""
-
-    def __init__(self, parent):
-        """
-        Args:
-            parent: ChartMarkingMixin Instanz
-        """
-        self.parent = parent
 
     def add_line(
         self,

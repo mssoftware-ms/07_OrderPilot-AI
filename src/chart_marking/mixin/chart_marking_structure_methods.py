@@ -15,17 +15,11 @@ from datetime import datetime
 from typing import Optional
 
 from ..models import Direction, StructureBreakType
+from .chart_marking_base import ChartMarkingBase
 
 
-class ChartMarkingStructureMethods:
+class ChartMarkingStructureMethods(ChartMarkingBase):
     """Helper für ChartMarkingMixin structure break marker methods."""
-
-    def __init__(self, parent):
-        """
-        Args:
-            parent: ChartMarkingMixin Instanz
-        """
-        self.parent = parent
 
     def add_structure_break(
         self,

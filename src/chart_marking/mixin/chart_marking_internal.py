@@ -19,18 +19,13 @@ from typing import Any
 
 from PyQt6.QtCore import Q_ARG, QMetaObject, QThread, Qt, pyqtSlot
 
+from .chart_marking_base import ChartMarkingBase
+
 logger = logging.getLogger(__name__)
 
 
-class ChartMarkingInternal:
+class ChartMarkingInternal(ChartMarkingBase):
     """Helper für ChartMarkingMixin internal state & JS communication."""
-
-    def __init__(self, parent):
-        """
-        Args:
-            parent: ChartMarkingMixin Instanz
-        """
-        self.parent = parent
 
     # =========================================================================
     # State Management
