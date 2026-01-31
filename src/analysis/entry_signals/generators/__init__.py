@@ -14,6 +14,18 @@ Example:
 """
 
 from .base_generator import BaseEntryGenerator
+from .highvol_generator import HighVolGenerator
+from .range_generator import RangeGenerator
 from .registry import EntryGeneratorRegistry
+from .squeeze_generator import SqueezeGenerator
+from .trend_generator import TrendDownGenerator, TrendUpGenerator
 
-__all__ = ["BaseEntryGenerator", "EntryGeneratorRegistry"]
+__all__ = [
+    "BaseEntryGenerator",
+    "EntryGeneratorRegistry",
+    "TrendUpGenerator",
+    "TrendDownGenerator",
+    "RangeGenerator",
+    "SqueezeGenerator",
+    "HighVolGenerator",
+]
