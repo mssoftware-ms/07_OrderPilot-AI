@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -12,6 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QPlainTextEdit,
+    QRadioButton,
     QTableWidget,
     QTextEdit,
     QVBoxLayout,
@@ -27,6 +29,32 @@ class BotUIStrategyMixin:
         """Create daily strategy selection tab."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+
+        # ==================== ANALYSIS METHOD ====================
+        method_group = QGroupBox("Analysis Method")
+        method_layout = QHBoxLayout()
+
+        self.analysis_method_group = QButtonGroup(widget)
+
+        self.analysis_ai_radio = QRadioButton("AI Analysis")
+        self.analysis_ai_radio.setToolTip("Nutzt LLM für Marktanalyse")
+        self.analysis_method_group.addButton(self.analysis_ai_radio, 0)
+        method_layout.addWidget(self.analysis_ai_radio)
+
+        self.analysis_regime_radio = QRadioButton("RegimeEngine (Python)")
+        self.analysis_regime_radio.setToolTip("Hardcoded Python Regime-Klassifikation")
+        self.analysis_method_group.addButton(self.analysis_regime_radio, 1)
+        method_layout.addWidget(self.analysis_regime_radio)
+
+        self.analysis_json_radio = QRadioButton("RegimeEngineJSON (Config)")
+        self.analysis_json_radio.setToolTip("JSON-basierte Regime-Erkennung aus Strategie-Config (Standard)")
+        self.analysis_json_radio.setChecked(True)
+        self.analysis_method_group.addButton(self.analysis_json_radio, 2)
+        method_layout.addWidget(self.analysis_json_radio)
+
+        method_layout.addStretch()
+        method_group.setLayout(method_layout)
+        layout.addWidget(method_group)
 
         # ==================== CURRENT STRATEGY ====================
         current_group = QGroupBox("Current Strategy")
@@ -185,50 +213,183 @@ class BotUIStrategyMixin:
             self._set_daily_status(f"Anzeige-Update fehlgeschlagen: {e}", error=True)
 
     def _run_daily_strategy_workflow(self) -> None:
-        """Run the requested workflow: chart function -> AI analysis -> tabs.
+        """Run the daily strategy workflow based on selected analysis method.
 
-        Steps:
-        1) Force strategy reselection (Chart function)
-        2) Open AI-Analyse Popup and start analysis
-        3) Show Overview tab
-        4) Show Chart/Deep Analysis tab
+        Branches based on radio button selection:
+        - AI Analysis: Opens AI-Analyse Popup and runs LLM analysis
+        - RegimeEngine: Uses hardcoded Python regime classification
+        - RegimeEngineJSON: Uses JSON-config-based regime detection
         """
         try:
-            # Step 1: chart function (existing force reselect)
+            # Step 1: Force strategy reselection (chart function)
             if hasattr(self, '_on_force_reselect'):
                 self._on_force_reselect()
                 self._set_daily_status("Strategie neu gewählt")
 
-            # Step 2: open AI Analysis window
-            ai_window = getattr(self, '_ai_analysis_window', None)
-            if not ai_window:
-                if hasattr(self, '_handlers') and hasattr(self._handlers, 'on_ai_analysis_button_clicked'):
-                    self._handlers.on_ai_analysis_button_clicked(True)
-                    ai_window = getattr(self, '_ai_analysis_window', None)
-                else:
-                    from src.ui.ai_analysis_window import AIAnalysisWindow
-                    ai_window = AIAnalysisWindow(self, symbol=getattr(self, 'symbol', ""))
-                    self._ai_analysis_window = ai_window
+            # Check which analysis method is selected
+            method_id = self.analysis_method_group.checkedId()
 
-            if ai_window:
-                ai_window.show()
-                ai_window.raise_()
-                ai_window.activateWindow()
-                # Step 3: run analysis
-                if hasattr(ai_window, '_handlers'):
-                    ai_window._handlers.start_analysis()
-                    self._set_daily_status("AI-Analyse gestartet")
-                # Step 4: tab order Overview -> Chart Analysis
-                if hasattr(ai_window, 'tabs'):
-                    ai_window.tabs.setCurrentIndex(0)  # Overview
-                    if ai_window.tabs.count() > 1:
-                        ai_window.tabs.setCurrentIndex(1)  # Deep/Chart Analysis
+            if method_id == 0:
+                # AI Analysis (default)
+                self._run_ai_analysis_workflow()
+            elif method_id == 1:
+                # RegimeEngine (Python hardcoded)
+                self._run_regime_engine_workflow()
+            elif method_id == 2:
+                # RegimeEngineJSON (Config-based)
+                self._run_regime_json_workflow()
             else:
-                self._set_daily_status("AI-Analyse Fenster nicht verfügbar", error=True)
+                self._set_daily_status("Keine Analyse-Methode ausgewählt", error=True)
 
         except Exception as e:
             logger.error(f"Daily strategy workflow failed: {e}")
             self._set_daily_status(f"Fehler: {e}", error=True)
+
+    def _run_ai_analysis_workflow(self) -> None:
+        """Run AI-based analysis workflow (LLM)."""
+        ai_window = getattr(self, '_ai_analysis_window', None)
+        if not ai_window:
+            if hasattr(self, '_handlers') and hasattr(self._handlers, 'on_ai_analysis_button_clicked'):
+                self._handlers.on_ai_analysis_button_clicked(True)
+                ai_window = getattr(self, '_ai_analysis_window', None)
+            else:
+                from src.ui.ai_analysis_window import AIAnalysisWindow
+                ai_window = AIAnalysisWindow(self, symbol=getattr(self, 'symbol', ""))
+                self._ai_analysis_window = ai_window
+
+        if ai_window:
+            ai_window.show()
+            ai_window.raise_()
+            ai_window.activateWindow()
+            if hasattr(ai_window, '_handlers'):
+                ai_window._handlers.start_analysis()
+                self._set_daily_status("AI-Analyse gestartet")
+            if hasattr(ai_window, 'tabs'):
+                ai_window.tabs.setCurrentIndex(0)
+                if ai_window.tabs.count() > 1:
+                    ai_window.tabs.setCurrentIndex(1)
+        else:
+            self._set_daily_status("AI-Analyse Fenster nicht verfügbar", error=True)
+
+    def _run_regime_engine_workflow(self) -> None:
+        """Run RegimeEngine (Python hardcoded) classification."""
+        try:
+            from src.core.tradingbot.regime_engine import RegimeEngine
+            from src.core.tradingbot.feature_engine import FeatureEngine
+
+            # Get chart widget data
+            chart_widget = getattr(self, 'chart_widget', None)
+            if not chart_widget or not hasattr(chart_widget, 'data') or chart_widget.data is None:
+                self._set_daily_status("Keine Chart-Daten verfügbar", error=True)
+                return
+
+            df = chart_widget.data
+            if len(df) < 50:
+                self._set_daily_status("Nicht genug Daten für Analyse", error=True)
+                return
+
+            # Calculate features
+            symbol = getattr(chart_widget, 'current_symbol', 'UNKNOWN')
+            feature_engine = FeatureEngine()
+            features = feature_engine.calculate_features(df, symbol)
+
+            if not features:
+                self._set_daily_status("Feature-Berechnung fehlgeschlagen", error=True)
+                return
+
+            # Classify regime
+            regime_engine = RegimeEngine()
+            regime = regime_engine.classify(features)
+
+            # Display results
+            result = {
+                "analysis_method": "RegimeEngine (Python)",
+                "regime": regime.regime.value if hasattr(regime.regime, 'value') else str(regime.regime),
+                "trend_direction": regime.trend_direction.value if hasattr(regime.trend_direction, 'value') else str(regime.trend_direction),
+                "volatility_state": regime.volatility_state.value if hasattr(regime.volatility_state, 'value') else str(regime.volatility_state),
+                "confidence": regime.confidence,
+            }
+
+            if hasattr(self, "daily_strategy_json_edit"):
+                import json
+                self.daily_strategy_json_edit.setPlainText(json.dumps(result, indent=2, ensure_ascii=False))
+
+            if hasattr(self, "daily_strategy_analysis_edit"):
+                analysis_text = (
+                    f"Regime: {result['regime']}\n"
+                    f"Trend: {result['trend_direction']}\n"
+                    f"Volatility: {result['volatility_state']}\n"
+                    f"Confidence: {result['confidence']:.1%}"
+                )
+                self.daily_strategy_analysis_edit.setPlainText(analysis_text)
+
+            self._set_daily_status(f"RegimeEngine: {result['regime']}")
+
+        except Exception as e:
+            logger.error(f"RegimeEngine workflow failed: {e}", exc_info=True)
+            self._set_daily_status(f"RegimeEngine Fehler: {e}", error=True)
+
+    def _run_regime_json_workflow(self) -> None:
+        """Run RegimeEngineJSON (Config-based) classification."""
+        try:
+            from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+            from pathlib import Path
+
+            # Get chart widget data
+            chart_widget = getattr(self, 'chart_widget', None)
+            if not chart_widget or not hasattr(chart_widget, 'data') or chart_widget.data is None:
+                self._set_daily_status("Keine Chart-Daten verfügbar", error=True)
+                return
+
+            df = chart_widget.data
+            if len(df) < 50:
+                self._set_daily_status("Nicht genug Daten für Analyse", error=True)
+                return
+
+            # Find JSON config
+            config_dir = Path("src/core/tradingbot/json_strategies")
+            config_files = list(config_dir.glob("*.json")) if config_dir.exists() else []
+
+            if not config_files:
+                self._set_daily_status("Keine JSON-Strategie-Configs gefunden", error=True)
+                return
+
+            # Use first available config
+            config_path = config_files[0]
+
+            # Classify regime
+            engine = RegimeEngineJSON()
+            regime = engine.classify_from_config(df, str(config_path))
+
+            # Display results
+            result = {
+                "analysis_method": "RegimeEngineJSON (Config)",
+                "config_file": config_path.name,
+                "regime": regime.regime.value if hasattr(regime.regime, 'value') else str(regime.regime),
+                "trend_direction": regime.trend_direction.value if hasattr(regime.trend_direction, 'value') else str(regime.trend_direction),
+                "volatility_state": regime.volatility_state.value if hasattr(regime.volatility_state, 'value') else str(regime.volatility_state),
+                "confidence": regime.confidence,
+            }
+
+            if hasattr(self, "daily_strategy_json_edit"):
+                import json
+                self.daily_strategy_json_edit.setPlainText(json.dumps(result, indent=2, ensure_ascii=False))
+
+            if hasattr(self, "daily_strategy_analysis_edit"):
+                analysis_text = (
+                    f"Config: {result['config_file']}\n"
+                    f"Regime: {result['regime']}\n"
+                    f"Trend: {result['trend_direction']}\n"
+                    f"Volatility: {result['volatility_state']}\n"
+                    f"Confidence: {result['confidence']:.1%}"
+                )
+                self.daily_strategy_analysis_edit.setPlainText(analysis_text)
+
+            self._set_daily_status(f"RegimeEngineJSON: {result['regime']}")
+
+        except Exception as e:
+            logger.error(f"RegimeEngineJSON workflow failed: {e}", exc_info=True)
+            self._set_daily_status(f"RegimeEngineJSON Fehler: {e}", error=True)
 
     def _set_daily_status(self, text: str, error: bool = False) -> None:
         if hasattr(self, 'daily_strategy_status'):

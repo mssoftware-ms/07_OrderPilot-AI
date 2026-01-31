@@ -464,6 +464,86 @@ class StrategySettingsDialog(QDialog):
             logger.debug(f"Could not update regime from parent: {e}")
             # Keep current regime display
 
+    def _get_current_features(self, chart_window) -> Optional[dict]:
+        """Get current feature vector from chart window.
+
+        This method tries multiple approaches to retrieve features:
+        1. Direct feature_engine on chart_window
+        2. feature_engine on chart_widget
+        3. Compute from OHLCV DataFrame using FeatureEngine
+
+        Returns:
+            FeatureVector or None if unavailable
+        """
+        try:
+            # Helper to get symbol from chart window
+            def get_symbol():
+                if hasattr(chart_window, 'current_symbol'):
+                    return chart_window.current_symbol
+                if hasattr(chart_window, 'symbol'):
+                    return chart_window.symbol
+                if hasattr(chart_window, 'get_symbol'):
+                    return chart_window.get_symbol()
+                # Try chart_widget
+                if hasattr(chart_window, 'chart_widget'):
+                    cw = chart_window.chart_widget
+                    if hasattr(cw, 'current_symbol'):
+                        return cw.current_symbol
+                    if hasattr(cw, 'symbol'):
+                        return cw.symbol
+                return "UNKNOWN"
+
+            # Approach 1: Direct feature_engine on chart_window
+            if hasattr(chart_window, 'feature_engine'):
+                feature_engine = chart_window.feature_engine
+                if hasattr(feature_engine, 'get_current_features'):
+                    features = feature_engine.get_current_features()
+                    if features:
+                        logger.debug("Features from chart_window.feature_engine")
+                        return features
+
+            # Approach 2: feature_engine on chart_widget
+            if hasattr(chart_window, 'chart_widget'):
+                chart_widget = chart_window.chart_widget
+                if hasattr(chart_widget, 'feature_engine'):
+                    feature_engine = chart_widget.feature_engine
+                    if hasattr(feature_engine, 'get_current_features'):
+                        features = feature_engine.get_current_features()
+                        if features:
+                            logger.debug("Features from chart_widget.feature_engine")
+                            return features
+
+                # Approach 3: Get OHLCV DataFrame and compute features
+                if hasattr(chart_widget, 'data') and chart_widget.data is not None:
+                    df = chart_widget.data
+                    if len(df) >= 50:  # Minimum bars for feature calculation
+                        from src.core.tradingbot.feature_engine import FeatureEngine
+                        feature_engine = FeatureEngine()
+                        symbol = get_symbol()
+                        features = feature_engine.calculate_features(df, symbol)
+                        if features:
+                            logger.debug("Features computed from OHLCV data")
+                            return features
+
+            # Approach 4: Try data attribute directly on chart_window
+            if hasattr(chart_window, 'data') and chart_window.data is not None:
+                df = chart_window.data
+                if len(df) >= 50:
+                    from src.core.tradingbot.feature_engine import FeatureEngine
+                    feature_engine = FeatureEngine()
+                    symbol = get_symbol()
+                    features = feature_engine.calculate_features(df, symbol)
+                    if features:
+                        logger.debug("Features computed from chart_window.data")
+                        return features
+
+            logger.warning("Could not retrieve features from chart window")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get features: {e}", exc_info=True)
+            return None
+
     def _analyze_current_market(self) -> None:
         """Analyze current market and match strategy.
 
@@ -485,17 +565,8 @@ class StrategySettingsDialog(QDialog):
                 )
                 return
 
-            # Get current market data
-            if not hasattr(parent, 'get_current_features'):
-                QMessageBox.warning(
-                    self,
-                    "No Market Data",
-                    "Cannot analyze market: Chart window has no market data.\n"
-                    "Please ensure candles are loaded."
-                )
-                return
-
-            features = parent.get_current_features()
+            # Get current market data using robust feature retrieval
+            features = self._get_current_features(parent)
             if not features:
                 QMessageBox.warning(
                     self,
@@ -565,7 +636,7 @@ class StrategySettingsDialog(QDialog):
 
                 # Calculate indicator values
                 indicator_calc = IndicatorValueCalculator()
-                indicator_values = indicator_calc.calculate(features)
+                indicator_values = indicator_calc.calculate_indicator_values(features)
 
                 # Detect active regimes
                 detector = RegimeDetector(loaded_config.regimes)
