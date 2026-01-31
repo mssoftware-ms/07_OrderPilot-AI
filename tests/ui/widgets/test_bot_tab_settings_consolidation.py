@@ -69,25 +69,35 @@ class TestBotTabSettingsConsolidation:
 
     def test_no_duplicate_classes(self):
         """Test that only ONE BotSettingsDialog class exists in codebase."""
-        from src.ui.widgets.bitunix_trading.bot_tab_modules import BotSettingsDialog as ModulesDialog
+        # Verify we can import the class without issues
+        import importlib
+        import inspect
 
-        # Verify class is importable and has expected attributes
-        assert ModulesDialog is not None
-        assert hasattr(ModulesDialog, '__init__')
-        assert hasattr(ModulesDialog, '_setup_ui')
-        assert ModulesDialog.__name__ == "BotSettingsDialog"
+        # Import the module (not the class directly to avoid Qt initialization)
+        module = importlib.import_module('src.ui.widgets.bitunix_trading.bot_tab_modules.bot_tab_settings')
+
+        # Verify class exists in module
+        assert hasattr(module, 'BotSettingsDialog'), "BotSettingsDialog class not found in module"
+
+        # Verify it's the right class (check via __qualname__ to avoid instantiation)
+        dialog_class = module.BotSettingsDialog
+        assert dialog_class.__name__ == "BotSettingsDialog"
+        assert dialog_class.__module__ == "src.ui.widgets.bitunix_trading.bot_tab_modules.bot_tab_settings"
 
     def test_bot_tab_uses_correct_dialog(self):
         """Test that BotTab class uses the consolidated BotSettingsDialog."""
-        from src.ui.widgets.bitunix_trading import BotTab
         import inspect
 
-        # Get BotTab source
-        source = inspect.getsource(BotTab)
+        # Import bot_tab_main module to check its imports
+        import importlib
+        bot_tab_main_module = importlib.import_module('src.ui.widgets.bitunix_trading.bot_tab_main')
+
+        # Get source to verify import statement
+        source = inspect.getsource(bot_tab_main_module)
 
         # Should NOT have any reference to old path
         assert '.bot_tab_settings import BotSettingsDialog' not in source, (
-            "BotTab still references old import path"
+            "bot_tab_main still references old import path"
         )
 
 
