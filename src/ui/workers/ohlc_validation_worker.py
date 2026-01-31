@@ -6,18 +6,13 @@ Background worker for validating and fixing OHLC data without blocking the UI.
 import logging
 from typing import Optional
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from src.ui.workers.base_worker import BaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class OHLCValidationWorker(QObject):
+class OHLCValidationWorker(BaseWorker):
     """Worker for validating and fixing OHLC data in background."""
-
-    # Signals
-    progress = pyqtSignal(int, str)  # (percentage, status_message)
-    finished = pyqtSignal(bool, str, dict)  # (success, message, results)
-    error = pyqtSignal(str)  # error_message
 
     def __init__(self, symbol: Optional[str] = None, dry_run: bool = False):
         """Initialize validation worker.
@@ -29,21 +24,8 @@ class OHLCValidationWorker(QObject):
         super().__init__()
         self.symbol = symbol
         self.dry_run = dry_run
-        self._cancelled = False
 
-    def cancel(self):
-        """Cancel the validation."""
-        self._cancelled = True
-
-    def run(self):
-        """Execute the validation in background thread."""
-        try:
-            self._validate()
-        except Exception as e:
-            logger.error(f"Validation worker error: {e}", exc_info=True)
-            self.error.emit(str(e))
-
-    def _validate(self):
+    def _execute(self):
         """Validation implementation."""
         from src.database.ohlc_validator import validate_and_fix_ohlc
 
@@ -51,14 +33,14 @@ class OHLCValidationWorker(QObject):
 
         # Progress callback
         def progress_callback(current: int, total: int, message: str):
-            if self._cancelled:
+            if self.is_cancelled():
                 return
             if total > 0:
                 pct = int((current / total) * 80) + 10  # 10-90% range
                 self.progress.emit(pct, message)
 
-        if self._cancelled:
-            self.finished.emit(False, "Validation cancelled", {})
+        if self.is_cancelled():
+            self.emit_cancellation_result("Validation cancelled")
             return
 
         # Run validation
@@ -68,8 +50,8 @@ class OHLCValidationWorker(QObject):
             progress_callback=progress_callback
         )
 
-        if self._cancelled:
-            self.finished.emit(False, "Validation cancelled", {})
+        if self.is_cancelled():
+            self.emit_cancellation_result("Validation cancelled")
             return
 
         # Build result message
@@ -93,13 +75,8 @@ class OHLCValidationWorker(QObject):
         self.finished.emit(True, message, results)
 
 
-class ValidationThread(QThread):
-    """Thread wrapper for validation worker."""
+# Use WorkerThread from base_worker module instead of custom thread wrapper
+from src.ui.workers.base_worker import WorkerThread
 
-    def __init__(self, worker: OHLCValidationWorker):
-        super().__init__()
-        self.worker = worker
-
-    def run(self):
-        """Run the worker."""
-        self.worker.run()
+# Alias for backward compatibility
+ValidationThread = WorkerThread

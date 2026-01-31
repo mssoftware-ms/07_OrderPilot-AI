@@ -3,22 +3,16 @@
 Background worker for downloading historical market data without blocking the UI.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from src.ui.workers.base_worker import AsyncBaseWorker
 
 logger = logging.getLogger(__name__)
 
 
-class HistoricalDownloadWorker(QObject):
+class HistoricalDownloadWorker(AsyncBaseWorker):
     """Worker for downloading historical market data in background."""
-
-    # Signals
-    progress = pyqtSignal(int, str)  # (percentage, status_message)
-    finished = pyqtSignal(bool, str, dict)  # (success, message, results)
-    error = pyqtSignal(str)  # error_message
 
     def __init__(
         self,
@@ -54,27 +48,8 @@ class HistoricalDownloadWorker(QObject):
         self.mode = mode
         self.enable_bad_tick_filter = enable_bad_tick_filter
         self.enable_ohlc_validation = enable_ohlc_validation
-        self._cancelled = False
 
-    def cancel(self):
-        """Cancel the download."""
-        self._cancelled = True
-
-    def run(self):
-        """Execute the download in background thread."""
-        try:
-            # Run async download in event loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self._download())
-            finally:
-                loop.close()
-        except Exception as e:
-            logger.error(f"Download worker error: {e}", exc_info=True)
-            self.error.emit(str(e))
-
-    async def _download(self):
+    async def _execute_async(self):
         """Async download implementation."""
         from src.config.loader import config_manager
         from src.core.market_data.types import DataSource, Timeframe
@@ -123,8 +98,8 @@ class HistoricalDownloadWorker(QObject):
         logger.info(status_msg)
         self.progress.emit(8, status_msg)
 
-        if self._cancelled:
-            self.finished.emit(False, "Download cancelled", {})
+        if self.is_cancelled():
+            self.emit_cancellation_result("Download cancelled")
             return
 
         status_msg = f"🔧 Creating {self.provider_type} provider..."
@@ -139,8 +114,8 @@ class HistoricalDownloadWorker(QObject):
         elif self.provider_type == "bitunix":
             results = await self._download_bitunix(tf)
 
-        if self._cancelled:
-            self.finished.emit(False, "Download cancelled", {})
+        if self.is_cancelled():
+            self.emit_cancellation_result("Download cancelled")
             return
 
         # Calculate total bars
@@ -186,7 +161,7 @@ class HistoricalDownloadWorker(QObject):
         # Custom progress tracking
         results = {}
         for i, symbol in enumerate(self.symbols):
-            if self._cancelled:
+            if self.is_cancelled():
                 break
 
             progress_pct = 20 + int((i / len(self.symbols)) * 70)
@@ -264,7 +239,7 @@ class HistoricalDownloadWorker(QObject):
 
         results = {}
         for i, symbol in enumerate(self.symbols):
-            if self._cancelled:
+            if self.is_cancelled():
                 break
 
             # Calculate progress range for this symbol (20-90% for downloads)
@@ -278,7 +253,7 @@ class HistoricalDownloadWorker(QObject):
             # Create progress callback that calculates real progress based on batch_num
             def make_progress_callback(sym: str, start_pct: int, pct_range: int, est_batches: int):
                 def callback(batch_num: int, total_bars: int, status_msg: str):
-                    if self._cancelled:
+                    if self.is_cancelled():
                         return
                     # Calculate progress within this symbol's range
                     batch_progress = min(99, int((batch_num / est_batches) * pct_range))
@@ -351,13 +326,8 @@ class HistoricalDownloadWorker(QObject):
             return {}
 
 
-class DownloadThread(QThread):
-    """Thread wrapper for download worker."""
+# Use WorkerThread from base_worker module instead of custom thread wrapper
+from src.ui.workers.base_worker import WorkerThread
 
-    def __init__(self, worker: HistoricalDownloadWorker):
-        super().__init__()
-        self.worker = worker
-
-    def run(self):
-        """Run the worker."""
-        self.worker.run()
+# Alias for backward compatibility
+DownloadThread = WorkerThread

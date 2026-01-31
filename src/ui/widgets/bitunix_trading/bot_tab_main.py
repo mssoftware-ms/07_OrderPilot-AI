@@ -54,7 +54,7 @@ from src.core.trading_bot import BotConfig
 from .bot_tab_ui import BotTabUI
 from .bot_tab_control import BotTabControl
 from .bot_tab_display_updates import BotTabDisplayUpdates
-from .bot_tab_settings import BotSettingsDialog
+from .bot_tab_modules import BotSettingsDialog
 
 # Phase 5 - Trading Status Panel Integration
 try:
