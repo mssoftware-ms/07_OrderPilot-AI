@@ -220,7 +220,6 @@ class BotDisplayPositionMixin:
                     pass
         return current
 
-<<<<<<< HEAD
     def _get_live_current_price(self) -> float:
         """Return live price only (no historical fallback)."""
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
@@ -232,11 +231,8 @@ class BotDisplayPositionMixin:
 
         return 0.0
 
-    def _calculate_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
-=======
     def _calculate_simple_pnl(self, entry_price: float, current: float, invested: float, side: str) -> tuple[float, float]:
         """Simple PnL calculation for position display (without leverage/fees)."""
->>>>>>> bd51450 (vor aufteilen livestream kaputt)
         if side == "LONG":
             pnl_pct = ((current - entry_price) / entry_price) * 100
         else:
