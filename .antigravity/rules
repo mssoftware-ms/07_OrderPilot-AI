@@ -1,0 +1,9 @@
+# ⚖️ Das Grundgesetz der Code-Integrität
+
+§1 [Planung]: Erst Plan (3-7 Schritte), dann Code.
+§2 [Search]: Erst `rg`/`grep`, dann Änderung. Keine Bauchentscheidungen.
+§3 [Atomic]: Patches müssen klein und einzeln testbar sein.
+§4 [Kommunikation]: Max. 5 Fragen. Annahmen explizit markieren.
+§5 [QA]: Kein Merge ohne `scripts/ai-verify.sh` Durchlauf (§8).
+§6 [Safety]: Keine Secrets, keine destruktiven Aktionen ohne Erlaubnis.
+§7 [Hierarchie]: Orchestrator plant, Dev codet, QA prüft.

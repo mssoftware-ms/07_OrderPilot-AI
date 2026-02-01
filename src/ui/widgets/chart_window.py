@@ -42,11 +42,13 @@ from .chart_window_mixins import (
 from src.chart_chat import ChartChatMixin
 from src.ui.app_icon import set_window_icon  # Issue #29: App icon
 from src.ui.widgets.bitunix_trading import BitunixTradingMixin
+from src.ui.debug import UIInspectorMixin  # F12 UI Inspector
 
 logger = logging.getLogger(__name__)
 
 
 class ChartWindow(
+    UIInspectorMixin,  # F12 UI Inspector - must be before QMainWindow
     VariablesMixin,
     CelEditorMixin,
     BotPanelsMixin,
@@ -140,6 +142,9 @@ class ChartWindow(
         if splash:
             splash.set_progress(90, "Finalisiere Setup...")
         self._init_cel_editor()  # Phase 7: CEL Editor integration
+
+        # F12 UI Inspector Debug Overlay
+        self.setup_ui_inspector()
 
         logger.info(f"ChartWindow created for {symbol}")
 

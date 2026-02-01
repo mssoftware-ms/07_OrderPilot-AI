@@ -218,14 +218,13 @@ class StreamingMixin:
         return timeframe_to_seconds.get(current_tf, 60)
 
     def _resolve_tick_time(self, ts, tick_data: dict) -> tuple[int, int]:
-        local_offset = get_local_timezone_offset_seconds()
-        current_tick_time = int(ts.timestamp()) + local_offset
+        # Issue #63: Frontend now uses getHours() (local time) so we pass raw UTC timestamps.
+        # Historical data also uses raw UTC timestamps (timestamp.timestamp()).
+        # Applying local_offset here caused a double-conversion, making live candles 1 hour ahead.
+        current_tick_time = int(ts.timestamp())
         # Use chart's actual resolution instead of hardcoded 60 seconds
         resolution_seconds = self._get_resolution_seconds()
         current_candle_start = current_tick_time - (current_tick_time % resolution_seconds)
-        # Verbose debug logging removed - not needed for normal operation
-        # logger.debug(f"LIVE TICK DEBUG: Raw TS: {tick_data.get('timestamp')} | Resolved TS: {ts} | "
-        #              f"TickUnix: {current_tick_time} | CandleStart: {current_candle_start} | Resolution: {resolution_seconds}s")
         return current_tick_time, current_candle_start
 
     def _initialize_candle(self, current_minute_start: int, price: float) -> None:
@@ -350,13 +349,16 @@ class StreamingMixin:
                         ts_value = ts_raw.to_pydatetime()
                     else:
                         ts_value = ts_raw
-                    unix_time = int(pd.Timestamp(ts_value).timestamp()) + local_offset
+                    # Issue #63: Frontend now uses getHours() (local time) so we pass raw UTC timestamps.
+                    # Historical data also uses raw UTC timestamps (timestamp.timestamp()).
+                    # Applying local_offset here caused a double-conversion.
+                    unix_time_raw = int(pd.Timestamp(ts_value).timestamp())
                 except Exception:
-                    unix_time = int(datetime.now().timestamp()) + local_offset
+                    unix_time_raw = int(datetime.now().timestamp())
 
                 # CRITICAL FIX: Align time to candle boundaries (clock time)
                 # e.g., for 5-minute candles: 15:07 -> 15:05, 15:03 -> 15:00
-                aligned_time = unix_time - (unix_time % resolution_seconds)
+                aligned_time = unix_time_raw - (unix_time_raw % resolution_seconds)
 
                 candle = {
                     'time': aligned_time,
