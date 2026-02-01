@@ -12,7 +12,6 @@ from .openai_service import (
     RateLimitError,
     SchemaValidationError,
     StrategySignalAnalysis,
-    StrategyTradeAnalysis,
     get_openai_service,
 )
 from .anthropic_service import AnthropicService

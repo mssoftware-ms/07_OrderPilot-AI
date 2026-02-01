@@ -45,8 +45,8 @@ class AIProviderFactory:
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         gemini_key = os.getenv("GEMINI_API_KEY")
         logger.info(f"🔑 Available API keys - OpenAI: {'✓' if openai_key else '✗'}, "
-                   f"Anthropic: {'✓' if anthropic_key else '✗'}, "
-                   f"Gemini: {'✓' if gemini_key else '✗'}")
+                    f"Anthropic: {'✓' if anthropic_key else '✗'}, "
+                    f"Gemini: {'✓' if gemini_key else '✗'}")
 
         return provider
 
@@ -182,12 +182,6 @@ class AIProviderFactory:
             ],
         }
 
-        defaults = {
-            "OpenAI": "gpt-5.1",  # Updated to latest stable
-            "Anthropic": "claude-sonnet-4-5-20250929",
-            "Gemini": "gemini-2.0-flash-exp",
-        }
-
         # Check if model is valid
         if provider in valid_models:
             # Exact match
@@ -285,8 +279,8 @@ class AIProviderFactory:
         if not api_key:
             logger.error(f"❌ ABORT: No API key for {provider}")
             raise ValueError(f"No API key configured for {provider}. "
-                           f"Set {provider.upper()}_API_KEY environment variable "
-                           f"or configure in Settings -> AI tab.")
+                             f"Set {provider.upper()}_API_KEY environment variable "
+                             f"or configure in Settings -> AI tab.")
 
         # Get model
         model = AIProviderFactory.get_model(provider)

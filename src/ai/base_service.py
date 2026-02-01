@@ -40,7 +40,6 @@ from .openai_models import (
     BacktestReview,
     OpenAIError,
     OrderAnalysis,
-    QuotaExceededError,
     RateLimitError,
     SchemaValidationError,
 )

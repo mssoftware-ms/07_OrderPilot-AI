@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
-import time
 from typing import Any, TypeVar
 
-import aiohttp
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate
 from pydantic import BaseModel
