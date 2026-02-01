@@ -1,10 +1,14 @@
 """Dashboard Widget for OrderPilot-AI Trading Application."""
 
+import logging
+
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QFrame, QGridLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from src.common.event_bus import Event, EventType, event_bus
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardWidget(QWidget):
@@ -18,6 +22,7 @@ class DashboardWidget(QWidget):
         self.current_cash = 10000.00
         self.daily_pnl = 0.00
         self.open_positions_count = 0
+        self.connected_broker = None
 
         self.init_ui()
         self.setup_event_handlers()
@@ -26,13 +31,24 @@ class DashboardWidget(QWidget):
         """Initialize the dashboard UI."""
         layout = QVBoxLayout(self)
 
-        # Title
+        # Header with title and connection status
+        header_layout = QHBoxLayout()
+
         title = QLabel("Trading Dashboard")
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
         title.setFont(title_font)
-        layout.addWidget(title)
+        header_layout.addWidget(title)
+
+        header_layout.addStretch()
+
+        # Connection status indicator
+        self.connection_status = QLabel("⚫ Disconnected")
+        self.connection_status.setStyleSheet("color: #888; font-weight: bold;")
+        header_layout.addWidget(self.connection_status)
+
+        layout.addLayout(header_layout)
 
         # Stats grid
         grid = QGridLayout()
@@ -81,18 +97,31 @@ class DashboardWidget(QWidget):
         """Setup event bus handlers."""
         event_bus.subscribe(EventType.ORDER_FILLED, self.on_order_filled)
         event_bus.subscribe(EventType.MARKET_CONNECTED, self.on_market_connected)
+        event_bus.subscribe(EventType.MARKET_DISCONNECTED, self.on_market_disconnected)
 
     @pyqtSlot(object)
     def on_order_filled(self, event: Event):
         """Handle order filled event."""
-        # Trigger dashboard refresh
         self.refresh_stats()
+        logger.info(f"Order filled: {event.data}")
 
     @pyqtSlot(object)
     def on_market_connected(self, event: Event):
-        """Handle market connected event."""
-        # Update connection status
-        pass
+        """Handle market connected event - update connection status."""
+        broker_type = event.data.get("broker", "Unknown") if event.data else "Unknown"
+        self.connected_broker = broker_type
+        self.connection_status.setText(f"🟢 {broker_type}")
+        self.connection_status.setStyleSheet("color: #00ff00; font-weight: bold;")
+        logger.info(f"Dashboard: Market connected to {broker_type}")
+        self.refresh_stats()
+
+    @pyqtSlot(object)
+    def on_market_disconnected(self, event: Event):
+        """Handle market disconnected event - update connection status."""
+        self.connected_broker = None
+        self.connection_status.setText("⚫ Disconnected")
+        self.connection_status.setStyleSheet("color: #888; font-weight: bold;")
+        logger.info("Dashboard: Market disconnected")
 
     def update_balance(self, balance):
         """Update balance display.

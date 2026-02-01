@@ -69,20 +69,43 @@ class BacktestTabHandlers:
     def on_auto_generate_clicked(self) -> None:
         """Generiert automatisch Test-Varianten.
 
-        Delegates to config_manager for variant generation.
+        Delegates to Mixin _on_auto_generate_clicked().
         """
-        self.parent._logging.log("🤖 Generiere Test-Varianten...")
-        # Implementation delegates to config_manager.generate_ai_test_variants()
-        pass
+        if hasattr(self.parent, '_on_auto_generate_clicked'):
+            self.parent._on_auto_generate_clicked()
+        else:
+            logger.warning("Mixin _on_auto_generate_clicked not found - using fallback")
+            self._auto_generate_fallback()
+
+    def _auto_generate_fallback(self) -> None:
+        """Fallback if mixin not available."""
+        try:
+            specs = self.parent.config_manager.get_parameter_specification()
+            num_variants = min(self.parent.batch_iterations.value(), 20)
+            variants = self.parent.config_manager.generate_ai_test_variants(specs, num_variants)
+            self.parent._logging.log(f"✅ {len(variants)} Test-Varianten generiert")
+
+            # Update param space
+            param_space = {v['id']: v['parameters'] for v in variants}
+            self.parent.param_space_text.setText(json.dumps(param_space, indent=2))
+
+        except Exception as e:
+            logger.exception("Auto-generate failed")
+            self.parent._logging.log(f"❌ Fehler: {e}")
 
     def on_indicator_set_changed(self, index: int) -> None:
         """Handler für Indikator-Set Auswahl.
 
-        Delegates to config_manager for indicator set handling.
+        Delegates to Mixin _on_indicator_set_changed().
         """
         if index == 0:  # "-- Manuell --"
             return
 
-        indicator_sets = self.parent.config_manager.get_available_indicator_sets()
-        # Implementation available in original file lines 2892-2930
-        pass
+        if hasattr(self.parent, '_on_indicator_set_changed'):
+            self.parent._on_indicator_set_changed(index)
+        else:
+            logger.warning("Mixin _on_indicator_set_changed not found")
+            indicator_sets = self.parent.config_manager.get_available_indicator_sets()
+            if index > 0 and index <= len(indicator_sets):
+                selected = indicator_sets[index - 1]
+                self.parent._logging.log(f"📊 Indikator-Set: {selected.get('name', 'Unknown')}")

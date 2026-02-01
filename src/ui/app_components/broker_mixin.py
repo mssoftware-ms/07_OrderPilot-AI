@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class BrokerMixin:
     """Mixin providing broker connection functionality for TradingApplication."""
 
+    @qasync.asyncSlot()
     async def connect_broker(self):
         """Connect to the selected broker."""
         try:

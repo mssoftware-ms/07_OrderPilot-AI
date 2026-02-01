@@ -12,6 +12,7 @@ REFACTORED: Split into focused helper modules using composition pattern.
 
 import logging
 
+import qasync
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -105,12 +106,14 @@ class AIBacktestDialog(QDialog):
 
     # === Execution (Delegiert) ===
 
+    @qasync.asyncSlot()
     async def run_backtest(self):
         """Run the backtest (delegiert)."""
         return await self._execution.run_backtest()
 
     # === AI Review (Delegiert) ===
 
+    @qasync.asyncSlot()
     async def run_ai_review(self):
         """Run AI analysis on backtest results (delegiert)."""
         return await self._ai_review.run_ai_review()

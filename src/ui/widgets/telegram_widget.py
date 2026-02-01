@@ -9,10 +9,12 @@ Ermöglicht:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG
+import aiohttp
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -27,6 +29,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QMessageBox,
 )
+from qasync import asyncSlot
 
 logger = logging.getLogger(__name__)
 
@@ -244,11 +247,7 @@ class TelegramWidget(QWidget):
         QTimer.singleShot(0, show_box)
 
     def _on_get_chat_id_clicked(self) -> None:
-        """
-        Ruft die Chat-ID automatisch vom Telegram Bot ab.
-
-        Voraussetzung: Benutzer muss dem Bot eine Nachricht geschickt haben (z.B. /start).
-        """
+        """Startet den async Chat-ID Abruf."""
         # Hole Bot-Token aus dem Service (wird aus Systemvariable geladen)
         if not self._telegram_service or not self._telegram_service.bot_token:
             QMessageBox.warning(
@@ -260,13 +259,11 @@ class TelegramWidget(QWidget):
             )
             return
 
-        bot_token = self._telegram_service.bot_token
-
-        if not self._telegram_service or not self._telegram_service.is_available:
+        if not self._telegram_service.is_available:
             QMessageBox.warning(
                 self,
                 "Fehler",
-                "Telegram-Service nicht verfügbar.\nBitte installiere 'requests': pip install requests"
+                "Telegram-Service nicht verfügbar.\nBitte installiere 'aiohttp': pip install aiohttp"
             )
             return
 
@@ -287,94 +284,100 @@ class TelegramWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # Rufe getUpdates API auf
+        # Starte async Abruf
+        asyncio.create_task(self._fetch_chat_id_async())
+
+    async def _fetch_chat_id_async(self) -> None:
+        """Ruft die Chat-ID asynchron vom Telegram Bot ab (non-blocking)."""
+        bot_token = self._telegram_service.bot_token
+        url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+
         self._log("📡 Rufe Chat-ID vom Bot ab...")
         self.get_chat_id_btn.setEnabled(False)
 
-        def fetch_chat_id():
-            """Fetch Chat-ID in separate thread (threading-safe)."""
-            try:
-                import requests
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    result = await response.json()
 
-                url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-                response = requests.get(url, timeout=10)
-                result = response.json()
-
-                if not result.get("ok"):
-                    error = result.get("description", "Unbekannter Fehler")
-                    self._log(f"❌ API-Fehler: {error}")
-                    # Thread-safe MessageBox
-                    self._show_message_box_threadsafe(
-                        "warning",
-                        "API-Fehler",
-                        f"Telegram API Fehler:\n{error}\n\nPrüfe deinen Bot-Token!"
-                    )
-                    QTimer.singleShot(0, lambda: self.get_chat_id_btn.setEnabled(True))
-                    return
-
-                updates = result.get("result", [])
-
-                if not updates:
-                    self._log("❌ Keine Updates gefunden")
-                    # Thread-safe MessageBox
-                    self._show_message_box_threadsafe(
-                        "information",
-                        "Keine Nachrichten",
-                        "Keine Nachrichten gefunden!\n\n"
-                        "Bitte sende eine Nachricht an deinen Bot in Telegram\n"
-                        "(z.B. /start) und versuche es erneut."
-                    )
-                    QTimer.singleShot(0, lambda: self.get_chat_id_btn.setEnabled(True))
-                    return
-
-                # Hole die neuste Nachricht
-                latest_message = updates[-1].get("message", {})
-                chat = latest_message.get("chat", {})
-                chat_id = chat.get("id")
-                chat_name = chat.get("first_name") or chat.get("title") or "Unbekannt"
-
-                if chat_id:
-                    # Setze Chat-ID ins Feld (thread-safe)
-                    QTimer.singleShot(0, lambda: self.chat_id_input.setText(str(chat_id)))
-                    self._log(f"✅ Chat-ID gefunden: {chat_id} (Name: {chat_name})")
-
-                    # Thread-safe MessageBox
-                    self._show_message_box_threadsafe(
-                        "information",
-                        "Erfolg",
-                        f"Chat-ID erfolgreich abgerufen!\n\n"
-                        f"Chat-ID: {chat_id}\n"
-                        f"Name: {chat_name}\n\n"
-                        f"Die Chat-ID wurde automatisch eingetragen."
-                    )
-                else:
-                    self._log("❌ Keine Chat-ID in der Antwort gefunden")
-                    # Thread-safe MessageBox
-                    self._show_message_box_threadsafe(
-                        "warning",
-                        "Fehler",
-                        "Keine Chat-ID gefunden.\n\n"
-                        "Stelle sicher, dass du dem Bot eine Nachricht geschickt hast."
-                    )
-
-                QTimer.singleShot(0, lambda: self.get_chat_id_btn.setEnabled(True))
-
-            except Exception as e:
-                error_msg = f"Fehler beim Abrufen: {e}"
-                logger.error(f"TelegramWidget: {error_msg}")
-                self._log(f"❌ {error_msg}")
-                # Thread-safe MessageBox
-                self._show_message_box_threadsafe(
-                    "critical",
-                    "Fehler",
-                    f"Fehler beim Abrufen der Chat-ID:\n{e}"
+            if not result.get("ok"):
+                error = result.get("description", "Unbekannter Fehler")
+                self._log(f"❌ API-Fehler: {error}")
+                QMessageBox.warning(
+                    self,
+                    "API-Fehler",
+                    f"Telegram API Fehler:\n{error}\n\nPrüfe deinen Bot-Token!"
                 )
-                QTimer.singleShot(0, lambda: self.get_chat_id_btn.setEnabled(True))
+                return
 
-        # Starte in Thread
-        import threading
-        thread = threading.Thread(target=fetch_chat_id, daemon=True)
-        thread.start()
+            updates = result.get("result", [])
+
+            if not updates:
+                self._log("❌ Keine Updates gefunden")
+                QMessageBox.information(
+                    self,
+                    "Keine Nachrichten",
+                    "Keine Nachrichten gefunden!\n\n"
+                    "Bitte sende eine Nachricht an deinen Bot in Telegram\n"
+                    "(z.B. /start) und versuche es erneut."
+                )
+                return
+
+            # Hole die neuste Nachricht
+            latest_message = updates[-1].get("message", {})
+            chat = latest_message.get("chat", {})
+            chat_id = chat.get("id")
+            chat_name = chat.get("first_name") or chat.get("title") or "Unbekannt"
+
+            if chat_id:
+                self.chat_id_input.setText(str(chat_id))
+                self._log(f"✅ Chat-ID gefunden: {chat_id} (Name: {chat_name})")
+                QMessageBox.information(
+                    self,
+                    "Erfolg",
+                    f"Chat-ID erfolgreich abgerufen!\n\n"
+                    f"Chat-ID: {chat_id}\n"
+                    f"Name: {chat_name}\n\n"
+                    f"Die Chat-ID wurde automatisch eingetragen."
+                )
+            else:
+                self._log("❌ Keine Chat-ID in der Antwort gefunden")
+                QMessageBox.warning(
+                    self,
+                    "Fehler",
+                    "Keine Chat-ID gefunden.\n\n"
+                    "Stelle sicher, dass du dem Bot eine Nachricht geschickt hast."
+                )
+
+        except asyncio.TimeoutError:
+            self._log("❌ Timeout nach 10 Sekunden")
+            QMessageBox.warning(
+                self,
+                "Timeout",
+                "Zeitüberschreitung beim Abrufen der Chat-ID.\n"
+                "Bitte prüfe deine Internetverbindung."
+            )
+        except aiohttp.ClientError as e:
+            error_msg = f"Netzwerkfehler: {e}"
+            logger.error(f"TelegramWidget: {error_msg}")
+            self._log(f"❌ {error_msg}")
+            QMessageBox.critical(
+                self,
+                "Netzwerkfehler",
+                f"Fehler beim Abrufen der Chat-ID:\n{e}"
+            )
+        except Exception as e:
+            error_msg = f"Fehler beim Abrufen: {e}"
+            logger.error(f"TelegramWidget: {error_msg}")
+            self._log(f"❌ {error_msg}")
+            QMessageBox.critical(
+                self,
+                "Fehler",
+                f"Fehler beim Abrufen der Chat-ID:\n{e}"
+            )
+        finally:
+            self.get_chat_id_btn.setEnabled(True)
 
     def _on_send_clicked(self) -> None:
         """Callback wenn Senden-Button geklickt wird."""
