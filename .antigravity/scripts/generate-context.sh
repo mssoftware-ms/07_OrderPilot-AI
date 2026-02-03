@@ -15,11 +15,15 @@ echo "============================================================"
 # Check if repomix is installed
 if ! command -v repomix &> /dev/null; then
     echo "[WARN] repomix not found. Installing..."
-    npm install -g repomix
+    echo "[INFO] sudo access required for global npm installation"
+    echo "[INFO] You will be prompted for your WSL password"
+    sudo npm install -g repomix
     if [ $? -ne 0 ]; then
-        echo "[ERROR] Failed to install repomix. Please run: npm install -g repomix"
+        echo "[ERROR] Failed to install repomix with sudo"
+        echo "[INFO] Alternative: Run 'sudo npm install -g repomix' manually"
         exit 1
     fi
+    echo "[OK] repomix installed successfully"
 fi
 
 # Create context directory if not exists

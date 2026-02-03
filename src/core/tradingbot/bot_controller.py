@@ -128,6 +128,10 @@ class BotController(
                     f"Konfidenz: {self._regime.regime_confidence:.1%}"
                 )
 
+            # 2b. Update trailing stop for live trading (after regime update)
+            if self._position and self.config.bot.trailing_enabled:
+                await self._update_trailing_stop_live(features)
+
             # 2a. Check for JSON-based regime change and strategy switching
             if hasattr(self, '_json_config') and self._json_config is not None:
                 strategy_switched = self._check_regime_change_and_switch(features)

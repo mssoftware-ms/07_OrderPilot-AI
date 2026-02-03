@@ -16,7 +16,7 @@ class BotPositionPersistenceContextMixin:
         if row < 0:
             return
 
-        recent_signals = list(reversed(self._signal_history[-20:]))
+        recent_signals = list(reversed(self._signal_history))
         if row >= len(recent_signals):
             return
 

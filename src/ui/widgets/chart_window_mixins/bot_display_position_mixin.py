@@ -169,17 +169,16 @@ class BotDisplayPositionMixin:
         return None
 
     def _get_current_price(self, from_bot: bool = True) -> float:
-        """Get current market price.
+        """Get current market price (Strict Live Price Mode).
 
-        Prioritizes Live Streaming Price (from Chart/StreamingMixin) over Bitunix Trading Widget price.
-        This prevents 'Price Jumping' where the P&L timer fetches stale polling data (e.g. 81k)
-        while the Tick Signal pushes live data (e.g. 79k), causing flickering and false SL triggers.
+        Only returns live streaming prices. NO historical fallback.
+        This prevents 'Price Jumping' in P&L calculations for active positions.
 
         Priority:
-        1. Live Tick Price (from _on_tick_price_updated) or Chart Stream
-        2. Bitunix Trading Widget (Polling/API)
-        3. Bot Controller (Last Closed Bar)
-        4. Chart Data (DataFrame)
+        1. Live Tick Price (_last_tick_price from streaming)
+        2. Chart Widget Streaming Price (_last_price)
+        3. Bitunix Trading Widget (API Polling)
+        4. Returns 0.0 if no live price available (NO historical fallback)
         """
         # Priority 1: Live tick price (from streaming mixin via BotPanelsMixin._on_tick_price_updated)
         if hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
@@ -197,28 +196,9 @@ class BotDisplayPositionMixin:
                 if price > 0:
                     return float(price)
 
-        # No live price available - log warning for active positions
-        has_active_position = any(
-            sig.get("is_open", False) and sig.get("status") == "ENTERED"
-            for sig in getattr(self, '_signal_history', [])
-        )
-        if has_active_position and not (hasattr(self, '_last_tick_price') and self._last_tick_price > 0):
-             # Only warn if we really have NO price source
-            pass # Logger warning removed to reduce noise as we have fallbacks below
-
-        # 4. Bot controller features (usually last closed bar) - only if no active position
-        current = 0.0
-        if from_bot and self._bot_controller and self._bot_controller._last_features:
-            current = self._bot_controller._last_features.close
-
-        # 5. Chart data fallback (last row of DataFrame) - only if no active position
-        if current <= 0 and hasattr(self, 'chart_widget'):
-            if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                try:
-                    current = float(self.chart_widget.data['close'].iloc[-1])
-                except Exception:
-                    pass
-        return current
+        # Strict Live Price Mode: Do NOT fall back to historical data
+        # Historical candle-close data causes P&L jumping for active positions
+        return 0.0
 
     def _get_live_current_price(self) -> float:
         """Return live price only (no historical fallback)."""

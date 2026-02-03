@@ -405,6 +405,64 @@ class BitunixAdapter(BrokerAdapter):
             logger.error(f"Failed to get positions: {e}")
             return []
 
+    async def modify_position_tp_sl_order(
+        self,
+        symbol: str,
+        tp_price: Decimal | None = None,
+        sl_price: Decimal | None = None
+    ) -> bool:
+        """Modify TP/SL for existing position.
+
+        Args:
+            symbol: Trading symbol
+            tp_price: New take profit price (optional)
+            sl_price: New stop loss price (optional)
+
+        Returns:
+            True if successful
+        """
+        if not self._session:
+            logger.error("Not connected to Bitunix")
+            return False
+
+        try:
+            # Verify position exists
+            positions = await self.get_positions()
+            position = next((p for p in positions if p.symbol == symbol), None)
+
+            if not position:
+                logger.warning(f"No position found for {symbol}")
+                return False
+
+            # Build API request
+            params = {'symbol': symbol}
+
+            if tp_price is not None:
+                params['takeProfit'] = str(tp_price)
+
+            if sl_price is not None:
+                params['stopLoss'] = str(sl_price)
+
+            body_json = json.dumps(params, separators=(',', ':'))
+            headers = self._build_headers(query_params="", body=body_json)
+
+            async with self._session.post(
+                f"{self.base_url}/api/v1/futures/trade/modify_position",
+                data=body_json,
+                headers=headers
+            ) as response:
+                if response.status == 200:
+                    logger.info(f"Modified {symbol}: TP={tp_price}, SL={sl_price}")
+                    return True
+                else:
+                    error = await response.text()
+                    logger.error(f"Failed to modify position: {error}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Error modifying position: {e}")
+            return False
+
     async def get_balance(self, margin_coin: str = "USDT") -> Balance | None:
         """Get account balance.
 

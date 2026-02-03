@@ -239,20 +239,18 @@ class BotPositionPersistenceChartMixin:
     def _get_editable_signal(self, row: int) -> dict | None:
         """Get signal that can be edited from table row.
 
-        Issue #3: The table shows the last 20 signals in reversed order
+        Issue #3 resolved: The table now shows all signals in reversed order
         (newest at top). We need to map the row index back to _signal_history.
         """
-        # Table shows last 20 signals, reversed (newest at top)
-        recent_signals = self._signal_history[-20:]
+        # Table shows all signals, reversed (newest at top)
+        recent_signals = self._signal_history
         signal_idx = len(recent_signals) - 1 - row
 
         if signal_idx < 0 or signal_idx >= len(recent_signals):
             return None
 
-        # Map back to actual signal_history index
-        actual_idx = len(self._signal_history) - 20 + signal_idx
-        if actual_idx < 0:
-            actual_idx = signal_idx
+        # Map back to actual signal_history index (no 20-row limit)
+        actual_idx = signal_idx
 
         if actual_idx < 0 or actual_idx >= len(self._signal_history):
             return None

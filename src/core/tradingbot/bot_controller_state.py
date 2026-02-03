@@ -130,6 +130,9 @@ class BotControllerState:
         self._daily_pnl: float = 0.0
         self._consecutive_losses: int = 0
 
+        # Live trading throttling (for trailing stop updates)
+        self._last_trailing_update: dict[str, float] = {}  # symbol -> timestamp
+
         # Strategy selection
         # NOTE: Daytrading mode - no fixed daily strategy, only directional bias
         # allow_intraday_switch=True allows strategy to change with market conditions

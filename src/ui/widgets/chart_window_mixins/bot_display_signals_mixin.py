@@ -66,32 +66,20 @@ class BotDisplaySignalsMixin:
     def _update_signals_pnl(self) -> None:
         """Update P&L for all open signals in history.
 
-        Issue #12: Use centralized _get_current_price for consistent price source.
+        Strict Live Price Mode: Only uses live tick prices.
+        No fallback to historical candle data to prevent P&L jumping.
         """
-        # Use centralized price getter (prioritizes live tick, then streaming, then historical)
+        # Use live-only price getter (NO historical fallback)
         current_price = 0.0
-        if hasattr(self, '_get_current_price'):
-            current_price = self._get_current_price()
+        if hasattr(self, '_get_live_current_price'):
+            current_price = self._get_live_current_price()
+        elif hasattr(self, '_last_tick_price') and self._last_tick_price > 0:
+            current_price = self._last_tick_price
+        elif hasattr(self, 'chart_widget') and hasattr(self.chart_widget, '_last_price'):
+            if self.chart_widget._last_price > 0:
+                current_price = float(self.chart_widget._last_price)
 
-        # Fallback if _get_current_price not available (should not happen in mixin composition)
-        if current_price <= 0:
-            # Check chart widget's streaming price first (Issue #12)
-            if hasattr(self, 'chart_widget'):
-                if hasattr(self.chart_widget, '_last_price') and self.chart_widget._last_price > 0:
-                    current_price = float(self.chart_widget._last_price)
-
-            # Then try bot controller features
-            if current_price <= 0 and self._bot_controller and self._bot_controller._last_features:
-                current_price = self._bot_controller._last_features.close
-
-            # Finally fall back to DataFrame
-            if current_price <= 0 and hasattr(self, 'chart_widget'):
-                if hasattr(self.chart_widget, 'data') and self.chart_widget.data is not None:
-                    try:
-                        current_price = float(self.chart_widget.data['close'].iloc[-1])
-                    except Exception:
-                        pass
-
+        # No live price? Skip update entirely - don't mix with historical data
         if current_price <= 0:
             return
 
@@ -220,7 +208,7 @@ class BotDisplaySignalsMixin:
         """
         self._signals_table_updating = True
 
-        recent_signals = list(reversed(self._signal_history[-20:]))
+        recent_signals = list(reversed(self._signal_history))
         self.signals_table.setRowCount(len(recent_signals))
 
         for row, signal in enumerate(recent_signals):

@@ -32,11 +32,13 @@ from .app_resources import _get_startup_icon_path, _load_app_icon
 from .app_startup_window import StartupLogWindow
 from .chart_window_manager import ChartWindowManager
 from .themes import ThemeManager
+from .debug import UIInspectorMixin  # F12 UI Inspector
 
 logger = logging.getLogger(__name__)
 
 
 class TradingApplication(
+    UIInspectorMixin,  # F12 UI Inspector - must be before QMainWindow
     ActionsMixin,
     MenuMixin,
     ToolbarMixin,
@@ -99,20 +101,27 @@ class TradingApplication(
         if splash: splash.set_progress(90, "Starte Hintergrunddienste...")
         self.setup_timers()
 
+        # F12 UI Inspector Debug Overlay
+        self.setup_ui_inspector()
+
         # Initialize services
         asyncio.create_task(self.initialize_services())
 
     def closeEvent(self, event):
         """Handle application close event."""
+        # Cleanup UI Inspector if active
+        if hasattr(self, '_inspect_mode_active') and self._inspect_mode_active:
+            self.toggle_inspect_mode()
+
         # Save settings before closing
         self.save_settings()
-        
+
         # Close all child windows
         if hasattr(self, 'chart_window_manager'):
             # Iterate over a copy of keys since close_window modifies the dict
             for symbol in list(self.chart_window_manager.windows.keys()):
                 self.chart_window_manager.close_window(symbol)
-                
+
         event.accept()
 
     def start_in_chart_mode(self):

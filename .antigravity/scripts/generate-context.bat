@@ -11,19 +11,16 @@ echo ============================================================
 REM Check if repomix is installed
 where repomix >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
-    echo [WARN] repomix not found. Installing...
-    npm install -g repomix
-    if %ERRORLEVEL% NEQ 0 (
-        echo [ERROR] Failed to install repomix. Please run: npm install -g repomix
-        pause
-        exit /b 1
-    )
+    echo [INFO] repomix not installed globally, using npx (no installation needed)
+    set REPOMIX_CMD=npx repomix
+) else (
+    set REPOMIX_CMD=repomix
 )
 
 REM Generate context file
 echo [RUN] Generating codebase context...
 
-repomix ^
+%REPOMIX_CMD% ^
     --ignore "**/*.json" ^
     --ignore "**/*.pyc" ^
     --ignore "**/__pycache__/**" ^

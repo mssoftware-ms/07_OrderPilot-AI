@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from src.database.models import OrderStatus
 from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
 
 logger = logging.getLogger(__name__)
@@ -218,6 +219,21 @@ class BotCallbacksSignalMixin:
                     f"Updated candidate to confirmed: {side} @ {entry_price:.4f}, "
                     f"SL={signal_stop_price:.4f}, invested={invested}, TR%={trailing_pct}, TRA%={trailing_activation}"
                 )
+
+                # Live Trading Integration: Place order at Bitunix if active
+                live_result = await self._place_live_order_if_active(
+                    signal=sig,
+                    entry_price=entry_price,
+                    stop_price=signal_stop_price,
+                    side=side,
+                    quantity=float(sig.get('quantity', 0.01))
+                )
+
+                if live_result:
+                    # Update signal with real entry/SL from broker
+                    sig.update(live_result)
+                    logger.info("Live order placed and signal updated with real entry/SL")
+
                 return True
         return False
 
@@ -749,3 +765,170 @@ class BotCallbacksSignalMixin:
         if new_state.lower() in state_colors:
             color, status = state_colors[new_state.lower()]
             self._update_bot_status(status, color)
+
+    # ==================== Live Trading Integration ====================
+
+    async def _place_live_order_if_active(
+        self,
+        signal: dict,
+        entry_price: float,
+        stop_price: float,
+        side: str,
+        quantity: float
+    ) -> dict | None:
+        """Place live order at Bitunix if live trading is active.
+
+        Args:
+            signal: Signal dictionary
+            entry_price: Expected entry price
+            stop_price: Stop loss price (from table)
+            side: LONG or SHORT
+            quantity: Position size
+
+        Returns:
+            Updated signal with real entry/stop or None if failed
+        """
+        # Check if live trading is active
+        if not self._is_live_trading_active():
+            return None
+
+        try:
+            # Get Bitunix adapter
+            adapter = self._get_bitunix_adapter()
+            if not adapter:
+                logger.warning("Bitunix adapter not available")
+                return None
+
+            # 1. Place entry order (Market Order)
+            from src.core.broker.broker_types import OrderRequest, OrderSide
+            from src.database.models import OrderType as DBOrderType
+            from decimal import Decimal
+
+            order_side = OrderSide.BUY if side.upper() == "LONG" else OrderSide.SELL
+
+            order = OrderRequest(
+                symbol=signal.get('symbol', 'BTCUSDT'),
+                side=order_side,
+                order_type=DBOrderType.MARKET,
+                quantity=Decimal(str(quantity)),
+            )
+
+            logger.info(f"Placing LIVE order: {side} {quantity} @ Market")
+            self._add_ki_log_entry("LIVE", f"Platziere Order: {side} {quantity} @ Market")
+
+            response = await adapter.place_order(order)
+
+            if not response or not response.broker_order_id:
+                logger.error("Failed to place live order")
+                self._add_ki_log_entry("ERROR", "Live Order fehlgeschlagen")
+                return None
+
+            # 2. Wait for fill (poll status)
+            filled_order = await self._wait_for_fill(adapter, response.broker_order_id)
+
+            if not filled_order or filled_order.status != OrderStatus.FILLED:
+                logger.error(f"Order not filled: {filled_order.status if filled_order else 'None'}")
+                self._add_ki_log_entry("ERROR", f"Order nicht gefüllt: {filled_order.status if filled_order else 'None'}")
+                return None
+
+            # 3. Get real entry price
+            real_entry = float(filled_order.average_fill_price)
+            logger.info(f"Order filled at: {real_entry:.4f}")
+            self._add_ki_log_entry("LIVE", f"Order gefüllt @ {real_entry:.4f}")
+
+            # 4. Calculate deviation
+            expected_entry = entry_price
+            deviation_pct = abs((real_entry - expected_entry) / expected_entry) * 100
+
+            # 5. Recalculate SL if deviation > 0.2%
+            final_sl = stop_price
+            if deviation_pct > 0.2:
+                sl_pct = signal.get('initial_sl_pct', 1.0)
+                if side.upper() == "LONG":
+                    final_sl = real_entry * (1 - sl_pct / 100)
+                else:
+                    final_sl = real_entry * (1 + sl_pct / 100)
+
+                logger.info(
+                    f"Entry deviation {deviation_pct:.2f}% > 0.2% "
+                    f"→ SL recalculated: {stop_price:.4f} → {final_sl:.4f}"
+                )
+                self._add_ki_log_entry(
+                    "LIVE",
+                    f"Abweichung {deviation_pct:.2f}% > 0.2% → SL neu: {final_sl:.4f}"
+                )
+
+            # 6. Set SL at Bitunix
+            sl_success = await adapter.modify_position_tp_sl_order(
+                symbol=signal.get('symbol', 'BTCUSDT'),
+                sl_price=Decimal(str(final_sl))
+            )
+
+            if not sl_success:
+                logger.warning("Failed to set SL at Bitunix")
+                self._add_ki_log_entry("WARN", "SL bei Bitunix setzen fehlgeschlagen")
+
+            # 7. Return updated signal
+            return {
+                **signal,
+                'price': real_entry,  # Update entry
+                'stop_price': final_sl,  # Update SL
+                'broker_order_id': response.broker_order_id,
+                'live_trading': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error placing live order: {e}", exc_info=True)
+            self._add_ki_log_entry("ERROR", f"Live Order Fehler: {e}")
+            return None
+
+    async def _wait_for_fill(self, adapter, order_id: str, timeout: int = 30):
+        """Poll order status until filled.
+
+        Args:
+            adapter: Broker adapter
+            order_id: Order ID to poll
+            timeout: Max wait time in seconds
+
+        Returns:
+            OrderResponse if filled, None on timeout
+        """
+        import asyncio
+        from src.database.models import OrderStatus
+
+        start = asyncio.get_event_loop().time()
+
+        while (asyncio.get_event_loop().time() - start) < timeout:
+            try:
+                order = await adapter.get_order_status(order_id)
+                if order.status in [OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED]:
+                    return order
+            except Exception as e:
+                logger.error(f"Error checking order status: {e}")
+
+            await asyncio.sleep(1)  # Poll every 1 second
+
+        logger.warning(f"Order {order_id} fill timeout after {timeout}s")
+        return None
+
+    def _is_live_trading_active(self) -> bool:
+        """Check if live trading is enabled.
+
+        Returns:
+            True if live trading checkbox is checked in Bitunix widget
+        """
+        # Check Bitunix widget for live trading checkbox
+        if hasattr(self, 'bitunix_widget'):
+            # Assume live trading checkbox exists in widget
+            return getattr(self.bitunix_widget, 'live_trading_enabled', False)
+        return False
+
+    def _get_bitunix_adapter(self):
+        """Get Bitunix adapter from UI.
+
+        Returns:
+            BitunixAdapter instance or None
+        """
+        if hasattr(self, 'bitunix_widget') and hasattr(self.bitunix_widget, 'adapter'):
+            return self.bitunix_widget.adapter
+        return None

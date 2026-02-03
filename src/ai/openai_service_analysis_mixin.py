@@ -3,24 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any, TypeVar
 
-from jsonschema import ValidationError as JsonSchemaValidationError
-from jsonschema import validate
 from pydantic import BaseModel
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
-from src.common.logging_setup import log_ai_request
-from src.config.loader import AIConfig
 
 from .openai_models import (
     AlertTriageResult,
     BacktestReview,
-    OpenAIError,
     OrderAnalysis,
     QuotaExceededError,
     RateLimitError,

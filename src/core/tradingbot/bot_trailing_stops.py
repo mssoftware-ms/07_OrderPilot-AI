@@ -274,3 +274,55 @@ class BotTrailingStopsMixin:
                     return new_stop
 
         return None
+
+    # ==================== Live Trading Integration ====================
+
+    async def _update_trailing_stop_live(self, features: FeatureVector) -> None:
+        """Update trailing stop for live trading.
+
+        Called on every bar to check if trailing stop needs updating.
+        Throttles updates to max 1 per minute.
+
+        Args:
+            features: Current features
+        """
+        if not self._position:
+            return
+
+        # Calculate new trailing stop price
+        new_stop_price = self._calculate_trailing_stop(features, self._position)
+
+        if new_stop_price is None:
+            return
+
+        # Throttling: Max 1 update per minute
+        import time
+        last_update = self._last_trailing_update.get(self.symbol, 0)
+        current_time = time.time()
+
+        if (current_time - last_update) < 60:
+            # Skip update if less than 1 minute since last update
+            return
+
+        # Check if live trading adapter with modify capability
+        broker_adapter = getattr(self, '_broker_adapter', None)
+        if broker_adapter and hasattr(broker_adapter, 'modify_position_tp_sl_order'):
+            # Live trading: Send to broker
+            from decimal import Decimal
+
+            success = await broker_adapter.modify_position_tp_sl_order(
+                symbol=self.symbol,
+                sl_price=Decimal(str(new_stop_price))
+            )
+
+            if success:
+                self._position.trailing.current_stop_price = new_stop_price
+                self._last_trailing_update[self.symbol] = current_time
+                self._log_activity("TRAILING", f"Stop updated to {new_stop_price:.4f} (LIVE)")
+            else:
+                self._log_activity("ERROR", "Failed to update trailing stop at broker")
+        else:
+            # Paper trading: Update locally
+            self._position.trailing.current_stop_price = new_stop_price
+            self._last_trailing_update[self.symbol] = current_time
+            self._log_activity("TRAILING", f"Stop updated to {new_stop_price:.4f} (PAPER)")

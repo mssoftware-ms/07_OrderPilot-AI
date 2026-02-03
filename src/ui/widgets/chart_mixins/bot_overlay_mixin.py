@@ -52,6 +52,75 @@ class BotOverlayMixin:
         self._bot_overlay_callbacks: dict[str, Callable] = {}
         logger.info("Bot overlay initialized")
 
+    # ==================== TIMESTAMP UTILITIES ====================
+
+    def _get_timeframe_seconds(self) -> int:
+        """Get current chart timeframe in seconds.
+
+        Converts current_timeframe string ('1m', '5m', '1h', etc.) to seconds.
+        Falls back to 60 seconds (1 minute) if not set or unrecognized.
+
+        Returns:
+            Timeframe duration in seconds
+
+        Examples:
+            '1m' -> 60
+            '5m' -> 300
+            '1h' -> 3600
+            '4h' -> 14400
+        """
+        # Try explicit _current_timeframe_seconds first
+        if hasattr(self, '_current_timeframe_seconds') and self._current_timeframe_seconds:
+            return self._current_timeframe_seconds
+
+        # Get current timeframe string from parent chart
+        timeframe_str = getattr(self.parent, 'current_timeframe', '1m')
+
+        # Mapping of timeframe strings to seconds
+        timeframe_mapping = {
+            '1S': 1,      # 1 second
+            '1m': 60,     # 1 minute
+            '5m': 300,    # 5 minutes
+            '15m': 900,   # 15 minutes
+            '30m': 1800,  # 30 minutes
+            '1h': 3600,   # 1 hour
+            '1H': 3600,   # 1 hour (alternative)
+            '2h': 7200,   # 2 hours
+            '4h': 14400,  # 4 hours
+            '4H': 14400,  # 4 hours (alternative)
+            '1d': 86400,  # 1 day
+            '1D': 86400,  # 1 day (alternative)
+            '1w': 604800, # 1 week
+            '1W': 604800, # 1 week (alternative)
+        }
+
+        return timeframe_mapping.get(timeframe_str, 60)
+
+    def _snap_to_candle_boundary(self, timestamp: int, timeframe_seconds: int = 60) -> int:
+        """Snap timestamp to the previous candle boundary.
+
+        This ensures markers align exactly with candle timestamps,
+        preventing jumps when new candles appear.
+
+        Args:
+            timestamp: Unix timestamp in seconds
+            timeframe_seconds: Candle duration in seconds (default: 60 for 1 minute)
+
+        Returns:
+            Timestamp snapped to the previous candle boundary
+
+        Example:
+            timestamp = 1704067245 (10:30:45)
+            timeframe_seconds = 60 (1 minute)
+            returns 1704067200 (10:30:00)
+        """
+        # Validate timeframe_seconds to prevent division by zero
+        if timeframe_seconds <= 0:
+            logger.warning(f"Invalid timeframe {timeframe_seconds}s, defaulting to 60s")
+            timeframe_seconds = 60
+
+        return (timestamp // timeframe_seconds) * timeframe_seconds
+
     # ==================== MARKERS ====================
 
     def add_bot_marker(
@@ -75,19 +144,23 @@ class BotOverlayMixin:
             text: Optional text to display
             score: Optional score value
         """
-        # Convert to Unix timestamp and apply local timezone offset
-        # CRITICAL: Chart candles have local_offset applied (UTC + offset)
-        # Markers MUST use the same offset to align correctly with candles
-        # Issue #56: Without this offset, markers appear 1 hour off in CET timezone
-        local_offset = get_local_timezone_offset_seconds()
-
+        # Convert timestamp to Unix seconds (NO timezone offset)
+        # Chart candles use raw Unix timestamps from DataFrame index.timestamp()
+        # which already returns correct UTC values - NO offset adjustment needed!
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
-            ts = int(timestamp.timestamp()) + local_offset
+            ts = int(timestamp.timestamp())
         else:
-            # Assume raw Unix timestamp is already in UTC, add offset
-            ts = timestamp + local_offset
+            ts = timestamp
+
+        # Get current timeframe in seconds from chart
+        # This ensures markers snap to the correct candle boundary for all timeframes
+        timeframe_seconds = self._get_timeframe_seconds()
+
+        # Snap to candle boundary to ensure marker stays fixed
+        # This prevents markers from jumping when new candles appear
+        ts = self._snap_to_candle_boundary(ts, timeframe_seconds)
 
         # Issue #13: Check for duplicate markers (same timestamp, type, and side)
         # This prevents markers from being drawn multiple times on chart refresh

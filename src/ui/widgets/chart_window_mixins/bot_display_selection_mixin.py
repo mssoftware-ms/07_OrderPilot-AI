@@ -27,7 +27,7 @@ class BotDisplaySelectionMixin:
         except Exception:
             return None
 
-        recent_signals = list(reversed(self._signal_history[-20:]))
+        recent_signals = list(reversed(self._signal_history))
         if row < 0 or row >= len(recent_signals):
             return None
         return recent_signals[row]

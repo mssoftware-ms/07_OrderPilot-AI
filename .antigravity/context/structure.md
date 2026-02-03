@@ -4,7 +4,7 @@
 
 **Modules:** 952
 **Classes:** 1610
-**Methods:** 7890
+**Methods:** 7893
 
 ---
 
@@ -10577,6 +10577,7 @@
 - `on_load_configs_clicked()` → `None`  *Lädt Engine-Configs und zeigt sie im Config Inspector an.*
 - `on_auto_generate_clicked()` → `None`  *Generiert automatisch Test-Varianten.*
 - `on_indicator_set_changed(index)` → `None`  *Handler für Indikator-Set Auswahl.*
+- *...1 private methods*
 - `__init__(parent)`
 
 ## `src/ui/widgets/bitunix_trading/backtest_tab_logging.py`
@@ -12498,7 +12499,8 @@
 - `init_ui()`  *Initialize the dashboard UI.*
 - `setup_event_handlers()`  *Setup event bus handlers.*
 - `on_order_filled(event)`  *Handle order filled event.*
-- `on_market_connected(event)`  *Handle market connected event.*
+- `on_market_connected(event)`  *Handle market connected event - update connection status.*
+- `on_market_disconnected(event)`  *Handle market disconnected event - update connection status.*
 - `update_balance(balance)`  *Update balance display.*
 - `update_pnl(pnl)`  *Update P&L display.*
 - `update_positions_count(count)`  *Update open positions count.*
@@ -13241,7 +13243,7 @@
 - `is_enabled()` → `bool`  *Gibt zurück ob Benachrichtigungen aktiviert sind.*
 - `get_service()`  *Gibt den Telegram-Service zurück.*
 - `send_trade_notification(message)` → `bool`  *Sendet eine Trade-Benachrichtigung über das UI-Formular.*
-- *...11 private methods*
+- *...12 private methods*
 - `__init__(parent)`
 
 ## `src/ui/widgets/trading_bot_window.py`

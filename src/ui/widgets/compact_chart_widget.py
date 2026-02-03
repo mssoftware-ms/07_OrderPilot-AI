@@ -5,7 +5,6 @@ Provides a small lightweight chart display (max 450px x 250px) with:
 - Volume hidden in compact view, shown in popup
 - Pop-up enlargement functionality
 - Integration with parent ChartWindow data
-- Timeframe selection and Zoom support
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import Qt, QSettings, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGroupBox, QDialog, QSizeGrip, QComboBox
+    QGroupBox, QDialog, QSizeGrip
 )
 
 from src.ui.icons import get_icon
@@ -47,8 +46,6 @@ class CompactChartWidget(QWidget):
         - QtChart with candlesticks
         - Click to enlarge in pop-up
         - Real-time OHLCV data updates
-        - Timeframe selection (1m, 5m, 15m, 1h, 4h, 1d)
-        - Zooming and Scrolling enabled
     """
 
     # Signal emitted when user wants to enlarge chart
@@ -93,7 +90,7 @@ class CompactChartWidget(QWidget):
         group_layout.setContentsMargins(4, 4, 4, 4)
         group_layout.setSpacing(2)
 
-        # Header with symbol, controls and enlarge button
+        # Header with symbol and enlarge button
         header_layout = QHBoxLayout()
         header_layout.setSpacing(4)
 
@@ -101,65 +98,7 @@ class CompactChartWidget(QWidget):
         self._symbol_label.setStyleSheet("font-weight: bold; font-size: 11px;")
         header_layout.addWidget(self._symbol_label)
 
-        self._price_label = QLabel("--")
-        self._price_label.setStyleSheet("font-size: 11px; color: #26a69a;")
-        header_layout.addWidget(self._price_label)
-
         header_layout.addStretch()
-
-        # Timeframe Selector
-        self._tf_combo = QComboBox()
-        self._tf_combo.addItems(["1m", "5m", "15m", "1h", "4h", "1d"])
-        self._tf_combo.setCurrentText(self._current_timeframe)
-        self._tf_combo.setFixedWidth(50)
-        self._tf_combo.setFixedHeight(22)
-        self._tf_combo.setStyleSheet("""
-            QComboBox {
-                font-size: 10px;
-                background-color: #2a2a2a;
-                border: 1px solid #555;
-                border-radius: 3px;
-                color: white;
-                padding-left: 2px;
-            }
-            QComboBox::drop-down { border: none; width: 0px; }
-        """)
-        self._tf_combo.currentTextChanged.connect(self._on_timeframe_changed)
-        header_layout.addWidget(self._tf_combo)
-
-        # Refresh Button
-        self._refresh_btn = QPushButton()
-        self._refresh_btn.setIcon(get_icon("refresh"))
-        self._refresh_btn.setIconSize(QtCore.QSize(16, 16))
-        self._refresh_btn.setFixedSize(26, 22)
-        self._refresh_btn.setToolTip("Chart aktualisieren")
-        self._refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2a2a2a;
-                border: 1px solid #555;
-                border-radius: 3px;
-            }
-            QPushButton:hover { background-color: #3a3a3a; }
-        """)
-        self._refresh_btn.clicked.connect(self._on_refresh_clicked)
-        header_layout.addWidget(self._refresh_btn)
-
-        # Zoom All Button
-        self._zoom_all_btn = QPushButton()
-        self._zoom_all_btn.setIcon(get_icon("zoom_all"))
-        self._zoom_all_btn.setIconSize(QtCore.QSize(16, 16))
-        self._zoom_all_btn.setFixedSize(26, 22)
-        self._zoom_all_btn.setToolTip("Alles zoomen")
-        self._zoom_all_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2a2a2a;
-                border: 1px solid #555;
-                border-radius: 3px;
-            }
-            QPushButton:hover { background-color: #3a3a3a; }
-        """)
-        self._zoom_all_btn.clicked.connect(self._on_zoom_all_clicked)
-        header_layout.addWidget(self._zoom_all_btn)
 
         # Enlarge button
         self._enlarge_btn = QPushButton()
@@ -240,29 +179,6 @@ class CompactChartWidget(QWidget):
         fallback_layout.addStretch()
         layout.addWidget(fallback_widget)
 
-    def _on_timeframe_changed(self, tf: str) -> None:
-        """Handle timeframe change."""
-        self._current_timeframe = tf
-        if self._last_raw_data is not None:
-            self.update_chart_data(self._last_raw_data)
-
-    def _on_zoom_all_clicked(self) -> None:
-        """Handle zoom all click."""
-        if self._chart:
-            try:
-                self._chart.fit()
-            except Exception as e:
-                logger.error(f"Failed to fit chart: {e}")
-
-    def _on_refresh_clicked(self) -> None:
-        """Handle refresh click."""
-        if self._parent_chart:
-            if hasattr(self._parent_chart, 'get_chart_data'):
-                data = self._parent_chart.get_chart_data()
-                if data is not None and not data.empty:
-                    self.update_chart_data(data)
-            elif hasattr(self._parent_chart, 'df'):
-                self.update_chart_data(self._parent_chart.df)
 
     @staticmethod
     def _apply_chart_styling(chart: QtChart, font_size: int, show_volume: bool = True) -> None:
@@ -439,21 +355,13 @@ class CompactChartWidget(QWidget):
 
             QtCore.QTimer.singleShot(120, self.fit_chart)
 
-            if not chart_df.empty and hasattr(self, '_price_label') and self._price_label:
-                latest_price = chart_df.iloc[-1]['close']
-                self._price_label.setText(f"${latest_price:,.2f}")
-
         except Exception as e:
             logger.error(f"Failed to update compact chart: {e}", exc_info=True)
 
     def update_price(self, price: float) -> None:
-        """Update current price display."""
-        if price <= 0:
-            return
-        if hasattr(self, '_price_label') and self._price_label:
-            self._price_label.setText(f"${price:,.2f}")
-        if self._parent_chart and self._last_raw_data is None:
-            self._on_refresh_clicked()
+        """Update current price display (no-op after widget removal)."""
+        # Price label removed - method kept for API compatibility
+        pass
 
     def clear_data(self) -> None:
         """Clear chart data."""
@@ -463,8 +371,6 @@ class CompactChartWidget(QWidget):
                 self._chart.set(empty_df)
             except Exception as e:
                 logger.error(f"Failed to clear compact chart: {e}")
-        if hasattr(self, '_price_label') and self._price_label:
-            self._price_label.setText("--")
         self._last_raw_data = None
 
     def _on_enlarge_clicked(self) -> None:
