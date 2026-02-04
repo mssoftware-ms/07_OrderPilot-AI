@@ -284,6 +284,9 @@ class ChartWindowSetup:
             # Restore Bitunix visibility from settings (created AFTER restoreState, so manual restore needed)
             self._restore_bitunix_visibility()
 
+            # Phase 5: Master/Mirror Integration - Connect dock to TradingBotWindow master widgets
+            self._connect_bitunix_master_mirror()
+
     def _restore_bitunix_visibility(self) -> None:
         """Restore Bitunix widget visibility from settings."""
         if not getattr(self.parent, "_bitunix_widget", None):
@@ -308,6 +311,44 @@ class ChartWindowSetup:
             # Ensure it's hidden if settings say so
             self.parent._bitunix_widget.hide()
             logger.info("   Bitunix widget remains hidden per settings")
+
+    def _connect_bitunix_master_mirror(self) -> None:
+        """Connect Bitunix dock mirror to master widgets in TradingBotWindow.
+
+        Phase 5: Master/Mirror Integration
+
+        This connects:
+        - Mirror API widget (dock) → Master BitunixTradingAPIWidget
+        - Mirror signals table (dock) → Master signals_table (25 columns)
+
+        The master widgets are created on ChartWindow (via BotSignalsEntryMixin and
+        BotSignalsStatusMixin) and contained in the TradingBotWindow panel.
+
+        The connection is made via connect_bitunix_to_master() from BitunixTradingMixin.
+        """
+        # Master widgets are on ChartWindow (self.parent), not TradingBotWindow
+        # They're created by mixins: BotSignalsEntryMixin, BotSignalsStatusMixin
+        master_widget = getattr(self.parent, 'bitunix_trading_api_widget', None)
+        master_table = getattr(self.parent, 'signals_table', None)
+
+        if not master_widget:
+            logger.warning("Phase 5: Master BitunixTradingAPIWidget not found on ChartWindow")
+        if not master_table:
+            logger.warning("Phase 5: Master signals_table not found on ChartWindow")
+
+        # Connect via mixin method (if available)
+        if hasattr(self.parent, 'connect_bitunix_to_master'):
+            self.parent.connect_bitunix_to_master(
+                master_widget=master_widget,
+                master_table=master_table
+            )
+            logger.info("✅ Phase 5: Bitunix Master/Mirror integration complete")
+            if master_widget:
+                logger.info(f"   Master API widget: {master_widget.__class__.__name__}")
+            if master_table:
+                logger.info(f"   Master signals table: {master_table.columnCount()} columns")
+        else:
+            logger.warning("Phase 5: connect_bitunix_to_master not available on parent")
 
     def setup_ai_analysis(self) -> None:
         """Setup the AI Analysis Popup."""

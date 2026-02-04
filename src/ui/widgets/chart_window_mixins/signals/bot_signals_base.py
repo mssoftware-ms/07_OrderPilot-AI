@@ -86,6 +86,10 @@ class BotSignalsBaseMixin:
                 "font-size: 10px; padding: 2px 12px; background-color: #ef5350; color: white; font-weight: bold;"
             )
 
+        # Sync Bitunix dock widget button (Master/Mirror pattern)
+        if hasattr(self, '_bitunix_widget') and self._bitunix_widget:
+            self._bitunix_widget.set_bot_running(running)
+
     def _on_signals_tab_bot_toggle_clicked(self) -> None:
         """Handle Start Bot button click in Trading (Signals) tab.
 

@@ -241,12 +241,12 @@ class BitunixAPIWidgetUI:
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(6)
 
-        # Quantity (Base Asset)
+        # Quantity (Base Asset) - 4 decimal places
         self.quantity_spin = QDoubleSpinBox()
         self.quantity_spin.setFixedWidth(150)
-        self.quantity_spin.setRange(0.001, 10000.0)
-        self.quantity_spin.setDecimals(3)
-        self.quantity_spin.setSingleStep(0.001)
+        self.quantity_spin.setRange(0.0001, 10000.0)
+        self.quantity_spin.setDecimals(4)
+        self.quantity_spin.setSingleStep(0.0001)
         self.quantity_spin.setValue(0.01)
         self.quantity_spin.setSuffix(" BTC")
 

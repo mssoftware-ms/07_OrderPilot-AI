@@ -380,12 +380,21 @@ class BitunixAPIWidgetEvents:
     # ========================================================================
 
     def _update_button_states(self):
-        """Update button enabled states based on adapter and mode."""
-        enabled = (
-            self._adapter is not None
-            and self._current_symbol is not None
-            and self.trade_mode_btn.isChecked()
-        )
+        """Update button enabled states based on adapter and mode.
+
+        Paper mode: Only requires symbol to be set
+        Live mode: Requires adapter connected AND symbol set
+        """
+        is_live_mode = self.trade_mode_btn.isChecked()
+        has_symbol = self._current_symbol is not None
+
+        if is_live_mode:
+            # Live mode: need adapter and symbol
+            enabled = self._adapter is not None and has_symbol
+        else:
+            # Paper mode: only need symbol
+            enabled = has_symbol
+
         self.buy_btn.setEnabled(enabled)
         self.sell_btn.setEnabled(enabled)
 

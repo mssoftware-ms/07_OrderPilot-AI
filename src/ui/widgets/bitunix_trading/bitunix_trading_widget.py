@@ -1,352 +1,612 @@
-"""Bitunix Trading Widget - Main Orchestrator for Bitunix Futures Trading.
+"""Bitunix Trading Widget - Mirror Dock for Bitunix Futures Trading.
 
-Refactored from 1,108 LOC monolith using composition pattern.
+REFACTORED: Now uses BitunixTradingAPIWidget (compact) + SignalsTableMirror
+instead of custom UI components. This widget mirrors the main TradingBotWindow
+interface in a compact dock panel.
 
-Module 4/4 (Main Orchestrator)
-
-Provides order entry, position management, and account information for Bitunix.
-Delegates to specialized helper modules:
-- BitunixTradingUI: UI construction (account, order entry, positions sections)
-- BitunixTradingModeManager: Live/Paper mode switching
-- BitunixTradingOrderHandler: Order entry logic and execution
-- BitunixTradingPositionsManager: Position loading and persistence
+Features:
+    - Mirrors BitunixTradingAPIWidget from TradingBotWindow
+    - Shows compact signals table (11 columns)
+    - Synchronized state via BitunixTradingStateManager
+    - Full trading functionality (not read-only)
 
 Public API:
-- set_adapter(adapter): Set Bitunix adapter
-- set_symbol(symbol): Set trading symbol
-- set_history_manager(manager): Inject history manager
+    - set_master_widget(widget): Connect to master BitunixTradingAPIWidget
+    - set_master_table(table): Connect to master signals table
+    - set_state_manager(manager): Set central state manager
+    - set_symbol(symbol): Set trading symbol
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-import qasync
-from PyQt6.QtCore import Qt, QTimer
+from datetime import datetime, timedelta
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (
     QDockWidget,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QSplitter,
     QLabel,
-    QCheckBox,
-    QTabWidget,
+    QFrame,
+    QTableWidget,
+    QPushButton,
+    QGroupBox,
+    QComboBox,
+    QGridLayout,
 )
 
-from src.core.broker.bitunix_paper_adapter import BitunixPaperAdapter
-from src.ui.widgets.bitunix_trading.bitunix_trading_ui import BitunixTradingUI
-from src.ui.widgets.bitunix_trading.bitunix_trading_mode_manager import BitunixTradingModeManager
-from src.ui.widgets.bitunix_trading.bitunix_trading_order_handler import BitunixTradingOrderHandler
-from src.ui.widgets.bitunix_trading.bitunix_trading_positions_manager import BitunixTradingPositionsManager
-
 if TYPE_CHECKING:
-    from src.core.broker.bitunix_adapter import BitunixAdapter
-    from src.core.market_data.history_provider import HistoryManager
+    from src.ui.widgets.bitunix_trading_api_widget import BitunixTradingAPIWidget
+    from src.ui.widgets.bitunix_trading.bitunix_state_manager import BitunixTradingStateManager
 
 logger = logging.getLogger(__name__)
 
 
 class BitunixTradingWidget(QDockWidget):
-    """Dockable trading widget for Bitunix Futures.
+    """Dockable mirror widget for Bitunix Futures trading.
 
-    Features:
-        - Order entry panel (Market/Limit, Buy/Sell)
-        - Position management table
-        - Account info display (Balance, Margin, PnL)
-        - Live / Paper Trading Switch
+    This widget provides a compact vertical interface that mirrors:
+    1. BitunixTradingAPIWidget (compact layout) - for order entry
+    2. SignalsTableMirror - 11 columns from the main signals table
 
-    Architecture (Composition Pattern):
-    - BitunixTradingUI: UI construction
-    - BitunixTradingModeManager: Mode switching
-    - BitunixTradingOrderHandler: Order logic
-    - BitunixTradingPositionsManager: Position management
-    - BitunixTradingWidget (this): Thin Orchestrator
+    Architecture (Mirror Pattern):
+    - Connects to BitunixTradingStateManager for state synchronization
+    - All orders are coordinated through the state manager
+    - Prevents duplicate order execution
+
+    Signals:
+        visibility_changed: Emitted when dock visibility changes
     """
 
-    def __init__(self, adapter: BitunixAdapter | None = None, parent=None):
-        """Initialize Bitunix trading widget.
+    visibility_changed = pyqtSignal(bool)
+
+    def __init__(
+        self,
+        state_manager: Optional["BitunixTradingStateManager"] = None,
+        parent: QWidget = None
+    ):
+        """Initialize Bitunix trading dock widget.
 
         Args:
-            adapter: Bitunix adapter instance (optional)
+            state_manager: Central state manager for coordination
             parent: Parent widget
         """
         super().__init__("💱 Bitunix Trading", parent)
         self.setObjectName("bitunixTradingDock")
 
-        self.live_adapter = adapter
-        self.paper_adapter = BitunixPaperAdapter()
-        self.adapter = self.paper_adapter  # Default to Paper for safety
-        self._current_symbol = None
-        self.is_paper_mode = True
+        # References
+        self._state_manager = state_manager
+        self._master_widget: Optional["BitunixTradingAPIWidget"] = None
+        self._master_table: Optional[QTableWidget] = None
 
-        # Instantiate helper modules (composition pattern)
-        self.ui_manager = BitunixTradingUI(self)
-        self._mode_manager = BitunixTradingModeManager(self)
-        self._order_handler = BitunixTradingOrderHandler(self)
-        self._positions_manager = BitunixTradingPositionsManager(self)
+        # Child widgets (created in _setup_ui)
+        self._api_widget: Optional["BitunixTradingAPIWidget"] = None
+        self._signals_mirror = None
+
+        # Guard against recursive statistics refresh
+        self._stats_refresh_in_progress = False
+        self._stats_refresh_pending = False
+
+        # Throttle timer for statistics - 200ms debounce (statistics don't need instant updates)
+        self._stats_timer = QTimer(self)
+        self._stats_timer.setSingleShot(True)
+        self._stats_timer.setInterval(200)  # 200ms debounce for stats
+        self._stats_timer.timeout.connect(self._do_refresh_statistics)
 
         self._setup_ui()
-        self._setup_timers()
-        self._mode_manager.update_mode_ui()  # Set initial visual state
-        self._positions_manager.load_positions_from_file()  # Load saved positions on startup
 
-        if self.adapter:
-            self._start_updates()
-
-    def set_history_manager(self, history_manager: HistoryManager):
-        """Inject history manager into paper adapter for price feeds and bot data."""
-        self._history_manager = history_manager
-
-        # Use the new set_history_manager method if available, else direct assignment
-        if hasattr(self.paper_adapter, "set_history_manager"):
-            self.paper_adapter.set_history_manager(history_manager)
-        else:
-            self.paper_adapter.history_manager = history_manager
-
-        # NOTE: bot_tab und backtest_tab wurden in das ChartWindow Trading Bot Panel verschoben
-        # Die History-Manager-Verknüpfung erfolgt dort über panels_mixin.py
+        logger.info("BitunixTradingWidget initialized (Mirror mode)")
 
     def _setup_ui(self) -> None:
-        """Set up the widget UI with tabs for manual trading."""
+        """Set up the widget UI with compact mirror components."""
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(320)
+        # No maximum width - allow user to resize freely
 
+        # Main container
         container = QWidget()
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
 
-        # --- Mode Switch & Banner (above tabs) ---
-        mode_layout = QHBoxLayout()
+        # ─────────────────────────────────────────────────────────────────
+        # SECTION 1: BitunixTradingAPIWidget (compact vertical layout)
+        # ─────────────────────────────────────────────────────────────────
+        self._create_api_widget()
+        if self._api_widget:
+            main_layout.addWidget(self._api_widget)
 
-        self.mode_toggle = QCheckBox("Paper Trading Mode")
-        self.mode_toggle.setChecked(True)
-        self.mode_toggle.toggled.connect(self._mode_manager.toggle_mode)
-        self.mode_toggle.setStyleSheet("""
-            QCheckBox { font-weight: bold; font-size: 14px; }
-            QCheckBox::indicator { width: 18px; height: 18px; }
-        """)
-        mode_layout.addWidget(self.mode_toggle)
-        mode_layout.addStretch()
-        main_layout.addLayout(mode_layout)
+        # Separator
+        main_layout.addWidget(self._create_separator())
 
-        self.mode_banner = QLabel("PAPER TRADING - SIMULATION")
-        self.mode_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mode_banner.setStyleSheet("""
-            background-color: #4CAF50;
-            color: white;
-            font-weight: bold;
-            padding: 8px;
-            border-radius: 4px;
-            font-size: 12px;
-        """)
-        main_layout.addWidget(self.mode_banner)
+        # ─────────────────────────────────────────────────────────────────
+        # SECTION 2: Bot Controls GroupBox (Start/Stop Bot + Status Label)
+        # ─────────────────────────────────────────────────────────────────
+        self._create_bot_controls()
+        main_layout.addWidget(self._bot_controls_group)
 
-        # --- Tab Widget ---
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #333;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                background-color: #2a2a2a;
-                color: #888;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #1a1a2e;
-                color: white;
-            }
-            QTabBar::tab:hover {
-                background-color: #333;
-            }
-        """)
+        # ─────────────────────────────────────────────────────────────────
+        # SECTION 3: Signals Table Mirror (compact 11-column table)
+        # ─────────────────────────────────────────────────────────────────
+        self._create_signals_mirror()
+        if self._signals_mirror:
+            main_layout.addWidget(self._signals_mirror, stretch=1)
 
-        # Tab 0: Manual Trading
-        manual_tab = QWidget()
-        manual_layout = QVBoxLayout(manual_tab)
-        manual_layout.setContentsMargins(4, 8, 4, 4)
-        manual_layout.setSpacing(10)
-
-        # Account info section (delegated to UI manager)
-        manual_layout.addWidget(self.ui_manager.build_account_section())
-
-        # Order entry section (delegated to UI manager)
-        manual_layout.addWidget(self.ui_manager.build_order_entry_section())
-
-        # Positions section (delegated to UI manager)
-        manual_layout.addWidget(self.ui_manager.build_positions_section())
-
-        manual_layout.addStretch()
-        self.tab_widget.addTab(manual_tab, "📝 Manual Trading")
-
-        # NOTE: Bot Trading und Backtesting Tabs wurden in das "Trading Bot" Panel
-        # im ChartWindow verschoben (panels_mixin.py)
-
-        main_layout.addWidget(self.tab_widget)
         self.setWidget(container)
 
-    def _setup_timers(self) -> None:
-        """Set up periodic update timers."""
-        # Update account info every 10 seconds
-        self.account_timer = QTimer()
-        self.account_timer.timeout.connect(self._load_account_info)
-        self.account_timer.setInterval(10000)
+    def _create_api_widget(self) -> None:
+        """Create the compact BitunixTradingAPIWidget."""
+        try:
+            from src.ui.widgets.bitunix_trading_api_widget import BitunixTradingAPIWidget
 
-        # Update positions every 5 seconds
-        self.positions_timer = QTimer()
-        self.positions_timer.timeout.connect(self._load_positions)  # Use asyncSlot wrapper
-        self.positions_timer.setInterval(5000)
+            self._api_widget = BitunixTradingAPIWidget(
+                parent=self,
+                is_mirror=True,
+                state_manager=self._state_manager,
+                compact_layout=True,
+                title="Order Entry"
+            )
+            logger.debug("Created compact BitunixTradingAPIWidget for dock")
 
-    def _start_updates(self) -> None:
-        """Start periodic updates."""
-        if self.adapter:
-            self.account_timer.start()
-            self.positions_timer.start()
-            # Trigger initial load (both are asyncSlot decorated)
-            self._load_account_info()
-            self._load_positions()
+        except Exception as e:
+            logger.error(f"Failed to create API widget: {e}", exc_info=True)
+            # Fallback: show error label
+            self._api_widget = QLabel(f"API Widget Error: {e}")
+            self._api_widget.setStyleSheet("color: red;")
 
-    def _stop_updates(self) -> None:
-        """Stop periodic updates."""
-        self.account_timer.stop()
-        self.positions_timer.stop()
+    def _create_signals_mirror(self) -> None:
+        """Create the signals table mirror widget."""
+        try:
+            from src.ui.widgets.bitunix_trading.signals_table_mirror import (
+                SignalsTableMirrorWidget
+            )
 
-    def set_adapter(self, adapter: BitunixAdapter) -> None:
-        """Set the Bitunix adapter.
+            self._signals_mirror = SignalsTableMirrorWidget(
+                master_table=self._master_table,
+                title="📊 Recent Signals",
+                parent=self
+            )
+            logger.debug("Created SignalsTableMirror for dock")
+
+        except Exception as e:
+            logger.error(f"Failed to create signals mirror: {e}", exc_info=True)
+            # Fallback: show error label
+            self._signals_mirror = QLabel(f"Signals Mirror Error: {e}")
+            self._signals_mirror.setStyleSheet("color: red;")
+
+    def _create_separator(self) -> QFrame:
+        """Create a horizontal separator line."""
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3a3a3a;")
+        line.setFixedHeight(1)
+        return line
+
+    def _create_bot_controls(self) -> None:
+        """Create bot controls GroupBox with Start/Stop button, status, and statistics."""
+        self._bot_controls_group = QGroupBox("Trading Bot")
+        main_layout = QVBoxLayout(self._bot_controls_group)
+        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(6)
+
+        # ── Row 1: Status + Start/Stop Button ──
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        self._bot_status_label = QLabel("Status: STOPPED")
+        self._bot_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+        top_row.addWidget(self._bot_status_label)
+
+        top_row.addStretch()
+
+        self._start_bot_btn = QPushButton("▶ Start Bot")
+        self._start_bot_btn.setFixedHeight(24)
+        self._start_bot_btn.setStyleSheet(
+            "font-size: 10px; padding: 2px 12px; background-color: #ef5350; "
+            "color: white; font-weight: bold;"
+        )
+        self._start_bot_btn.setToolTip(
+            "Startet/Stoppt den Trading Bot\n"
+            "Grün = Bot läuft\n"
+            "Rot = Bot gestoppt"
+        )
+        self._start_bot_btn.clicked.connect(self._on_start_bot_clicked)
+        top_row.addWidget(self._start_bot_btn)
+
+        main_layout.addLayout(top_row)
+
+        # ── Row 2: Time Filter + P&L Stats ──
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(8)
+
+        # Time filter combo
+        filter_label = QLabel("Zeitraum:")
+        filter_label.setStyleSheet("color: #888; font-size: 10px;")
+        stats_row.addWidget(filter_label)
+
+        self._time_filter_combo = QComboBox()
+        self._time_filter_combo.addItems(["Tag", "Woche", "Monat", "Kpl"])
+        self._time_filter_combo.setCurrentText("Kpl")
+        self._time_filter_combo.setFixedWidth(70)
+        self._time_filter_combo.setStyleSheet("font-size: 10px;")
+        self._time_filter_combo.currentTextChanged.connect(self._on_time_filter_changed)
+        stats_row.addWidget(self._time_filter_combo)
+
+        stats_row.addSpacing(10)
+
+        # P&L % label
+        self._pnl_pct_label = QLabel("P&L: 0.00%")
+        self._pnl_pct_label.setStyleSheet("font-weight: bold; color: #9e9e9e; font-size: 11px;")
+        stats_row.addWidget(self._pnl_pct_label)
+
+        stats_row.addSpacing(10)
+
+        # P&L USDT label
+        self._pnl_usdt_label = QLabel("0.00 USDT")
+        self._pnl_usdt_label.setStyleSheet("font-weight: bold; color: #9e9e9e; font-size: 11px;")
+        stats_row.addWidget(self._pnl_usdt_label)
+
+        stats_row.addStretch()
+        main_layout.addLayout(stats_row)
+
+        # ── Row 3: Top Strategy ──
+        top_row = QHBoxLayout()
+        top_row.setSpacing(4)
+
+        top_label = QLabel("Top:")
+        top_label.setStyleSheet("color: #26a69a; font-size: 10px; font-weight: bold;")
+        top_row.addWidget(top_label)
+
+        self._top_strategies_label = QLabel("-")
+        self._top_strategies_label.setStyleSheet("color: #26a69a; font-size: 10px;")
+        top_row.addWidget(self._top_strategies_label)
+
+        top_row.addStretch()
+        main_layout.addLayout(top_row)
+
+        # ── Row 4: Worst Strategy ──
+        worst_row = QHBoxLayout()
+        worst_row.setSpacing(4)
+
+        worst_label = QLabel("Worst:")
+        worst_label.setStyleSheet("color: #ef5350; font-size: 10px; font-weight: bold;")
+        worst_row.addWidget(worst_label)
+
+        self._worst_strategies_label = QLabel("-")
+        self._worst_strategies_label.setStyleSheet("color: #ef5350; font-size: 10px;")
+        worst_row.addWidget(self._worst_strategies_label)
+
+        worst_row.addStretch()
+        main_layout.addLayout(worst_row)
+
+    def _on_time_filter_changed(self, filter_text: str) -> None:
+        """Handle time filter change - recalculate statistics."""
+        self._refresh_statistics()
+
+    def _refresh_statistics(self) -> None:
+        """Schedule throttled statistics refresh from master signals table."""
+        if not self._master_table:
+            return
+
+        # Guard against recursive refresh
+        if self._stats_refresh_in_progress:
+            return
+
+        # Use timer-based debounce - don't refresh immediately
+        self._stats_refresh_pending = True
+        if not self._stats_timer.isActive():
+            self._stats_timer.start()
+
+    def _do_refresh_statistics(self) -> None:
+        """Internal statistics refresh (called by debounce timer)."""
+        if not self._master_table:
+            return
+
+        if self._stats_refresh_in_progress:
+            # Reschedule if already running
+            self._stats_timer.start()
+            return
+
+        self._stats_refresh_in_progress = True
+        self._stats_refresh_pending = False
+
+        try:
+            self._calculate_statistics()
+        finally:
+            self._stats_refresh_in_progress = False
+
+    def _calculate_statistics(self) -> None:
+        """Calculate and display statistics from master table."""
+        filter_text = self._time_filter_combo.currentText()
+        now = datetime.now()
+
+        # Determine cutoff date based on filter
+        if filter_text == "Tag":
+            cutoff = now - timedelta(days=1)
+        elif filter_text == "Woche":
+            cutoff = now - timedelta(weeks=1)
+        elif filter_text == "Monat":
+            cutoff = now - timedelta(days=30)
+        else:  # "Kpl" - complete
+            cutoff = None
+
+        # Collect data from master table
+        # Master columns: 0=Time, 2=Strategy, 12=P&L%, 13=P&L USDT
+        total_pnl_pct = 0.0
+        total_pnl_usdt = 0.0
+        strategy_pnl_pct: dict[str, float] = {}  # strategy -> total P&L %
+        valid_rows = 0
+
+        for row in range(self._master_table.rowCount()):
+            # Check time filter
+            if cutoff:
+                time_item = self._master_table.item(row, 0)
+                if time_item:
+                    try:
+                        # Parse time - try common formats
+                        time_str = time_item.text()
+                        row_time = None
+                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"]:
+                            try:
+                                row_time = datetime.strptime(time_str, fmt)
+                                break
+                            except ValueError:
+                                continue
+                        if row_time and row_time < cutoff:
+                            continue  # Skip rows outside time range
+                    except Exception:
+                        pass  # Include row if time parsing fails
+
+            # Get P&L % (column 12)
+            pnl_pct = 0.0
+            pnl_pct_item = self._master_table.item(row, 12)
+            if pnl_pct_item:
+                try:
+                    pnl_pct_text = pnl_pct_item.text().replace("%", "").replace(",", ".").strip()
+                    if pnl_pct_text and pnl_pct_text != "-":
+                        pnl_pct = float(pnl_pct_text)
+                        total_pnl_pct += pnl_pct
+                except (ValueError, AttributeError):
+                    pass
+
+            # Get P&L USDT (column 13)
+            pnl_usdt_item = self._master_table.item(row, 13)
+            if pnl_usdt_item:
+                try:
+                    pnl_text = pnl_usdt_item.text().replace("USDT", "").replace(",", ".").strip()
+                    if pnl_text and pnl_text != "-":
+                        total_pnl_usdt += float(pnl_text)
+                except (ValueError, AttributeError):
+                    pass
+
+            # Get Strategy (column 2) for ranking by P&L %
+            strategy_item = self._master_table.item(row, 2)
+            if strategy_item and pnl_pct != 0:
+                strategy_name = strategy_item.text().strip()
+                if strategy_name and strategy_name != "-":
+                    strategy_pnl_pct[strategy_name] = strategy_pnl_pct.get(strategy_name, 0.0) + pnl_pct
+
+            valid_rows += 1
+
+        # Update P&L labels
+        pnl_pct_color = "#26a69a" if total_pnl_pct >= 0 else "#ef5350"
+        pnl_usdt_color = "#26a69a" if total_pnl_usdt >= 0 else "#ef5350"
+
+        self._pnl_pct_label.setText(f"P&L: {total_pnl_pct:+.2f}%")
+        self._pnl_pct_label.setStyleSheet(f"font-weight: bold; color: {pnl_pct_color}; font-size: 11px;")
+
+        self._pnl_usdt_label.setText(f"{total_pnl_usdt:+.2f} USDT")
+        self._pnl_usdt_label.setStyleSheet(f"font-weight: bold; color: {pnl_usdt_color}; font-size: 11px;")
+
+        # Update strategy rankings (Top 1 and Worst 1 with P&L %)
+        if strategy_pnl_pct:
+            sorted_strategies = sorted(strategy_pnl_pct.items(), key=lambda x: x[1], reverse=True)
+
+            # Top (best performer)
+            if sorted_strategies:
+                top_name, top_pct = sorted_strategies[0]
+                self._top_strategies_label.setText(f"{top_name} {top_pct:+.2f}%")
+            else:
+                self._top_strategies_label.setText("-")
+
+            # Worst (worst performer)
+            if sorted_strategies:
+                worst_name, worst_pct = sorted_strategies[-1]
+                # Only show if it's actually negative or different from top
+                if worst_pct < 0 or len(sorted_strategies) > 1:
+                    self._worst_strategies_label.setText(f"{worst_name} {worst_pct:+.2f}%")
+                else:
+                    self._worst_strategies_label.setText("-")
+            else:
+                self._worst_strategies_label.setText("-")
+        else:
+            self._top_strategies_label.setText("-")
+            self._worst_strategies_label.setText("-")
+
+    def _on_start_bot_clicked(self) -> None:
+        """Handle Start/Stop Bot button click - delegates to master."""
+        # Find the ChartWindow (parent of dock) and call its bot toggle
+        parent = self.parent()
+        if parent and hasattr(parent, '_on_signals_tab_bot_toggle_clicked'):
+            parent._on_signals_tab_bot_toggle_clicked()
+        else:
+            logger.warning("Cannot find _on_signals_tab_bot_toggle_clicked on parent")
+
+    def _update_bot_button_state(self, running: bool) -> None:
+        """Update the bot button appearance based on running state.
 
         Args:
-            adapter: Bitunix adapter instance
+            running: True if bot is running (green), False if stopped (red)
         """
-        self.adapter = adapter
-        self._order_handler._update_button_states()
-        self._start_updates()
+        if running:
+            self._start_bot_btn.setText("⏹ Stop Bot")
+            self._start_bot_btn.setStyleSheet(
+                "font-size: 10px; padding: 2px 12px; background-color: #26a69a; "
+                "color: white; font-weight: bold;"
+            )
+            self._bot_status_label.setText("Status: RUNNING")
+            self._bot_status_label.setStyleSheet("font-weight: bold; color: #26a69a;")
+        else:
+            self._start_bot_btn.setText("▶ Start Bot")
+            self._start_bot_btn.setStyleSheet(
+                "font-size: 10px; padding: 2px 12px; background-color: #ef5350; "
+                "color: white; font-weight: bold;"
+            )
+            self._bot_status_label.setText("Status: STOPPED")
+            self._bot_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Public API
+    # ─────────────────────────────────────────────────────────────────────
+
+    def set_state_manager(self, state_manager: "BitunixTradingStateManager") -> None:
+        """Set the central state manager for coordination.
+
+        Args:
+            state_manager: BitunixTradingStateManager instance
+        """
+        self._state_manager = state_manager
+
+        # Update API widget if it exists
+        if self._api_widget and hasattr(self._api_widget, 'setup_as_mirror'):
+            self._api_widget.setup_as_mirror(
+                master_widget=self._master_widget,
+                state_manager=state_manager,
+                readonly=False
+            )
+
+        logger.info("State manager set for BitunixTradingWidget")
+
+    def set_master_widget(self, master_widget: "BitunixTradingAPIWidget") -> None:
+        """Connect to the master BitunixTradingAPIWidget for synchronization.
+
+        Args:
+            master_widget: The master widget in TradingBotWindow
+        """
+        self._master_widget = master_widget
+
+        # Connect signals for direct synchronization (backup to state manager)
+        if master_widget:
+            if hasattr(master_widget, 'order_placed'):
+                master_widget.order_placed.connect(self._on_master_order_placed)
+
+        logger.info("Master widget connected to BitunixTradingWidget")
+
+    def set_master_table(self, master_table: QTableWidget) -> None:
+        """Connect to the master signals table for mirroring.
+
+        Args:
+            master_table: The main signals table (25 columns)
+        """
+        self._master_table = master_table
+
+        # Update signals mirror
+        if self._signals_mirror and hasattr(self._signals_mirror, 'set_master_table'):
+            self._signals_mirror.set_master_table(master_table)
+
+        # Connect to model signals for auto-refresh statistics
+        if master_table:
+            model = master_table.model()
+            if model:
+                model.dataChanged.connect(self._on_table_data_changed)
+                model.rowsInserted.connect(self._on_table_data_changed)
+                model.rowsRemoved.connect(self._on_table_data_changed)
+
+        # Initial statistics refresh
+        self._refresh_statistics()
+
+        logger.info("Master signals table connected to BitunixTradingWidget")
 
     def set_symbol(self, symbol: str) -> None:
         """Set the current trading symbol.
 
         Args:
-            symbol: Trading symbol (e.g. "BTCUSDT")
+            symbol: Trading symbol (e.g., "BTCUSDT")
         """
-        self._current_symbol = symbol
-        self.symbol_label.setText(symbol)
-        logger.info(f"Bitunix trading symbol set to: {symbol}")
-        # Enable order buttons as soon as we have a symbol
-        self._order_handler._update_button_states()
+        if self._api_widget and hasattr(self._api_widget, 'set_symbol'):
+            self._api_widget.set_symbol(symbol)
 
-    def _reset_paper_account(self) -> None:
-        """Reset paper trading account.
+        logger.debug(f"Symbol set to {symbol}")
 
-        Delegates to BitunixTradingModeManager.reset_paper_account().
-        """
-        if hasattr(self, '_mode_manager') and self._mode_manager is not None:
-            self._mode_manager.reset_paper_account()
-
-    def _on_order_type_changed(self, order_type: str) -> None:
-        """Handle order type change event.
-
-        Delegates to BitunixTradingOrderHandler.on_order_type_changed().
+    def set_price(self, price: float) -> None:
+        """Update the current price display.
 
         Args:
-            order_type: Selected order type ("Market" or "Limit")
+            price: Current market price
         """
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            self._order_handler.on_order_type_changed(order_type)
+        if self._api_widget and hasattr(self._api_widget, 'set_price'):
+            self._api_widget.set_price(price)
 
-    def _on_quantity_changed(self, value: float) -> None:
-        """Handle quantity change event. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            self._order_handler.on_quantity_changed(value)
+    def set_adapter(self, adapter) -> None:
+        """Set the trading adapter.
 
-    def _on_price_changed(self, value: float) -> None:
-        """Handle price change event. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            self._order_handler.on_price_changed(value)
+        Args:
+            adapter: BitunixAdapter or BitunixPaperAdapter
+        """
+        if self._api_widget and hasattr(self._api_widget, 'set_adapter'):
+            self._api_widget.set_adapter(adapter)
 
-    def _on_investment_changed(self, value: float) -> None:
-        """Handle investment change event. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            self._order_handler.on_investment_changed(value)
+    def set_bot_running(self, running: bool) -> None:
+        """Update bot button and status label to reflect running state.
 
-    def _on_leverage_changed(self, value: int) -> None:
-        """Handle leverage change event. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            self._order_handler.on_leverage_changed(value)
+        Called by ChartWindow when bot state changes to keep dock in sync.
 
-    @qasync.asyncSlot()
-    async def _on_buy_clicked(self) -> None:
-        """Handle buy button click. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            await self._order_handler.on_buy_clicked()
+        Args:
+            running: True if bot is running, False if stopped
+        """
+        self._update_bot_button_state(running)
 
-    @qasync.asyncSlot()
-    async def _on_sell_clicked(self) -> None:
-        """Handle sell button click. Delegates to order handler."""
-        if hasattr(self, '_order_handler') and self._order_handler is not None:
-            await self._order_handler.on_sell_clicked()
+    def refresh_statistics(self) -> None:
+        """Public method to refresh statistics display."""
+        self._refresh_statistics()
 
-    @qasync.asyncSlot()
-    async def _load_positions(self) -> None:
-        """Load positions. Delegates to positions manager."""
-        if hasattr(self, '_positions_manager') and self._positions_manager is not None:
-            await self._positions_manager._load_positions()
+    # ─────────────────────────────────────────────────────────────────────
+    # Signal Handlers
+    # ─────────────────────────────────────────────────────────────────────
 
-    def _delete_selected_row(self) -> None:
-        """Delete selected position row. Delegates to positions manager."""
-        if hasattr(self, '_positions_manager') and self._positions_manager is not None:
-            self._positions_manager.delete_selected_row()
+    def _on_table_data_changed(self, *args) -> None:
+        """Handle master table data changes - refresh statistics."""
+        self._refresh_statistics()
 
-    def _on_tick_price_updated(self, price: float) -> None:
-        """Handle real-time tick price update from chart. Delegates to positions manager."""
-        if hasattr(self, '_positions_manager') and self._positions_manager is not None:
-            self._positions_manager.on_tick_price_updated(price)
+    def _on_master_order_placed(self, order_id: str) -> None:
+        """Handle order placed in master widget."""
+        logger.debug(f"Master order placed: {order_id}")
+        # Could show notification or update UI
 
-    @qasync.asyncSlot()
-    async def _load_account_info(self) -> None:
-        """Load and display account information."""
-        if not self.adapter:
-            return
+    # ─────────────────────────────────────────────────────────────────────
+    # Lifecycle
+    # ─────────────────────────────────────────────────────────────────────
 
-        # Ensure connection is established
-        if not self.adapter.connected:
-            try:
-                await self.adapter.connect()
-            except Exception as e:
-                # Stop timers on persistent auth failure to avoid UI stalls
-                if "AUTH_FAILED" in str(e):
-                    logger.error(f"Bitunix auth failed, stopping Bitunix timers: {e}")
-                    self._stop_updates()
-                else:
-                    logger.error(f"Failed to connect to Bitunix: {e}")
-                return
+    def showEvent(self, event) -> None:
+        """Handle show event."""
+        super().showEvent(event)
+        self.visibility_changed.emit(True)
 
-        try:
-            balance = await self.adapter.get_balance()
-            if balance:
-                self.balance_label.setText(f"{balance.cash:.2f} USDT")
-                self.margin_label.setText(f"{balance.margin_available:.2f} USDT")
+        # Refresh signals mirror when shown
+        if self._signals_mirror and hasattr(self._signals_mirror, 'table'):
+            self._signals_mirror.table.refresh()
 
-                # Update PnL with color
-                pnl_value = float(balance.daily_pnl)
-                pnl_color = "#4CAF50" if pnl_value >= 0 else "#f44336"
-                pnl_sign = "+" if pnl_value >= 0 else ""
-                self.pnl_label.setText(f"{pnl_sign}{pnl_value:.2f} USDT")
-                self.pnl_label.setStyleSheet(f"color: {pnl_color}; font-weight: bold;")
+        # Refresh statistics when shown
+        self._refresh_statistics()
 
-        except Exception as e:
-            logger.error(f"Failed to load account info: {e}")
+    def hideEvent(self, event) -> None:
+        """Handle hide event."""
+        super().hideEvent(event)
+        self.visibility_changed.emit(False)
 
     def closeEvent(self, event) -> None:
-        """Handle widget close event."""
-        self._positions_manager.save_positions_to_file()  # Save positions before closing
-        self._stop_updates()
+        """Handle close event."""
+        # Clean up mirror connections
+        if self._api_widget and hasattr(self._api_widget, 'cleanup_mirror'):
+            self._api_widget.cleanup_mirror()
+
         super().closeEvent(event)
 
 
-# Re-export für backward compatibility
+# Backward compatibility exports
 __all__ = ["BitunixTradingWidget"]

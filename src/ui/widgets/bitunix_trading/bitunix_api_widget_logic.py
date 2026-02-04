@@ -35,9 +35,17 @@ class BitunixAPIWidgetLogic:
     async def _place_order(self, side: OrderSide):
         """Place order with current settings.
 
+        In mirror mode, delegates to state manager for coordinated execution.
+        In master/standalone mode, executes directly via adapter.
+
         Args:
             side: OrderSide.BUY or OrderSide.SELL
         """
+        # Check if we should delegate to state manager (mirror mode)
+        if getattr(self, '_is_mirror', False) and hasattr(self, '_state_manager') and self._state_manager:
+            await self._place_order_via_state_manager(side)
+            return
+
         if not self._adapter:
             QMessageBox.warning(self, "No Adapter", "No trading adapter connected!")
             return
@@ -268,3 +276,82 @@ class BitunixAPIWidgetLogic:
             logger.error(f"Adapter disconnect failed: {exc}")
             self.adapter_status_label.setText("error")
             self.adapter_status_label.setStyleSheet("color: #f44336; font-size: 10px;")
+
+    # ========================================================================
+    # MIRROR MODE: ORDER DELEGATION
+    # ========================================================================
+
+    async def _place_order_via_state_manager(self, side: OrderSide) -> None:
+        """Place order via state manager (used in mirror mode).
+
+        This method delegates order execution to the central state manager,
+        which coordinates with all registered widgets and prevents duplicates.
+
+        Args:
+            side: OrderSide.BUY or OrderSide.SELL
+        """
+        if not hasattr(self, '_state_manager') or not self._state_manager:
+            QMessageBox.warning(self, "No State Manager", "Mirror mode requires state manager!")
+            return
+
+        # Collect order parameters from UI
+        order_type_label = "LIMIT" if self.limit_btn.isChecked() else "MARKET"
+
+        order_params = {
+            "symbol": self._current_symbol,
+            "side": side.name,  # "BUY" or "SELL"
+            "order_type": order_type_label,
+            "quantity": self.quantity_spin.value(),
+            "leverage": self.leverage_spin.value(),
+            "limit_price": self.limit_price_spin.value() if order_type_label == "LIMIT" else None,
+        }
+
+        # Add TP/SL if enabled
+        if hasattr(self, 'tp_cb') and self.tp_cb.isChecked():
+            order_params["take_profit_percent"] = self.tp_spin.value()
+        if hasattr(self, 'sl_cb') and self.sl_cb.isChecked():
+            order_params["stop_loss_percent"] = self.sl_spin.value()
+
+        # Confirm order
+        action = "BUY" if side == OrderSide.BUY else "SELL"
+        direction = self._get_direction()
+        price_line = (
+            f"Limit Price: {order_params['limit_price']:.2f} USDT"
+            if order_type_label == "LIMIT"
+            else f"Est. Price: {self._last_price:.2f} USDT"
+        )
+
+        confirm_msg = (
+            f"Confirm {action} Order (via State Manager)\n\n"
+            f"Symbol: {self._current_symbol}\n"
+            f"Direction: {direction}\n"
+            f"Quantity: {order_params['quantity']:.3f}\n"
+            f"Leverage: {order_params['leverage']}x\n"
+            f"{price_line}"
+        )
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Order",
+            confirm_msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Delegate to state manager
+        try:
+            success, message = await self._state_manager.request_order(
+                order_params=order_params,
+                source_widget=self
+            )
+
+            if success:
+                QMessageBox.information(self, "Order Placed", message)
+            else:
+                QMessageBox.warning(self, "Order Failed", message)
+
+        except Exception as e:
+            logger.error(f"Order delegation failed: {e}", exc_info=True)
+            QMessageBox.critical(self, "Order Error", f"Failed to delegate order:\n\n{str(e)}")

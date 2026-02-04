@@ -67,7 +67,7 @@ class QuantityUpdater(BaseColumnUpdater):
         leverage = context.get("leverage", 1.0)
         entry_price = signal.get("price", 0)
 
-        text = f"{quantity:.6f}" if quantity > 0 else "-"
+        text = f"{quantity:.4f}" if quantity > 0 else "-"
         item = QTableWidgetItem(text)
         item.setForeground(QColor("#cfd8dc"))
         item.setToolTip(
@@ -75,7 +75,7 @@ class QuantityUpdater(BaseColumnUpdater):
             f"Invested: {invested:.2f} USDT\n"
             f"Hebel: {leverage:.0f}x\n"
             f"Entry: {entry_price:.2f}\n"
-            f"Berechnung: ({invested:.2f} × {leverage:.0f}) / {entry_price:.2f} = {quantity:.6f}"
+            f"Berechnung: ({invested:.2f} × {leverage:.0f}) / {entry_price:.2f} = {quantity:.4f}"
         )
 
         table.setItem(row, column, item)

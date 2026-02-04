@@ -2,12 +2,15 @@
 
 Provides seamless integration of the Bitunix trading widget into chart windows
 for crypto symbols only.
+
+REFACTORED: Now uses BitunixTradingStateManager for coordinated state management
+between the main TradingBotWindow and the dock widget.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from PyQt6.QtCore import Qt
 
@@ -17,12 +20,19 @@ from src.ui.mixins.trading_mixin_base import TradingMixinBase
 if TYPE_CHECKING:
     from src.ui.widgets.embedded_tradingview_chart import EmbeddedTradingViewChart
     from src.core.broker.bitunix_adapter import BitunixAdapter
+    from src.ui.widgets.bitunix_trading.bitunix_state_manager import BitunixTradingStateManager
 
 logger = logging.getLogger(__name__)
 
 
 class BitunixTradingMixin(TradingMixinBase):
     """Mixin that adds Bitunix trading functionality to a window.
+
+    Uses the Master/Mirror pattern:
+    - Master: BitunixTradingAPIWidget in TradingBotWindow
+    - Mirror: BitunixTradingWidget (dock) with compact layout
+
+    Both are coordinated via BitunixTradingStateManager.
 
     Usage:
         class ChartWindow(QMainWindow, BitunixTradingMixin):
@@ -33,6 +43,7 @@ class BitunixTradingMixin(TradingMixinBase):
 
     _bitunix_widget: Any = None
     _bitunix_adapter: Any = None
+    _bitunix_state_manager: Optional["BitunixTradingStateManager"] = None
 
     def setup_bitunix_trading(
         self,
@@ -40,6 +51,10 @@ class BitunixTradingMixin(TradingMixinBase):
         adapter: "BitunixAdapter | None" = None,
     ) -> bool:
         """Set up the Bitunix trading functionality.
+
+        Creates a BitunixTradingWidget (dock) that mirrors the main
+        BitunixTradingAPIWidget in TradingBotWindow. Both are coordinated
+        via BitunixTradingStateManager.
 
         Args:
             chart_widget: The chart widget to trade from
@@ -51,8 +66,9 @@ class BitunixTradingMixin(TradingMixinBase):
         try:
             # Import here to avoid circular imports
             from src.ui.widgets.bitunix_trading.bitunix_trading_widget import BitunixTradingWidget
+            from src.ui.widgets.bitunix_trading.bitunix_state_manager import BitunixTradingStateManager
 
-            logger.info("Setting up Bitunix trading...")
+            logger.info("Setting up Bitunix trading (Mirror pattern)...")
             logger.info(
                 "Bitunix setup: chart_widget has bitunix_trading_button=%s",
                 hasattr(chart_widget, "bitunix_trading_button"),
@@ -61,22 +77,25 @@ class BitunixTradingMixin(TradingMixinBase):
             # Get or create adapter
             adapter = self._resolve_bitunix_adapter(adapter)
 
-            # Create trading widget
+            # Create state manager for coordinated trading
+            self._bitunix_state_manager = BitunixTradingStateManager(parent=self)
+
+            # Create trading widget (now uses state manager, not adapter directly)
             self._bitunix_widget = BitunixTradingWidget(
-                adapter=adapter,
+                state_manager=self._bitunix_state_manager,
                 parent=self,  # type: ignore
             )
 
-            # Connect chart's real-time price signal to trading widget
-            if hasattr(chart_widget, 'tick_price_updated'):
-                chart_widget.tick_price_updated.connect(
-                    self._bitunix_widget._on_tick_price_updated
-                )
-                logger.debug("Connected chart tick_price_updated to trading widget")
+            # Set adapter on the dock widget
+            if adapter:
+                self._bitunix_widget.set_adapter(adapter)
 
-            # Inject HistoryManager for Paper Trading
-            if hasattr(chart_widget, 'history_manager') and chart_widget.history_manager:
-                self._bitunix_widget.set_history_manager(chart_widget.history_manager)
+            # Connect chart's real-time price signal to state manager only
+            # State manager propagates to all widgets via price_updated signal
+            # (Avoids duplicate set_price calls - widget already connected via mirror mixin)
+            if hasattr(chart_widget, 'tick_price_updated'):
+                chart_widget.tick_price_updated.connect(self._bitunix_state_manager.set_price)
+                logger.debug("Connected chart tick_price_updated to state manager (propagates to widgets)")
 
             # Set initial symbol if crypto
             if hasattr(chart_widget, 'current_symbol'):
@@ -355,31 +374,50 @@ class BitunixTradingMixin(TradingMixinBase):
         """Get the Bitunix adapter."""
         return self._bitunix_adapter
 
+    @property
+    def bitunix_state_manager(self) -> Optional["BitunixTradingStateManager"]:
+        """Get the Bitunix state manager."""
+        return self._bitunix_state_manager
+
+    def connect_bitunix_to_master(
+        self,
+        master_widget: Any,
+        master_table: Any
+    ) -> None:
+        """Connect the dock widget to master components in TradingBotWindow.
+
+        Args:
+            master_widget: The master BitunixTradingAPIWidget
+            master_table: The master signals table (25 columns)
+        """
+        if self._bitunix_widget:
+            self._bitunix_widget.set_master_widget(master_widget)
+            self._bitunix_widget.set_master_table(master_table)
+
+            # Also configure state manager with master
+            if self._bitunix_state_manager and master_widget:
+                self._bitunix_state_manager.register_widget(master_widget, is_master=True)
+
+            logger.info("Bitunix dock connected to master components")
+
     def cleanup_bitunix_trading(self) -> None:
         """Clean up Bitunix resources.
 
         Call this when closing the window.
-        Issue #20: Ensures trading bot positions are saved before shutdown.
         """
         import asyncio
 
-        # First, save any active bot positions (Issue #20)
-        if self._bitunix_widget:
-            # Get bot_tab and call its cleanup method to save positions
-            bot_tab = getattr(self._bitunix_widget, 'bot_tab', None)
-            if bot_tab and hasattr(bot_tab, 'cleanup'):
-                logger.info("Saving trading bot positions before cleanup...")
-                bot_tab.cleanup()
+        # Clean up state manager
+        if self._bitunix_state_manager:
+            self._bitunix_state_manager.reset()
+            self._bitunix_state_manager = None
 
-            # Also save manual positions from the trading widget
-            if hasattr(self._bitunix_widget, '_save_positions_to_file'):
-                logger.info("Saving manual positions before cleanup...")
-                self._bitunix_widget._save_positions_to_file()
-
+        # Disconnect adapter
         if self._bitunix_adapter:
             # Schedule disconnect task without blocking
             asyncio.create_task(self._bitunix_adapter.disconnect())
 
+        # Close widget
         if self._bitunix_widget:
             self._bitunix_widget.close()
 

@@ -15,7 +15,7 @@ broker:
 database:
   engine: postgresql
   host: localhost
-  port: 5432
+  port: 5433
   database: orderpilot
   username: orderpilot
   password: orderpilot
@@ -37,7 +37,7 @@ trading:
   max_open_positions: 10
   default_stop_loss_pct: 0.02
   default_take_profit_pct: 0.05
-  allow_short_selling: true  # Allow for backtest
+  allow_short_selling: true # Allow for backtest
   use_margin: false
   commission_model: fixed
   commission_value: 1.0
@@ -46,7 +46,7 @@ trading:
 
 execution:
   execution_algo: market
-  manual_approval_default: false  # Auto-execute in backtest
+  manual_approval_default: false # Auto-execute in backtest
   emergency_stop_active: false
   cancel_on_disconnect: false
   retry_failed_orders: false
@@ -57,7 +57,7 @@ ai:
   model: gpt-4-turbo-preview
   temperature: 0.2
   max_tokens: 4000
-  cost_limit_daily: 5.0  # Lower limit for backtests
+  cost_limit_daily: 5.0 # Lower limit for backtests
   cache_responses: true
 
 alerts:
@@ -82,7 +82,7 @@ market_data:
 
 ui:
   theme: dark
-  confirm_orders: false  # No confirmation needed in backtest
+  confirm_orders: false # No confirmation needed in backtest
   show_indicators: true
   default_timeframe: 5m
 

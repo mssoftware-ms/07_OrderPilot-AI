@@ -60,6 +60,10 @@ class BotCallbacksLifecycleMixin:
         # Start update timer
         self._ensure_bot_update_timer()
 
+        # Check TR activation for existing ENTERED position
+        if hasattr(self, '_check_tr_activation_on_bot_start'):
+            self._check_tr_activation_on_bot_start()
+
         # Save settings for this symbol
         self._save_bot_settings(symbol)
 
@@ -309,6 +313,10 @@ class BotCallbacksLifecycleMixin:
 
         # Start update timer
         self._ensure_bot_update_timer()
+
+        # Check TR activation for existing ENTERED position
+        if hasattr(self, '_check_tr_activation_on_bot_start'):
+            self._check_tr_activation_on_bot_start()
 
         # Save settings for this symbol
         self._save_bot_settings(symbol)

@@ -35,7 +35,7 @@ backtest:
   end_date: null
   include_commissions: true
   include_slippage: true
-  initial_capital: '10000'
+  initial_capital: "10000"
   optimization_metric: sharpe
   random_seed: 42
   start_date: null
@@ -51,7 +51,7 @@ broker:
   paper_trading: true
   port: 7497
   reconnect_interval: 10
-created_at: '2025-10-31T15:03:10.603344'
+created_at: "2025-10-31T15:03:10.603344"
 database:
   auto_vacuum: true
   database: orderpilot
@@ -63,7 +63,7 @@ database:
   path: ./data/orderpilot.db
   pool_size: 10
   pool_timeout_seconds: 30
-  port: 5432
+  port: 5433
   username: orderpilot
 description: Default trading profile
 environment: paper
@@ -116,10 +116,10 @@ trading:
   default_stop_loss_pct: 0.02
   default_take_profit_pct: 0.05
   margin_multiplier: 1.0
-  max_daily_loss: '500'
+  max_daily_loss: "500"
   max_open_positions: 10
   max_portfolio_risk: 0.02
-  max_position_size: '10000'
+  max_position_size: "10000"
   slippage_model: fixed
   slippage_value: 0.001
   use_margin: false
@@ -129,7 +129,7 @@ ui:
   chart_style: candlestick
   confirm_cancel: false
   confirm_orders: true
-  date_format: '%Y-%m-%d'
+  date_format: "%Y-%m-%d"
   decimal_places: 2
   default_timeframe: 5m
   language: en
@@ -137,6 +137,6 @@ ui:
   show_pnl_percentage: true
   show_volume: true
   theme: dark
-  time_format: '%H:%M:%S'
+  time_format: "%H:%M:%S"
   timezone: Europe/Berlin
-updated_at: '2025-10-31T15:03:10.603344'
+updated_at: "2025-10-31T15:03:10.603344"

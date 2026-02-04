@@ -196,6 +196,49 @@ class BotDisplaySignalsMixin:
                     logger.error(f"Failed to draw TR line on activation: {e}")
 
             self._save_signal_history()
+
+    def _check_tr_activation_on_bot_start(self) -> None:
+        """Check if trailing stop should be activated for existing ENTERED position on bot start.
+
+        Called when the bot is started to ensure that if there's an existing position
+        that has already crossed the trailing activation threshold, the trailing stop
+        is immediately activated.
+        """
+        # Get current price
+        current_price = 0.0
+        if hasattr(self, 'chart_widget') and self.chart_widget:
+            if hasattr(self.chart_widget, '_last_price'):
+                current_price = float(self.chart_widget._last_price)
+
+        if current_price <= 0:
+            logger.debug("No current price available for TR activation check on bot start")
+            return
+
+        # Find the active ENTERED position (there's only one at a time)
+        active_sig = None
+        for sig in self._signal_history:
+            if sig.get("status") == "ENTERED" and sig.get("is_open") is not False:
+                active_sig = sig
+                break
+
+        if not active_sig:
+            logger.debug("No active ENTERED position found on bot start")
+            return
+
+        # Check if trailing stop should be activated
+        if active_sig.get("tr_active", False):
+            logger.debug("TR already active for existing position")
+            return
+
+        # Call the existing activation check
+        self._check_tr_activation(active_sig, current_price)
+
+        if active_sig.get("tr_active", False):
+            logger.info(
+                f"TR activated on bot start for existing position at price {current_price:.2f}"
+            )
+            self._update_signals_table()
+
     def _update_signals_table(self) -> None:
         """Update signals table with recent entries.
 
