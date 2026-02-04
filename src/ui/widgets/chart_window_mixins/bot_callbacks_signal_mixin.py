@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -221,18 +222,14 @@ class BotCallbacksSignalMixin:
                 )
 
                 # Live Trading Integration: Place order at Bitunix if active
-                live_result = await self._place_live_order_if_active(
+                # Schedule async order placement from synchronous callback
+                asyncio.create_task(self._place_live_order_and_update_signal(
                     signal=sig,
                     entry_price=entry_price,
                     stop_price=signal_stop_price,
                     side=side,
                     quantity=float(sig.get('quantity', 0.01))
-                )
-
-                if live_result:
-                    # Update signal with real entry/SL from broker
-                    sig.update(live_result)
-                    logger.info("Live order placed and signal updated with real entry/SL")
+                ))
 
                 return True
         return False
@@ -767,6 +764,38 @@ class BotCallbacksSignalMixin:
             self._update_bot_status(status, color)
 
     # ==================== Live Trading Integration ====================
+
+    async def _place_live_order_and_update_signal(
+        self,
+        signal: dict,
+        entry_price: float,
+        stop_price: float,
+        side: str,
+        quantity: float
+    ) -> None:
+        """Wrapper to place live order and update signal in history.
+
+        This is called via asyncio.create_task from sync callbacks.
+        """
+        try:
+            live_result = await self._place_live_order_if_active(
+                signal=signal,
+                entry_price=entry_price,
+                stop_price=stop_price,
+                side=side,
+                quantity=quantity
+            )
+
+            if live_result:
+                # Update signal with real entry/SL from broker
+                signal.update(live_result)
+                self._save_signal_history()
+                self._update_signals_table()
+                logger.info("Live order placed and signal updated with real entry/SL")
+
+        except Exception as e:
+            logger.error(f"Error placing live order: {e}")
+            self._add_ki_log_entry("ERROR", f"Live Order Fehler: {e}")
 
     async def _place_live_order_if_active(
         self,

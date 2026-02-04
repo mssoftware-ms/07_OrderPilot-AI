@@ -35,9 +35,11 @@ from src.core.tradingbot.cel.models import RulePack, Rule
 from .main_window_ui import CelEditorWindowUIMixin
 from .main_window_events import CelEditorWindowEventsMixin
 from .main_window_logic import CelEditorWindowLogicMixin
+from src.ui.debug import UIInspectorMixin  # F12 UI Inspector
 
 
 class CelEditorWindow(
+    UIInspectorMixin,  # F12 UI Inspector - must be before QMainWindow
     CelEditorWindowUIMixin,
     CelEditorWindowEventsMixin,
     CelEditorWindowLogicMixin,
@@ -132,3 +134,6 @@ class CelEditorWindow(
         # This fixes Issue where tools were not shown at startup.
         # (CelEditorWindowEventsMixin)
         self._switch_view_mode(self.current_view_mode)
+
+        # F12 UI Inspector Debug Overlay
+        self.setup_ui_inspector()

@@ -141,19 +141,20 @@ class StrategySettingsDialog(QDialog):
         table_layout = QVBoxLayout(table_group)
 
         self._strategy_table = QTableWidget()
-        self._strategy_table.setColumnCount(6)
+        self._strategy_table.setColumnCount(7)
         self._strategy_table.setHorizontalHeaderLabels([
-            "Name", "Typ", "Indikatoren", "Entry Conditions", "Exit Conditions", "Aktiv"
+            "Score", "Name", "Typ", "Indikatoren", "Entry Conditions", "Exit Conditions", "Aktiv"
         ])
 
         # Column widths
         header = self._strategy_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Score
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Name
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Typ
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Indikatoren
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Entry
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Exit
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Aktiv
 
         self._strategy_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
@@ -196,6 +197,12 @@ class StrategySettingsDialog(QDialog):
         self._analyze_btn.setToolTip("Analyze current market regime and match strategy")
         self._analyze_btn.clicked.connect(self._analyze_current_market)
         button_layout.addWidget(self._analyze_btn)
+
+        self._select_all_btn = QPushButton("✅ Alle auswählen")
+        self._select_all_btn.setStyleSheet("background-color: #4CAF50; font-weight: bold;")
+        self._select_all_btn.setToolTip("Alle Strategien in der 'Aktiv' Spalte auswählen")
+        self._select_all_btn.clicked.connect(self._select_all_active)
+        button_layout.addWidget(self._select_all_btn)
 
         self._refresh_btn = QPushButton("🔄 Aktualisieren")
         self._refresh_btn.clicked.connect(self._load_strategies)
@@ -274,17 +281,34 @@ class StrategySettingsDialog(QDialog):
         exit_any = strategy.get("exit", {}).get("any", [])
         exit_count = len(exit_all) + len(exit_any)
 
-        # Add cells
-        self._strategy_table.setItem(row, 0, QTableWidgetItem(name))
-        self._strategy_table.setItem(row, 1, QTableWidgetItem(strategy_type))
-        self._strategy_table.setItem(row, 2, QTableWidgetItem(str(indicator_count)))
-        self._strategy_table.setItem(row, 3, QTableWidgetItem(str(entry_count)))
-        self._strategy_table.setItem(row, 4, QTableWidgetItem(str(exit_count)))
+        # Add cells - Score is first column (col 0), then name, typ, etc.
+        # Score column: Display "--" initially, updated by market analysis
+        score_item = QTableWidgetItem("--")
+        score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._strategy_table.setItem(row, 0, score_item)
+        self._strategy_table.setItem(row, 1, QTableWidgetItem(name))
+        self._strategy_table.setItem(row, 2, QTableWidgetItem(strategy_type))
+        self._strategy_table.setItem(row, 3, QTableWidgetItem(str(indicator_count)))
+        self._strategy_table.setItem(row, 4, QTableWidgetItem(str(entry_count)))
+        self._strategy_table.setItem(row, 5, QTableWidgetItem(str(exit_count)))
 
-        # Active checkbox
+        # Active checkbox (now column 6)
         active_checkbox = QCheckBox()
         active_checkbox.setChecked(False)  # TODO: Load from bot state
-        self._strategy_table.setCellWidget(row, 5, active_checkbox)
+        self._strategy_table.setCellWidget(row, 6, active_checkbox)
+
+    def _select_all_active(self) -> None:
+        """Select all checkboxes in the 'Aktiv' column."""
+        row_count = self._strategy_table.rowCount()
+        if row_count == 0:
+            return
+
+        for row in range(row_count):
+            checkbox = self._strategy_table.cellWidget(row, 6)
+            if checkbox and isinstance(checkbox, QCheckBox):
+                checkbox.setChecked(True)
+
+        logger.info(f"Selected all {row_count} strategies as active")
 
     def _load_strategy_from_file(self) -> None:
         """Load strategy from external JSON file."""

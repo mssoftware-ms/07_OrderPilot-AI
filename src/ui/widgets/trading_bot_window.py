@@ -19,13 +19,15 @@ from PyQt6.QtCore import Qt, QSettings, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtGui import QCloseEvent
 
+from src.ui.debug import UIInspectorMixin  # F12 UI Inspector
+
 if TYPE_CHECKING:
     from src.ui.widgets.chart_window import ChartWindow
 
 logger = logging.getLogger(__name__)
 
 
-class TradingBotWindow(QMainWindow):
+class TradingBotWindow(UIInspectorMixin, QMainWindow):  # F12 UI Inspector
     """Standalone window for Trading Bot panel.
 
     Features:
@@ -58,6 +60,9 @@ class TradingBotWindow(QMainWindow):
 
         self._setup_window()
         self._load_window_state()
+
+        # F12 UI Inspector Debug Overlay
+        self.setup_ui_inspector()
 
         logger.info(f"TradingBotWindow created for {parent_chart.symbol}")
 

@@ -190,9 +190,13 @@ class UIInspectorMixin:
         geom = widget.geometry()
         size_info = f"{geom.width()}x{geom.height()}"
 
+        # Get widget-specific context info
+        context_info = self._get_widget_context(widget)
+        context_line = f"\n<span style='color: #00BFFF;'>Content:</span> <b>{context_info}</b>" if context_info else ""
+
         # Build display text
         text = f"""📋 <b>{obj_name}</b>
-<span style='color: #888;'>Class:</span> {class_name}
+<span style='color: #888;'>Class:</span> {class_name}{context_line}
 <span style='color: #888;'>Size:</span> {size_info}
 <span style='color: #888;'>Path:</span> <span style='color: #FFD700;'>{path}</span>
 <span style='color: #666;'>Click to copy path</span>"""
@@ -218,6 +222,104 @@ class UIInspectorMixin:
         self._inspector_overlay.move(x, y)
         self._inspector_overlay.show()
         self._inspector_overlay.raise_()
+
+    def _get_widget_context(self, widget: QWidget) -> str:
+        """Extract context-specific info from widget (text, title, value, etc.).
+
+        Returns human-readable content for different widget types.
+        """
+        from PyQt6.QtWidgets import (
+            QPushButton, QLabel, QLineEdit, QTextEdit, QPlainTextEdit,
+            QCheckBox, QRadioButton, QComboBox, QSpinBox, QDoubleSpinBox,
+            QSlider, QProgressBar, QGroupBox, QTabWidget, QTabBar,
+            QToolButton, QMenu, QListWidget, QTreeWidget, QTableWidget
+        )
+
+        try:
+            # Buttons with text
+            if isinstance(widget, (QPushButton, QToolButton, QCheckBox, QRadioButton)):
+                text = widget.text()
+                if text:
+                    return f'"{text}"'
+
+            # Labels
+            if isinstance(widget, QLabel):
+                text = widget.text()
+                if text:
+                    # Truncate long labels
+                    if len(text) > 50:
+                        text = text[:47] + "..."
+                    return f'"{text}"'
+
+            # Input fields
+            if isinstance(widget, QLineEdit):
+                text = widget.text() or widget.placeholderText()
+                if text:
+                    return f'"{text}"' if widget.text() else f'placeholder: "{text}"'
+
+            if isinstance(widget, (QTextEdit, QPlainTextEdit)):
+                text = widget.toPlainText()[:30] if hasattr(widget, 'toPlainText') else ""
+                if text:
+                    return f'"{text}..."'
+
+            # ComboBox
+            if isinstance(widget, QComboBox):
+                current = widget.currentText()
+                count = widget.count()
+                if current:
+                    return f'"{current}" ({count} items)'
+
+            # Spinners
+            if isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                return f"value: {widget.value()}"
+
+            # Slider/Progress
+            if isinstance(widget, (QSlider, QProgressBar)):
+                return f"value: {widget.value()}"
+
+            # GroupBox
+            if isinstance(widget, QGroupBox):
+                title = widget.title()
+                if title:
+                    return f'"{title}"'
+
+            # TabWidget - show current tab
+            if isinstance(widget, QTabWidget):
+                idx = widget.currentIndex()
+                if idx >= 0:
+                    tab_text = widget.tabText(idx)
+                    return f'Tab: "{tab_text}" ({idx + 1}/{widget.count()})'
+
+            # TabBar
+            if isinstance(widget, QTabBar):
+                idx = widget.currentIndex()
+                if idx >= 0:
+                    tab_text = widget.tabText(idx)
+                    return f'Tab: "{tab_text}"'
+
+            # List/Tree/Table widgets
+            if isinstance(widget, QListWidget):
+                count = widget.count()
+                current = widget.currentItem()
+                if current:
+                    return f'"{current.text()}" ({count} items)'
+                return f"({count} items)"
+
+            if isinstance(widget, QTableWidget):
+                return f"{widget.rowCount()} rows × {widget.columnCount()} cols"
+
+            if isinstance(widget, QTreeWidget):
+                return f"{widget.topLevelItemCount()} items"
+
+            # Fallback: check for tooltip
+            tooltip = widget.toolTip()
+            if tooltip and len(tooltip) < 60:
+                return f'tip: "{tooltip}"'
+
+        except Exception:
+            pass  # Silently ignore errors in context extraction
+
+        return ""  # No context available
 
     def _show_copy_feedback(self, path: str):
         """Show feedback when path is copied."""
