@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.ui.design_system import theme_service
 
 
 class BotDisplayPositionMixin:
@@ -23,7 +24,7 @@ class BotDisplayPositionMixin:
         # If something set the running flag to False, restore it so the bot continues
         if hasattr(bot_controller, "_running") and not bot_controller._running:
             bot_controller._running = True
-        self._update_bot_status("RUNNING", "#26a69a")
+        self._update_bot_status("RUNNING", theme_service.get_palette().success)
         if hasattr(self, "_ensure_bot_update_timer"):
             self._ensure_bot_update_timer()
 
@@ -134,7 +135,7 @@ class BotDisplayPositionMixin:
 
     def _reset_position_display(self) -> None:
         self.position_side_label.setText("FLAT")
-        self.position_side_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+        self.position_side_label.setStyleSheet(f"font-weight: bold; color: {theme_service.get_palette().text_secondary};")
         if hasattr(self, 'position_strategy_label'):
             self.position_strategy_label.setText("-")
         self.position_entry_label.setText("-")
@@ -150,11 +151,12 @@ class BotDisplayPositionMixin:
             self.sltp_progress_bar.reset_bar()
 
     def _set_position_side(self, side: str) -> None:
+        p = theme_service.get_palette()
         self.position_side_label.setText(side)
         if side == "LONG":
-            self.position_side_label.setStyleSheet("font-weight: bold; color: #26a69a;")
+            self.position_side_label.setStyleSheet(f"font-weight: bold; color: {p.success};")
         elif side == "SHORT":
-            self.position_side_label.setStyleSheet("font-weight: bold; color: #ef5350;")
+            self.position_side_label.setStyleSheet(f"font-weight: bold; color: {p.error};")
 
     def _get_invested_from_history(self) -> float:
         for sig in reversed(self._signal_history):
@@ -221,7 +223,8 @@ class BotDisplayPositionMixin:
         return pnl_pct, pnl_currency
 
     def _set_pnl_display(self, pnl_pct: float, pnl_currency: float) -> None:
-        color = "#26a69a" if pnl_pct >= 0 else "#ef5350"
+        p = theme_service.get_palette()
+        color = p.success if pnl_pct >= 0 else p.error
         sign = "+" if pnl_pct >= 0 else ""
         self.position_pnl_label.setText(f"{sign}{pnl_pct:.2f}% ({sign}{pnl_currency:.2f})")
         self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
@@ -364,16 +367,17 @@ class BotDisplayPositionMixin:
         self._update_position_right_column_from_signal(signal)
 
     def _set_signal_side_label(self, signal: dict) -> str:
+        p = theme_service.get_palette()
         side = signal.get("side", "")
         side_upper = side.upper() if side else "FLAT"
         if hasattr(self, "position_side_label"):
             self.position_side_label.setText(side_upper)
             if side_upper == "LONG":
-                color = "#26a69a"
+                color = p.success
             elif side_upper == "SHORT":
-                color = "#ef5350"
+                color = p.error
             else:
-                color = "#9e9e9e"
+                color = p.text_secondary
             self.position_side_label.setStyleSheet(f"font-weight: bold; color: {color};")
         return side_upper
 
@@ -442,8 +446,9 @@ class BotDisplayPositionMixin:
                 self.position_pnl_label.setText("-")
                 self.position_pnl_label.setStyleSheet("")
             else:
+                p = theme_service.get_palette()
                 sign = "+" if pnl_percent >= 0 else ""
-                color = "#26a69a" if pnl_percent >= 0 else "#ef5350"
+                color = p.success if pnl_percent >= 0 else p.error
                 self.position_pnl_label.setText(f"{sign}{pnl_percent:.2f}% ({sign}{pnl_currency:.2f})")
                 self.position_pnl_label.setStyleSheet(f"font-weight: bold; color: {color};")
     def _update_position_right_column_from_signal(self, signal: dict) -> None:
@@ -488,16 +493,17 @@ class BotDisplayPositionMixin:
             self.position_score_label.setText(f"{score * 100:.0f}")
 
     def _update_trailing_stop_label(self, signal: dict) -> None:
+        p = theme_service.get_palette()
         tr_price = signal.get("trailing_stop_price", 0)
         tr_active = signal.get("tr_active", False)
         if hasattr(self, "position_tr_price_label"):
             if tr_price > 0:
                 if tr_active:
                     self.position_tr_price_label.setText(f"{tr_price:.2f}")
-                    self.position_tr_price_label.setStyleSheet("color: #ff9800;")
+                    self.position_tr_price_label.setStyleSheet(f"color: {p.warning};")
                 else:
                     self.position_tr_price_label.setText(f"{tr_price:.2f} (inaktiv)")
-                    self.position_tr_price_label.setStyleSheet("color: #888888;")
+                    self.position_tr_price_label.setStyleSheet(f"color: {p.text_secondary};")
             else:
                 self.position_tr_price_label.setText("-")
                 self.position_tr_price_label.setStyleSheet("")
@@ -524,8 +530,9 @@ class BotDisplayPositionMixin:
         if current_price > 0 and hasattr(self, "_calculate_derivative_pnl_for_signal"):
             deriv_pnl = self._calculate_derivative_pnl_for_signal(signal, current_price)
             if deriv_pnl and hasattr(self, "deriv_pnl_label"):
+                p = theme_service.get_palette()
                 sign = "+" if deriv_pnl["pnl_pct"] >= 0 else ""
-                color = "#26a69a" if deriv_pnl["pnl_pct"] >= 0 else "#ef5350"
+                color = p.success if deriv_pnl["pnl_pct"] >= 0 else p.error
                 self.deriv_pnl_label.setText(
                     f"{sign}{deriv_pnl['pnl_pct']:.2f}% ({sign}{deriv_pnl['pnl_eur']:.2f})"
                 )

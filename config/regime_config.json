@@ -1,0 +1,33 @@
+{
+  "thresholds": {
+    "adx_strong": 30.0,
+    "adx_weak": 20.0,
+    "adx_chop": 15.0,
+    "ema_tolerance_pct": 0.5,
+    "volatility_extreme": 5.0,
+    "volatility_high": 3.0,
+    "volatility_low": 1.0,
+    "rsi_overbought": 70.0,
+    "rsi_oversold": 30.0
+  },
+  "multi_timeframe": {
+    "require_mtf_alignment": false,
+    "mtf_timeframes": ["5m", "1h", "4h"]
+  },
+  "volume": {
+    "volume_confirmation": false,
+    "min_volume_ratio": 0.5
+  },
+  "strategy_type_rules": [
+    {"pattern": "trend", "type": "trend_following"},
+    {"pattern": "mean|reversion", "type": "mean_reversion"},
+    {"pattern": "breakout", "type": "breakout"},
+    {"pattern": "momentum", "type": "momentum"},
+    {"pattern": "range", "type": "range_trading"}
+  ],
+  "strategy_type_indicator_rules": [
+    {"indicators": ["adx", "rsi"], "type": "trend_momentum"},
+    {"indicators": ["adx"], "type": "trend_following"},
+    {"indicators": ["rsi"], "rsi_value_lt": 40, "type": "mean_reversion"}
+  ]
+}

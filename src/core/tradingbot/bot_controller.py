@@ -129,7 +129,8 @@ class BotController(
                 )
 
             # 2b. Update trailing stop for live trading (after regime update)
-            if self._position and self.config.bot.trailing_enabled:
+            # Note: trailing_mode is always set (PCT/ATR/SWING), so trailing is always enabled
+            if self._position and self.config.bot.trailing_mode:
                 await self._update_trailing_stop_live(features)
 
             # 2a. Check for JSON-based regime change and strategy switching

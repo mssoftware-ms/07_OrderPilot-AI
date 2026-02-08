@@ -8,6 +8,8 @@ from PyQt6.QtCore import Qt, QDateTime
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QTableWidgetItem
 
+from src.core.notifications.whatsapp_service import TradeNotification
+
 logger = logging.getLogger(__name__)
 
 class BotCallbacksPositionLifecycleMixin:
@@ -74,6 +76,32 @@ class BotCallbacksPositionLifecycleMixin:
             active_sig["stop_price"] = stop_price
             active_sig["initial_sl_pct"] = initial_sl_pct
             self._save_signal_history()
+
+            # Send entry notification (Telegram/WhatsApp)
+            try:
+                if hasattr(self, 'notification_tab') and self.notification_tab:
+                    symbol = getattr(self, 'current_symbol', 'UNKNOWN')
+                    side = active_sig.get("side", "long")
+                    entry_price = active_sig.get("price", 0)
+                    invested = active_sig.get("invested", 0)
+                    quantity = active_sig.get("quantity", 0)
+
+                    notification = TradeNotification(
+                        action="ENTRY",
+                        symbol=symbol,
+                        side=side,
+                        quantity=quantity if quantity > 0 else (invested / entry_price if entry_price > 0 else 0),
+                        entry_price=entry_price,
+                        exit_price=0,
+                        pnl=0,
+                        pnl_percent=0,
+                        timestamp=datetime.now()
+                    )
+                    message = notification.format_message()
+                    self.notification_tab.send_trade_notification(message)
+                    logger.info(f"Notification sent: Entry {side} @ {entry_price:.2f}, SL @ {stop_price:.2f}")
+            except Exception as e:
+                logger.error(f"Failed to send entry notification: {e}")
 
     def _handle_bot_adjust_stop(self, decision: Any) -> None:
         """Handle BotAction.ADJUST_STOP."""
@@ -159,10 +187,10 @@ class BotCallbacksPositionLifecycleMixin:
                 active_sig["pnl_percent"] = pnl_percent
                 active_sig["pnl_currency"] = pnl_usdt
 
-                # Send WhatsApp notification for position exit
+                # Send notification for position exit (Telegram/WhatsApp)
                 try:
-                    # Use WhatsApp widget's working UI form mechanism
-                    if hasattr(self, 'whatsapp_tab') and self.whatsapp_tab:
+                    # Use notification widget's working UI form mechanism
+                    if hasattr(self, 'notification_tab') and self.notification_tab:
                         symbol = getattr(self, 'current_symbol', 'UNKNOWN')
 
                         # Map exit status to reason
@@ -190,11 +218,11 @@ class BotCallbacksPositionLifecycleMixin:
                         )
                         message = notification.format_message()
 
-                        # Send via WhatsApp widget (uses working UI form)
-                        self.whatsapp_tab.send_trade_notification(message)
-                        logger.info(f"WhatsApp notification sent: Position closed {exit_status} @ {current_price:.2f}, P&L: {pnl_usdt:.2f} USDT ({pnl_percent:.2f}%)")
+                        # Send via notification widget (Telegram/WhatsApp)
+                        self.notification_tab.send_trade_notification(message)
+                        logger.info(f"Notification sent: Position closed {exit_status} @ {current_price:.2f}, P&L: {pnl_usdt:.2f} USDT ({pnl_percent:.2f}%)")
                     else:
-                        logger.warning("WhatsApp widget not available for notification")
+                        logger.warning("Notification widget not available")
                 except Exception as e:
                     logger.error(f"Failed to send WhatsApp notification: {e}")
 

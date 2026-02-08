@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .bot_sltp_progressbar import SLTPProgressBar
+from src.ui.design_system import theme_service
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class BotUISignalsLogMixin:
         # Status label
         status_row = QHBoxLayout()
         self.bot_run_status_label = QLabel("Status: STOPPED")
-        self.bot_run_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+        self.bot_run_status_label.setStyleSheet(f"font-weight: bold; color: {theme_service.get_palette().text_secondary};")
         status_row.addWidget(self.bot_run_status_label)
         status_row.addStretch()
         layout.addLayout(status_row)

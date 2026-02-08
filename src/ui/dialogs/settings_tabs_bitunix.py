@@ -90,7 +90,7 @@ class SettingsTabsBitunix:
         # Time period
         period_layout = QHBoxLayout()
         self.parent.bitunix_dl_days = QSpinBox()
-        self.parent.bitunix_dl_days.setRange(1, 730)
+        self.parent.bitunix_dl_days.setRange(1, 10000)
         self.parent.bitunix_dl_days.setValue(365)
         self.parent.bitunix_dl_days.setSuffix(" days")
         period_layout.addWidget(self.parent.bitunix_dl_days)

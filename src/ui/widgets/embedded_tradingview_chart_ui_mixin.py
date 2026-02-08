@@ -133,7 +133,11 @@ class EmbeddedTradingViewChartUIMixin:
             logger.error(f"Export failed: {e}", exc_info=True)
 
     def _export_chart_as_json(self) -> None:
-        """Export current chart (candles + drawings) as JSON snapshot."""
+        """Export current chart (candles + drawings) as JSON snapshot.
+
+        Note: Since Lightweight Charts v4+, accessing data from JS side is restricted.
+        We combine JS drawings with Python-side candle data (self.data).
+        """
         try:
             js = """
             (() => {
@@ -144,26 +148,62 @@ class EmbeddedTradingViewChartUIMixin:
 
             def _on_eval_finished(result):
                 if not result:
-                    logger.warning("Chart JSON export failed (no data)")
+                    logger.warning("Chart JSON export failed (no data from JS)")
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.warning(self, "Export Failed", "Could not retrieve drawing data from chart.")
                     return
                 try:
+                    import json
                     from pathlib import Path
                     import time as _time
+
+                    # Parse JS result
+                    snapshot = json.loads(result)
+
+                    # Inject Python-side data if available (LWC v4+ fix)
+                    if hasattr(self, 'data') and self.data is not None and not snapshot.get('series'):
+                        try:
+                            # Convert DataFrame to records
+                            # Check for 'time' column or index
+                            df = self.data.copy()
+                            if 'time' not in df.columns and hasattr(df.index, 'name') and df.index.name == 'date':
+                                df = df.reset_index()
+                                df.rename(columns={'date': 'time'}, inplace=True)
+
+                            # Ensure timestamp format compatible with LWC (seconds)
+                            if 'time' in df.columns:
+                                # Simple check if generic datetime objects need conversion
+                                if pd.api.types.is_datetime64_any_dtype(df['time']):
+                                    df['time'] = df['time'].astype('int64') // 10**9
+
+                            snapshot['series'] = df.to_dict(orient='records')
+                            logger.info(f"Injected {len(snapshot['series'])} candles from Python data")
+                        except Exception as e:
+                            logger.warning(f"Failed to inject Python data into export: {e}")
+
                     ts = _time.strftime("%Y%m%d_%H%M%S")
                     export_dir = Path(".AI_Exchange/export")
-                    export_dir.mkdir(exist_ok=True)
+                    # FIX: Create parent directories if they don't exist
+                    export_dir.mkdir(parents=True, exist_ok=True)
+
                     path = export_dir / f"chart_export_{ts}.json"
-                    path.write_text(result, encoding="utf-8")
+                    path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+
                     logger.info(f"Chart JSON export saved to {path}")
                     self._notify_export_success(path, "JSON")
+
                     # Also export PNG with same timestamp for pairing
                     self._save_chart_png(ts=ts)
                 except Exception as e:
                     logger.error(f"Failed to save chart JSON export: {e}", exc_info=True)
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.critical(self, "Export Error", f"Failed to save export:\n{str(e)}")
 
             self.web_view.page().runJavaScript(js, _on_eval_finished)
         except Exception as e:
             logger.error(f"JSON export failed: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Export Error", f"Failed to initiate export:\n{str(e)}")
 
     def _save_chart_png(self, ts: str | None = None) -> None:
         """Helper: capture chart PNG via JS and save to exports/ with optional timestamp."""
@@ -193,13 +233,17 @@ class EmbeddedTradingViewChartUIMixin:
                 b64 = result[len(header) :] if result.startswith(header) else result
                 png_bytes = base64.b64decode(b64)
                 export_dir = Path(".AI_Exchange/export")
-                export_dir.mkdir(exist_ok=True)
+                # FIX: Create parent directories
+                export_dir.mkdir(parents=True, exist_ok=True)
+
                 path = export_dir / f"chart_export_{ts_used}.png"
                 path.write_bytes(png_bytes)
                 logger.info(f"Chart export saved to {path}")
                 self._notify_export_success(path, "PNG")
             except Exception as e:
                 logger.error(f"Failed to save chart export: {e}", exc_info=True)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.critical(self, "Export Error", f"Failed to save PNG export:\n{str(e)}")
 
         self.web_view.page().runJavaScript(js, _on_png)
 
@@ -247,6 +291,10 @@ class EmbeddedTradingViewChartUIMixin:
         export_json_action.triggered.connect(self._export_chart_as_json)
         menu.addAction(export_json_action)
 
+        export_csv_action = QAction("📊 Daten exportieren (CSV)", self)
+        export_csv_action.triggered.connect(self._export_data_as_csv)
+        menu.addAction(export_csv_action)
+
         self._add_clear_actions(menu)
 
         # Chart Markings Manager
@@ -256,6 +304,42 @@ class EmbeddedTradingViewChartUIMixin:
         menu.addAction(manager_action)
 
         menu.exec(self.web_view.mapToGlobal(pos))
+
+    def _export_data_as_csv(self) -> None:
+        """Export current chart data (self.data) as CSV.
+
+        Exports the 1-to-1 data used for the chart display.
+        """
+        try:
+            if not hasattr(self, 'data') or self.data is None or self.data.empty:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Export Failed", "No chart data available to export.")
+                return
+
+            import time as _time
+            from pathlib import Path
+
+            # Construct filename with metadata
+            ts = _time.strftime("%Y%m%d_%H%M%S")
+            symbol = getattr(self, 'current_symbol', 'UnknownSymbol').replace('/', '_')
+            tf = getattr(self, 'current_timeframe', 'UnknownTF')
+
+            filename = f"data_export_{symbol}_{tf}_{ts}.csv"
+            export_dir = Path(".AI_Exchange/export")
+            export_dir.mkdir(parents=True, exist_ok=True)
+            path = export_dir / filename
+
+            # Export DataFrame to CSV
+            # self.data is expected to have a DatetimeIndex
+            self.data.to_csv(path)
+
+            logger.info(f"Chart data exported to {path}")
+            self._notify_export_success(path, "CSV")
+
+        except Exception as e:
+            logger.error(f"CSV export failed: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Export Error", f"Failed to export data:\n{str(e)}")
 
     def _get_zones_at_price(self):
         if hasattr(self, "_last_price") and self._last_price is not None:
@@ -379,11 +463,11 @@ class EmbeddedTradingViewChartUIMixin:
         from PyQt6.QtGui import QAction
 
         lines_menu = menu.addMenu("📏 Add Line")
-        
+
         vertical_line = QAction("📏 Vertikale Linie", self)
         vertical_line.triggered.connect(self._add_vertical_line_interactive)
         lines_menu.addAction(vertical_line)
-        
+
         lines_menu.addSeparator()
         sl_long_action = QAction("🔴 Stop Loss (Long Position)", self)
         sl_long_action.triggered.connect(lambda: self._add_test_line("sl", True))

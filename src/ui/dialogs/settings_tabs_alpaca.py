@@ -87,7 +87,7 @@ class SettingsTabsAlpaca:
         # Time period
         period_layout = QHBoxLayout()
         self.parent.alpaca_dl_days = QSpinBox()
-        self.parent.alpaca_dl_days.setRange(1, 730)
+        self.parent.alpaca_dl_days.setRange(1, 10000)
         self.parent.alpaca_dl_days.setValue(365)
         self.parent.alpaca_dl_days.setSuffix(" days")
         period_layout.addWidget(self.parent.alpaca_dl_days)

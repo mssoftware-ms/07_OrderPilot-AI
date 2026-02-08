@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import pandas as pd
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
@@ -58,6 +61,7 @@ class StrategySettingsDialog(QDialog):
 
     strategy_loaded = pyqtSignal(str)  # strategy_id
     strategy_deleted = pyqtSignal(str)  # strategy_id
+    draw_regime_lines_requested = pyqtSignal(list)  # regime periods for chart
 
     def __init__(self, parent: Optional[QDialog] = None):
         super().__init__(parent)
@@ -192,11 +196,26 @@ class StrategySettingsDialog(QDialog):
 
         button_layout.addStretch()
 
+        self._regime_detector_btn = QPushButton("📊 Regime Detector")
+        self._regime_detector_btn.setStyleSheet("background-color: #ff9800; font-weight: bold;")
+        self._regime_detector_btn.setToolTip(
+            "Regimedetektor auf dem gesamten Chart ausführen\n"
+            "und vertikale Linien an Regimewechsel-Punkten einzeichnen"
+        )
+        self._regime_detector_btn.clicked.connect(self._on_run_regime_detector)
+        button_layout.addWidget(self._regime_detector_btn)
+
         self._analyze_btn = QPushButton("🔍 Analyze Current Market")
         self._analyze_btn.setStyleSheet("background-color: #2196f3; font-weight: bold;")
         self._analyze_btn.setToolTip("Analyze current market regime and match strategy")
         self._analyze_btn.clicked.connect(self._analyze_current_market)
         button_layout.addWidget(self._analyze_btn)
+
+        self._calc_score_btn = QPushButton("🏆 Calculate Scores")
+        self._calc_score_btn.setStyleSheet("background-color: #9C27B0; font-weight: bold;")
+        self._calc_score_btn.setToolTip("Calculate match score for all strategies")
+        self._calc_score_btn.clicked.connect(self._calculate_all_scores)
+        button_layout.addWidget(self._calc_score_btn)
 
         self._select_all_btn = QPushButton("✅ Alle auswählen")
         self._select_all_btn.setStyleSheet("background-color: #4CAF50; font-weight: bold;")
@@ -786,3 +805,764 @@ class StrategySettingsDialog(QDialog):
         """Set active strategy set (called from Bot)."""
         self.active_strategy_set = strategy_set_id
         self._active_set_label.setText(strategy_set_id)
+
+    def _on_run_regime_detector(self) -> None:
+        """Run regime detector on full chart and draw vertical lines at regime changes."""
+        try:
+            # 1. Get chart widget via parent
+            parent = self.parent()
+            if not parent:
+                QMessageBox.warning(
+                    self,
+                    "Kein Chart",
+                    "Kein Chart-Fenster gefunden.\n"
+                    "Bitte öffne diesen Dialog aus einem Chart-Fenster.",
+                )
+                return
+
+            # Find chart_widget with data
+            chart_widget = getattr(parent, "chart_widget", None)
+            if chart_widget is None:
+                # Try parent hierarchy
+                for attr in ("chart_widget", "chart", "_chart_widget"):
+                    if hasattr(parent, attr):
+                        chart_widget = getattr(parent, attr)
+                        break
+
+            if chart_widget is None:
+                QMessageBox.warning(
+                    self,
+                    "Kein Chart-Widget",
+                    "Chart-Widget nicht gefunden.\n"
+                    "Bitte stelle sicher, dass ein Chart geladen ist.",
+                )
+                return
+
+            # 2. Get chart data (DataFrame or candle list)
+            candles = self._get_chart_candles(chart_widget)
+            if not candles or len(candles) < 50:
+                QMessageBox.warning(
+                    self,
+                    "Zu wenige Daten",
+                    f"Mindestens 50 Kerzen benötigt (aktuell: {len(candles) if candles else 0}).\n"
+                    "Bitte lade mehr Chart-Daten.",
+                )
+                return
+
+            # 3. Get selected strategy config (if any)
+            strategy_config = self._get_selected_strategy_config()
+
+            # 4. Run regime detection
+            logger.info(f"Running regime detector on {len(candles)} candles...")
+            regime_periods = self._perform_regime_detection(candles, strategy_config)
+
+            if not regime_periods:
+                QMessageBox.information(
+                    self,
+                    "Keine Regimewechsel",
+                    "Keine Regimewechsel im Chart erkannt.\n\n"
+                    "Mögliche Gründe:\n"
+                    "- Zu wenig Daten\n"
+                    "- Regime-Config nicht geladen\n"
+                    "- Alle Indikator-Werte ungültig",
+                )
+                return
+
+            # 5. Emit signal for chart drawing
+            self.draw_regime_lines_requested.emit(regime_periods)
+            logger.info(f"Emitted {len(regime_periods)} regime lines to chart")
+
+            # 6. Show results
+            regime_summary = "\n".join(
+                f"  • {r['regime']} ab {r['start_date']} {r['start_time']} "
+                f"({r['duration_bars']} Bars)"
+                for r in regime_periods[:10]
+            )
+            more = f"\n  ... und {len(regime_periods) - 10} weitere" if len(regime_periods) > 10 else ""
+
+            QMessageBox.information(
+                self,
+                "Regime Detector - Ergebnis",
+                f"✅ {len(regime_periods)} Regimewechsel erkannt!\n\n"
+                f"Analysierte Kerzen: {len(candles)}\n\n"
+                f"Erkannte Regimes:\n{regime_summary}{more}",
+            )
+
+        except Exception as e:
+            logger.error(f"Regime detector failed: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Regime Detector Fehler",
+                f"Regime-Erkennung fehlgeschlagen:\n\n{e}",
+            )
+
+    def _get_chart_candles(self, chart_widget) -> list[dict]:
+        """Extract candle data from chart widget.
+
+        Tries multiple approaches to get OHLCV data.
+
+        Returns:
+            List of candle dicts with timestamp, open, high, low, close, volume
+        """
+        # Approach 1: DataFrame 'data' attribute
+        if hasattr(chart_widget, "data") and chart_widget.data is not None:
+            df = chart_widget.data
+            if isinstance(df, pd.DataFrame) and len(df) > 0:
+                # reset_index() preserves the index (often contains timestamps)
+                return df.reset_index().to_dict("records")
+
+        # Approach 2: Internal candle cache
+        for attr in ("_candle_data", "_candles", "candle_data", "candles"):
+            data = getattr(chart_widget, attr, None)
+            if data and len(data) > 0:
+                if isinstance(data, pd.DataFrame):
+                    return data.reset_index().to_dict("records")
+                elif isinstance(data, list):
+                    return data
+
+        # Approach 3: Bridge / JS data
+        if hasattr(chart_widget, "_chart_bridge"):
+            bridge = chart_widget._chart_bridge
+            if hasattr(bridge, "get_candle_data"):
+                data = bridge.get_candle_data()
+                if data:
+                    return data
+
+        logger.warning("Could not retrieve candle data from chart widget")
+        return []
+
+    def _get_selected_strategy_config(self) -> dict | None:
+        """Get the v2 JSON config of the currently selected strategy.
+
+        Returns:
+            Strategy config dict or None if no strategy is selected.
+        """
+        selected_rows = self._strategy_table.selectedIndexes()
+        if not selected_rows:
+            return None
+
+        row = selected_rows[0].row()
+        name_item = self._strategy_table.item(row, 1)
+        if not name_item:
+            return None
+
+        strategy_name = name_item.text()
+
+        for sid, config in self.strategies.items():
+            strat = config.get("strategies", [{}])[0]
+            if strat.get("name", sid) == strategy_name:
+                return config
+
+        return None
+
+    def _perform_regime_detection(
+        self, candles: list[dict], strategy_config: dict | None = None
+    ) -> list[dict]:
+        """Perform candle-by-candle regime detection.
+
+        Uses v2 JSON config from the selected strategy for indicator calculation
+        and regime threshold evaluation.
+
+        Args:
+            candles: List of OHLCV candle dicts
+            strategy_config: Optional v2 JSON strategy config with indicators/regimes
+
+        Returns:
+            List of regime period dicts with start_timestamp, regime, score, etc.
+        """
+        try:
+            from src.core.indicators.types import IndicatorConfig, IndicatorType
+            from src.core.tradingbot.regime_engine_json import RegimeEngineJSON
+            _has_engine = True
+        except ImportError as e:
+            logger.warning(f"RegimeEngineJSON not available, using simple detection: {e}")
+            _has_engine = False
+
+        df = pd.DataFrame(candles)
+
+        # Normalize timestamp column name
+        if "timestamp" not in df.columns:
+            for alt in ("time", "date", "datetime", "Time", "Timestamp", "index"):
+                if alt in df.columns:
+                    df["timestamp"] = df[alt]
+                    break
+
+        # If still no timestamp, try to use numeric index as timestamp
+        if "timestamp" not in df.columns:
+            if df.index.dtype in ("int64", "float64"):
+                df["timestamp"] = df.index
+            elif hasattr(df.index, "astype"):
+                try:
+                    # DatetimeIndex -> Unix timestamp
+                    df["timestamp"] = df.index.astype("int64") // 10**9
+                except Exception:
+                    # Last resort: use sequential integers
+                    df["timestamp"] = range(len(df))
+
+        required = ["open", "high", "low", "close", "timestamp"]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise ValueError(f"Fehlende Spalten: {missing}. Vorhandene: {list(df.columns)}")
+
+        # Normalize timestamps to numeric Unix seconds
+        sample_ts = df["timestamp"].iloc[0]
+        if isinstance(sample_ts, (pd.Timestamp, datetime)):
+            # pandas Timestamp or datetime -> Unix seconds
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).astype("int64") // 10**9
+        elif isinstance(sample_ts, str):
+            df["timestamp"] = pd.to_datetime(df["timestamp"]).astype("int64") // 10**9
+
+        # --- Determine indicators and regimes from config ---
+        indicators_v2 = []
+        regimes_v2 = []
+
+        if strategy_config:
+            # Try optimization_results first (has regimes and indicators)
+            opt_results = strategy_config.get("optimization_results", [])
+            if opt_results:
+                applied = [r for r in opt_results if r.get("applied", False)]
+                opt = applied[-1] if applied else opt_results[0]
+                indicators_v2 = opt.get("indicators", [])
+                regimes_v2 = opt.get("regimes", [])
+
+            # Fallback to top-level indicators/regimes
+            if not indicators_v2:
+                indicators_v2 = strategy_config.get("indicators", [])
+            if not regimes_v2:
+                regimes_v2 = strategy_config.get("regimes", [])
+
+        # If no config or no regimes, use regime_detect.json
+        if not regimes_v2:
+            regime_detect_path = JSON_DIR / "regime_detect" / "regime_detect.json"
+            if regime_detect_path.exists():
+                try:
+                    with open(regime_detect_path, "r", encoding="utf-8") as f:
+                        rd = json.load(f)
+                    indicators_v2 = rd.get("indicators", indicators_v2)
+                    regimes_v2 = rd.get("regimes", regimes_v2)
+                    logger.info(f"Loaded regime_detect.json: {len(regimes_v2)} regimes")
+                except Exception as e:
+                    logger.warning(f"Could not load regime_detect.json: {e}")
+
+        if not regimes_v2 or not _has_engine:
+            # Absolute fallback: use RegimeConfig-based simple detection
+            return self._perform_simple_regime_detection(df)
+
+        # --- Calculate all indicators ---
+        engine = RegimeEngineJSON()
+        indicator_values = {}
+
+        for ind in indicators_v2:
+            name = ind.get("name", ind.get("id", ""))
+            ind_type = ind.get("type", "").upper()
+            params = {p["name"]: p["value"] for p in ind.get("params", [])}
+
+            try:
+                ind_config = IndicatorConfig(
+                    indicator_type=IndicatorType(ind_type.lower()),
+                    params=params,
+                    use_talib=False,
+                    cache_results=True,
+                )
+                result = engine.indicator_engine.calculate(df, ind_config)
+                indicator_values[name] = result.values
+            except Exception as e:
+                logger.debug(f"Indicator {name} ({ind_type}): {e}")
+                indicator_values[name] = pd.Series([np.nan] * len(df))
+
+        # ADX/DI components
+        adx_period = 14
+        for ind in indicators_v2:
+            if ind.get("type", "").upper() == "ADX":
+                for p in ind.get("params", []):
+                    if p["name"] == "period":
+                        adx_period = p["value"]
+                        break
+                break
+
+        try:
+            import pandas_ta as ta
+
+            adx_df = ta.adx(df["high"], df["low"], df["close"], length=adx_period)
+            if adx_df is not None and not adx_df.empty:
+                di_plus_col = f"DMP_{adx_period}"
+                di_minus_col = f"DMN_{adx_period}"
+                if di_plus_col in adx_df.columns:
+                    indicator_values["PLUS_DI"] = adx_df[di_plus_col]
+                    indicator_values["MINUS_DI"] = adx_df[di_minus_col]
+                    indicator_values["DI_DIFF"] = adx_df[di_plus_col] - adx_df[di_minus_col]
+        except Exception as e:
+            logger.debug(f"Could not calculate DI+/DI-: {e}")
+
+        # Price change %
+        indicator_values["PRICE_CHANGE_PCT"] = df["close"].pct_change() * 100
+
+        # --- Threshold-to-indicator name mapping ---
+        threshold_map = {
+            "adx": "STRENGTH_ADX",
+            "rsi": "MOMENTUM_RSI",
+            "ema": "TREND_FILTER",
+            "sma": "TREND_SMA",
+            "bb": "VOLATILITY_BB",
+            "atr": "VOLATILITY_ATR",
+        }
+
+        def get_ind_val(name: str, idx: int) -> float:
+            if name not in indicator_values:
+                return np.nan
+            vals = indicator_values[name]
+            if isinstance(vals, pd.DataFrame):
+                return float(vals.iloc[idx, 0]) if idx < len(vals) else np.nan
+            elif isinstance(vals, pd.Series):
+                return float(vals.iloc[idx]) if idx < len(vals) else np.nan
+            return np.nan
+
+        def evaluate_regime(regime: dict, idx: int) -> bool:
+            thresholds = regime.get("thresholds", [])
+            regime_id = regime.get("id", "").upper()
+
+            for thresh in thresholds:
+                name = thresh["name"]
+                value = thresh["value"]
+
+                if name == "di_diff_min":
+                    di_diff = get_ind_val("DI_DIFF", idx)
+                    if np.isnan(di_diff):
+                        return False
+                    if "BULL" in regime_id:
+                        if di_diff < value:
+                            return False
+                    elif "BEAR" in regime_id:
+                        if di_diff > -value:
+                            return False
+                    else:
+                        if abs(di_diff) < value:
+                            return False
+                    continue
+
+                if name in ("rsi_strong_bull", "rsi_confirm_bull"):
+                    rsi = get_ind_val("MOMENTUM_RSI", idx)
+                    if np.isnan(rsi) or rsi < value:
+                        return False
+                    continue
+
+                if name in ("rsi_strong_bear", "rsi_confirm_bear"):
+                    rsi = get_ind_val("MOMENTUM_RSI", idx)
+                    if np.isnan(rsi) or rsi > value:
+                        return False
+                    continue
+
+                if name == "rsi_exhaustion_max":
+                    rsi = get_ind_val("MOMENTUM_RSI", idx)
+                    if np.isnan(rsi) or rsi > value:
+                        return False
+                    continue
+
+                if name == "rsi_exhaustion_min":
+                    rsi = get_ind_val("MOMENTUM_RSI", idx)
+                    if np.isnan(rsi) or rsi < value:
+                        return False
+                    continue
+
+                if name == "extreme_move_pct":
+                    pct = get_ind_val("PRICE_CHANGE_PCT", idx)
+                    if np.isnan(pct):
+                        return False
+                    if "BULL" in regime_id and pct < value:
+                        return False
+                    elif "BEAR" in regime_id and pct > -value:
+                        return False
+                    continue
+
+                if name.endswith("_min"):
+                    base = name[:-4]
+                    ind_name = threshold_map.get(base.lower(), base.upper())
+                    v = get_ind_val(ind_name, idx)
+                    if np.isnan(v) or v < value:
+                        return False
+                elif name.endswith("_max"):
+                    base = name[:-4]
+                    ind_name = threshold_map.get(base.lower(), base.upper())
+                    v = get_ind_val(ind_name, idx)
+                    if np.isnan(v) or v >= value:
+                        return False
+
+            return True
+
+        # --- Iterate candles ---
+        min_candles = 50
+        regime_periods = []
+        current_regime = None
+
+        sorted_regimes = sorted(regimes_v2, key=lambda r: r.get("priority", 0), reverse=True)
+        fallback_id = sorted_regimes[-1]["id"] if sorted_regimes else "SIDEWAYS"
+
+        for i in range(min_candles, len(df)):
+            active_id = fallback_id
+            for regime in sorted_regimes:
+                if evaluate_regime(regime, i):
+                    active_id = regime["id"]
+                    break
+
+            ts = df.iloc[i]["timestamp"]
+            dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+
+            if current_regime is None:
+                current_regime = {
+                    "regime": active_id,
+                    "score": 100.0,
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
+            elif current_regime["regime"] != active_id:
+                # Close previous regime
+                current_regime["end_timestamp"] = ts
+                current_regime["end_date"] = dt.strftime("%Y-%m-%d")
+                current_regime["end_time"] = dt.strftime("%H:%M:%S")
+                current_regime["end_bar_index"] = i
+                current_regime["duration_bars"] = i - current_regime["start_bar_index"]
+                dur_s = ts - current_regime["start_timestamp"]
+                if current_regime["start_timestamp"] > 1e10:
+                    dur_s /= 1000
+                current_regime["duration_time"] = self._fmt_duration(dur_s)
+                regime_periods.append(current_regime)
+
+                current_regime = {
+                    "regime": active_id,
+                    "score": 100.0,
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
+
+        # Close final regime
+        if current_regime is not None:
+            last_ts = df.iloc[-1]["timestamp"]
+            last_dt = datetime.fromtimestamp(last_ts / 1000 if last_ts > 1e10 else last_ts)
+            current_regime["end_timestamp"] = last_ts
+            current_regime["end_date"] = last_dt.strftime("%Y-%m-%d")
+            current_regime["end_time"] = last_dt.strftime("%H:%M:%S")
+            current_regime["end_bar_index"] = len(df)
+            current_regime["duration_bars"] = len(df) - current_regime["start_bar_index"]
+            dur_s = last_ts - current_regime["start_timestamp"]
+            if current_regime["start_timestamp"] > 1e10:
+                dur_s /= 1000
+            current_regime["duration_time"] = self._fmt_duration(dur_s)
+            regime_periods.append(current_regime)
+
+        logger.info(f"Regime detection: {len(regime_periods)} periods from {len(df)} candles")
+        return regime_periods
+
+    def _perform_simple_regime_detection(self, df: pd.DataFrame) -> list[dict]:
+        """Fallback regime detection using RegimeConfig thresholds.
+
+        Used when no v2 JSON strategy config is available.
+        """
+        from src.core.trading_bot.regime_result import RegimeConfig
+
+        config = RegimeConfig.find_and_load()
+        regime_periods = []
+        current_regime = None
+        min_candles = 50
+
+        # Dynamic parameters from JSON
+        p_fast = config.parameters.get("fast_ema_period", 20)
+        p_slow = config.parameters.get("slow_ema_period", 50)
+        p_trend = config.parameters.get("trend_sma_period", 200)
+
+        # Simple detection: EMA fast vs slow, SMA trend + ADX
+        ema20 = df["close"].ewm(span=p_fast).mean()
+        ema50 = df["close"].ewm(span=p_slow).mean()
+        sma200 = df["close"].rolling(window=p_trend).mean()
+
+        try:
+            import pandas_ta as ta
+            adx_df = ta.adx(df["high"], df["low"], df["close"], length=14)
+            adx = adx_df[f"ADX_14"] if adx_df is not None else pd.Series([np.nan] * len(df))
+        except Exception:
+            adx = pd.Series([np.nan] * len(df))
+
+        try:
+            import pandas_ta as ta
+            rsi = ta.rsi(df["close"], length=14)
+        except Exception:
+            rsi = pd.Series([np.nan] * len(df))
+
+        for i in range(min_candles, len(df)):
+            # Determine regime
+            e20 = ema20.iloc[i]
+            e50 = ema50.iloc[i]
+            s200 = sma200.iloc[i] if not np.isnan(sma200.iloc[i]) else e50 # Fallback to EMA50 if not enough data
+            price = df["close"].iloc[i]
+
+            adx_val = adx.iloc[i] if i < len(adx) else np.nan
+            rsi_val = rsi.iloc[i] if i < len(rsi) else np.nan
+
+            is_bull_crossover = e20 > e50
+            is_above_sma200 = price > s200
+
+            # Logic: Require SMA200 alignment for strong trends
+            # Prevent "BULL" signals in deep bear markets (Bear Rallies -> SIDEWAYS)
+
+            if not np.isnan(adx_val) and adx_val >= config.adx_strong_threshold:
+                if is_bull_crossover and is_above_sma200:
+                    active_id = "BULL_TREND"
+                elif not is_bull_crossover and not is_above_sma200:
+                    active_id = "BEAR_TREND"
+                else:
+                    # Conflicting signals (e.g. Rally in Bear or Pullback in Bull) -> SIDEWAYS
+                    active_id = "SIDEWAYS"
+            elif not np.isnan(adx_val) and adx_val < config.adx_chop_threshold:
+                active_id = "CHOP_ZONE"
+            else:
+                # Moderate ADX (15-30)
+                if is_bull_crossover and is_above_sma200:
+                    active_id = "BULL"
+                elif not is_bull_crossover and not is_above_sma200:
+                    active_id = "BEAR"
+                else:
+                    active_id = "SIDEWAYS"
+
+            ts = df.iloc[i]["timestamp"]
+            dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+
+            if current_regime is None:
+                current_regime = {
+                    "regime": active_id,
+                    "score": 100.0,
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
+            elif current_regime["regime"] != active_id:
+                current_regime["end_timestamp"] = ts
+                current_regime["end_date"] = dt.strftime("%Y-%m-%d")
+                current_regime["end_time"] = dt.strftime("%H:%M:%S")
+                current_regime["end_bar_index"] = i
+                current_regime["duration_bars"] = i - current_regime["start_bar_index"]
+                dur_s = ts - current_regime["start_timestamp"]
+                if current_regime["start_timestamp"] > 1e10:
+                    dur_s /= 1000
+                current_regime["duration_time"] = self._fmt_duration(dur_s)
+                regime_periods.append(current_regime)
+
+                current_regime = {
+                    "regime": active_id,
+                    "score": 100.0,
+                    "start_timestamp": ts,
+                    "start_date": dt.strftime("%Y-%m-%d"),
+                    "start_time": dt.strftime("%H:%M:%S"),
+                    "start_bar_index": i,
+                }
+
+        if current_regime is not None:
+            last_ts = df.iloc[-1]["timestamp"]
+            last_dt = datetime.fromtimestamp(last_ts / 1000 if last_ts > 1e10 else last_ts)
+            current_regime["end_timestamp"] = last_ts
+            current_regime["end_date"] = last_dt.strftime("%Y-%m-%d")
+            current_regime["end_time"] = last_dt.strftime("%H:%M:%S")
+            current_regime["end_bar_index"] = len(df)
+            current_regime["duration_bars"] = len(df) - current_regime["start_bar_index"]
+            dur_s = last_ts - current_regime["start_timestamp"]
+            if current_regime["start_timestamp"] > 1e10:
+                dur_s /= 1000
+            current_regime["duration_time"] = self._fmt_duration(dur_s)
+            regime_periods.append(current_regime)
+
+        return regime_periods
+
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        """Format duration in seconds to human-readable string."""
+        try:
+            seconds = float(seconds)
+            if np.isnan(seconds) or seconds < 0:
+                return "n/a"
+        except (TypeError, ValueError):
+            return "n/a"
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            return f"{int(seconds / 60)}m"
+        else:
+            hours = int(seconds / 3600)
+            minutes = int((seconds % 3600) / 60)
+            return f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+
+    def _calculate_all_scores(self) -> None:
+        """Calculate score for all strategies based on current market."""
+        try:
+            # 1. Get Market Data (Features)
+            # Get parent chart window
+            parent = self.parent()
+            if not parent:
+                QMessageBox.warning(
+                    self,
+                    "No Chart Data",
+                    "Cannot calculate scores: No chart window found.\n"
+                    "Please open this dialog from a chart window."
+                )
+                return
+
+            # Get current market data using robust feature retrieval
+            features = self._get_current_features(parent)
+            if not features:
+                QMessageBox.warning(
+                    self,
+                    "No Market Data",
+                    "Cannot calculate scores: No feature data available.\n"
+                    "Please wait for market data to load."
+                )
+                return
+
+            # 2. Get Current Regime
+            from src.core.tradingbot.regime_engine import RegimeEngine
+            from src.core.tradingbot.config_integration_bridge import IndicatorValueCalculator
+            from src.core.tradingbot.config.loader import ConfigLoader
+            from src.core.tradingbot.config.detector import RegimeDetector
+            from src.core.tradingbot.config.router import StrategyRouter
+
+            # Imports for Signal Check
+            from src.core.tradingbot.cel_engine import get_cel_engine
+            from src.core.tradingbot.json_entry_loader import JsonEntryConfig
+            from src.core.tradingbot.json_entry_scorer import JsonEntryScorer
+
+            regime_engine = RegimeEngine()
+            current_regime = regime_engine.classify(features)
+
+            # Indicator values for router
+            indicator_calc = IndicatorValueCalculator()
+            indicator_values = indicator_calc.calculate_indicator_values(features)
+
+            cel_engine = get_cel_engine()
+
+            # 3. Iterate Strategies and Calculate Score
+            loader = ConfigLoader()
+            updates = [] # List of (row, score)
+
+            logger.info(f"Calculating scores for {self._strategy_table.rowCount()} strategies...")
+
+            for row in range(self._strategy_table.rowCount()):
+                try:
+                    name_item = self._strategy_table.item(row, 1)
+                    if not name_item:
+                        continue
+
+                    strategy_name = name_item.text()
+
+                    # Find strategy ID
+                    strategy_id = None
+                    for sid, config in self.strategies.items():
+                        strat = config.get("strategies", [{}])[0]
+                        if strat.get("name", sid) == strategy_name:
+                            strategy_id = sid
+                            break
+
+                    if not strategy_id:
+                        continue
+
+                    # Load full config for this strategy
+                    json_path = JSON_DIR / f"{strategy_id}.json"
+                    loaded_config = loader.load_config(str(json_path))
+
+                    # B. Check Regime Routing (Match Score)
+                    score = 0
+
+                    # Detect active regimes for this strategy's thresholds
+                    if loaded_config.regimes:
+                        detector = RegimeDetector(loaded_config.regimes)
+                        active_regimes = detector.detect_active_regimes(indicator_values, scope='entry')
+
+                        # Check routing
+                        router = StrategyRouter(loaded_config.routing, loaded_config.strategy_sets)
+                        matched_sets = router.route_regimes(active_regimes)
+
+                        # Simplification: If any set matches, we have a regime match
+                        if matched_sets:
+                            score = 50 # Base score for Regime Match
+
+                        # C. Check Entry Signal (Signal Score)
+                        # We need to determine if we should enter.
+                        # Strategies can have either a CEL expression OR structured ConditionGroups.
+
+                        should_enter = False
+
+                        try:
+                            # 1. Try CEL Expression first (if explicitly defined and not just default "true")
+                            # We treat the strategy file as the regime json
+                            entry_config = JsonEntryConfig.from_files(
+                                regime_json_path=str(json_path),
+                                indicator_json_path=None # Indicators are inside
+                            )
+
+                            # Check if expression is meaningful (not just default "true" fallback from loader)
+                            # JsonEntryLoader defaults to "true" if missing, so we check if it looks like a real expression
+                            # or if we should look for structured conditions.
+                            # However, JsonEntryConfig hides the original raw string if it was missing.
+                            # But checking if it is exactly "true" is a good heuristic for "default/empty".
+
+                            has_explicit_expression = entry_config.entry_expression != "true"
+
+                            if has_explicit_expression:
+                                scorer = JsonEntryScorer(entry_config, cel_engine)
+                                # Check long and short
+                                should_long, _, _ = scorer.should_enter_long(features, current_regime)
+                                should_short, _, _ = scorer.should_enter_short(features, current_regime)
+                                should_enter = should_long or should_short
+
+                            else:
+                                # 2. Fallback: Check structured entry conditions
+                                # Find the StrategyDefinition
+                                strategy_def = next((s for s in loaded_config.strategies if s.id == strategy_id), None)
+
+                                if strategy_def and strategy_def.entry:
+                                    from src.core.tradingbot.config.evaluator import ConditionEvaluator
+                                    evaluator = ConditionEvaluator(indicator_values)
+                                    should_enter = evaluator.evaluate_group(strategy_def.entry)
+
+                        except Exception as scorer_err:
+                            logger.debug(f"Entry check failed for {strategy_name}: {scorer_err}")
+                            # Keep regime score
+
+                        if should_enter:
+                            if score >= 50:
+                                score = 100 # Perfect match + Signal
+                            else:
+                                score = 25 # Signal but wrong regime (Risk!)
+
+                    updates.append((row, score))
+
+                except Exception as e:
+                    logger.error(f"Error scoring strategy row {row}: {e}")
+
+            # 4. Update UI
+            self._strategy_table.setSortingEnabled(False) # Disable sorting while updating
+            for row, score in updates:
+                score_item = QTableWidgetItem()
+                score_item.setData(Qt.ItemDataRole.DisplayRole, score) # Use number for proper sorting
+                score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                # Color coding
+                if score >= 100:
+                    score_item.setBackground(Qt.GlobalColor.darkGreen)
+                    score_item.setForeground(Qt.GlobalColor.white)
+                elif score >= 50:
+                    score_item.setBackground(Qt.GlobalColor.darkYellow)
+                    score_item.setForeground(Qt.GlobalColor.black)
+                elif score >= 25:
+                    score_item.setBackground(Qt.GlobalColor.darkRed)
+                    score_item.setForeground(Qt.GlobalColor.white)
+
+                self._strategy_table.setItem(row, 0, score_item)
+
+            self._strategy_table.setSortingEnabled(True) # Re-enable sorting
+
+            logger.info("Score calculation complete.")
+
+        except Exception as e:
+            logger.error(f"Calculate all scores failed: {e}", exc_info=True)
+            QMessageBox.critical(self, "Calculation Error", f"Failed to calculate scores:\n{e}")

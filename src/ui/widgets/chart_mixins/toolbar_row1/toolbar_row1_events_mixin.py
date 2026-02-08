@@ -133,6 +133,17 @@ class ToolbarRow1EventsMixin:
 
             # Open Strategy Settings Dialog
             dialog = StrategySettingsDialog(chart_window)
+
+            # Connect regime detector signal to chart drawing
+            # Prefer _draw_regime_lines (stores data + handles missing filter gracefully)
+            chart_widget = getattr(chart_window, 'chart_widget', None) or self.parent
+            if hasattr(chart_widget, '_draw_regime_lines'):
+                dialog.draw_regime_lines_requested.connect(chart_widget._draw_regime_lines)
+                logger.debug("Connected draw_regime_lines_requested to chart widget")
+            elif hasattr(self.parent, '_draw_regime_lines'):
+                dialog.draw_regime_lines_requested.connect(self.parent._draw_regime_lines)
+                logger.debug("Connected draw_regime_lines_requested to parent widget")
+
             result = dialog.exec()
 
             # Issue #32: Reset button after dialog closes

@@ -136,13 +136,20 @@ class JsonEntryConfig:
         # - Direkt: {"indicators": {...}} (Dict)
         # - Entry Analyzer: {"optimization_results": [{"indicators": [...]}]} (List)
         regime_indicators = regime_data.get("indicators", {})
-        
+
+        # Konvertiere auch regime_indicators zu Dict, falls Liste (JSON v2.0 Standard)
+        if isinstance(regime_indicators, list):
+            regime_indicators = {
+                ind.get("id", ind.get("name", f"indicator_{i}")): ind
+                for i, ind in enumerate(regime_indicators)
+            }
+
         if not regime_indicators and "optimization_results" in regime_data:
             # Fallback: Lade aus optimization_results[0].indicators
             opt_results = regime_data.get("optimization_results", [])
             if opt_results and len(opt_results) > 0:
                 regime_indicators_raw = opt_results[0].get("indicators", [])
-                
+
                 # Konvertiere Liste → Dict (name als Key)
                 if isinstance(regime_indicators_raw, list):
                     regime_indicators = {
@@ -156,14 +163,14 @@ class JsonEntryConfig:
                 else:
                     # Falls es schon ein Dict ist
                     regime_indicators = regime_indicators_raw
-        
+
         # Konvertiere indicators auch falls es eine Liste ist
         if isinstance(indicators, list):
             indicators = {
                 ind.get("name", f"indicator_{i}"): ind
                 for i, ind in enumerate(indicators)
             }
-        
+
         combined_indicators = {**regime_indicators, **indicators}
 
         if len(indicators) > 0:
@@ -188,13 +195,13 @@ class JsonEntryConfig:
         # - Direkt: {"regimes": {...}} (Dict)
         # - Entry Analyzer: {"optimization_results": [{"regimes": [...]}]} (List)
         regime_thresholds = regime_data.get("regimes", {})
-        
+
         if not regime_thresholds and "optimization_results" in regime_data:
             # Fallback: Lade aus optimization_results[0].regimes
             opt_results = regime_data.get("optimization_results", [])
             if opt_results and len(opt_results) > 0:
                 regime_thresholds_raw = opt_results[0].get("regimes", [])
-                
+
                 # Konvertiere Liste → Dict (id als Key)
                 if isinstance(regime_thresholds_raw, list):
                     regime_thresholds = {

@@ -400,10 +400,14 @@ class BotCallbacksLifecycleMixin:
         
         # Start update timer (evaluiert nach jeder Candle)
         self._ensure_bot_update_timer()
-        
+
+        # Check TR activation for existing ENTERED position
+        if hasattr(self, '_check_tr_activation_on_bot_start'):
+            self._check_tr_activation_on_bot_start()
+
         # Save settings
         self._save_bot_settings(symbol)
-        
+
         logger.info(f"Bot started with JSON Entry for {symbol}")
         logger.info(f"  Regimes: {len(json_entry_config.regime_thresholds)}")
         logger.info(f"  Indicators: {len(json_entry_config.indicators)}")

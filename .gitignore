@@ -134,3 +134,10 @@ claude-flow
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
 07_OrderPilot-AI-SICHERUNGSKOPIE/
+
+# User requested additions
+.wsl_venv
+.wsl_env
+.Ai_Exchange
+.AI_Exchange/
+

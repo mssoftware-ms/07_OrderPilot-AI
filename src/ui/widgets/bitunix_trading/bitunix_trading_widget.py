@@ -39,6 +39,9 @@ from PyQt6.QtWidgets import (
     QGridLayout,
 )
 
+# Import design system for theme-consistent colors
+from src.ui.design_system import THEMES, ColorPalette, theme_service
+
 if TYPE_CHECKING:
     from src.ui.widgets.bitunix_trading_api_widget import BitunixTradingAPIWidget
     from src.ui.widgets.bitunix_trading.bitunix_state_manager import BitunixTradingStateManager
@@ -97,9 +100,26 @@ class BitunixTradingWidget(QDockWidget):
         self._stats_timer.setInterval(200)  # 200ms debounce for stats
         self._stats_timer.timeout.connect(self._do_refresh_statistics)
 
+        # Get theme palette for consistent styling
+        self._palette = self._get_theme_palette()
+
         self._setup_ui()
 
+        # Subscribe to theme changes for live updates
+        theme_service.subscribe(self._on_theme_changed)
+
         logger.info("BitunixTradingWidget initialized (Mirror mode)")
+
+    def _get_theme_palette(self) -> ColorPalette:
+        """Get the current theme palette from app settings or default."""
+        try:
+            from PyQt6.QtCore import QSettings
+            settings = QSettings("OrderPilot", "TradingApp")
+            theme_name = settings.value("theme/name", "Dark Orange")
+            key = theme_name.lower().replace(" ", "_")
+            return THEMES.get(key, THEMES["dark_orange"])
+        except Exception:
+            return THEMES["dark_orange"]
 
     def _setup_ui(self) -> None:
         """Set up the widget UI with compact mirror components."""
@@ -179,16 +199,19 @@ class BitunixTradingWidget(QDockWidget):
             self._signals_mirror.setStyleSheet("color: red;")
 
     def _create_separator(self) -> QFrame:
-        """Create a horizontal separator line."""
+        """Create a horizontal separator line using theme colors."""
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("background-color: #3a3a3a;")
+        # Use theme border color
+        line.setStyleSheet(f"background-color: {self._palette.border_main};")
         line.setFixedHeight(1)
         return line
 
     def _create_bot_controls(self) -> None:
         """Create bot controls GroupBox with Start/Stop button, status, and statistics."""
+        p = self._palette  # Shorthand for theme palette
+
         self._bot_controls_group = QGroupBox("Trading Bot")
         main_layout = QVBoxLayout(self._bot_controls_group)
         main_layout.setContentsMargins(6, 6, 6, 6)
@@ -199,17 +222,14 @@ class BitunixTradingWidget(QDockWidget):
         top_row.setSpacing(8)
 
         self._bot_status_label = QLabel("Status: STOPPED")
-        self._bot_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+        self._bot_status_label.setStyleSheet(f"font-weight: bold; color: {p.text_secondary};")
         top_row.addWidget(self._bot_status_label)
 
         top_row.addStretch()
 
         self._start_bot_btn = QPushButton("▶ Start Bot")
         self._start_bot_btn.setFixedHeight(24)
-        self._start_bot_btn.setStyleSheet(
-            "font-size: 10px; padding: 2px 12px; background-color: #ef5350; "
-            "color: white; font-weight: bold;"
-        )
+        self._start_bot_btn.setProperty("class", "danger")  # Use theme class
         self._start_bot_btn.setToolTip(
             "Startet/Stoppt den Trading Bot\n"
             "Grün = Bot läuft\n"
@@ -226,14 +246,13 @@ class BitunixTradingWidget(QDockWidget):
 
         # Time filter combo
         filter_label = QLabel("Zeitraum:")
-        filter_label.setStyleSheet("color: #888; font-size: 10px;")
+        filter_label.setProperty("class", "info-label")  # Use theme class
         stats_row.addWidget(filter_label)
 
         self._time_filter_combo = QComboBox()
         self._time_filter_combo.addItems(["Tag", "Woche", "Monat", "Kpl"])
         self._time_filter_combo.setCurrentText("Kpl")
         self._time_filter_combo.setFixedWidth(70)
-        self._time_filter_combo.setStyleSheet("font-size: 10px;")
         self._time_filter_combo.currentTextChanged.connect(self._on_time_filter_changed)
         stats_row.addWidget(self._time_filter_combo)
 
@@ -241,44 +260,44 @@ class BitunixTradingWidget(QDockWidget):
 
         # P&L % label
         self._pnl_pct_label = QLabel("P&L: 0.00%")
-        self._pnl_pct_label.setStyleSheet("font-weight: bold; color: #9e9e9e; font-size: 11px;")
+        self._pnl_pct_label.setStyleSheet(f"font-weight: bold; color: {p.text_secondary};")
         stats_row.addWidget(self._pnl_pct_label)
 
         stats_row.addSpacing(10)
 
         # P&L USDT label
         self._pnl_usdt_label = QLabel("0.00 USDT")
-        self._pnl_usdt_label.setStyleSheet("font-weight: bold; color: #9e9e9e; font-size: 11px;")
+        self._pnl_usdt_label.setStyleSheet(f"font-weight: bold; color: {p.text_secondary};")
         stats_row.addWidget(self._pnl_usdt_label)
 
         stats_row.addStretch()
         main_layout.addLayout(stats_row)
 
         # ── Row 3: Top Strategy ──
-        top_row = QHBoxLayout()
-        top_row.setSpacing(4)
+        strategy_top_row = QHBoxLayout()
+        strategy_top_row.setSpacing(4)
 
         top_label = QLabel("Top:")
-        top_label.setStyleSheet("color: #26a69a; font-size: 10px; font-weight: bold;")
-        top_row.addWidget(top_label)
+        top_label.setStyleSheet(f"color: {p.success}; font-weight: bold;")
+        strategy_top_row.addWidget(top_label)
 
         self._top_strategies_label = QLabel("-")
-        self._top_strategies_label.setStyleSheet("color: #26a69a; font-size: 10px;")
-        top_row.addWidget(self._top_strategies_label)
+        self._top_strategies_label.setStyleSheet(f"color: {p.success};")
+        strategy_top_row.addWidget(self._top_strategies_label)
 
-        top_row.addStretch()
-        main_layout.addLayout(top_row)
+        strategy_top_row.addStretch()
+        main_layout.addLayout(strategy_top_row)
 
         # ── Row 4: Worst Strategy ──
         worst_row = QHBoxLayout()
         worst_row.setSpacing(4)
 
         worst_label = QLabel("Worst:")
-        worst_label.setStyleSheet("color: #ef5350; font-size: 10px; font-weight: bold;")
+        worst_label.setStyleSheet(f"color: {p.error}; font-weight: bold;")
         worst_row.addWidget(worst_label)
 
         self._worst_strategies_label = QLabel("-")
-        self._worst_strategies_label.setStyleSheet("color: #ef5350; font-size: 10px;")
+        self._worst_strategies_label.setStyleSheet(f"color: {p.error};")
         worst_row.addWidget(self._worst_strategies_label)
 
         worst_row.addStretch()
@@ -325,77 +344,110 @@ class BitunixTradingWidget(QDockWidget):
         filter_text = self._time_filter_combo.currentText()
         now = datetime.now()
 
+        def _parse_row_time(time_str: str) -> Optional[datetime]:
+            time_str = time_str.strip()
+            if not time_str:
+                return None
+            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"]:
+                try:
+                    return datetime.strptime(time_str, fmt)
+                except ValueError:
+                    continue
+            for fmt in ["%H:%M:%S", "%H:%M"]:
+                try:
+                    parsed_time = datetime.strptime(time_str, fmt).time()
+                    return datetime.combine(now.date(), parsed_time)
+                except ValueError:
+                    continue
+            return None
+
         # Determine cutoff date based on filter
+        # "Tag" = from midnight today (00:00), not last 24 hours
         if filter_text == "Tag":
-            cutoff = now - timedelta(days=1)
+            cutoff = datetime.combine(now.date(), datetime.min.time())  # Today 00:00:00
         elif filter_text == "Woche":
-            cutoff = now - timedelta(weeks=1)
+            # Start of current week (Monday 00:00)
+            days_since_monday = now.weekday()
+            week_start = now.date() - timedelta(days=days_since_monday)
+            cutoff = datetime.combine(week_start, datetime.min.time())
         elif filter_text == "Monat":
-            cutoff = now - timedelta(days=30)
+            # Start of current month (1st day 00:00)
+            cutoff = datetime.combine(now.date().replace(day=1), datetime.min.time())
         else:  # "Kpl" - complete
             cutoff = None
 
         # Collect data from master table
-        # Master columns: 0=Time, 2=Strategy, 12=P&L%, 13=P&L USDT
-        total_pnl_pct = 0.0
+        # Master columns: 0=Time, 2=Strategy, 12=P&L%, 13=P&L USDT, 16=Invested
         total_pnl_usdt = 0.0
-        strategy_pnl_pct: dict[str, float] = {}  # strategy -> total P&L %
+        total_invested = 0.0
+        strategy_pnl: dict[str, dict] = {}  # strategy -> {"pnl_usdt": float, "invested": float}
         valid_rows = 0
 
         for row in range(self._master_table.rowCount()):
             # Check time filter
             if cutoff:
                 time_item = self._master_table.item(row, 0)
-                if time_item:
-                    try:
-                        # Parse time - try common formats
-                        time_str = time_item.text()
-                        row_time = None
-                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M"]:
-                            try:
-                                row_time = datetime.strptime(time_str, fmt)
-                                break
-                            except ValueError:
-                                continue
-                        if row_time and row_time < cutoff:
-                            continue  # Skip rows outside time range
-                    except Exception:
-                        pass  # Include row if time parsing fails
+                row_time = _parse_row_time(time_item.text()) if time_item else None
+                if not row_time:
+                    continue  # Skip rows if time cannot be parsed when filtering
+                if row_time < cutoff:
+                    continue  # Skip rows outside time range
 
-            # Get P&L % (column 12)
-            pnl_pct = 0.0
-            pnl_pct_item = self._master_table.item(row, 12)
-            if pnl_pct_item:
+            # Get Invested amount (column 16) for weighted P&L% calculation
+            invested = 0.0
+            invested_item = self._master_table.item(row, 16)
+            if invested_item:
                 try:
-                    pnl_pct_text = pnl_pct_item.text().replace("%", "").replace(",", ".").strip()
-                    if pnl_pct_text and pnl_pct_text != "-":
-                        pnl_pct = float(pnl_pct_text)
-                        total_pnl_pct += pnl_pct
+                    invested_text = invested_item.text().replace("USDT", "").replace(",", ".").strip()
+                    if invested_text and invested_text != "-":
+                        invested = float(invested_text)
+                        total_invested += invested
                 except (ValueError, AttributeError):
                     pass
 
             # Get P&L USDT (column 13)
+            pnl_usdt = 0.0
             pnl_usdt_item = self._master_table.item(row, 13)
             if pnl_usdt_item:
                 try:
                     pnl_text = pnl_usdt_item.text().replace("USDT", "").replace(",", ".").strip()
                     if pnl_text and pnl_text != "-":
-                        total_pnl_usdt += float(pnl_text)
+                        pnl_usdt = float(pnl_text)
+                        total_pnl_usdt += pnl_usdt
                 except (ValueError, AttributeError):
                     pass
 
-            # Get Strategy (column 2) for ranking by P&L %
+            # Get Strategy (column 2) for ranking
             strategy_item = self._master_table.item(row, 2)
-            if strategy_item and pnl_pct != 0:
+            if strategy_item and (pnl_usdt != 0 or invested > 0):
                 strategy_name = strategy_item.text().strip()
-                if strategy_name and strategy_name != "-":
-                    strategy_pnl_pct[strategy_name] = strategy_pnl_pct.get(strategy_name, 0.0) + pnl_pct
+                base_strategy = strategy_name.split(" | ", 1)[0].strip()
+                if base_strategy and base_strategy != "-":
+                    if base_strategy not in strategy_pnl:
+                        strategy_pnl[base_strategy] = {"pnl_usdt": 0.0, "invested": 0.0}
+                    strategy_pnl[base_strategy]["pnl_usdt"] += pnl_usdt
+                    strategy_pnl[base_strategy]["invested"] += invested
 
             valid_rows += 1
 
-        # Update P&L labels
-        pnl_pct_color = "#26a69a" if total_pnl_pct >= 0 else "#ef5350"
-        pnl_usdt_color = "#26a69a" if total_pnl_usdt >= 0 else "#ef5350"
+        # Calculate weighted P&L% = (Total P&L USDT / Total Invested) * 100
+        if total_invested > 0:
+            total_pnl_pct = (total_pnl_usdt / total_invested) * 100
+        else:
+            total_pnl_pct = 0.0
+
+        # Calculate strategy P&L percentages (weighted)
+        strategy_pnl_pct: dict[str, float] = {}
+        for strat_name, data in strategy_pnl.items():
+            if data["invested"] > 0:
+                strategy_pnl_pct[strat_name] = (data["pnl_usdt"] / data["invested"]) * 100
+            elif data["pnl_usdt"] != 0:
+                # Fallback: if no invested but has P&L, show as-is (shouldn't happen normally)
+                strategy_pnl_pct[strat_name] = data["pnl_usdt"]
+
+        # Update P&L labels using theme colors
+        pnl_pct_color = self._palette.success if total_pnl_pct >= 0 else self._palette.error
+        pnl_usdt_color = self._palette.success if total_pnl_usdt >= 0 else self._palette.error
 
         self._pnl_pct_label.setText(f"P&L: {total_pnl_pct:+.2f}%")
         self._pnl_pct_label.setStyleSheet(f"font-weight: bold; color: {pnl_pct_color}; font-size: 11px;")
@@ -446,19 +498,19 @@ class BitunixTradingWidget(QDockWidget):
         if running:
             self._start_bot_btn.setText("⏹ Stop Bot")
             self._start_bot_btn.setStyleSheet(
-                "font-size: 10px; padding: 2px 12px; background-color: #26a69a; "
-                "color: white; font-weight: bold;"
+                f"font-size: 10px; padding: 2px 12px; background-color: {self._palette.success}; "
+                f"color: {self._palette.text_inverse}; font-weight: bold;"
             )
             self._bot_status_label.setText("Status: RUNNING")
-            self._bot_status_label.setStyleSheet("font-weight: bold; color: #26a69a;")
+            self._bot_status_label.setStyleSheet(f"font-weight: bold; color: {self._palette.success};")
         else:
             self._start_bot_btn.setText("▶ Start Bot")
             self._start_bot_btn.setStyleSheet(
-                "font-size: 10px; padding: 2px 12px; background-color: #ef5350; "
-                "color: white; font-weight: bold;"
+                f"font-size: 10px; padding: 2px 12px; background-color: {self._palette.error}; "
+                f"color: {self._palette.text_inverse}; font-weight: bold;"
             )
             self._bot_status_label.setText("Status: STOPPED")
-            self._bot_status_label.setStyleSheet("font-weight: bold; color: #9e9e9e;")
+            self._bot_status_label.setStyleSheet(f"font-weight: bold; color: {self._palette.text_secondary};")
 
     # ─────────────────────────────────────────────────────────────────────
     # Public API
@@ -578,6 +630,48 @@ class BitunixTradingWidget(QDockWidget):
         logger.debug(f"Master order placed: {order_id}")
         # Could show notification or update UI
 
+    def _on_theme_changed(self, new_palette: ColorPalette) -> None:
+        """Handle theme change - update all styled components.
+
+        Args:
+            new_palette: The new ColorPalette to apply.
+        """
+        self._palette = new_palette
+        logger.debug(f"BitunixTradingWidget theme changed to: {new_palette.name}")
+
+        # Update bot controls styling
+        p = self._palette
+
+        # Update status label color
+        if hasattr(self, '_bot_status_label'):
+            # Preserve current running state
+            is_running = "RUNNING" in self._bot_status_label.text()
+            if is_running:
+                self._bot_status_label.setStyleSheet(f"font-weight: bold; color: {p.success};")
+            else:
+                self._bot_status_label.setStyleSheet(f"font-weight: bold; color: {p.text_secondary};")
+
+        # Update P&L labels
+        if hasattr(self, '_pnl_pct_label'):
+            # Re-apply colors based on current value
+            self._do_refresh_statistics()
+
+        # Update strategy labels
+        if hasattr(self, '_top_strategies_label'):
+            self._top_strategies_label.setStyleSheet(f"color: {p.success};")
+        if hasattr(self, '_worst_strategies_label'):
+            self._worst_strategies_label.setStyleSheet(f"color: {p.error};")
+
+        # Update separator lines if they exist
+        for child in self.findChildren(QFrame):
+            if child.frameShape() == QFrame.Shape.HLine:
+                child.setStyleSheet(f"background-color: {p.border_main};")
+
+        # Update signals mirror table styling
+        if self._signals_mirror and hasattr(self._signals_mirror, 'table'):
+            self._signals_mirror.table._palette = new_palette
+            self._signals_mirror.table._setup_ui()  # Re-apply styling
+
     # ─────────────────────────────────────────────────────────────────────
     # Lifecycle
     # ─────────────────────────────────────────────────────────────────────
@@ -601,6 +695,9 @@ class BitunixTradingWidget(QDockWidget):
 
     def closeEvent(self, event) -> None:
         """Handle close event."""
+        # Unsubscribe from theme changes
+        theme_service.unsubscribe(self._on_theme_changed)
+
         # Clean up mirror connections
         if self._api_widget and hasattr(self._api_widget, 'cleanup_mirror'):
             self._api_widget.cleanup_mirror()

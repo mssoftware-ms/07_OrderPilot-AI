@@ -300,22 +300,26 @@ class EntryAnalyzerLogicMixin:
             logger.error(f"Failed to update regime filter menu: {e}", exc_info=True)
             print(f"[ENTRY_ANALYZER] ERROR updating filter menu: {e}", flush=True)
 
-        # Apply current filter
-        if self._regime_filter_menu:
-            selected = self.get_selected_items()
-            if selected:
-                filtered_regimes = [
-                    r for r in regimes if r.get("regime", "UNKNOWN") in selected
-                ]
+        # Apply current filter (if filter UI is available)
+        filtered_regimes = regimes  # Default: draw all
+        try:
+            if self._regime_filter_menu:
+                selected = self.get_selected_items()
+                if selected:
+                    filtered_regimes = [
+                        r for r in regimes if r.get("regime", "UNKNOWN") in selected
+                    ]
+                else:
+                    # If menu exists but nothing selected, show all (filter not initialized)
+                    print(
+                        "[ENTRY_ANALYZER] Filter exists but selection empty -> Drawing ALL",
+                        flush=True,
+                    )
             else:
-                # If menu exists but nothing selected, show all (filter not initialized)
-                print(
-                    "[ENTRY_ANALYZER] Filter exists but selection empty -> Drawing ALL",
-                    flush=True,
-                )
-                filtered_regimes = regimes
-        else:
-            print("[ENTRY_ANALYZER] No filter menu -> Drawing ALL", flush=True)
+                print("[ENTRY_ANALYZER] No filter menu -> Drawing ALL", flush=True)
+        except (NotImplementedError, AttributeError) as e:
+            # Filter UI not available (e.g. called from StrategySettingsDialog)
+            print(f"[ENTRY_ANALYZER] Filter not available ({e}) -> Drawing ALL", flush=True)
             filtered_regimes = regimes
 
         # Draw the filtered regimes

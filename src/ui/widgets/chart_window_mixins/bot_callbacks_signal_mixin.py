@@ -7,6 +7,7 @@ from typing import Any
 
 from src.database.models import OrderStatus
 from src.ui.widgets.chart_mixins.bot_overlay_types import MarkerType
+from src.ui.design_system import theme_service
 
 logger = logging.getLogger(__name__)
 
@@ -394,8 +395,9 @@ class BotCallbacksSignalMixin:
             )
             self._add_ki_log_entry("CHART", f"Entry-Marker gezeichnet: {label} @ {entry_price:.2f}")
 
+            p = theme_service.get_palette()
             entry_label = f"Entry @ {entry_price:.2f}"
-            entry_color = "#26a69a" if side.lower() == "long" else "#ef5350"
+            entry_color = p.success if side.lower() == "long" else p.error
             self.chart_widget.add_stop_line(
                 "entry_line",
                 entry_price,
@@ -411,7 +413,7 @@ class BotCallbacksSignalMixin:
                     "initial_stop",
                     signal_stop_price,
                     line_type="initial",
-                    color="#ef5350",
+                    color=p.error,
                     label=sl_label
                 )
                 self._add_ki_log_entry("CHART", f"Stop-Loss-Linie gezeichnet @ {signal_stop_price:.2f}")
@@ -426,7 +428,7 @@ class BotCallbacksSignalMixin:
                 trailing_pct = active_sig.get("trailing_stop_pct", 0)
                 if trailing_stop_price > 0 and trailing_pct > 0:
                     # Gray color for inactive trailing stop
-                    tr_color = "#888888"  # Gray when not yet active
+                    tr_color = p.text_secondary  # Gray when not yet active
                     tr_label = f"TSL @ {trailing_stop_price:.2f} ({trailing_pct:.2f}%) [wartend]"
                     self.chart_widget.add_stop_line(
                         "trailing_stop",
@@ -526,7 +528,7 @@ class BotCallbacksSignalMixin:
             "initial_stop",
             stop_price,
             line_type="initial",
-            color="#ef5350",
+            color=theme_service.get_palette().error,
             label=sl_label
         )
         self._add_ki_log_entry("STOP", f"Initial Stop-Line gezeichnet @ {stop_price:.2f} ({initial_sl_pct:.2f}%)")
@@ -575,7 +577,7 @@ class BotCallbacksSignalMixin:
                 "trailing_stop",
                 new_stop,
                 line_type="trailing",
-                color="#ff9800",
+                color=theme_service.get_palette().warning,
                 label=tr_label
             )
 
@@ -742,21 +744,23 @@ class BotCallbacksSignalMixin:
         # Update position labels if currently flat
         if hasattr(self, 'position_side_label'):
             self.position_side_label.setText(f"BLOCKED")
-            self.position_side_label.setStyleSheet("font-weight: bold; color: #ff9800;")
+            self.position_side_label.setStyleSheet(f"font-weight: bold; color: {theme_service.get_palette().warning};")
+
     def _on_bot_state_change(self, old_state: str, new_state: str) -> None:
         """Handle bot state change."""
         logger.info(f"Bot state change: {old_state} -> {new_state}")
         self._add_ki_log_entry("STATE", f"{old_state} -> {new_state}")
 
-        # Map state to status display
+        # Map state to status display using theme colors
+        p = theme_service.get_palette()
         state_colors = {
-            "idle": ("#26a69a", "RUNNING"),
-            "flat": ("#26a69a", "RUNNING"),
-            "waiting_signal": ("#2196f3", "WAITING"),
-            "in_position": ("#26a69a", "IN POSITION"),
-            "paused": ("#ff9800", "PAUSED"),
-            "error": ("#f44336", "ERROR"),
-            "stopped": ("#9e9e9e", "STOPPED"),
+            "idle": (p.success, "RUNNING"),
+            "flat": (p.success, "RUNNING"),
+            "waiting_signal": (p.info, "WAITING"),
+            "in_position": (p.success, "IN POSITION"),
+            "paused": (p.warning, "PAUSED"),
+            "error": (p.error, "ERROR"),
+            "stopped": (p.text_secondary, "STOPPED"),
         }
 
         if new_state.lower() in state_colors:

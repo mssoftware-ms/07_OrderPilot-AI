@@ -28,6 +28,9 @@ from PyQt6.QtWidgets import (
     QLabel,
 )
 
+# Import design system for theme-consistent colors
+from src.ui.design_system import THEMES, ColorPalette, theme_service
+
 if TYPE_CHECKING:
     pass
 
@@ -93,10 +96,27 @@ class SignalsTableMirror(QTableWidget):
         self._sync_timer.setInterval(50)  # 50ms debounce
         self._sync_timer.timeout.connect(self._process_pending_sync)
 
+        # Get theme palette for consistent styling
+        self._palette = self._get_theme_palette()
+
         self._setup_ui()
+
+        # Subscribe to theme changes
+        theme_service.subscribe(self._on_theme_changed)
 
         if master_table:
             self.set_master_table(master_table)
+
+    def _get_theme_palette(self) -> ColorPalette:
+        """Get the current theme palette from app settings or default."""
+        try:
+            from PyQt6.QtCore import QSettings
+            settings = QSettings("OrderPilot", "TradingApp")
+            theme_name = settings.value("theme/name", "Dark Orange")
+            key = theme_name.lower().replace(" ", "_")
+            return THEMES.get(key, THEMES["dark_orange"])
+        except Exception:
+            return THEMES["dark_orange"]
 
     def _setup_ui(self) -> None:
         """Setup table UI with columns and styling."""
@@ -124,31 +144,32 @@ class SignalsTableMirror(QTableWidget):
         # Read-only
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-        # Styling
-        self.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a2e;
-                color: #e0e0e0;
-                border: 1px solid #333;
+        # Styling using theme palette
+        p = self._palette
+        self.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {p.background_input};
+                color: {p.text_primary};
+                border: 1px solid {p.border_main};
                 border-radius: 4px;
-                gridline-color: #2a2a3e;
+                gridline-color: {p.background_surface};
                 font-size: 11px;
-            }
-            QTableWidget::item {
+            }}
+            QTableWidget::item {{
                 padding: 2px 4px;
-            }
-            QTableWidget::item:selected {
-                background-color: #3a3a5e;
-            }
-            QHeaderView::section {
-                background-color: #2a2a3e;
-                color: #aaa;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {p.selection_bg};
+            }}
+            QHeaderView::section {{
+                background-color: {p.background_surface};
+                color: {p.text_secondary};
                 padding: 4px;
                 border: none;
-                border-right: 1px solid #333;
+                border-right: 1px solid {p.border_main};
                 font-size: 10px;
                 font-weight: bold;
-            }
+            }}
         """)
 
         # Minimum height
@@ -383,6 +404,23 @@ class SignalsTableMirror(QTableWidget):
             return selected[0].row()
         return None
 
+    def _on_theme_changed(self, new_palette: ColorPalette) -> None:
+        """Handle theme change - re-apply styling.
+
+        Args:
+            new_palette: The new ColorPalette to apply.
+        """
+        self._palette = new_palette
+        self._setup_ui()  # Re-apply table styling with new palette
+        logger.debug(f"SignalsTableMirror theme updated to: {new_palette.name}")
+
+    def __del__(self):
+        """Destructor - unsubscribe from theme service."""
+        try:
+            theme_service.unsubscribe(self._on_theme_changed)
+        except Exception:
+            pass  # May fail during shutdown
+
 
 class SignalsTableMirrorWidget(QWidget):
     """Container widget for SignalsTableMirror with header."""
@@ -402,14 +440,17 @@ class SignalsTableMirrorWidget(QWidget):
         """
         super().__init__(parent)
 
+        # Get theme palette
+        palette = self._get_theme_palette()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        # Header
+        # Header using theme colors
         header = QLabel(title)
-        header.setStyleSheet("""
-            color: #aaa;
+        header.setStyleSheet(f"""
+            color: {palette.text_secondary};
             font-size: 11px;
             font-weight: bold;
             padding: 2px 4px;
@@ -419,6 +460,17 @@ class SignalsTableMirrorWidget(QWidget):
         # Table
         self.table = SignalsTableMirror(master_table, self)
         layout.addWidget(self.table)
+
+    def _get_theme_palette(self) -> ColorPalette:
+        """Get the current theme palette from app settings or default."""
+        try:
+            from PyQt6.QtCore import QSettings
+            settings = QSettings("OrderPilot", "TradingApp")
+            theme_name = settings.value("theme/name", "Dark Orange")
+            key = theme_name.lower().replace(" ", "_")
+            return THEMES.get(key, THEMES["dark_orange"])
+        except Exception:
+            return THEMES["dark_orange"]
 
     def set_master_table(self, master_table: QTableWidget) -> None:
         """Set the master table to mirror."""

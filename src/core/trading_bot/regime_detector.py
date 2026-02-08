@@ -208,6 +208,8 @@ def get_regime_detector(config: RegimeConfig | None = None) -> RegimeDetectorSer
     """
     Gibt globale Detector-Instanz zurück (Singleton).
 
+    Lädt automatisch config/regime_config.json wenn keine Config übergeben wird.
+
     Usage:
         detector = get_regime_detector()
         result = detector.detect(df)
@@ -215,6 +217,8 @@ def get_regime_detector(config: RegimeConfig | None = None) -> RegimeDetectorSer
     global _global_detector
 
     if _global_detector is None:
+        if config is None:
+            config = RegimeConfig.find_and_load()
         _global_detector = RegimeDetectorService(config)
 
     return _global_detector

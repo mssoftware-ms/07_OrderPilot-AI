@@ -202,13 +202,41 @@ class HistoricalDownloadWorker(AsyncBaseWorker):
         logger.info(status_msg)
         self.progress.emit(15, status_msg)
 
+        # Calculate requirements based on user request
+        # Bitunix returns ~1440 bars per day for 1min timeframe
+        # We need to ensure max_bars covers the entire requested period plus a buffer
+
+        # Calculate expected bars per day for this timeframe
+        bars_per_day_map = {
+            "1min": 1440,
+            "5min": 288,
+            "15min": 96,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        bpd = bars_per_day_map.get(self.timeframe, 1440)
+
+        # Calculate total bars needed + 10% buffer for safety
+        total_bars_needed = int(self.days * bpd * 1.1)
+
+        # Calculate max batches (200 bars per batch) + buffer
+        # Bitunix limit is 200 bars per request
+        max_batches_needed = int((total_bars_needed / 200) * 1.1) + 10
+
+        logger.info(f"📊 Dynamic Download Config:")
+        logger.info(f"   Requested Days: {self.days}")
+        logger.info(f"   Timeframe: {self.timeframe} (approx {bpd} bars/day)")
+        logger.info(f"   Calculated Max Bars: {total_bars_needed:,}")
+        logger.info(f"   Calculated Max Batches: {max_batches_needed:,}")
+
         # Bitunix public API - no keys needed for kline data
         provider = BitunixProvider(
             api_key=None,
             api_secret=None,
             use_testnet=False,
-            max_bars=525600,  # 1 year of 1min bars
-            max_batches=3000,
+            max_bars=total_bars_needed,  # Dynamic limit
+            max_batches=max_batches_needed, # Dynamic limit
             validate_ohlc=self.enable_ohlc_validation,  # User-controlled OHLC validation
         )
 
@@ -222,18 +250,9 @@ class HistoricalDownloadWorker(AsyncBaseWorker):
         logger.info(status_msg)
         self.progress.emit(20, status_msg)
 
-        # Calculate estimated batches for progress calculation
-        bars_per_day = {
-            "1min": 1440,
-            "5min": 288,
-            "15min": 96,
-            "1h": 24,
-            "4h": 6,
-            "1d": 1,
-        }
-        bpd = bars_per_day.get(self.timeframe, 1440)
-        total_bars_estimated = self.days * bpd
-        estimated_batches = max(1, (total_bars_estimated // 200) + 1)  # 200 bars per batch
+        # Use previously calculated values for progress estimation
+        total_bars_estimated = total_bars_needed
+        estimated_batches = max_batches_needed
 
         logger.info(f"📊 Download estimates: {total_bars_estimated:,} bars, ~{estimated_batches:,} batches")
 

@@ -50,7 +50,7 @@ class AppSettingsMixin:
         try:
             # Normalize theme name for keys
             t_key = theme_name.lower().replace(" ", "_")
-            
+
             # Get customization overrides from settings using PREFIXED keys
             overrides = {}
             keys = [
@@ -74,11 +74,15 @@ class AppSettingsMixin:
             # Get stylesheet from generic manager with overrides
             style_sheet = self.theme_manager.get_theme(theme_name, overrides=overrides)
             self.setStyleSheet(style_sheet)
-            
+
             # Update icons - Both our current themes are "dark" based for icons
             set_icon_theme("dark")
-            
+
             self.settings.setValue("theme", theme_name)
+
+            # Notify ThemeService so all subscribed widgets update
+            from src.ui.design_system import theme_service
+            theme_service.set_theme(theme_name)
 
         except Exception as e:
             logger.error(f"Failed to apply theme: {e}")

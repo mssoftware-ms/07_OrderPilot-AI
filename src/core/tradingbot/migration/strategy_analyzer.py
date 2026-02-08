@@ -1,12 +1,13 @@
-"""Hardcoded Strategy Analyzer.
+"""Strategy Analyzer.
 
-Analyzes hardcoded Python strategy definitions and extracts:
+Analyzes strategy definitions and extracts:
 - Strategy metadata (name, description, type)
 - Entry conditions
 - Exit conditions
 - Risk parameters
 - Indicator dependencies
 
+Strategy-type inference rules are loaded from config/regime_config.json.
 Prepares data for JSON config generation.
 """
 
@@ -15,6 +16,7 @@ from __future__ import annotations
 import ast
 import inspect
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -84,9 +86,18 @@ class StrategyAnalyzer:
         [ConditionInfo(indicator='adx', operator='gt', value=25), ...]
     """
 
-    def __init__(self):
-        """Initialize analyzer."""
+    def __init__(self, config=None):
+        """Initialize analyzer.
+
+        Args:
+            config: Optional RegimeConfig with strategy_type_rules.
+                    If None, auto-loads from config/regime_config.json.
+        """
         self.analyses: dict[str, StrategyAnalysis] = {}
+        self._config = config
+        self._strategy_type_rules: list[dict] | None = None
+        self._strategy_type_indicator_rules: list[dict] | None = None
+        self._load_rules()
 
     def analyze_strategy_class(self, strategy_class: type) -> StrategyAnalysis:
         """Analyze a strategy class definition.
@@ -180,31 +191,8 @@ class StrategyAnalyzer:
         # Infer strategy type
         analysis.strategy_type = strategy_def.strategy_type.value
 
-        # ---- Special mapping to align with JSON regression tests ----
-        if profile.name == "trend_following_conservative":
-            # Align risk with JSON fixture (2.5% each)
-            analysis.position_size = 0.025
-            analysis.stop_loss = 0.025
-            analysis.take_profit = 0.06
-
-            # Explicit entry/exit conditions to mirror tests
-            analysis.entry_conditions = [
-                ConditionInfo(indicator="sma20", operator="gt", value=1.0),
-                ConditionInfo(indicator="adx14", operator="gt", value=25.0),
-                ConditionInfo(indicator="macd", operator="gt", value=1.0),
-                ConditionInfo(indicator="rsi14", operator="between", min_value=30.0, max_value=70.0),
-            ]
-            analysis.exit_conditions = [
-                ConditionInfo(indicator="sma20", operator="lt", value=0.0),
-                ConditionInfo(indicator="adx14", operator="lt", value=20.0),
-            ]
-            analysis.required_indicators = [
-                IndicatorDependency(name="sma20"),
-                IndicatorDependency(name="sma50"),
-                IndicatorDependency(name="adx14"),
-                IndicatorDependency(name="macd"),
-                IndicatorDependency(name="rsi14"),
-            ]
+        # Note: Strategy-specific overrides should be defined in the
+        # strategy JSON config files, not hardcoded here.
 
         # Store analysis
         self.analyses[analysis.name] = analysis
@@ -469,35 +457,121 @@ class StrategyAnalyzer:
         }
         return op_map.get(type(op))
 
+    def _load_rules(self) -> None:
+        """Load strategy type inference rules from config."""
+        # Try to get rules from provided config
+        if self._config is not None:
+            self._strategy_type_rules = getattr(
+                self._config, "strategy_type_rules", []
+            )
+            self._strategy_type_indicator_rules = getattr(
+                self._config, "strategy_type_indicator_rules", []
+            )
+            if self._strategy_type_rules:
+                logger.info(
+                    f"Loaded {len(self._strategy_type_rules)} strategy type rules from config"
+                )
+                return
+
+        # Auto-load from regime_config.json
+        try:
+            from src.core.trading_bot.regime_result import RegimeConfig
+
+            config = RegimeConfig.find_and_load()
+            self._strategy_type_rules = config.strategy_type_rules
+            self._strategy_type_indicator_rules = config.strategy_type_indicator_rules
+            logger.info(
+                f"Auto-loaded {len(self._strategy_type_rules)} strategy type rules"
+            )
+        except Exception as e:
+            logger.debug(f"Could not load strategy type rules: {e}")
+            self._strategy_type_rules = []
+            self._strategy_type_indicator_rules = []
+
     def _infer_strategy_type(self, analysis: StrategyAnalysis) -> str:
-        """Infer strategy type from name and conditions."""
+        """Infer strategy type from name and conditions.
+
+        Uses rules from config/regime_config.json if available,
+        otherwise falls back to built-in defaults.
+        """
         name_lower = analysis.name.lower()
 
-        # Pattern matching on name
-        if "trend" in name_lower:
-            return "trend_following"
-        elif "mean" in name_lower or "reversion" in name_lower:
-            return "mean_reversion"
-        elif "breakout" in name_lower:
-            return "breakout"
-        elif "momentum" in name_lower:
-            return "momentum"
-        elif "range" in name_lower:
-            return "range_trading"
-
-        # Infer from conditions
-        uses_adx = any(c.indicator == "adx" for c in analysis.entry_conditions)
-        uses_rsi = any(c.indicator == "rsi" for c in analysis.entry_conditions)
-
-        if uses_adx and uses_rsi:
-            return "trend_momentum"
-        elif uses_adx:
-            return "trend_following"
-        elif uses_rsi:
-            # Check if RSI used for oversold/overbought
-            rsi_conditions = [c for c in analysis.entry_conditions if c.indicator == "rsi"]
-            if rsi_conditions and rsi_conditions[0].value and rsi_conditions[0].value < 40:
+        # 1. Try JSON-based name pattern matching
+        if self._strategy_type_rules:
+            for rule in self._strategy_type_rules:
+                pattern = rule.get("pattern", "")
+                strategy_type = rule.get("type", "")
+                if pattern and strategy_type:
+                    if re.search(pattern, name_lower):
+                        return strategy_type
+        else:
+            # Fallback: built-in pattern matching
+            if "trend" in name_lower:
+                return "trend_following"
+            elif "mean" in name_lower or "reversion" in name_lower:
                 return "mean_reversion"
+            elif "breakout" in name_lower:
+                return "breakout"
+            elif "momentum" in name_lower:
+                return "momentum"
+            elif "range" in name_lower:
+                return "range_trading"
+
+        # 2. Try JSON-based indicator matching
+        if self._strategy_type_indicator_rules:
+            for rule in self._strategy_type_indicator_rules:
+                required_indicators = rule.get("indicators", [])
+                strategy_type = rule.get("type", "")
+
+                if not required_indicators or not strategy_type:
+                    continue
+
+                # Check if all required indicators are used
+                has_all = all(
+                    any(c.indicator == ind for c in analysis.entry_conditions)
+                    for ind in required_indicators
+                )
+
+                if has_all:
+                    # Check optional RSI value condition
+                    rsi_value_lt = rule.get("rsi_value_lt")
+                    if rsi_value_lt is not None:
+                        rsi_conditions = [
+                            c
+                            for c in analysis.entry_conditions
+                            if c.indicator == "rsi"
+                        ]
+                        if (
+                            rsi_conditions
+                            and rsi_conditions[0].value
+                            and rsi_conditions[0].value < rsi_value_lt
+                        ):
+                            return strategy_type
+                    else:
+                        return strategy_type
+        else:
+            # Fallback: built-in indicator matching
+            uses_adx = any(
+                c.indicator == "adx" for c in analysis.entry_conditions
+            )
+            uses_rsi = any(
+                c.indicator == "rsi" for c in analysis.entry_conditions
+            )
+
+            if uses_adx and uses_rsi:
+                return "trend_momentum"
+            elif uses_adx:
+                return "trend_following"
+            elif uses_rsi:
+                rsi_conditions = [
+                    c for c in analysis.entry_conditions if c.indicator == "rsi"
+                ]
+                if (
+                    rsi_conditions
+                    and rsi_conditions[0].value
+                    and rsi_conditions[0].value < 40
+                ):
+                    return "mean_reversion"
 
         return "unknown"
 

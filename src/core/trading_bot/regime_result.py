@@ -10,10 +10,15 @@ Contains:
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .regime_types import RegimeType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,7 +98,10 @@ class RegimeResult:
 
 @dataclass
 class RegimeConfig:
-    """Konfiguration für Regime-Erkennung."""
+    """Konfiguration für Regime-Erkennung.
+
+    Kann aus JSON geladen werden via RegimeConfig.from_json(path).
+    """
 
     # ADX Thresholds
     adx_strong_threshold: float = 30.0
@@ -119,3 +127,113 @@ class RegimeConfig:
     # Zusätzliche Filter
     volume_confirmation: bool = False
     min_volume_ratio: float = 0.5
+
+    # Strategy-Type-Inferenz Regeln (aus JSON geladen)
+    strategy_type_rules: list[dict] = field(default_factory=list)
+    strategy_type_indicator_rules: list[dict] = field(default_factory=list)
+
+    # Dynamic parameters (e.g. SMA/EMA periods)
+    parameters: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> RegimeConfig:
+        """Lädt RegimeConfig aus einer JSON-Datei.
+
+        Args:
+            path: Pfad zur JSON-Konfigurationsdatei
+
+        Returns:
+            RegimeConfig mit Werten aus der JSON-Datei.
+            Bei fehlender Datei oder Fehlern werden Defaults verwendet.
+        """
+        path = Path(path)
+        if not path.exists():
+            logger.warning(f"Regime config not found: {path}, using defaults")
+            return cls()
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Failed to load regime config: {e}, using defaults")
+            return cls()
+
+        # Thresholds auslesen
+        thresholds = data.get("thresholds", {})
+        mtf = data.get("multi_timeframe", {})
+        volume = data.get("volume", {})
+
+        # Mapping: JSON-Key → Dataclass-Feld
+        threshold_mapping = {
+            "adx_strong": "adx_strong_threshold",
+            "adx_weak": "adx_weak_threshold",
+            "adx_chop": "adx_chop_threshold",
+            "ema_tolerance_pct": "ema_alignment_tolerance_pct",
+            "volatility_extreme": "volatility_extreme_threshold",
+            "volatility_high": "volatility_high_threshold",
+            "volatility_low": "volatility_low_threshold",
+            "rsi_overbought": "rsi_overbought",
+            "rsi_oversold": "rsi_oversold",
+        }
+
+        kwargs: dict = {}
+        for json_key, field_name in threshold_mapping.items():
+            if json_key in thresholds:
+                kwargs[field_name] = float(thresholds[json_key])
+
+        # Multi-Timeframe
+        if "require_mtf_alignment" in mtf:
+            kwargs["require_mtf_alignment"] = bool(mtf["require_mtf_alignment"])
+        if "mtf_timeframes" in mtf:
+            kwargs["mtf_timeframes"] = list(mtf["mtf_timeframes"])
+
+        # Volume
+        if "volume_confirmation" in volume:
+            kwargs["volume_confirmation"] = bool(volume["volume_confirmation"])
+        if "min_volume_ratio" in volume:
+            kwargs["min_volume_ratio"] = float(volume["min_volume_ratio"])
+
+        # Strategy-Type Regeln
+        kwargs["strategy_type_rules"] = data.get("strategy_type_rules", [])
+        kwargs["strategy_type_indicator_rules"] = data.get(
+            "strategy_type_indicator_rules", []
+        )
+
+        # Dynamic parameters (e.g. SMA/EMA periods)
+        kwargs["parameters"] = data.get("parameters", {})
+
+        config = cls(**kwargs)
+        logger.info(f"Loaded regime config from {path}")
+        return config
+
+    @classmethod
+    def find_and_load(cls) -> RegimeConfig:
+        """Sucht und lädt die regime_detect.json automatisch.
+
+        Sucht in folgender Reihenfolge:
+        1. 03_JSON/Trading_Bot/regime_detect/regime_detect.json (primär)
+        2. config/regime_config.json (Fallback)
+        3. Defaults
+        """
+        # Projekt-Root finden
+        current = Path(__file__).resolve()
+        for parent in current.parents:
+            # Primärer Speicherort
+            primary = (
+                parent
+                / "03_JSON"
+                / "Trading_Bot"
+                / "regime_detect"
+                / "regime_detect.json"
+            )
+            if primary.exists():
+                return cls.from_json(primary)
+
+            # Fallback
+            fallback = parent / "config" / "regime_config.json"
+            if fallback.exists():
+                return cls.from_json(fallback)
+
+        logger.info("No regime config found, using defaults")
+        return cls()
+
