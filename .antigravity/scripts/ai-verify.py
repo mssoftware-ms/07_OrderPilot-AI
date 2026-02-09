@@ -12,7 +12,9 @@ Usage: python .antigravity/scripts/ai-verify.py [module_path]
 """
 from __future__ import annotations
 
+import importlib.util
 import os
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -42,11 +44,24 @@ def detect_project_types(root: Path) -> list[ProjectType]:
         root / "Pipfile",
     ]
     if any(f.exists() for f in python_indicators):
+        lint_targets = os.getenv("AG_LINT_TARGETS") or os.getenv("LINT_TARGETS")
+        lint_target_list = shlex.split(lint_targets) if lint_targets else ["src/"]
+        flake8_available = importlib.util.find_spec("flake8") is not None
+        mypy_available = importlib.util.find_spec("mypy") is not None
+
         types.append(ProjectType(
             name="Python",
             detected=True,
-            lint_cmd=["python", "-m", "flake8", "src/", "--max-line-length=120", "--ignore=E501,W503"],
-            type_cmd=["python", "-m", "mypy", "src/", "--ignore-missing-imports"],
+            lint_cmd=(
+                ["python", "-m", "flake8", *lint_target_list, "--jobs=1"]
+                if flake8_available
+                else []
+            ),
+            type_cmd=(
+                ["python", "-m", "mypy", "src/", "--ignore-missing-imports"]
+                if mypy_available
+                else []
+            ),
             test_cmd=["python", "-m", "pytest", "tests/", "-v", "--tb=short"],
             scoped_test_cmd=["python", "-m", "pytest", "{module}", "-v", "--tb=short"],
         ))
@@ -123,12 +138,20 @@ def run_step(step_name: str, cmd: list[str], cwd: Path, optional: bool = False) 
     print(f"     $ {' '.join(cmd)}")
 
     try:
+        env = os.environ.copy()
+        if "pytest" in cmd:
+            env.setdefault("MPLBACKEND", "Agg")
+            env.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+            env.setdefault("QT_QPA_PLATFORM", "offscreen")
+            Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
         result = subprocess.run(
             cmd,
             cwd=cwd,
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
         )
         if result.returncode == 0:
             print(f"  [OK] {step_name}: Passed")
@@ -181,7 +204,10 @@ def verify_project(root: Path, scoped_module: Optional[str] = None) -> bool:
             all_passed = False
 
         # Step 3: Tests
-        if scoped_module and project_type.scoped_test_cmd:
+        test_targets = os.getenv("AG_TEST_TARGETS") or os.getenv("TEST_TARGETS")
+        if test_targets:
+            test_cmd = ["python", "-m", "pytest", *shlex.split(test_targets), "-v", "--tb=short"]
+        elif scoped_module and project_type.scoped_test_cmd:
             test_cmd = [c.replace("{module}", scoped_module) for c in project_type.scoped_test_cmd]
         else:
             test_cmd = project_type.test_cmd

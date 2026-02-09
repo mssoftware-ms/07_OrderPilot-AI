@@ -46,6 +46,8 @@ class JsonEntryConfig:
     regime_json_path: str
     indicator_json_path: str | None
     entry_expression: str
+    entry_enabled: bool = True
+    entry_errors: list[str] = field(default_factory=list)
     indicators: dict[str, Any] = field(default_factory=dict)
     regime_thresholds: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -103,7 +105,8 @@ class JsonEntryConfig:
         logger.info(f"Loaded Regime JSON: {regime_path.name}")
 
         # 2. Lade Indicator JSON (optional)
-        indicators = {}
+        indicator_data = None
+        indicator_path = None
         if indicator_json_path:
             indicator_path = Path(indicator_json_path)
             if not indicator_path.exists():
@@ -124,11 +127,33 @@ class JsonEntryConfig:
                     f"Failed to load Indicator JSON {indicator_path.name}: {e}"
                 ) from e
 
-            # Extrahiere Indicators aus Indicator JSON
+        return cls.from_data(
+            regime_data=regime_data,
+            regime_json_path=str(regime_path),
+            indicator_data=indicator_data,
+            indicator_json_path=str(indicator_path) if indicator_json_path else None,
+            entry_expression_override=entry_expression_override,
+        )
+
+    @classmethod
+    def from_data(
+        cls,
+        regime_data: dict[str, Any],
+        regime_json_path: str,
+        indicator_data: dict[str, Any] | None = None,
+        indicator_json_path: str | None = None,
+        entry_expression_override: str | None = None,
+    ) -> "JsonEntryConfig":
+        """Erstellt Entry-Config aus bereits geladenen JSON-Daten.
+
+        Fail-closed: Missing entry_expression => entry_enabled = False.
+        """
+        indicators = {}
+        if indicator_data:
             indicators = indicator_data.get("indicators", {})
             logger.info(
-                f"Loaded Indicator JSON: {indicator_path.name} "
-                f"({len(indicators)} indicators)"
+                "Loaded Indicator JSON data (%d indicators)",
+                len(indicators) if hasattr(indicators, "__len__") else 0,
             )
 
         # 3. Kombiniere Indicators (Indicator JSON hat Vorrang)
@@ -181,14 +206,16 @@ class JsonEntryConfig:
 
         # 4. Extrahiere Entry Expression
         entry_expr = entry_expression_override or regime_data.get("entry_expression")
+        entry_expr = entry_expr if isinstance(entry_expr, str) else ""
 
-        if not entry_expr:
-            # Fallback auf "true" wenn keine Expression vorhanden
+        entry_enabled = bool(entry_expr.strip())
+        entry_errors: list[str] = []
+        if not entry_enabled:
             logger.warning(
-                "Keine 'entry_expression' in Regime JSON gefunden - "
-                "verwende Fallback 'true' (always enter)"
+                "ENTRY_EXPRESSION_MISSING: Keine 'entry_expression' in Regime JSON gefunden. "
+                "Entry wird deaktiviert (fail-closed)."
             )
-            entry_expr = "true"
+            entry_errors.append("ENTRY_EXPRESSION_MISSING")
 
         # 5. Extrahiere Regime Thresholds
         # Unterstützt beide Formate:
@@ -224,13 +251,16 @@ class JsonEntryConfig:
             f"JSON Entry Config loaded: "
             f"{len(combined_indicators)} indicators, "
             f"{len(regime_thresholds)} regimes, "
+            f"entry_enabled: {entry_enabled}, "
             f"expression length: {len(entry_expr)}"
         )
 
         return cls(
-            regime_json_path=str(regime_path),
-            indicator_json_path=str(indicator_path) if indicator_json_path else None,
+            regime_json_path=regime_json_path,
+            indicator_json_path=indicator_json_path,
             entry_expression=entry_expr,
+            entry_enabled=entry_enabled,
+            entry_errors=entry_errors,
             indicators=combined_indicators,
             regime_thresholds=regime_thresholds,
             metadata=metadata,
@@ -253,12 +283,12 @@ class JsonEntryConfig:
         """
         warnings = []
 
-        # Check 1: Entry Expression nicht leer
-        if not self.entry_expression or self.entry_expression.strip() == "":
-            warnings.append("Entry Expression ist leer - verwendet 'true' (always enter)")
+        # Check 1: Entry Expression vorhanden
+        if not self.entry_enabled:
+            warnings.append("ENTRY_EXPRESSION_MISSING: Entry disabled (fail-closed)")
 
-        # Check 2: Entry Expression ist nicht nur Whitespace
-        if self.entry_expression.strip() == "true":
+        # Check 2: Entry Expression ist immer-true
+        if self.entry_enabled and self.entry_expression.strip().lower() == "true":
             warnings.append(
                 "Entry Expression ist 'true' - jeder Bar triggert Entry Signal "
                 "(möglicherweise nicht beabsichtigt)"

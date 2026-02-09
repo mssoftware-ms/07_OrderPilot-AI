@@ -12,6 +12,7 @@ Provides:
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -29,6 +30,8 @@ from src.ui.widgets.cel_editor_widget import CelEditorWidget
 from src.ui.widgets.cel_validator import CelValidator
 from src.ui.widgets.regime_entry_expression_editor import RegimeEntryExpressionEditor
 # Note: CelFunctionPalette import removed - now handled in main_window.py
+
+logger = logging.getLogger(__name__)
 
 
 class CelCommandReference(QWidget):

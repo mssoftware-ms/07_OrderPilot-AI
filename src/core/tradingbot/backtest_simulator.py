@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import logging
 import random
+from typing import TYPE_CHECKING
 
 from .backtest_types import BacktestResult
 from .models import TradeSide
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .backtest_types import BacktestTrade
 
 class BacktestSimulator:
     """Simulates order execution during backtest.

@@ -15,6 +15,7 @@ This class consolidates common patterns across all AI providers:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import hashlib
 import json
 import logging
@@ -367,7 +368,11 @@ class BaseAIService(ABC):
         """
         endpoint = self._get_endpoint()
 
-        async with self._session.post(endpoint, json=request_body) as response:
+        response_ctx = self._session.post(endpoint, json=request_body)
+        if inspect.isawaitable(response_ctx):
+            response_ctx = await response_ctx
+
+        async with response_ctx as response:
             # Handle rate limiting
             if response.status == 429:
                 logger.warning(f"{self._get_provider_name()} rate limit hit")

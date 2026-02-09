@@ -291,8 +291,6 @@ check_code_quality() {
     if command -v flake8 &> /dev/null; then
         log_info "Running flake8 linter..."
         if flake8 "$PROJECT_ROOT/src" \
-            --max-line-length=120 \
-            --ignore=E501,W503 \
             --output-file="$LOG_DIR/flake8.txt" 2>> "$LOG_FILE"; then
             log_success "Flake8 linting passed"
         else

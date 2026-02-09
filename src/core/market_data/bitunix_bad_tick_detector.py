@@ -68,24 +68,48 @@ class BadTickDetector(BaseBadTickDetector[FilterConfig, FilterStats, HistoricalB
             Converts back to Decimal for precision.
         """
         cleaned_bars = []
-        for _, row in df.iterrows():
-            ts = row["timestamp"]
+
+        def _fallback(value, fallback):
+            if pd.isna(value):
+                return fallback
+            return value
+
+        def _to_decimal(value, fallback):
+            candidate = _fallback(value, fallback)
+            if candidate is None or pd.isna(candidate):
+                candidate = 0.0
+            return Decimal(str(candidate))
+
+        for idx, row in df.iterrows():
+            original_bar = (
+                original_bars[idx] if idx < len(original_bars) else None
+            )
+            ts = row["timestamp"] if "timestamp" in row else None
+            ts = _fallback(ts, getattr(original_bar, "timestamp", None))
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
+
+            open_ = _to_decimal(row["open"], getattr(original_bar, "open", 0.0))
+            high = _to_decimal(row["high"], getattr(original_bar, "high", 0.0))
+            low = _to_decimal(row["low"], getattr(original_bar, "low", 0.0))
+            close = _to_decimal(row["close"], getattr(original_bar, "close", 0.0))
+            volume_val = _fallback(row["volume"], getattr(original_bar, "volume", 0))
+            if volume_val is None or pd.isna(volume_val):
+                volume_val = 0
 
             cleaned_bars.append(
                 HistoricalBar(
                     timestamp=ts,
-                    open=Decimal(str(row["open"])),
-                    high=Decimal(str(row["high"])),
-                    low=Decimal(str(row["low"])),
-                    close=Decimal(str(row["close"])),
-                    volume=int(row["volume"]),
-                    vwap=Decimal(str(original_bars[0].vwap))
-                    if original_bars and original_bars[0].vwap
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=int(volume_val),
+                    vwap=Decimal(str(original_bar.vwap))
+                    if original_bar and original_bar.vwap
                     else None,
-                    trades=original_bars[0].trades
-                    if original_bars and original_bars[0].trades
+                    trades=original_bar.trades
+                    if original_bar and original_bar.trades
                     else None,
                     source="bitunix",
                 )

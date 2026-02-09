@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
+from PyQt6.QtCore import QSettings, QTimer
 from PyQt6.QtWidgets import QDialog
 
 from .pattern_db_build_mixin import PatternDbBuildMixin

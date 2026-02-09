@@ -1,11 +1,5 @@
 {
-  "schema_version": "1.0.0",
-  "metadata": {
-    "author": "OrderPilot-AI Regime System",
-    "created_at": "2025-01-19T00:00:00Z",
-    "tags": ["comprehensive", "regime-based", "momentum", "volume", "price-strength"],
-    "notes": "Vollständige regime-basierte Config mit allen Marktphasen: Extreme/Strong/Moderate Up/Down, Range, High/Low Volatility. Verwendet PRICE_STRENGTH als Composite-Indikator."
-  },
+  "schema_version": "2.1.0",
   "indicators": [
     {
       "id": "momentum_score",
@@ -702,5 +696,6 @@
         ]
       }
     }
-  ]
+  ],
+  "kind": "strategy_config"
 }

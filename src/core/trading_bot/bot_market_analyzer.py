@@ -21,6 +21,7 @@ import pandas_ta as ta  # type: ignore
 
 if TYPE_CHECKING:
     from .trade_logger import MarketContext
+    from .bot_engine import TradingBotEngine
 
 logger = logging.getLogger(__name__)
 

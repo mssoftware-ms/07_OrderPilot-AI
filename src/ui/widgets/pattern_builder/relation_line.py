@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QGraphicsLineItem, QGraphicsTextItem
 from PyQt6.QtCore import Qt, QPointF, QLineF
 from PyQt6.QtGui import QPen, QColor, QFont
 
+from .candle_item import CandleItem
 from src.ui.windows.cel_editor.theme import (
     RELATION_GREATER, RELATION_LESS, RELATION_EQUAL, RELATION_NEAR,
     TEXT_PRIMARY

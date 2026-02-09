@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from PyQt6.QtCore import Qt, pyqtSlot
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QTableWidget,
     QTableWidgetItem,
+    QHeaderView,
 )
 
 logger = logging.getLogger(__name__)

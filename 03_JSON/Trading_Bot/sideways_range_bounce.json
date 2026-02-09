@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "2.1.0",
   "indicators": [
     {
       "id": "bbands20_middle",
@@ -168,5 +168,6 @@
         ]
       }
     }
-  ]
+  ],
+  "kind": "strategy_config"
 }

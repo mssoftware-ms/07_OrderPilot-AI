@@ -7,6 +7,7 @@ All functions accept optimizer instance as first parameter.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import logging
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import optuna
@@ -289,8 +290,10 @@ def _calculate_indicators(optimizer: "RegimeOptimizer", params: RegimeParams) ->
 
 
 def _classify_regimes(
-    self, params: RegimeParams, indicators: dict[str, pd.Series]
-    ) -> pd.Series:
+    optimizer: "RegimeOptimizer",
+    params: RegimeParams,
+    indicators: dict[str, pd.Series],
+) -> pd.Series:
     """Classify regimes using either simple SMA/ADX logic (tests) or legacy ADX/DI logic."""
     use_simple_mode = (
         params.adx_threshold is not None
@@ -479,8 +482,9 @@ def _suggest_json_params(optimizer: "RegimeOptimizer", trial: optuna.Trial) -> N
 
 
 def _calculate_json_indicators(
-    self, params: RegimeParams
-    ) -> dict[str, pd.Series]:
+    optimizer: "RegimeOptimizer",
+    params: RegimeParams,
+) -> dict[str, pd.Series]:
     """Calculate all indicators needed for JSON-based regime detection.
 
     Uses v2.0 JSON config to determine which indicators to calculate.
@@ -650,8 +654,10 @@ def _calculate_json_indicators(
 
 
 def _classify_regimes_json(
-    self, params: RegimeParams, indicators: dict[str, pd.Series]
-    ) -> pd.Series:
+    optimizer: "RegimeOptimizer",
+    params: RegimeParams,
+    indicators: dict[str, pd.Series],
+) -> pd.Series:
     """Classify regimes using v2.0 JSON config with per-regime thresholds.
 
     Evaluates each bar against all regimes in priority order (highest first).
@@ -1118,7 +1124,7 @@ def create_objective_function(optimizer: "RegimeOptimizer"):
     Objective function for Optuna optimization
     """
     def objective_wrapper(trial: optuna.Trial) -> float:
-    return _objective(optimizer, trial)
+        return _objective(optimizer, trial)
     return objective_wrapper
 
 def _extract_results(optimizer: "RegimeOptimizer") -> list[OptimizationResult]:

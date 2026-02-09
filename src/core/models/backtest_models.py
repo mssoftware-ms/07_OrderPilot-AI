@@ -8,9 +8,12 @@ used for chart visualization, KI analysis, and result comparison.
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, computed_field
+
+if TYPE_CHECKING:
+    from src.core.market_data.types import HistoricalBar
 
 
 class TradeSide(str, Enum):

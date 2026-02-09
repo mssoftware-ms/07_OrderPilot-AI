@@ -206,7 +206,7 @@ class OptimizationConfig(BaseModel):
 
     mode: OptimizationMode = OptimizationMode.STANDARD
     method: OptimizationMethod = OptimizationMethod.TPE_MULTIVARIATE
-    max_trials: int = Field(default=150, ge=10, le=1000)
+    max_trials: int = Field(default=150, ge=5, le=1000)
     n_startup_trials: int = Field(default=20, ge=5)
     early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
     n_jobs: int = -1

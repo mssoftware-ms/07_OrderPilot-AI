@@ -62,26 +62,46 @@ class BadTickDetector(BaseBadTickDetector[FilterConfig, FilterStats, object]):
         from alpaca.data.models.bars import Bar
 
         cleaned_bars = []
-        for _, row in df.iterrows():
-            ts = row["timestamp"]
+
+        def _fallback(value, fallback):
+            if pd.isna(value):
+                return fallback
+            return value
+
+        for idx, row in df.iterrows():
+            original_bar = (
+                original_bars[idx] if idx < len(original_bars) else None
+            )
+
+            ts = row["timestamp"] if "timestamp" in row else None
+            ts = _fallback(ts, getattr(original_bar, "timestamp", None))
             if not isinstance(ts, datetime):
                 ts = pd.to_datetime(ts)
 
+            open_ = _fallback(row["open"], getattr(original_bar, "open", 0.0))
+            high = _fallback(row["high"], getattr(original_bar, "high", 0.0))
+            low = _fallback(row["low"], getattr(original_bar, "low", 0.0))
+            close = _fallback(row["close"], getattr(original_bar, "close", 0.0))
+            volume = _fallback(row["volume"], getattr(original_bar, "volume", 0.0))
+
+            trade_count = getattr(original_bar, "trade_count", 0) if original_bar else 0
+            vwap = getattr(original_bar, "vwap", None) if original_bar else None
+
+            raw_data = {
+                "t": ts,
+                "o": float(open_),
+                "h": float(high),
+                "l": float(low),
+                "c": float(close),
+                "v": float(volume),
+                "n": float(trade_count or 0),
+                "vw": float(vwap) if vwap is not None else None,
+            }
+
             cleaned_bars.append(
                 Bar(
-                    symbol=original_bars[0].symbol if original_bars else symbol,
-                    timestamp=ts,
-                    open=float(row["open"]),
-                    high=float(row["high"]),
-                    low=float(row["low"]),
-                    close=float(row["close"]),
-                    volume=float(row["volume"]),
-                    trade_count=getattr(original_bars[0], "trade_count", 0)
-                    if original_bars
-                    else 0,
-                    vwap=getattr(original_bars[0], "vwap", None)
-                    if original_bars
-                    else None,
+                    symbol=original_bar.symbol if original_bar else symbol,
+                    raw_data=raw_data,
                 )
             )
 

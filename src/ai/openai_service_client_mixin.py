@@ -10,29 +10,12 @@ import aiohttp
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema import validate
 from pydantic import BaseModel
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
 from src.common.logging_setup import log_ai_request
-from src.config.loader import AIConfig
-
 from .openai_models import (
-    AlertTriageResult,
-    BacktestReview,
     OpenAIError,
-    OrderAnalysis,
-    QuotaExceededError,
     RateLimitError,
     SchemaValidationError,
-    StrategySignalAnalysis,
-    StrategyTradeAnalysis,
 )
-from .openai_utils import CacheManager, CostTracker
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +28,11 @@ class OpenAIServiceClientMixin:
         """Async context manager entry."""
         await self.initialize()
         return self
+
     async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
         """Async context manager exit."""
         await self.close()
+
     async def initialize(self) -> None:
         """Initialize the service."""
         if self._session:
@@ -70,11 +55,13 @@ class OpenAIServiceClientMixin:
             headers=self.headers,
             timeout=timeout
         )
+
     async def close(self) -> None:
         """Close the service."""
         if self._session:
             await self._session.close()
             self._session = None
+
     def _supports_json_schema(self, model: str) -> bool:
         """Check if model supports json_schema structured outputs.
 
@@ -98,6 +85,7 @@ class OpenAIServiceClientMixin:
 
         # Check exact match or prefix match
         return any(model.startswith(supported) for supported in supported_models)
+
     async def structured_completion(
         self,
         prompt: str,
@@ -294,6 +282,7 @@ class OpenAIServiceClientMixin:
                 latency_ms=latency_ms,
                 feature="structured_completion",
             )
+
     async def chat_completion(
         self,
         messages: list[dict[str, str]],

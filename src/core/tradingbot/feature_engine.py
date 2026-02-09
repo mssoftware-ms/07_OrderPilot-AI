@@ -19,6 +19,7 @@ import pandas as pd
 from src.core.indicators.engine import IndicatorEngine
 from src.core.indicators.types import IndicatorConfig, IndicatorResult, IndicatorType
 
+from .candle_preprocessing import preprocess_candles, detect_missing_candles, validate_candles
 from .models import FeatureVector
 
 logger = logging.getLogger(__name__)

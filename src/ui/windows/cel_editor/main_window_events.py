@@ -18,7 +18,7 @@ Date: 2026-01-31
 Task: 3.1.1 - Split cel_editor/main_window.py
 """
 
-from PyQt6.QtWidgets import QMessageBox, QFileDialog
+from PyQt6.QtWidgets import QMessageBox, QFileDialog, QLabel
 from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QCloseEvent
 import json
@@ -27,6 +27,7 @@ from pathlib import Path
 from datetime import datetime
 
 from src.core.tradingbot.cel.models import RulePack, Rule, RulePackMetadata
+from .theme import STATUS_SUCCESS
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QTextCursor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox,
     QTableWidget, QTableWidgetItem, QTextEdit, QSpinBox, QDoubleSpinBox,
@@ -38,4 +38,3 @@ class BacktestTabUpdateMixin:
     def _log(self, message: str) -> None:
         """Log-Nachricht (thread-safe)."""
         self.log_message.emit(message)
-

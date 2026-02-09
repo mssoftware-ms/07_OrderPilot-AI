@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -25,6 +26,9 @@ from .market_context import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .market_context_builder import MarketContextBuilderConfig
 
 
 class RegimeDetector:

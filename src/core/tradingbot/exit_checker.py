@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from .models import (
     FeatureVector,
@@ -19,6 +20,10 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .models import VolatilityLevel
+    from .config.models import StrategyDefinition
 
 
 class ExitReason(str, Enum):
@@ -313,4 +318,3 @@ class ExitSignalChecker:
                 details=f"Max bars held: {position.bars_held}"
             )
         return ExitSignalResult(should_exit=False)
-

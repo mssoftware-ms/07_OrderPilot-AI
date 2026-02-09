@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot.ai/schemas/indicator_set.schema.json",
+  "type": "object",
+  "required": ["kind", "schema_version", "indicators"],
+  "properties": {
+    "kind": { "const": "indicator_set" },
+    "schema_version": { "$ref": "defs.json#/definitions/schema_version" },
+    "metadata": { "type": "object" },
+    "indicators": {
+      "type": "array",
+      "items": { "$ref": "defs.json#/definitions/indicator_def" }
+    },
+    "regimes": {
+      "type": "array",
+      "items": { "$ref": "defs.json#/definitions/regime_def" }
+    },
+    "entry_expression": { "type": "string" },
+    "entry_enabled": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

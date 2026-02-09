@@ -330,6 +330,7 @@ class BaseBadTickDetector(ABC, Generic[TFilterConfig, TFilterStats, TBar]):
 
         Detects:
         - OHLC relationship violations (high < low, close outside high/low)
+        - Price spikes vs rolling median
         - Extreme volume spikes
         - Zero or negative prices
 
@@ -343,28 +344,103 @@ class BaseBadTickDetector(ABC, Generic[TFilterConfig, TFilterStats, TBar]):
             alpaca_bad_tick_detector.py: Lines 218-254
             bitunix_bad_tick_detector.py: Lines 218-254
         """
-        bad_mask = pd.Series(False, index=df.index)
+        if df.empty:
+            return pd.Series(False, index=df.index)
 
-        # OHLC consistency
-        if all(col in df.columns for col in ["open", "high", "low", "close"]):
-            bad_mask |= df["high"] < df["low"]
-            bad_mask |= df["close"] > df["high"]
-            bad_mask |= df["close"] < df["low"]
-            bad_mask |= df["open"] > df["high"]
-            bad_mask |= df["open"] < df["low"]
+        # Use numpy arrays to minimize pandas overhead for the "basic" path.
+        length = len(df)
+        bad = np.zeros(length, dtype=bool)
 
-        # Zero or negative prices
-        for col in ["open", "high", "low", "close"]:
-            if col in df.columns:
-                bad_mask |= df[col] <= 0
+        price_matrix = None
+        has_prices = all(col in df.columns for col in ("open", "high", "low", "close"))
+        if has_prices:
+            price_matrix = df[["open", "high", "low", "close"]].to_numpy(dtype=float, copy=False)
+            open_arr = price_matrix[:, 0]
+            high_arr = price_matrix[:, 1]
+            low_arr = price_matrix[:, 2]
+            close_arr = price_matrix[:, 3]
 
-        # Volume spikes
+            # OHLC consistency
+            ohlc_bad = (
+                (high_arr < low_arr)
+                | (close_arr > high_arr)
+                | (close_arr < low_arr)
+                | (open_arr > high_arr)
+                | (open_arr < low_arr)
+            )
+            bad |= ohlc_bad
+
+            # Zero or negative prices
+            neg_bad = (
+                (open_arr <= 0)
+                | (high_arr <= 0)
+                | (low_arr <= 0)
+                | (close_arr <= 0)
+            )
+            bad |= neg_bad
+
+            # Price spikes vs global median (fast baseline for basic mode)
+            spike_multiplier = getattr(self.config, "price_spike_multiplier", None)
+            if spike_multiplier:
+                baseline = float(np.median(close_arr))
+                if not np.isfinite(baseline):
+                    baseline = float(np.nanmedian(close_arr))
+                if baseline > 0:
+                    safe_min = np.where(low_arr > 0, low_arr, np.nan)
+                    spike_up = (high_arr / baseline) >= spike_multiplier
+                    spike_down = (baseline / safe_min) >= spike_multiplier
+                    bad |= spike_up | np.nan_to_num(spike_down, nan=False, posinf=True, neginf=True)
+        else:
+            arrays: dict[str, np.ndarray] = {}
+            for col in ("open", "high", "low", "close"):
+                if col in df.columns:
+                    arrays[col] = df[col].to_numpy(dtype=float, copy=False)
+
+            if all(col in arrays for col in ("open", "high", "low", "close")):
+                open_arr = arrays["open"]
+                high_arr = arrays["high"]
+                low_arr = arrays["low"]
+                close_arr = arrays["close"]
+
+                ohlc_bad = (
+                    (high_arr < low_arr)
+                    | (close_arr > high_arr)
+                    | (close_arr < low_arr)
+                    | (open_arr > high_arr)
+                    | (open_arr < low_arr)
+                )
+                bad |= ohlc_bad
+
+                neg_bad = (
+                    (open_arr <= 0)
+                    | (high_arr <= 0)
+                    | (low_arr <= 0)
+                    | (close_arr <= 0)
+                )
+                bad |= neg_bad
+
+                spike_multiplier = getattr(self.config, "price_spike_multiplier", None)
+                if spike_multiplier:
+                    baseline = float(np.median(close_arr))
+                    if not np.isfinite(baseline):
+                        baseline = float(np.nanmedian(close_arr))
+                    if baseline > 0:
+                        safe_min = np.where(low_arr > 0, low_arr, np.nan)
+                        spike_up = (high_arr / baseline) >= spike_multiplier
+                        spike_down = (baseline / safe_min) >= spike_multiplier
+                        bad |= spike_up | np.nan_to_num(spike_down, nan=False, posinf=True, neginf=True)
+
+        # Volume spikes (fast global median baseline)
         if "volume" in df.columns:
-            vol_median = df["volume"].rolling(window=20, min_periods=1).median()
-            bad_mask |= df["volume"] > (vol_median * self.config.volume_multiplier)
-            bad_mask |= df["volume"] < 0
+            vol_arr = df["volume"].to_numpy(dtype=float, copy=False)
+            vol_median = float(np.median(vol_arr))
+            if not np.isfinite(vol_median):
+                vol_median = float(np.nanmedian(vol_arr))
+            if vol_median > 0:
+                bad |= vol_arr > (vol_median * self.config.volume_multiplier)
+            bad |= vol_arr < 0
 
-        return bad_mask
+        return pd.Series(bad, index=df.index)
 
     # ========================================================================
     # Cleaning Methods (Common Implementation - Extracted from both files)

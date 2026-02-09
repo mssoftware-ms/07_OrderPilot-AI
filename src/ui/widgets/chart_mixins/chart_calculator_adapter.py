@@ -112,12 +112,17 @@ class ChartCalculatorAdapter:
             # Convert JSON params list to dict
             params_dict = self._convert_params(params)
 
+            calculator = self.factory._find_calculator(ind_type)
+            if calculator is None:
+                raise ValueError(f"Unsupported indicator type: {ind_type}")
+
             try:
                 # Calculate using Factory
                 result = self.factory.calculate(ind_type, df, params_dict)
+                result = self._normalize_result(result, df)
 
                 # Convert result to chart display format
-                indicator_series[name] = self._format_result(ind_type, result)
+                indicator_series[name] = self._format_result(ind_type, result, df)
 
             except ValueError as e:
                 raise ValueError(f"Failed to calculate {name} ({ind_type}): {e}")
@@ -135,14 +140,40 @@ class ChartCalculatorAdapter:
             Dict of params {"period": 14}
         """
         params_dict = {}
+        param_aliases = {
+            "k": "k_period",
+            "d": "d_period",
+            "mult": "std",
+        }
         for p in params:
             param_name = p.get("name")
             param_value = p.get("value")
             if param_name:
-                params_dict[param_name] = param_value
+                params_dict[param_aliases.get(param_name, param_name)] = param_value
         return params_dict
 
-    def _format_result(self, ind_type: str, result: pd.Series | pd.DataFrame) -> dict[str, pd.Series]:
+    def _normalize_result(
+        self, result: pd.Series | pd.DataFrame, df: pd.DataFrame
+    ) -> pd.Series | pd.DataFrame:
+        """Normalize indicator output to match input index length."""
+        if isinstance(result, pd.Series):
+            if not result.index.equals(df.index):
+                return result.reindex(df.index)
+            return result
+
+        if isinstance(result, pd.DataFrame):
+            if not result.index.equals(df.index):
+                return result.reindex(df.index)
+            return result
+
+        return result
+
+    def _format_result(
+        self,
+        ind_type: str,
+        result: pd.Series | pd.DataFrame,
+        source_df: pd.DataFrame | None = None,
+    ) -> dict[str, pd.Series]:
         """
         Format Calculator Factory result for chart display.
 
@@ -159,6 +190,14 @@ class ChartCalculatorAdapter:
         """
         if isinstance(result, pd.Series):
             # Rare case: Simple Series
+            if ind_type == "STOCH":
+                return {"k": result}
+            if ind_type == "MACD":
+                return {"macd": result}
+            if ind_type == "ADX":
+                return {"adx": result}
+            if ind_type == "ATR":
+                return {"atr": result}
             return {"value": result}
 
         # Multi-column indicators: return all columns
@@ -168,6 +207,8 @@ class ChartCalculatorAdapter:
 
             # Track which columns we've processed to avoid duplicates
             processed_cols = set()
+            plus_di = None
+            minus_di = None
 
             # Handle common patterns
             for col in result.columns:
@@ -181,6 +222,8 @@ class ChartCalculatorAdapter:
                     # Map based on indicator type for backward compatibility
                     if ind_type in ("RSI",):
                         formatted["rsi"] = result[col]
+                    elif ind_type in ("STOCH",):
+                        formatted["k"] = result[col]
                     elif ind_type in ("EMA", "SMA"):
                         formatted["value"] = result[col]
                     elif ind_type in ("MFI",):
@@ -213,6 +256,12 @@ class ChartCalculatorAdapter:
                         processed_cols.add(dmn_col)
                 elif "dmn" in col_lower:
                     processed_cols.add(col)  # Already handled in DMP
+                elif "plus_di" in col_lower:
+                    plus_di = result[col]
+                    processed_cols.add(col)
+                elif "minus_di" in col_lower:
+                    minus_di = result[col]
+                    processed_cols.add(col)
 
                 # MACD special handling
                 elif "macd" in col_lower and "signal" not in col_lower and "hist" not in col_lower:
@@ -221,7 +270,13 @@ class ChartCalculatorAdapter:
                 elif "signal" in col_lower:
                     formatted["signal"] = result[col]
                     processed_cols.add(col)
+                elif "macds" in col_lower:
+                    formatted["signal"] = result[col]
+                    processed_cols.add(col)
                 elif "hist" in col_lower:
+                    formatted["hist"] = result[col]
+                    processed_cols.add(col)
+                elif "macdh" in col_lower:
                     formatted["hist"] = result[col]
                     processed_cols.add(col)
 
@@ -239,11 +294,15 @@ class ChartCalculatorAdapter:
                     formatted["width"] = result[col]
                     processed_cols.add(col)
 
-                # Stochastic special handling (check for exact k/d columns)
-                elif "stoch" in col_lower and ("_k" in col_lower or col_lower.endswith("_k")):
+                # Stochastic special handling
+                elif "stoch" in col_lower and (
+                    "stochk" in col_lower or "_k" in col_lower or col_lower.endswith("k")
+                ):
                     formatted["k"] = result[col]
                     processed_cols.add(col)
-                elif "stoch" in col_lower and ("_d" in col_lower or col_lower.endswith("_d")):
+                elif "stoch" in col_lower and (
+                    "stochd" in col_lower or "_d" in col_lower or col_lower.endswith("d")
+                ):
                     formatted["d"] = result[col]
                     processed_cols.add(col)
 
@@ -255,12 +314,30 @@ class ChartCalculatorAdapter:
                     formatted["atr"] = result[col]
                     processed_cols.add(col)
 
+            if ind_type == "ADX" and "di_diff" not in formatted and plus_di is not None and minus_di is not None:
+                formatted["di_diff"] = (plus_di - minus_di).abs()
+
             # Ensure ATR has atr_percent if missing
             if ind_type == "ATR" and "atr_percent" not in formatted and "atr" in formatted:
-                # Calculate on the fly from atr / close
-                # Note: This assumes df is still in scope - NOT IDEAL
-                # Better: ATRCalculator should ALWAYS return atr_percent
-                logger.warning("ATR result missing atr_percent - ATRCalculator should provide it")
+                if source_df is not None and "close" in source_df.columns:
+                    formatted["atr_percent"] = (formatted["atr"] / source_df["close"]) * 100
+                else:
+                    logger.warning("ATR result missing atr_percent - ATRCalculator should provide it")
+
+            # Ensure Bollinger width if missing
+            if ind_type in ("BB", "BOLLINGER") and "width" not in formatted:
+                if all(k in formatted for k in ("upper", "lower", "middle")):
+                    middle = formatted["middle"].replace(0, pd.NA)
+                    formatted["width"] = (formatted["upper"] - formatted["lower"]) / middle
+
+            # Ensure MACD hist if missing but macd+signal available
+            if ind_type == "MACD" and "hist" not in formatted:
+                if "macd" in formatted and "signal" in formatted:
+                    formatted["hist"] = formatted["macd"] - formatted["signal"]
+
+            # Ensure stochastic k if mapped to value
+            if ind_type == "STOCH" and "k" not in formatted and "value" in formatted:
+                formatted["k"] = formatted.pop("value")
 
             return formatted
 

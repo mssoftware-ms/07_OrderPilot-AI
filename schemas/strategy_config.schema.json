@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot.ai/schemas/strategy_config.schema.json",
+  "type": "object",
+  "required": ["kind", "schema_version", "indicators", "regimes", "strategies"],
+  "properties": {
+    "kind": { "const": "strategy_config" },
+    "schema_version": { "$ref": "defs.json#/definitions/schema_version" },
+    "indicators": {
+      "type": "array",
+      "items": { "$ref": "defs.json#/definitions/indicator_def" }
+    },
+    "regimes": {
+      "type": "array",
+      "items": { "$ref": "defs.json#/definitions/regime_def" }
+    },
+    "strategies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "entry"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "entry": {
+            "$ref": "defs.json#/definitions/regime_def/properties/conditions"
+          },
+          "exit": {
+            "$ref": "defs.json#/definitions/regime_def/properties/conditions"
+          },
+          "risk": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "strategy_sets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "strategies"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "strategies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["strategy_id"],
+              "properties": {
+                "strategy_id": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["strategy_set_id", "match"],
+        "properties": {
+          "strategy_set_id": { "type": "string" },
+          "match": {
+            "type": "object",
+            "properties": {
+              "all_of": { "type": "array", "items": { "type": "string" } },
+              "any_of": { "type": "array", "items": { "type": "string" } },
+              "none_of": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QSplitter,
     QHeaderView,
+    QDialog,
     QMessageBox,
 )
 
@@ -63,6 +64,8 @@ try:
     HAS_JOURNAL = True
 except ImportError:
     HAS_JOURNAL = False
+
+from .bot_tab_modules import BotSettingsDialog
 
 logger = logging.getLogger(__name__)
 

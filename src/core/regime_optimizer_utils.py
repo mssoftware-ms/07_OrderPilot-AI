@@ -68,14 +68,13 @@ def build_indicator_type_maps(optimizer: "RegimeOptimizer") -> None:
     return _build_indicator_type_maps(optimizer)
 
 def _calculate_chandelier_stop(
-    self,
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     lookback: int = 22,
     atr_period: int = 22,
     multiplier: float = 3.0,
-    ) -> dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """Calculate Chandelier Stop (pipCharlie style).
 
     Chandelier Stop is an ATR-based trailing stop indicator:
@@ -166,20 +165,20 @@ def calculate_chandelier_stop(
     """
     # Calculate ATR
     if TALIB_AVAILABLE:
-    atr = pd.Series(
-        talib.ATR(high, low, close, timeperiod=atr_period),
-        index=close.index
-    )
+        atr = pd.Series(
+            talib.ATR(high, low, close, timeperiod=atr_period),
+            index=close.index
+        )
     elif PANDAS_TA_AVAILABLE:
-    atr = ta.atr(high, low, close, length=atr_period)
+        atr = ta.atr(high, low, close, length=atr_period)
     else:
-    # Simple ATR approximation
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
-    atr = tr.rolling(window=atr_period).mean()
+        # Simple ATR approximation
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(window=atr_period).mean()
 
     # Calculate highest high and lowest low
     highest_high = high.rolling(window=lookback).max()
@@ -201,20 +200,19 @@ def calculate_chandelier_stop(
     color_change = (direction != direction.shift(1)).astype(int)
 
     return {
-    'long_stop': long_stop,
-    'short_stop': short_stop,
-    'direction': direction,
-    'color_change': color_change,
+        'long_stop': long_stop,
+        'short_stop': short_stop,
+        'direction': direction,
+        'color_change': color_change,
     }
 
 def _calculate_adx_leaf_west(
-    self,
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
     adx_length: int = 8,
     dmi_length: int = 9,
-    ) -> dict[str, pd.Series]:
+) -> dict[str, pd.Series]:
     """Calculate ADX Leaf West style (shorter periods for faster signals).
 
     This is an ADX/DMI variant with different period settings for ADX vs DMI.
@@ -294,9 +292,9 @@ def calculate_adx_leaf_west(
     """
     # Calculate True Range
     tr = pd.concat([
-    high - low,
-    (high - close.shift(1)).abs(),
-    (low - close.shift(1)).abs()
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
     ], axis=1).max(axis=1)
 
     # Calculate +DM and -DM
@@ -327,15 +325,18 @@ def calculate_adx_leaf_west(
     adx = dx.ewm(alpha=1/adx_length, adjust=False).mean()
 
     return {
-    'adx': adx,
-    'plus_di': plus_di,
-    'minus_di': minus_di,
-    'di_diff': plus_di - minus_di,
+        'adx': adx,
+        'plus_di': plus_di,
+        'minus_di': minus_di,
+        'di_diff': plus_di - minus_di,
     }
 
 def _get_json_param_value(
-    self, scope: str, param: dict, fallback: float | int | None = None
-    ) -> float | int:
+    optimizer: "RegimeOptimizer",
+    scope: str,
+    param: dict,
+    fallback: float | int | None = None,
+) -> float | int:
     """Get parameter value from trial-suggested params or fallback to JSON value.
 
     Args:

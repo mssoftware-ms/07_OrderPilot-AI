@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from PyQt6.QtCore import Qt, QDateTime
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QTableWidgetItem
 
+from src.chart_marking.models import MarkerType
 from src.core.notifications.whatsapp_service import TradeNotification
 
 logger = logging.getLogger(__name__)

@@ -297,6 +297,12 @@ def main() -> int:
     splash = None  # Initialize to avoid UnboundLocalError in finally block
     # 0. HIDE CONSOLE IMMEDIATELY on Windows
     _hide_console_window()
+
+    # FIX: "Invalid texture upload" error
+    # Force software rendering for QtWebEngine (Chromium) to avoid GPU driver issues
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
+    os.environ["QT_OPENGL"] = "software"
+
     # Set up global exception handler for uncaught exceptions
     def global_exception_handler(exc_type, exc_value, exc_traceback):
         """Handle uncaught exceptions"""
@@ -332,13 +338,13 @@ def main() -> int:
         # Set OpenGL attribute before app creation
         if not QApplication.instance():
             QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-        
+
         app = QApplication.instance()
         if not app:
             app = QApplication(sys.argv)
-            
+
         app.setApplicationName("OrderPilot-AI")
-        
+
         startup_icon_path = _get_startup_icon_path()
         splash = SplashScreen(startup_icon_path)
         splash.show()

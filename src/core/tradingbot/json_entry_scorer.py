@@ -61,8 +61,13 @@ class JsonEntryScorer:
         self.config = json_config
         self.cel = cel_engine
 
-        # Validate expression (do a test evaluation)
-        self._validate_expression()
+        # Validate expression (do a test evaluation) if entry is enabled
+        if getattr(self.config, "entry_enabled", True):
+            self._validate_expression()
+        else:
+            logger.warning(
+                "ENTRY_EXPRESSION_MISSING: Entry evaluation disabled for JSON config."
+            )
 
     def _validate_expression(self) -> None:
         """Validate CEL expression with a dummy context.
@@ -79,11 +84,11 @@ class JsonEntryScorer:
                 "adx": 25.0,
                 "macd_hist": 0.0,
             }
-            
+
             # Try to evaluate (will raise ValueError if syntax is invalid)
             # We don't care about the result, just that it doesn't crash
             self.cel.evaluate(self.config.entry_expression, test_context, default=False)
-            
+
             logger.info(
                 f"CEL expression validated successfully: "
                 f"{self.config.entry_expression[:80]}..."
@@ -127,6 +132,9 @@ class JsonEntryScorer:
             >>> if should_enter:
             ...     print(f"LONG Entry: {reasons}")
         """
+        if not getattr(self.config, "entry_enabled", True):
+            reasons = getattr(self.config, "entry_errors", None) or ["ENTRY_EXPRESSION_MISSING"]
+            return False, 0.0, reasons
         return self._evaluate_entry("long", features, regime, chart_window, prev_regime)
 
     def should_enter_short(
@@ -157,6 +165,9 @@ class JsonEntryScorer:
             >>> if should_enter:
             ...     print(f"SHORT Entry: {reasons}")
         """
+        if not getattr(self.config, "entry_enabled", True):
+            reasons = getattr(self.config, "entry_errors", None) or ["ENTRY_EXPRESSION_MISSING"]
+            return False, 0.0, reasons
         return self._evaluate_entry("short", features, regime, chart_window, prev_regime)
 
     def _evaluate_entry(
@@ -316,13 +327,11 @@ class JsonEntryScorer:
             # Volatility (flat aus Regime)
             "volatility": regime.volatility.value,
 
-        # Chart Window Reference (für CEL trigger_regime_analysis())
-        "chart_window": chart_window,
+            # Chart Window Reference (für CEL trigger_regime_analysis())
+            "chart_window": chart_window,
 
             # Last Closed Candle mit Regime (für CEL last_closed_regime())
-            "last_closed_candle": (
-                {"regime": prev_regime} if prev_regime else None
-            ),
+            "last_closed_candle": {"regime": prev_regime} if prev_regime else None,
         }
 
         # Debug: Log context chart_window
@@ -340,7 +349,7 @@ class JsonEntryScorer:
             except Exception:
                 pass
         else:
-            print(f"[JSON_SCORER] ❌ chart_window is None or missing!", flush=True)
+            print("[JSON_SCORER] ❌ chart_window is None or missing!", flush=True)
 
         return context
 
@@ -434,7 +443,9 @@ class JsonEntryScorer:
             >>> print(scorer.get_expression_summary())
             'rsi < 35 && adx > 25 && macd_hist > 0...'
         """
-        expr = self.config.entry_expression
+        expr = self.config.entry_expression or ""
+        if not expr.strip():
+            return ""
         if len(expr) > 100:
             return expr[:97] + "..."
         return expr

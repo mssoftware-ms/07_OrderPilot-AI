@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, TypeVar
+from typing import Any, TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
 
@@ -9,13 +10,12 @@ from .openai_models import (
     AlertTriageResult,
     BacktestReview,
     OrderAnalysis,
-    QuotaExceededError,
-    RateLimitError,
-    SchemaValidationError,
     StrategySignalAnalysis,
     StrategyTradeAnalysis,
 )
-from .openai_utils import CacheManager, CostTracker
+
+if TYPE_CHECKING:
+    from src.core.tradingbot.backtest_types import BacktestResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +27,25 @@ class OpenAIServiceAnalysisMixin:
     async def analyze_order(
         self,
         order_details: dict[str, Any],
-        market_context: dict[str, Any]
+        market_context: dict[str, Any] | None = None
     ) -> OrderAnalysis:
         """Analyze an order before placement."""
-        prompt = self._build_order_analysis_prompt(order_details, market_context)
+        prompt = self._build_order_analysis_prompt(order_details, market_context or {})
 
         return await self.structured_completion(
             prompt=prompt,
             response_model=OrderAnalysis,
-            model=self.config.model_critical,
+            model=getattr(self.config, "model_critical", None) or getattr(self.config, "model", None),
             context={"type": "order_analysis", **order_details}
         )
+
     async def triage_alert(
         self,
         alert: dict[str, Any],
-        portfolio_context: dict[str, Any]
+        portfolio_context: dict[str, Any] | None = None
     ) -> AlertTriageResult:
         """Triage an alert for priority and action."""
-        prompt = self._build_alert_triage_prompt(alert, portfolio_context)
+        prompt = self._build_alert_triage_prompt(alert, portfolio_context or {})
 
         return await self.structured_completion(
             prompt=prompt,
@@ -52,12 +53,26 @@ class OpenAIServiceAnalysisMixin:
             model=self.config.model,
             context={"type": "alert_triage", "alert_type": alert.get("type")}
         )
+
     async def review_backtest(
         self,
-        result: "BacktestResult"
+        result: BacktestResult | dict[str, Any]
     ) -> BacktestReview:
         """Review backtest results with AI analysis."""
         from src.ai.prompts import PromptBuilder
+
+        if isinstance(result, dict):
+            prompt = (
+                "Review these backtest results:\n\n"
+                f"Backtest Data:\n{json.dumps(result, indent=2)}\n\n"
+                "Provide structured review and insights."
+            )
+            return await self.structured_completion(
+                prompt=prompt,
+                response_model=BacktestReview,
+                model=getattr(self.config, "model", None),
+                context={"type": "backtest_review"},
+            )
 
         # Extract strategy info
         strategy_name = result.strategy_name or "Unnamed Strategy"
@@ -115,6 +130,7 @@ class OpenAIServiceAnalysisMixin:
                 "total_return": result.metrics.total_return_pct
             }
         )
+
     async def analyze_signal(
         self,
         signal: dict[str, Any],
@@ -129,6 +145,7 @@ class OpenAIServiceAnalysisMixin:
             model=self.config.model,
             context={"type": "signal_analysis", "signal_type": signal.get("type")}
         )
+
     async def analyze_strategy_trades(
         self,
         strategy_name: str,

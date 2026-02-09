@@ -19,7 +19,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .execution_simulator import OrderSide, OrderType
     from .backtest_runner_state import OpenPosition
     from .replay_provider import CandleSnapshot
     from src.core.models.backtest_models import EquityPoint, Trade

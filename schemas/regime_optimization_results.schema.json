@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot.ai/schemas/regime_optimization_results.schema.json",
+  "type": "object",
+  "required": ["kind", "schema_version", "optimization_results"],
+  "properties": {
+    "kind": { "const": "regime_optimization_results" },
+    "schema_version": { "$ref": "defs.json#/definitions/schema_version" },
+    "metadata": { "type": "object" },
+    "optimization_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["indicators", "regimes"],
+        "properties": {
+          "timestamp": { "type": "string" },
+          "score": { "type": "number" },
+          "trial_number": { "type": "integer" },
+          "applied": { "type": "boolean" },
+          "indicators": {
+            "type": "array",
+            "items": { "$ref": "defs.json#/definitions/indicator_def" }
+          },
+          "regimes": {
+            "type": "array",
+            "items": { "$ref": "defs.json#/definitions/regime_def" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "entry_expression": { "type": "string" }
+  },
+  "additionalProperties": false
+}

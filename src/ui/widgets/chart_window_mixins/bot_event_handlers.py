@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt
 
@@ -152,7 +152,7 @@ class BotEventHandlersMixin:
                     self,
                     "Keine JSON-Configs",
                     f"Keine JSON-Strategie-Dateien gefunden in:\n" +
-                    "\n".join(str(d) for d in config_dirs)
+                    str(config_dir)
                 )
                 return
 

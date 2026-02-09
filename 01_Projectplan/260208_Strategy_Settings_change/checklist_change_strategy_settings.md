@@ -1,4 +1,4 @@
-Nachfolgend ist die **Checkliste als Umsetzungsplan** im **gleichen Tracking-Stil** wie deine Vorlage aufgebaut. 
+Nachfolgend ist die **Checkliste als Umsetzungsplan** im **gleichen Tracking-Stil** wie deine Vorlage aufgebaut.
 Fokus: **Strategy Settings Pipelines** (Regime-Erkennung + JSON-Score + Format-Konsolidierung + UI-Anpassungen) – mit **harten Leitplanken**, damit sich keine “Heuristik-Bugs” und keine “100%-Bullshit-Scores” mehr einschleichen.
 
 ---
@@ -6,8 +6,8 @@ Fokus: **Strategy Settings Pipelines** (Regime-Erkennung + JSON-Score + Format-K
 # ✅ Checkliste: Strategy Settings Pipeline – Regime/Score/JSON v2.1 Konsolidierung
 
 **Start:** 2026-02-08
-**Letzte Aktualisierung:** 2026-02-08
-**Gesamtfortschritt:** 0%
+**Letzte Aktualisierung:** 2026-02-08 20:30
+**Gesamtfortschritt:** 65%
 
 ---
 

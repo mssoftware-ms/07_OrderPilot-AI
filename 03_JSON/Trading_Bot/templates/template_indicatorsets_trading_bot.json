@@ -1,0 +1,356 @@
+{
+  "kind": "indicator_set",
+  "schema_version": "2.1.0",
+  "metadata": {
+    "author": "OrderPilot-AI",
+    "created_at": "2026-01-30T02:47:21Z",
+    "updated_at": "2026-01-30T04:11:31.578228",
+    "tags": [
+      "BTCUSDT",
+      "5m",
+      "regime",
+      "indicator_set"
+    ],
+    "trading_style": "Daytrading",
+    "description": "Indicator set template derived from regime optimization for BTCUSDT 5m."
+  },
+  "indicators": [
+    {
+      "name": "STRENGTH_ADX",
+      "type": "ADX",
+      "params": [
+        {
+          "name": "period",
+          "value": 20,
+          "range": {
+            "min": 10,
+            "max": 25,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_threshold",
+          "value": 15,
+          "range": {
+            "min": 3,
+            "max": 15,
+            "step": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "MOMENTUM_RSI",
+      "type": "RSI",
+      "params": [
+        {
+          "name": "period",
+          "value": 15,
+          "range": {
+            "min": 9,
+            "max": 21,
+            "step": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "VOLATILITY_ATR",
+      "type": "ATR",
+      "params": [
+        {
+          "name": "period",
+          "value": 15,
+          "range": {
+            "min": 10,
+            "max": 20,
+            "step": 1
+          }
+        },
+        {
+          "name": "strong_move_pct",
+          "value": 2.5,
+          "range": {
+            "min": 0.5,
+            "max": 3.0,
+            "step": 0.1
+          }
+        },
+        {
+          "name": "extreme_move_pct",
+          "value": 4.5,
+          "range": {
+            "min": 2.0,
+            "max": 5.0,
+            "step": 0.5
+          }
+        }
+      ]
+    }
+  ],
+  "regimes": [
+    {
+      "id": "STRONG_TF",
+      "name": "Extremer Trend (Strong Trend Following)",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 44.0,
+          "range": {
+            "min": 35,
+            "max": 50,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 25.0,
+          "range": {
+            "min": 15,
+            "max": 30,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 100,
+      "scope": "entry"
+    },
+    {
+      "id": "STRONG_BULL",
+      "name": "Starker Aufwaertstrend (RSI bestaetigt)",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 40.0,
+          "range": {
+            "min": 25,
+            "max": 40,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 16.0,
+          "range": {
+            "min": 8,
+            "max": 20,
+            "step": 1
+          }
+        },
+        {
+          "name": "rsi_confirm_bull",
+          "value": 56.0,
+          "range": {
+            "min": 50,
+            "max": 65,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 95,
+      "scope": "entry"
+    },
+    {
+      "id": "STRONG_BEAR",
+      "name": "Starker Abwaertstrend (RSI bestaetigt)",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 34.0,
+          "range": {
+            "min": 25,
+            "max": 40,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 9.0,
+          "range": {
+            "min": 8,
+            "max": 20,
+            "step": 1
+          }
+        },
+        {
+          "name": "rsi_confirm_bear",
+          "value": 46.0,
+          "range": {
+            "min": 35,
+            "max": 50,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 94,
+      "scope": "entry"
+    },
+    {
+      "id": "TF",
+      "name": "Trend Following",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 35.0,
+          "range": {
+            "min": 20,
+            "max": 35,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 14.0,
+          "range": {
+            "min": 5,
+            "max": 15,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 85,
+      "scope": "entry"
+    },
+    {
+      "id": "BULL_EXHAUSTION",
+      "name": "Aufwaertstrend Erschoepfung (Trendwende-Warnung)",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 19.0,
+          "range": {
+            "min": 15,
+            "max": 28,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 3.0,
+          "range": {
+            "min": 2,
+            "max": 8,
+            "step": 1
+          }
+        },
+        {
+          "name": "rsi_exhaustion_max",
+          "value": 41.0,
+          "range": {
+            "min": 35,
+            "max": 45,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 82,
+      "scope": "entry"
+    },
+    {
+      "id": "BEAR_EXHAUSTION",
+      "name": "Abwaertstrend Erschoepfung (Trendwende-Warnung)",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 26.0,
+          "range": {
+            "min": 15,
+            "max": 28,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 4.0,
+          "range": {
+            "min": 2,
+            "max": 8,
+            "step": 1
+          }
+        },
+        {
+          "name": "rsi_exhaustion_min",
+          "value": 62.0,
+          "range": {
+            "min": 55,
+            "max": 65,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 81,
+      "scope": "entry"
+    },
+    {
+      "id": "BULL",
+      "name": "Aufwaertstrend",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 25.0,
+          "range": {
+            "min": 15,
+            "max": 28,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 5.0,
+          "range": {
+            "min": 2,
+            "max": 8,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 80,
+      "scope": "entry"
+    },
+    {
+      "id": "BEAR",
+      "name": "Abwaertstrend",
+      "thresholds": [
+        {
+          "name": "adx_min",
+          "value": 16.0,
+          "range": {
+            "min": 15,
+            "max": 28,
+            "step": 1
+          }
+        },
+        {
+          "name": "di_diff_min",
+          "value": 8.0,
+          "range": {
+            "min": 2,
+            "max": 8,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 79,
+      "scope": "entry"
+    },
+    {
+      "id": "SIDEWAYS",
+      "name": "Seitwaerts / Range",
+      "thresholds": [
+        {
+          "name": "adx_max",
+          "value": 16.0,
+          "range": {
+            "min": 15,
+            "max": 25,
+            "step": 1
+          }
+        }
+      ],
+      "priority": 50,
+      "scope": "entry"
+    }
+  ],
+  "entry_enabled": false,
+  "entry_expression": null
+}

@@ -19,6 +19,22 @@ Portables AI Agent System für strukturiertes Coding in großen Projekten.
 | 3. Repomix | `[R]` | Vollständiger Code-Dump (50k+ Tokens) |
 | 4. Verify | `[V]` | Lint + Type-Check + Tests |
 
+### Scoped Verify Targets (Standard)
+
+`ai-verify` akzeptiert Ziel-Scopes über Environment-Variablen, um große Testläufe zu verkürzen:
+
+- `AG_LINT_TARGETS` (Fallback: `LINT_TARGETS`)
+- `AG_TEST_TARGETS` (Fallback: `TEST_TARGETS`)
+
+Beispiel:
+```bash
+AG_LINT_TARGETS="src/core/market_data" \
+AG_TEST_TARGETS="tests/core/market_data/test_bad_tick_detection_integration.py" \
+./scripts/ai-verify.sh
+```
+
+Hinweis: Wenn `AG_TEST_TARGETS` gesetzt ist, überschreibt es modul-spezifische Arguments.
+
 ## Neue Struktur (v2.0)
 
 ```

@@ -163,7 +163,7 @@ class CelValidator:
     # Operators by precedence (highest to lowest)
     OPERATOR_PRECEDENCE = {
         # Unary (highest)
-        '!': 10, '-': 10,
+        '!': 10, 'u-': 10,
         # Multiplicative
         '*': 9, '/': 9, '%': 9,
         # Additive

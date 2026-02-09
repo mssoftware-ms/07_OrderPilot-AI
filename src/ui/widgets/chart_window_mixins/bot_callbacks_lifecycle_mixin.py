@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QTimer
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from src.core.tradingbot import FullBotConfig
 
 class BotCallbacksLifecycleMixin:
     """BotCallbacksLifecycleMixin extracted from BotCallbacksMixin."""

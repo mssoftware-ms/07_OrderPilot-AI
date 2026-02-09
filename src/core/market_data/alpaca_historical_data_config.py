@@ -21,6 +21,7 @@ class FilterConfig:
         hampel_window: Window size for Hampel filter
         hampel_threshold: Threshold for Hampel filter (MAD multiples)
         zscore_threshold: Z-score threshold for outlier detection
+        price_spike_multiplier: Price spike threshold vs rolling median
         volume_multiplier: Volume spike threshold multiplier
         log_stats: Log filtering statistics
     """
@@ -31,6 +32,7 @@ class FilterConfig:
     hampel_window: int = 15
     hampel_threshold: float = 3.5
     zscore_threshold: float = 4.0
+    price_spike_multiplier: float = 5.0
     volume_multiplier: float = 10.0
     log_stats: bool = True
 
@@ -54,3 +56,7 @@ class FilterStats:
     bad_ticks_removed: int = 0
     filtering_percentage: float = 0.0
     bad_tick_types: dict = field(default_factory=dict)
+
+    @property
+    def percentage_removed(self) -> float:
+        return self.filtering_percentage

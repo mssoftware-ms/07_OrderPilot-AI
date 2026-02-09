@@ -17,12 +17,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .config import TrailingMode
 from .models import TradeSide
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .models import BotDecision, FeatureVector, PositionState, RegimeState, Signal
+    from .evaluator_types import PerformanceMetrics
 
 class BacktestMode(str, Enum):
     """Backtest execution modes."""
@@ -192,5 +196,4 @@ class BacktestResult:
         with open(path, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
         logger.info(f"Backtest result saved to {path}")
-
 

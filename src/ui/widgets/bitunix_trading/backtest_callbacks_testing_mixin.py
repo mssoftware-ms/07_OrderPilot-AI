@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -15,6 +16,8 @@ from PyQt6.QtWidgets import (
     QMessageBox, QFileDialog, QProgressBar, QTabWidget, QLineEdit,
     QHeaderView,
 )
+
+from .backtest_tab_worker import BatchTestWorker
 
 if TYPE_CHECKING:
     from src.core.market_data.history_provider import HistoryManager
@@ -370,4 +373,3 @@ class BacktestCallbacksTestingMixin:
             self.start_btn.setEnabled(True)
             self.status_label.setText("IDLE")
             self.status_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #888;")
-

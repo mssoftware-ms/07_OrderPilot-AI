@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import jsonschema
     from jsonschema import Draft202012Validator, ValidationError as JsonSchemaValidationError
     JSONSCHEMA_AVAILABLE = True
 except ImportError:
@@ -19,6 +18,12 @@ except ImportError:
     JsonSchemaValidationError = None
 
 logger = logging.getLogger(__name__)
+
+KIND_TO_SCHEMA: dict[str, str] = {
+    "strategy_config": "strategy_config",
+    "indicator_set": "indicator_set",
+    "regime_optimization_results": "regime_optimization_results",
+}
 
 
 class ValidationError(Exception):
@@ -75,12 +80,38 @@ class SchemaValidator:
         if schemas_dir is None:
             # Default to config/schemas/ relative to project root
             project_root = Path(__file__).parents[4]  # src/core/tradingbot/config/validator.py → root
-            schemas_dir = project_root / "config" / "schemas"
+            schemas_dir = project_root / "schemas"
 
         self.schemas_dir = schemas_dir
         self._schema_cache: dict[str, dict] = {}
 
+        # Initialize Registry with all schemas in directory
+        self._registry = self._build_registry()
+
         logger.info(f"SchemaValidator initialized with schemas_dir: {self.schemas_dir}")
+
+    def _build_registry(self):
+        """Builds a registry of all available schemas."""
+        from referencing import Registry, Resource
+        registry = Registry()
+
+        if not self.schemas_dir.exists():
+             return registry
+
+        for schema_file in self.schemas_dir.rglob("*.json"):
+            try:
+                with open(schema_file, "r", encoding="utf-8") as f:
+                    schema = json.load(f)
+                    resource = Resource.from_contents(schema)
+                    # Register by filename (e.g. "defs.json") for relative refs
+                    registry = registry.with_resource(uri=schema_file.name, resource=resource)
+                    # Also register by ID if present
+                    if "$id" in schema:
+                         registry = registry.with_resource(uri=schema["$id"], resource=resource)
+            except Exception as e:
+                logger.warning(f"Failed to load schema for registry: {schema_file} - {e}")
+
+        return registry
 
     def _load_schema(self, schema_name: str) -> dict:
         """Load JSON schema from file.
@@ -112,6 +143,10 @@ class SchemaValidator:
             if path.exists():
                 schema_path = path
                 break
+
+        if schema_path is None:
+             # Fallback: check if mapped in KIND_TO_SCHEMA pointing directly to a filename
+             pass
 
         if schema_path is None:
             available_schemas = [
@@ -151,8 +186,8 @@ class SchemaValidator:
         """
         schema = self._load_schema(schema_name)
 
-        # Create validator
-        validator = Draft202012Validator(schema)
+        # Create validator with registry
+        validator = Draft202012Validator(schema, registry=self._registry)
 
         # Validate
         errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
@@ -179,6 +214,37 @@ class SchemaValidator:
             )
 
         logger.info(f"✅ Validation successful for schema: {schema_name}")
+
+    def validate_data_by_kind(self, data: dict[str, Any]) -> str:
+        """Validate data using the schema mapped from its kind.
+
+        Args:
+            data: Parsed JSON data with required 'kind' field.
+
+        Returns:
+            The schema name that was used for validation.
+
+        Raises:
+            ValidationError: If kind is missing/unknown or schema validation fails.
+        """
+        kind = data.get("kind")
+        if not kind:
+            raise ValidationError(
+                message="Missing required field: kind",
+                json_path="kind",
+                schema_rule="required"
+            )
+
+        schema_name = KIND_TO_SCHEMA.get(kind)
+        if not schema_name:
+            raise ValidationError(
+                message=f"Unsupported kind: {kind}",
+                json_path="kind",
+                schema_rule="enum"
+            )
+
+        self.validate_data(data, schema_name)
+        return schema_name
 
     def validate_file(
         self,
@@ -215,6 +281,36 @@ class SchemaValidator:
         # Validate
         self.validate_data(data, schema_name)
 
+        logger.info(f"✅ File validated successfully: {json_path}")
+        return data
+
+    def validate_file_by_kind(self, json_path: str | Path) -> dict[str, Any]:
+        """Validate JSON file using the schema mapped from its kind.
+
+        Args:
+            json_path: Path to JSON file
+
+        Returns:
+            Parsed and validated JSON data
+
+        Raises:
+            FileNotFoundError: If JSON file not found
+            ValidationError: If validation fails or kind is missing/unknown
+        """
+        json_path = Path(json_path)
+        if not json_path.exists():
+            raise FileNotFoundError(f"JSON file not found: {json_path}")
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValidationError(
+                message=f"Invalid JSON in file {json_path}: {e}",
+                original_error=e
+            )
+
+        self.validate_data_by_kind(data)
         logger.info(f"✅ File validated successfully: {json_path}")
         return data
 

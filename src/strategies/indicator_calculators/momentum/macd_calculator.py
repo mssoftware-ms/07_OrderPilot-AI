@@ -58,14 +58,28 @@ class MACDCalculator(BaseIndicatorCalculator):
 
         if macd is not None and not macd.empty:
             # MACD returns 3 columns: MACD line, signal, histogram
-            # Find MACD line column (excludes 'signal' and 'histogram' in name)
-            macd_cols = [c for c in macd.columns if 'MACD' in c and 'signal' not in c.lower() and 'histogram' not in c.lower()]
+            # Find MACD line column (exclude MACDs/MACDh)
+            macd_cols = [
+                c for c in macd.columns
+                if 'MACD' in c and 'MACDs' not in c and 'MACDh' not in c
+            ]
             result_df['indicator_value'] = macd[macd_cols[0]] if macd_cols else 0
 
-            # Store signal line if available
-            signal_cols = [c for c in macd.columns if 'signal' in c.lower()]
+            # Store signal line if available (pandas_ta uses MACDs)
+            signal_cols = [
+                c for c in macd.columns
+                if 'MACDs' in c or 'signal' in c.lower()
+            ]
             if signal_cols:
                 result_df['macd_signal'] = macd[signal_cols[0]]
+
+            # Store histogram if available (pandas_ta uses MACDh)
+            hist_cols = [
+                c for c in macd.columns
+                if 'MACDh' in c or 'hist' in c.lower()
+            ]
+            if hist_cols:
+                result_df['macd_hist'] = macd[hist_cols[0]]
         else:
             result_df['indicator_value'] = 0
 

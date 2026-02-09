@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from .config import TrailingMode
 from .entry_scorer import EntryScorer, EntryScoreResult
@@ -28,6 +29,10 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .models import VolatilityLevel
+    from .config.models import StrategyDefinition
 
 
 @dataclass

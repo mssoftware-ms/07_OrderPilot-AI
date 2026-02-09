@@ -318,13 +318,14 @@ def get_security_audit_logger() -> logging.Logger:
 
 
 def log_ai_request(
-    model: str,
-    tokens: int,
-    cost: float,
-    latency: float,
-    prompt_version: str,
-    request_type: str,
-    details: dict[str, Any] | None = None
+    model: str | None = None,
+    tokens: int | None = None,
+    cost: float | None = None,
+    latency: float | None = None,
+    prompt_version: str | None = None,
+    request_type: str | None = None,
+    details: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> None:
     """Log AI API requests for telemetry and cost tracking.
 
@@ -337,14 +338,35 @@ def log_ai_request(
         request_type: Type of AI request (analysis, order_review, etc.)
         details: Additional request details
     """
+    provider = kwargs.pop("provider", None)
+    tokens_used = kwargs.pop("tokens_used", None)
+    cost_usd = kwargs.pop("cost_usd", None)
+    latency_ms = kwargs.pop("latency_ms", None)
+    cache_hit = kwargs.pop("cache_hit", None)
+
+    if tokens is None and tokens_used is not None:
+        tokens = tokens_used
+    if cost is None and cost_usd is not None:
+        cost = cost_usd
+    if latency is None and latency_ms is not None:
+        latency = latency_ms / 1000
+
+    tokens = tokens or 0
+    cost = cost or 0.0
+    latency = latency or 0.0
+    prompt_version = prompt_version or "unknown"
+    request_type = request_type or "unknown"
+
     logger = logging.getLogger('ai_telemetry')
     extra = {
+        'ai_provider': provider,
         'ai_model': model,
         'ai_tokens': tokens,
         'ai_cost': cost,
         'ai_latency': latency,
         'prompt_version': prompt_version,
-        'request_type': request_type
+        'request_type': request_type,
+        'cache_hit': cache_hit,
     }
     if details:
         extra.update(details)

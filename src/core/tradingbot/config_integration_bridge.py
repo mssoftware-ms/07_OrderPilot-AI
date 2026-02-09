@@ -37,6 +37,7 @@ from .strategy_definitions import StrategyDefinition
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from src.common.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 

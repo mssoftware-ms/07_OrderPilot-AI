@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from .position_monitor import ExitResult, MonitoredPosition
     from .signal_generator import TradeSignal
     from .trade_logger import ExitReason, TradeLogEntry
+    from .bot_engine import TradingBotEngine
 
 from .bot_types import BotState
 

@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QDockWidget
+from PyQt6.QtWidgets import QDockWidget, QWidget
 
 from .chart_chat_actions_mixin import ChartChatActionsMixin
 from .chart_chat_events_mixin import ChartChatEventsMixin

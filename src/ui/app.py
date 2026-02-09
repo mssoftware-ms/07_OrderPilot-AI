@@ -9,7 +9,7 @@ import traceback
 
 import qasync
 from PyQt6.QtCore import QSettings, Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 
 from src.common.logging_setup import configure_logging
 from src.core.broker import BrokerAdapter

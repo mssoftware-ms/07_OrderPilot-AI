@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pandas as pd
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 from PyQt6.QtWebEngineWidgets import QWebEngineView

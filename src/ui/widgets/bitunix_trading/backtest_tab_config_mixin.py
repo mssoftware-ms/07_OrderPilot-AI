@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -20,6 +20,12 @@ if TYPE_CHECKING:
     from src.core.market_data.history_provider import HistoryManager
 
 logger = logging.getLogger(__name__)
+
+try:
+    from src.core.trading_bot import EntryScoreConfig  # noqa: F401
+    HAS_ENTRY_SCORE = True
+except ImportError:
+    HAS_ENTRY_SCORE = False
 
 
 class BacktestTabConfigMixin:

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orderpilot.ai/schemas/defs.json",
+  "definitions": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^2\\.1\\.\\d+$",
+      "description": "Semantic Versioning 2.1.x"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "strategy_config",
+        "indicator_set",
+        "regime_optimization_results"
+      ]
+    },
+    "indicator_def": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_]+$" },
+        "type": { "type": "string" },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "string", "boolean", "null"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "regime_condition": {
+      "type": "object",
+      "properties": {
+        "left": {
+          "oneOf": [
+            { "$ref": "#/definitions/indicator_ref" },
+            { "$ref": "#/definitions/static_value" }
+          ]
+        },
+        "op": { "type": "string", "enum": ["gt", "lt", "eq", "between"] },
+        "right": {
+          "oneOf": [
+            { "$ref": "#/definitions/indicator_ref" },
+            { "$ref": "#/definitions/static_value" },
+            { "$ref": "#/definitions/range_value" }
+          ]
+        },
+        "cel_expression": { "type": "string" }
+      }
+    },
+    "regime_def": {
+      "type": "object",
+      "required": ["id", "conditions"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "priority": { "type": "integer" },
+        "scope": { "type": "string", "enum": ["entry", "exit", "global"] },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/regime_condition" }
+            },
+            "any": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/regime_condition" }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "indicator_ref": {
+      "type": "object",
+      "required": ["indicator_id", "field"],
+      "properties": {
+        "indicator_id": { "type": "string" },
+        "field": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "static_value": {
+      "type": "object",
+      "required": ["value"],
+      "properties": {
+        "value": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "range_value": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

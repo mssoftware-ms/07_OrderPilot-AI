@@ -183,6 +183,8 @@ class SimulationPhase:
         # Fallback to RegimeEngine if no JSON regimes active
         if not regime_ids and len(row) >= 5:
             try:
+                from src.core.tradingbot.models import FeatureVector
+
                 # Convert timestamp
                 from datetime import datetime
                 if hasattr(timestamp, 'to_pydatetime'):

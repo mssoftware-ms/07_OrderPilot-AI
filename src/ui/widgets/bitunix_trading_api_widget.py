@@ -53,12 +53,12 @@ logger = logging.getLogger(__name__)
 
 
 class BitunixTradingAPIWidget(
+    QGroupBox,
     BitunixAPIWidgetUI,
     BitunixAPIWidgetCompactUI,
     BitunixAPIWidgetEvents,
     BitunixAPIWidgetLogic,
     BitunixMirrorMixin,
-    QGroupBox
 ):
     """Compact trading interface for Bitunix API.
 
